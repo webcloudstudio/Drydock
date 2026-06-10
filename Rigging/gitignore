@@ -1,0 +1,106 @@
+# =============================================================================
+# Standard .gitignore for all projects
+# Source: Specifications/gitignore
+# =============================================================================
+
+# --- Secrets & Environment ---
+.env
+.env.local
+.env.*.local
+*.secrets
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+MANIFEST
+.Python
+
+# --- Virtual Environments ---
+venv/
+.venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+__pypackages__/
+
+# --- Testing & Coverage ---
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+
+# --- Type Checkers ---
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Data / Runtime ---
+data/*.db
+data/*.sqlite
+data/*.pid
+*.db
+*.sqlite3
+*.sqlite3-journal
+
+# --- Generated Output ---
+usage_report*.html
+doc/_build/
+/site
+
+# --- Archive ---
+archive/
+
+# --- Node / JS ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+.next/
+.nuxt/
+dist/
+
+# --- OS ---
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- IDE / Editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Claude Code ---
+.claude/
+
+# --- Console ---
+Console/data/
+Console/__pycache__/
+Console/*.pyc

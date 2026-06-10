@@ -1,0 +1,305 @@
+# Python Best Practices
+
+**Version:** 20260603 V1  
+**Description:** Python language conventions and patterns for specification-driven projects
+
+Technology reference for Python development. Framework-agnostic — applies to any Python project. This file does not change between projects.
+
+Prerequisite: `stack/common.md`
+
+---
+
+## 1. Configuration Management
+
+**Rule**: All environment access goes through one typed `Config` class (see `stack/persistence.md`) — never read `os.environ` elsewhere. Every field is inherited from the environment; there are no `Dev`/`Prod`/`Test` subclasses. Never hardcode secrets, ports, or paths.
+
+```python
+# config.py
+import os
+from dataclasses import dataclass
+from dotenv import load_dotenv
+load_dotenv()
+
+@dataclass(frozen=True)
+class Config:
+    secret_key: str
+    database_path: str
+    port: int
+    debug: bool = False
+
+    @classmethod
+    def load(cls) -> "Config":
+        try:
+            return cls(
+                secret_key=os.environ["SECRET_KEY"],
+                database_path=os.environ.get("DATABASE_PATH", "data/app.db"),
+                port=int(os.environ.get("APP_PORT", "5001")),
+                debug=os.environ.get("APP_DEBUG") == "1",
+            )
+        except KeyError as e:
+            raise RuntimeError(f"Missing required env var: {e}") from e
+```
+
+```bash
+# .env
+SECRET_KEY=your-secret-here
+DATABASE_PATH=data/app.db
+APP_PORT=5001
+```
+
+**Why**: A single typed `Config` is the only env reader. Typed fields crash on a missing or malformed variable at startup, not at first use. The environment (`.env`) selects configuration — not a Python subclass.
+
+---
+
+## 2. Logging
+
+**Rule**: Use Python's `logging` module with named loggers, never `print()`. Configure formatters and handlers at startup.
+
+```python
+import logging
+import os
+
+def setup_logging(level=None):
+    level = level or ('DEBUG' if os.getenv('APP_DEBUG') else 'INFO')
+
+    formatter = logging.Formatter(
+        '%(asctime)s %(name)s %(levelname)s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.addHandler(console)
+
+    # File handler
+    os.makedirs('data/logs', exist_ok=True)
+    file_handler = logging.FileHandler('data/logs/app.log')
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
+```
+
+```python
+# In any module
+import logging
+logger = logging.getLogger(__name__)
+
+logger.info('Server starting on port %s', port)
+logger.error('Failed to connect: %s', err)
+```
+
+**Why**: Named loggers trace messages to source modules. Structured format enables log parsing.
+
+---
+
+## 3. Environment Separation
+
+**Rule**: Maintain distinct `.env` files per environment; the same typed `Config` reads whichever `.env` is present. Never run debug mode in production.
+
+| Setting | Dev | Test | Prod |
+|---------|-----|------|------|
+| APP_DEBUG | 1 | 0 | 0 |
+| DATABASE_PATH | data/app.db | :memory: | data/app.db |
+| SECRET_KEY | .env value | .env value | .env value (required) |
+| LOGGING | DEBUG | WARNING | INFO |
+
+**Why**: Environment separation lives in `.env` values, not Python config subclasses, so the same code path runs everywhere. This prevents dev shortcuts from reaching production.
+
+---
+
+## 4. Testing
+
+**Rule**: Use `pytest` with fixtures. Isolate each test with a fresh database. Test at the boundary, not internals. Every Python project build must include a complete pytest suite regardless of whether the specification mentions tests — a project without tests does not satisfy ACTIVE conformity.
+
+### Required test files
+
+**`tests/conftest.py`** — fixtures shared across all test modules:
+- `app` fixture: `create_app(TestConfig)` — in-memory DB, `TESTING=True`
+- `client` fixture: `app.test_client()`
+- `db` fixture: fresh `init_db(':memory:')` per test, yielded inside `app.app_context()`
+
+```python
+# tests/conftest.py
+import pytest
+
+@pytest.fixture
+def app(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test")
+    monkeypatch.setenv("DATABASE_PATH", ":memory:")
+    from app import create_app
+    from config import Config
+    yield create_app(Config.load())
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+@pytest.fixture
+def db(app):
+    from db import Database
+    with app.app_context():
+        yield Database(':memory:')
+```
+
+**`tests/test_smoke.py`** — liveness checks:
+- App factory returns a Flask app without error
+- `GET /health` returns 200 and `{"status": "ok"}`
+- Root route `GET /` returns 200
+
+**`tests/test_routes.py`** — one test per registered route:
+- Every `GET` page route: `assert response.status_code == 200`
+- Every `POST` API route: assert status in `{200, 201, 204}` with a minimal valid payload
+- HTMX routes: include `HX-Request: true` header; assert 200 and non-empty `response.data`
+- Routes with `{id}` params: use a fixture-created record for the ID
+
+**`tests/test_db.py`** — only if project has a DATABASE.md:
+- Schema test: after `Database(path)` init, all expected tables exist (`SELECT name FROM sqlite_master WHERE type='table'`)
+- Round-trip per major table: insert a minimal valid row, read it back, assert field values match
+- FK enforcement: inserting a row with an invalid FK raises `IntegrityError` (requires `PRAGMA foreign_keys=ON`)
+
+### Configuration
+
+**`pytest.ini`** at project root:
+```ini
+[pytest]
+testpaths = tests
+addopts = -v
+```
+
+Add `pytest` to `pyproject.toml` dev dependencies (see §6).
+
+### What not to test
+- Third-party library internals (Flask, SQLite, HTMX)
+- Configuration loading — tested implicitly by fixture startup
+- Private helper functions — test through the public interface that uses them
+
+**Why**: Fixtures ensure clean state per test. In-memory DB makes tests fast.
+
+---
+
+## 5. Security Basics
+
+**Rule**: Validate all user input. Use parameterized queries exclusively. Never trust client data.
+
+Checklist:
+- Parameterized queries for all DB operations (`?` placeholders, never f-strings)
+- `secure_filename()` for any file path from user input
+- Length and type validation on inputs
+- Secret key loaded from environment, not hardcoded in prod
+- Never expose stack traces to end users
+
+**Why**: These basics prevent the most common attack vectors with minimal effort.
+
+---
+
+## 6. Dependency Management (uv)
+
+**Rule**: Use `uv` for venv creation and dependency management. `pyproject.toml` is the required manifest; `uv.lock` is committed.
+
+```bash
+uv venv                         # creates .venv/
+uv add flask python-dotenv      # add runtime deps → updates pyproject.toml + uv.lock
+uv add --dev pytest ruff        # add dev deps
+uv sync                         # install from uv.lock (standard clone setup)
+uv sync --frozen                # strict install (CI — fail if lock is stale)
+```
+
+```toml
+# pyproject.toml
+[project]
+name = "my-project"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.1",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+```
+
+Rules:
+- Use `uv add` / `uv pip install` — never bare `pip install`
+- Use `uv venv` — never `python -m venv`
+- Commit `pyproject.toml` and `uv.lock`; `.venv/` is gitignored
+- Keep runtime dependencies minimal; dev deps in `[project.optional-dependencies].dev`
+- When migrating an existing project: `uv venv`, `uv pip install -r requirements.txt`, `uv lock`, commit `uv.lock`
+
+**Why**: uv resolves and locks dependencies deterministically, eliminating "works on my machine" drift. `uv sync --frozen` in CI guarantees the exact locked versions are installed.
+
+---
+
+## 7. Health Check and Startup Validation
+
+**Rule**: Validate required config and DB connectivity at startup. Crash early on misconfiguration.
+
+```python
+def validate_startup(config: Config, db: Database):
+    """Crash early on misconfiguration. Config.load() already validates required
+    env vars; here we confirm the database is reachable."""
+    try:
+        db.healthcheck()          # runs SELECT 1 inside the Database class
+    except Exception as e:
+        raise RuntimeError(f'Database not accessible: {e}')
+
+    logger.info('Startup validation passed')
+```
+
+**Why**: Required env vars are validated when `Config.load()` constructs the typed config, so startup validation only needs to confirm connectivity. Catches misconfigurations immediately rather than at first user request.
+
+---
+
+## 8. Project Directory Layout (Python-specific)
+
+Python web projects extend the common layout:
+
+```
+project-name/
+├── app.py              # Entry point / app factory
+├── routes.py           # Route handlers
+├── models.py           # Data models and type registries
+├── db.py               # Database class: typed tables (row dataclass + CRUD), connection, schema, migrations
+├── ops.py              # Business logic and operations
+├── config.py           # typed Config class — the only env reader (stack/persistence.md)
+├── templates/          # Jinja2 or Django templates
+│   ├── base.html
+│   └── types/          # Type-specific partials
+├── static/
+│   ├── css/
+│   └── js/
+├── tests/
+│   ├── conftest.py
+│   └── test_*.py
+├── bin/                # (from common.md)
+├── data/               # (from common.md)
+├── pyproject.toml      # preferred dependency manifest
+├── uv.lock             # committed — reproducible install record
+├── .env
+├── .gitignore
+└── CLAUDE.md           # endpoints/bookmarks live in AGENTS.md — no Links.md
+```
+
+---
+
+## Summary Checklist
+
+- [ ] One typed `Config` class is the only env reader; no hardcoded secrets, no Dev/Prod/Test subclasses
+- [ ] All persistence/services through typed classes (`stack/persistence.md`) — no raw SQL/`os.environ`/`open()`/SDK in app code
+- [ ] Logging with named loggers, not `print()`
+- [ ] Distinct dev/test/prod configs
+- [ ] pytest with fixtures and isolated test DB
+- [ ] Input validation, parameterized queries
+- [ ] `uv` for venv + deps; `pyproject.toml` + `uv.lock` committed; `.venv/` gitignored
+- [ ] Startup validation for required config

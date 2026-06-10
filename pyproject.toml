@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "drydock"
+version = "0.1.0"
+description = "Specification-driven software delivery."
+readme = "README.md"
+license = { text = "Proprietary" }
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "platformdirs>=4.0",
+]
+
+[project.scripts]
+drydock = "drydock.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/drydock"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"Rigging" = "drydock/resources/Rigging"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "Rigging/",
+    "LICENSE",
+    "README.md",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
