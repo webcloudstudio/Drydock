@@ -43,6 +43,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+exclude = ["Rigging/", "dist/"]
 target-version = "py311"
 
 [tool.ruff.lint]
