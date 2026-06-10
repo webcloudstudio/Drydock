@@ -1,14 +1,21 @@
 # AGENTS.md — Drydock
 
+## Required First Action
+
+**Always read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) in full before planning, editing,
+delegating, or constructing prompts.** Drydock is not yet fully built; that file supplies the
+development architecture, V1-to-V2 migration map, source precedence, and verification contract that
+the current code cannot yet express.
+
+Every delegated agent prompt must include `DRYDOCK_DEVELOPMENT.md` or instruct the agent to read it
+in full before beginning work.
+
 Drydock is the installable V2 successor to Prototyper: a Python CLI that plans, builds, tests,
 reviews, and evolves software from Typed Specifications. Development occurs in this repository.
 Prototyper is a read-only V1 behavioral reference used to preserve proven workflows while replacing
 its repository-bound shell interface with the Drydock command surface and package architecture.
 
 ## Required Context
-
-Before changing behavior, read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md). It defines the
-architecture, V1-to-V2 command mapping, migration method, and verification contract.
 
 The full product specification is [docs/drydock.md](docs/drydock.md). It is the source of truth for
 intended V2 behavior, but do not load the entire document by default. Locate and read the sections
@@ -20,14 +27,16 @@ Context precedence:
 1. `docs/drydock.md` — intended V2 product behavior and contracts.
 2. Current Drydock code and tests — implemented behavior that must remain stable unless changed.
 3. `DRYDOCK_DEVELOPMENT.md` — architecture and migration procedure.
-4. `/mnt/c/Users/barlo/projects/Prototyper` — read-only V1 implementation evidence.
+4. Prototyper, resolved from `prototyper_directory` in `METADATA.md` — read-only V1 implementation
+   evidence. In this checkout it resolves to `/mnt/c/Users/barlo/projects/Prototyper`.
 
 When these conflict, implement the V2 specification. Record intentional incompatibilities in code
 tests or documentation rather than silently reproducing V1 behavior.
 
 ## Development Rules
 
-- Do not modify Prototyper. Inspect it to understand behavior, edge cases, prompts, and tests.
+- Prototyper may always be read for development reference. Do not modify any Prototyper file unless
+  Ed explicitly authorizes that specific change.
 - Port one coherent capability at a time. Extract the behavior; do not mechanically copy shell code.
 - Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.

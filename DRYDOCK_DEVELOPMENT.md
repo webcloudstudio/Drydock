@@ -1,5 +1,12 @@
 # Drydock Development Contract
 
+## Mandatory Use
+
+Read this file in full at the start of every Drydock development session. Include it in every
+delegated implementation prompt, or explicitly require the delegated agent to read it before doing
+work. This requirement remains in effect while Drydock is being built and cannot yet supply all of
+its intended development context through working commands.
+
 ## Purpose
 
 Drydock is V2 of the working specification-driven delivery system currently implemented in
@@ -13,6 +20,35 @@ Prototyper. Drydock must preserve proven behavior where it supports the V2 produ
 
 Prototyper is not being enhanced during this migration. It is a read-only reference implementation
 and source of regression cases. Drydock is the maintained target.
+
+## Prototyper V1 Reference Repository
+
+Resolve the V1 reference repository from `prototyper_directory` in Drydock's `METADATA.md`. Relative
+paths are relative to the Drydock repository root. In this checkout:
+
+```text
+prototyper_directory: ../Prototyper
+resolved path: /mnt/c/Users/barlo/projects/Prototyper
+```
+
+Agents are always authorized to read this repository and follow direct dependencies within it.
+Agents are not authorized to modify it unless Ed explicitly authorizes a specific Prototyper change.
+Drydock development must never write to Prototyper as a side effect.
+
+Key Prototyper reference locations:
+
+| Location | V1 evidence provided |
+|---|---|
+| `AGENTS.md` | V1 architecture, commands, operating rules, and file map |
+| `bin/` | Working command implementations, shared libraries, process execution, and orchestration |
+| `prompts/` | Working prompt contracts and context assembly rules |
+| `RulesEngine/` | V1 governance, specification contract, templates, stack rules, and branding |
+| `docs/whitepapers/drydock.md` | Origin of the V2 product specification; Drydock's `docs/drydock.md` is authoritative |
+| `data/` and `logs/` | Build provenance and execution artifact examples when present |
+
+Inspect these locations as needed to understand working V1 behavior. Do not copy repository-bound
+assumptions into Drydock, and do not make Drydock runtime behavior depend on Prototyper being
+available.
 
 ## Sources And Decisions
 
