@@ -346,13 +346,12 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
     except SystemExit:
         raise
-    except Exception:
+    except Exception as exc:
         if debug:
             traceback.print_exc()
         else:
-            exc_type = sys.exc_info()[0]
-            name = exc_type.__name__ if exc_type else "Error"
-            print(f"Unexpected error ({name}). Run with --debug for details.", file=sys.stderr)
+            print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
+            print("Run with --debug for a full traceback.", file=sys.stderr)
         sys.exit(1)
 
     sys.exit(rc)
