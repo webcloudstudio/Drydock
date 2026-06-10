@@ -50,8 +50,8 @@ def cmd_config_show(_args: argparse.Namespace) -> int:
     from drydock.config import config_show
 
     rows = config_show()
-    for display_key, value, source in rows:
-        print(f"  {display_key:<30} {value}  [{source}]")
+    for display_key, value in rows:
+        print(f"  {display_key:<30} {value}")
     return 0
 
 

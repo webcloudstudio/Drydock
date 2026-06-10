@@ -38,3 +38,6 @@ htmlcov/
 
 # Drydock generated
 prompts/generated/
+
+# Local project config
+.env

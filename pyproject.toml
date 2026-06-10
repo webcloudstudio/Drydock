@@ -11,7 +11,7 @@ license = { text = "Proprietary" }
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "platformdirs>=4.0",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]
