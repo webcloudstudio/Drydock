@@ -37,6 +37,9 @@ tests or documentation rather than silently reproducing V1 behavior.
 
 - Prototyper may always be read for development reference. Do not modify any Prototyper file unless
   Ed explicitly authorizes that specific change.
+- Drydock `Rigging/` is a mirror of Prototyper `RulesEngine/`. Keep their governed files identical.
+  Do not independently edit, rename, reorganize, or improve either tree during Drydock application
+  development. A rule change requires Ed's explicit authorization and must be applied to both trees.
 - Port one coherent capability at a time. Extract the behavior; do not mechanically copy shell code.
 - Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
@@ -64,9 +67,11 @@ Drydock/
   dist/              Build artifacts; not committed
 ```
 
-`Rigging/` is authoritative in the source tree. The wheel contains its installed copy at
-`drydock/resources/Rigging/`, synchronized by Hatchling `force-include`. Both resolution paths must
-work; see `src/drydock/paths.py`.
+`Rigging/` is the Drydock-local mirror of Prototyper `RulesEngine/`; its governed files must remain
+identical to that source tree. Transient ignored artifacts such as caches are excluded from the
+identity check. The wheel contains an installed copy at `drydock/resources/Rigging/`, synchronized
+by Hatchling `force-include`. Both source-tree and installed resolution paths must work; see
+`src/drydock/paths.py`.
 
 ## Development Commands
 

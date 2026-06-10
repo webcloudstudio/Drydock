@@ -50,6 +50,36 @@ Inspect these locations as needed to understand working V1 behavior. Do not copy
 assumptions into Drydock, and do not make Drydock runtime behavior depend on Prototyper being
 available.
 
+## RulesEngine And Rigging Mirror Contract
+
+Prototyper `RulesEngine/` was copied to Drydock `Rigging/`. These directories contain the shared
+business rules, build rules, specification templates, stack guidance, branding, and project
+templates used for applications. They are shared governed inputs, not part of the normal
+Prototyper-to-Drydock application-code migration.
+
+The governed contents of these directories must always be identical:
+
+```text
+/mnt/c/Users/barlo/projects/Prototyper/RulesEngine/
+/mnt/c/Users/barlo/projects/Drydock/Rigging/
+```
+
+Rules:
+
+- Do not independently refactor, rename, reorganize, or improve either tree while implementing
+  Drydock commands.
+- Do not treat Drydock `Rigging/` as a fork or a new source of business/build rules.
+- A change to either tree requires Ed's explicit authorization for that rule change and must be
+  applied identically to both trees.
+- Verify mirror identity after every authorized rule change.
+- Identity applies to governed files. Ignore transient, ignored artifacts such as `.ruff_cache/`,
+  `__pycache__/`, and generated package/build output.
+- Drydock packaging may copy `Rigging/` into installed package resources, but packaged copies do not
+  become an independently editable source.
+
+Current verification: the governed trees are identical; only an ignored `.ruff_cache/` exists under
+Drydock `Rigging/templates/`.
+
 ## Sources And Decisions
 
 | Source | Role |
@@ -81,7 +111,7 @@ proven V1 behavior unless it conflicts with Drydock's package architecture or co
 | `src/drydock/config.py` | User-scoped configuration and configured root resolution |
 | `src/drydock/paths.py` | Source-tree and installed-resource resolution |
 | `src/drydock/llm.py` | Future single adapter for subscription-authenticated CLI agent execution |
-| `Rigging/` | Human-editable rules, templates, stack guidance, and branding |
+| `Rigging/` | Drydock-local mirror of Prototyper `RulesEngine/`; shared governed inputs |
 | `prompts/` | Versioned task prompts used by LLM-assisted commands |
 | `tests/` | Unit, CLI contract, integration, migration parity, and package tests |
 
