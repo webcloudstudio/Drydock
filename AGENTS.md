@@ -1,51 +1,75 @@
 # AGENTS.md — Drydock
 
-This file describes how AI agents should work within the Drydock repository.
+Drydock is the installable V2 successor to Prototyper: a Python CLI that plans, builds, tests,
+reviews, and evolves software from Typed Specifications. Development occurs in this repository.
+Prototyper is a read-only V1 behavioral reference used to preserve proven workflows while replacing
+its repository-bound shell interface with the Drydock command surface and package architecture.
+
+## Required Context
+
+Before changing behavior, read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md). It defines the
+architecture, V1-to-V2 command mapping, migration method, and verification contract.
+
+The full product specification is [docs/drydock.md](docs/drydock.md). It is the source of truth for
+intended V2 behavior, but do not load the entire document by default. Locate and read the sections
+relevant to the requested command, workflow, contract, or artifact. Read the full specification only
+for cross-cutting design decisions.
+
+Context precedence:
+
+1. `docs/drydock.md` — intended V2 product behavior and contracts.
+2. Current Drydock code and tests — implemented behavior that must remain stable unless changed.
+3. `DRYDOCK_DEVELOPMENT.md` — architecture and migration procedure.
+4. `/mnt/c/Users/barlo/projects/Prototyper` — read-only V1 implementation evidence.
+
+When these conflict, implement the V2 specification. Record intentional incompatibilities in code
+tests or documentation rather than silently reproducing V1 behavior.
+
+## Development Rules
+
+- Do not modify Prototyper. Inspect it to understand behavior, edge cases, prompts, and tests.
+- Port one coherent capability at a time. Extract the behavior; do not mechanically copy shell code.
+- Keep the public interface under `drydock <verb> [<sub-verb>]`.
+- Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
+- Add focused unit tests and CLI contract tests for every implemented command.
+- Preserve working commands while replacing deferred command stubs.
+- When delegating work or constructing an agent prompt, include the V2 mission, context precedence,
+  relevant specification sections, and applicable V1 reference files. Do not inject the full
+  specification unless the task is cross-cutting.
+- Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
+- Never call an API-key-backed LLM provider. Use the subscription-authenticated `claude` CLI through
+  a dedicated adapter.
+- Do not add Typer, Click, Rich, Pydantic, databases, or application frameworks without approval.
+- Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
 
 ## Project Layout
 
-```
+```text
 Drydock/
-  src/drydock/       Python package source
-  Rigging/           Human-editable Rigging (spec templates, stack rules, business rules)
-  tests/             Pytest test suite
-  bin/               Source-tree launchers (no business logic)
-  prompts/           LLM prompts (ported alongside their commands)
-  dist/              Build artifacts (not committed)
-  .venv/             Virtual environment (not committed)
+  src/drydock/       Python package and all command behavior
+  Rigging/           Human-editable rules, templates, stack guidance, and branding
+  tests/             Pytest unit, CLI, integration, and parity tests
+  bin/               Source-tree launchers; no business logic
+  prompts/           Versioned LLM prompt contracts used by commands
+  docs/drydock.md    Full V2 product specification
+  dist/              Build artifacts; not committed
 ```
+
+`Rigging/` is authoritative in the source tree. The wheel contains its installed copy at
+`drydock/resources/Rigging/`, synchronized by Hatchling `force-include`. Both resolution paths must
+work; see `src/drydock/paths.py`.
 
 ## Development Commands
 
 ```bash
-# Install in editable mode with dev dependencies
-uv pip install -e ".[dev]"
-
-# Run tests
-python -m pytest
-
-# Run tests via shell script
-bash bin/test.sh
-
-# Lint and format
-ruff check src/ tests/
-ruff format src/ tests/
-
-# Build wheel
-python -m hatchling build
+uv pip install -e ".[dev]"        # install editable package
+python -m pytest                  # run tests
+bash bin/test.sh                  # canonical test entry point
+ruff check src/ tests/            # lint
+ruff format --check src/ tests/   # verify formatting
+python -m hatchling build         # build wheel and sdist
 ```
 
-## Key Constraints
-
-- Do NOT modify `/mnt/c/Users/barlo/projects/Prototyper` — it is the read-only behavioral reference.
-- Never add Typer, Click, Rich, Pydantic, databases, or application frameworks without explicit approval.
-- Never call the Anthropic API directly. Use the `claude` CLI.
-- `Rigging/` is the human-editable source of truth. `src/drydock/resources/Rigging/` is the installed copy — Hatchling syncs it via `force-include` at build time.
-- All configuration is persisted via `drydock config set`; do not read project-local `.env` files.
-- Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
-
-## Rigging Resolver
-
-When running from source: uses root-level `Rigging/`.
-When installed: uses `importlib.resources` to read `drydock/resources/Rigging/`.
-Both paths must work. See `src/drydock/paths.py`.
+Before completing a capability, run the narrowest focused tests, then the full test suite and lint.
+For packaging or Rigging changes, build the wheel and verify the affected command from an isolated
+installation.
