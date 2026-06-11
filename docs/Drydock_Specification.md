@@ -91,13 +91,18 @@ Blueprint and Target roots never belong in project `METADATA.md`.
 
 | Step | Command | Description |
 |---|---|---|
-| Install | `pip install drydock` | **User:** Installs Drydock. |
-| Configure | `drydock config set ...` | **User:** Sets `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and planning defaults. **Output:** user-scoped Drydock `.env`. |
-| Initialize | `drydock init <Blueprint>` | **Drydock:** Creates `<BLUEPRINT_DIRECTORY>/<Blueprint>/`. |
+| **Install** | `pip install drydock` | User installs Drydock. |
+| **Configure** | `drydock config set ...` | User sets `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and planning defaults.<br>output: user-scoped Drydock `.env`. |
+| **Initialize** | `drydock init <Blueprint>` | Drydock creates the Blueprint workspace.<br>output: `<BLUEPRINT_DIRECTORY>/<Blueprint>/`. |
 
 ```mermaid
 flowchart LR
-  Install --> Configure --> Initialize
+  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
+  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
+
+  INSTALL["pip install drydock"]:::script --> CONFIG["drydock config set"]:::script
+  CONFIG --> INIT["drydock init"]:::script
+  INIT --> BLUEPRINT(["Blueprint"]):::dir
 ```
 
 ### Configuration
@@ -149,28 +154,14 @@ Markdown under `<Blueprint>/sources/`.
 
 | Step | Command | Description |
 |---|---|---|
-| Import | `drydock import <Blueprint> <Source> --format <Format>` | **Drydock:** Imports the user's Markdown. **Output:** `<Blueprint>/sources/`. |
-| Analyze | `drydock analyze <Blueprint> <Target>` | **LLM:** Identifies gaps, recommendations, questions, configuration choices, and potential spikes. **Output:** `<Target>/QuarterDeck/planning/ANALYSIS.md` and `<Target>/QuarterDeck/questionnaires/planning.json`. |
-| User Review | `QuarterDeck Review` | **User:** Answers planning questions and sets build options. **Input:** QuarterDeck analysis and questionnaire. **Output:** `<Blueprint>/BUILD_CONFIGURATION.md`. |
-| Conform | `drydock conform <Blueprint>` | **LLM:** Optionally converts available source material using the approved build configuration. **Input:** `<Blueprint>/sources/` and `<Blueprint>/BUILD_CONFIGURATION.md`. **Output:** Typed Specification files under `<Blueprint>/`. |
-| Create | `drydock plan create <Blueprint> <Target>` | **LLM:** Creates the Draft plan from all available Blueprint inputs and selected build rules. **Output:** `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
-| User Review | `QuarterDeck Review` | **User:** Reviews the Draft plan; orders and groups work. **Input/Output:** `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
-| Validate | `drydock plan validate <Blueprint> <Target>` | **Drydock:** Validates the Draft plan. **Input:** `<Target>/BUILD_PLAN.md`. **Output:** validation result. |
-| Approve | `drydock plan approve <Blueprint> <Target>` | **User:** Accepts the validated Draft plan. **Output:** `<Target>/BUILD_PLAN.md` state changes from Draft to Accepted. |
-
-```mermaid
-flowchart LR
-  Import["Import<br/><Blueprint>/sources/"] --> Analyze
-  Analyze --> Analysis["QuarterDeck Analysis<br/>and Questionnaire"]
-  Analysis --> ConfigurationReview["User Review"]
-  ConfigurationReview --> Configuration["<Blueprint>/BUILD_CONFIGURATION.md"]
-  Configuration --> Conform["Conform Optional"]
-  Configuration --> Create
-  Conform --> Create
-  Create --> Draft["Draft BUILD_PLAN.md"]
-  Draft --> PlanReview["User Review<br/>Order and Group"]
-  PlanReview --> Validate --> Approve --> Accepted["Accepted BUILD_PLAN.md"]
-```
+| **Import** | `drydock import <Blueprint> <Source> --format <Format>` | Drydock imports the user's Markdown.<br>output: `<Blueprint>/sources/`. |
+| **Analyze** | `drydock analyze <Blueprint> <Target>` | LLM identifies gaps, recommendations, questions, configuration choices, and potential spikes.<br>output: `<Target>/QuarterDeck/planning/ANALYSIS.md` and `<Target>/QuarterDeck/questionnaires/planning.json`. |
+| **User Review** | `QuarterDeck Review` | User answers planning questions and sets build options.<br>input: QuarterDeck analysis and questionnaire.<br>output: `<Blueprint>/BUILD_CONFIGURATION.md`. |
+| **Conform** | `drydock conform <Blueprint>` | LLM optionally converts available source material using the approved build configuration.<br>input: `<Blueprint>/sources/` and `<Blueprint>/BUILD_CONFIGURATION.md`.<br>output: Typed Specification files under `<Blueprint>/`. |
+| **Create** | `drydock plan create <Blueprint> <Target>` | LLM creates the Draft plan from all available Blueprint inputs and selected build rules.<br>output: `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
+| **User Review** | `QuarterDeck Review` | User reviews the Draft plan; orders and groups work.<br>input/output: `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
+| **Validate** | `drydock plan validate <Blueprint> <Target>` | Drydock validates the Draft plan.<br>input: `<Target>/BUILD_PLAN.md`.<br>output: validation result. |
+| **Approve** | `drydock plan approve <Blueprint> <Target>` | User accepts the validated Draft plan.<br>output: `<Target>/BUILD_PLAN.md` state changes from Draft to Accepted. |
 
 Planning artifacts have three distinct ownership and persistence classes:
 
