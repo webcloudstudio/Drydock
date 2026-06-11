@@ -14,7 +14,9 @@ PORT="${PORT:-8080}"
 PROJECT_NAME="$(basename "$SCRIPT_DIR")"
 echo "[$PROJECT_NAME] $(date +%H:%M) Starting"
 
-if command -v python >/dev/null 2>&1; then
+if [[ -x "$PROJECT_DIR/.venv/bin/python" ]]; then
+  PYTHON=("$PROJECT_DIR/.venv/bin/python")
+elif command -v python >/dev/null 2>&1; then
   PYTHON=(python)
 elif command -v python3 >/dev/null 2>&1; then
   PYTHON=(python3)

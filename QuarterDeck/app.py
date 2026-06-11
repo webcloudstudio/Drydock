@@ -28,7 +28,7 @@ import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -547,7 +547,7 @@ def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> N
     except (OSError, json.JSONDecodeError):
         return
     data["state"] = state
-    data["answered_at"] = datetime.now(UTC).isoformat()
+    data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
     for question in data.get("questions", []):
         if question["id"] in payload:
             ans = payload[question["id"]]
@@ -635,7 +635,7 @@ def api_get_state(key: str) -> dict[str, Any]:
 
 @app.post("/api/state/{key}")
 def api_set_state(key: str, update: StateUpdate) -> dict[str, Any]:
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
     with connect_db() as conn:
         conn.execute(
             """insert into document_state (key, document_id, state, payload_json, updated_at)
