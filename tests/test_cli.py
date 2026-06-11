@@ -337,6 +337,77 @@ state: pending
         assert "Usage: drydock build status" in err
 
 
+class TestPlanInit:
+    def _setup_blueprint(self, tmp_spec_root, monkeypatch):
+        blueprint = tmp_spec_root / "Example"
+        blueprint.mkdir()
+        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
+        for name, body in {
+            "METADATA.md": "metadata\n",
+            "README.md": "readme\n",
+            "INTENT.md": "intent\n",
+            "ARCHITECTURE.md": "architecture\n",
+            "DATABASE.md": "# Database\n",
+            "FEATURE-Catalog.md": "# Feature\n",
+            "SCREEN-Catalog.md": "# Screen\n",
+        }.items():
+            (blueprint / name).write_text(body, encoding="utf-8")
+        return blueprint
+
+    def test_plan_init_creates_intent_file(self, tmp_spec_root, isolated_config, monkeypatch):
+        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
+
+        rc, out, err = run_cli("plan", "init", "Example")
+
+        assert rc == 0, err
+        intent = blueprint / "BUILD_PLAN_INTENT.md"
+        assert intent.exists()
+        text = intent.read_text(encoding="utf-8")
+        assert "## Foundation" in text
+        assert "DATABASE.md" in text
+        assert "## Planned Work" in text
+        assert "FEATURE-Catalog.md" in text
+        assert "SCREEN-Catalog.md" in text
+        assert "METADATA.md" not in text
+        assert "ARCHITECTURE.md" not in text
+        assert "Created:" in out
+
+    def test_plan_init_appends_new_specs_only(self, tmp_spec_root, isolated_config, monkeypatch):
+        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
+        intent = blueprint / "BUILD_PLAN_INTENT.md"
+        intent.write_text(
+            "# BUILD_PLAN_INTENT.md - Example\n\n## Planned Work\nFEATURE-Catalog.md (1k)\n",
+            encoding="utf-8",
+        )
+        (blueprint / "FEATURE-Checkout.md").write_text("# Checkout\n", encoding="utf-8")
+
+        rc, out, err = run_cli("plan", "init", "Example")
+
+        assert rc == 0, err
+        text = intent.read_text(encoding="utf-8")
+        assert "## New Specs - place in build order" in text
+        assert "FEATURE-Checkout.md" in text
+        assert text.count("FEATURE-Catalog.md") == 1
+        assert "APPENDED  FEATURE-Checkout.md" in out
+
+    def test_plan_init_reports_when_up_to_date(self, tmp_spec_root, isolated_config, monkeypatch):
+        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
+        intent = blueprint / "BUILD_PLAN_INTENT.md"
+        intent.write_text(
+            (
+                "# BUILD_PLAN_INTENT.md - Example\n\n"
+                "## Foundation\nDATABASE.md (0k)\n\n"
+                "## Planned Work\nFEATURE-Catalog.md (0k)\nSCREEN-Catalog.md (0k)\n"
+            ),
+            encoding="utf-8",
+        )
+
+        rc, out, err = run_cli("plan", "init", "Example")
+
+        assert rc == 0, err
+        assert "up to date" in out
+
+
 class TestStubs:
     """Deferred commands must exit 2, print a message, and not write anything."""
 
@@ -346,7 +417,6 @@ class TestStubs:
         (["document", "MySpec", "MyTarget"], "document"),
         (["rigging", "update", "MyTarget"], "rigging update"),
         (["rigging", "verify", "MyTarget"], "rigging verify"),
-        (["plan", "init", "MySpec"], "plan init"),
         (["plan", "create", "MySpec"], "plan create"),
         (["build", "score", "MySpec", "MyTarget"], "build score"),
         (["build", "MySpec", "MyTarget"], "build"),

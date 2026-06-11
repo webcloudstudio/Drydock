@@ -183,6 +183,30 @@ def cmd_plan_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plan_init(args: argparse.Namespace) -> int:
+    from drydock.config import get_blueprint_directory
+    from drydock.plan_intent import IntentStatus, init_plan_intent
+
+    result = init_plan_intent(args.Blueprint, get_blueprint_directory())
+    print(f"Blueprint: {result.blueprint_dir}")
+
+    if result.status == IntentStatus.CREATED:
+        print(f"Created: {result.intent_path}")
+        print(f"  {result.section_count} section(s) scaffolded")
+        print()
+        print("Next steps:")
+        print("  1. Reorder sections and files in BUILD_PLAN_INTENT.md")
+        print(f"  2. Run: drydock plan create {args.Blueprint}")
+    elif result.status == IntentStatus.UPDATED:
+        print(f"Updated: {result.intent_path}")
+        for name in result.appended_files:
+            print(f"  APPENDED  {name}")
+    else:
+        print("BUILD_PLAN_INTENT.md is up to date - no new spec files found.")
+
+    return 0
+
+
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_blueprint_plan
     from drydock.config import get_blueprint_directory, get_target_directory
@@ -445,7 +469,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "plan":
         sub = getattr(args, "plan_command", None)
         if sub == "init":
-            not_implemented("plan init")
+            return cmd_plan_init(args)
         elif sub == "create":
             not_implemented("plan create")
         elif sub == "show":
