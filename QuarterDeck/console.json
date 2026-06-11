@@ -18,11 +18,18 @@
       "path": "pages/overview.md"
     },
     {
-      "id": "acceptance",
-      "label": "Delivery Acceptance",
+      "id": "soundings",
+      "label": "Soundings",
       "section": "core",
       "type": "markdown",
-      "path": "../DRYDOCK_ACCEPTANCE_CRITERIA.md"
+      "path": "../docs/SOUNDINGS.md"
+    },
+    {
+      "id": "specification",
+      "label": "Drydock Specification",
+      "section": "core",
+      "type": "markdown",
+      "path": "../docs/Drydock_Specification.md"
     },
     {
       "id": "ships_log",
@@ -66,11 +73,46 @@
       "path": "questionnaires/initial-direction.json"
     },
     {
-      "id": "blueprint",
-      "label": "Authoritative Blueprint",
+      "id": "sea_trials",
+      "label": "Sea Trials",
+      "section": "pages",
+      "type": "markdown",
+      "path": "../docs/SEA_TRIALS.md"
+    },
+    {
+      "id": "rendered_docs",
+      "label": "Rendered Documentation",
+      "section": "pages",
+      "type": "link",
+      "href": "../docs/index.html"
+    },
+    {
+      "id": "sea_trials_poster",
+      "label": "Sea Trials Poster",
+      "section": "archive",
+      "type": "link",
+      "href": "../docs/SEA_TRIALS.html"
+    },
+    {
+      "id": "sea_trials_pdf",
+      "label": "Sea Trials PDF",
+      "section": "archive",
+      "type": "link",
+      "href": "../docs/SEA_TRIALS.pdf"
+    },
+    {
+      "id": "pypi_reservation",
+      "label": "PyPI Name Reservation",
       "section": "archive",
       "type": "markdown",
-      "path": "../specs/001-drydock/spec.md"
+      "path": "../docs/PYPI_NAME_RESERVATION.md"
+    },
+    {
+      "id": "pypi_reservation_pdf",
+      "label": "PyPI Name Reservation PDF",
+      "section": "archive",
+      "type": "link",
+      "href": "../docs/PYPI_NAME_RESERVATION.pdf"
     },
     {
       "id": "console_contract",

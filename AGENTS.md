@@ -34,8 +34,8 @@ Context precedence:
 5. Prototyper, resolved from `prototyper_directory` in `METADATA.md` — read-only V1 implementation
    evidence. In this checkout it resolves to `/mnt/c/Users/barlo/projects/Prototyper`.
 
-When these conflict, implement the V2 Blueprint. Record intentional incompatibilities in code
-tests or documentation rather than silently reproducing V1 behavior.
+When these conflict, implement the approved Drydock specification. Record intentional
+incompatibilities in code tests or documentation rather than silently reproducing V1 behavior.
 
 ### GitHub Spec Kit — external baseline
 
@@ -63,8 +63,8 @@ generated compatibility views. It is an external reference, not a Drydock source
 - Preserve working commands while replacing deferred command stubs.
 - Update `docs/SOUNDINGS.md` when a capability's implementation or verification state changes.
 - When delegating work or constructing an agent prompt, include the V2 mission, context precedence,
-  relevant Blueprint sections, and applicable V1 reference files. Do not inject the full Blueprint
-  unless the task is cross-cutting.
+  relevant specification sections, and applicable V1 reference files. Do not inject the full
+  specification unless the task is cross-cutting.
 - Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
 - Never call an API-key-backed LLM provider. Use the subscription-authenticated `claude` CLI through
   a dedicated adapter.
@@ -80,7 +80,7 @@ Drydock/
   tests/             Pytest unit, CLI, integration, and parity tests
   bin/               Source-tree launchers; no business logic
   prompts/           Versioned LLM prompt contracts used by commands
-  specs/001-drydock/     Authoritative V2 Drydock Blueprint in Spec Kit-compatible layout
+  docs/              Authoritative specification, Soundings, Sea Trials, and owned documentation
   dist/              Build artifacts; not committed
 ```
 

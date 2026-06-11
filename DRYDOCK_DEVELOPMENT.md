@@ -55,8 +55,6 @@ Key Prototyper reference locations:
 | `bin/` | Working command implementations, shared libraries, process execution, and orchestration |
 | `prompts/` | Working prompt contracts and context assembly rules |
 | `RulesEngine/` | V1 governance, specification contract, templates, stack rules, and branding |
-| `docs/Drydock_Specification.md` | Sole authoritative V2 product behavior and contracts |
-| `docs/SOUNDINGS.md` | Authoritative implementation acceptance/readiness checklist |
 | `data/` and `logs/` | Build provenance and execution artifact examples when present |
 
 Inspect these locations as needed to understand working V1 behavior. Do not copy repository-bound
@@ -202,14 +200,14 @@ plan parsing, prompt assembly, process execution, evidence, and review state.
 
 ### Prompt Context Discipline
 
-The full Blueprint is intentionally not injected into every agent prompt.
+The full Drydock specification is intentionally not injected into every agent prompt.
 
 - Search `docs/Drydock_Specification.md` by command, workflow, artifact, or contract heading.
 - Read the relevant section plus any directly referenced shared contract sections.
-- Load the full Blueprint only when changing cross-cutting architecture or product semantics.
+- Load the full specification only when changing cross-cutting architecture or product semantics.
 - Read mapped Prototyper files only for the active capability and direct dependencies.
 - Every delegated or generated implementation prompt must state that Drydock is the maintained V2
-  target, include this source-precedence contract, and provide the relevant Blueprint excerpts
+  target, include this source-precedence contract, and provide the relevant specification excerpts
   and V1 file paths.
 - Generated build prompts must include only the specification files, Rigging, and context required
   for the current runnable plan block.

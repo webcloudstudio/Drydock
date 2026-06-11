@@ -11,7 +11,8 @@ command surface and Typed Specification contract are unstable and may change bet
 ### Added
 
 - Drydock Blueprint Methodology vocabulary across the product specification, documentation, and CLI.
-- Spec Kit-compatible authoritative Blueprint location at `specs/001-drydock/spec.md`.
+- Sole authoritative product specification at `docs/Drydock_Specification.md`.
+- Authoritative implementation acceptance/readiness checklist at `docs/SOUNDINGS.md`.
 - Project foundation: single-sourced version, packaging metadata and classifiers, `py.typed` marker.
 - Continuous integration (GitHub Actions) across Python 3.11–3.13 on Linux and Windows, with a wheel
   build and installed-CLI smoke test.

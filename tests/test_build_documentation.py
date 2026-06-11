@@ -8,7 +8,6 @@ import pytest
 
 from drydock.build_documentation import (
     DEFAULT_SPECIFICATION,
-    LEGACY_SPECIFICATION,
     _default_source,
     build_documentation,
     main,
@@ -86,19 +85,8 @@ def test_main_accepts_explicit_paths(tmp_path: Path, capsys: pytest.CaptureFixtu
 
 
 def test_default_source_prefers_authoritative_path(tmp_path: Path):
-    legacy = tmp_path / LEGACY_SPECIFICATION
     authoritative = tmp_path / DEFAULT_SPECIFICATION
-    legacy.parent.mkdir(parents=True)
     authoritative.parent.mkdir(parents=True)
-    legacy.write_text(SOURCE, encoding="utf-8")
     authoritative.write_text(SOURCE, encoding="utf-8")
 
     assert _default_source(tmp_path) == authoritative
-
-
-def test_default_source_falls_back_during_path_migration(tmp_path: Path):
-    legacy = tmp_path / LEGACY_SPECIFICATION
-    legacy.parent.mkdir(parents=True)
-    legacy.write_text(SOURCE, encoding="utf-8")
-
-    assert _default_source(tmp_path) == legacy

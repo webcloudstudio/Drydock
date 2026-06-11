@@ -46,3 +46,26 @@ def test_jsonl_renderer_sorts_fields_and_isolates_invalid_lines(tmp_path, monkey
     assert rendered.index("Newer") < rendered.index("Older")
     assert "2 record(s)" in rendered
     assert "line 2" in rendered
+
+
+def test_drydock_console_exposes_existing_owned_documents():
+    root = Path(__file__).parents[1]
+    config = json.loads((root / "QuarterDeck" / "console.json").read_text(encoding="utf-8"))
+    docs_items = {
+        "soundings",
+        "specification",
+        "sea_trials",
+        "rendered_docs",
+        "sea_trials_poster",
+        "sea_trials_pdf",
+        "pypi_reservation",
+        "pypi_reservation_pdf",
+    }
+    items = {item["id"]: item for item in config["items"]}
+
+    assert docs_items <= items.keys()
+    for item_id in docs_items:
+        item = items[item_id]
+        relative = item.get("path") or item.get("href")
+        assert relative
+        assert (root / "QuarterDeck" / relative).resolve().is_file(), item_id

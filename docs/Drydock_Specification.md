@@ -61,10 +61,11 @@ expressed as a **Typed Specification** through files with prescribed roles. Dryd
 Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
 increments through the QuarterDeck.
 
-The Drydock repository stores its own authoritative Blueprint at `specs/001-drydock/spec.md`. This
-uses Spec Kit's visible `specs/<NNN-feature>/spec.md` convention. The hidden `.specify/` directory is
-reserved for Spec Kit framework configuration, templates, scripts, and memory; it is not the
-location for the authoritative authored Blueprint.
+This file, `docs/Drydock_Specification.md`, is Drydock's sole authoritative product specification.
+It must always describe the intended current behavior. Any behavior change or new behavior requires
+product-owner approval before an agent edits this file, and the approved specification update must
+land with the implementation. Current implementation acceptance and evidence are tracked separately
+in `docs/SOUNDINGS.md`.
 
 ```mermaid
 flowchart LR
@@ -854,6 +855,11 @@ item declares its section, renderer, source path, and optional review target.
 **`<Target>/Console/tickets.json`** is a generated projection of the Agile `BUILD_PLAN.md`. Spikes
 and stories appear as tickets; acceptance criteria are folded under their parent. Column assignment
 maps directly to object state.
+
+For Drydock's own repository, the QuarterDeck is also the primary viewer for project-owned
+artifacts under `docs/`: the authoritative specification, Soundings acceptance/readiness checklist,
+Sea Trials, rendered documentation, and supporting publication or reservation artifacts. The
+QuarterDeck points to those files directly and never duplicates their content.
 
 Review decisions made in the QuarterDeck — approve, revise, reject, add defect — are written back
 to `BUILD_PLAN.md` by the same decision writer used by the CLI. Both files regenerate after each

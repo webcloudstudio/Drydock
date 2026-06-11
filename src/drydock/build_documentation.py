@@ -1,4 +1,4 @@
-"""Assemble Drydock's authoritative Blueprint into a documentation page."""
+"""Assemble Drydock's authoritative specification into a documentation page."""
 
 from __future__ import annotations
 

@@ -156,6 +156,16 @@ The sole Ship's Log artifact is `<Target>/logs/ships_log.jsonl`. It is append-on
 QuarterDeck's generic JSONL viewer, and intended as the direct input to downstream publishing tools.
 No Markdown Ship's Log is generated.
 
+## Project Governance Documents
+
+- `docs/Drydock_Specification.md` — sole authoritative Drydock behavior specification; agents
+  require product-owner approval before changing it.
+- `docs/SOUNDINGS.md` — authoritative implementation acceptance/readiness checklist and completion
+  evidence.
+- `docs/SEA_TRIALS.md` — strategic product outcomes and proof-of-methodology criteria.
+
+QuarterDeck exposes these documents and the other owned artifacts under `docs/` directly.
+
 `LLM_PROVIDER=claude|codex` may be set in the process environment or user-scoped Drydock `.env`;
 the process environment takes precedence and Claude is the default. API-key environment variables
 are removed before invoking either CLI.

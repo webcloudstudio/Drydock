@@ -18,10 +18,11 @@ that plans, builds, tests, reviews, and evolves software.
 
 ## Use This QuarterDeck
 
-1. Open **Drydock Delivery Plan** to inspect the first-cut roadmap and acceptance criteria.
+1. Open **Soundings** to inspect authoritative implementation acceptance and evidence.
 2. Open **Choose Next Slice** and save answers to give the next agent structured direction.
 3. Open **Initial Console Review** and record Approve, Revise, or Reject with feedback.
 4. Open **Ship's Log** to inspect canonical JSONL decision and milestone events.
+5. Open **Drydock Specification** for the sole authoritative behavior contract.
 
 ## Control Boundary
 
@@ -30,5 +31,6 @@ write back to `BUILD_PLAN.md` or append workflow decisions to `logs/ships_log.js
 contracts are represented on the board as
 work to implement and prove.
 
-The authoritative product behavior remains `specs/001-drydock/spec.md`. The high-level delivery
-exit criteria remain `DRYDOCK_ACCEPTANCE_CRITERIA.md`.
+The sole authoritative product behavior is `docs/Drydock_Specification.md`. Implementation
+acceptance and completion evidence are authoritative in `docs/SOUNDINGS.md`; strategic product
+proof remains in `docs/SEA_TRIALS.md`.
