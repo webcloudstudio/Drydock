@@ -10,7 +10,8 @@ from dotenv import dotenv_values, set_key
 from drydock.errors import ConfigurationError
 
 _KEY_MAP = {
-    "specification_directory": "SPECIFICATION_DIRECTORY",
+    "blueprint_directory": "BLUEPRINT_DIRECTORY",
+    "specification_directory": "BLUEPRINT_DIRECTORY",
     "target_directory": "TARGET_DIRECTORY",
     "llm_provider": "LLM_PROVIDER",
 }
@@ -37,12 +38,14 @@ def _get(key_upper: str, default: str | None = None) -> tuple[str | None, str]:
     return default, "default"
 
 
-def get_specification_directory() -> Path:
-    val, _source = _get("SPECIFICATION_DIRECTORY")
+def get_blueprint_directory() -> Path:
+    val, _source = _get("BLUEPRINT_DIRECTORY")
+    if not val:
+        val, _source = _get("SPECIFICATION_DIRECTORY")
     if not val:
         raise ConfigurationError(
-            "SPECIFICATION_DIRECTORY is not set.\n"
-            "  Run: drydock config set specification_directory <path>"
+            "BLUEPRINT_DIRECTORY is not set.\n"
+            "  Run: drydock config set blueprint_directory <path>"
         )
     return Path(val)
 
@@ -66,8 +69,11 @@ def get_llm_provider() -> str:
 
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
+    blueprint_value, blueprint_source = _get("BLUEPRINT_DIRECTORY")
+    if not blueprint_value:
+        blueprint_value, blueprint_source = _get("SPECIFICATION_DIRECTORY")
+    rows.append(("blueprint_directory", blueprint_value or "(not set)", blueprint_source))
     for display_key, key_upper, default in (
-        ("specification_directory", "SPECIFICATION_DIRECTORY", None),
         ("target_directory", "TARGET_DIRECTORY", None),
         ("llm_provider", "LLM_PROVIDER", "claude"),
     ):

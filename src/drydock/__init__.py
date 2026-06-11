@@ -1,4 +1,4 @@
-"""Drydock — specification-driven software delivery."""
+"""Drydock — governed Blueprint-driven software delivery."""
 
 import logging
 

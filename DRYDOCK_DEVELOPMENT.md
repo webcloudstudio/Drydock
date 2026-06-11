@@ -9,13 +9,13 @@ its intended development context through working commands.
 
 ## Purpose
 
-Drydock is V2 of the working specification-driven delivery system currently implemented in
+Drydock is V2 of the working Blueprint-driven delivery system currently implemented in
 Prototyper. Drydock must preserve proven behavior where it supports the V2 product, while becoming:
 
 - an installable, repository-independent Python CLI;
 - a coherent command surface rather than a collection of directly invoked scripts;
 - testable through importable modules and deterministic contracts;
-- driven by Typed Specifications and reviewable build evidence;
+- driven by Drydock Blueprints expressed as Typed Specifications and reviewable build evidence;
 - usable from any working directory after configuration.
 
 Prototyper is not being enhanced during this migration. It is a read-only reference implementation
@@ -43,7 +43,7 @@ Key Prototyper reference locations:
 | `bin/` | Working command implementations, shared libraries, process execution, and orchestration |
 | `prompts/` | Working prompt contracts and context assembly rules |
 | `RulesEngine/` | V1 governance, specification contract, templates, stack rules, and branding |
-| `docs/whitepapers/drydock.md` | Origin of the V2 product specification; Drydock's `docs/drydock.md` is authoritative |
+| `docs/whitepapers/drydock.md` | Origin of the V2 product definition; Drydock's `specs/drydock/spec.md` is authoritative |
 | `data/` and `logs/` | Build provenance and execution artifact examples when present |
 
 Inspect these locations as needed to understand working V1 behavior. Do not copy repository-bound
@@ -84,20 +84,20 @@ Drydock `Rigging/templates/`.
 
 | Source | Role |
 |---|---|
-| `docs/drydock.md` | Authoritative V2 product specification and target behavior |
+| `specs/drydock/spec.md` | Authoritative V2 Drydock Blueprint and target behavior |
 | `src/drydock/`, `tests/` | Current implemented behavior and regression contract |
 | This file | Migration architecture, method, and V1 reference map |
 | `prototyper_directory` from `METADATA.md` | Read-only V1 behavior, algorithms, prompts, and edge cases |
 
 Do not assume V1 behavior is correct merely because it exists. For each capability:
 
-1. Read the relevant section of `docs/drydock.md`.
+1. Read the relevant section of `specs/drydock/spec.md`.
 2. Inspect the mapped V1 files and their direct dependencies.
 3. State or encode the intended V2 contract.
 4. Implement it as a Drydock Python module and CLI command.
 5. Prove the contract with tests, including relevant V1 parity cases.
 
-If the specification and V1 disagree, the specification wins. If the specification is silent, keep
+If the Blueprint and V1 disagree, the Blueprint wins. If the Blueprint is silent, keep
 proven V1 behavior unless it conflicts with Drydock's package architecture or command contracts.
 
 ## Target Architecture
@@ -122,12 +122,12 @@ PowerShell files in `bin/` only locate the environment and invoke the package en
 
 | Data | Required location |
 |---|---|
-| Product specification files and `BUILD_PLAN.md` | Configured Specification directory |
+| Blueprint Typed Specification files and `BUILD_PLAN.md` | Configured Blueprint directory |
 | Built software, execution evidence, logs, and QuarterDeck state | Configured Target directory |
 | Drydock's distributable rules/templates | `Rigging/` and packaged resource copy |
 | User configuration | User-scoped Drydock configuration managed by `drydock config` |
 
-Commands must resolve `<Spec>` and `<Target>` relative to configured roots. They must not depend on
+Commands must resolve `<Blueprint>` and `<Target>` relative to configured roots. They must not depend on
 the caller being in the Drydock or Prototyper repository.
 
 ## V1 To V2 Capability Map
@@ -168,7 +168,7 @@ The V1 filenames are discovery pointers, not required V2 module names.
 
 Implement commands as vertical slices:
 
-1. Define command syntax, inputs, outputs, side effects, and exit codes from the specification.
+1. Define command syntax, inputs, outputs, side effects, and exit codes from the Blueprint.
 2. Identify the V1 algorithm and observable behavior.
 3. Separate deterministic logic from filesystem operations and LLM execution.
 4. Implement deterministic logic first in an importable module.
@@ -185,7 +185,7 @@ plan parsing, prompt assembly, process execution, evidence, and review state.
 
 The full specification is intentionally not injected into every agent prompt.
 
-- Search `docs/drydock.md` by command, workflow, artifact, or contract heading.
+- Search `specs/drydock/spec.md` by command, workflow, artifact, or contract heading.
 - Read the relevant section plus any directly referenced shared contract sections.
 - Load the full specification only when changing cross-cutting architecture or product semantics.
 - Read mapped Prototyper files only for the active capability and direct dependencies.
@@ -198,7 +198,7 @@ The full specification is intentionally not injected into every agent prompt.
 ### Compatibility Rules
 
 - Maintain the V2 Drydock command names even when V1 used differently named scripts.
-- Preserve important artifact formats and migration compatibility unless the specification replaces
+- Preserve important artifact formats and migration compatibility unless the Blueprint replaces
   them.
 - Keep lower-level operations testable and callable internally for debugging.
 - Never write to Prototyper during development or tests.

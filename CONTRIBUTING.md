@@ -1,14 +1,15 @@
 # Contributing to Drydock
 
 Drydock is the installable V2 successor to Prototyper. Development happens in this repository against
-a typed specification and a strict source-precedence contract.
+a Drydock Blueprint, its Typed Specification, and a strict source-precedence contract.
 
 ## Before you start
 
 Read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) in full. It defines the development
 architecture, the V1-to-V2 migration map, source precedence, and the verification contract that the
 current code cannot yet express through working commands. [AGENTS.md](AGENTS.md) summarizes the
-operating rules; [docs/drydock.md](docs/drydock.md) is the authoritative product specification.
+operating rules; [specs/drydock/spec.md](specs/drydock/spec.md) is the authoritative Drydock
+Blueprint.
 
 ## Environment
 
@@ -22,7 +23,7 @@ uv run pre-commit install    # install the git hooks
 
 ## Working agreements
 
-- **Source precedence.** When the specification and V1 disagree, implement the specification. Record
+- **Source precedence.** When the Blueprint and V1 disagree, implement the Blueprint. Record
   intentional incompatibilities in tests or documentation rather than silently reproducing V1.
 - **Rigging mirror.** `Rigging/` is a governed mirror of Prototyper `RulesEngine/`. Do not edit,
   rename, or reorganize either tree. A rule change requires explicit authorization and must be

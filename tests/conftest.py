@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture()
 def tmp_spec_root(tmp_path: Path) -> Path:
-    """A temporary directory to act as the specification_directory root."""
+    """A temporary directory to act as the blueprint_directory root."""
     d = tmp_path / "specs"
     d.mkdir()
     return d
@@ -42,7 +42,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
     # Remove real env vars that could leak into tests
-    for key in ("SPECIFICATION_DIRECTORY", "TARGET_DIRECTORY", "LLM_PROVIDER"):
+    for key in ("BLUEPRINT_DIRECTORY", "TARGET_DIRECTORY", "LLM_PROVIDER"):
         monkeypatch.delenv(key, raising=False)
 
     return cfg_dir

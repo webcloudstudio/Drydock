@@ -65,18 +65,18 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from drydock.config import get_specification_directory
+    from drydock.config import get_blueprint_directory
     from drydock.init_specification import init_specification
 
-    spec_dir = get_specification_directory()
+    blueprint_dir = get_blueprint_directory()
     result = init_specification(
-        args.Spec,
-        spec_dir,
+        args.Blueprint,
+        blueprint_dir,
         update=args.update,
         force=args.force,
     )
 
-    print(f"Specification: {result.spec_dir}")
+    print(f"Blueprint: {result.spec_dir}")
     for fname in result.created():
         print(f"  CREATED  {fname}")
     for fname in result.updated():
@@ -90,18 +90,18 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("Next steps:")
     print("  1. Edit INTENT.md — why does this project exist?")
     print("  2. Edit METADATA.md — add stack, status, description")
-    print(f"  3. Run: drydock validate {args.Spec}")
+    print(f"  3. Run: drydock validate {args.Blueprint}")
     return 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from drydock.config import get_specification_directory
+    from drydock.config import get_blueprint_directory
     from drydock.validate_specification import validate_specification
 
-    spec_dir = get_specification_directory()
-    result = validate_specification(args.Spec, spec_dir, verbose=args.verbose)
+    blueprint_dir = get_blueprint_directory()
+    result = validate_specification(args.Blueprint, blueprint_dir, verbose=args.verbose)
 
-    print(f"Validating: {args.Spec}  ({result.spec_dir})")
+    print(f"Validating Blueprint: {args.Blueprint}  ({result.spec_dir})")
     _print_findings(result, args.verbose)
     return result.exit_code()
 
@@ -124,7 +124,7 @@ def _add_stub(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="drydock",
-        description=(f"Drydock — specification-driven software delivery.\n{__copyright__}"),
+        description=(f"Drydock — governed Blueprint-driven software delivery.\n{__copyright__}"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -147,47 +147,53 @@ def _build_parser() -> argparse.ArgumentParser:
     cfg_sub.add_parser("show", help="Display current configuration values and sources.")
     p_set = cfg_sub.add_parser("set", help="Set a configuration value.")
     p_set.add_argument(
-        "key", choices=["specification_directory", "target_directory", "llm_provider"]
+        "key",
+        choices=[
+            "blueprint_directory",
+            "specification_directory",
+            "target_directory",
+            "llm_provider",
+        ],
     )
     p_set.add_argument("value", metavar="<path>")
 
     # ── init ─────────────────────────────────────────────────────────────────
-    p_init = sub.add_parser("init", help="Create or update a specification from templates.")
-    p_init.add_argument("Spec", metavar="<Spec>")
+    p_init = sub.add_parser("init", help="Create or update a Blueprint from templates.")
+    p_init.add_argument("Blueprint", metavar="<Blueprint>")
     p_init.add_argument("--update", action="store_true", help="Add only missing template files.")
     p_init.add_argument(
         "--force", action="store_true", help="Overwrite all template-managed files."
     )
 
     # ── validate ─────────────────────────────────────────────────────────────
-    p_val = sub.add_parser("validate", help="Validate a specification for completeness.")
-    p_val.add_argument("Spec", metavar="<Spec>")
+    p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
+    p_val.add_argument("Blueprint", metavar="<Blueprint>")
     p_val.add_argument("--verbose", action="store_true", help="Also show passing checks.")
 
     # ── document ─────────────────────────────────────────────────────────────
-    # Handles: document <Spec> <Target>
-    #          document generate <Spec> <Target>
-    #          document assemble <Spec> <Target>
+    # Handles: document <Blueprint> <Target>
+    #          document generate <Blueprint> <Target>
+    #          document assemble <Blueprint> <Target>
     # Strategy: use REMAINDER args and dispatch on first token.
     p_doc = sub.add_parser(
         "document",
-        help="Generate and assemble specification documentation.",
+        help="Generate and assemble Blueprint documentation.",
         description=(
-            "drydock document <Spec> <Target>           — full pipeline\n"
-            "drydock document generate <Spec> <Target>  — AI pass only\n"
-            "drydock document assemble <Spec> <Target>  — assembly only"
+            "drydock document <Blueprint> <Target>           — full pipeline\n"
+            "drydock document generate <Blueprint> <Target>  — AI pass only\n"
+            "drydock document assemble <Blueprint> <Target>  — assembly only"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_doc.add_argument(
-        "args", nargs=argparse.REMAINDER, metavar="[generate|assemble] <Spec> <Target>"
+        "args", nargs=argparse.REMAINDER, metavar="[generate|assemble] <Blueprint> <Target>"
     )
 
     # ── rigging ──────────────────────────────────────────────────────────────
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
     rig_sub = p_rig.add_subparsers(dest="rigging_command", metavar="<subcommand>")
     p_rig_c = rig_sub.add_parser("compact", help="Generate compact rigging derivatives.")
-    p_rig_c.add_argument("Spec", metavar="<Spec>")
+    p_rig_c.add_argument("Spec", metavar="<Blueprint>")
     p_rig_u = rig_sub.add_parser("update", help="Propagate rigging to a target project.")
     p_rig_u.add_argument("Target", metavar="<Target>")
     p_rig_v = rig_sub.add_parser("verify", help="Verify target project rigging compliance.")
@@ -202,27 +208,27 @@ def _build_parser() -> argparse.ArgumentParser:
         ("show", "Show the current build plan."),
     ]:
         pp = plan_sub.add_parser(verb, help=help_str)
-        pp.add_argument("Spec", metavar="<Spec>")
+        pp.add_argument("Spec", metavar="<Blueprint>")
 
     # ── build ─────────────────────────────────────────────────────────────────
-    # Handles: build <Spec> <Target>
-    #          build status <Spec> <Target>
-    #          build score <Spec> <Target>
+    # Handles: build <Blueprint> <Target>
+    #          build status <Blueprint> <Target>
+    #          build score <Blueprint> <Target>
     p_build = sub.add_parser(
         "build",
         help="Build or inspect build state.",
         description=(
-            "drydock build <Spec> <Target>          — build next frontier\n"
-            "drydock build status <Spec> <Target>   — show build state\n"
-            "drydock build score <Spec> <Target>    — generate SCORECARD.md"
+            "drydock build <Blueprint> <Target>          — build next frontier\n"
+            "drydock build status <Blueprint> <Target>   — show build state\n"
+            "drydock build score <Blueprint> <Target>    — generate SCORECARD.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Spec> <Target>")
+    p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Blueprint> <Target>")
 
     # ── iterate ───────────────────────────────────────────────────────────────
-    p_iter = sub.add_parser("iterate", help="Update spec and target software together.")
-    p_iter.add_argument("Spec", metavar="<Spec>")
+    p_iter = sub.add_parser("iterate", help="Update Blueprint and target software together.")
+    p_iter.add_argument("Spec", metavar="<Blueprint>")
     p_iter.add_argument("Target", metavar="<Target>")
     p_iter.add_argument("Mode", metavar="<BOTH|SPEC|TGT>", choices=["BOTH", "SPEC", "TGT"])
     p_iter.add_argument("Scope", metavar="<Scope>")
@@ -230,12 +236,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser("analyze", help="Read-only advisory: surface gaps and drift.")
-    p_analyze.add_argument("Spec", metavar="<Spec>")
+    p_analyze.add_argument("Spec", metavar="<Blueprint>")
     p_analyze.add_argument("Target", metavar="<Target>", nargs="?")
 
     # ── import ────────────────────────────────────────────────────────────────
-    p_import = sub.add_parser("import", help="Reverse-engineer a project into a specification.")
-    p_import.add_argument("Spec", metavar="<Spec>")
+    p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
+    p_import.add_argument("Spec", metavar="<Blueprint>")
     p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("--format", choices=["auto", "source", "speckit"], default="auto")
 

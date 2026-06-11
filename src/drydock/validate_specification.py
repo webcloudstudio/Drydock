@@ -1,4 +1,4 @@
-"""drydock validate — structural validation of a specification directory."""
+"""drydock validate — structural validation of a Blueprint's Typed Specification."""
 
 from __future__ import annotations
 
@@ -118,22 +118,22 @@ def _file_needs_typed_heading(fname: str) -> bool:
 
 def validate_specification(
     spec_name: str,
-    specification_directory: Path,
+    blueprint_directory: Path,
     *,
     verbose: bool = False,
 ) -> ValidationResult:
     """
-    Run all validation rules against a specification directory.
+    Run all validation rules against a Blueprint's Typed Specification.
 
     Args:
-        spec_name: Name of the specification.
-        specification_directory: Root directory for specifications.
+        spec_name: Name of the Blueprint.
+        blueprint_directory: Root directory for Blueprints.
         verbose: If True, include PASS findings in output.
 
     Returns:
         ValidationResult with findings and exit code.
     """
-    spec_dir = specification_directory / spec_name
+    spec_dir = blueprint_directory / spec_name
     result = ValidationResult(spec_name=spec_name, spec_dir=spec_dir)
 
     def p(section: str, msg: str) -> None:
@@ -148,7 +148,7 @@ def validate_specification(
     # --- Directory existence ---
     section = "Directory"
     if not spec_dir.is_dir():
-        f(section, f"Specification directory not found: {spec_dir}")
+        f(section, f"Blueprint directory not found: {spec_dir}")
         return result
     p(section, f"Directory exists: {spec_dir}")
 

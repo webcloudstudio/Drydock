@@ -11,33 +11,34 @@ Every delegated agent prompt must include `DRYDOCK_DEVELOPMENT.md` or instruct t
 in full before beginning work.
 
 Drydock is the installable V2 successor to Prototyper: a Python CLI that plans, builds, tests,
-reviews, and evolves software from Typed Specifications. Development occurs in this repository.
+reviews, and evolves software from Drydock Blueprints expressed as Typed Specifications.
+Development occurs in this repository.
 Prototyper is a read-only V1 behavioral reference used to preserve proven workflows while replacing
 its repository-bound shell interface with the Drydock command surface and package architecture.
 
 ## Required Context
 
-The full product specification is [docs/drydock.md](docs/drydock.md). It is the source of truth for
-intended V2 behavior, but do not load the entire document by default. Locate and read the sections
-relevant to the requested command, workflow, contract, or artifact. Read the full specification only
-for cross-cutting design decisions.
+The full authoritative Drydock Blueprint is [specs/drydock/spec.md](specs/drydock/spec.md). It is
+the source of truth for intended V2 behavior, but do not load the entire document by default. Locate
+and read the sections relevant to the requested command, workflow, contract, or artifact. Read the
+full Blueprint only for cross-cutting design decisions.
 
 Context precedence:
 
-1. `docs/drydock.md` — intended V2 product behavior and contracts.
+1. `specs/drydock/spec.md` — intended V2 product behavior and contracts.
 2. Current Drydock code and tests — implemented behavior that must remain stable unless changed.
 3. `DRYDOCK_DEVELOPMENT.md` — architecture and migration procedure.
 4. Prototyper, resolved from `prototyper_directory` in `METADATA.md` — read-only V1 implementation
    evidence. In this checkout it resolves to `/mnt/c/Users/barlo/projects/Prototyper`.
 
-When these conflict, implement the V2 specification. Record intentional incompatibilities in code
+When these conflict, implement the V2 Blueprint. Record intentional incompatibilities in code
 tests or documentation rather than silently reproducing V1 behavior.
 
 ### GitHub Spec Kit — external baseline
 
 Spec Kit is a separate, single-file specification language and SDD toolchain. Drydock is a
 **superset** of it: every Spec Kit concept maps to a Drydock equivalent, and Drydock adds
-capabilities with no Spec Kit counterpart (see `docs/drydock.md` § "Spec Kit Compatibility"). Spec
+capabilities with no Spec Kit counterpart (see `specs/drydock/spec.md` § "Spec Kit Compatibility"). Spec
 Kit is the canonical reference for `drydock import --format speckit` and the generated compatibility
 views. It is an external reference, not a Drydock source of truth.
 
@@ -74,7 +75,7 @@ Drydock/
   tests/             Pytest unit, CLI, integration, and parity tests
   bin/               Source-tree launchers; no business logic
   prompts/           Versioned LLM prompt contracts used by commands
-  docs/drydock.md    Full V2 product specification
+  specs/drydock/     Authoritative V2 Drydock Blueprint in Spec Kit-compatible layout
   dist/              Build artifacts; not committed
 ```
 

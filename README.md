@@ -1,6 +1,6 @@
 # Drydock
 
-Drydock is an installable Python CLI for specification-driven software delivery.
+Drydock is an installable Python CLI implementing the governed Drydock Blueprint Methodology.
 
 Copyright (c) 2026 Web Cloud Studio. All rights reserved. See [LICENSE](LICENSE).
 
@@ -30,15 +30,15 @@ drydock --help
 drydock --version
 
 drydock config show
-drydock config set specification_directory <path>
+drydock config set blueprint_directory <path>
 drydock config set target_directory <path>
 
-drydock init <Spec>
-drydock init <Spec> --update
-drydock init <Spec> --force
+drydock init <Blueprint>
+drydock init <Blueprint> --update
+drydock init <Blueprint> --force
 
-drydock validate <Spec>
-drydock validate <Spec> --verbose
+drydock validate <Blueprint>
+drydock validate <Blueprint> --verbose
 ```
 
 ## Deferred Commands
@@ -47,21 +47,21 @@ The following commands are registered and visible in help, but not yet
 implemented. Each returns a clear message and exits with code `2`:
 
 ```bash
-drydock document generate <Spec> <Target>
-drydock document assemble <Spec> <Target>
-drydock document <Spec> <Target>
-drydock rigging compact <Spec>
+drydock document generate <Blueprint> <Target>
+drydock document assemble <Blueprint> <Target>
+drydock document <Blueprint> <Target>
+drydock rigging compact <Blueprint>
 drydock rigging update <Target>
 drydock rigging verify <Target>
-drydock plan init <Spec>
-drydock plan create <Spec>
-drydock plan show <Spec>
-drydock build status <Spec> <Target>
-drydock build <Spec> <Target>
-drydock build score <Spec> <Target>
-drydock iterate <Spec> <Target> <BOTH|SPEC|TGT> <Scope> <Change>
-drydock analyze <Spec> [<Target>]
-drydock import <Spec> <Target> --format <auto|source|speckit>
+drydock plan init <Blueprint>
+drydock plan create <Blueprint>
+drydock plan show <Blueprint>
+drydock build status <Blueprint> <Target>
+drydock build <Blueprint> <Target>
+drydock build score <Blueprint> <Target>
+drydock iterate <Blueprint> <Target> <BOTH|SPEC|TGT> <Scope> <Change>
+drydock analyze <Blueprint> [<Target>]
+drydock import <Blueprint> <Target> --format <auto|source|speckit>
 ```
 
 ## Configuration
@@ -70,12 +70,12 @@ Drydock reads these global configuration values:
 
 | Variable | Purpose |
 |---|---|
-| `SPECIFICATION_DIRECTORY` | Root path containing all Drydock Specifications |
+| `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Blueprints |
 | `TARGET_DIRECTORY` | Root path containing all target software projects |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
 
 **Effective-value precedence:**
-1. Environment variables `SPECIFICATION_DIRECTORY`, `TARGET_DIRECTORY`, and `LLM_PROVIDER`.
+1. Environment variables `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and `LLM_PROVIDER`.
 2. Values persisted in the user-scoped Drydock `.env` file.
 
 **Config file location** (OS-appropriate):
@@ -85,7 +85,7 @@ Drydock reads these global configuration values:
 Set values with:
 
 ```bash
-drydock config set specification_directory /path/to/specs
+drydock config set blueprint_directory /path/to/blueprints
 drydock config set target_directory /path/to/projects
 ```
 

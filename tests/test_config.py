@@ -10,18 +10,18 @@ from drydock.config import (
     config_set,
     config_show,
     get_llm_provider,
-    get_specification_directory,
+    get_blueprint_directory,
     get_target_directory,
 )
 from drydock.errors import ConfigurationError
 
 
 class TestConfigSet:
-    def test_set_specification_directory(self, tmp_spec_root, isolated_config):
-        cfg = config_set("specification_directory", str(tmp_spec_root))
+    def test_set_blueprint_directory(self, tmp_spec_root, isolated_config):
+        cfg = config_set("blueprint_directory", str(tmp_spec_root))
         assert cfg.exists()
         content = cfg.read_text()
-        assert "SPECIFICATION_DIRECTORY" in content
+        assert "BLUEPRINT_DIRECTORY" in content
         assert str(tmp_spec_root) in content
 
     def test_set_target_directory(self, tmp_target_root, isolated_config):
@@ -31,7 +31,7 @@ class TestConfigSet:
 
     def test_set_nonexistent_directory_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="does not exist"):
-            config_set("specification_directory", "/this/does/not/exist")
+            config_set("blueprint_directory", "/this/does/not/exist")
 
     def test_set_unknown_key_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="Unknown"):
@@ -41,18 +41,18 @@ class TestConfigSet:
         monkeypatch.setenv("HOME", str(tmp_path))
         real_dir = tmp_path / "myspecs"
         real_dir.mkdir()
-        cfg = config_set("specification_directory", "~/myspecs")
+        cfg = config_set("blueprint_directory", "~/myspecs")
         content = cfg.read_text()
         assert str(real_dir) in content
         assert "~" not in content
 
     def test_set_preserves_other_keys(self, tmp_spec_root, tmp_target_root, isolated_config):
-        config_set("specification_directory", str(tmp_spec_root))
+        config_set("blueprint_directory", str(tmp_spec_root))
         config_set("target_directory", str(tmp_target_root))
         from drydock.config import _config_path, _read_env_file
 
         data = _read_env_file(_config_path())
-        assert "SPECIFICATION_DIRECTORY" in data
+        assert "BLUEPRINT_DIRECTORY" in data
         assert "TARGET_DIRECTORY" in data
 
     def test_set_llm_provider(self, isolated_config):
@@ -72,26 +72,26 @@ class TestConfigShow:
     def test_show_not_set_when_empty(self, isolated_config):
         rows = config_show()
         by_name = {name: value for name, value, _source in rows}
-        assert by_name["specification_directory"] == "(not set)"
+        assert by_name["blueprint_directory"] == "(not set)"
         assert by_name["target_directory"] == "(not set)"
         assert by_name["llm_provider"] == "claude"
 
     def test_show_reports_source_after_set(self, tmp_spec_root, isolated_config):
-        config_set("specification_directory", str(tmp_spec_root))
+        config_set("blueprint_directory", str(tmp_spec_root))
         rows = config_show()
-        spec_row = next(r for r in rows if r[0] == "specification_directory")
+        spec_row = next(r for r in rows if r[0] == "blueprint_directory")
         assert str(tmp_spec_root) in spec_row[1]
         assert "config file" in spec_row[2]
 
 
 class TestGetters:
     def test_get_spec_dir_when_set(self, tmp_spec_root, isolated_config):
-        config_set("specification_directory", str(tmp_spec_root))
-        assert get_specification_directory() == tmp_spec_root
+        config_set("blueprint_directory", str(tmp_spec_root))
+        assert get_blueprint_directory() == tmp_spec_root
 
     def test_get_spec_dir_raises_when_unset(self, isolated_config):
         with pytest.raises(ConfigurationError):
-            get_specification_directory()
+            get_blueprint_directory()
 
     def test_get_target_dir_raises_when_unset(self, isolated_config):
         with pytest.raises(ConfigurationError):
@@ -100,9 +100,9 @@ class TestGetters:
     def test_env_var_overrides_file(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
     ):
-        config_set("specification_directory", str(tmp_spec_root))
-        monkeypatch.setenv("SPECIFICATION_DIRECTORY", str(tmp_target_root))
-        result = get_specification_directory()
+        config_set("blueprint_directory", str(tmp_spec_root))
+        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_target_root))
+        result = get_blueprint_directory()
         assert result == tmp_target_root
 
     def test_llm_provider_defaults_to_claude(self, isolated_config):

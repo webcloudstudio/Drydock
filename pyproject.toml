@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "drydock"
-description = "Specification-driven software delivery."
+description = "Governed Blueprint-driven software delivery."
 readme = "README.md"
 license = { text = "Proprietary" }
 license-files = ["LICENSE"]
@@ -12,6 +12,7 @@ requires-python = ">=3.11"
 authors = [{ name = "Ed Barlow", email = "edward.m.barlow@gmail.com" }]
 keywords = [
     "specification-driven-development",
+    "blueprint-driven-development",
     "sdd",
     "spec-kit",
     "cli",

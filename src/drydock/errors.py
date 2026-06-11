@@ -12,7 +12,7 @@ class ConfigurationError(DrydockError):
 
 
 class SpecificationError(DrydockError):
-    """A specification directory or file is invalid."""
+    """A Blueprint or one of its Typed Specification files is invalid."""
 
 
 class ValidationError(DrydockError):

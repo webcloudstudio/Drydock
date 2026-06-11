@@ -1,7 +1,7 @@
 ---
 title: Drydock
-eyebrow: A Complete Governed Specification-Driven Software Delivery Process
-subtitle: Drydock is under active development. It extends GitHub Spec Kit with new workflows, and its Typed Specification language is designed around context-aware builds. Drydock is an incarnation of the working Prototyper project conformed to industry best practices.
+eyebrow: The Governed Blueprint Methodology for Software Delivery
+subtitle: Drydock is under active development. It extends GitHub Spec Kit with new workflows, and each Drydock Blueprint is expressed through a Typed Specification designed around context-aware builds. Drydock is an incarnation of the working Prototyper project conformed to industry best practices.
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 9 2026
@@ -51,11 +51,12 @@ ideas:
 
 ## Product
 
-Drydock is a specification-driven software delivery system.
+Drydock is a governed Blueprint-driven software delivery system.
 
-A **Typed Specification** describes the product through files with prescribed roles. Drydock turns
-that Specification into an optimized build plan, executes the work, records evidence, and delivers
-reviewable increments through the QuarterDeck.
+A **Drydock Blueprint** is the authoritative, living definition of a software product. It is
+expressed as a **Typed Specification** through files with prescribed roles. Drydock turns the
+Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
+increments through the QuarterDeck.
 
 ```mermaid
 flowchart LR
@@ -64,7 +65,7 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SPEC(["Specification"]):::dir --> PLAN["plan"]:::script
+  SPEC(["Blueprint"]):::dir --> PLAN["plan"]:::script
   PLAN --> BP{{"BUILD_PLAN.md"}}:::output
   BP --> BUILD["build"]:::script
   BUILD --> SOFTWARE(["Working Software"]):::output
@@ -80,13 +81,13 @@ Drydock reads three global variables. Set them in the process environment or wit
 
 | Variable | Purpose |
 |---|---|
-| `SPECIFICATION_DIRECTORY` | Root path containing all Drydock Specifications |
+| `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Specifications |
 | `TARGET_DIRECTORY` | Root path containing all target software projects |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
 
 ```text
 drydock config show                               # display current configuration
-drydock config set specification_directory <path>
+drydock config set blueprint_directory <path>
 drydock config set target_directory <path>
 drydock config set llm_provider <claude|codex>
 ```
@@ -94,14 +95,14 @@ drydock config set llm_provider <claude|codex>
 ## Drydock commands
 
 ```text
-drydock <verb> [<sub-verb>] <Spec> [<Target>] [--options]
+drydock <verb> [<sub-verb>] <Blueprint> [<Target>] [--options]
 ```
 
 ### Command key
 
 | Notation | Meaning |
 |---|---|
-| `<Spec>` | Specification name, relative to `SPECIFICATION_DIRECTORY` |
+| `<Blueprint>` | Specification name, relative to `BLUEPRINT_DIRECTORY` |
 | `<Target>` | Target project name, relative to `TARGET_DIRECTORY` |
 
 This section shows the primary workflows. Complete operational options belong in command help and
@@ -111,16 +112,16 @@ man pages.
 
 | Syntax | Purpose |
 |---|---|
-| `drydock init <Spec>` | Populate Specification with Templates |
-| `drydock validate <Spec>` | Validate Specification completeness and conventions |
+| `drydock init <Blueprint>` | Populate Specification with Templates |
+| `drydock validate <Blueprint>` | Validate Specification completeness and conventions |
 
 ### Plan
 
 | Syntax | Purpose |
 |---|---|
-| `drydock plan init <Spec>` | Create or update `BUILD_PLAN_INTENT.md` with list of spec files |
-| `drydock plan create <Spec>` | Read `BUILD_PLAN_INTENT.md`, run LLM analysis, and produce `BUILD_PLAN.md` |
-| `drydock plan show <Spec>` | Show the current plan |
+| `drydock plan init <Blueprint>` | Create or update `BUILD_PLAN_INTENT.md` with list of spec files |
+| `drydock plan create <Blueprint>` | Read `BUILD_PLAN_INTENT.md`, run LLM analysis, and produce `BUILD_PLAN.md` |
+| `drydock plan show <Blueprint>` | Show the current plan |
 
 `drydock plan create` combines ordering and LLM analysis in one pass: it reads `BUILD_PLAN_INTENT.md`
 for group ordering, surfaces open questions as spikes and acceptance criteria as `ac` guardrail
@@ -133,28 +134,28 @@ Every project has one plan file **BUILD_PLAN.md** stored in the specifications d
 
 | Syntax | Purpose |
 |---|---|
-| `drydock build <Spec> <Target>` | Build next frontier according to `BUILD_PLAN.md` |
-| `drydock build status <Spec> <Target>` | Show per-block build state and current runnable frontier |
-| `drydock build score <Spec> <Target>` | Generate `SCORECARD.md` — measure delivery health across seven dimensions |
+| `drydock build <Blueprint> <Target>` | Build next frontier according to `BUILD_PLAN.md` |
+| `drydock build status <Blueprint> <Target>` | Show per-block build state and current runnable frontier |
+| `drydock build score <Blueprint> <Target>` | Generate `SCORECARD.md` — measure delivery health across seven dimensions |
 
 ### Change, import, and analyze
 
 | Syntax | Purpose |
 |---|---|
-| `drydock iterate <Spec> <Target> [BOTH\|SPEC\|TGT] <Scope> "<Change>"` | Update specification files and target software |
-| `drydock import <Spec> <Target> --format <auto\|source\|speckit>` | Reverse-engineer an existing project into a proposed Specification; select automatic detection, source-code import, or Spec Kit translation |
-| `drydock analyze <Spec> [<Target>]` | Read-only advisory: surface open questions, coverage gaps, and drift between specification and built application |
+| `drydock iterate <Blueprint> <Target> [BOTH\|SPEC\|TGT] <Scope> "<Change>"` | Update specification files and target software |
+| `drydock import <Blueprint> <Target> --format <auto\|source\|speckit>` | Reverse-engineer an existing project into a proposed Specification; select automatic detection, source-code import, or Spec Kit translation |
+| `drydock analyze <Blueprint> [<Target>]` | Read-only advisory: surface open questions, coverage gaps, and drift between specification and built application |
 
 ### Drydock Rigging
 
 | Syntax | Purpose |
 |---|---|
-| `drydock rigging compact <Spec>` | Generate compact derivatives for `DATABASE.md` and `BUSINESS_RULES.md` |
+| `drydock rigging compact <Blueprint>` | Generate compact derivatives for `DATABASE.md` and `BUSINESS_RULES.md` |
 | `drydock rigging update <Target>` | Propagate current Drydock rigging to a target project |
 | `drydock rigging verify <Target>` | Verify target project compliance with Drydock rigging |
-| `drydock document <Spec> <Target>` | Full pipeline: generate then assemble |
-| `drydock document generate <Spec> <Target>` | AI pass only: create or overwrite all `DOC-*.md` summaries; destructive |
-| `drydock document assemble <Spec> <Target>` | Assembly only: render existing `DOC-*.md` into `docs/index.html`; no AI |
+| `drydock document <Blueprint> <Target>` | Full pipeline: generate then assemble |
+| `drydock document generate <Blueprint> <Target>` | AI pass only: create or overwrite all `DOC-*.md` summaries; destructive |
+| `drydock document assemble <Blueprint> <Target>` | Assembly only: render existing `DOC-*.md` into `docs/index.html`; no AI |
 
 ## Typed Specification Contract
 
@@ -178,7 +179,7 @@ not authored as specification files.
   - Updated: Product owner
 
 - **`BUILD_PLAN_INTENT.md`** — A list of all your specification files ordered into planned work groups with `#` delimiter
-  - Created: `drydock plan init <Spec>`
+  - Created: `drydock plan init <Blueprint>`
   - Updated: Product owner; `drydock plan init` appends new files
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
@@ -239,7 +240,7 @@ updated by `drydock iterate` as specification files and application code evolve.
 **Process Created Artifacts** — generated by Drydock commands; not authored directly.
 
 - **`BUILD_PLAN.md`** — The single generated build plan
-  - Created: `drydock plan create <Spec>`
+  - Created: `drydock plan create <Blueprint>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
 
 - **`SCORECARD.md`** — Specification and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Specification and the built software
@@ -533,7 +534,7 @@ the relevant artifact type.
 
 ### Rigging - Specification Compaction
 
-`drydock rigging compact <Spec>` generates prompt-injection derivatives for large specification files. The
+`drydock rigging compact <Blueprint>` generates prompt-injection derivatives for large specification files. The
 set of compactable files is fixed — no file arguments are required.
 
 | Source | Compact | Stripped to |
@@ -564,11 +565,11 @@ If a story references `DATABASE.md` via `context:` and `DATABASE_compact.md` doe
 build stops:
 
 ```text
-DATABASE_compact.md not found — run: drydock rigging compact <Spec>
+DATABASE_compact.md not found — run: drydock rigging compact <Blueprint>
 ```
 
 `drydock plan` reports a staleness warning when a source file is newer than its compact derivative.
-Run `drydock rigging compact <Spec>` after any edit to `DATABASE.md` or `BUSINESS_RULES.md`.
+Run `drydock rigging compact <Blueprint>` after any edit to `DATABASE.md` or `BUSINESS_RULES.md`.
 
 ### Update and verify
 
@@ -599,12 +600,12 @@ flowchart LR
   REVIEW --> BUILD(["Build Workflow"]):::output
 ```
 
-1. `drydock import <Spec> <Target>` — auto-detects source code or Spec Kit input and generates
+1. `drydock import <Blueprint> <Target>` — auto-detects source code or Spec Kit input and generates
    a proposed Specification. Use `--format speckit` to translate a Spec Kit project explicitly.
 2. Review the proposed Specification. Ambiguous or conflicting facts appear as `## Open Questions`
    rather than silently becoming requirements.
 3. Edit and approve the proposed Specification. Approval makes it authoritative.
-4. `drydock validate <Spec>` — confirms the baseline is structurally complete.
+4. `drydock validate <Blueprint>` — confirms the baseline is structurally complete.
 5. Proceed to build and review.
 
 ## Workflow 2: Build from a Specification
@@ -628,17 +629,17 @@ flowchart LR
   BUILD --> SOFTWARE(["Working Software"]):::output
 ```
 
-1. `drydock init <Spec>` — creates `METADATA.md`, `README.md`, empty `INTENT.md`, `ARCHITECTURE.md`,
+1. `drydock init <Blueprint>` — creates `METADATA.md`, `README.md`, empty `INTENT.md`, `ARCHITECTURE.md`,
    and applicable feature, screen, and database templates.
 2. Author `INTENT.md` — write purpose, constraints, and success criteria. This drives all downstream
    Specification files.
 3. Author `FEATURE-*.md`, `SCREEN-*.md`, `DATABASE.md` as needed. Each file records its own
    criteria, guardrails, and open questions.
-4. `drydock validate <Spec>` — checks required files, typed headers, naming, and relationships.
+4. `drydock validate <Blueprint>` — checks required files, typed headers, naming, and relationships.
    Fix any errors before planning.
-5. `drydock plan create <Spec>` — reads `BUILD_PLAN_INTENT.md`, runs LLM analysis, and generates
+5. `drydock plan create <Blueprint>` — reads `BUILD_PLAN_INTENT.md`, runs LLM analysis, and generates
    `BUILD_PLAN.md` with ordered work, dependencies, spikes, and selected context.
-6. `drydock build <Spec> <Target>` — executes the plan. On rerun, only stale work rebuilds.
+6. `drydock build <Blueprint> <Target>` — executes the plan. On rerun, only stale work rebuilds.
 
 ## Workflow 3: Product Owner Review — The QuarterDeck
 
@@ -662,9 +663,9 @@ flowchart LR
   CONSOLE --> BP
 ```
 
-1. `drydock plan create <Spec>` — generates `BUILD_PLAN.md` with spikes derived from Open Questions
+1. `drydock plan create <Blueprint>` — generates `BUILD_PLAN.md` with spikes derived from Open Questions
    and stories from Specification scope. Re-running merges new objects without disturbing accepted ones.
-2. `drydock build <Spec> <Target>` — computes the runnable frontier, executes spikes in parallel
+2. `drydock build <Blueprint> <Target>` — computes the runnable frontier, executes spikes in parallel
    and stories serially, and writes evidence files for each object.
 3. The QuarterDeck surfaces each completed object with the evidence and review material needed for the
    next decision. The product owner approves, revises, or rejects; decisions write back to
@@ -690,7 +691,7 @@ flowchart LR
   ITERATE --> SOFTWARE(["Updated Software"]):::output
 ```
 
-1. `drydock iterate <Spec> <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL, keyword,
+1. `drydock iterate <Blueprint> <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL, keyword,
    or filename) to the owning `FEATURE-*.md`, `SCREEN-*.md`, `DATABASE.md`, or
    `ARCHITECTURE.md`.
 2. `SPEC` or `BOTH` updates the owning file, increments its `Version`, and records criteria,
@@ -707,9 +708,9 @@ and build execution process it like any other Specification input.
 
 1. Create `changes/TICKET-NNN-{Name}.md` with its description, acceptance criteria, guardrails,
    and open questions.
-2. Run `drydock plan create <Spec>` to update the plan with the new ticket.
+2. Run `drydock plan create <Blueprint>` to update the plan with the new ticket.
 3. `drydock plan create` updates dependency headers so the ticket lands in the correct place in the build.
-4. Run `drydock build <Spec> <Target>` to execute the incremental work and produce evidence.
+4. Run `drydock build <Blueprint> <Target>` to execute the incremental work and produce evidence.
 5. Review the result in the normal evidence or QuarterDeck flow.
 6. Reconcile accepted ticket facts into the owning core Specification files and close the ticket as
    retained change history.
@@ -735,7 +736,7 @@ flowchart LR
   VERIFY --> REPORT(["Compliance Report"]):::output
 ```
 
-1. `drydock rigging compact <Spec>` — distills `BUSINESS_RULES.md` into `BUSINESS_RULES_compact.md`.
+1. `drydock rigging compact <Blueprint>` — distills `BUSINESS_RULES.md` into `BUSINESS_RULES_compact.md`.
    Run after every rules edit; the compact form is what agents read and what `rigging update` injects.
 2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
    into the target project.
@@ -763,12 +764,12 @@ flowchart LR
   ASSEMBLE --> HTML(["docs/index.html"]):::output
 ```
 
-1. `drydock document generate <Spec> <Target>` — AI pass only; creates or overwrites all `DOC-*.md`
+1. `drydock document generate <Blueprint> <Target>` — AI pass only; creates or overwrites all `DOC-*.md`
    summaries for each Specification section. **Destructive** — hand-edited `DOC-*.md` files are
    overwritten without warning. Does not assemble.
-2. `drydock document assemble <Spec> <Target>` — no AI; reads existing `DOC-*.md` files and
+2. `drydock document assemble <Blueprint> <Target>` — no AI; reads existing `DOC-*.md` files and
    renders them into a versioned `docs/index.html`. Safe to re-run after manual edits.
-3. `drydock document <Spec> <Target>` — runs generate then assemble (full pipeline).
+3. `drydock document <Blueprint> <Target>` — runs generate then assemble (full pipeline).
 
 Edit `DOC-*.md` files directly to refine documentation without re-running the AI pass; then
 run `drydock document assemble` to regenerate the HTML.
@@ -869,7 +870,7 @@ Drydock adds capabilities with no Spec Kit equivalent:
 ### Import
 
 ```text
-drydock import <Spec> <SpecKitProject> --format speckit
+drydock import <Blueprint> <SpecKitProject> --format speckit
 ```
 
 The translator reads `.specify/memory/constitution.md` and each Spec Kit feature directory, then
@@ -929,7 +930,7 @@ the Drydock user-scoped `.env` unless overridden by process environment variable
 
 ```text
 drydock config show                               # display current paths
-drydock config set specification_directory <path> # root of all Specifications
+drydock config set blueprint_directory <path> # root of all Specifications
 drydock config set target_directory <path>        # root of all target projects
 drydock config set llm_provider <claude|codex>     # subscription CLI provider
 ```
@@ -944,7 +945,7 @@ plan object — how many blocks are pending, implemented, verified, or failed, a
 currently runnable. No build state is modified.
 
 ```text
-drydock build status <Spec> <Target>   # print per-block state and current runnable frontier
+drydock build status <Blueprint> <Target>   # print per-block state and current runnable frontier
 ```
 
 Use `drydock build status` to orient after a partial build, after a failed run, or before deciding
@@ -957,9 +958,9 @@ built application, then generates or refines a build plan optimized for uncertai
 work. Use it when the scope is unclear, the initial plan feels oversized, or post-build drift has
 accumulated.
 
-1. `drydock analyze <Spec>` — score Specification coverage; surface open questions and missing
+1. `drydock analyze <Blueprint>` — score Specification coverage; surface open questions and missing
    detail that would create uncertainty during a build.
-2. `drydock analyze <Spec> <Target>` — compare Specification against the built application;
+2. `drydock analyze <Blueprint> <Target>` — compare Specification against the built application;
    identify drift, incomplete implementation, and candidates for the next iteration.
 3. Apply findings with `drydock iterate` or `drydock plan` as appropriate.
 
@@ -983,7 +984,7 @@ flowchart LR
   SCORE --> SC(["SCORECARD.md"]):::output
 ```
 
-1. `drydock build score <Spec> <Target>` — compare Specification against the built application;
+1. `drydock build score <Blueprint> <Target>` — compare Specification against the built application;
    surfaces drift between what was specified and what was delivered.
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
    prioritize the next `drydock iterate` or `drydock plan create` run.

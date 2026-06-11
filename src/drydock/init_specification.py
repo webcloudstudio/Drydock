@@ -1,4 +1,4 @@
-"""drydock init — create or update a specification directory from templates."""
+"""drydock init — create or update a Blueprint from Typed Specification templates."""
 
 from __future__ import annotations
 
@@ -39,15 +39,15 @@ class InitResult:
 
 def _validate_spec_name(name: str) -> None:
     if not name or not name.strip():
-        raise SpecificationError("Specification name must not be empty.")
+        raise SpecificationError("Blueprint name must not be empty.")
     if _TRAVERSAL_RE.search(name):
         raise SpecificationError(
-            f"Specification name must not contain path separators or '..': {name!r}"
+            f"Blueprint name must not contain path separators or '..': {name!r}"
         )
     if _UNSAFE_CHARS_RE.search(name):
-        raise SpecificationError(f"Specification name contains invalid characters: {name!r}")
+        raise SpecificationError(f"Blueprint name contains invalid characters: {name!r}")
     if len(name) > 200:
-        raise SpecificationError("Specification name is too long (max 200 characters).")
+        raise SpecificationError("Blueprint name is too long (max 200 characters).")
 
 
 def _derive_display_name(slug: str) -> str:
@@ -67,20 +67,20 @@ def _apply_tokens(text: str, slug: str, display_name: str, today: str, today_com
 
 def init_specification(
     spec_name: str,
-    specification_directory: Path,
+    blueprint_directory: Path,
     *,
     update: bool = False,
     force: bool = False,
 ) -> InitResult:
     """
-    Create or update a specification directory from packaged templates.
+    Create or update a Blueprint from packaged Typed Specification templates.
 
     Raises:
         SpecificationError: On invalid name or filesystem failure.
     """
     _validate_spec_name(spec_name)
 
-    spec_dir = specification_directory / spec_name
+    spec_dir = blueprint_directory / spec_name
 
     if spec_dir.exists() and not update and not force:
         raise SpecificationError(
