@@ -39,5 +39,8 @@ htmlcov/
 # Drydock generated
 prompts/generated/
 
+# QuarterDeck local state
+QuarterDeck/data/*.sqlite
+
 # Local project config
 .env

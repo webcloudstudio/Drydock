@@ -1,0 +1,95 @@
+{
+  "tickets": [
+    {
+      "id": "FEAT-CONSOLE-BASELINE",
+      "title": "Prove the Drydock QuarterDeck information architecture",
+      "kind": "feature",
+      "status": "review",
+      "priority": true,
+      "urgency": true,
+      "links": [
+        "initial_review",
+        "initial_direction"
+      ],
+      "ac": [
+        "QuarterDeck starts from the Drydock repository with one command",
+        "The console shows honest current state and a simple delivery plan",
+        "The product owner can answer questions and record review decisions",
+        "The Ship's Log concept and implementation gap are visible"
+      ],
+      "body": "Use this first cut to determine which information and controls belong in the permanent Drydock QuarterDeck."
+    },
+    {
+      "id": "FEAT-PLAN",
+      "title": "Implement the plan workflow",
+      "kind": "feature",
+      "status": "backlog",
+      "priority": true,
+      "urgency": false,
+      "ac": [
+        "`drydock plan init` creates or updates `BUILD_PLAN_INTENT.md`",
+        "`drydock plan create` generates and merges `BUILD_PLAN.md`",
+        "`drydock plan show` reports the current plan",
+        "Focused, CLI, integration, and regression tests pass"
+      ],
+      "body": "Next recommended vertical slice from the Drydock development contract."
+    },
+    {
+      "id": "FEAT-DECISIONS",
+      "title": "Implement the single decision writer and Ship's Log",
+      "kind": "feature",
+      "status": "backlog",
+      "priority": true,
+      "urgency": false,
+      "blocked": true,
+      "blocked_reason": "Depends on a stable BUILD_PLAN contract and explicit decision transition rules.",
+      "links": [
+        "ships_log",
+        "initial_direction"
+      ],
+      "ac": [
+        "All plan state transitions pass through one decision writer",
+        "Accepted spike, iterate, and QuarterDeck decisions append to `SHIPS_LOG.md`",
+        "Entries are append-only and support `supersedes`",
+        "Decision behavior is covered by deterministic tests"
+      ],
+      "body": "Create the reusable mutation boundary required by CLI and QuarterDeck review."
+    },
+    {
+      "id": "FEAT-CONSOLE-SYNC",
+      "title": "Generate and reconcile QuarterDeck projections",
+      "kind": "feature",
+      "status": "backlog",
+      "priority": false,
+      "urgency": false,
+      "blocked": true,
+      "blocked_reason": "Requires implemented BUILD_PLAN parsing and the single decision writer.",
+      "links": [
+        "initial_review",
+        "ships_log"
+      ],
+      "ac": [
+        "QuarterDeck config and tickets regenerate from authoritative project state",
+        "Evidence and review items are surfaced automatically",
+        "Approve, revise, reject, and reopen-failed reconcile through the decision writer",
+        "The generated QuarterDeck can be deleted and recreated without losing authoritative state"
+      ],
+      "body": "Replace authored first-cut artifacts with a generated, throwaway projection."
+    },
+    {
+      "id": "FEAT-BUILD",
+      "title": "Implement build status, execution, evidence, and score",
+      "kind": "feature",
+      "status": "backlog",
+      "priority": false,
+      "urgency": false,
+      "ac": [
+        "Build status reports every block and runnable frontier",
+        "Build executes the frontier and writes reviewable evidence",
+        "Score measures delivery health across the specified dimensions",
+        "Existing accepted work remains stable during incremental rebuilds"
+      ],
+      "body": "Complete the execution side of the Blueprint-to-review loop after planning contracts stabilize."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "id": "initial_direction",
+  "title": "Choose The Next Drydock Slice",
+  "state": "open",
+  "purpose": "Capture product-owner direction after testing the first Drydock QuarterDeck.",
+  "questions": [
+    {
+      "id": "console_usefulness",
+      "label": "Console Usefulness",
+      "prompt": "How useful is this first-cut cockpit for understanding Drydock's current state? (0-10)",
+      "input": "slider",
+      "min": 0,
+      "max": 10
+    },
+    {
+      "id": "next_slice",
+      "label": "Next Capability Slice",
+      "prompt": "Which coherent capability should be implemented next?",
+      "input": "select",
+      "options": [
+        "Plan workflow: init, create, show",
+        "QuarterDeck projection and decision reconciliation",
+        "Ship's Log decision writer",
+        "Build status and evidence contracts"
+      ]
+    },
+    {
+      "id": "most_important_view",
+      "label": "Most Important View",
+      "prompt": "Which QuarterDeck view should become the primary development control surface?",
+      "input": "select",
+      "options": [
+        "Delivery plan and acceptance criteria",
+        "Decisions and Ship's Log",
+        "Build evidence and reviews",
+        "Current-state executive overview"
+      ]
+    },
+    {
+      "id": "revision_notes",
+      "label": "Revision Notes",
+      "prompt": "What is unclear, noisy, missing, or unnecessary in this first cut?",
+      "input": "textarea"
+    }
+  ]
+}

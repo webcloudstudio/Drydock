@@ -1,0 +1,36 @@
+{
+  "id": "kickoff",
+  "title": "Kickoff Questionnaire",
+  "state": "open",
+  "purpose": "Capture the decisions needed before the first build phase.",
+  "questions": [
+    {
+      "id": "primary_goal",
+      "label": "Primary Goal",
+      "prompt": "In one sentence, what must this project do to be worth building?",
+      "input": "textarea"
+    },
+    {
+      "id": "stack",
+      "label": "Stack",
+      "prompt": "Which stack should the build target?",
+      "input": "select",
+      "options": ["Python/FastAPI", "Python/Flask", "Node/Express", "Static"]
+    },
+    {
+      "id": "must_haves",
+      "label": "Must-haves",
+      "prompt": "Which capabilities are required for v1?",
+      "input": "multiselect",
+      "options": ["Auth", "Persistence", "Background jobs", "External API", "Reporting"]
+    },
+    {
+      "id": "confidence",
+      "label": "Confidence",
+      "prompt": "How confident are you the spec is buildable as written? (0-10)",
+      "input": "slider",
+      "min": 0,
+      "max": 10
+    }
+  ]
+}

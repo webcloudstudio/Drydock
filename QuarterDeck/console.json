@@ -1,0 +1,72 @@
+{
+  "console": {
+    "name": "Drydock QuarterDeck",
+    "default_item": "overview",
+    "state_db": "data/console_state.sqlite"
+  },
+  "project": {
+    "id": "drydock",
+    "name": "Drydock",
+    "description": "Principal Developer cockpit for building and proving the Drydock V2 delivery loop."
+  },
+  "items": [
+    {
+      "id": "overview",
+      "label": "Commander's View",
+      "section": "core",
+      "type": "markdown",
+      "path": "pages/overview.md"
+    },
+    {
+      "id": "acceptance",
+      "label": "Delivery Acceptance",
+      "section": "core",
+      "type": "markdown",
+      "path": "../DRYDOCK_ACCEPTANCE_CRITERIA.md"
+    },
+    {
+      "id": "ships_log",
+      "label": "Ship's Log",
+      "section": "pages",
+      "type": "markdown",
+      "path": "pages/ships-log.md"
+    },
+    {
+      "id": "initial_review",
+      "label": "Initial Console Review",
+      "section": "pages",
+      "type": "markdown",
+      "path": "pages/initial-review.md",
+      "review": true
+    },
+    {
+      "id": "board",
+      "label": "Drydock Delivery Plan",
+      "section": "plan",
+      "type": "kanban",
+      "path": "tickets.json",
+      "review": true
+    },
+    {
+      "id": "initial_direction",
+      "label": "Choose Next Slice",
+      "section": "actions",
+      "type": "questionnaire",
+      "path": "questionnaires/initial-direction.json"
+    },
+    {
+      "id": "blueprint",
+      "label": "Authoritative Blueprint",
+      "section": "archive",
+      "type": "markdown",
+      "path": "../specs/001-drydock/spec.md"
+    },
+    {
+      "id": "console_contract",
+      "label": "QuarterDeck Contract",
+      "section": "archive",
+      "type": "markdown",
+      "path": "README.md"
+    }
+  ]
+}

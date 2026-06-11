@@ -1,0 +1,52 @@
+{
+  "tickets": [
+    {
+      "id": "FEAT-1",
+      "title": "Price importer",
+      "kind": "feature",
+      "status": "in_progress",
+      "priority": true,
+      "urgency": false,
+      "body": "Pull and normalize historical prices from the data source. Owns the stories below."
+    },
+    {
+      "id": "STORY-2",
+      "title": "Download daily bars",
+      "parent": "FEAT-1",
+      "status": "done",
+      "priority": false,
+      "urgency": false,
+      "ac": [
+        "Fetches OHLCV for a given symbol and date range",
+        "Writes rows to the store with no duplicates",
+        "Smoke test covers the happy path"
+      ],
+      "body": "Fetch daily OHLCV and write to the store."
+    },
+    {
+      "id": "STORY-3",
+      "title": "Retry policy",
+      "parent": "FEAT-1",
+      "status": "review",
+      "priority": false,
+      "urgency": true,
+      "blocked": true,
+      "blocked_reason": "How should retry/backoff behave on a 429?",
+      "links": ["kickoff"],
+      "ac": [
+        "Retries are bounded and back off",
+        "A 429 does not crash the importer"
+      ],
+      "body": "Decide retry/backoff and close. The blocking question is captured in the linked Kickoff Questionnaire."
+    },
+    {
+      "id": "FEAT-4",
+      "title": "Reporting",
+      "kind": "feature",
+      "status": "backlog",
+      "priority": true,
+      "urgency": true,
+      "body": "Summaries and exports. Not started."
+    }
+  ]
+}
