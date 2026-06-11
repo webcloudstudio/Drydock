@@ -1,7 +1,7 @@
 # SPECIFICATION_CONTRACT.md
 
-Contract governing layout and file conventions for specification directories.
-Specification directories live in the Specifications repository (path configured via `specification_directory:` in METADATA.md).
+Contract governing layout and file conventions for Blueprint directories.
+Blueprint and Target roots are user-scoped Drydock configuration values, never project metadata.
 
 Used by: `bin/setup.sh`, `bin/validate.sh`, `bin/oneshot.sh`, `bin/oneshot_phased.sh`, and all prompt generators.
 
@@ -26,8 +26,7 @@ Used by: `bin/setup.sh`, `bin/validate.sh`, `bin/oneshot.sh`, `bin/oneshot_phase
 | `HOMEPAGE-PUBLISHER.md` | Template-based homepage publishing configuration | If publishes a portfolio |
 | `IDEAS.md` | Feature ideas and backlog | No |
 | `*-AC.md` / `AC-*.md` / `*-AC-*.md` | Acceptance criteria — any file where `AC` is a whole word in the filename. Guardrails (negative assertions) stay permanent; positive facts reconcile into parent spec. | As needed |
-| `BUILD_PLAN.md` | Phase plan for phased builds — consumed by oneshot_phased.sh | If phased build |
-| `BUILD_PLAN_INTENT.md` | Ordered semantic bundles for priority-driven phasing — user-edited, consumed by build_plan_auto.py | If phased build |
+| `BUILD_PLAN_INTENT.md` | Internal planning-input inventory maintained by `drydock plan create` | Process-created |
 | `REFERENCE_GAPS.md` | Specification completeness gaps (written by spec_iterate.sh) | No |
 | `SPEC_SCORECARD.md` | 7-dimension quality rating (written by spec_iterate.sh) | No |
 
@@ -297,7 +296,10 @@ Tooling applies the following conventions automatically (no header declaration n
 | `FEATURE-*.md` providing routes → listed in `Provides` | Extracted from route tables in file |
 | `SCREEN-*.md` using a route → depends on providing `FEATURE` | Matched from route references in body |
 
-Run order for large projects:
+The V2 executable `BUILD_PLAN.md` is target state created by
+`drydock plan create <Blueprint> <Target>`; it is not a Blueprint specification file.
+
+Preserved V1 run order for large projects:
 
 ```bash
 python3 bin/build_spec_relationships.py <ProjectName>   # populate Depends On / Provides

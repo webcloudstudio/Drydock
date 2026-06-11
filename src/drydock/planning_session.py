@@ -13,6 +13,7 @@ from pathlib import Path
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
 from drydock.paths import get_quarterdeck_root
+from drydock.plan_intent import init_plan_intent
 
 _ENTRY_RE = re.compile(r"(?m)^([^#\s][^\s]*\.md)\b")
 _BULLET_RE = re.compile(r"^\s*[-*]\s+(?:\[[ xX]\]\s*)?(.*\S)\s*$")
@@ -52,7 +53,7 @@ def _ordered_inputs(blueprint_dir: Path) -> list[Path]:
     intent = blueprint_dir / "BUILD_PLAN_INTENT.md"
     if not intent.is_file():
         raise SpecificationError(
-            f"BUILD_PLAN_INTENT.md not found: {intent}\n  Run: drydock plan init {blueprint_dir.name}"
+            f"BUILD_PLAN_INTENT.md not found after planning inventory: {intent}"
         )
     paths: list[Path] = []
     for match in _ENTRY_RE.finditer(intent.read_text(encoding="utf-8")):
@@ -248,7 +249,7 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
         f"# Planning Session: {plan.project}\n\n"
         f"Plan state: **{plan.state}**\n\n"
         "Review the proposed decomposition and acceptance gates on the Delivery Board. "
-        "Approve the complete plan with `drydock plan approve` before building.\n",
+        "Approve the complete plan here before building.\n",
         encoding="utf-8",
     )
     config = f"""console:
@@ -267,7 +268,7 @@ sections:
 
 items:
   - {{ id: planning_session, label: "Planning Session", section: core, type: plan_decision, plan_path: {json.dumps(str(plan.path))} }}
-  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json, review: true }}
+  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
 """
     (quarterdeck / "console.yaml").write_text(config, encoding="utf-8")
     return quarterdeck
@@ -282,21 +283,17 @@ def create_plan(
     blueprint_dir = blueprint_directory / blueprint
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
+    init_plan_intent(blueprint, blueprint_directory)
     inputs = _ordered_inputs(blueprint_dir)
-    plan_path = blueprint_dir / "BUILD_PLAN.md"
+    target_dir = target_directory / target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    plan_path = target_dir / "BUILD_PLAN.md"
     old = parse_build_plan(plan_path) if plan_path.is_file() else None
     text = _generate_plan_text(blueprint, blueprint_dir, inputs, old)
     changed = not plan_path.is_file() or plan_path.read_text(encoding="utf-8") != text
     plan_path.write_text(text, encoding="utf-8", newline="\n")
     plan = parse_build_plan(plan_path)
-    target_dir = target_directory / target
-    target_dir.mkdir(parents=True, exist_ok=True)
     quarterdeck = _write_quarterdeck(plan, target_dir)
     return PlanCreateResult(
         plan=plan, target_dir=target_dir, quarterdeck_dir=quarterdeck, changed=changed
     )
-
-
-def sync_planning_session(plan: BuildPlan, target_dir: Path) -> Path:
-    """Regenerate the target-local Planning Session from authoritative plan state."""
-    return _write_quarterdeck(plan, target_dir)

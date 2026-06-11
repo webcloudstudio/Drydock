@@ -254,17 +254,12 @@ def render_plan_decision(item: dict[str, Any]) -> str:
     from drydock.build_plan import parse_build_plan
 
     plan = parse_build_plan(Path(item["plan_path"]))
-    feedback = html.escape(str(plan.__dict__.get("planning_feedback", "")))
     return (
         f"<h1>{html.escape(item.get('label', 'Planning Session'))}</h1>"
         f"<p>Plan state: <strong>{html.escape(plan.state)}</strong></p>"
         f"<p>{len(plan.blocks)} proposed work and acceptance objects.</p>"
         "<div class='decision'><div class='decision-bar'>"
-        f"<input class='decision-feedback' id='plan-fb-{html.escape(item['id'])}' "
-        f"placeholder='Feedback required for revise or reject' value='{feedback}'>"
         f"<button class='d-btn d-approve' onclick=\"submitPlanDecision('{html.escape(item['id'])}','approve')\">Approve plan</button>"
-        f"<button class='d-btn d-revise' onclick=\"submitPlanDecision('{html.escape(item['id'])}','revise')\">Revise plan</button>"
-        f"<button class='d-btn d-reject' onclick=\"submitPlanDecision('{html.escape(item['id'])}','reject')\">Reject plan</button>"
         "</div></div>"
     )
 
@@ -902,7 +897,6 @@ class SourceUpdate(BaseModel):
 
 class PlanDecision(BaseModel):
     decision: str
-    feedback: str = ""
 
 
 # ── API ─────────────────────────────────────────────────────────────────────────
@@ -953,15 +947,11 @@ def api_plan_decision(item_id: str, update: PlanDecision) -> dict[str, Any]:
     item = find_item(item_id)
     if item.get("type") != "plan_decision":
         raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a plan decision")
-    if update.decision not in {"approve", "revise", "reject"}:
-        raise HTTPException(status_code=400, detail="Decision must be approve, revise, or reject")
-    if update.decision in {"revise", "reject"} and not update.feedback.strip():
-        raise HTTPException(status_code=400, detail="Feedback is required for revise or reject")
-    state = "approved" if update.decision == "approve" else "draft"
+    if update.decision != "approve":
+        raise HTTPException(status_code=400, detail="The Planning Session supports plan approval.")
     plan = set_plan_state(
         Path(item["plan_path"]),
-        state,
-        feedback=update.feedback,
+        "approved",
         decision=update.decision,
     )
     return {"ok": True, "decision": update.decision, "state": plan.state}
@@ -1287,10 +1277,9 @@ def index() -> str:
       if (r.ok) loadDoc(itemId); else alert('Could not record decision.');
     }}
     async function submitPlanDecision(itemId, decision) {{
-      const fb = document.getElementById('plan-fb-' + itemId);
       const r = await fetch(`/api/plan/${{itemId}}/decision`, {{
         method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{decision, feedback: fb ? fb.value : ''}})
+        body: JSON.stringify({{decision}})
       }});
       if (r.ok) loadDoc(itemId);
       else {{

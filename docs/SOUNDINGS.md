@@ -36,23 +36,20 @@ capability is complete only at `DONE` with concrete evidence.
 | 16 | `drydock document <Blueprint> <Target>` | Runs the full documentation pipeline | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
 | 17 | `drydock rigging update <Target>` | Propagates current Rigging to a target project | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
 | 18 | `drydock rigging verify <Target>` | Verifies target-project Rigging compliance | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 19 | `drydock plan init <Blueprint>` | Creates or updates `BUILD_PLAN_INTENT.md` | DONE | `test_cli.py::TestPlanInit` |
-| 20 | `drydock plan create <Blueprint> <Target>` | Produces a draft executable `BUILD_PLAN.md` and target-local Planning Session | IMPLEMENTED | Deterministic file/spec decomposition works: `test_cli.py::TestPlanningSession`; `test_build_plan.py::test_draft_plan_has_no_runnable_frontier`; isolated-wheel Markdown intake → create → approve → frontier verification. Semantic LLM decomposition and prompt-size analysis remain. |
-| 20a | `drydock plan approve\|revise\|reject <Blueprint> <Target> [<Feedback>]` | Applies whole-plan Planning Session decisions through the plan-state writer | DONE | `test_build_plan.py::test_plan_approval_exposes_frontier`; `test_cli.py::TestPlanningSession`; `test_quarterdeck.py::test_plan_decision_approves_authoritative_plan` |
-| 21 | `drydock plan show <Blueprint>` | Shows the current build plan | DONE | `test_build_plan.py`; `test_cli.py::TestPlanInspection::test_plan_show_reports_blocks_and_summary` |
-| 22 | `drydock build status <Blueprint> <Target>` | Reports plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`; `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
-| 23 | `drydock build <Blueprint> <Target>` | Builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 24 | `drydock build score <Blueprint> <Target>` | Generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 25 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` | Updates Blueprint and target together | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 26 | `drydock analyze <Blueprint> [<Target>]` | Reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 27 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` | Preserves Markdown source bundles; source and Spec Kit conversion remain deferred | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
+| 19 | `drydock plan create <Blueprint> <Target>` | Internally inventories Blueprint inputs, writes draft `<Target>/BUILD_PLAN.md`, and creates the target-local Planning Session | IMPLEMENTED | Deterministic file/spec decomposition works: `test_cli.py::TestPlanningSession`; `test_build_plan.py::test_draft_plan_has_no_runnable_frontier`; isolated-wheel Markdown intake → create → approve → frontier verification. Semantic LLM decomposition, prompt-size analysis, and cost-reducing work grouping remain. |
+| 20 | `drydock build status <Blueprint> <Target>` | Reports target plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`; `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
+| 21 | `drydock build <Blueprint> <Target>` | Builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 22 | `drydock build score <Blueprint> <Target>` | Generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 23 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` | Updates Blueprint and target together | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 24 | `drydock analyze <Blueprint> [<Target>]` | Reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 25 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` | Preserves Markdown source bundles; source and Spec Kit conversion remain deferred | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
 
 ## Summary
 
 | Category | Count |
 |---|---:|
-| Total commands | 28 |
-| DONE | 17 |
+| Total commands | 25 |
+| DONE | 14 |
 | IMPLEMENTED | 2 |
 | STUBBED | 9 |
 | NOT STARTED | 0 |
@@ -69,6 +66,7 @@ Drydock is command-complete only when every command row is `DONE`.
 | QuarterDeck standard artifacts | Commander's View, Soundings, and Sea Trials are the standard pinned Drydock Core artifacts of every Drydock QuarterDeck (orientation / acceptance criteria / objectives) | DONE | `docs/Drydock_Specification.md` § The QuarterDeck → Standard QuarterDeck Artifacts; `QuarterDeck/console.yaml` |
 | QuarterDeck YAML config and five-section IA | `console.yaml` drives sections (id/label/dot/collapsed/pinned) and items; five sections: Drydock Core (pinned) · Build Plan · Action Items · Project Pages · Archive (collapsed); Archive collapsed by default; convention-engine scanning is Step 3 | DONE | `QuarterDeck/console.yaml`; `QuarterDeck/app.py` (`nav_model`, `load_config`); `tests/test_quarterdeck.py` section/config tests |
 | QuarterDeck command-status report | Python-only read-only report derives command readiness and structured consistency exclusively from configured Core Docs | DONE | `QuarterDeck/app.py::render_command_status`; `tests/test_quarterdeck.py` command-status tests |
+| Planning Session approval | The target-local QuarterDeck approves the authoritative target `BUILD_PLAN.md`; draft plans expose no runnable frontier | DONE | `QuarterDeck/app.py::api_plan_decision`; `tests/test_quarterdeck.py::test_plan_decision_approves_authoritative_plan`; `tests/test_build_plan.py::test_plan_approval_exposes_frontier` |
 | Agent-driven Ship's Log proving workflow | Drydock agents read the local capture contract, classify and record material decisions and milestones through a validated repository utility, perform a final capture review, and surface records through QuarterDeck; standard target deployment remains deferred | DONE | `SHIPS_LOG_PROCESS.md`, `AGENTS.md`, `bin/ships_log.py`, `QuarterDeck/console.yaml`, `tests/test_ships_log_tool.py`, `tests/test_quarterdeck.py`, `tests/test_cli.py::TestHelpAndVersion::test_help_does_not_expose_ships_log` |
 
 ## Product Acceptance

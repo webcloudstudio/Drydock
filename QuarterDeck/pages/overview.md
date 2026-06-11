@@ -12,9 +12,9 @@ plans, builds, tests, reviews, and evolves software.
 |---|---|---|
 | Foundation | Done | Package foundation, configuration, launchers, Rigging resolution |
 | Blueprint intake | Done | `drydock init` and `drydock validate` |
-| Plan workflow | Next | `drydock plan init`, `create`, and `show` are the next coherent capability |
-| Build and evidence | Backlog | Build status, execution, evidence, and score remain deferred |
-| QuarterDeck loop | Prototype | This console proves the review surface; automated projection and write-back remain to build |
+| Plan workflow | Working foundation | `drydock plan create <Blueprint> <Target>` creates the target plan and Planning Session |
+| Build and evidence | Backlog | Build status works; execution, evidence, and score remain deferred |
+| QuarterDeck loop | Working foundation | The Planning Session approves the target plan; broader review write-back remains to build |
 | Ship's Log | Working foundation | JSONL writer, audit, and viewer are implemented; workflow integrations remain |
 
 ## Where To Go
@@ -27,7 +27,7 @@ plans, builds, tests, reviews, and evolves software.
 
 ## Control Boundary
 
-This is an authored cockpit: QuarterDeck decisions do not yet write back to `BUILD_PLAN.md` or
-append to `logs/ships_log.jsonl` — those are board items to build. Authority stays in
+The Planning Session approval writes to the target `BUILD_PLAN.md`. Other QuarterDeck decisions do
+not yet append to `logs/ships_log.jsonl`; that remains a board item to build. Authority stays in
 `docs/Drydock_Specification.md` (behavior), `docs/SOUNDINGS.md` (acceptance), and
 `docs/SEA_TRIALS.md` (objectives).

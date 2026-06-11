@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -232,8 +233,8 @@ def test_drydock_command_status_renders_current_soundings():
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Total commands</strong><br>28" in rendered
-    assert "DONE (17)" in rendered
+    assert "Total commands</strong><br>25" in rendered
+    assert "DONE (14)" in rendered
     assert "IMPLEMENTED (2)" in rendered
     assert "STUBBED (9)" in rendered
     assert "no structured findings" in rendered
@@ -262,3 +263,19 @@ def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):
 
     assert result["state"] == "approved"
     assert "state: approved" in plan_path.read_text(encoding="utf-8")
+
+
+def test_plan_decision_rejects_non_approval(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    plan_path = tmp_path / "BUILD_PLAN.md"
+    plan_path.write_text(
+        "# BUILD_PLAN: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
+        encoding="utf-8",
+    )
+    item = {"type": "plan_decision", "plan_path": str(plan_path)}
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _item_id: item)
+
+    with pytest.raises(quarterdeck.HTTPException, match="supports plan approval"):
+        quarterdeck.api_plan_decision(
+            "planning_session", quarterdeck.PlanDecision(decision="revise")
+        )

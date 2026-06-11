@@ -167,47 +167,6 @@ def _print_plan_summary(plan) -> None:
     print(f"Plan state: {plan.state}")
 
 
-def cmd_plan_show(args: argparse.Namespace) -> int:
-    from drydock.build_plan import load_blueprint_plan
-    from drydock.config import get_blueprint_directory
-
-    plan = load_blueprint_plan(args.Blueprint, get_blueprint_directory())
-    print(f"Blueprint: {plan.project}")
-    print(f"Plan: {plan.path}")
-    if plan.updated:
-        print(f"Updated: {plan.updated}")
-    if plan.plan_hash:
-        print(f"Plan hash: {plan.plan_hash}")
-    print()
-    _print_plan_blocks(plan)
-    _print_plan_summary(plan)
-    return 0
-
-
-def cmd_plan_init(args: argparse.Namespace) -> int:
-    from drydock.config import get_blueprint_directory
-    from drydock.plan_intent import IntentStatus, init_plan_intent
-
-    result = init_plan_intent(args.Blueprint, get_blueprint_directory())
-    print(f"Blueprint: {result.blueprint_dir}")
-
-    if result.status == IntentStatus.CREATED:
-        print(f"Created: {result.intent_path}")
-        print(f"  {result.section_count} section(s) scaffolded")
-        print()
-        print("Next steps:")
-        print("  1. Reorder sections and files in BUILD_PLAN_INTENT.md")
-        print(f"  2. Run: drydock plan create {args.Blueprint} <Target>")
-    elif result.status == IntentStatus.UPDATED:
-        print(f"Updated: {result.intent_path}")
-        for name in result.appended_files:
-            print(f"  APPENDED  {name}")
-    else:
-        print("BUILD_PLAN_INTENT.md is up to date - no new spec files found.")
-
-    return 0
-
-
 def cmd_plan_create(args: argparse.Namespace) -> int:
     from drydock.config import get_blueprint_directory, get_target_directory
     from drydock.planning_session import create_plan
@@ -226,26 +185,7 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
     _print_plan_blocks(result.plan)
     _print_plan_summary(result.plan)
     print()
-    print(
-        f"Next step: review the Planning Session, then run drydock plan approve {args.Blueprint} {args.Target}"
-    )
-    return 0
-
-
-def cmd_plan_decide(args: argparse.Namespace) -> int:
-    from drydock.build_plan import set_plan_state
-    from drydock.config import get_blueprint_directory, get_target_directory
-    from drydock.planning_session import sync_planning_session
-
-    state = "approved" if args.plan_command == "approve" else "draft"
-    feedback = getattr(args, "feedback", "") or ""
-    plan_path = get_blueprint_directory() / args.Blueprint / "BUILD_PLAN.md"
-    plan = set_plan_state(plan_path, state, feedback=feedback, decision=args.plan_command)
-    quarterdeck = sync_planning_session(plan, get_target_directory() / args.Target)
-    print(f"Plan: {plan.path}")
-    print(f"Decision: {args.plan_command}")
-    print(f"Plan state: {plan.state}")
-    print(f"Planning Session: {quarterdeck}")
+    print("Next step: review and approve the plan in the Planning Session.")
     return 0
 
 
@@ -266,15 +206,15 @@ def cmd_import(args: argparse.Namespace) -> int:
     for path in result.imported:
         print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
     print()
-    print(f"Next step: drydock plan init {args.Blueprint}")
+    print(f"Next step: drydock plan create {args.Blueprint} <Target>")
     return 0
 
 
 def cmd_build_status(blueprint: str, target: str) -> int:
-    from drydock.build_plan import load_blueprint_plan
-    from drydock.config import get_blueprint_directory, get_target_directory
+    from drydock.build_plan import load_target_plan
+    from drydock.config import get_target_directory
 
-    plan = load_blueprint_plan(blueprint, get_blueprint_directory())
+    plan = load_target_plan(target, get_target_directory())
     target_path = get_target_directory() / target
     frontier = plan.runnable_frontier()
     frontier_ids = {block.block_id for block in frontier}
@@ -407,23 +347,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── plan ─────────────────────────────────────────────────────────────────
     p_plan = sub.add_parser("plan", help="Manage the build plan.")
     plan_sub = p_plan.add_subparsers(dest="plan_command", metavar="<subcommand>")
-    for verb, help_str in [
-        ("init", "Create or update BUILD_PLAN_INTENT.md."),
-        ("show", "Show the current build plan."),
-    ]:
-        pp = plan_sub.add_parser(verb, help=help_str)
-        pp.add_argument("Blueprint", metavar="<Blueprint>")
     p_plan_create = plan_sub.add_parser(
         "create", help="Create a draft executable plan and target Planning Session."
     )
     p_plan_create.add_argument("Blueprint", metavar="<Blueprint>")
     p_plan_create.add_argument("Target", metavar="<Target>")
-    for verb in ("approve", "revise", "reject"):
-        pp = plan_sub.add_parser(verb, help=f"{verb.title()} the complete Planning Session plan.")
-        pp.add_argument("Blueprint", metavar="<Blueprint>")
-        pp.add_argument("Target", metavar="<Target>")
-        if verb in {"revise", "reject"}:
-            pp.add_argument("feedback", metavar="<Feedback>")
 
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Blueprint> <Target>
@@ -544,14 +472,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "plan":
         sub = getattr(args, "plan_command", None)
-        if sub == "init":
-            return cmd_plan_init(args)
-        elif sub == "create":
+        if sub == "create":
             return cmd_plan_create(args)
-        elif sub == "show":
-            return cmd_plan_show(args)
-        elif sub in {"approve", "revise", "reject"}:
-            return cmd_plan_decide(args)
         else:
             not_implemented("plan")
 

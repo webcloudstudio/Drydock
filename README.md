@@ -43,14 +43,23 @@ drydock validate <Blueprint> --verbose
 drydock rigging compact <Blueprint> [--all] [--force]
 
 drydock import <Blueprint> <Source> --format markdown
-drydock plan init <Blueprint>
 drydock plan create <Blueprint> <Target>
-drydock plan approve <Blueprint> <Target>
-drydock plan revise <Blueprint> <Target> <Feedback>
-drydock plan reject <Blueprint> <Target> <Feedback>
-drydock plan show <Blueprint>
 drydock build status <Blueprint> <Target>
 ```
+
+The planning flow is three commands plus QuarterDeck approval:
+
+```bash
+drydock import <Blueprint> <Source> --format markdown
+drydock plan create <Blueprint> <Target>
+# Review and approve the draft plan in <Target>/QuarterDeck.
+drydock build status <Blueprint> <Target>
+```
+
+`import` creates the Blueprint workspace and preserves the source material. `plan create`
+internally inventories the Blueprint inputs and writes the executable `BUILD_PLAN.md` into the
+Target. Configured Blueprint and Target roots belong in Drydock's user-scoped `.env`, never project
+`METADATA.md`.
 
 ## Deferred Commands
 

@@ -140,8 +140,8 @@ PowerShell files in `bin/` only locate the environment and invoke the package en
 |---|---|
 | Drydock's own authoritative product specification | `docs/Drydock_Specification.md` |
 | Drydock's own implementation acceptance checklist | `docs/SOUNDINGS.md` |
-| Target-project Blueprint Typed Specification files and `BUILD_PLAN.md` | Configured Blueprint directory |
-| Built software, execution evidence, logs, and QuarterDeck state | Configured Target directory |
+| Target-project Blueprint Typed Specification files and internal `BUILD_PLAN_INTENT.md` | Configured Blueprint directory |
+| `BUILD_PLAN.md`, built software, execution evidence, logs, and QuarterDeck state | Configured Target directory |
 | Drydock's distributable rules/templates | `Rigging/` and packaged resource copy |
 | User configuration | User-scoped Drydock configuration managed by `drydock config` |
 
@@ -158,9 +158,8 @@ and follow their direct imports or sourced libraries as necessary.
 | `drydock init` | `bin/setup.sh`, `RulesEngine/spec_template/` |
 | `drydock validate` | `bin/validate.sh`, `RulesEngine/SPECIFICATION_CONTRACT.md` |
 | Typed Specification relationships | `bin/build_spec_relationships.py` |
-| `drydock plan init` | `bin/build_plan.sh`, `bin/build_plan_auto.py` |
+| Internal planning-input inventory | `bin/build_plan.sh`, `bin/build_plan_auto.py` |
 | `drydock plan create` | `bin/build_plan_agile.py`, `bin/lib_agile_plan.py`, `prompts/oneshot_build_rules.md` |
-| `drydock plan show` | `bin/lib_agile_plan.py`, `bin/build_plan.sh` |
 | `drydock build` | `bin/oneshot.sh`, `bin/oneshot_phased.sh`, `bin/lib_prompt.sh`, `bin/lib_phases.py` |
 | Build provenance and staleness | `bin/oneshot_phased.sh`, `data/executions.jsonl` behavior |
 | `drydock build status` | `bin/build_plan_status.py`, `bin/build_plan.sh` |
@@ -285,7 +284,7 @@ Working now:
 - `drydock validate`
 - `drydock rigging compact`
 - `drydock import <Blueprint> <Source> --format markdown`
-- `drydock plan init|create|approve|revise|reject|show`
+- `drydock plan create`
 - `drydock build status`
 - source-tree launchers, package foundation, and Rigging resource resolution
 
@@ -294,7 +293,7 @@ The preferred implementation order follows the V2
 delivery dependency chain:
 
 1. Complete and stabilize the command surface and shared path/process contracts.
-2. Stabilize the Planning Session, adaptive decomposition, and plan decision contracts.
+2. Stabilize Planning Session approval, adaptive decomposition, and cost-reducing work grouping.
 3. Implement evidence contracts and `drydock build`.
 4. Implement QuarterDeck review reconciliation.
 5. Implement `iterate`, `analyze`, and score.

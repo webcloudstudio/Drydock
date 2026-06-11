@@ -300,22 +300,11 @@ state: pending
     def _setup(self, tmp_spec_root, tmp_target_root, monkeypatch):
         blueprint = tmp_spec_root / "Example"
         blueprint.mkdir()
-        (blueprint / "BUILD_PLAN.md").write_text(self.PLAN, encoding="utf-8")
+        target = tmp_target_root / "ExampleTarget"
+        target.mkdir()
+        (target / "BUILD_PLAN.md").write_text(self.PLAN, encoding="utf-8")
         monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
         monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
-
-    def test_plan_show_reports_blocks_and_summary(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
-    ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
-
-        rc, out, err = run_cli("plan", "show", "Example")
-
-        assert rc == 0, err
-        assert "Blueprint: Example" in out
-        assert "import-documents" in out
-        assert "pending=2" in out
-        assert "RUNNABLE" not in out
 
     def test_build_status_reports_runnable_frontier(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
@@ -335,92 +324,6 @@ state: pending
 
         assert rc == 2
         assert "Usage: drydock build status" in err
-
-
-class TestPlanInit:
-    def _setup_blueprint(self, tmp_spec_root, monkeypatch):
-        blueprint = tmp_spec_root / "Example"
-        blueprint.mkdir()
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        for name, body in {
-            "METADATA.md": "metadata\n",
-            "README.md": "readme\n",
-            "INTENT.md": "intent\n",
-            "ARCHITECTURE.md": "architecture\n",
-            "DATABASE.md": "# Database\n",
-            "FEATURE-Catalog.md": "# Feature\n",
-            "SCREEN-Catalog.md": "# Screen\n",
-        }.items():
-            (blueprint / name).write_text(body, encoding="utf-8")
-        return blueprint
-
-    def test_plan_init_creates_intent_file(self, tmp_spec_root, isolated_config, monkeypatch):
-        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
-
-        rc, out, err = run_cli("plan", "init", "Example")
-
-        assert rc == 0, err
-        intent = blueprint / "BUILD_PLAN_INTENT.md"
-        assert intent.exists()
-        text = intent.read_text(encoding="utf-8")
-        assert "## Foundation" in text
-        assert "DATABASE.md" in text
-        assert "## Planned Work" in text
-        assert "FEATURE-Catalog.md" in text
-        assert "SCREEN-Catalog.md" in text
-        assert "METADATA.md" not in text
-        assert "ARCHITECTURE.md" not in text
-        assert "Created:" in out
-
-    def test_plan_init_appends_new_specs_only(self, tmp_spec_root, isolated_config, monkeypatch):
-        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
-        intent = blueprint / "BUILD_PLAN_INTENT.md"
-        intent.write_text(
-            "# BUILD_PLAN_INTENT.md - Example\n\n## Planned Work\nFEATURE-Catalog.md (1k)\n",
-            encoding="utf-8",
-        )
-        (blueprint / "FEATURE-Checkout.md").write_text("# Checkout\n", encoding="utf-8")
-
-        rc, out, err = run_cli("plan", "init", "Example")
-
-        assert rc == 0, err
-        text = intent.read_text(encoding="utf-8")
-        assert "## New Specs - place in build order" in text
-        assert "FEATURE-Checkout.md" in text
-        assert text.count("FEATURE-Catalog.md") == 1
-        assert "APPENDED  FEATURE-Checkout.md" in out
-
-    def test_plan_init_reports_when_up_to_date(self, tmp_spec_root, isolated_config, monkeypatch):
-        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
-        intent = blueprint / "BUILD_PLAN_INTENT.md"
-        intent.write_text(
-            (
-                "# BUILD_PLAN_INTENT.md - Example\n\n"
-                "## Foundation\nDATABASE.md (0k)\n\n"
-                "## Planned Work\nFEATURE-Catalog.md (0k)\nSCREEN-Catalog.md (0k)\n"
-            ),
-            encoding="utf-8",
-        )
-
-        rc, out, err = run_cli("plan", "init", "Example")
-
-        assert rc == 0, err
-        assert "up to date" in out
-
-    def test_plan_init_inventories_imported_sources(
-        self, tmp_spec_root, isolated_config, monkeypatch
-    ):
-        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
-        source = blueprint / "sources" / "notes" / "request.md"
-        source.parent.mkdir(parents=True)
-        source.write_text("# Request\n", encoding="utf-8")
-
-        rc, out, err = run_cli("plan", "init", "Example")
-
-        assert rc == 0, err
-        text = (blueprint / "BUILD_PLAN_INTENT.md").read_text(encoding="utf-8")
-        assert "## Imported Sources" in text
-        assert "sources/notes/request.md" in text
 
 
 class TestPlanningSession:
@@ -443,11 +346,11 @@ class TestPlanningSession:
         assert rc == 0, err
         assert (tmp_spec_root / "Example" / "sources" / "request.md").is_file()
 
-        assert run_cli("plan", "init", "Example")[0] == 0
         rc, out, err = run_cli("plan", "create", "Example", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state: draft" in out
-        plan_path = tmp_spec_root / "Example" / "BUILD_PLAN.md"
+        assert (tmp_spec_root / "Example" / "BUILD_PLAN_INTENT.md").is_file()
+        plan_path = tmp_target_root / "ExampleTarget" / "BUILD_PLAN.md"
         assert "Status command exits successfully." in plan_path.read_text(encoding="utf-8")
         quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
         assert (quarterdeck / "console.yaml").is_file()
@@ -458,21 +361,12 @@ class TestPlanningSession:
         assert rc == 0, err
         assert "Runnable frontier: (none)" in out
 
-        rc, out, err = run_cli("plan", "approve", "Example", "ExampleTarget")
-        assert rc == 0, err
-        assert "Plan state: approved" in out
+        from drydock.build_plan import set_plan_state
+
+        set_plan_state(plan_path, "approved", decision="approve")
         rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
         assert rc == 0, err
         assert "Runnable frontier: story-request" in out
-
-        rc, out, err = run_cli(
-            "plan", "revise", "Example", "ExampleTarget", "Split the status behavior."
-        )
-        assert rc == 0, err
-        assert "Plan state: draft" in out
-        text = plan_path.read_text(encoding="utf-8")
-        assert "planning_decision: revise" in text
-        assert "planning_feedback: Split the status behavior." in text
 
     def test_feature_spec_generates_feature_parent_and_acceptance(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
@@ -485,17 +379,22 @@ class TestPlanningSession:
             "\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- Which sort order?\n",
             encoding="utf-8",
         )
-        assert run_cli("plan", "init", "Example")[0] == 0
-
         rc, out, err = run_cli("plan", "create", "Example", "Target")
 
         assert rc == 0, err
-        text = (blueprint / "BUILD_PLAN.md").read_text(encoding="utf-8")
+        text = (tmp_target_root / "Target" / "BUILD_PLAN.md").read_text(encoding="utf-8")
         assert "## feature 1: Catalog" in text
         assert "parent: feature-catalog" in text
         assert "Catalog workflow is accepted" in text
         assert "Which sort order?" in text
         assert "depends: spike-which-sort-order" in text
+
+    @pytest.mark.parametrize("verb", ["init", "show", "approve", "revise", "reject"])
+    def test_only_plan_create_is_public(self, verb):
+        rc, out, err = run_cli("plan", verb, "Example", "Target")
+
+        assert rc == 2
+        assert "invalid choice" in err
 
 
 class TestStubs:

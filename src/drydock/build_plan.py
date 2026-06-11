@@ -211,9 +211,9 @@ def parse_build_plan(path: Path) -> BuildPlan:
     )
 
 
-def load_blueprint_plan(blueprint: str, blueprint_directory: Path) -> BuildPlan:
-    """Load the canonical plan for a configured Blueprint name."""
-    return parse_build_plan(blueprint_directory / blueprint / "BUILD_PLAN.md")
+def load_target_plan(target: str, target_directory: Path) -> BuildPlan:
+    """Load the canonical executable plan for a configured Target name."""
+    return parse_build_plan(target_directory / target / "BUILD_PLAN.md")
 
 
 def set_plan_state(path: Path, state: str, *, feedback: str = "", decision: str = "") -> BuildPlan:

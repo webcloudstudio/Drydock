@@ -10,4 +10,3 @@ type: cli
 version: 2026-06-10.1
 updated: 20260610
 prototyper_directory: ../Prototyper
-blueprint_directory: ../Blueprints

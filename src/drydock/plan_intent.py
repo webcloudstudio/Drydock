@@ -1,4 +1,4 @@
-"""drydock plan init — create or update BUILD_PLAN_INTENT.md."""
+"""Internal planning-input inventory used by ``drydock plan create``."""
 
 from __future__ import annotations
 
@@ -90,11 +90,11 @@ def _write_new_intent(
 
     lines = [
         f"# BUILD_PLAN_INTENT.md — {blueprint}",
-        f"# Created by: drydock plan init {blueprint}",
+        f"# Created by: drydock plan create {blueprint} <Target>",
         "#",
         "# Reorder sections to set build order.",
         "# Prefix a file line with # to skip it from planning.",
-        "# Re-run drydock plan init to append newly discovered spec files.",
+        "# Re-run drydock plan create to append newly discovered Blueprint inputs.",
         "",
         "## Foundation",
     ]

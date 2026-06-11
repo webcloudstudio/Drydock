@@ -11,7 +11,6 @@ base_branch:
 version: __TODAY__.1
 updated: __TODAY_COMPACT__
 image_description:
-specification_directory: ../Specifications
 prototyper_directory: ../Prototyper
 messages_directory: ../Messages
 

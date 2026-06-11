@@ -97,6 +97,12 @@ class TestInitSpecification:
         metadata = (tmp_spec_root / "my-project" / "METADATA.md").read_text()
         assert "My Project" in metadata
 
+    def test_metadata_does_not_store_configured_root_paths(self, tmp_spec_root):
+        init_specification("Spec", tmp_spec_root)
+        metadata = (tmp_spec_root / "Spec" / "METADATA.md").read_text()
+        assert "specification_directory:" not in metadata
+        assert "blueprint_directory:" not in metadata
+
     def test_existing_dir_raises_by_default(self, tmp_spec_root):
         init_specification("Spec", tmp_spec_root)
         with pytest.raises(SpecificationError, match="already exists"):

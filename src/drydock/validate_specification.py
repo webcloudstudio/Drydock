@@ -61,7 +61,6 @@ _ALLOWED_ROOT_NAMES = {
     "IDEAS.md",
     "REFERENCE_GAPS.md",
     "SCORECARD.md",
-    "BUILD_PLAN.md",
     "BUILD_PLAN_INTENT.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
@@ -71,7 +70,6 @@ _ALLOWED_ROOT_NAMES = {
 _SPEC_FILE_PREFIXES = ("SCREEN-", "FEATURE-", "UI-", "AC-", "DOC-")
 
 _GENERATED_FILES = {
-    "BUILD_PLAN.md",
     "SCORECARD.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
@@ -91,7 +89,6 @@ _NO_TERMINAL_NEEDED = {
     "IDEAS.md",
     "REFERENCE_GAPS.md",
     "SCORECARD.md",
-    "BUILD_PLAN.md",
     "BUILD_PLAN_INTENT.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
