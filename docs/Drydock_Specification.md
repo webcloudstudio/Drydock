@@ -860,6 +860,12 @@ artifacts under `docs/`: the authoritative specification, Soundings acceptance/r
 Sea Trials, rendered documentation, and supporting publication or reservation artifacts. The
 QuarterDeck points to those files directly and never duplicates their content.
 
+The reusable `command_status` page type derives a read-only command-readiness report using only
+configured Markdown Core Docs. It discovers the authoritative source by its structured
+`Command Acceptance` table, recomputes status totals, reports deterministic structural
+inconsistencies, and treats command references in other Core Docs as coverage context only. It does
+not inspect implementation files, tests, non-Core artifacts, or invoke an LLM.
+
 Review decisions made in the QuarterDeck — approve, revise, reject, add defect — are written back
 to `BUILD_PLAN.md` by the same decision writer used by the CLI. Both files regenerate after each
 decision.

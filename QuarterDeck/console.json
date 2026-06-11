@@ -50,6 +50,12 @@
       "sort_direction": "desc"
     },
     {
+      "id": "command_status",
+      "label": "Command Status",
+      "section": "pages",
+      "type": "command_status"
+    },
+    {
       "id": "initial_review",
       "label": "Initial Console Review",
       "section": "pages",

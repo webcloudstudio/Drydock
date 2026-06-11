@@ -16,6 +16,7 @@ Page types (one Python renderer each, in TYPES):
   - kanban        render a tickets JSON file as a board (read-only work tracking)
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
+  - command_status derive command readiness and consistency from configured Core Docs
 
 Tickets (the kanban's work items) live in a separate JSON file the framework writes;
 the Console renders them read-only. Contract: Console/README.md
@@ -249,6 +250,198 @@ def render_link_item(item: dict[str, Any]) -> str:
         f"<h1>{html.escape(item.get('label', 'Link'))}</h1>"
         f"<p><a href='{html.escape(target)}' target='_blank' rel='noopener'>{html.escape(href)}</a></p>"
     )
+
+
+COMMAND_STATES = ("DONE", "IMPLEMENTED", "STUBBED", "NOT STARTED")
+
+
+def _split_markdown_row(line: str) -> list[str]:
+    """Split a Markdown table row without treating escaped pipes as separators."""
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    return [cell.strip().replace(r"\|", "|") for cell in re.split(r"(?<!\\)\|", text)]
+
+
+def _markdown_tables(text: str) -> list[tuple[str, list[str], list[list[str]]]]:
+    """Return heading, headers, and rows for structurally valid Markdown tables."""
+    lines = text.splitlines()
+    heading = ""
+    tables: list[tuple[str, list[str], list[list[str]]]] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        heading_match = re.match(r"^#{1,6}\s+(.+?)\s*$", line)
+        if heading_match:
+            heading = heading_match.group(1).strip()
+            index += 1
+            continue
+        if index + 1 >= len(lines) or "|" not in line:
+            index += 1
+            continue
+        headers = _split_markdown_row(line)
+        separator = _split_markdown_row(lines[index + 1])
+        if len(headers) != len(separator) or not all(
+            re.fullmatch(r":?-{3,}:?", cell) for cell in separator
+        ):
+            index += 1
+            continue
+        rows: list[list[str]] = []
+        index += 2
+        while index < len(lines) and "|" in lines[index]:
+            row = _split_markdown_row(lines[index])
+            if len(row) != len(headers):
+                break
+            rows.append(row)
+            index += 1
+        tables.append((heading, headers, rows))
+    return tables
+
+
+def _core_markdown_sources() -> list[tuple[dict[str, Any], str]]:
+    """Read only configured Markdown Core Docs through QuarterDeck path resolution."""
+    sources = []
+    for core_item in items():
+        if core_item.get("section") != "core":
+            continue
+        if core_item.get("type") not in {"markdown", "editable_markdown"}:
+            continue
+        sources.append((core_item, resolve_path(core_item["path"]).read_text(encoding="utf-8")))
+    return sources
+
+
+def _command_references(text: str) -> set[str]:
+    return {match.group(1).strip() for match in re.finditer(r"`(drydock(?:\s+[^`\n]+)?)`", text)}
+
+
+def _render_command_table(rows: list[dict[str, str]]) -> str:
+    rendered = []
+    for row in rows:
+        rendered.append(
+            "<tr>"
+            f"<td>{_inline_md(row['Command'])}</td>"
+            f"<td>{_inline_md(row['Acceptance Criteria'])}</td>"
+            f"<td>{_inline_md(row['Evidence / Notes'])}</td>"
+            "</tr>"
+        )
+    return (
+        "<table><thead><tr><th>Command</th><th>Acceptance Criteria</th>"
+        f"<th>Evidence / Notes</th></tr></thead><tbody>{''.join(rendered)}</tbody></table>"
+    )
+
+
+def render_command_status(item: dict[str, Any]) -> str:
+    """Derive command readiness and structured consistency from configured Core Docs."""
+    sources = _core_markdown_sources()
+    candidates = []
+    for source_item, text in sources:
+        for heading, headers, rows in _markdown_tables(text):
+            if heading == "Command Acceptance":
+                candidates.append((source_item, text, headers, rows))
+
+    title = f"<h1>{html.escape(item.get('label', 'Command Status'))}</h1>"
+    if len(candidates) != 1:
+        return (
+            title
+            + "<div class='item-error'>"
+            + html.escape(
+                f"Expected exactly one Core Doc Command Acceptance table; found {len(candidates)}."
+            )
+            + "</div>"
+        )
+
+    source_item, source_text, headers, raw_rows = candidates[0]
+    required = {"Order", "Command", "Acceptance Criteria", "State", "Evidence / Notes"}
+    if not required <= set(headers):
+        missing = ", ".join(sorted(required - set(headers)))
+        return (
+            title
+            + f"<div class='item-error'>Command Acceptance table missing: {html.escape(missing)}</div>"
+        )
+
+    rows = [dict(zip(headers, row, strict=True)) for row in raw_rows]
+    findings: list[str] = []
+    counts = {state: 0 for state in COMMAND_STATES}
+    seen_commands: set[str] = set()
+    seen_orders: set[str] = set()
+    for row in rows:
+        command = row["Command"]
+        order = row["Order"]
+        state = row["State"]
+        if command in seen_commands:
+            findings.append(f"Duplicate command row: {command}")
+        seen_commands.add(command)
+        if order in seen_orders:
+            findings.append(f"Duplicate order value: {order}")
+        seen_orders.add(order)
+        if state not in counts:
+            findings.append(f"Unknown state {state!r}: {command}")
+        else:
+            counts[state] += 1
+        if state == "DONE" and not row["Evidence / Notes"].strip():
+            findings.append(f"DONE row has no evidence: {command}")
+
+    summary_tables = [table for table in _markdown_tables(source_text) if table[0] == "Summary"]
+    if len(summary_tables) != 1:
+        findings.append(f"Expected exactly one Summary table; found {len(summary_tables)}")
+    else:
+        _, summary_headers, summary_rows = summary_tables[0]
+        if summary_headers == ["Category", "Count"]:
+            published = {row[0]: row[1] for row in summary_rows}
+            expected = {"Total commands": len(rows), **counts}
+            for category, count in expected.items():
+                if published.get(category) != str(count):
+                    findings.append(
+                        f"Summary mismatch for {category}: published "
+                        f"{published.get(category, 'missing')}, computed {count}"
+                    )
+        else:
+            findings.append("Summary table must have Category and Count columns")
+
+    cards = "".join(
+        f"<td><strong>{html.escape(state)}</strong><br>{counts[state]}</td>"
+        for state in COMMAND_STATES
+    )
+    output = (
+        title
+        + f"<p class='subtle'>Derived from Core Doc: {html.escape(source_item.get('label', source_item.get('id', 'unknown')))}</p>"
+        + f"<table><tbody><tr><td><strong>Total commands</strong><br>{len(rows)}</td>{cards}</tr></tbody></table>"
+    )
+    if findings:
+        output += (
+            "<div class='item-error'><strong>Consistency findings</strong><ul>"
+            + "".join(f"<li>{html.escape(finding)}</li>" for finding in findings)
+            + "</ul></div>"
+        )
+    else:
+        output += "<p><strong>Consistency:</strong> no structured findings.</p>"
+
+    for state in COMMAND_STATES:
+        state_rows = [row for row in rows if row["State"] == state]
+        output += f"<h2>{html.escape(state)} ({len(state_rows)})</h2>"
+        output += _render_command_table(state_rows) if state_rows else "<p class='subtle'>None.</p>"
+
+    coverage = []
+    for core_item, text in sources:
+        if core_item is source_item:
+            continue
+        references = _command_references(text)
+        if references:
+            coverage.append(
+                f"<tr><td>{html.escape(core_item.get('label', core_item.get('id', 'unknown')))}</td>"
+                f"<td>{len(references)}</td></tr>"
+            )
+    output += (
+        "<h2>Other Core Doc Command References</h2>"
+        "<p class='subtle'>Coverage context only; references do not determine command status.</p>"
+        "<table><thead><tr><th>Core Doc</th><th>Distinct references</th></tr></thead>"
+        f"<tbody>{''.join(coverage)}</tbody></table>"
+        if coverage
+        else "<h2>Other Core Doc Command References</h2><p class='subtle'>None.</p>"
+    )
+    return output
 
 
 def _jsonl_value(record: dict[str, Any], field: str) -> Any:
@@ -501,6 +694,7 @@ TYPES: dict[str, TypeDef] = {
     "kanban": TypeDef(("path",), render_kanban),
     "questionnaire": TypeDef(("path",), render_questionnaire),
     "link": TypeDef(("href",), render_link_item),
+    "command_status": TypeDef((), render_command_status),
 }
 
 

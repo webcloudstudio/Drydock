@@ -144,7 +144,7 @@ plus the fields that type needs).
 | `id` | Yes | Unique item id (stable; used in routes and `state_key`s) |
 | `label` | Yes | Sidebar button text |
 | `section` | Yes | Which sidebar section (= the item's state) it belongs to |
-| `type` | Yes | `markdown` \| `editable_markdown` \| `jsonl` \| `kanban` \| `questionnaire` \| `link` |
+| `type` | Yes | `markdown` \| `editable_markdown` \| `jsonl` \| `kanban` \| `questionnaire` \| `link` \| `command_status` |
 | `order` | No | Sort order within its section (default config order) |
 | `review` | No | `true` adds an Approve · Revise · Reject sign-off bar to the item (see Decisions below) |
 | `path` | For file types | File path relative to `Console/` |
@@ -180,6 +180,7 @@ the Console keeps working.
 | `kanban` | `path` (→ a tickets JSON file) |
 | `questionnaire` | `path` |
 | `link` | `href` |
+| `command_status` | — |
 
 Each type maps to one Python renderer in the `TYPES` registry in `app.py`. **Adding a type
 = one `TypeDef` (required fields + render function).**
@@ -208,6 +209,14 @@ Renders an append-only JSONL file as a read-only table. Configure `fields` with 
 `sort` with a dotted field name, `sort_direction` as `asc` or `desc`, and optional exact-match
 `filters`. Each malformed line is reported without preventing valid records from rendering. A
 missing file renders as an empty view, allowing a console to expose a log before its first event.
+
+### `command_status`
+
+Derives a read-only command-readiness report from configured Core Docs using Python only. It finds
+exactly one Markdown table under a `Command Acceptance` heading, treats that table as the
+authoritative status source, recomputes state totals, and reports deterministic structural
+inconsistencies. Other Core Docs contribute command-reference coverage context only. The renderer
+does not inspect non-Core items, source code, tests, or plan artifacts, and writes no derived file.
 
 ### `kanban`
 
