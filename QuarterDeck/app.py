@@ -14,12 +14,22 @@ Project Pages · Archive (collapsed by default).
 
 Page types (one Python renderer each, in TYPES):
   - markdown      render a markdown file as HTML
+  - document      render md/html/pdf variants as tabs (path_md / path_html / path_pdf)
   - jsonl         render append-only JSON records as a read-only table
   - kanban        render a tickets JSON file as a board (read-only work tracking)
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
   - command_status derive command readiness and consistency from configured Core Docs
   - plan_decision review and decide an authoritative Drydock BUILD_PLAN.md
+
+console.yaml also accepts:
+  sources:   list of {glob, section, type, ...} rules that auto-discover files as items.
+             Items in the explicit `items:` list (matched by ID or by path) take priority.
+  overrides: list of {match: <path-relative-to-project-root>, <field overrides>} applied
+             to source-generated items before they are added.
+
+Archive/unarchive (POST /api/item/{id}/archive|unarchive): SQLite-backed toggle that
+moves items to the Archive section. Items in pinned sections cannot be archived.
 
 Tickets (the kanban's work items) live in a separate JSON file the framework writes;
 the QuarterDeck renders them read-only. Contract: QuarterDeck/README.md
@@ -39,7 +49,7 @@ from typing import Any
 
 import markdown
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -71,9 +81,77 @@ def load_config() -> tuple[dict[str, Any], str | None]:
             "Create QuarterDeck/console.yaml for this project before starting the QuarterDeck."
         )
     try:
-        return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}, None
+        config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+        _expand_sources(config)
+        return config, None
     except yaml.YAMLError as exc:
         return {}, f"QuarterDeck config at {CONFIG_PATH} is invalid YAML: {exc}"
+
+
+def _expand_sources(config: dict[str, Any]) -> None:
+    """Expand sources: rules into items. Explicit items (by ID or by path) take priority."""
+    sources = config.get("sources", [])
+    if not sources:
+        return
+    explicit_items = config.get("items", [])
+    explicit_ids: set[str] = {item["id"] for item in explicit_items}
+
+    # Paths already covered by explicit items — prevent generating duplicate content.
+    explicit_paths: set[str] = set()
+    for item in explicit_items:
+        for key in ("path", "path_md", "path_html", "path_pdf", "href"):
+            val = item.get(key)
+            if val:
+                try:
+                    explicit_paths.add(str((BASE_DIR / val).resolve()))
+                except Exception:
+                    pass
+
+    override_map: dict[str, dict[str, Any]] = {}
+    for ov in config.get("overrides", []):
+        match = ov.get("match")
+        if match:
+            override_map[match] = {k: v for k, v in ov.items() if k != "match"}
+
+    generated: list[dict[str, Any]] = []
+    seen_ids: set[str] = set(explicit_ids)
+
+    for rule in sources:
+        glob_pattern = rule.get("glob", "")
+        rule_defaults = {k: v for k, v in rule.items() if k != "glob"}
+        rule_defaults.setdefault("section", "project_pages")
+        rule_defaults.setdefault("type", "markdown")
+
+        for path in sorted(PROJECT_ROOT.glob(glob_pattern)):
+            if not path.is_file():
+                continue
+            if str(path.resolve()) in explicit_paths:
+                continue
+            rel_from_root = path.relative_to(PROJECT_ROOT)
+            rel_from_base = f"../{rel_from_root}"
+            stem = path.stem
+            auto_id = re.sub(r"[^a-z0-9]+", "_", stem.lower()).strip("_")
+            auto_label = stem.replace("_", " ").replace("-", " ").title()
+
+            item: dict[str, Any] = {
+                **rule_defaults,
+                "id": auto_id,
+                "label": auto_label,
+                "path": rel_from_base,
+            }
+            ov = override_map.get(str(rel_from_root), {})
+            if ov:
+                item.update(ov)
+            if item.get("type") == "document" and "path" in item:
+                item["path_md"] = item.pop("path")
+
+            final_id = item["id"]
+            if final_id in seen_ids:
+                continue
+            seen_ids.add(final_id)
+            generated.append(item)
+
+    config.setdefault("items", []).extend(generated)
 
 
 CONFIG, CONFIG_ERROR = load_config()
@@ -109,22 +187,33 @@ def find_item(item_id: str) -> dict[str, Any]:
 
 
 def nav_model() -> list[dict[str, Any]]:
-    """Group items into sidebar sections, config order first."""
+    """Group items into sidebar sections, config order first.
+
+    Archived items (from non-pinned sections) are transparently moved to the
+    archive section; pinned-section items are immune to archiving.
+    """
+    archived_ids = _archived_item_ids()
+    config_sections = CONFIG.get("sections", [])
+    config_map = {s["id"]: s for s in config_sections}
+    pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
+
     by_section: dict[str, list[dict[str, Any]]] = {}
     order: list[str] = []
     for item in items():
-        sid = item.get("section", "project_pages")
+        original_sid = item.get("section", "project_pages")
+        if item.get("id") in archived_ids and original_sid not in pinned_sids:
+            sid = "archive"
+        else:
+            sid = original_sid
         if sid not in by_section:
             by_section[sid] = []
             order.append(sid)
         by_section[sid].append(item)
 
-    config_sections = CONFIG.get("sections", [])
     config_ids = [s["id"] for s in config_sections]
     ordered_ids = [sid for sid in config_ids if sid in by_section]
     ordered_ids += [sid for sid in order if sid not in config_ids]
 
-    config_map = {s["id"]: s for s in config_sections}
     sections = []
     for sid in ordered_ids:
         docs = sorted(by_section[sid], key=lambda d: d.get("order", 0))
@@ -135,6 +224,7 @@ def nav_model() -> list[dict[str, Any]]:
                 "label": sec_cfg.get("label", sid.replace("_", " ").title()),
                 "dot": sec_cfg.get("dot", _DEFAULT_DOT),
                 "collapsed": sec_cfg.get("collapsed", False),
+                "pinned": sec_cfg.get("pinned", False),
                 "items": docs,
             }
         )
@@ -250,6 +340,65 @@ def render_link_item(item: dict[str, Any]) -> str:
     )
 
 
+def render_document_item(item: dict[str, Any]) -> str:
+    """Render a document with md/html/pdf variants as a tabbed view."""
+    label = item.get("label", "Document")
+    iid = item["id"]
+    tabs: list[tuple[str, str]] = []
+
+    if item.get("path_md"):
+        try:
+            text = _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
+            tabs.append(("Read", _md(text)))
+        except HTTPException:
+            pass
+
+    if item.get("path_html"):
+        try:
+            resolve_path(item["path_html"])
+            url = f"/raw/{iid}?variant=html"
+            tabs.append(
+                (
+                    "View HTML",
+                    f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>",
+                )
+            )
+        except HTTPException:
+            pass
+
+    if item.get("path_pdf"):
+        try:
+            resolve_path(item["path_pdf"])
+            url = f"/raw/{iid}?variant=pdf"
+            tabs.append(
+                (
+                    "PDF",
+                    f"<p><a href='{url}' target='_blank' rel='noopener' class='pdf-open-btn'>Open PDF ↗</a></p>",
+                )
+            )
+        except HTTPException:
+            pass
+
+    title = f"<h1>{html.escape(label)}</h1>"
+    if not tabs:
+        return title + "<p class='subtle'>No files found for this document.</p>"
+    if len(tabs) == 1:
+        return title + tabs[0][1]
+    tab_btns = "".join(
+        f"<button class='md-tab-btn{' active' if i == 0 else ''}' onclick='mdTab(this,{i})'>"
+        f"{html.escape(t)}</button>"
+        for i, (t, _) in enumerate(tabs)
+    )
+    tab_panes = "".join(
+        f"<div class='md-tab-pane{' active' if i == 0 else ''}' data-tab='{i}'>{c}</div>"
+        for i, (_, c) in enumerate(tabs)
+    )
+    return (
+        title + f"<div class='md-tabs'><div class='md-tab-bar'>{tab_btns}</div>"
+        f"<div class='md-tab-body'>{tab_panes}</div></div>"
+    )
+
+
 def render_plan_decision(item: dict[str, Any]) -> str:
     from drydock.build_plan import parse_build_plan
 
@@ -318,9 +467,16 @@ def _core_markdown_sources() -> list[tuple[dict[str, Any], str]]:
     for core_item in items():
         if core_item.get("section") != "core":
             continue
-        if core_item.get("type") not in {"markdown", "editable_markdown"}:
-            continue
-        sources.append((core_item, resolve_path(core_item["path"]).read_text(encoding="utf-8")))
+        t = core_item.get("type")
+        if t in {"markdown", "editable_markdown"}:
+            sources.append((core_item, resolve_path(core_item["path"]).read_text(encoding="utf-8")))
+        elif t == "document" and core_item.get("path_md"):
+            try:
+                sources.append(
+                    (core_item, resolve_path(core_item["path_md"]).read_text(encoding="utf-8"))
+                )
+            except HTTPException:
+                pass
     return sources
 
 
@@ -715,6 +871,7 @@ class TypeDef:
 
 TYPES: dict[str, TypeDef] = {
     "markdown": TypeDef(("path",), render_markdown_item),
+    "document": TypeDef((), render_document_item),
     "editable_markdown": TypeDef(("path",), render_editable_markdown),
     "jsonl": TypeDef(("path",), render_jsonl_item),
     "kanban": TypeDef(("path",), render_kanban),
@@ -772,7 +929,23 @@ def connect_db() -> sqlite3.Connection:
              updated_at text not null
            )"""
     )
+    conn.execute(
+        """create table if not exists archived_items (
+             item_id text primary key,
+             archived_at text not null
+           )"""
+    )
     return conn
+
+
+def _archived_item_ids() -> set[str]:
+    """Return item IDs that have been moved to the archive via the UI."""
+    try:
+        with connect_db() as conn:
+            rows = conn.execute("select item_id from archived_items").fetchall()
+        return {row[0] for row in rows}
+    except Exception:
+        return set()
 
 
 def read_state(key: str) -> dict[str, Any]:
@@ -958,12 +1131,46 @@ def api_plan_decision(item_id: str, update: PlanDecision) -> dict[str, Any]:
 
 
 @app.get("/raw/{item_id}")
-def raw_document(item_id: str):
+def raw_document(item_id: str, variant: str | None = Query(None)):
     item = find_item(item_id)
-    path_value = item.get("href") if item.get("type") == "link" else item.get("path")
+    t = item.get("type")
+    if t == "document":
+        if variant == "html":
+            path_value = item.get("path_html")
+        elif variant == "pdf":
+            path_value = item.get("path_pdf")
+        else:
+            path_value = item.get("path_md")
+    elif t == "link":
+        path_value = item.get("href")
+    else:
+        path_value = item.get("path")
     if not path_value:
         raise HTTPException(status_code=404, detail="Item has no file path")
     return FileResponse(resolve_path(path_value))
+
+
+@app.post("/api/item/{item_id}/archive")
+def api_archive_item(item_id: str) -> dict[str, Any]:
+    item = find_item(item_id)
+    config_sections = CONFIG.get("sections", [])
+    pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
+    if item.get("section") in pinned_sids:
+        raise HTTPException(status_code=400, detail="Items in pinned sections cannot be archived.")
+    with connect_db() as conn:
+        conn.execute(
+            "insert or ignore into archived_items (item_id, archived_at) values (?, ?)",
+            (item_id, datetime.now(timezone.utc).isoformat()),  # noqa: UP017
+        )
+    return {"ok": True, "item_id": item_id}
+
+
+@app.post("/api/item/{item_id}/unarchive")
+def api_unarchive_item(item_id: str) -> dict[str, Any]:
+    find_item(item_id)
+    with connect_db() as conn:
+        conn.execute("delete from archived_items where item_id = ?", (item_id,))
+    return {"ok": True, "item_id": item_id}
 
 
 @app.get("/api/state/{key}")
@@ -1028,6 +1235,12 @@ def item_nav_status(item: dict[str, Any]) -> str:
     t = item.get("type")
     if t == "command_status":
         return "ok"
+    if t == "document":
+        for key in ("path_md", "path_html", "path_pdf"):
+            p = item.get(key)
+            if p and (BASE_DIR / p).resolve().exists():
+                return "ok"
+        return "missing"
     path = item.get("path")
     href = item.get("href")
     if path:
@@ -1146,6 +1359,15 @@ _STYLE = """
   .md-tab-btn.active { background:#fff; color:#111827; font-weight:600; margin-bottom:-2px; border-bottom:2px solid #fff; }
   .md-tab-btn:hover:not(.active) { background:#eef2f7; }
   .md-tab-pane { display:none; } .md-tab-pane.active { display:block; }
+  .doc-frame { width:100%; height:80vh; border:1px solid #d7dde5; border-radius:4px; }
+  .pdf-open-btn { display:inline-block; padding:10px 20px; background:#111827; color:#fff;
+                  text-decoration:none; border-radius:3px; font-size:14px; margin:12px 0; }
+  .pdf-open-btn:hover { opacity:.9; }
+  .nav-item-row { display:flex; align-items:center; gap:2px; margin:0 0 3px; }
+  .nav-item-row .doc-btn { flex:1; margin:0; }
+  .arc-btn { background:none; border:none; cursor:pointer; font-size:11px; color:#94a3b8;
+             padding:2px 4px; opacity:.55; flex:none; border-radius:3px; }
+  .arc-btn:hover { opacity:1; color:#475569; background:#eef2f7; }
 """
 
 
@@ -1177,17 +1399,23 @@ def index() -> str:
                 lbl = html.escape(d.get("label", d["id"]))
                 iid = html.escape(d["id"])
                 icon = _NAV_STATUS_HTML.get(item_nav_status(d), "")
+                # Archive/unarchive toggle — not shown for pinned sections
+                if s["id"] == "archive":
+                    arc = f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" title='Unarchive'>↑</button>"
+                elif not s.get("pinned"):
+                    arc = f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',true)\" title='Archive'>↓</button>"
+                else:
+                    arc = ""
                 if d.get("type") == "link":
                     href = d.get("href", "")
                     url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
-                    item_htmls.append(
+                    btn = (
                         f"<a class='doc-btn' href='{html.escape(url)}' target='_blank' rel='noopener'>"
                         f"{icon}{lbl}<span class='ext-arrow'>↗</span></a>"
                     )
                 else:
-                    item_htmls.append(
-                        f"<button class='doc-btn' data-item='{iid}'>{icon}{lbl}</button>"
-                    )
+                    btn = f"<button class='doc-btn' data-item='{iid}'>{icon}{lbl}</button>"
+                item_htmls.append(f"<div class='nav-item-row'>{btn}{arc}</div>")
             btns = "".join(item_htmls)
         else:
             btns = "<div class='section-empty'>— empty —</div>"
@@ -1311,6 +1539,12 @@ def index() -> str:
     }}
     function toggleSection(el) {{
       el.classList.toggle('collapsed');
+    }}
+    async function archiveToggle(itemId, doArchive) {{
+      const url = doArchive ? `/api/item/${{itemId}}/archive` : `/api/item/${{itemId}}/unarchive`;
+      const r = await fetch(url, {{method: 'POST'}});
+      if (r.ok) window.location.reload();
+      else {{ const d = await r.json().catch(() => ({{}})); alert('Archive failed: ' + (d.detail || r.status)); }}
     }}
     function mdTab(btn, index) {{
       const t = btn.closest('.md-tabs');

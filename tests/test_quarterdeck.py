@@ -79,24 +79,29 @@ def test_drydock_console_core_has_master_blueprint():
 def test_drydock_console_exposes_existing_owned_documents():
     root = Path(__file__).parents[1]
     config = _console_config()
-    docs_items = {
-        "soundings",
-        "master_blueprint",
-        "sea_trials",
-        "rendered_docs",
-        "sea_trials_poster",
-        "sea_trials_pdf",
-        "pypi_reservation",
-        "pypi_reservation_pdf",
-    }
     items = {item["id"]: item for item in config["items"]}
 
-    assert docs_items <= items.keys()
-    for item_id in docs_items:
+    # Simple items that resolve to a single file path
+    simple_items = {"soundings", "master_blueprint", "rendered_docs"}
+    assert simple_items <= items.keys()
+    for item_id in simple_items:
         item = items[item_id]
         relative = item.get("path") or item.get("href")
-        assert relative
+        assert relative, item_id
         assert (root / "QuarterDeck" / relative).resolve().is_file(), item_id
+
+    # Document items (multi-variant)
+    sea_trials = items["sea_trials"]
+    assert sea_trials["type"] == "document"
+    assert sea_trials["section"] == "core"
+    assert (root / "QuarterDeck" / sea_trials["path_md"]).resolve().is_file()
+    assert (root / "QuarterDeck" / sea_trials["path_html"]).resolve().is_file()
+    assert (root / "QuarterDeck" / sea_trials["path_pdf"]).resolve().is_file()
+
+    pypi = items["pypi_reservation"]
+    assert pypi["type"] == "document"
+    assert (root / "QuarterDeck" / pypi["path_md"]).resolve().is_file()
+    assert (root / "QuarterDeck" / pypi["path_pdf"]).resolve().is_file()
 
     ships_log = items["ships_log"]
     assert ships_log["type"] == "jsonl"
@@ -279,3 +284,187 @@ def test_plan_decision_rejects_non_approval(tmp_path, monkeypatch):
         quarterdeck.api_plan_decision(
             "planning_session", quarterdeck.PlanDecision(decision="revise")
         )
+
+
+# ── document type renderer ────────────────────────────────────────────────────
+
+
+def test_document_renderer_tabs_md_html_pdf(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    md_file = tmp_path / "doc.md"
+    html_file = tmp_path / "doc.html"
+    pdf_file = tmp_path / "doc.pdf"
+    md_file.write_text("# Hello\nworld", encoding="utf-8")
+    html_file.write_text("<html><body>hello</body></html>", encoding="utf-8")
+    pdf_file.write_bytes(b"%PDF-1.4")
+
+    def fake_resolve(path_value: str):
+        m = {"../doc.md": md_file, "../doc.html": html_file, "../doc.pdf": pdf_file}
+        p = m.get(path_value)
+        if p is None:
+            raise quarterdeck.HTTPException(status_code=404, detail="not found")
+        return p
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", fake_resolve)
+
+    rendered = quarterdeck.render_document_item(
+        {
+            "id": "test_doc",
+            "label": "Test Doc",
+            "type": "document",
+            "path_md": "../doc.md",
+            "path_html": "../doc.html",
+            "path_pdf": "../doc.pdf",
+        }
+    )
+
+    assert "Read" in rendered
+    assert "View HTML" in rendered
+    assert "PDF" in rendered
+    assert "md-tabs" in rendered
+
+
+def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    md_file = tmp_path / "doc.md"
+    md_file.write_text("# Solo\ncontent", encoding="utf-8")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
+
+    rendered = quarterdeck.render_document_item(
+        {"id": "solo", "label": "Solo", "type": "document", "path_md": "../doc.md"}
+    )
+
+    assert "md-tabs" not in rendered
+    assert "Solo" in rendered
+
+
+def test_document_renderer_missing_all_paths():
+    quarterdeck = _load_quarterdeck()
+
+    rendered = quarterdeck.render_document_item(
+        {"id": "empty", "label": "Empty", "type": "document"}
+    )
+
+    assert "No files found" in rendered
+
+
+# ── sources expansion ────────────────────────────────────────────────────────
+
+
+def test_expand_sources_adds_discovered_files(tmp_path):
+    quarterdeck = _load_quarterdeck()
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "GUIDE.md").write_text("# Guide", encoding="utf-8")
+
+    project_root_orig = quarterdeck.PROJECT_ROOT
+    base_dir_orig = quarterdeck.BASE_DIR
+    quarterdeck.PROJECT_ROOT = tmp_path
+    quarterdeck.BASE_DIR = tmp_path / "QuarterDeck"
+
+    try:
+        config: dict = {
+            "sources": [{"glob": "docs/*.md", "section": "project_pages", "type": "markdown"}],
+            "items": [],
+        }
+        quarterdeck._expand_sources(config)
+        ids = [item["id"] for item in config["items"]]
+        assert "guide" in ids
+        item = next(i for i in config["items"] if i["id"] == "guide")
+        assert item["section"] == "project_pages"
+        assert item["type"] == "markdown"
+    finally:
+        quarterdeck.PROJECT_ROOT = project_root_orig
+        quarterdeck.BASE_DIR = base_dir_orig
+
+
+def test_expand_sources_skips_files_covered_by_explicit_items(tmp_path):
+    quarterdeck = _load_quarterdeck()
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "SPEC.md").write_text("# Spec", encoding="utf-8")
+
+    base_dir = tmp_path / "QuarterDeck"
+    quarterdeck.PROJECT_ROOT = tmp_path
+    quarterdeck.BASE_DIR = base_dir
+
+    try:
+        config: dict = {
+            "sources": [{"glob": "docs/*.md", "section": "project_pages", "type": "markdown"}],
+            "items": [
+                {
+                    "id": "master_blueprint",
+                    "label": "Master Blueprint",
+                    "section": "core",
+                    "type": "markdown",
+                    "path": "../docs/SPEC.md",
+                }
+            ],
+        }
+        quarterdeck._expand_sources(config)
+        ids = [item["id"] for item in config["items"]]
+        assert ids == [
+            "master_blueprint"
+        ], "source must not duplicate a path covered by an explicit item"
+    finally:
+        quarterdeck.PROJECT_ROOT = tmp_path.parent
+        quarterdeck.BASE_DIR = tmp_path.parent / "QuarterDeck"
+
+
+# ── archive / unarchive ───────────────────────────────────────────────────────
+
+
+def test_archive_and_unarchive_item(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    db_file = tmp_path / "state.sqlite"
+
+    monkeypatch.setattr(quarterdeck, "db_path", lambda: db_file)
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [
+                {"id": "project_pages", "label": "Project Pages"},
+                {"id": "archive", "label": "Archive", "collapsed": True},
+            ],
+            "items": [
+                {
+                    "id": "my_doc",
+                    "label": "My Doc",
+                    "section": "project_pages",
+                    "type": "markdown",
+                    "path": "x.md",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+
+    result = quarterdeck.api_archive_item("my_doc")
+    assert result["ok"] is True
+
+    archived = quarterdeck._archived_item_ids()
+    assert "my_doc" in archived
+
+    result = quarterdeck.api_unarchive_item("my_doc")
+    assert result["ok"] is True
+
+    archived = quarterdeck._archived_item_ids()
+    assert "my_doc" not in archived
+
+
+def test_archive_blocked_for_pinned_section(monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [{"id": "core", "label": "Core", "pinned": True}],
+            "items": [{"id": "spec", "section": "core", "type": "markdown", "path": "x.md"}],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+
+    with pytest.raises(quarterdeck.HTTPException, match="pinned"):
+        quarterdeck.api_archive_item("spec")

@@ -966,6 +966,32 @@ artifacts under `docs/`: the authoritative specification, Soundings acceptance/r
 Sea Trials, rendered documentation, and supporting publication or reservation artifacts. The
 QuarterDeck points to those files directly and never duplicates their content.
 
+**Page types** — each item declares exactly one renderer:
+
+| Type | Purpose |
+|---|---|
+| `markdown` | Renders a single `.md` file as HTML; `tabs: true` splits `##` headings into clickable tabs. |
+| `document` | Collapses related `path_md` / `path_html` / `path_pdf` variants into a tab bar (Read / View HTML / PDF). Missing variants are silently omitted; a single present variant renders without tabs. |
+| `jsonl` | Read-only table from an append-only JSONL file; supports field selection, date truncation, and badge coloring. |
+| `kanban` | Renders `BUILD_PLAN.md`-derived tickets as a four-column board. |
+| `questionnaire` | Form backed by a JSON file; saves answers in SQLite and writes them back to the source file. |
+| `link` | External URL or local file; opens in a new tab. |
+| `command_status` | Derived read-only view of command readiness from Core Docs (see below). |
+| `plan_decision` | Whole-plan approval for a `BUILD_PLAN.md`. |
+
+The **`sources:`** key in `console.yaml` accepts a list of glob rules
+(`{glob, section, type, ...}`) that auto-discover files as items. Items in the explicit `items:`
+list (matched by ID or by resolved path) take priority — a file already referenced by an explicit
+item is never duplicated. The optional **`overrides:`** list (`{match: <path>, <fields>}`) adjusts
+source-generated items before they are appended, supporting label, section, and type customisation
+without hand-listing every file.
+
+**Archive/unarchive toggle** — any item not in a pinned section can be moved to the Archive section
+via `POST /api/item/{id}/archive`. The original section is not rewritten; the override is
+SQLite-backed and reversed by `POST /api/item/{id}/unarchive`. Pinned sections (e.g. Drydock Core)
+are immune. Items in the Archive section of the nav carry an unarchive `↑` button; items in
+non-pinned sections carry an archive `↓` button.
+
 The reusable `command_status` page type derives a read-only command-readiness report using only
 configured Markdown Core Docs. It discovers the authoritative source by its structured
 `Command Acceptance` table, recomputes status totals, reports deterministic structural
