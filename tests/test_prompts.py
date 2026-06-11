@@ -42,6 +42,12 @@ class TestLoadPrompt:
         with pytest.raises(DrydockError, match="prompt not found"):
             load_prompt("does_not_exist")
 
+    @pytest.mark.parametrize("name", ["log_append_capture", "log_audit"])
+    def test_loads_ships_log_prompts(self, name):
+        prompt = load_prompt(name)
+        assert prompt.body
+        assert prompt.meta["command"].startswith("drydock log")
+
     def test_missing_required_field_raises(self, tmp_path, monkeypatch):
         (tmp_path / "broken.md").write_text("---\nname: broken\n---\nbody", encoding="utf-8")
         monkeypatch.setattr("drydock.prompts.get_prompts_root", lambda: tmp_path)

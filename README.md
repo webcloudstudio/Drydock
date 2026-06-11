@@ -144,6 +144,18 @@ provider events. The same events are appended immediately to `<Target>/logs/even
 Timeouts terminate the child process and return exit code `124`; interruption terminates the child,
 records exit code `130`, and re-raises `KeyboardInterrupt`.
 
+Material product decisions and delivery milestones are separate from execution mechanics:
+
+```text
+drydock log append <Target> --event-type decision --title "..." --summary "..." \
+  --rationale "..." --source-type agent [--scope ...] [--evidence ...] [--tag ...]
+drydock log audit <Target>
+```
+
+The sole Ship's Log artifact is `<Target>/logs/ships_log.jsonl`. It is append-only, rendered by
+QuarterDeck's generic JSONL viewer, and intended as the direct input to downstream publishing tools.
+No Markdown Ship's Log is generated.
+
 `LLM_PROVIDER=claude|codex` may be set in the process environment or user-scoped Drydock `.env`;
 the process environment takes precedence and Claude is the default. API-key environment variables
 are removed before invoking either CLI.

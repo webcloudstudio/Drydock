@@ -142,6 +142,57 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_log_append(args: argparse.Namespace) -> int:
+    from drydock.config import get_target_directory
+    from drydock.ships_log import append_record, create_record, resolve_target
+
+    target = resolve_target(get_target_directory(), args.Target)
+    alternatives = []
+    for value in args.alternative:
+        option, separator, reason = value.partition("::")
+        if not separator or not option.strip() or not reason.strip():
+            from drydock.ships_log import ShipsLogError
+
+            raise ShipsLogError("--alternative must use '<option>::<reason rejected>'.")
+        alternatives.append({"option": option.strip(), "reason_rejected": reason.strip()})
+
+    record = create_record(
+        event_type=args.event_type,
+        title=args.title,
+        summary=args.summary,
+        rationale=args.rationale,
+        source_type=args.source_type,
+        source_command=args.source_command,
+        source_provider=args.source_provider,
+        affected_scope=args.scope,
+        alternatives=alternatives,
+        evidence=args.evidence,
+        supersedes=args.supersedes,
+        tags=args.tag,
+    )
+    path = append_record(target, record)
+    print(f"Appended Ship's Log event {record['event_id']}")
+    print(f"Saved to {path}")
+    return 0
+
+
+def cmd_log_audit(args: argparse.Namespace) -> int:
+    from drydock.config import get_target_directory
+    from drydock.ships_log import audit_log, resolve_target, ships_log_path
+
+    target = resolve_target(get_target_directory(), args.Target)
+    result = audit_log(ships_log_path(target))
+    print(f"Ship's Log: {result.path}")
+    print(f"Records: {len(result.records)}")
+    if result.findings:
+        for finding in result.findings:
+            print(f"  line {finding.line}: {finding.message}")
+        print(f"RESULT: FAIL ({len(result.findings)} findings)")
+        return 1
+    print("RESULT: PASS")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Parser construction
 # ---------------------------------------------------------------------------
@@ -216,6 +267,31 @@ def _build_parser() -> argparse.ArgumentParser:
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
     p_val.add_argument("Blueprint", metavar="<Blueprint>")
     p_val.add_argument("--verbose", action="store_true", help="Also show passing checks.")
+
+    # ── log ──────────────────────────────────────────────────────────────────
+    p_log = sub.add_parser("log", help="Append to or audit a target Ship's Log.")
+    log_sub = p_log.add_subparsers(dest="log_command", metavar="<subcommand>")
+    p_log_a = log_sub.add_parser("append", help="Append one material decision or milestone.")
+    p_log_a.add_argument("Target", metavar="<Target>")
+    p_log_a.add_argument("--event-type", choices=["decision", "milestone"], required=True)
+    p_log_a.add_argument("--title", required=True)
+    p_log_a.add_argument("--summary", required=True)
+    p_log_a.add_argument("--rationale", required=True)
+    p_log_a.add_argument("--source-type", required=True)
+    p_log_a.add_argument("--source-command")
+    p_log_a.add_argument("--source-provider")
+    p_log_a.add_argument("--scope", action="append", default=[])
+    p_log_a.add_argument(
+        "--alternative",
+        action="append",
+        default=[],
+        metavar="<option>::<reason rejected>",
+    )
+    p_log_a.add_argument("--evidence", action="append", default=[])
+    p_log_a.add_argument("--supersedes", action="append", default=[])
+    p_log_a.add_argument("--tag", action="append", default=[])
+    p_log_v = log_sub.add_parser("audit", help="Validate a target Ship's Log.")
+    p_log_v.add_argument("Target", metavar="<Target>")
 
     # ── document ─────────────────────────────────────────────────────────────
     # Handles: document <Blueprint> <Target>
@@ -366,6 +442,14 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "validate":
         return cmd_validate(args)
+
+    if command == "log":
+        if args.log_command == "append":
+            return cmd_log_append(args)
+        if args.log_command == "audit":
+            return cmd_log_audit(args)
+        parser.parse_args(["log", "--help"])
+        return 0
 
     if command == "document":
         return _dispatch_document(args)

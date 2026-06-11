@@ -12,6 +12,7 @@ Items / Archive).
 
 Page types (one Python renderer each, in TYPES):
   - markdown      render a markdown file as HTML
+  - jsonl         render append-only JSON records as a read-only table
   - kanban        render a tickets JSON file as a board (read-only work tracking)
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
@@ -208,6 +209,71 @@ def render_link_item(item: dict[str, Any]) -> str:
     )
 
 
+def _jsonl_value(record: dict[str, Any], field: str) -> Any:
+    value: Any = record
+    for part in field.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def render_jsonl_item(item: dict[str, Any]) -> str:
+    """Render a JSONL artifact as a read-only, configured table."""
+    try:
+        path = resolve_path(item["path"])
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return (
+                f"<h1>{html.escape(item.get('label', 'JSONL'))}</h1>"
+                "<p class='subtle'>No records yet.</p>"
+            )
+        raise
+
+    records: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        try:
+            value = json.loads(raw)
+            if not isinstance(value, dict):
+                raise ValueError("record is not an object")
+            records.append(value)
+        except (json.JSONDecodeError, ValueError) as exc:
+            errors.append(f"line {line_number}: {exc}")
+
+    for field, expected in item.get("filters", {}).items():
+        records = [record for record in records if _jsonl_value(record, field) == expected]
+    sort_field = item.get("sort", "recorded_at")
+    records.sort(
+        key=lambda record: str(_jsonl_value(record, sort_field) or ""),
+        reverse=item.get("sort_direction", "desc") == "desc",
+    )
+    fields = item.get("fields") or ["recorded_at", "event_type", "title", "summary"]
+    headings = "".join(f"<th>{html.escape(str(field))}</th>" for field in fields)
+    rows = []
+    for record in records:
+        cells = []
+        for field in fields:
+            value = _jsonl_value(record, field)
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, sort_keys=True)
+            cells.append(f"<td>{html.escape(str(value if value is not None else ''))}</td>")
+        rows.append(f"<tr>{''.join(cells)}</tr>")
+
+    output = (
+        f"<h1>{html.escape(item.get('label', 'JSONL'))}</h1>"
+        f"<p class='subtle'>{len(records)} record(s)</p>"
+        f"<table><thead><tr>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    )
+    if errors:
+        output += (
+            "<div class='item-error'>"
+            + "<br>".join(html.escape(error) for error in errors)
+            + "</div>"
+        )
+    return output
+
+
 def render_questionnaire(item: dict[str, Any]) -> str:
     data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
     rows = []
@@ -389,6 +455,7 @@ class TypeDef:
 TYPES: dict[str, TypeDef] = {
     "markdown": TypeDef(("path",), render_markdown_item),
     "editable_markdown": TypeDef(("path",), render_editable_markdown),
+    "jsonl": TypeDef(("path",), render_jsonl_item),
     "kanban": TypeDef(("path",), render_kanban),
     "questionnaire": TypeDef(("path",), render_questionnaire),
     "link": TypeDef(("href",), render_link_item),

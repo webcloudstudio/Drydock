@@ -38,6 +38,7 @@ class TestHelpAndVersion:
             "config",
             "init",
             "validate",
+            "log",
             "document",
             "rigging",
             "plan",
@@ -266,6 +267,88 @@ class TestRiggingCompact:
         rc, out, err = run_cli("rigging", "compact", "Proj")
         assert rc == 0
         assert "Nothing to compact" in out
+
+
+class TestShipsLog:
+    def _configure_target(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        target = tmp_target_root / "Project"
+        target.mkdir()
+        return target
+
+    def test_append_and_audit(self, tmp_target_root, isolated_config):
+        target = self._configure_target(tmp_target_root, isolated_config)
+
+        rc, out, err = run_cli(
+            "log",
+            "append",
+            "Project",
+            "--event-type",
+            "decision",
+            "--title",
+            "Use JSONL",
+            "--summary",
+            "Record events as JSONL.",
+            "--rationale",
+            "One canonical structured log is sufficient.",
+            "--source-type",
+            "agent",
+            "--alternative",
+            "Markdown::It duplicates the canonical JSONL.",
+            "--tag",
+            "ships-log",
+        )
+
+        assert rc == 0, err
+        assert "Appended" in out
+        record = __import__("json").loads((target / "logs" / "ships_log.jsonl").read_text())
+        assert record["alternatives"][0]["option"] == "Markdown"
+        rc, out, err = run_cli("log", "audit", "Project")
+        assert rc == 0
+        assert "Records: 1" in out
+        assert "RESULT: PASS" in out
+
+    def test_append_rejects_missing_target(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        rc, out, err = run_cli(
+            "log",
+            "append",
+            "Missing",
+            "--event-type",
+            "milestone",
+            "--title",
+            "Done",
+            "--summary",
+            "Done.",
+            "--rationale",
+            "Complete.",
+            "--source-type",
+            "agent",
+        )
+        assert rc == 1
+        assert "does not exist" in err
+
+    def test_append_rejects_invalid_alternative(self, tmp_target_root, isolated_config):
+        self._configure_target(tmp_target_root, isolated_config)
+        rc, out, err = run_cli(
+            "log",
+            "append",
+            "Project",
+            "--event-type",
+            "decision",
+            "--title",
+            "Use JSONL",
+            "--summary",
+            "Use JSONL.",
+            "--rationale",
+            "Structured.",
+            "--source-type",
+            "agent",
+            "--alternative",
+            "Markdown",
+        )
+        assert rc == 1
+        assert "alternative" in err
 
 
 class TestStubs:

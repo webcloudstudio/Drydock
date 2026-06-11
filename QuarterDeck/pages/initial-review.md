@@ -10,7 +10,7 @@ It provides:
 - a simple capability plan with acceptance criteria;
 - structured product-owner questions;
 - QuarterDeck sign-off controls;
-- a Ship's Log concept page that states the real implementation gap;
+- a Ship's Log JSONL view that states the real implementation gap;
 - direct access to the delivery acceptance criteria and authoritative Blueprint.
 
 ## Test Procedure

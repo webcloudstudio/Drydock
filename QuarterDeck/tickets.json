@@ -49,7 +49,7 @@
       ],
       "ac": [
         "All plan state transitions pass through one decision writer",
-        "Accepted spike, iterate, and QuarterDeck decisions append to `SHIPS_LOG.md`",
+        "Governed agents and Drydock workflows append material events to `logs/ships_log.jsonl`",
         "Entries are append-only and support `supersedes`",
         "Decision behavior is covered by deterministic tests"
       ],

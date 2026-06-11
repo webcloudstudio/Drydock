@@ -141,7 +141,7 @@ plus the fields that type needs).
 | `id` | Yes | Unique item id (stable; used in routes and `state_key`s) |
 | `label` | Yes | Sidebar button text |
 | `section` | Yes | Which sidebar section (= the item's state) it belongs to |
-| `type` | Yes | `markdown` \| `editable_markdown` \| `kanban` \| `questionnaire` \| `link` |
+| `type` | Yes | `markdown` \| `editable_markdown` \| `jsonl` \| `kanban` \| `questionnaire` \| `link` |
 | `order` | No | Sort order within its section (default config order) |
 | `review` | No | `true` adds an Approve · Revise · Reject sign-off bar to the item (see Decisions below) |
 | `path` | For file types | File path relative to `Console/` |
@@ -173,6 +173,7 @@ the Console keeps working.
 |------|--------------------------------------------------|
 | `markdown` | `path` |
 | `editable_markdown` | `path` |
+| `jsonl` | `path` |
 | `kanban` | `path` (→ a tickets JSON file) |
 | `questionnaire` | `path` |
 | `link` | `href` |
@@ -196,7 +197,14 @@ textarea holding the raw markdown; **Save** writes the edited source straight ba
 file (`POST /api/document/{item_id}/source`, write-confined to `Console/`). Use it for
 source-of-truth docs a human and the agent co-edit — typically an intent/spec doc in the
 **Core Docs** section. It is the only type besides `questionnaire` that writes a file; plain
-`markdown`, `kanban`, and `link` stay read-only.
+`markdown`, `jsonl`, `kanban`, and `link` stay read-only.
+
+### `jsonl`
+
+Renders an append-only JSONL file as a read-only table. Configure `fields` with dotted field names,
+`sort` with a dotted field name, `sort_direction` as `asc` or `desc`, and optional exact-match
+`filters`. Each malformed line is reported without preventing valid records from rendering. A
+missing file renders as an empty view, allowing a console to expose a log before its first event.
 
 ### `kanban`
 
@@ -361,12 +369,11 @@ add a row each time we use the tool on a real problem and learn how it should wo
 ### Known gaps (the near-term roadmap for agent communication)
 1. **Spike** — a first-class investigation artifact (question → options → evidence → recorded
    decision), instead of faking it with a questionnaire.
-2. **Decision log / ADR** and **retrospective** — currently plain markdown; could become
-   structured if needed.
+2. **Retrospective** — needs a structured artifact and renderer contract.
 3. **Metrics / burndown** — needs a chart or table type (start as mermaid/markdown).
 
-*(Done: edit-in-place via `editable_markdown`; decision sign-off via `"review": true`;
-acceptance criteria via ticket `ac`.)*
+*(Done: edit-in-place via `editable_markdown`; JSONL decision-log views; decision sign-off via
+`"review": true`; acceptance criteria via ticket `ac`.)*
 
 ---
 
