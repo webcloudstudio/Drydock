@@ -4,8 +4,8 @@
 **Description:** Standard for social / blog posts Ed publishes. Starter scaffold — fill in the
 specifics below.
 
-Inherits the brand feel and voice from `BRANDING_MAIN.md` and `BRANDING_EDSVOICE.md`; this file
-covers only what is specific to short published posts. Authoritative; not auto-distributed.
+Inherits the brand feel from `BRANDING_MAIN.md`; this file covers only what is specific to short
+published posts. Authoritative; not auto-distributed.
 
 ---
 

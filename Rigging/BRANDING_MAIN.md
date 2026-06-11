@@ -16,7 +16,6 @@ Authoritative; not auto-distributed.
 ## Identity
 
 - **Person / studio:** Ed Barlow · Web Cloud Studio.
-- **Voice:** see `BRANDING_EDSVOICE.md` for how Claude should respond to Ed.
 - **Feel:** dark chrome, light content; calm, technical, confident. No clutter, no AI-generic gloss.
 
 ---
@@ -92,7 +91,6 @@ font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;        /* code
 | `BRANDING_WHITEPAPERS.md` | White papers (single 860px print column). Authoring format: `prompts/whitepaper.md`. |
 | `BRANDING_WEBSITE.md` | Portfolio / homepage site. |
 | `BRANDING_POSTS.md` | Social / blog posts. |
-| `BRANDING_EDSVOICE.md` | How Claude responds to Ed (linked from the global `~/.claude/CLAUDE.md`). |
 
 Each child inherits palette, typography, and philosophy from this file and covers only what is
 specific to its medium. No child re-pastes the palette hex.

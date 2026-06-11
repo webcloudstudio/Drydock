@@ -29,7 +29,7 @@ as the docs and white papers (not a louder, separate look).
 ## Tone
 
 Confident and concrete — what the work does and why it matters, not buzzwords. One strong sentence
-beats a paragraph. Formal English (see `BRANDING_EDSVOICE.md`).
+beats a paragraph. Use formal English.
 
 ## To define (Ed)
 
