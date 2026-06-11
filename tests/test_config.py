@@ -9,8 +9,8 @@ import pytest
 from drydock.config import (
     config_set,
     config_show,
-    get_llm_provider,
     get_blueprint_directory,
+    get_llm_provider,
     get_target_directory,
 )
 from drydock.errors import ConfigurationError
@@ -23,6 +23,12 @@ class TestConfigSet:
         content = cfg.read_text()
         assert "BLUEPRINT_DIRECTORY" in content
         assert str(tmp_spec_root) in content
+
+    def test_legacy_specification_directory_sets_blueprint_directory(
+        self, tmp_spec_root, isolated_config
+    ):
+        cfg = config_set("specification_directory", str(tmp_spec_root))
+        assert "BLUEPRINT_DIRECTORY" in cfg.read_text()
 
     def test_set_target_directory(self, tmp_target_root, isolated_config):
         config_set("target_directory", str(tmp_target_root))
@@ -92,6 +98,12 @@ class TestGetters:
     def test_get_spec_dir_raises_when_unset(self, isolated_config):
         with pytest.raises(ConfigurationError):
             get_blueprint_directory()
+
+    def test_legacy_environment_variable_is_supported(
+        self, tmp_spec_root, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("SPECIFICATION_DIRECTORY", str(tmp_spec_root))
+        assert get_blueprint_directory() == tmp_spec_root
 
     def test_get_target_dir_raises_when_unset(self, isolated_config):
         with pytest.raises(ConfigurationError):

@@ -42,7 +42,12 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
     # Remove real env vars that could leak into tests
-    for key in ("BLUEPRINT_DIRECTORY", "TARGET_DIRECTORY", "LLM_PROVIDER"):
+    for key in (
+        "BLUEPRINT_DIRECTORY",
+        "SPECIFICATION_DIRECTORY",
+        "TARGET_DIRECTORY",
+        "LLM_PROVIDER",
+    ):
         monkeypatch.delenv(key, raising=False)
 
     return cfg_dir

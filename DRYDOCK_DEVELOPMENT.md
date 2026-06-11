@@ -43,7 +43,7 @@ Key Prototyper reference locations:
 | `bin/` | Working command implementations, shared libraries, process execution, and orchestration |
 | `prompts/` | Working prompt contracts and context assembly rules |
 | `RulesEngine/` | V1 governance, specification contract, templates, stack rules, and branding |
-| `docs/whitepapers/drydock.md` | Origin of the V2 product definition; Drydock's `specs/drydock/spec.md` is authoritative |
+| `docs/whitepapers/drydock.md` | Origin of the V2 product definition; Drydock's `specs/001-drydock/spec.md` is authoritative |
 | `data/` and `logs/` | Build provenance and execution artifact examples when present |
 
 Inspect these locations as needed to understand working V1 behavior. Do not copy repository-bound
@@ -84,14 +84,14 @@ Drydock `Rigging/templates/`.
 
 | Source | Role |
 |---|---|
-| `specs/drydock/spec.md` | Authoritative V2 Drydock Blueprint and target behavior |
+| `specs/001-drydock/spec.md` | Authoritative V2 Drydock Blueprint and target behavior |
 | `src/drydock/`, `tests/` | Current implemented behavior and regression contract |
 | This file | Migration architecture, method, and V1 reference map |
 | `prototyper_directory` from `METADATA.md` | Read-only V1 behavior, algorithms, prompts, and edge cases |
 
 Do not assume V1 behavior is correct merely because it exists. For each capability:
 
-1. Read the relevant section of `specs/drydock/spec.md`.
+1. Read the relevant section of `specs/001-drydock/spec.md`.
 2. Inspect the mapped V1 files and their direct dependencies.
 3. State or encode the intended V2 contract.
 4. Implement it as a Drydock Python module and CLI command.
@@ -150,7 +150,7 @@ and follow their direct imports or sourced libraries as necessary.
 | `drydock iterate` | `bin/iterate.sh`, `bin/build_spec_relationships.py` |
 | `drydock analyze` | `bin/spec_iterate.sh`, `bin/update_reference_gaps.sh` |
 | `drydock import --format source` | `bin/decompose.sh` |
-| `drydock import --format speckit` | V2 specification; no authoritative V1 implementation |
+| `drydock import --format speckit` | V2 Blueprint; no authoritative V1 implementation |
 | `drydock rigging compact` | `bin/rulesengine_compact.sh`, `bin/compact_architecture.sh` |
 | `drydock rigging update` | `bin/ProjectUpdate.sh`, `bin/project_manager.py` |
 | `drydock rigging verify` | `bin/ProjectValidate.sh`, `bin/project_manager.py` |
@@ -183,14 +183,14 @@ plan parsing, prompt assembly, process execution, evidence, and review state.
 
 ### Prompt Context Discipline
 
-The full specification is intentionally not injected into every agent prompt.
+The full Blueprint is intentionally not injected into every agent prompt.
 
-- Search `specs/drydock/spec.md` by command, workflow, artifact, or contract heading.
+- Search `specs/001-drydock/spec.md` by command, workflow, artifact, or contract heading.
 - Read the relevant section plus any directly referenced shared contract sections.
-- Load the full specification only when changing cross-cutting architecture or product semantics.
+- Load the full Blueprint only when changing cross-cutting architecture or product semantics.
 - Read mapped Prototyper files only for the active capability and direct dependencies.
 - Every delegated or generated implementation prompt must state that Drydock is the maintained V2
-  target, include this source-precedence contract, and provide the relevant specification excerpts
+  target, include this source-precedence contract, and provide the relevant Blueprint excerpts
   and V1 file paths.
 - Generated build prompts must include only the specification files, Rigging, and context required
   for the current runnable plan block.
@@ -214,7 +214,7 @@ Every completed capability must demonstrate:
 |---|---|
 | Unit tests | Deterministic logic, parsing, state transitions, and error cases |
 | CLI tests | Syntax, help, output contract, and exit codes |
-| Integration tests | Real temporary Specification and Target directories |
+| Integration tests | Real temporary Blueprint and Target directories |
 | Parity tests | Representative V1 behavior where compatibility is intended |
 | Regression tests | Existing working Drydock commands remain working |
 | Lint | `ruff check src/ tests/` |

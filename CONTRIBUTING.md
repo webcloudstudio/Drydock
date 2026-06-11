@@ -8,7 +8,7 @@ a Drydock Blueprint, its Typed Specification, and a strict source-precedence con
 Read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) in full. It defines the development
 architecture, the V1-to-V2 migration map, source precedence, and the verification contract that the
 current code cannot yet express through working commands. [AGENTS.md](AGENTS.md) summarizes the
-operating rules; [specs/drydock/spec.md](specs/drydock/spec.md) is the authoritative Drydock
+operating rules; [specs/001-drydock/spec.md](specs/001-drydock/spec.md) is the authoritative Drydock
 Blueprint.
 
 ## Environment

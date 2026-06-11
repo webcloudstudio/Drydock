@@ -59,7 +59,7 @@ drydock plan show <Blueprint>
 drydock build status <Blueprint> <Target>
 drydock build <Blueprint> <Target>
 drydock build score <Blueprint> <Target>
-drydock iterate <Blueprint> <Target> <BOTH|SPEC|TGT> <Scope> <Change>
+drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 drydock analyze <Blueprint> [<Target>]
 drydock import <Blueprint> <Target> --format <auto|source|speckit>
 ```
@@ -88,6 +88,9 @@ Set values with:
 drydock config set blueprint_directory /path/to/blueprints
 drydock config set target_directory /path/to/projects
 ```
+
+`SPECIFICATION_DIRECTORY` and `specification_directory` remain accepted as deprecated migration
+aliases for `BLUEPRINT_DIRECTORY` and `blueprint_directory`.
 
 ## Source-Tree Launchers
 
@@ -121,7 +124,7 @@ result = run_prompt(
     llm="claude",                 # optional; LLM_PROVIDER or claude default
     model="sonnet",               # optional
     command_name="plan-create",
-    parameters={"spec": spec_name, "block": block_id},
+    parameters={"blueprint": blueprint_name, "block": block_id},
     debug=debug,
     timeout_seconds=3600,
     on_text=lambda chunk: print(chunk, end="", flush=True),

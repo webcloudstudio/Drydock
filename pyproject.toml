@@ -36,11 +36,10 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
-# TODO(ed): confirm canonical URLs before any public release.
 [project.urls]
-Homepage = "https://github.com/webcloudstudio/drydock"
-Repository = "https://github.com/webcloudstudio/drydock"
-Issues = "https://github.com/webcloudstudio/drydock/issues"
+Homepage = "https://github.com/webcloudstudio/Drydock"
+Repository = "https://github.com/webcloudstudio/Drydock"
+Issues = "https://github.com/webcloudstudio/Drydock/issues"
 
 [project.scripts]
 drydock = "drydock.cli:main"
@@ -51,6 +50,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.10",
+    "pre-commit>=3.7",
 ]
 
 [tool.hatch.version]

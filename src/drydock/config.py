@@ -44,8 +44,7 @@ def get_blueprint_directory() -> Path:
         val, _source = _get("SPECIFICATION_DIRECTORY")
     if not val:
         raise ConfigurationError(
-            "BLUEPRINT_DIRECTORY is not set.\n"
-            "  Run: drydock config set blueprint_directory <path>"
+            "BLUEPRINT_DIRECTORY is not set.\n  Run: drydock config set blueprint_directory <path>"
         )
     return Path(val)
 

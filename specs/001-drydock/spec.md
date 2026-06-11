@@ -4,7 +4,7 @@ eyebrow: The Governed Blueprint Methodology for Software Delivery
 subtitle: Drydock is under active development. It extends GitHub Spec Kit with new workflows, and each Drydock Blueprint is expressed through a Typed Specification designed around context-aware builds. Drydock is an incarnation of the working Prototyper project conformed to industry best practices.
 author: Ed Barlow
 studio: Web Cloud Studio
-year: June 9 2026
+year: June 11 2026
 nav_active: drydock.html
 header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
@@ -13,26 +13,29 @@ ideas:
   - title: Simple Workflows make specification-driven delivery repeatable.
     sub_list:
       - Reverse-Engineer Existing Applications
-      - Build Projects From Specifications
+      - Build Projects From Blueprints
       - QuarterDeck — Agile Development Console
       - Update A Working SDD Application
       - Drydock Rigging - Technology Rules & Propagation
-      - Build Documentation from Specification
+      - Build Documentation from Blueprints
   - title: Typed Specifications define intent, architecture, data, features, screens, and changes.
   - title: Build Dependencies determine order, optimize context, and enable repeatable incremental builds.
   - title: Brownfield Decomposition imports your project from source code, Spec Kit projects, and specifications designed by your LLMs.
-  - title: Agile Workflow - delivering reviewable increments, spikes/stories/ac through a Product Owner console.
+  - title: QuarterDeck - a generated, throwaway development console surfacing evidence, spikes/stories/ac, and questionnaires; product-owner decisions write back into the build.
   - title: Drydock Rigging standardizes code, documentation, and tooling across your entire portfolio.
 ---
 
 ## Testimonials
 
-> Drydock is a genuine superset of Spec Kit. Every Spec Kit concept maps cleanly to a Drydock
-> equivalent: research lives in spikes with compiled evidence visible in the QuarterDeck, task breakdown
-> and clarification are handled interactively by the QuarterDeck as a first-class artifact viewer,
-> governance is covered by the RulesEngine across all projects, and Drydock is multi-agent by design.
-> Drydock adds governed build execution, the QuarterDeck, the iterate loop, and documentation generation
-> — none of which have Spec Kit equivalents. The superset claim is solid.
+> Drydock is a superset of Spec Kit by design. Every Spec Kit concept maps to a Drydock
+> equivalent: research lives in spikes with evidence compiled into the QuarterDeck, task breakdown
+> and clarification are first-class plan objects reviewed interactively, and governance is enforced
+> by the Rigging across every project in the portfolio. Drydock then adds what Spec Kit does not
+> attempt: governed build execution with staleness-driven incremental rebuilds, evidence-gated
+> review through a generated throwaway console, an append-only decision ledger, the iterate loop,
+> and documentation generation. Two honest caveats: Spec Kit ships integrations for many coding
+> agents while Drydock targets two subscription CLI providers, and the superset claim is proven by
+> the concept mapping today and by working import adapters once they are delivered.
 >
 > — Anthropic/Claude
 
@@ -58,6 +61,11 @@ expressed as a **Typed Specification** through files with prescribed roles. Dryd
 Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
 increments through the QuarterDeck.
 
+The Drydock repository stores its own authoritative Blueprint at `specs/001-drydock/spec.md`. This
+uses Spec Kit's visible `specs/<NNN-feature>/spec.md` convention. The hidden `.specify/` directory is
+reserved for Spec Kit framework configuration, templates, scripts, and memory; it is not the
+location for the authoritative authored Blueprint.
+
 ```mermaid
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
@@ -81,7 +89,7 @@ Drydock reads three global variables. Set them in the process environment or wit
 
 | Variable | Purpose |
 |---|---|
-| `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Specifications |
+| `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Blueprints |
 | `TARGET_DIRECTORY` | Root path containing all target software projects |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
 
@@ -91,6 +99,9 @@ drydock config set blueprint_directory <path>
 drydock config set target_directory <path>
 drydock config set llm_provider <claude|codex>
 ```
+
+`SPECIFICATION_DIRECTORY` and `drydock config set specification_directory` are deprecated
+compatibility aliases for `BLUEPRINT_DIRECTORY` and `blueprint_directory`.
 
 ## Drydock commands
 
@@ -102,7 +113,7 @@ drydock <verb> [<sub-verb>] <Blueprint> [<Target>] [--options]
 
 | Notation | Meaning |
 |---|---|
-| `<Blueprint>` | Specification name, relative to `BLUEPRINT_DIRECTORY` |
+| `<Blueprint>` | Blueprint name, relative to `BLUEPRINT_DIRECTORY` |
 | `<Target>` | Target project name, relative to `TARGET_DIRECTORY` |
 
 This section shows the primary workflows. Complete operational options belong in command help and
@@ -112,8 +123,8 @@ man pages.
 
 | Syntax | Purpose |
 |---|---|
-| `drydock init <Blueprint>` | Populate Specification with Templates |
-| `drydock validate <Blueprint>` | Validate Specification completeness and conventions |
+| `drydock init <Blueprint>` | Initialize a Blueprint from Typed Specification templates |
+| `drydock validate <Blueprint>` | Validate Blueprint completeness and conventions |
 
 ### Plan
 
@@ -128,7 +139,8 @@ for group ordering, surfaces open questions as spikes and acceptance criteria as
 blocks, and writes `BUILD_PLAN.md`. Re-running merges new objects without disturbing accepted work;
 `--force` regenerates completely.
 
-Every project has one plan file **BUILD_PLAN.md** stored in the specifications directory. Evidence, logs, and execution records are written to the target directory.
+Every Blueprint has one plan file **BUILD_PLAN.md** stored in its Blueprint directory. Evidence,
+logs, and execution records are written to the target directory.
 
 ### Build
 
@@ -142,9 +154,9 @@ Every project has one plan file **BUILD_PLAN.md** stored in the specifications d
 
 | Syntax | Purpose |
 |---|---|
-| `drydock iterate <Blueprint> <Target> [BOTH\|SPEC\|TGT] <Scope> "<Change>"` | Update specification files and target software |
-| `drydock import <Blueprint> <Target> --format <auto\|source\|speckit>` | Reverse-engineer an existing project into a proposed Specification; select automatic detection, source-code import, or Spec Kit translation |
-| `drydock analyze <Blueprint> [<Target>]` | Read-only advisory: surface open questions, coverage gaps, and drift between specification and built application |
+| `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> "<Change>"` | Update Blueprint files and target software |
+| `drydock import <Blueprint> <Target> --format <auto\|source\|speckit>` | Reverse-engineer an existing project into a proposed Blueprint; select automatic detection, source-code import, or Spec Kit translation |
+| `drydock analyze <Blueprint> [<Target>]` | Read-only advisory: surface open questions, coverage gaps, and drift between Blueprint and built application |
 
 ### Drydock Rigging
 
@@ -168,7 +180,7 @@ not authored as specification files.
   - Created: `drydock init`; `drydock import` (proposal)
   - Updated: Product owner; platform metadata operations
 
-- **`README.md`** — Short human introduction to the Specification
+- **`README.md`** — Short human introduction to the Blueprint
   - Created: `drydock init`; `drydock import` (proposal); Manual; other
   - Updated: Product owner
 
@@ -243,8 +255,12 @@ updated by `drydock iterate` as specification files and application code evolve.
   - Created: `drydock plan create <Blueprint>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
 
-- **`SCORECARD.md`** — Specification and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Specification and the built software
+- **`SCORECARD.md`** — Blueprint and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Blueprint and the built software
   - Created and updated: `drydock build score`
+
+- **`SHIPS_LOG.md`** — Append-only ledger of product and design decisions; see "The Ship's Log"
+  - Created and updated: `drydock build` (accepted spike findings), `drydock iterate` (change
+    rationale), and QuarterDeck review decisions — all through the single decision writer
 
 **Console related documents** — generated per target project; read by the QuarterDeck and updated by
 build and review actions.
@@ -297,14 +313,26 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 A SCREEN file referencing a route not listed in any FEATURE `Provides` field is a
 `drydock validate` error.
 
-> **TODO**
-> - Defer `Nav Group` until after MVP. `Nav Order` is sufficient for the initial implementation.
-> - Review and approve the proposed Specification contract.
-> - Update RulesEngine, templates, validation, and iteration tooling only after approval.
+### Interface Points Beyond Routes
+
+HTTP routes are one interface vocabulary, not the only one. `Provides`, `Consumes`, and
+`Depends On` name the system's contract surface; the dependency hierarchy requires named
+interface points, not a web application.
+
+| System shape | Interface points named in `Provides` / `Consumes` |
+|---|---|
+| Web application | HTTP routes — `GET /catalog` |
+| CLI tool | Commands and sub-verbs — `drydock plan create` |
+| Library or package | Public API symbols — `Database.items.get` |
+| Data pipeline | Datasets, tables, and files produced and consumed |
+| Event-driven system | Topics, queues, and event types |
+
+SCREEN files apply only to systems with a UI. Other system shapes omit them; the FEATURE,
+ARCHITECTURE, and DATABASE files carry the dependency hierarchy alone.
 
 ## BUILD_PLAN.md
 
-`BUILD_PLAN.md` is the single generated execution view of the Specification. It determines order,
+`BUILD_PLAN.md` is the single generated execution view of the Blueprint. It determines order,
 selects only required context, keeps work within useful context limits, identifies stale work, and
 preserves unaffected accepted work. It is not a second product definition.
 
@@ -331,9 +359,12 @@ All three use the same four states:
 ```markdown
 # BUILD_PLAN: {ProjectName}
 updated:     2026-06-08T12:00:00
-spec_commit: abc123
 plan_hash:   abc123456789
 ```
+
+Build provenance lives in the execution log, not the plan header: every build block records the
+content hash of each specification, stack, and prompt file injected into it. The plan header
+carries only the plan's own identity.
 
 ### Story
 
@@ -364,7 +395,7 @@ evidence:     <Target>/evidence/<id>.md
 id:           select-parser
 summary:      One-line description.
 context:      FEATURE-IMPORT.md
-question:     Which parser satisfies the Specification?
+question:     Which parser satisfies the Blueprint?
 parent:       feature-import
 finding:      ← text answer written here by the agent
 depends:      foundation
@@ -412,6 +443,11 @@ If a `story` or `spike` has no child `ac` blocks, it may be closed automatically
 If an `ac` becomes `closed/failed`, the parent does not close and later dependent work stays
 blocked.
 
+`closed/failed` is not terminal. The product owner reopens failed work from the QuarterDeck —
+revising the block's instructions, acceptance criteria, or scope interactively — and the decision
+writer returns it to `pending` with the revision recorded. The decision writer is the only mutator
+of plan state; recovery never requires hand-editing `BUILD_PLAN.md`.
+
 Guardrails and Acceptance Criteria embedded in the Specification files — not in the plan as `ac`
 blocks — must also pass before a `story` is marked `closed/verified`. A story that satisfies its
 implementation but violates a Specification guardrail remains `implemented` until the violation
@@ -422,7 +458,6 @@ is resolved.
 ```markdown
 # BUILD_PLAN: MyProject
 updated:     2026-06-08T12:00:00
-spec_commit: abc123
 plan_hash:   abc123456789
 
 ## spike 1: Select parser
@@ -583,7 +618,7 @@ project diverges silently as the rules evolve.
 
 ## Workflow 1: Reverse-Engineer an Existing Project
 
-Bring existing software or a Spec Kit project under Drydock specification control. Stack detection
+Bring existing software or a Spec Kit project under Drydock Blueprint control. Stack detection
 scopes the relevant technology rules automatically.
 
 ```mermaid
@@ -595,23 +630,24 @@ flowchart LR
   SRC1(["Existing Software"]):::dir --> IMPORT["import"]:::script
   SRC2(["Spec Kit"]):::dir --> IMPORT
   SRC3(["Other Specifications"]):::dir --> IMPORT
-  IMPORT --> SPEC(["Proposed Specification"]):::dir
+  IMPORT --> SPEC(["Proposed Blueprint"]):::dir
   SPEC --> REVIEW(["Review and Approve"]):::output
   REVIEW --> BUILD(["Build Workflow"]):::output
 ```
 
 1. `drydock import <Blueprint> <Target>` — auto-detects source code or Spec Kit input and generates
-   a proposed Specification. Use `--format speckit` to translate a Spec Kit project explicitly.
-2. Review the proposed Specification. Ambiguous or conflicting facts appear as `## Open Questions`
+   a proposed Blueprint. Use `--format speckit` to translate a Spec Kit project explicitly.
+2. Review the proposed Blueprint. Ambiguous or conflicting facts appear as `## Open Questions`
    rather than silently becoming requirements.
-3. Edit and approve the proposed Specification. Approval makes it authoritative.
+3. Edit and approve the proposed Blueprint. Approval makes it authoritative.
 4. `drydock validate <Blueprint>` — confirms the baseline is structurally complete.
 5. Proceed to build and review.
 
-## Workflow 2: Build from a Specification
+## Workflow 2: Build from a Blueprint
 
-Builds a project from Specification files through ordered work blocks. `drydock plan create` generates
-`BUILD_PLAN.md` from the curated `BUILD_PLAN_INTENT.md` and dependency headers; `drydock build`
+Builds a project from a Blueprint's Typed Specification files through ordered work blocks.
+`drydock plan create` generates `BUILD_PLAN.md` from the curated `BUILD_PLAN_INTENT.md` and
+dependency headers; `drydock build`
 executes each block as a separate agent call, keeping prompts under 50KB. Each block records a
 content hash per input Specification file; re-running rebuilds only the stale work whose spec hashes
 changed.
@@ -622,7 +658,7 @@ flowchart LR
   classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
 
-  INIT["init"]:::script --> SPEC(["Specification"]):::dir
+  INIT["init"]:::script --> SPEC(["Blueprint"]):::dir
   SPEC --> VALIDATE["validate"]:::script
   VALIDATE --> PLAN{{"BUILD_PLAN.md"}}:::output
   PLAN --> BUILD["build"]:::script
@@ -655,7 +691,7 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SPEC(["Specification"]):::dir --> PLAN["plan"]:::script
+  SPEC(["Blueprint"]):::dir --> PLAN["plan"]:::script
   PLAN --> BP{{"BUILD_PLAN.md"}}:::output
   BP --> BUILD["build"]:::script
   BUILD --> EVIDENCE(["Evidence"]):::output
@@ -664,7 +700,7 @@ flowchart LR
 ```
 
 1. `drydock plan create <Blueprint>` — generates `BUILD_PLAN.md` with spikes derived from Open Questions
-   and stories from Specification scope. Re-running merges new objects without disturbing accepted ones.
+   and stories from Blueprint scope. Re-running merges new objects without disturbing accepted ones.
 2. `drydock build <Blueprint> <Target>` — computes the runnable frontier, executes spikes in parallel
    and stories serially, and writes evidence files for each object.
 3. The QuarterDeck surfaces each completed object with the evidence and review material needed for the
@@ -674,10 +710,10 @@ flowchart LR
 
 ## Workflow 4: Update A Working SDD Application
 
-The post-build loop for an existing project when a human or agent must update a specification and
+The post-build loop for an existing project when a human or agent must update a Blueprint and
 its target application together in one controlled step. It resolves a scope to the owning Core
 Application Specification file, updates it first, then applies the change to code in a single
-agent session. The Specification is never bypassed. Interface-based dirtying ensures only affected
+agent session. The Blueprint is never bypassed. Interface-based dirtying ensures only affected
 work rebuilds — a base-spec edit rebuilds only downstream specs whose interface changed.
 
 ```mermaid
@@ -687,18 +723,25 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
 
   CHANGE(["Change Request"]):::dir --> ITERATE["iterate"]:::script
-  ITERATE --> SPECOUT(["Updated Spec"]):::output
+  ITERATE --> SPECOUT(["Updated Blueprint"]):::output
   ITERATE --> SOFTWARE(["Updated Software"]):::output
 ```
 
 1. `drydock iterate <Blueprint> <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL, keyword,
    or filename) to the owning `FEATURE-*.md`, `SCREEN-*.md`, `DATABASE.md`, or
    `ARCHITECTURE.md`.
-2. `SPEC` or `BOTH` updates the owning file, increments its `Version`, and records criteria,
-   guardrails, or open questions. `TGT` is a code-only hotfix; the Specification is unchanged.
+2. `BLUEPRINT` or `BOTH` updates the owning file, increments its `Version`, records criteria,
+   guardrails, or open questions, and appends the change rationale to the Ship's Log. `TGT` is a
+   code-only hotfix; the Blueprint is unchanged.
 3. `drydock plan create` refreshes `Depends On` and `Provides`. Interface or route changes mark
    affected downstream work stale — only changed work rebuilds, unaffected work stays clean.
 4. `BOTH` or `TGT` applies the change to `<Target>/`, runs tests, and records evidence.
+
+Staleness is computed from content hashes at the form each block consumes. A block that
+`implements:` a file is keyed to the full file's hash; a block that receives it as `context:` is
+keyed to the compact derivative's hash, so an edit that does not change the compact form —
+rationale, examples, internal detail — dirties no consumers. A change to a file's `Provides` or
+`Consumes` set additionally marks every dependent block stale.
 
 ### Workflow 4A: Happy Path for Change Tickets
 
@@ -745,10 +788,10 @@ flowchart LR
 4. All projects sharing the same rigging contract are interoperable; verification ensures no project
    diverges silently.
 
-## Workflow 6: Build Documentation from Specification
+## Workflow 6: Build Documentation from a Blueprint
 
-Generates project documentation from Specification files in two phases. The AI phase writes
-`DOC-*.md` summaries per Specification section; the assembly phase renders them into a versioned
+Generates project documentation from a Blueprint's Typed Specification files in two phases. The AI
+phase writes `DOC-*.md` summaries per Specification section; the assembly phase renders them into a versioned
 `docs/index.html`. The two phases run independently so hand-edited `DOC-*.md` files survive
 re-assembly without being overwritten.
 
@@ -758,7 +801,7 @@ flowchart LR
   classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
 
-  SPEC(["Specification"]):::dir --> GEN["document generate"]:::script
+  SPEC(["Blueprint"]):::dir --> GEN["document generate"]:::script
   GEN --> DOCMD(["DOC-*.md"]):::output
   DOCMD --> ASSEMBLE["document assemble"]:::script
   ASSEMBLE --> HTML(["docs/index.html"]):::output
@@ -791,7 +834,7 @@ The QuarterDeck reads:
 
 **`<Target>/Console/console.json`** is the QuarterDeck workflow index. It defines project identity (derived from
 `METADATA.md` and `README.md`), the default view, and all renderable navigation items:
-Specification snapshots, sprint boards, questionnaires, evidence pages, and review pages. Each
+Blueprint snapshots, sprint boards, questionnaires, evidence pages, and review pages. Each
 item declares its section, renderer, source path, and optional review target.
 
 **`<Target>/Console/tickets.json`** is a generated projection of the Agile `BUILD_PLAN.md`. Spikes
@@ -802,13 +845,41 @@ Review decisions made in the QuarterDeck — approve, revise, reject, add defect
 to `BUILD_PLAN.md` by the same decision writer used by the CLI. Both files regenerate after each
 decision.
 
-The QuarterDeck does not replace the Specification, `BUILD_PLAN.md`, or build engine. It renders
+The QuarterDeck does not replace the Blueprint, `BUILD_PLAN.md`, or build engine. It renders
 their state and records decisions through a standardized interface.
 
-> **TODO**
-> - Use one decision writer for QuarterDeck and CLI review actions.
-> - Generate project identity fields from `METADATA.md` and `README.md` instead of fixed QuarterDeck text.
-> - Reconcile accepted facts into the owning Specification file.
+**The QuarterDeck is a generated, throwaway projection.** It holds no state of its own —
+`BUILD_PLAN.md` remains the single source of build state, and the console can be deleted and
+regenerated at any time. This property keeps it honest: every decision made in the console writes
+back through the decision writer, and failed work is reopened and revised here interactively
+rather than by hand-editing plan files. Decisions of record are appended to the Ship's Log.
+
+## The Ship's Log — Decision Ledger
+
+`SHIPS_LOG.md` is the append-only decision ledger kept in the Blueprint directory. It records
+decisions, not mechanics: what was decided, why, what evidence supported it, and what it
+supersedes. Commit identifiers, file hashes, and execution detail belong to the execution log; the
+Ship's Log is the document a product owner — or a future design post — reads to understand how the
+product became what it is.
+
+```markdown
+## 2026-06-11 — {Decision title}
+source:     spike {id} | iterate | QuarterDeck review
+decision:   What was decided, in one or two sentences.
+why:        The compelling reason, including rejected alternatives when material.
+evidence:   <Target>/evidence/{id}.md
+supersedes: {earlier entry title}            ← optional
+```
+
+Three writers append entries, all through the single decision writer:
+
+1. `drydock build` — a spike whose finding is accepted records the answered question.
+2. `drydock iterate` — every Blueprint-scoped change records its rationale.
+3. The QuarterDeck — approve, revise, and reject decisions record the product owner's call.
+
+The building agent is instructed by prompt to write the decision, not the implementation detail.
+Entries are never rewritten or deleted; a reversed decision is appended with `supersedes:` so the
+decision tree stays intact.
 
 ## Spec Kit Compatibility
 
@@ -860,12 +931,13 @@ Drydock adds capabilities with no Spec Kit equivalent:
 |---|---|
 | `SCREEN-*.md` | Dedicated specification file type for UI screens |
 | `drydock iterate` | Post-build spec-and-code update loop |
-| QuarterDeck | Stakeholder review web application; interactive viewer for agile artifacts |
+| QuarterDeck | Generated, throwaway review console; decisions write back into the build through the single decision writer |
 | Agile plan mode | Spike-and-story delivery with per-object state and review gates |
+| Ship's Log | Append-only decision ledger written by build, iterate, and QuarterDeck decisions |
 | Drydock Rigging | Technology governance propagated to all target projects |
 | Ordered build planning | `BUILD_PLAN_INTENT.md`-driven work ordering with context optimization |
-| Brownfield import | Translate Spec Kit projects or source code into Drydock Specification |
-| Documentation generation | Specification-to-HTML documentation pipeline |
+| Brownfield import | Translate Spec Kit projects or source code into a Drydock Blueprint |
+| Documentation generation | Blueprint-to-HTML documentation pipeline |
 
 ### Import
 
@@ -874,7 +946,7 @@ drydock import <Blueprint> <SpecKitProject> --format speckit
 ```
 
 The translator reads `.specify/memory/constitution.md` and each Spec Kit feature directory, then
-creates a normal Drydock Specification. The resulting Drydock files become authoritative after
+creates a normal Drydock Blueprint. The resulting Drydock files become authoritative after
 product-owner review.
 
 | Spec Kit input | Drydock destination |
@@ -894,11 +966,11 @@ product-owner review.
 Translation performs these steps:
 
 1. Discover the Spec Kit constitution and feature directories.
-2. Scaffold the standard Drydock Specification.
+2. Scaffold the standard Drydock Blueprint.
 3. Classify project-wide intent, feature behavior, screens, architecture, persistence, and interfaces.
 4. Merge each statement into its owning Drydock file.
 5. Preserve unresolved or conflicting statements as open questions.
-6. Generate relationship headers and validate the proposed Specification.
+6. Generate relationship headers and validate the proposed Blueprint.
 7. Write a conversion report listing mapped, duplicated, ambiguous, and ignored content.
 
 The conversion report is review evidence, not a permanent Specification file. The translator must
@@ -917,26 +989,26 @@ Initial useful behaviors:
 
 Rules:
 
-1. Spec Kit output must resolve back into the Drydock Specification.
+1. Spec Kit output must resolve back into the Drydock Blueprint.
 2. Imported Spec Kit artifacts are inputs, not a second source of truth.
 3. Spec Kit directories generated by an adapter are disposable.
 4. Drydock remains usable without Spec Kit.
 
 ## Workflow 7: Configure Drydock
 
-`drydock config` sets the two global paths Drydock needs to locate Specifications and target
+`drydock config` sets the two global paths Drydock needs to locate Blueprints and target
 projects and selects the subscription CLI provider. Run once per installation; settings persist in
 the Drydock user-scoped `.env` unless overridden by process environment variables.
 
 ```text
 drydock config show                               # display current paths
-drydock config set blueprint_directory <path> # root of all Specifications
+drydock config set blueprint_directory <path>     # root of all Blueprints
 drydock config set target_directory <path>        # root of all target projects
 drydock config set llm_provider <claude|codex>     # subscription CLI provider
 ```
 
 Both paths are resolved at command run time. Changing them does not invalidate existing plans or
-evidence — Drydock resolves Specifications and targets by name relative to the configured roots.
+evidence — Drydock resolves Blueprints and targets by name relative to the configured roots.
 
 ## Workflow 8: Build Status
 
@@ -958,9 +1030,9 @@ built application, then generates or refines a build plan optimized for uncertai
 work. Use it when the scope is unclear, the initial plan feels oversized, or post-build drift has
 accumulated.
 
-1. `drydock analyze <Blueprint>` — score Specification coverage; surface open questions and missing
+1. `drydock analyze <Blueprint>` — score Blueprint coverage; surface open questions and missing
    detail that would create uncertainty during a build.
-2. `drydock analyze <Blueprint> <Target>` — compare Specification against the built application;
+2. `drydock analyze <Blueprint> <Target>` — compare the Blueprint against the built application;
    identify drift, incomplete implementation, and candidates for the next iteration.
 3. Apply findings with `drydock iterate` or `drydock plan` as appropriate.
 
@@ -969,9 +1041,9 @@ problem is not yet well-defined; run `drydock plan create` once ready to build.
 
 ## Workflow 10: Score
 
-`drydock build score` measures delivery health across seven dimensions — Specification completeness,
-implementation coverage, test coverage, documentation coverage, specification drift, build quality,
-and acceptance criteria coverage. Output is `SCORECARD.md` in the Specification directory.
+`drydock build score` measures delivery health across seven dimensions — Typed Specification
+completeness, implementation coverage, test coverage, documentation coverage, Blueprint drift, build quality,
+and acceptance criteria coverage. Output is `SCORECARD.md` in the Blueprint directory.
 
 ```mermaid
 flowchart LR
@@ -979,12 +1051,12 @@ flowchart LR
   classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
 
-  SPEC(["Specification"]):::dir --> SCORE["build score"]:::script
+  SPEC(["Blueprint"]):::dir --> SCORE["build score"]:::script
   TGT(["Target Project"]):::dir --> SCORE
   SCORE --> SC(["SCORECARD.md"]):::output
 ```
 
-1. `drydock build score <Blueprint> <Target>` — compare Specification against the built application;
+1. `drydock build score <Blueprint> <Target>` — compare the Blueprint against the built application;
    surfaces drift between what was specified and what was delivered.
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
    prioritize the next `drydock iterate` or `drydock plan create` run.
@@ -993,11 +1065,9 @@ flowchart LR
 
 ### 1. Review this plan
 
-Status: `IN REVIEW`
+Status: `FINALIZED`
 
-- Tighten the product language.
-- Review the proposed Specification contract.
-- Review workflows and command names.
+- This plan is under final review
 
 ### 2. Complete the command surface
 
@@ -1007,7 +1077,7 @@ Status: `CURRENT`
 - Add only proven workflow commands.
 - Keep existing lower-level operations callable for debugging and migration.
 
-### 3. Apply approved Specification changes
+### 3. Apply approved Typed Specification changes
 
 Status: `TODO`
 

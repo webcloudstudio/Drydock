@@ -18,14 +18,14 @@ its repository-bound shell interface with the Drydock command surface and packag
 
 ## Required Context
 
-The full authoritative Drydock Blueprint is [specs/drydock/spec.md](specs/drydock/spec.md). It is
+The full authoritative Drydock Blueprint is [specs/001-drydock/spec.md](specs/001-drydock/spec.md). It is
 the source of truth for intended V2 behavior, but do not load the entire document by default. Locate
 and read the sections relevant to the requested command, workflow, contract, or artifact. Read the
 full Blueprint only for cross-cutting design decisions.
 
 Context precedence:
 
-1. `specs/drydock/spec.md` — intended V2 product behavior and contracts.
+1. `specs/001-drydock/spec.md` — intended V2 product behavior and contracts.
 2. Current Drydock code and tests — implemented behavior that must remain stable unless changed.
 3. `DRYDOCK_DEVELOPMENT.md` — architecture and migration procedure.
 4. Prototyper, resolved from `prototyper_directory` in `METADATA.md` — read-only V1 implementation
@@ -38,7 +38,7 @@ tests or documentation rather than silently reproducing V1 behavior.
 
 Spec Kit is a separate, single-file specification language and SDD toolchain. Drydock is a
 **superset** of it: every Spec Kit concept maps to a Drydock equivalent, and Drydock adds
-capabilities with no Spec Kit counterpart (see `specs/drydock/spec.md` § "Spec Kit Compatibility"). Spec
+capabilities with no Spec Kit counterpart (see `specs/001-drydock/spec.md` § "Spec Kit Compatibility"). Spec
 Kit is the canonical reference for `drydock import --format speckit` and the generated compatibility
 views. It is an external reference, not a Drydock source of truth.
 
@@ -58,8 +58,8 @@ views. It is an external reference, not a Drydock source of truth.
 - Add focused unit tests and CLI contract tests for every implemented command.
 - Preserve working commands while replacing deferred command stubs.
 - When delegating work or constructing an agent prompt, include the V2 mission, context precedence,
-  relevant specification sections, and applicable V1 reference files. Do not inject the full
-  specification unless the task is cross-cutting.
+  relevant Blueprint sections, and applicable V1 reference files. Do not inject the full Blueprint
+  unless the task is cross-cutting.
 - Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
 - Never call an API-key-backed LLM provider. Use the subscription-authenticated `claude` CLI through
   a dedicated adapter.
@@ -75,7 +75,7 @@ Drydock/
   tests/             Pytest unit, CLI, integration, and parity tests
   bin/               Source-tree launchers; no business logic
   prompts/           Versioned LLM prompt contracts used by commands
-  specs/drydock/     Authoritative V2 Drydock Blueprint in Spec Kit-compatible layout
+  specs/001-drydock/     Authoritative V2 Drydock Blueprint in Spec Kit-compatible layout
   dist/              Build artifacts; not committed
 ```
 

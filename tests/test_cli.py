@@ -30,6 +30,7 @@ class TestHelpAndVersion:
         rc, out, err = run_cli("--help")
         assert rc == 0
         assert __copyright__ in out
+        assert "Blueprint-driven" in out
 
     def test_help_shows_all_top_commands(self):
         rc, out, _ = run_cli("--help")
@@ -75,6 +76,11 @@ class TestConfigShow:
 class TestConfigSet:
     def test_config_set_valid(self, tmp_spec_root, isolated_config):
         rc, out, err = run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        assert rc == 0
+        assert "blueprint_directory" in out
+
+    def test_legacy_config_key_is_accepted(self, tmp_spec_root, isolated_config):
+        rc, out, err = run_cli("config", "set", "specification_directory", str(tmp_spec_root))
         assert rc == 0
         assert "blueprint_directory" in out
 
@@ -220,6 +226,7 @@ class TestStubs:
         (["build", "score", "MySpec", "MyTarget"], "build score"),
         (["build", "MySpec", "MyTarget"], "build"),
         (["iterate", "MySpec", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "iterate"),
+        (["iterate", "MySpec", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "iterate"),
         (["analyze", "MySpec"], "analyze"),
         (["import", "MySpec", "MyTarget"], "import"),
     ]

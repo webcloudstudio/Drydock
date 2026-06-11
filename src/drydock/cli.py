@@ -111,6 +111,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _canonical_config_key(value: str) -> str:
+    """Normalize deprecated public configuration aliases."""
+    return "blueprint_directory" if value == "specification_directory" else value
+
+
+def _canonical_iterate_mode(value: str) -> str:
+    """Normalize the deprecated SPEC iterate mode."""
+    return "BLUEPRINT" if value == "SPEC" else value
+
+
 def _add_stub(
     sub: argparse._SubParsersAction, name: str, help_text: str, args_spec: list[tuple]
 ) -> argparse.ArgumentParser:  # noqa: SLF001
@@ -150,10 +160,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "key",
         choices=[
             "blueprint_directory",
-            "specification_directory",
             "target_directory",
             "llm_provider",
         ],
+        type=_canonical_config_key,
     )
     p_set.add_argument("value", metavar="<path>")
 
@@ -193,7 +203,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
     rig_sub = p_rig.add_subparsers(dest="rigging_command", metavar="<subcommand>")
     p_rig_c = rig_sub.add_parser("compact", help="Generate compact rigging derivatives.")
-    p_rig_c.add_argument("Spec", metavar="<Blueprint>")
+    p_rig_c.add_argument("Blueprint", metavar="<Blueprint>")
     p_rig_u = rig_sub.add_parser("update", help="Propagate rigging to a target project.")
     p_rig_u.add_argument("Target", metavar="<Target>")
     p_rig_v = rig_sub.add_parser("verify", help="Verify target project rigging compliance.")
@@ -208,7 +218,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ("show", "Show the current build plan."),
     ]:
         pp = plan_sub.add_parser(verb, help=help_str)
-        pp.add_argument("Spec", metavar="<Blueprint>")
+        pp.add_argument("Blueprint", metavar="<Blueprint>")
 
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Blueprint> <Target>
@@ -224,24 +234,31 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Blueprint> <Target>")
+    p_build.add_argument(
+        "args", nargs=argparse.REMAINDER, metavar="[status|score] <Blueprint> <Target>"
+    )
 
     # ── iterate ───────────────────────────────────────────────────────────────
     p_iter = sub.add_parser("iterate", help="Update Blueprint and target software together.")
-    p_iter.add_argument("Spec", metavar="<Blueprint>")
+    p_iter.add_argument("Blueprint", metavar="<Blueprint>")
     p_iter.add_argument("Target", metavar="<Target>")
-    p_iter.add_argument("Mode", metavar="<BOTH|SPEC|TGT>", choices=["BOTH", "SPEC", "TGT"])
+    p_iter.add_argument(
+        "Mode",
+        metavar="<BOTH|BLUEPRINT|TGT>",
+        choices=["BOTH", "BLUEPRINT", "TGT"],
+        type=_canonical_iterate_mode,
+    )
     p_iter.add_argument("Scope", metavar="<Scope>")
     p_iter.add_argument("Change", metavar="<Change>")
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser("analyze", help="Read-only advisory: surface gaps and drift.")
-    p_analyze.add_argument("Spec", metavar="<Blueprint>")
+    p_analyze.add_argument("Blueprint", metavar="<Blueprint>")
     p_analyze.add_argument("Target", metavar="<Target>", nargs="?")
 
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
-    p_import.add_argument("Spec", metavar="<Blueprint>")
+    p_import.add_argument("Blueprint", metavar="<Blueprint>")
     p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("--format", choices=["auto", "source", "speckit"], default="auto")
 
