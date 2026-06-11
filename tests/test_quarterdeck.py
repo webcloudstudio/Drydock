@@ -69,3 +69,8 @@ def test_drydock_console_exposes_existing_owned_documents():
         relative = item.get("path") or item.get("href")
         assert relative
         assert (root / "QuarterDeck" / relative).resolve().is_file(), item_id
+
+    ships_log = items["ships_log"]
+    assert ships_log["type"] == "jsonl"
+    assert ships_log["path"] == "../logs/ships_log.jsonl"
+    assert "tags" in ships_log["fields"]

@@ -9,8 +9,9 @@ its intended development context through working commands.
 
 Then read:
 
-1. The relevant sections of `docs/Drydock_Specification.md`.
-2. `docs/SOUNDINGS.md` to identify the current implementation and acceptance state.
+1. `SHIPS_LOG_PROCESS.md` for the mandatory Drydock decision-capture process.
+2. The relevant sections of `docs/Drydock_Specification.md`.
+3. `docs/SOUNDINGS.md` to identify the current implementation and acceptance state.
 
 `docs/Drydock_Specification.md` is the only authoritative product specification. An agent must ask
 Ed for approval before changing it. Once approved, behavior and specification changes land
@@ -95,6 +96,7 @@ Do not assume V1 behavior is correct merely because it exists. For each capabili
 4. Implement the approved contract as a Drydock Python module and CLI command.
 5. Prove the contract with focused tests, relevant parity cases, and full verification.
 6. Update `docs/SOUNDINGS.md` with the final state and concrete evidence.
+7. Perform the final Ship's Log review required by `SHIPS_LOG_PROCESS.md`.
 
 If the specification and V1 disagree, the specification wins. If the specification is silent, keep
 proven V1 behavior unless it conflicts with Drydock's package architecture or command contracts.
@@ -281,7 +283,6 @@ Working now:
 - `drydock config show|set`
 - `drydock init`
 - `drydock validate`
-- `drydock log append|audit`
 - `drydock rigging compact`
 - source-tree launchers, package foundation, and Rigging resource resolution
 

@@ -287,15 +287,4 @@ specification_directory: ../Specifications   # path to specification repo (Proto
 - Only include commands and endpoints that actually exist for the project.
 - Do not create `Links.md` — all URLs belong in AGENTS.md `## Bookmarks`.
 
-## Ship's Log Capture
-
-- After making a material product or architecture decision, accepting a spike finding, materially
-  changing scope, rejecting a meaningful alternative, reversing an earlier decision, or reaching a
-  material delivery milestone, immediately run `drydock log append <Target>`.
-- Record a concise title, summary, rationale, source, affected scope, evidence, alternatives, tags,
-  and superseded event IDs when applicable.
-- Do not record routine implementation mechanics, file edits, commands, commits, or test runs.
-- `<Target>/logs/ships_log.jsonl` is the only Ship's Log artifact. Never create a Markdown Ship's
-  Log, rewrite an existing event, or delete an event. Append corrections with `supersedes`.
-
 # CLAUDE_RULES_END

@@ -2,13 +2,14 @@
 
 ## Required First Action
 
-**Always read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) in full before planning, editing,
-delegating, or constructing prompts.** Drydock is not yet fully built; that file supplies the
-development architecture, V1-to-V2 migration map, source precedence, and verification contract that
-the current code cannot yet express.
+**Always read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) and
+[SHIPS_LOG_PROCESS.md](SHIPS_LOG_PROCESS.md) in full before planning, editing, delegating, or
+constructing prompts.** Drydock is not yet fully built; these files supply the development
+architecture, V1-to-V2 migration map, source precedence, verification contract, and decision-capture
+process that the current code cannot yet express.
 
-Every delegated agent prompt must include `DRYDOCK_DEVELOPMENT.md` or instruct the agent to read it
-in full before beginning work.
+Every delegated agent prompt must include both files or instruct the agent to read them in full
+before beginning work.
 
 Drydock is the installable V2 successor to Prototyper: a Python CLI that plans, builds, tests,
 reviews, and evolves software from Drydock Blueprints expressed as Typed Specifications.
@@ -62,6 +63,8 @@ generated compatibility views. It is an external reference, not a Drydock source
 - Add focused unit tests and CLI contract tests for every implemented command.
 - Preserve working commands while replacing deferred command stubs.
 - Update `docs/SOUNDINGS.md` when a capability's implementation or verification state changes.
+- Follow `SHIPS_LOG_PROCESS.md`: record material decisions and milestones immediately, then perform
+  a final capture review before committing or completing a task.
 - When delegating work or constructing an agent prompt, include the V2 mission, context precedence,
   relevant specification sections, and applicable V1 reference files. Do not inject the full
   specification unless the task is cross-cutting.

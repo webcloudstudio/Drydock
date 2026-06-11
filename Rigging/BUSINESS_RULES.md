@@ -504,25 +504,6 @@ messages_directory: ../Messages              # path to Messages repo (projects t
 - Only include commands and endpoints that actually exist for the project.
 - Do not create `Links.md` — all URLs belong in AGENTS.md `## Bookmarks`.
 
-### SHIPS_LOG_CAPTURE
-**Scope:** agents-md
-**Applies at:** PROTOTYPE
-**Requirement:** Every agent records material product decisions and delivery milestones in the
-target project's canonical JSONL Ship's Log.
-**Rationale:** The reason for a change is lost when only implementation diffs and execution logs
-remain. Immediate structured capture preserves the product decision trail for QuarterDeck and
-downstream publishing.
-**Rule text:**
-
-- After making a material product or architecture decision, accepting a spike finding, materially
-  changing scope, rejecting a meaningful alternative, reversing an earlier decision, or reaching a
-  material delivery milestone, immediately run `drydock log append <Target>`.
-- Record a concise title, summary, rationale, source, affected scope, evidence, alternatives, tags,
-  and superseded event IDs when applicable.
-- Do not record routine implementation mechanics, file edits, commands, commits, or test runs.
-- `<Target>/logs/ships_log.jsonl` is the only Ship's Log artifact. Never create a Markdown Ship's
-  Log, rewrite an existing event, or delete an event. Append corrections with `supersedes`.
-
 ### AGENTS_CAPABILITIES_SECTION
 **Scope:** agents-md
 **Applies at:** PROTOTYPE

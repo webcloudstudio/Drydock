@@ -261,11 +261,10 @@ updated by `drydock iterate` as specification files and application code evolve.
 - **`SCORECARD.md`** — Blueprint and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Blueprint and the built software
   - Created and updated: `drydock build score`
 
-- **`<Target>/logs/ships_log.jsonl`** — Append-only JSONL ledger of product and design events; see
+- **`logs/ships_log.jsonl`** — Drydock's append-only JSONL ledger of product and design events; see
   "The Ship's Log"
-  - Created and updated: any governed target agent, `drydock build` (accepted spike findings),
-    `drydock iterate` (change rationale), and QuarterDeck review decisions — all through
-    `drydock log append`
+  - Created and updated: agents developing Drydock, according to `SHIPS_LOG_PROCESS.md`, through
+    the repository-local validated persistence utility
 
 **Console related documents** — generated per target project; read by the QuarterDeck and updated by
 build and review actions.
@@ -876,27 +875,34 @@ rather than by hand-editing plan files. Decisions of record are appended to the 
 
 ## The Ship's Log — Your Decision Log
 
-The Ship's Log is a conceptual decision-log view backed only by
-`<Target>/logs/ships_log.jsonl`. It records material decisions and milestones, not mechanics: what
-was decided or reached, why, what evidence supported it, and what it supersedes. Commit
-identifiers, file hashes, routine edits, commands, and test runs belong to execution logs. The
-QuarterDeck renders the JSONL through its reusable `jsonl` page type; downstream publishing tools
-consume the same canonical records directly. No `SHIPS_LOG.md` artifact exists.
+The Ship's Log is a conceptual decision-log view backed only by Drydock's
+`logs/ships_log.jsonl`. It records material decisions and milestones from development of the
+Drydock application, not mechanics: what was decided or reached, why, what evidence supported it,
+and what it supersedes. Commit identifiers, file hashes, routine edits, commands, and test runs
+belong to execution logs. The QuarterDeck renders the JSONL through its reusable `jsonl` page type;
+downstream publishing tools consume the same canonical records directly. No `SHIPS_LOG.md` artifact
+exists.
 
 ```json
 {"schema_version":1,"event_id":"uuid","recorded_at":"2026-06-11T18:32:00Z","event_type":"decision","title":"Decision title","summary":"What was decided.","rationale":"Why, including material rejected alternatives.","source":{"type":"agent","command":"drydock build","provider":"codex"},"affected_scope":[],"alternatives":[],"evidence":[],"supersedes":[],"tags":[]}
 ```
 
-Governed target agents and Drydock workflows append entries through `drydock log append`:
+Drydock development agents are instructed by the required repository-local
+`SHIPS_LOG_PROCESS.md`, not shared Rigging or target-project injection. An agent evaluates capture
+immediately after a material decision or milestone and performs a final capture review before
+commit or task completion. The agent invokes `python bin/ships_log.py record`; users are not
+expected to record events manually, and Ship's Log operations are not part of the public `drydock`
+CLI.
 
-1. Any target agent records a material decision or delivery milestone immediately.
-2. `drydock build` records an accepted spike finding.
-3. `drydock iterate` records every Blueprint-scoped change rationale.
-4. The QuarterDeck records approve, revise, reject, and reopen decisions.
+The repository-local utility validates and appends entries. Entries are never rewritten or
+deleted; a reversed decision appends a new event whose `supersedes` list references earlier event
+IDs. Agents use the existing `tags` list to classify applicable records as `open-item`,
+`deferred-item`, or `accepted-risk`; QuarterDeck displays those tags in its Ship's Log JSONL view.
 
-Agents are instructed by injected Rigging and command prompts to record the decision or milestone,
-not implementation detail. Entries are never rewritten or deleted; a reversed decision appends a
-new event whose `supersedes` list references earlier event IDs.
+Standard agent-driven capture during Drydock-managed target design and build workflows remains an
+intended product capability so users can review and publish their decision history. Target-project
+injection and the supporting decision backend are deferred until this Drydock-only workflow has
+been validated.
 
 **Audit by diff.** Because every Blueprint lives in git, the log can be cross-checked: diff the
 specification files between commits and produce an English analysis of what changed, inferring the
@@ -956,7 +962,7 @@ Drydock adds capabilities with no Spec Kit equivalent:
 | `drydock iterate` | Post-build spec-and-code update loop |
 | QuarterDeck | Generated, throwaway review console; decisions write back into the build through the single decision writer |
 | Agile plan mode | Spike-and-story delivery with per-object state and review gates |
-| Ship's Log | JSONL-only append-only event ledger written by governed agents and Drydock workflows |
+| Ship's Log | Drydock-only JSONL append-only event ledger written automatically by development agents |
 | Drydock Rigging | Technology governance propagated to all target projects |
 | Ordered build planning | `BUILD_PLAN_INTENT.md`-driven work ordering with context optimization |
 | Brownfield import | Translate Spec Kit projects or source code into a Drydock Blueprint |

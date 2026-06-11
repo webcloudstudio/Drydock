@@ -52,14 +52,6 @@ def ships_log_path(target_directory: Path) -> Path:
     return target_directory / "logs" / "ships_log.jsonl"
 
 
-def resolve_target(target_root: Path, target_name: str) -> Path:
-    candidate = (target_root / target_name).resolve()
-    root = target_root.resolve()
-    if root not in candidate.parents or not candidate.is_dir():
-        raise ShipsLogError(f"Target directory does not exist under configured root: {target_name}")
-    return candidate
-
-
 def _nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 

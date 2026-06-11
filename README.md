@@ -144,17 +144,19 @@ provider events. The same events are appended immediately to `<Target>/logs/even
 Timeouts terminate the child process and return exit code `124`; interruption terminates the child,
 records exit code `130`, and re-raises `KeyboardInterrupt`.
 
-Material product decisions and delivery milestones are separate from execution mechanics:
+Material Drydock product decisions and delivery milestones are separate from execution mechanics.
+Agents developing Drydock follow `SHIPS_LOG_PROCESS.md` and use the repository-local utility:
 
 ```text
-drydock log append <Target> --event-type decision --title "..." --summary "..." \
+python bin/ships_log.py record --event-type decision --title "..." --summary "..." \
   --rationale "..." --source-type agent [--scope ...] [--evidence ...] [--tag ...]
-drydock log audit <Target>
+python bin/ships_log.py audit
 ```
 
-The sole Ship's Log artifact is `<Target>/logs/ships_log.jsonl`. It is append-only, rendered by
-QuarterDeck's generic JSONL viewer, and intended as the direct input to downstream publishing tools.
-No Markdown Ship's Log is generated.
+The sole Ship's Log artifact is Drydock's `logs/ships_log.jsonl`. It is append-only, rendered by
+QuarterDeck's generic JSONL viewer, and intended as the direct input to downstream publishing
+tools. It is not a public `drydock` command or a target-project Rigging rule. No Markdown Ship's Log
+is generated.
 
 ## Project Governance Documents
 
@@ -163,6 +165,7 @@ No Markdown Ship's Log is generated.
 - `docs/SOUNDINGS.md` — authoritative implementation acceptance/readiness checklist and completion
   evidence.
 - `docs/SEA_TRIALS.md` — strategic product outcomes and proof-of-methodology criteria.
+- `SHIPS_LOG_PROCESS.md` — mandatory Drydock-only agent decision-capture process.
 
 QuarterDeck exposes these documents and the other owned artifacts under `docs/` directly.
 
