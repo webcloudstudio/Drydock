@@ -74,20 +74,33 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SPEC(["Blueprint"]):::dir --> PLAN["plan"]:::script
+  SETUP["Setup"]:::script --> PLAN["Plan"]:::script
   PLAN --> BP{{"BUILD_PLAN.md"}}:::output
-  BP --> BUILD["build"]:::script
+  BP --> BUILD["Build"]:::script
   BUILD --> SOFTWARE(["Working Software"]):::output
   SOFTWARE --> CONSOLE["QuarterDeck"]:::web
-  CONSOLE --> ITERATE["iterate"]:::script
+  CONSOLE --> ITERATE["Iterate"]:::script
   ITERATE --> PLAN
 ```
 
-## Configuration
+## Drydock Setup - Laying Your Keel
 
-Drydock reads four global variables. Set them in the process environment or with
-`drydock config set`. Process environment variables override the user-scoped Drydock `.env`.
-Configured Blueprint and Target roots never belong in project `METADATA.md`.
+Drydock setup installs the CLI, records user-scoped configuration, and initializes a Blueprint
+workspace. Process environment variables override the user-scoped Drydock `.env`. Configured
+Blueprint and Target roots never belong in project `METADATA.md`.
+
+| Step | Command | Description |
+|---|---|---|
+| Install | `pip install drydock` | **User:** Installs Drydock. |
+| Configure | `drydock config set ...` | **User:** Sets `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and planning defaults. **Output:** user-scoped Drydock `.env`. |
+| Initialize | `drydock init <Blueprint>` | **Drydock:** Creates `<BLUEPRINT_DIRECTORY>/<Blueprint>/`. |
+
+```mermaid
+flowchart LR
+  Install --> Configure --> Initialize
+```
+
+### Configuration
 
 | Variable | Purpose |
 |---|---|
@@ -106,6 +119,66 @@ drydock config set prompt_warn_kb <kb>
 
 `SPECIFICATION_DIRECTORY` and `drydock config set specification_directory` are deprecated
 compatibility aliases for `BLUEPRINT_DIRECTORY` and `blueprint_directory`.
+
+### Initialized Blueprint
+
+`drydock init <Blueprint>` creates the following workspace from Drydock's Typed Specification
+templates. It does not create imported sources, analysis, build configuration, or a build plan.
+
+```text
+<BLUEPRINT_DIRECTORY>/<Blueprint>/
+├── ACCEPTANCE_CRITERIA.md
+├── ARCHITECTURE.md
+├── DATABASE.md
+├── FEATURE-Example.md
+├── HOMEPAGE.md
+├── IDEAS.md
+├── INTENT.md
+├── METADATA.md
+├── README.md
+├── SCREEN-Example.md
+├── UI-Component-Example.md
+└── UI.md
+```
+
+## Drydock Project Planning
+
+Planning turns available project material into a validated, accepted build plan. Conformance is
+optional: `drydock plan create` uses whatever Blueprint inputs are available, including preserved
+Markdown under `<Blueprint>/sources/`.
+
+| Step | Command | Description |
+|---|---|---|
+| Import | `drydock import <Blueprint> <Source> --format <Format>` | **Drydock:** Imports the user's Markdown. **Output:** `<Blueprint>/sources/`. |
+| Analyze | `drydock analyze <Blueprint> <Target>` | **LLM:** Identifies gaps, recommendations, questions, configuration choices, and potential spikes. **Output:** `<Target>/QuarterDeck/planning/ANALYSIS.md` and `<Target>/QuarterDeck/questionnaires/planning.json`. |
+| User Review | `QuarterDeck Review` | **User:** Answers planning questions and sets build options. **Input:** QuarterDeck analysis and questionnaire. **Output:** `<Blueprint>/BUILD_CONFIGURATION.md`. |
+| Conform | `drydock conform <Blueprint>` | **LLM:** Optionally converts available source material using the approved build configuration. **Input:** `<Blueprint>/sources/` and `<Blueprint>/BUILD_CONFIGURATION.md`. **Output:** Typed Specification files under `<Blueprint>/`. |
+| Create | `drydock plan create <Blueprint> <Target>` | **LLM:** Creates the Draft plan from all available Blueprint inputs and selected build rules. **Output:** `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
+| User Review | `QuarterDeck Review` | **User:** Reviews the Draft plan; orders and groups work. **Input/Output:** `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
+| Validate | `drydock plan validate <Blueprint> <Target>` | **Drydock:** Validates the Draft plan. **Input:** `<Target>/BUILD_PLAN.md`. **Output:** validation result. |
+| Approve | `drydock plan approve <Blueprint> <Target>` | **User:** Accepts the validated Draft plan. **Output:** `<Target>/BUILD_PLAN.md` state changes from Draft to Accepted. |
+
+```mermaid
+flowchart LR
+  Import["Import<br/><Blueprint>/sources/"] --> Analyze
+  Analyze --> Analysis["QuarterDeck Analysis<br/>and Questionnaire"]
+  Analysis --> ConfigurationReview["User Review"]
+  ConfigurationReview --> Configuration["<Blueprint>/BUILD_CONFIGURATION.md"]
+  Configuration --> Conform["Conform Optional"]
+  Configuration --> Create
+  Conform --> Create
+  Create --> Draft["Draft BUILD_PLAN.md"]
+  Draft --> PlanReview["User Review<br/>Order and Group"]
+  PlanReview --> Validate --> Approve --> Accepted["Accepted BUILD_PLAN.md"]
+```
+
+Planning artifacts have three distinct ownership and persistence classes:
+
+- `<Blueprint>/sources/` — preserved imported source material.
+- `<Blueprint>/BUILD_CONFIGURATION.md` — durable user decisions that affect conformance and
+  planning.
+- `<Target>/QuarterDeck/planning/` and `<Target>/QuarterDeck/questionnaires/` — disposable analysis
+  and questionnaire presentation artifacts.
 
 ## Drydock commands
 
@@ -135,15 +208,16 @@ man pages.
 | Syntax | Purpose |
 |---|---|
 | `drydock plan create <Blueprint> <Target>` | Produce a draft executable plan and target-local Planning Session |
+| `drydock plan validate <Blueprint> <Target>` | Validate the draft executable plan |
+| `drydock plan approve <Blueprint> <Target>` | Accept the validated draft plan |
 
-`drydock plan create` reads ordered conformed specifications and imported Markdown sources, chooses
-the smallest safe executable decomposition, surfaces open questions as spikes, and writes a draft
-`<Target>/BUILD_PLAN.md`. Input inventory and `BUILD_PLAN_INTENT.md` maintenance are internal parts
-of this command, not a separate user ceremony. It also creates the target workspace and generates
-its QuarterDeck Planning Session. A draft plan has no runnable frontier. Approval in the Planning
-Session establishes the executable baseline and makes its frontier runnable. Future plan-create
-optimization may group compatible work to reduce build cost; there is no public plan-revision
-workflow.
+`drydock plan create` reads all available Blueprint inputs and selected build rules, then writes a
+draft `<Target>/BUILD_PLAN.md`. Available inputs may be conformed Typed Specifications, preserved
+Markdown under `<Blueprint>/sources/`, or both. Input inventory and `BUILD_PLAN_INTENT.md`
+maintenance are internal parts of this command, not a separate user ceremony. It also creates the
+target workspace and generates its QuarterDeck Planning Session. A draft plan has no runnable
+frontier. During User Review, the product owner orders and groups work. Approval establishes the
+executable baseline and makes its frontier runnable.
 
 Every Target has one executable **BUILD_PLAN.md** stored in its Target root beside its execution
 evidence, logs, and QuarterDeck projection.
@@ -163,6 +237,7 @@ evidence, logs, and QuarterDeck projection.
 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> "<Change>"` | Update Blueprint files and target software |
 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` | Preserve Markdown input or reverse-engineer an existing project into a proposed Blueprint |
 | `drydock analyze <Blueprint> [<Target>]` | Read-only advisory: surface open questions, coverage gaps, and drift between Blueprint and built application |
+| `drydock conform <Blueprint>` | Optionally convert available source material into Typed Specifications using approved build configuration |
 
 ### Drydock Rigging
 
@@ -199,6 +274,10 @@ not authored as specification files.
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
   - Created and updated: `drydock import <Blueprint> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
+
+- **`BUILD_CONFIGURATION.md`** — Durable product-owner decisions controlling conformance and planning
+  - Created and updated: QuarterDeck Planning Session User Review
+  - Used by: `drydock conform <Blueprint>` and `drydock plan create <Blueprint> <Target>`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
 updated by `drydock iterate` as specification files and application code evolve.
@@ -263,6 +342,14 @@ updated by `drydock iterate` as specification files and application code evolve.
 - **`<Target>/BUILD_PLAN.md`** — The single generated executable build plan
   - Created: `drydock plan create <Blueprint> <Target>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
+
+- **`<Target>/QuarterDeck/planning/ANALYSIS.md`** — Disposable Planning Session analysis
+  - Created and updated: `drydock analyze <Blueprint> <Target>`
+
+- **`<Target>/QuarterDeck/questionnaires/planning.json`** — Disposable Planning Session questions
+  and configuration choices
+  - Created and updated: `drydock analyze <Blueprint> <Target>`
+  - Answered through: QuarterDeck Planning Session User Review
 
 - **`SCORECARD.md`** — Blueprint and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Blueprint and the built software
   - Created and updated: `drydock build score`
@@ -368,7 +455,7 @@ All four use the same four states:
 The plan itself has one lifecycle state:
 
 - `draft` — the Planning Session is active and no work is runnable
-- `approved` — the product owner accepted the complete decomposition and the frontier is runnable
+- `approved` — the product owner accepted the complete plan and the frontier is runnable
 - `closed` — all required work and acceptance gates are closed
 
 ### Build Plan Header
@@ -675,22 +762,18 @@ flowchart LR
 1. `drydock import <Blueprint> <Source> --format markdown` — preserves arbitrary Markdown under
    the Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and
    Spec Kit adapters use the same intake boundary when implemented.
-2. Review the proposed Blueprint. Ambiguous or conflicting facts appear as `## Open Questions`
-   rather than silently becoming requirements.
-3. `drydock plan create <Blueprint> <Target>` inventories the Blueprint inputs, creates the draft
-   executable plan in the Target, and generates the Planning Session.
-4. Review and approve the complete plan in QuarterDeck, then proceed through its runnable frontier.
+2. Continue through Drydock Project Planning. Analyze identifies ambiguity and configuration
+   choices without silently turning them into requirements.
+3. Optionally conform the imported material after User Review establishes build configuration.
+4. Create, review, validate, and approve the plan before proceeding through its runnable frontier.
 
-## Workflow 2: Build from a Blueprint
+## Workflow 2: Build an Accepted Plan
 
-Builds a project from a Blueprint's Typed Specification files through ordered work blocks.
-`drydock plan create` generates `BUILD_PLAN.md` from the curated `BUILD_PLAN_INTENT.md` and
-dependency headers; `drydock build`
-executes each block as a separate agent call. `drydock plan create` computes the assembled prompt
-size for every block and warns — it does not fail — when a block exceeds `PROMPT_WARN_KB`
-(default 50KB); resolve the warning by splitting the story or compacting an input file. Each block
-records a content hash per input Specification file; re-running rebuilds only the stale work whose
-spec hashes changed.
+Build executes the accepted work blocks in `<Target>/BUILD_PLAN.md`. The accepted plan may have
+been created from Typed Specifications, imported Markdown, or both. Each block runs as a separate
+agent call. Drydock warns — it does not fail — when an assembled block prompt exceeds
+`PROMPT_WARN_KB` (default 50KB); resolve the warning by splitting the story or compacting an input
+file. Each block records a content hash per input file; re-running rebuilds only stale work.
 
 ```mermaid
 flowchart LR
@@ -698,19 +781,13 @@ flowchart LR
   classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
 
-  INIT["init"]:::script --> SPEC(["Blueprint"]):::dir
-  SPEC --> VALIDATE["validate"]:::script
-  VALIDATE --> PLAN{{"BUILD_PLAN.md"}}:::output
+  PLAN{{"Accepted BUILD_PLAN.md"}}:::output
   PLAN --> BUILD["build"]:::script
   BUILD --> SOFTWARE(["Working Software"]):::output
 ```
 
-1. Start from conformed Typed Specifications or import arbitrary Markdown source material.
-2. `drydock plan create <Blueprint> <Target>` inventories the available planning inputs and creates
-   the smallest safe draft decomposition in the Target.
-   Trivial work may be one story plus AC; larger work may use optional feature parents and spikes.
-3. Review and approve the draft in the target-local QuarterDeck Planning Session.
-4. `drydock build <Blueprint> <Target>` executes the approved frontier. Stories that create or
+1. Complete Drydock Project Planning and approve `<Target>/BUILD_PLAN.md`.
+2. `drydock build <Blueprint> <Target>` executes the approved frontier. Stories that create or
    update conformed Typed Specifications are included only where durable authority, dependencies,
    or safe incremental delivery require them.
 
@@ -739,7 +816,7 @@ flowchart LR
 ```
 
 1. `drydock plan create <Blueprint> <Target>` — generates a draft `BUILD_PLAN.md` and Planning Session.
-2. The product owner approves the complete decomposition in the Planning Session. Approval exposes
+2. The product owner approves the complete plan in the Planning Session. Approval exposes
    the runnable frontier.
 3. `drydock build <Blueprint> <Target>` — computes the runnable frontier, executes spikes in parallel
    and stories serially, and writes evidence files for each object.
@@ -909,7 +986,7 @@ to `BUILD_PLAN.md` by the same decision writer used by the CLI. Both files regen
 decision.
 
 Before execution begins, the generated `plan_decision` page runs the Planning Session. It presents
-the draft decomposition and applies whole-plan approval through the authoritative plan-state
+the Draft plan and applies whole-plan approval through the authoritative plan-state
 writer. Ordinary QuarterDeck review controls do not approve a plan.
 
 The QuarterDeck does not replace the Blueprint, `BUILD_PLAN.md`, or build engine. It renders
@@ -1091,22 +1168,12 @@ Rules:
 3. Spec Kit directories generated by an adapter are disposable.
 4. Drydock remains usable without Spec Kit.
 
-## Workflow 7: Configure Drydock
+## Configuration Reference
 
-`drydock config` sets the two global paths Drydock needs to locate Blueprints and target
-projects and selects the subscription CLI provider. Run once per installation; settings persist in
-the Drydock user-scoped `.env` unless overridden by process environment variables.
-
-```text
-drydock config show                               # display current paths
-drydock config set blueprint_directory <path>     # root of all Blueprints
-drydock config set target_directory <path>        # root of all target projects
-drydock config set llm_provider <claude|codex>     # subscription CLI provider
-drydock config set prompt_warn_kb <kb>            # prompt size warning threshold (default 50)
-```
-
-Both paths are resolved at command run time. Changing them does not invalidate existing plans or
-evidence — Drydock resolves Blueprints and targets by name relative to the configured roots.
+See **Drydock Setup - Laying Your Keel** for the setup workflow and configuration commands.
+Configuration persists in the user-scoped Drydock `.env` unless overridden by process environment
+variables. Paths resolve at command run time, so changing configured roots does not invalidate
+existing plans or evidence.
 
 ## Workflow 8: Build Status
 
@@ -1123,10 +1190,9 @@ whether to proceed or revise the plan.
 
 ## Workflow 9: Analyze and Refine
 
-`drydock analyze` evaluates the Typed Specification and — when `<Target>` is provided — the
-built application, then generates or refines a build plan optimized for uncertain or incremental
-work. Use it when the scope is unclear, the initial plan feels oversized, or post-build drift has
-accumulated.
+`drydock analyze` evaluates available Blueprint inputs and — when `<Target>` is provided — the
+built application. During Drydock Project Planning it creates the target-local Planning Session
+analysis and questionnaire. It does not create or modify `BUILD_PLAN.md`.
 
 1. `drydock analyze <Blueprint>` — score Blueprint coverage; surface open questions and missing
    detail that would create uncertainty during a build.
@@ -1134,8 +1200,8 @@ accumulated.
    identify drift, incomplete implementation, and candidates for the next iteration.
 3. Apply findings with `drydock iterate` or `drydock plan` as appropriate.
 
-`drydock analyze` examines and advises — it does not modify `BUILD_PLAN.md`. Run it when the
-problem is not yet well-defined; run `drydock plan create` once ready to build.
+`drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
+Planning Session outputs before running `drydock plan create`.
 
 ## Workflow 10: Score
 
