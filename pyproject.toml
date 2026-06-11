@@ -4,15 +4,42 @@ build-backend = "hatchling.build"
 
 [project]
 name = "drydock"
-version = "0.1.0"
 description = "Specification-driven software delivery."
 readme = "README.md"
 license = { text = "Proprietary" }
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
+authors = [{ name = "Ed Barlow", email = "edward.m.barlow@gmail.com" }]
+keywords = [
+    "specification-driven-development",
+    "sdd",
+    "spec-kit",
+    "cli",
+    "code-generation",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+]
+dynamic = ["version"]
 dependencies = [
     "python-dotenv>=1.0",
 ]
+
+# TODO(ed): confirm canonical URLs before any public release.
+[project.urls]
+Homepage = "https://github.com/webcloudstudio/drydock"
+Repository = "https://github.com/webcloudstudio/drydock"
+Issues = "https://github.com/webcloudstudio/drydock/issues"
 
 [project.scripts]
 drydock = "drydock.cli:main"
@@ -20,8 +47,13 @@ drydock = "drydock.cli:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "ruff>=0.4",
+    "mypy>=1.10",
 ]
+
+[tool.hatch.version]
+path = "src/drydock/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/drydock"]
@@ -40,6 +72,26 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["drydock"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+# TODO(ed): raise once the LLM/build commands land. Start permissive to keep CI green.
+fail_under = 0
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+files = ["src/drydock"]
+explicit_package_bases = true
+namespace_packages = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
 
 [tool.ruff]
 line-length = 100

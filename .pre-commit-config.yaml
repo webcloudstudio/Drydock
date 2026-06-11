@@ -1,0 +1,31 @@
+# Drydock pre-commit hooks. Install once: `uv run pre-commit install`
+# Run on all files: `uv run pre-commit run --all-files`
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^Rigging/
+      - id: end-of-file-fixer
+        exclude: ^Rigging/
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: rigging-mirror
+        name: Rigging mirrors Prototyper RulesEngine
+        entry: python scripts/check_rigging_mirror.py
+        language: system
+        # Re-run only when a governed Rigging file changes; skips when Prototyper is absent.
+        files: ^Rigging/
+        pass_filenames: false

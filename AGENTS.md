@@ -33,6 +33,17 @@ Context precedence:
 When these conflict, implement the V2 specification. Record intentional incompatibilities in code
 tests or documentation rather than silently reproducing V1 behavior.
 
+### GitHub Spec Kit — external baseline
+
+Spec Kit is a separate, single-file specification language and SDD toolchain. Drydock is a
+**superset** of it: every Spec Kit concept maps to a Drydock equivalent, and Drydock adds
+capabilities with no Spec Kit counterpart (see `docs/drydock.md` § "Spec Kit Compatibility"). Spec
+Kit is the canonical reference for `drydock import --format speckit` and the generated compatibility
+views. It is an external reference, not a Drydock source of truth.
+
+- GitHub Spec Kit — https://github.com/github/spec-kit
+- Spec Kit documentation — https://github.github.com/spec-kit/
+
 ## Development Rules
 
 - Prototyper may always be read for development reference. Do not modify any Prototyper file unless
