@@ -166,11 +166,61 @@ def _inline_md(text: str) -> str:
     return rendered
 
 
+def _strip_frontmatter(text: str) -> str:
+    """Remove YAML frontmatter (--- block) if present at the top of the text."""
+    if text.startswith("---\n") or text.startswith("---\r\n"):
+        end = text.find("\n---", 4)
+        if end != -1:
+            return text[end + 4 :].lstrip("\n")
+    return text
+
+
+def _split_h2_sections(text: str) -> list[tuple[str, str]]:
+    """Split markdown at ## headings. Returns (tab_label, content) pairs."""
+    parts = re.split(r"^## (.+)$", text, flags=re.MULTILINE)
+    result: list[tuple[str, str]] = []
+    intro = parts[0].strip()
+    if intro:
+        body = re.sub(r"^# [^\n]*\n", "", intro, count=1).strip()
+        if body:
+            result.append(("Overview", body))
+    for i in range(1, len(parts) - 1, 2):
+        label = parts[i].strip()
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        if label or content:
+            result.append((label, content))
+    return result
+
+
+def _render_markdown_tabbed(item: dict[str, Any], text: str) -> str:
+    """Render markdown with ## sections as switchable tabs."""
+    sections = _split_h2_sections(text)
+    if not sections:
+        return _md(text)
+    tab_btns = "".join(
+        f"<button class='md-tab-btn{' active' if i == 0 else ''}' onclick='mdTab(this,{i})'>"
+        f"{html.escape(t)}</button>"
+        for i, (t, _) in enumerate(sections)
+    )
+    tab_panes = "".join(
+        f"<div class='md-tab-pane{' active' if i == 0 else ''}' data-tab='{i}'>{_md(c)}</div>"
+        for i, (_, c) in enumerate(sections)
+    )
+    return (
+        f"<h1>{html.escape(item.get('label', ''))}</h1>"
+        f"<div class='md-tabs'><div class='md-tab-bar'>{tab_btns}</div>"
+        f"<div class='md-tab-body'>{tab_panes}</div></div>"
+    )
+
+
 # ── Renderers (one per type; each takes the item dict) ──────────────────────────
 
 
 def render_markdown_item(item: dict[str, Any]) -> str:
-    return _md(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    text = _strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    if item.get("tabs"):
+        return _render_markdown_tabbed(item, text)
+    return _md(text)
 
 
 def render_editable_markdown(item: dict[str, Any]) -> str:
@@ -451,14 +501,28 @@ def render_jsonl_item(item: dict[str, Any]) -> str:
         reverse=item.get("sort_direction", "desc") == "desc",
     )
     fields = item.get("fields") or ["recorded_at", "event_type", "title", "summary"]
-    headings = "".join(f"<th>{html.escape(str(field))}</th>" for field in fields)
+    date_fields = set(item.get("date_fields", []))
+    badge_field = item.get("badge_field")
+    badge_colors: dict[str, str] = item.get("badge_colors") or {}
+
+    badge_hdr = "<th></th>" if badge_field else ""
+    headings = badge_hdr + "".join(f"<th>{html.escape(str(f))}</th>" for f in fields)
     rows = []
     for record in records:
         cells = []
+        if badge_field:
+            bval = _jsonl_value(record, badge_field)
+            bcolor = badge_colors.get(str(bval) if bval is not None else "", "#94a3b8")
+            cells.append(
+                f"<td><span class='j-badge' style='background:{html.escape(bcolor)}'>"
+                f"{html.escape(str(bval or ''))}</span></td>"
+            )
         for field in fields:
             value = _jsonl_value(record, field)
             if isinstance(value, dict | list):
                 value = json.dumps(value, sort_keys=True)
+            if field in date_fields and value is not None:
+                value = str(value)[:10]
             cells.append(f"<td>{html.escape(str(value if value is not None else ''))}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
 
@@ -516,9 +580,9 @@ def render_questionnaire(item: dict[str, Any]) -> str:
         )
 
     done = str(data.get("state", "open")) in _DONE_STATES
-    badge = " <span class='state-done'>[done]</span>" if done else ""
+    prefix = "<span class='q-done-mark'>✓</span> " if done else ""
     return (
-        f"<h1>{html.escape(data.get('title', data['id']))}{badge}</h1>"
+        f"<h1>{prefix}{html.escape(data.get('title', data['id']))}</h1>"
         f"<p class='subtle'>{html.escape(data.get('purpose', ''))}</p>"
         f"<form data-questionnaire='{html.escape(data['id'])}'>{''.join(rows)}"
         "<button type='submit'>Save Answers</button></form>"
@@ -960,6 +1024,37 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ── Nav item status ──────────────────────────────────────────────────────────────
+
+_NAV_STATUS_HTML: dict[str, str] = {
+    "missing": "<span class='nav-st ns-miss'>✗</span>",
+    "pending": "<span class='nav-st ns-pend'>○</span>",
+    "done": "<span class='nav-st ns-done'>✓</span>",
+}
+
+
+def item_nav_status(item: dict[str, Any]) -> str:
+    """Quick status for nav icon: 'ok', 'missing', 'pending', or 'done'."""
+    t = item.get("type")
+    if t == "command_status":
+        return "ok"
+    path = item.get("path")
+    href = item.get("href")
+    if path:
+        if not (BASE_DIR / path).resolve().exists():
+            return "missing"
+    elif href and not re.match(r"^https?://", href):
+        if not (BASE_DIR / href).resolve().exists():
+            return "missing"
+    if t == "questionnaire" and path:
+        try:
+            st = read_state(f"questionnaire.{item['id']}")
+            return "done" if st.get("state", "open") in _DONE_STATES else "pending"
+        except Exception:
+            return "pending"
+    return "ok"
+
+
 # ── UI ───────────────────────────────────────────────────────────────────────────
 
 _STYLE = """
@@ -1049,6 +1144,18 @@ _STYLE = """
   .ac-actions button:hover { background:#eef2f7; }
   .ac-chip { font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; background:#e2e8f0; color:#475569; }
   .ac-chip-ok { background:#dcfce7; color:#166534; } .ac-chip-fail { background:#fee2e2; color:#991b1b; }
+  .nav-st { font-size:10px; font-weight:700; margin-right:3px; }
+  .ns-miss { color:#dc2626; } .ns-pend { color:#d97706; } .ns-done { color:#16a34a; }
+  .ext-arrow { font-size:10px; margin-left:3px; opacity:.55; }
+  .q-done-mark { color:#16a34a; font-size:1.15em; font-weight:900; margin-right:2px; }
+  .j-badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; color:#fff; }
+  .md-tabs { margin-top:4px; }
+  .md-tab-bar { display:flex; flex-wrap:wrap; gap:3px; border-bottom:2px solid #d7dde5; margin-bottom:14px; }
+  .md-tab-btn { padding:5px 14px; border:1px solid #d7dde5; background:#f8fafc; border-radius:4px 4px 0 0;
+                cursor:pointer; font-size:12px; color:#475569; border-bottom:none; }
+  .md-tab-btn.active { background:#fff; color:#111827; font-weight:600; margin-bottom:-2px; border-bottom:2px solid #fff; }
+  .md-tab-btn:hover:not(.active) { background:#eef2f7; }
+  .md-tab-pane { display:none; } .md-tab-pane.active { display:block; }
 """
 
 
@@ -1075,10 +1182,23 @@ def index() -> str:
     nav_parts = []
     for s in sections:
         if s["items"]:
-            btns = "".join(
-                f"<button class='doc-btn' data-item='{html.escape(d['id'])}'>{html.escape(d.get('label', d['id']))}</button>"
-                for d in s["items"]
-            )
+            item_htmls = []
+            for d in s["items"]:
+                lbl = html.escape(d.get("label", d["id"]))
+                iid = html.escape(d["id"])
+                icon = _NAV_STATUS_HTML.get(item_nav_status(d), "")
+                if d.get("type") == "link":
+                    href = d.get("href", "")
+                    url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
+                    item_htmls.append(
+                        f"<a class='doc-btn' href='{html.escape(url)}' target='_blank' rel='noopener'>"
+                        f"{icon}{lbl}<span class='ext-arrow'>↗</span></a>"
+                    )
+                else:
+                    item_htmls.append(
+                        f"<button class='doc-btn' data-item='{iid}'>{icon}{lbl}</button>"
+                    )
+            btns = "".join(item_htmls)
         else:
             btns = "<div class='section-empty'>— empty —</div>"
         collapsed_cls = " collapsed" if s.get("collapsed") else ""
@@ -1136,8 +1256,12 @@ def index() -> str:
           method: 'POST', headers: {{'Content-Type': 'application/json'}},
           body: JSON.stringify({{document_id: form.dataset.questionnaire, state: 'done', payload}})
         }});
-        alert(r.ok ? 'Saved.' : 'Save failed.');
-        if (r.ok) loadDoc(itemId);
+        if (!r.ok) {{
+          const d = await r.json().catch(() => ({{}}));
+          contentEl.insertAdjacentHTML('afterbegin', `<div class='item-error'>Save failed: ${{d.detail || r.status}}</div>`);
+          return;
+        }}
+        loadDoc(itemId);
       }};
     }}
     async function loadTicket(itemId, ticketId) {{
@@ -1199,7 +1323,12 @@ def index() -> str:
     function toggleSection(el) {{
       el.classList.toggle('collapsed');
     }}
-    document.querySelectorAll('.doc-btn').forEach(btn => {{
+    function mdTab(btn, index) {{
+      const t = btn.closest('.md-tabs');
+      t.querySelectorAll('.md-tab-btn').forEach((b, i) => b.classList.toggle('active', i === index));
+      t.querySelectorAll('.md-tab-pane').forEach((p, i) => p.classList.toggle('active', i === index));
+    }}
+    document.querySelectorAll('button.doc-btn[data-item]').forEach(btn => {{
       btn.onclick = () => loadDoc(btn.dataset.item);
     }});
     {init_js}

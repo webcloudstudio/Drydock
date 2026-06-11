@@ -34,6 +34,7 @@ items:
     section: core
     type: markdown
     path: ../docs/SOUNDINGS.md
+    tabs: true
 
   - id: sea_trials
     label: "Sea Trials"
@@ -46,9 +47,14 @@ items:
     section: core
     type: jsonl
     path: ../logs/ships_log.jsonl
-    fields: [recorded_at, event_type, title, summary, rationale, source.type, tags]
+    fields: [recorded_at, title]
     sort: recorded_at
     sort_direction: desc
+    date_fields: [recorded_at]
+    badge_field: event_type
+    badge_colors:
+      decision: "#0d9488"
+      milestone: "#d97706"
 
   # Build Plan
   - id: board
