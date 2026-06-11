@@ -92,6 +92,11 @@ class TestConfigSet:
         rc, out, err = run_cli("config", "set", "target_directory", str(tmp_target_root))
         assert rc == 0
 
+    def test_config_set_llm_provider(self, isolated_config):
+        rc, out, err = run_cli("config", "set", "llm_provider", "codex")
+        assert rc == 0
+        assert "codex" in out
+
 
 class TestInit:
     def test_init_creates_spec_dir(self, tmp_spec_root, isolated_config):

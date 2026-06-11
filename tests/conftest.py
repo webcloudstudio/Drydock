@@ -26,23 +26,23 @@ def tmp_target_root(tmp_path: Path) -> Path:
 @pytest.fixture()
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
-    Redirect platformdirs config path to a temp dir and clear env vars.
+    Redirect the user-scoped config path to a temp dir and clear env vars.
 
     Returns the Path to the isolated config directory.
     """
     cfg_dir = tmp_path / "drydock_config"
     cfg_dir.mkdir()
 
-    import platformdirs
+    import drydock.config
 
     monkeypatch.setattr(
-        platformdirs,
-        "user_config_path",
-        lambda app, appauthor=None, **kw: cfg_dir,
+        drydock.config,
+        "_config_path",
+        lambda: cfg_dir / ".env",
     )
 
     # Remove real env vars that could leak into tests
-    for key in ("SPECIFICATION_DIRECTORY", "TARGET_DIRECTORY"):
+    for key in ("SPECIFICATION_DIRECTORY", "TARGET_DIRECTORY", "LLM_PROVIDER"):
         monkeypatch.delenv(key, raising=False)
 
     return cfg_dir

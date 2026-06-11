@@ -17,3 +17,11 @@ class SpecificationError(DrydockError):
 
 class ValidationError(DrydockError):
     """Validation found one or more failures."""
+
+
+class LlmError(DrydockError):
+    """An LLM CLI execution could not be completed."""
+
+
+class LlmConfigurationError(LlmError):
+    """An LLM provider or execution option is invalid."""

@@ -50,8 +50,8 @@ def cmd_config_show(_args: argparse.Namespace) -> int:
     from drydock.config import config_show
 
     rows = config_show()
-    for display_key, value in rows:
-        print(f"  {display_key:<30} {value}")
+    for display_key, value, source in rows:
+        print(f"  {display_key:<30} {value}  ({source})")
     return 0
 
 
@@ -146,7 +146,9 @@ def _build_parser() -> argparse.ArgumentParser:
     cfg_sub = p_config.add_subparsers(dest="config_command", metavar="<subcommand>")
     cfg_sub.add_parser("show", help="Display current configuration values and sources.")
     p_set = cfg_sub.add_parser("set", help="Set a configuration value.")
-    p_set.add_argument("key", choices=["specification_directory", "target_directory"])
+    p_set.add_argument(
+        "key", choices=["specification_directory", "target_directory", "llm_provider"]
+    )
     p_set.add_argument("value", metavar="<path>")
 
     # ── init ─────────────────────────────────────────────────────────────────

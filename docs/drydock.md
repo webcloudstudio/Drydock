@@ -75,17 +75,20 @@ flowchart LR
 
 ## Configuration
 
-Drydock reads two global variables. Set them in `.env` or with `drydock config set`.
+Drydock reads three global variables. Set them in the process environment or with
+`drydock config set`. Process environment variables override the user-scoped Drydock `.env`.
 
 | Variable | Purpose |
 |---|---|
 | `SPECIFICATION_DIRECTORY` | Root path containing all Drydock Specifications |
 | `TARGET_DIRECTORY` | Root path containing all target software projects |
+| `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
 
 ```text
 drydock config show                               # display current configuration
 drydock config set specification_directory <path>
 drydock config set target_directory <path>
+drydock config set llm_provider <claude|codex>
 ```
 
 ## Drydock commands
@@ -921,12 +924,14 @@ Rules:
 ## Workflow 7: Configure Drydock
 
 `drydock config` sets the two global paths Drydock needs to locate Specifications and target
-projects. Run once per installation; settings persist in `.env` or the Drydock global config file.
+projects and selects the subscription CLI provider. Run once per installation; settings persist in
+the Drydock user-scoped `.env` unless overridden by process environment variables.
 
 ```text
 drydock config show                               # display current paths
 drydock config set specification_directory <path> # root of all Specifications
 drydock config set target_directory <path>        # root of all target projects
+drydock config set llm_provider <claude|codex>     # subscription CLI provider
 ```
 
 Both paths are resolved at command run time. Changing them does not invalidate existing plans or

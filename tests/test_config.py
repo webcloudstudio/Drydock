@@ -9,6 +9,7 @@ import pytest
 from drydock.config import (
     config_set,
     config_show,
+    get_llm_provider,
     get_specification_directory,
     get_target_directory,
 )
@@ -54,16 +55,26 @@ class TestConfigSet:
         assert "SPECIFICATION_DIRECTORY" in data
         assert "TARGET_DIRECTORY" in data
 
+    def test_set_llm_provider(self, isolated_config):
+        config_set("llm_provider", "codex")
+        assert get_llm_provider() == "codex"
+
+    def test_set_invalid_llm_provider_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="Valid values"):
+            config_set("llm_provider", "other")
+
 
 class TestConfigShow:
-    def test_show_returns_two_rows(self, isolated_config):
+    def test_show_returns_three_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 2
+        assert len(rows) == 3
 
     def test_show_not_set_when_empty(self, isolated_config):
         rows = config_show()
-        for _, value, _ in rows:
-            assert value == "(not set)"
+        by_name = {name: value for name, value, _source in rows}
+        assert by_name["specification_directory"] == "(not set)"
+        assert by_name["target_directory"] == "(not set)"
+        assert by_name["llm_provider"] == "claude"
 
     def test_show_reports_source_after_set(self, tmp_spec_root, isolated_config):
         config_set("specification_directory", str(tmp_spec_root))
@@ -93,6 +104,14 @@ class TestGetters:
         monkeypatch.setenv("SPECIFICATION_DIRECTORY", str(tmp_target_root))
         result = get_specification_directory()
         assert result == tmp_target_root
+
+    def test_llm_provider_defaults_to_claude(self, isolated_config):
+        assert get_llm_provider() == "claude"
+
+    def test_llm_provider_environment_overrides_file(self, isolated_config, monkeypatch):
+        config_set("llm_provider", "claude")
+        monkeypatch.setenv("LLM_PROVIDER", "codex")
+        assert get_llm_provider() == "codex"
 
 
 def _effective(key: str, cfg_dir: Path) -> tuple[str, str]:

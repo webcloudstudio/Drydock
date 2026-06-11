@@ -66,15 +66,16 @@ drydock import <Spec> <Target> --format <auto|source|speckit>
 
 ## Configuration
 
-Drydock reads two global configuration values:
+Drydock reads these global configuration values:
 
 | Variable | Purpose |
 |---|---|
 | `SPECIFICATION_DIRECTORY` | Root path containing all Drydock Specifications |
 | `TARGET_DIRECTORY` | Root path containing all target software projects |
+| `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
 
 **Effective-value precedence:**
-1. Environment variables `SPECIFICATION_DIRECTORY` and `TARGET_DIRECTORY`.
+1. Environment variables `SPECIFICATION_DIRECTORY`, `TARGET_DIRECTORY`, and `LLM_PROVIDER`.
 2. Values persisted in the user-scoped Drydock `.env` file.
 
 **Config file location** (OS-appropriate):
@@ -106,6 +107,43 @@ python -m drydock --help
 All three dispatch to the same CLI entry point as the installed `drydock` command.
 
 PowerShell structural behavior is defined but not runtime-verified in WSL environments.
+
+## LLM Execution Foundation
+
+Application functions pass a fully assembled prompt to the subscription-authenticated CLI runner:
+
+```python
+from drydock.llm import run_prompt
+
+result = run_prompt(
+    prompt,
+    target_directory,
+    llm="claude",                 # optional; LLM_PROVIDER or claude default
+    model="sonnet",               # optional
+    command_name="plan-create",
+    parameters={"spec": spec_name, "block": block_id},
+    debug=debug,
+    timeout_seconds=3600,
+    on_text=lambda chunk: print(chunk, end="", flush=True),
+    on_event=handle_structured_event,
+)
+```
+
+Every run writes timestamped prompt, human log, raw provider output, final output, and stderr files
+under `<Target>/logs/`. `<Target>/logs/executions.jsonl` contains one self-contained JSON object per
+run with the effective argv, working directory, caller parameters, artifact paths, hashes, status,
+and parsed provider statistics. The JSONL file is append-only and intentionally extensible for
+future provenance and staleness fields.
+
+Provider JSONL is read while the process runs. `on_text` receives Claude partial text deltas or
+Codex agent-message steps immediately; `on_event` receives structured Drydock lifecycle and
+provider events. The same events are appended immediately to `<Target>/logs/events.jsonl`.
+Timeouts terminate the child process and return exit code `124`; interruption terminates the child,
+records exit code `130`, and re-raises `KeyboardInterrupt`.
+
+`LLM_PROVIDER=claude|codex` may be set in the process environment or user-scoped Drydock `.env`;
+the process environment takes precedence and Claude is the default. API-key environment variables
+are removed before invoking either CLI.
 
 ## Packaged Rigging Resources
 
