@@ -6,17 +6,30 @@ import importlib.resources
 from pathlib import Path
 
 
-def _source_tree_rigging() -> Path | None:
-    """Return root-level Rigging/ path if we are running from the source tree."""
-    # Walk up from this file to find the repo root containing Rigging/
+def _repo_root_candidates() -> list[Path]:
+    """Candidate repository roots when running from the source tree."""
     here = Path(__file__).parent  # src/drydock/
-    for candidate in [
+    return [
         here.parent.parent,  # repo root (src/../..)
         here.parent.parent.parent,  # one level higher in editable installs
-    ]:
+    ]
+
+
+def _source_tree_rigging() -> Path | None:
+    """Return root-level Rigging/ path if we are running from the source tree."""
+    for candidate in _repo_root_candidates():
         rigging = candidate / "Rigging"
         if rigging.is_dir() and (rigging / "spec_template").is_dir():
             return rigging
+    return None
+
+
+def _source_tree_prompts() -> Path | None:
+    """Return root-level prompts/ path if we are running from the source tree."""
+    for candidate in _repo_root_candidates():
+        prompts = candidate / "prompts"
+        if prompts.is_dir() and (prompts / "README.md").is_file():
+            return prompts
     return None
 
 
@@ -41,6 +54,28 @@ def get_rigging_root() -> Path:
     except (FileNotFoundError, TypeError) as exc:
         raise FileNotFoundError(
             "Rigging resources not found. Reinstall drydock or run from the source tree."
+        ) from exc
+
+
+def get_prompts_root() -> Path:
+    """
+    Return the authoritative prompts/ directory.
+
+    Precedence:
+      1. Root-level prompts/ when running from the source tree.
+      2. drydock/resources/prompts/ inside the installed package.
+    """
+    src = _source_tree_prompts()
+    if src is not None:
+        return src
+
+    try:
+        pkg_files = importlib.resources.files("drydock") / "resources" / "prompts"
+        with importlib.resources.as_file(pkg_files) as p:
+            return Path(p)
+    except (FileNotFoundError, TypeError) as exc:
+        raise FileNotFoundError(
+            "Prompt resources not found. Reinstall drydock or run from the source tree."
         ) from exc
 
 

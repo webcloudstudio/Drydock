@@ -50,35 +50,21 @@ Inspect these locations as needed to understand working V1 behavior. Do not copy
 assumptions into Drydock, and do not make Drydock runtime behavior depend on Prototyper being
 available.
 
-## RulesEngine And Rigging Mirror Contract
+## Rigging Provenance
 
-Prototyper `RulesEngine/` was copied to Drydock `Rigging/`. These directories contain the shared
+Drydock `Rigging/` began as a **one-time copy** of Prototyper `RulesEngine/`. It holds V2's shared
 business rules, build rules, specification templates, stack guidance, branding, and project
-templates used for applications. They are shared governed inputs, not part of the normal
-Prototyper-to-Drydock application-code migration.
+templates. It is now Drydock's own source of these inputs and **evolves independently** of
+Prototyper — there is no live mirror and no identity check between the trees. V2 divergence is
+expected.
 
-The governed contents of these directories must always be identical:
-
-```text
-/mnt/c/Users/barlo/projects/Prototyper/RulesEngine/
-/mnt/c/Users/barlo/projects/Drydock/Rigging/
-```
-
-Rules:
-
-- Do not independently refactor, rename, reorganize, or improve either tree while implementing
-  Drydock commands.
-- Do not treat Drydock `Rigging/` as a fork or a new source of business/build rules.
-- A change to either tree requires Ed's explicit authorization for that rule change and must be
-  applied identically to both trees.
-- Verify mirror identity after every authorized rule change.
-- Identity applies to governed files. Ignore transient, ignored artifacts such as `.ruff_cache/`,
-  `__pycache__/`, and generated package/build output.
-- Drydock packaging may copy `Rigging/` into installed package resources, but packaged copies do not
-  become an independently editable source.
-
-Current verification: the governed trees are identical; only an ignored `.ruff_cache/` exists under
-Drydock `Rigging/templates/`.
+- Prototyper is frozen V1 and read-only. Never write to it during Drydock development or tests.
+- Drydock commands (e.g. `drydock rigging compact`) may read and write `Rigging/` derivatives
+  freely. Treat `Rigging/` as the maintained V2 source, not a fork to keep in sync.
+- Prototyper's backup-only `RulesEngine/BRANDING_EDSVOICE.md` (Ed's personal global instructions) is
+  not a Rigging input and must not be copied, packaged, or referenced by shared branding rules.
+- Drydock packaging copies `Rigging/` into installed package resources
+  (`drydock/resources/Rigging/`); the packaged copy is not an independently editable source.
 
 ## Sources And Decisions
 
@@ -111,7 +97,7 @@ proven V1 behavior unless it conflicts with Drydock's package architecture or co
 | `src/drydock/config.py` | User-scoped configuration and configured root resolution |
 | `src/drydock/paths.py` | Source-tree and installed-resource resolution |
 | `src/drydock/llm.py` | Future single adapter for subscription-authenticated CLI agent execution |
-| `Rigging/` | Drydock-local mirror of Prototyper `RulesEngine/`; shared governed inputs |
+| `Rigging/` | Drydock's own shared governed inputs (seeded once from Prototyper `RulesEngine/`) |
 | `prompts/` | Versioned task prompts used by LLM-assisted commands |
 | `tests/` | Unit, CLI contract, integration, migration parity, and package tests |
 
@@ -205,6 +191,38 @@ The full Blueprint is intentionally not injected into every agent prompt.
 - Never make runtime behavior depend on Prototyper being installed or present.
 - Do not retain V1 repository assumptions, implicit current-directory behavior, or shell-only
   coupling.
+
+## LLM-Assisted Command Pattern
+
+Commands that call an LLM follow one shape, first established by `drydock rigging compact`:
+
+1. **Load** the prompt with `prompts.load_prompt("<command>_<subcommand>")`. The loader validates
+   the prompt's frontmatter contract and exposes its metadata (including `model`).
+2. **Assemble** the final prompt deterministically: the prompt `body` plus an injected job block
+   (source paths, dates, per-item objective, fenced source content). Keep assembly in the module so
+   it is unit-testable without a process.
+3. **Execute** through `llm.run_prompt(...)`, which already persists reproducible evidence
+   (`logs/executions.jsonl`, per-run prompt/raw/output/stderr files, structured events). Pass an
+   `on_text`/`on_item` callback for console progress.
+4. **Write outputs deterministically in the module**, not from the model. The model emits text; the
+   module post-processes and writes files. This keeps execution free of file-write permissions and
+   makes results assertable.
+5. **Inject the runner.** The capability function takes a `runner` parameter defaulting to
+   `run_prompt`, resolved at call time so tests can substitute a fake. Tests must never spend API
+   credits or require network access.
+
+### Prompt Contract Standard
+
+Every prompt in `prompts/` obeys two rules:
+
+- **Naming:** `prompts/<command>_<subcommand>[_<modifier>].md`, lowercase. `_<modifier>` is reserved
+  for operations needing multiple prompts. Example: `drydock rigging compact` → `rigging_compact.md`.
+- **Metadata:** a leading `---` YAML frontmatter block with required `name`, `description`,
+  `version`, `intent` and optional `command`, `model`, `output`. Parsed by
+  `prompts.load_prompt` (a small scalar parser — Drydock carries no YAML dependency).
+
+Prompts are packaged like Rigging (`force-include` → `drydock/resources/prompts/`) and resolved by
+`paths.get_prompts_root()`; both source-tree and installed paths must work.
 
 ## Verification Contract
 

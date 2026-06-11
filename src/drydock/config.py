@@ -14,7 +14,10 @@ _KEY_MAP = {
     "specification_directory": "BLUEPRINT_DIRECTORY",
     "target_directory": "TARGET_DIRECTORY",
     "llm_provider": "LLM_PROVIDER",
+    "prompt_warn_kb": "PROMPT_WARN_KB",
 }
+
+DEFAULT_PROMPT_WARN_KB = 50
 
 
 def _config_path() -> Path:
@@ -66,6 +69,19 @@ def get_llm_provider() -> str:
     return provider
 
 
+def get_prompt_warn_kb() -> int:
+    value, _source = _get("PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB))
+    try:
+        kb = int(value or DEFAULT_PROMPT_WARN_KB)
+    except ValueError:
+        kb = 0
+    if kb <= 0:
+        raise ConfigurationError(
+            f"Invalid PROMPT_WARN_KB: {value!r}\n  Expected a positive integer (kilobytes)."
+        )
+    return kb
+
+
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
     blueprint_value, blueprint_source = _get("BLUEPRINT_DIRECTORY")
@@ -75,6 +91,7 @@ def config_show() -> list[tuple[str, str, str]]:
     for display_key, key_upper, default in (
         ("target_directory", "TARGET_DIRECTORY", None),
         ("llm_provider", "LLM_PROVIDER", "claude"),
+        ("prompt_warn_kb", "PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB)),
     ):
         value, source = _get(key_upper, default)
         rows.append((display_key, value or "(not set)", source))
@@ -92,6 +109,12 @@ def config_set(key: str, value: str) -> Path:
             raise ConfigurationError(
                 f"Invalid llm_provider: {value!r}\n  Valid values: claude, codex"
             )
+    elif upper == "PROMPT_WARN_KB":
+        if not value.isdigit() or int(value) <= 0:
+            raise ConfigurationError(
+                f"Invalid prompt_warn_kb: {value!r}\n  Expected a positive integer (kilobytes)."
+            )
+        stored_value = value
     else:
         resolved = Path(value).expanduser().resolve()
         if not resolved.is_dir():

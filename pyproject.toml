@@ -61,11 +61,13 @@ packages = ["src/drydock"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "Rigging" = "drydock/resources/Rigging"
+"prompts" = "drydock/resources/prompts"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/",
     "Rigging/",
+    "prompts/",
     "LICENSE",
     "README.md",
     "pyproject.toml",

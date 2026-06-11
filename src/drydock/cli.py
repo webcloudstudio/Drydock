@@ -106,6 +106,42 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_rigging_compact(args: argparse.Namespace) -> int:
+    from drydock.config import get_blueprint_directory
+    from drydock.rigging_compact import CompactItem, compact
+
+    blueprint_dir = get_blueprint_directory()
+
+    def report(item: CompactItem) -> None:
+        src = item.source.name
+        dst = item.compact.name
+        if item.status == "compacted":
+            pct = f" ({item.percent:.0f}% of source)" if item.percent is not None else ""
+            print(f"  [done]     {src} → {dst}  {item.compact_bytes} B{pct}  {item.execution_id}")
+        elif item.status == "skipped-fresh":
+            print(f"  [fresh]    {src} → {dst}  (compact is newer; use --force)")
+        else:
+            print(f"  [failed]   {src}: {item.error}  see logs/ ({item.execution_id})")
+
+    print(f"Compacting Blueprint: {args.Blueprint}")
+    result = compact(
+        args.Blueprint,
+        blueprint_dir,
+        include_rigging=args.include_rigging,
+        force=args.force,
+        on_item=report,
+    )
+
+    if not result.items:
+        print("  Nothing to compact — no compactable files found.")
+    print()
+    print(
+        f"RESULT: {len(result.compacted())} compacted, "
+        f"{len(result.skipped())} fresh, {len(result.failed())} failed"
+    )
+    return result.exit_code()
+
+
 # ---------------------------------------------------------------------------
 # Parser construction
 # ---------------------------------------------------------------------------
@@ -162,6 +198,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "blueprint_directory",
             "target_directory",
             "llm_provider",
+            "prompt_warn_kb",
         ],
         type=_canonical_config_key,
     )
@@ -202,8 +239,19 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── rigging ──────────────────────────────────────────────────────────────
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
     rig_sub = p_rig.add_subparsers(dest="rigging_command", metavar="<subcommand>")
-    p_rig_c = rig_sub.add_parser("compact", help="Generate compact rigging derivatives.")
+    p_rig_c = rig_sub.add_parser(
+        "compact", help="Compact stale rules/data/spec files to _compact.md siblings."
+    )
     p_rig_c.add_argument("Blueprint", metavar="<Blueprint>")
+    p_rig_c.add_argument(
+        "--all",
+        dest="include_rigging",
+        action="store_true",
+        help="Also refresh Drydock's own Rigging engine compacts.",
+    )
+    p_rig_c.add_argument(
+        "--force", action="store_true", help="Ignore the freshness gate and recompact everything."
+    )
     p_rig_u = rig_sub.add_parser("update", help="Propagate rigging to a target project.")
     p_rig_u.add_argument("Target", metavar="<Target>")
     p_rig_v = rig_sub.add_parser("verify", help="Verify target project rigging compliance.")
@@ -325,7 +373,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "rigging":
         sub = getattr(args, "rigging_command", None)
         if sub == "compact":
-            not_implemented("rigging compact")
+            return cmd_rigging_compact(args)
         elif sub == "update":
             not_implemented("rigging update")
         elif sub == "verify":

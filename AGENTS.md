@@ -49,9 +49,10 @@ views. It is an external reference, not a Drydock source of truth.
 
 - Prototyper may always be read for development reference. Do not modify any Prototyper file unless
   Ed explicitly authorizes that specific change.
-- Drydock `Rigging/` is a mirror of Prototyper `RulesEngine/`. Keep their governed files identical.
-  Do not independently edit, rename, reorganize, or improve either tree during Drydock application
-  development. A rule change requires Ed's explicit authorization and must be applied to both trees.
+- Drydock `Rigging/` is a **one-time copy** of Prototyper `RulesEngine/`, not a live mirror.
+  Prototyper is frozen V1 and read-only; Drydock is V2 and is expected to diverge. There is no
+  identity check to maintain and no requirement to apply Rigging changes back to Prototyper. Drydock
+  commands (e.g. `drydock rigging compact`) may read and write `Rigging/` derivatives freely.
 - Port one coherent capability at a time. Extract the behavior; do not mechanically copy shell code.
 - Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
@@ -79,11 +80,11 @@ Drydock/
   dist/              Build artifacts; not committed
 ```
 
-`Rigging/` is the Drydock-local mirror of Prototyper `RulesEngine/`; its governed files must remain
-identical to that source tree. Transient ignored artifacts such as caches are excluded from the
-identity check. The wheel contains an installed copy at `drydock/resources/Rigging/`, synchronized
-by Hatchling `force-include`. Both source-tree and installed resolution paths must work; see
-`src/drydock/paths.py`.
+`Rigging/` began as a one-time copy of Prototyper `RulesEngine/` and is now V2's own source of
+shared business/build rules; it evolves independently of Prototyper. The wheel contains an installed
+copy at `drydock/resources/Rigging/`, synchronized by Hatchling `force-include`. Versioned task
+prompts live in `prompts/` and are packaged the same way to `drydock/resources/prompts/`. Both
+source-tree and installed resolution paths must work; see `src/drydock/paths.py`.
 
 ## Development Commands
 

@@ -103,6 +103,16 @@ class TestConfigSet:
         assert rc == 0
         assert "codex" in out
 
+    def test_config_set_prompt_warn_kb(self, isolated_config):
+        rc, out, err = run_cli("config", "set", "prompt_warn_kb", "75")
+        assert rc == 0
+        assert "75" in out
+
+    def test_config_set_invalid_prompt_warn_kb_fails(self, isolated_config):
+        rc, out, err = run_cli("config", "set", "prompt_warn_kb", "fifty")
+        assert rc == 1
+        assert "error" in err.lower()
+
 
 class TestInit:
     def test_init_creates_spec_dir(self, tmp_spec_root, isolated_config):
@@ -209,6 +219,55 @@ class TestValidate:
         assert "RESULT" in out
 
 
+class TestRiggingCompact:
+    """`rigging compact` discovers stale files and writes _compact.md siblings."""
+
+    @staticmethod
+    def _fake_run_prompt(monkeypatch, *, ok=True, text="# X — Compact\n\n- must stay\n"):
+        from types import SimpleNamespace
+
+        def fake(prompt, working_directory, **kwargs):
+            return SimpleNamespace(ok=ok, text=text, execution_id="exec-test")
+
+        monkeypatch.setattr("drydock.rigging_compact.run_prompt", fake)
+
+    def _setup_blueprint(self, tmp_spec_root, name="Proj", **files):
+        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        spec = tmp_spec_root / name
+        spec.mkdir()
+        for fname, body in (files or {"DATABASE.md": "class X: ...\n"}).items():
+            (spec / fname).write_text(body, encoding="utf-8")
+        return spec
+
+    def test_help_lists_flags(self):
+        rc, out, _ = run_cli("rigging", "compact", "--help")
+        assert rc == 0
+        assert "--all" in out and "--force" in out
+
+    def test_compacts_and_reports(self, tmp_spec_root, isolated_config, monkeypatch):
+        spec = self._setup_blueprint(tmp_spec_root)
+        self._fake_run_prompt(monkeypatch)
+        rc, out, err = run_cli("rigging", "compact", "Proj")
+        assert rc == 0, err
+        assert (spec / "DATABASE_compact.md").exists()
+        assert "1 compacted" in out
+        assert "exec-test" in out
+
+    def test_failed_execution_exits_one(self, tmp_spec_root, isolated_config, monkeypatch):
+        self._setup_blueprint(tmp_spec_root)
+        self._fake_run_prompt(monkeypatch, ok=False, text="")
+        rc, out, err = run_cli("rigging", "compact", "Proj")
+        assert rc == 1
+        assert "1 failed" in out
+
+    def test_nothing_to_compact(self, tmp_spec_root, isolated_config, monkeypatch):
+        self._setup_blueprint(tmp_spec_root, **{"README.md": "no compactables\n"})
+        self._fake_run_prompt(monkeypatch)
+        rc, out, err = run_cli("rigging", "compact", "Proj")
+        assert rc == 0
+        assert "Nothing to compact" in out
+
+
 class TestStubs:
     """Deferred commands must exit 2, print a message, and not write anything."""
 
@@ -216,7 +275,6 @@ class TestStubs:
         (["document", "generate", "MySpec", "MyTarget"], "document generate"),
         (["document", "assemble", "MySpec", "MyTarget"], "document assemble"),
         (["document", "MySpec", "MyTarget"], "document"),
-        (["rigging", "compact", "MySpec"], "rigging compact"),
         (["rigging", "update", "MyTarget"], "rigging update"),
         (["rigging", "verify", "MyTarget"], "rigging verify"),
         (["plan", "init", "MySpec"], "plan init"),

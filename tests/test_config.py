@@ -11,6 +11,7 @@ from drydock.config import (
     config_show,
     get_blueprint_directory,
     get_llm_provider,
+    get_prompt_warn_kb,
     get_target_directory,
 )
 from drydock.errors import ConfigurationError
@@ -69,11 +70,23 @@ class TestConfigSet:
         with pytest.raises(ConfigurationError, match="Valid values"):
             config_set("llm_provider", "other")
 
+    def test_set_prompt_warn_kb(self, isolated_config):
+        config_set("prompt_warn_kb", "75")
+        assert get_prompt_warn_kb() == 75
+
+    def test_set_invalid_prompt_warn_kb_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="positive integer"):
+            config_set("prompt_warn_kb", "fifty")
+
+    def test_set_zero_prompt_warn_kb_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="positive integer"):
+            config_set("prompt_warn_kb", "0")
+
 
 class TestConfigShow:
-    def test_show_returns_three_rows(self, isolated_config):
+    def test_show_returns_four_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 3
+        assert len(rows) == 4
 
     def test_show_not_set_when_empty(self, isolated_config):
         rows = config_show()
@@ -81,6 +94,7 @@ class TestConfigShow:
         assert by_name["blueprint_directory"] == "(not set)"
         assert by_name["target_directory"] == "(not set)"
         assert by_name["llm_provider"] == "claude"
+        assert by_name["prompt_warn_kb"] == "50"
 
     def test_show_reports_source_after_set(self, tmp_spec_root, isolated_config):
         config_set("blueprint_directory", str(tmp_spec_root))
@@ -124,6 +138,19 @@ class TestGetters:
         config_set("llm_provider", "claude")
         monkeypatch.setenv("LLM_PROVIDER", "codex")
         assert get_llm_provider() == "codex"
+
+    def test_prompt_warn_kb_defaults_to_50(self, isolated_config):
+        assert get_prompt_warn_kb() == 50
+
+    def test_prompt_warn_kb_environment_overrides_file(self, isolated_config, monkeypatch):
+        config_set("prompt_warn_kb", "75")
+        monkeypatch.setenv("PROMPT_WARN_KB", "100")
+        assert get_prompt_warn_kb() == 100
+
+    def test_prompt_warn_kb_invalid_environment_raises(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("PROMPT_WARN_KB", "-5")
+        with pytest.raises(ConfigurationError, match="positive integer"):
+            get_prompt_warn_kb()
 
 
 def _effective(key: str, cfg_dir: Path) -> tuple[str, str]:

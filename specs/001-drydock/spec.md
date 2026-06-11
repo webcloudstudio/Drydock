@@ -84,7 +84,7 @@ flowchart LR
 
 ## Configuration
 
-Drydock reads three global variables. Set them in the process environment or with
+Drydock reads four global variables. Set them in the process environment or with
 `drydock config set`. Process environment variables override the user-scoped Drydock `.env`.
 
 | Variable | Purpose |
@@ -92,12 +92,14 @@ Drydock reads three global variables. Set them in the process environment or wit
 | `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Blueprints |
 | `TARGET_DIRECTORY` | Root path containing all target software projects |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
+| `PROMPT_WARN_KB` | Warn when a build block's assembled prompt exceeds this size in KB (default `50`) |
 
 ```text
 drydock config show                               # display current configuration
 drydock config set blueprint_directory <path>
 drydock config set target_directory <path>
 drydock config set llm_provider <claude|codex>
+drydock config set prompt_warn_kb <kb>
 ```
 
 `SPECIFICATION_DIRECTORY` and `drydock config set specification_directory` are deprecated
@@ -162,7 +164,7 @@ logs, and execution records are written to the target directory.
 
 | Syntax | Purpose |
 |---|---|
-| `drydock rigging compact <Blueprint>` | Generate compact derivatives for `DATABASE.md` and `BUSINESS_RULES.md` |
+| `drydock rigging compact <Blueprint> [--all] [--force]` | Refresh stale compact derivatives in the Blueprint (required pairs + any `*_compact.md` pair); `--all` also refreshes Rigging |
 | `drydock rigging update <Target>` | Propagate current Drydock rigging to a target project |
 | `drydock rigging verify <Target>` | Verify target project compliance with Drydock rigging |
 | `drydock document <Blueprint> <Target>` | Full pipeline: generate then assemble |
@@ -569,8 +571,16 @@ the relevant artifact type.
 
 ### Rigging - Specification Compaction
 
-`drydock rigging compact <Blueprint>` generates prompt-injection derivatives for large specification files. The
-set of compactable files is fixed — no file arguments are required.
+`drydock rigging compact <Blueprint>` refreshes prompt-injection derivatives for large
+specification files. It is the general compaction entry point: it discovers every file that needs a
+compact derivative and recompacts only the **stale** ones (a freshness gate — a source is
+recompacted when its `<stem>_compact.md` is missing or older than the source). No file arguments are
+required.
+
+The compactable set is the **required pairs** below — always expected when their source exists —
+**plus** any `<name>.md` already carrying a `<name>_compact.md` sibling. `--force` ignores the
+freshness gate and recompacts everything in scope; `--all` additionally refreshes Drydock's own
+`Rigging/` engine derivatives (existing siblings only).
 
 | Source | Compact | Stripped to |
 |--------|---------|-------------|
@@ -648,9 +658,11 @@ flowchart LR
 Builds a project from a Blueprint's Typed Specification files through ordered work blocks.
 `drydock plan create` generates `BUILD_PLAN.md` from the curated `BUILD_PLAN_INTENT.md` and
 dependency headers; `drydock build`
-executes each block as a separate agent call, keeping prompts under 50KB. Each block records a
-content hash per input Specification file; re-running rebuilds only the stale work whose spec hashes
-changed.
+executes each block as a separate agent call. `drydock plan create` computes the assembled prompt
+size for every block and warns — it does not fail — when a block exceeds `PROMPT_WARN_KB`
+(default 50KB); resolve the warning by splitting the story or compacting an input file. Each block
+records a content hash per input Specification file; re-running rebuilds only the stale work whose
+spec hashes changed.
 
 ```mermaid
 flowchart LR
@@ -854,7 +866,7 @@ regenerated at any time. This property keeps it honest: every decision made in t
 back through the decision writer, and failed work is reopened and revised here interactively
 rather than by hand-editing plan files. Decisions of record are appended to the Ship's Log.
 
-## The Ship's Log — Decision Ledger
+## The Ship's Log — Your Decision Log
 
 `SHIPS_LOG.md` is the append-only decision ledger kept in the Blueprint directory. It records
 decisions, not mechanics: what was decided, why, what evidence supported it, and what it
@@ -880,6 +892,12 @@ Three writers append entries, all through the single decision writer:
 The building agent is instructed by prompt to write the decision, not the implementation detail.
 Entries are never rewritten or deleted; a reversed decision is appended with `supersedes:` so the
 decision tree stays intact.
+
+**Audit by diff.** Because every Blueprint lives in git, the log can be cross-checked: diff the
+specification files between commits and produce an English analysis of what changed, inferring the
+decisions the changes imply. Inference is lossy — a diff shows what changed, not why — so diff
+analysis is the audit trail and backfill mechanism, not the primary capture. `drydock analyze`
+reports specification changes not covered by a Ship's Log entry.
 
 ## Spec Kit Compatibility
 
@@ -1005,6 +1023,7 @@ drydock config show                               # display current paths
 drydock config set blueprint_directory <path>     # root of all Blueprints
 drydock config set target_directory <path>        # root of all target projects
 drydock config set llm_provider <claude|codex>     # subscription CLI provider
+drydock config set prompt_warn_kb <kb>            # prompt size warning threshold (default 50)
 ```
 
 Both paths are resolved at command run time. Changing them does not invalidate existing plans or
