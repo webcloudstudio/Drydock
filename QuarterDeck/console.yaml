@@ -15,26 +15,34 @@ sections:
   - { id: project_pages, label: "Project Pages",  dot: "#2563eb" }
   - { id: archive,       label: "Archive",        dot: "#94a3b8", collapsed: true }
 
-# Auto-discover docs/*.md files into Project Pages. Explicit items below (matched by ID
-# or by path) take priority; overrides adjust source-generated items before insertion.
+# Auto-discover files into sections. Explicit items (matched by ID or by path) take
+# priority; overrides adjust source-generated items before insertion.
 sources:
   - glob: "docs/*.md"
     section: project_pages
     type: markdown
+  - glob: "logs/*.jsonl"
+    section: project_pages
+    type: jsonl
+  - glob: "QuarterDeck/pages/*.md"
+    section: project_pages
+    type: markdown
 
 items:
-  # Drydock Core — fixed, source-of-truth
+  # Drydock Core — fixed, source-of-truth (order: 1–5 controls nav sequence)
   - id: commanders_view
-    label: "Commander's View"
+    label: "Captain's View"
     section: core
     type: markdown
     path: pages/overview.md
+    order: 1
 
   - id: master_blueprint
     label: "Master Blueprint"
     section: core
     type: markdown
     path: ../docs/Drydock_Specification.md
+    order: 2
 
   - id: soundings
     label: "Soundings"
@@ -42,6 +50,7 @@ items:
     type: markdown
     path: ../docs/SOUNDINGS.md
     tabs: true
+    order: 3
 
   - id: sea_trials
     label: "Sea Trials"
@@ -50,6 +59,7 @@ items:
     path_md:   ../docs/SEA_TRIALS.md
     path_html: ../docs/SEA_TRIALS.html
     path_pdf:  ../docs/SEA_TRIALS.pdf
+    order: 4
 
   - id: ships_log
     label: "Ship's Log"
@@ -64,6 +74,7 @@ items:
     badge_colors:
       decision: "#0d9488"
       milestone: "#d97706"
+    order: 5
 
   # Build Plan
   - id: board
