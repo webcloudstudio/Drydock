@@ -1,14 +1,16 @@
-"""Console — a metadata-driven viewer for LLM-assisted development.
+"""QuarterDeck — a YAML-driven viewer for LLM-assisted development.
 
-The Console is deliberately dumb. It owns no project state and makes no build
-decisions. It reads one `console.json` — a flat list of **items** (things) — and
-renders each item by its `type`. A framework (and the user) append and update the
-items; the Console only navigates and renders them.
+The QuarterDeck is deliberately dumb. It owns no project state and makes no build
+decisions. It reads one `console.yaml` — a sections list and a flat list of **items**
+(things) — and renders each item by its `type`. A framework (and the user) append and
+update the items; the QuarterDeck only navigates and renders them.
 
 Each item carries navigation properties (`label`, `section`) and type properties
-(`type` + type-specific fields). Sections are derived from `item.section` and form
-the left sidebar; a section is the item's lifecycle state (Pages / Plan / Action
-Items / Archive).
+(`type` + type-specific fields). Sections are defined in the `sections:` block of
+`console.yaml` (id / label / dot / collapsed / pinned); items reference a section id.
+
+Five canonical sections: Drydock Core (pinned) · Build Plan · Action Items ·
+Project Pages · Archive (collapsed by default).
 
 Page types (one Python renderer each, in TYPES):
   - markdown      render a markdown file as HTML
@@ -19,7 +21,7 @@ Page types (one Python renderer each, in TYPES):
   - command_status derive command readiness and consistency from configured Core Docs
 
 Tickets (the kanban's work items) live in a separate JSON file the framework writes;
-the Console renders them read-only. Contract: Console/README.md
+the QuarterDeck renders them read-only. Contract: QuarterDeck/README.md
 """
 
 from __future__ import annotations
@@ -35,39 +37,17 @@ from pathlib import Path
 from typing import Any
 
 import markdown
+import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent  # the project that contains Console/
-CONFIG_PATH = BASE_DIR / "console.json"
+PROJECT_ROOT = BASE_DIR.parent  # the project that contains QuarterDeck/
+CONFIG_PATH = BASE_DIR / "console.yaml"
 
 _DONE_STATES = {"done", "answered", "complete", "verified"}
-
-# Derived-section nav chrome. Canonical sections come first, in this order; an
-# unknown section id is title-cased, gets a grey dot, and is appended (first-seen).
-CANONICAL_SECTIONS = [
-    ("core", "Core Docs"),
-    ("pages", "Pages"),
-    ("plan", "Plan"),
-    ("actions", "Action Items"),
-    ("archive", "Archive"),
-]
-SECTION_DOTS = {
-    "core": "#0d9488",
-    "pages": "#2563eb",
-    "plan": "#d97706",
-    "actions": "#dc2626",
-    "archive": "#94a3b8",
-}
 _DEFAULT_DOT = "#94a3b8"
-
-# Recategorize ("move") rule — pin core, free elsewhere. Items in Core Docs are
-# source-of-truth and pinned; every other item may move freely among these sections.
-# A move changes only an item's `section`; it never changes its type or content, and
-# `core` is never a legal target (items are not promoted into the pinned zone).
-MOVABLE_SECTIONS = ("pages", "plan", "actions", "archive")
 
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
 STATUSES = [
@@ -86,13 +66,13 @@ class ConsoleConfigError(RuntimeError):
 def load_config() -> tuple[dict[str, Any], str | None]:
     if not CONFIG_PATH.exists():
         return {}, (
-            f"Console config not found at {CONFIG_PATH}. "
-            "Create Console/console.json for this project before starting the Console."
+            f"QuarterDeck config not found at {CONFIG_PATH}. "
+            "Create QuarterDeck/console.yaml for this project before starting the QuarterDeck."
         )
     try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8")), None
-    except json.JSONDecodeError as exc:
-        return {}, f"Console config at {CONFIG_PATH} is invalid JSON: {exc}"
+        return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}, None
+    except yaml.YAMLError as exc:
+        return {}, f"QuarterDeck config at {CONFIG_PATH} is invalid YAML: {exc}"
 
 
 CONFIG, CONFIG_ERROR = load_config()
@@ -112,7 +92,7 @@ def config_error_payload() -> dict[str, Any]:
     return {
         "detail": CONFIG_ERROR,
         "config_path": str(CONFIG_PATH),
-        "next_step": "Add Console/console.json, then restart the Console.",
+        "next_step": "Add QuarterDeck/console.yaml, then restart the QuarterDeck.",
     }
 
 
@@ -128,69 +108,36 @@ def find_item(item_id: str) -> dict[str, Any]:
 
 
 def nav_model() -> list[dict[str, Any]]:
-    """Group items into sidebar sections, canonical order first."""
+    """Group items into sidebar sections, config order first."""
     by_section: dict[str, list[dict[str, Any]]] = {}
     order: list[str] = []
     for item in items():
-        sid = item.get("section", "pages")
+        sid = item.get("section", "project_pages")
         if sid not in by_section:
             by_section[sid] = []
             order.append(sid)
         by_section[sid].append(item)
 
-    canonical_ids = [sid for sid, _ in CANONICAL_SECTIONS]
-    ordered_ids = [sid for sid in canonical_ids if sid in by_section]
-    ordered_ids += [sid for sid in order if sid not in canonical_ids]
+    config_sections = CONFIG.get("sections", [])
+    config_ids = [s["id"] for s in config_sections]
+    ordered_ids = [sid for sid in config_ids if sid in by_section]
+    ordered_ids += [sid for sid in order if sid not in config_ids]
 
+    config_map = {s["id"]: s for s in config_sections}
     sections = []
-    labels = dict(CANONICAL_SECTIONS)
     for sid in ordered_ids:
         docs = sorted(by_section[sid], key=lambda d: d.get("order", 0))
+        sec_cfg = config_map.get(sid, {})
         sections.append(
             {
                 "id": sid,
-                "label": labels.get(sid, sid.replace("_", " ").title()),
-                "dot": SECTION_DOTS.get(sid, _DEFAULT_DOT),
+                "label": sec_cfg.get("label", sid.replace("_", " ").title()),
+                "dot": sec_cfg.get("dot", _DEFAULT_DOT),
+                "collapsed": sec_cfg.get("collapsed", False),
                 "items": docs,
             }
         )
     return sections
-
-
-# ── Recategorize (section-only move; pinned core) ───────────────────────────────
-
-
-def legal_target_sections(item: dict[str, Any]) -> list[str]:
-    """Sections an item may move to. Core Docs are pinned (no moves); every other
-    item may move freely among the movable sections. The item's current section is
-    included so the control can mark it."""
-    if item.get("section") == "core":
-        return []
-    return list(MOVABLE_SECTIONS)
-
-
-def apply_section_change(config: dict[str, Any], item_id: str, new_section: str) -> dict[str, Any]:
-    """Move one item to `new_section`, in place, enforcing the move rule. Mutates the
-    item's `section` only — never its type or content. Raises HTTPException on an
-    unknown item, a pinned item, or an illegal target."""
-    item = next((i for i in config.get("items", []) if i.get("id") == item_id), None)
-    if item is None:
-        raise HTTPException(status_code=404, detail=f"No item {item_id!r}")
-    targets = legal_target_sections(item)
-    if not targets:
-        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is pinned and cannot move")
-    if new_section not in targets:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Illegal move for {item_id!r}: {new_section!r} not in {targets}",
-        )
-    item["section"] = new_section
-    return item
-
-
-def write_config(config: dict[str, Any]) -> None:
-    """Persist the console index, preserving block and item order (no key sorting)."""
-    CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
 # ── File resolution ─────────────────────────────────────────────────────────────
@@ -708,35 +655,6 @@ def validate_item(item: dict[str, Any]) -> str | None:
     return None
 
 
-def _recategorize_control(item: dict[str, Any]) -> str:
-    """Top toolbar with a section-change dropdown. Pinned (core) items show a muted
-    'Pinned' note instead of a control. Changing the dropdown moves the item — its
-    `section` only, never its type or content."""
-    iid = html.escape(item["id"])
-    current = item.get("section", "pages")
-    targets = legal_target_sections(item)
-    if not targets:
-        return (
-            "<div class='page-toolbar'>"
-            "<span class='move-pinned' title='Core source-of-truth item — pinned'>Pinned</span>"
-            "</div>"
-        )
-    labels = dict(CANONICAL_SECTIONS)
-    opts = "".join(
-        f"<option value='{html.escape(s)}'{' selected' if s == current else ''}>"
-        f"{html.escape(labels.get(s, s.replace('_', ' ').title()))}"
-        f"{' (current)' if s == current else ''}</option>"
-        for s in targets
-    )
-    return (
-        "<div class='page-toolbar'>"
-        f"<label class='move-label' for='move-{iid}'>Section</label>"
-        f"<select class='move-select' id='move-{iid}' onchange=\"moveItem('{iid}', this.value)\">"
-        f"{opts}</select>"
-        "</div>"
-    )
-
-
 def render_item(item: dict[str, Any]) -> str:
     err = validate_item(item)
     if err:
@@ -747,7 +665,6 @@ def render_item(item: dict[str, Any]) -> str:
         return f"<div class='item-error'>{html.escape(str(exc.detail))}</div>"
     except (OSError, json.JSONDecodeError, KeyError) as exc:
         return f"<div class='item-error'>{html.escape(str(exc))}</div>"
-    out = _recategorize_control(item) + out
     if item.get("review"):
         out += _decision_bar(item)
     return out
@@ -898,10 +815,6 @@ class SourceUpdate(BaseModel):
     content: str
 
 
-class SectionUpdate(BaseModel):
-    section: str
-
-
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -941,16 +854,6 @@ def api_set_source(item_id: str, update: SourceUpdate) -> dict[str, Any]:
     path = resolve_path(item["path"])  # confined to Console/; must already exist
     path.write_text(update.content, encoding="utf-8")
     return {"ok": True, "item_id": item_id}
-
-
-@app.post("/api/item/{item_id}/section")
-def api_set_section(item_id: str, update: SectionUpdate) -> dict[str, Any]:
-    """Recategorize an item (section only). Enforces the pinned-core move rule and
-    persists the change to console.json; never touches the item's file."""
-    config = require_config()
-    item = apply_section_change(config, item_id, update.section)
-    write_config(config)
-    return {"ok": True, "item_id": item_id, "section": item["section"]}
 
 
 @app.get("/raw/{item_id}")
@@ -1021,24 +924,21 @@ _STYLE = """
   .nav-section { margin-bottom:16px; }
   .section-head { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;
                   text-transform:uppercase; letter-spacing:.06em; color:#475569; padding:0 8px 5px;
-                  border-bottom:1px solid #eef2f7; margin-bottom:5px; }
+                  border-bottom:1px solid #eef2f7; margin-bottom:5px; cursor:pointer; user-select:none; }
   .section-head .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .section-head .collapse-arrow { margin-left:auto; font-size:9px; color:#94a3b8; }
+  .nav-section.collapsed .collapse-arrow::after { content:"▶"; }
+  .nav-section:not(.collapsed) .collapse-arrow::after { content:"▼"; }
   .doc-btn { width:100%; margin:0 0 3px; padding:7px 10px 7px 24px; border:1px solid transparent;
              background:#fff; text-align:left; cursor:pointer; font-size:13px; color:#1b2430; border-radius:3px; }
   .doc-btn:hover { background:#eef2f7; }
   .doc-btn.active { background:#111827; color:#fff; }
   .nav-section[data-sec="archive"] .doc-btn { color:#94a3b8; }
   .nav-section[data-sec="archive"] .doc-btn.active { color:#fff; }
+  .nav-section.collapsed .doc-btn, .nav-section.collapsed .section-empty { display:none; }
   .section-empty { padding:4px 24px; font-size:12px; color:#cbd5e1; }
   article { padding:24px 32px; max-width:1100px; overflow-x:auto; }
   article h1 { line-height:1.2; margin-top:0; }
-  .page-toolbar { display:flex; justify-content:flex-end; align-items:center; gap:8px;
-                  margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid #eef2f7; }
-  .move-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; }
-  .move-select { width:auto; max-width:200px; padding:5px 8px; font-size:13px;
-                 border:1px solid #cbd5e1; border-radius:3px; background:#fff; cursor:pointer; }
-  .move-pinned { font-size:11px; font-weight:700; letter-spacing:.04em; color:#64748b;
-                 background:#eef2f7; padding:2px 8px; border-radius:10px; }
   .subtle { color:#64748b; font-size:13px; }
   .state-done { font-size:12px; color:#166534; }
   .item-error { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:10px 12px;
@@ -1107,13 +1007,13 @@ _STYLE = """
 
 def _config_missing_page() -> str:
     return f"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>QuarterDeck</title>
 <style>body{{font-family:'Segoe UI',Arial,sans-serif;background:#f6f7f9;color:#1b2430;}}
 main{{max-width:760px;margin:48px auto;background:#fff;border:1px solid #d7dde5;padding:28px 32px;border-radius:6px;}}
 code{{background:#eef2f7;padding:2px 6px;border-radius:4px;}}</style></head>
-<body><main><h1>Console Config Missing</h1><p>{html.escape(CONFIG_ERROR or "")}</p>
-<p>The Console runtime is installed, but this project has no <code>Console/console.json</code>.
-See <code>console.json.sample</code> for the contract.</p>
+<body><main><h1>QuarterDeck Config Missing</h1><p>{html.escape(CONFIG_ERROR or "")}</p>
+<p>The QuarterDeck runtime is installed, but this project has no <code>QuarterDeck/console.yaml</code>.
+See <code>console.yaml.sample</code> for the contract.</p>
 <pre>{html.escape(str(CONFIG_PATH))}</pre></main></body></html>"""
 
 
@@ -1134,9 +1034,14 @@ def index() -> str:
             )
         else:
             btns = "<div class='section-empty'>— empty —</div>"
+        collapsed_cls = " collapsed" if s.get("collapsed") else ""
         nav_parts.append(
-            f"<div class='nav-section' data-sec='{html.escape(s['id'])}'>"
-            f"<div class='section-head'><span class='dot' style='background:{s['dot']}'></span>{html.escape(s['label'])}</div>"
+            f"<div class='nav-section{collapsed_cls}' data-sec='{html.escape(s['id'])}'>"
+            f"<div class='section-head' onclick='toggleSection(this.parentElement)'>"
+            f"<span class='dot' style='background:{s['dot']}'></span>"
+            f"{html.escape(s['label'])}"
+            f"<span class='collapse-arrow'></span>"
+            f"</div>"
             f"{btns}</div>"
         )
     nav = "".join(nav_parts)
@@ -1232,25 +1137,13 @@ def index() -> str:
       if (!r.ok) {{ const d = await r.json().catch(() => ({{}})); alert('Save failed: ' + (d.detail || r.status)); return; }}
       loadDoc(itemId);
     }}
-    async function moveItem(itemId, section) {{
-      if (!confirm(`Move this item to "${{section}}"?`)) {{ loadDoc(itemId); return; }}
-      const r = await fetch(`/api/item/${{itemId}}/section`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{section}})
-      }});
-      if (!r.ok) {{
-        const d = await r.json().catch(() => ({{}}));
-        alert('Move failed: ' + (d.detail || r.status)); loadDoc(itemId); return;
-      }}
-      sessionStorage.setItem('qd.lastItem', itemId); // reopen after the reload
-      location.reload();
+    function toggleSection(el) {{
+      el.classList.toggle('collapsed');
     }}
     document.querySelectorAll('.doc-btn').forEach(btn => {{
       btn.onclick = () => loadDoc(btn.dataset.item);
     }});
-    const _last = sessionStorage.getItem('qd.lastItem');
-    if (_last) {{ sessionStorage.removeItem('qd.lastItem'); loadDoc(_last); }}
-    else {{ {init_js} }}
+    {init_js}
   </script>
 </body></html>"""
 

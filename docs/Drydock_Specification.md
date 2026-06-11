@@ -846,12 +846,24 @@ designed to show project state, blockers, and decisions that require product-own
 
 The QuarterDeck reads:
 
-**`<Target>/Console/console.json`** is the QuarterDeck workflow index. It defines project identity (derived from
-`METADATA.md` and `README.md`), the default view, and all renderable navigation items:
-Blueprint snapshots, sprint boards, questionnaires, evidence pages, and review pages. Each
-item declares its section, renderer, source path, and optional review target.
+**`<Target>/QuarterDeck/console.yaml`** is the QuarterDeck workflow index. It defines project
+identity, the default view, the sidebar section taxonomy (id / label / dot / collapsed / pinned),
+and all renderable navigation items: Blueprint snapshots, sprint boards, questionnaires, evidence
+pages, and review pages. Each item declares its section, renderer, source path, and optional review
+target. The five canonical sections are:
 
-**`<Target>/Console/tickets.json`** is a generated projection of the Agile `BUILD_PLAN.md`. Spikes
+| Section id | Label | Behavior |
+|---|---|---|
+| `core` | Drydock Core | Fixed and pinned — source-of-truth docs always visible |
+| `build_plan` | Build Plan | Kanban board and work tracking |
+| `actions` | Action Items | Questionnaires and items requiring product-owner input |
+| `project_pages` | Project Pages | Generated or supporting documentation and derived views |
+| `archive` | Archive | Retired or done items; collapsed by default |
+
+The **Master Blueprint** is the standard label for the authoritative project specification file in
+the Drydock Core section.
+
+**`<Target>/QuarterDeck/tickets.json`** is a generated projection of the Agile `BUILD_PLAN.md`. Spikes
 and stories appear as tickets; acceptance criteria are folded under their parent. Column assignment
 maps directly to object state.
 
@@ -883,8 +895,7 @@ rather than by hand-editing plan files. Decisions of record are appended to the 
 
 Every Drydock QuarterDeck carries three standard product-owner artifacts. They are the
 methodology's fixed reference points; Drydock's own repository is their reference instance. Each is
-a source-of-truth document, filed in **Core Docs** and pinned — it cannot be archived or
-recategorized.
+a source-of-truth document, filed in **Drydock Core** and pinned.
 
 | Artifact | Purpose |
 |---|---|
@@ -899,13 +910,6 @@ are complementary, not duplicates.
 **QuarterDeck pages are terse.** A page carries minimal exposition: a one-line statement of what it
 is, then the content. The standard artifacts are checklists and criteria, not essays — Soundings is
 a list of acceptance criteria under a single-sentence header, not a narrative.
-
-### Recategorizing Items
-
-Any item can be moved between sections from its page through a section-change control. The move
-changes only the item's `section`; it never changes the item's type or content. Source-of-truth
-Core Docs are pinned and cannot move. Every other item may move freely among Pages, Plan, Action
-Items, and Archive, which lets the product owner archive material without editing files.
 
 ## The Ship's Log — Your Decision Log
 

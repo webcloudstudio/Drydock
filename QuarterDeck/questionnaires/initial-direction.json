@@ -1,7 +1,7 @@
 {
   "id": "initial_direction",
   "title": "Choose The Next Drydock Slice",
-  "state": "open",
+  "state": "done",
   "purpose": "Capture product-owner direction after testing the first Drydock QuarterDeck.",
   "questions": [
     {
@@ -10,7 +10,8 @@
       "prompt": "How useful is this first-cut cockpit for understanding Drydock's current state? (0-10)",
       "input": "slider",
       "min": 0,
-      "max": 10
+      "max": 10,
+      "answer": "5"
     },
     {
       "id": "next_slice",
@@ -22,7 +23,8 @@
         "QuarterDeck projection and decision reconciliation",
         "Ship's Log decision writer",
         "Build status and evidence contracts"
-      ]
+      ],
+      "answer": "Ship's Log decision writer"
     },
     {
       "id": "most_important_view",
@@ -34,13 +36,16 @@
         "Decisions and Ship's Log",
         "Build evidence and reviews",
         "Current-state executive overview"
-      ]
+      ],
+      "answer": "Build evidence and reviews"
     },
     {
       "id": "revision_notes",
       "label": "Revision Notes",
       "prompt": "What is unclear, noisy, missing, or unnecessary in this first cut?",
-      "input": "textarea"
+      "input": "textarea",
+      "answer": "This project is pitches with you as the product owner - so we want agile thinking.  I also have been reworking this project for configuration specifics - the exact understanding of what shows where and how and what the user wants to do (archive stuff...) and what it should look like... Its cool.  "
     }
-  ]
+  ],
+  "answered_at": "2026-06-11T17:39:58.787472+00:00"
 }

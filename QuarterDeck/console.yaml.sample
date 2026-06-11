@@ -1,0 +1,51 @@
+# console.yaml — QuarterDeck configuration template.
+# Copy to console.yaml and adjust for your project.
+#
+# items[] is a flat list of things — one thing = one nav entry (1:1).
+# Nav properties: label, section (+ optional order).
+# Section must match one of the ids in sections[].
+# Type properties: type + its required fields.
+# All path values are relative to QuarterDeck/ and must resolve inside the project root.
+# Types: markdown | editable_markdown | jsonl | kanban | questionnaire | link | command_status
+
+console:
+  name: Project QuarterDeck
+  default_item: commanders_view
+  state_db: data/console_state.sqlite
+
+project:
+  id: PROJECT
+  name: Project Name
+  description: "One-line description shown in the header."
+
+sections:
+  - { id: core,          label: "Drydock Core",  dot: "#0d9488", pinned: true }
+  - { id: build_plan,    label: "Build Plan",     dot: "#d97706" }
+  - { id: actions,       label: "Action Items",   dot: "#dc2626" }
+  - { id: project_pages, label: "Project Pages",  dot: "#2563eb" }
+  - { id: archive,       label: "Archive",        dot: "#94a3b8", collapsed: true }
+
+items:
+  - id: commanders_view
+    label: "Commander's View"
+    section: core
+    type: editable_markdown
+    path: pages/overview.md
+
+  - id: master_blueprint
+    label: "Master Blueprint"
+    section: core
+    type: markdown
+    path: ../docs/Specification.md
+
+  - id: board
+    label: "Delivery Board"
+    section: build_plan
+    type: kanban
+    path: tickets.json
+
+  - id: kickoff
+    label: "Kickoff Questionnaire"
+    section: actions
+    type: questionnaire
+    path: questionnaires/kickoff.json
