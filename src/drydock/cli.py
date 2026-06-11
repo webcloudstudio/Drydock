@@ -7,7 +7,7 @@ import sys
 import traceback
 
 from drydock import __copyright__, __version__
-from drydock.errors import DrydockError
+from drydock.errors import DrydockError, UsageError
 from drydock.stubs import not_implemented
 
 # ---------------------------------------------------------------------------
@@ -140,6 +140,65 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         f"{len(result.skipped())} fresh, {len(result.failed())} failed"
     )
     return result.exit_code()
+
+
+def _print_plan_blocks(plan, *, frontier_ids: set[str] | None = None) -> None:
+    frontier_ids = frontier_ids or set()
+    for block in plan.blocks:
+        marker = "RUNNABLE" if block.block_id in frontier_ids else block.state.upper()
+        print(f"  {marker:<15} {block.block_type:<5} {block.block_id:<24} {block.name}")
+
+
+def _print_plan_summary(plan) -> None:
+    counts = plan.state_counts()
+    print()
+    print(
+        "Summary: "
+        + ", ".join(
+            f"{state}={counts[state]}"
+            for state in (
+                "pending",
+                "implemented",
+                "closed/verified",
+                "closed/failed",
+            )
+        )
+    )
+
+
+def cmd_plan_show(args: argparse.Namespace) -> int:
+    from drydock.build_plan import load_blueprint_plan
+    from drydock.config import get_blueprint_directory
+
+    plan = load_blueprint_plan(args.Blueprint, get_blueprint_directory())
+    print(f"Blueprint: {plan.project}")
+    print(f"Plan: {plan.path}")
+    if plan.updated:
+        print(f"Updated: {plan.updated}")
+    if plan.plan_hash:
+        print(f"Plan hash: {plan.plan_hash}")
+    print()
+    _print_plan_blocks(plan)
+    _print_plan_summary(plan)
+    return 0
+
+
+def cmd_build_status(blueprint: str, target: str) -> int:
+    from drydock.build_plan import load_blueprint_plan
+    from drydock.config import get_blueprint_directory, get_target_directory
+
+    plan = load_blueprint_plan(blueprint, get_blueprint_directory())
+    target_path = get_target_directory() / target
+    frontier = plan.runnable_frontier()
+    frontier_ids = {block.block_id for block in frontier}
+
+    print(f"Blueprint: {plan.project}")
+    print(f"Target: {target_path}")
+    print()
+    _print_plan_blocks(plan, frontier_ids=frontier_ids)
+    _print_plan_summary(plan)
+    print("Runnable frontier: " + (", ".join(block.block_id for block in frontier) or "(none)"))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +397,9 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         not_implemented("build")
     first = tokens[0] if tokens else ""
     if first == "status":
-        not_implemented("build status")
+        if len(tokens) != 3:
+            raise UsageError("Usage: drydock build status <Blueprint> <Target>")
+        return cmd_build_status(tokens[1], tokens[2])
     elif first == "score":
         not_implemented("build score")
     else:
@@ -388,7 +449,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         elif sub == "create":
             not_implemented("plan create")
         elif sub == "show":
-            not_implemented("plan show")
+            return cmd_plan_show(args)
         else:
             not_implemented("plan")
 
@@ -414,6 +475,9 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         rc = _dispatch(args, parser)
+    except UsageError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
     except DrydockError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)

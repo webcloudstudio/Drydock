@@ -1,0 +1,137 @@
+"""Tests for canonical BUILD_PLAN.md parsing and frontier calculation."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from drydock.build_plan import parse_build_plan
+from drydock.errors import SpecificationError
+
+
+def write_plan(path: Path, body: str) -> Path:
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+@pytest.fixture()
+def plan_path(tmp_path: Path) -> Path:
+    return write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        """# BUILD_PLAN: Example
+updated:     2026-06-11T12:00:00
+plan_hash:   abc123
+
+## story 1: Foundation
+id:           foundation
+summary:      Build the foundation.
+state:        closed/verified
+
+## story 2: Import documents
+id:           import-documents
+depends:      foundation
+state:        pending
+
+## story 3: Unknown dependency
+id:           blocked-story
+depends:      missing-block
+state:        pending
+
+## story 4: Awaiting checks
+id:           awaiting-checks
+state:        implemented
+
+## ac 1: System starts
+id:           system-starts
+parent:       awaiting-checks
+state:        pending
+
+## ac 2: Foundation check
+id:           foundation-check
+parent:       foundation
+state:        pending
+""",
+    )
+
+
+def test_parse_build_plan(plan_path: Path):
+    plan = parse_build_plan(plan_path)
+
+    assert plan.project == "Example"
+    assert plan.updated == "2026-06-11T12:00:00"
+    assert plan.plan_hash == "abc123"
+    assert len(plan.blocks) == 6
+    assert plan.blocks[1].depends == ("foundation",)
+
+
+def test_runnable_frontier_applies_dependency_and_ac_parent_rules(plan_path: Path):
+    plan = parse_build_plan(plan_path)
+
+    assert [block.block_id for block in plan.runnable_frontier()] == [
+        "import-documents",
+        "system-starts",
+    ]
+
+
+def test_state_counts(plan_path: Path):
+    counts = parse_build_plan(plan_path).state_counts()
+
+    assert counts["pending"] == 4
+    assert counts["implemented"] == 1
+    assert counts["closed/verified"] == 1
+    assert counts["closed/failed"] == 0
+
+
+def test_missing_plan_raises(tmp_path: Path):
+    with pytest.raises(SpecificationError, match="BUILD_PLAN.md not found"):
+        parse_build_plan(tmp_path / "BUILD_PLAN.md")
+
+
+def test_missing_id_raises(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        "# BUILD_PLAN: Example\n\n## story 1: No id\nstate: pending\n",
+    )
+
+    with pytest.raises(SpecificationError, match="Missing id"):
+        parse_build_plan(path)
+
+
+def test_duplicate_id_raises(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        """# BUILD_PLAN: Example
+
+## story 1: First
+id: duplicate
+state: pending
+
+## spike 1: Second
+id: duplicate
+state: pending
+""",
+    )
+
+    with pytest.raises(SpecificationError, match="Duplicate block id"):
+        parse_build_plan(path)
+
+
+def test_ac_requires_parent(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        "# BUILD_PLAN: Example\n\n## ac 1: Check\nid: check\nstate: pending\n",
+    )
+
+    with pytest.raises(SpecificationError, match="Missing parent"):
+        parse_build_plan(path)
+
+
+def test_invalid_state_raises(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        "# BUILD_PLAN: Example\n\n## story 1: Bad\nid: bad\nstate: running\n",
+    )
+
+    with pytest.raises(SpecificationError, match="Invalid state"):
+        parse_build_plan(path)

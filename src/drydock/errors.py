@@ -7,6 +7,10 @@ class DrydockError(Exception):
     """Base class for all expected Drydock errors."""
 
 
+class UsageError(DrydockError):
+    """Command arguments do not satisfy the public CLI contract."""
+
+
 class ConfigurationError(DrydockError):
     """A required configuration value is missing or invalid."""
 

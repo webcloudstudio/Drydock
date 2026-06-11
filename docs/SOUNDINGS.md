@@ -38,8 +38,8 @@ capability is complete only at `DONE` with concrete evidence.
 | 18 | `drydock rigging verify <Target>` | Verifies target-project Rigging compliance | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
 | 19 | `drydock plan init <Blueprint>` | Creates or updates `BUILD_PLAN_INTENT.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
 | 20 | `drydock plan create <Blueprint>` | Produces and merges `BUILD_PLAN.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 21 | `drydock plan show <Blueprint>` | Shows the current build plan | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 22 | `drydock build status <Blueprint> <Target>` | Reports plan state and runnable frontier | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 21 | `drydock plan show <Blueprint>` | Shows the current build plan | DONE | `test_build_plan.py`; `test_cli.py::TestPlanInspection::test_plan_show_reports_blocks_and_summary` |
+| 22 | `drydock build status <Blueprint> <Target>` | Reports plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`; `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
 | 23 | `drydock build <Blueprint> <Target>` | Builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
 | 24 | `drydock build score <Blueprint> <Target>` | Generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
 | 25 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` | Updates Blueprint and target together | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
@@ -51,9 +51,9 @@ capability is complete only at `DONE` with concrete evidence.
 | Category | Count |
 |---|---:|
 | Total commands | 27 |
-| DONE | 13 |
+| DONE | 15 |
 | IMPLEMENTED | 0 |
-| STUBBED | 14 |
+| STUBBED | 12 |
 | NOT STARTED | 0 |
 
 Drydock is command-complete only when every command row is `DONE`.

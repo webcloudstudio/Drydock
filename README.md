@@ -39,6 +39,11 @@ drydock init <Blueprint> --force
 
 drydock validate <Blueprint>
 drydock validate <Blueprint> --verbose
+
+drydock rigging compact <Blueprint> [--all] [--force]
+
+drydock plan show <Blueprint>
+drydock build status <Blueprint> <Target>
 ```
 
 ## Deferred Commands
@@ -50,13 +55,10 @@ implemented. Each returns a clear message and exits with code `2`:
 drydock document generate <Blueprint> <Target>
 drydock document assemble <Blueprint> <Target>
 drydock document <Blueprint> <Target>
-drydock rigging compact <Blueprint>
 drydock rigging update <Target>
 drydock rigging verify <Target>
 drydock plan init <Blueprint>
 drydock plan create <Blueprint>
-drydock plan show <Blueprint>
-drydock build status <Blueprint> <Target>
 drydock build <Blueprint> <Target>
 drydock build score <Blueprint> <Target>
 drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>

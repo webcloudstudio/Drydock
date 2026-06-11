@@ -273,6 +273,70 @@ class TestRiggingCompact:
         assert "Nothing to compact" in out
 
 
+class TestPlanInspection:
+    PLAN = """# BUILD_PLAN: Example
+updated: 2026-06-11T12:00:00
+plan_hash: abc123
+
+## story 1: Foundation
+id: foundation
+state: closed/verified
+
+## story 2: Import documents
+id: import-documents
+depends: foundation
+state: pending
+
+## story 3: Awaiting checks
+id: awaiting-checks
+state: implemented
+
+## ac 1: System starts
+id: system-starts
+parent: awaiting-checks
+state: pending
+"""
+
+    def _setup(self, tmp_spec_root, tmp_target_root, monkeypatch):
+        blueprint = tmp_spec_root / "Example"
+        blueprint.mkdir()
+        (blueprint / "BUILD_PLAN.md").write_text(self.PLAN, encoding="utf-8")
+        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
+        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+
+    def test_plan_show_reports_blocks_and_summary(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+
+        rc, out, err = run_cli("plan", "show", "Example")
+
+        assert rc == 0, err
+        assert "Blueprint: Example" in out
+        assert "import-documents" in out
+        assert "pending=2" in out
+        assert "RUNNABLE" not in out
+
+    def test_build_status_reports_runnable_frontier(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+
+        rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
+
+        assert rc == 0, err
+        assert f"Target: {tmp_target_root / 'ExampleTarget'}" in out
+        assert "RUNNABLE        story import-documents" in out
+        assert "RUNNABLE        ac    system-starts" in out
+        assert "Runnable frontier: import-documents, system-starts" in out
+
+    def test_build_status_usage_error(self):
+        rc, out, err = run_cli("build", "status", "Example")
+
+        assert rc == 2
+        assert "Usage: drydock build status" in err
+
+
 class TestStubs:
     """Deferred commands must exit 2, print a message, and not write anything."""
 
@@ -284,8 +348,6 @@ class TestStubs:
         (["rigging", "verify", "MyTarget"], "rigging verify"),
         (["plan", "init", "MySpec"], "plan init"),
         (["plan", "create", "MySpec"], "plan create"),
-        (["plan", "show", "MySpec"], "plan show"),
-        (["build", "status", "MySpec", "MyTarget"], "build status"),
         (["build", "score", "MySpec", "MyTarget"], "build score"),
         (["build", "MySpec", "MyTarget"], "build"),
         (["iterate", "MySpec", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "iterate"),
