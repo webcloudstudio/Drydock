@@ -231,7 +231,33 @@ def test_drydock_command_status_renders_current_soundings():
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Total commands</strong><br>27" in rendered
-    assert "DONE (16)" in rendered
-    assert "STUBBED (11)" in rendered
+    assert "Total commands</strong><br>28" in rendered
+    assert "DONE (17)" in rendered
+    assert "IMPLEMENTED (2)" in rendered
+    assert "STUBBED (9)" in rendered
     assert "no structured findings" in rendered
+
+
+def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    plan_path = tmp_path / "BUILD_PLAN.md"
+    plan_path.write_text(
+        "# BUILD_PLAN: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
+        encoding="utf-8",
+    )
+    item = {
+        "id": "planning_session",
+        "label": "Planning Session",
+        "section": "core",
+        "type": "plan_decision",
+        "plan_path": str(plan_path),
+    }
+    monkeypatch.setattr(quarterdeck, "CONFIG", {"items": [item]})
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+
+    result = quarterdeck.api_plan_decision(
+        "planning_session", quarterdeck.PlanDecision(decision="approve")
+    )
+
+    assert result["state"] == "approved"
+    assert "state: approved" in plan_path.read_text(encoding="utf-8")

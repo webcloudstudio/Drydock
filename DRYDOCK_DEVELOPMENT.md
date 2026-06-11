@@ -284,14 +284,18 @@ Working now:
 - `drydock init`
 - `drydock validate`
 - `drydock rigging compact`
+- `drydock import <Blueprint> <Source> --format markdown`
+- `drydock plan init|create|approve|revise|reject|show`
+- `drydock build status`
 - source-tree launchers, package foundation, and Rigging resource resolution
 
-All other visible commands are deferred stubs. The preferred implementation order follows the V2
+All other visible commands are deferred stubs or partially implemented as recorded in Soundings.
+The preferred implementation order follows the V2
 delivery dependency chain:
 
 1. Complete and stabilize the command surface and shared path/process contracts.
-2. Implement `plan init|create|show`.
-3. Implement build status, evidence contracts, and `drydock build`.
+2. Stabilize the Planning Session, adaptive decomposition, and plan decision contracts.
+3. Implement evidence contracts and `drydock build`.
 4. Implement QuarterDeck review reconciliation.
 5. Implement `iterate`, `analyze`, and score.
 6. Implement Rigging update, verification, and compaction.

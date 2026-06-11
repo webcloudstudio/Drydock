@@ -24,6 +24,7 @@ services, no build step. What it persists is small: questionnaire answers and ed
 | Questionnaire | `questionnaire` | Asking the human structured questions; answers are saved and read back |
 | Work board | `kanban` | Sprint/backlog tracking from a tickets file: features own stories, with priority/urgency/blocked flags and acceptance-criteria checklists |
 | Hyperlink | `link` | Pointing at an external or local resource |
+| Plan decision | `plan_decision` | Approve, revise, or reject an authoritative Drydock `BUILD_PLAN.md` |
 | Sign-off | `"review": true` on any item | Approve · revise · reject a demo, review, or doc, with feedback recorded |
 
 Every artifact is filed under a **section** (Drydock Core, Build Plan, Action Items, Project Pages,
@@ -160,7 +161,7 @@ items:
 | `id` | Yes | Unique item id (stable; used in routes and `state_key`s) |
 | `label` | Yes | Sidebar button text |
 | `section` | Yes | Section id from the `sections` block |
-| `type` | Yes | `markdown` \| `editable_markdown` \| `jsonl` \| `kanban` \| `questionnaire` \| `link` \| `command_status` |
+| `type` | Yes | `markdown` \| `editable_markdown` \| `jsonl` \| `kanban` \| `questionnaire` \| `link` \| `command_status` \| `plan_decision` |
 | `order` | No | Sort order within its section (default config order) |
 | `review` | No | `true` adds an Approve · Revise · Reject sign-off bar to the item (see Decisions below) |
 | `path` | For file types | File path relative to `QuarterDeck/` |
@@ -341,6 +342,7 @@ read-only `tickets.json`; the verify/fail marks are stored under `ac.<item_id>.<
 | `GET` | `/api/items` | Flat item list |
 | `GET` | `/api/document/{item_id}` | Rendered HTML + type for an item |
 | `POST` | `/api/document/{item_id}/source` | Write raw source back (editable_markdown items only) |
+| `POST` | `/api/plan/{item_id}/decision` | Apply an approve/revise/reject Planning Session decision through Drydock's plan writer |
 | `GET` | `/api/ticket/{item_id}/{ticket_id}` | Rendered ticket detail (kanban items) |
 | `GET` | `/raw/{item_id}` | Raw file download |
 | `GET` | `/api/state/{key}` | Stored state record by key (`questionnaire.*`, `decision.*`, `ac.*`) |

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from drydock.build_plan import parse_build_plan
+from drydock.build_plan import parse_build_plan, set_plan_state
 from drydock.errors import SpecificationError
 
 
@@ -135,3 +135,100 @@ def test_invalid_state_raises(tmp_path: Path):
 
     with pytest.raises(SpecificationError, match="Invalid state"):
         parse_build_plan(path)
+
+
+def test_draft_plan_has_no_runnable_frontier(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        """# BUILD_PLAN: Example
+state: draft
+
+## story 1: Work
+id: work
+scope: target
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    assert plan.state == "draft"
+    assert plan.blocks[0].scope == "target"
+    assert plan.runnable_frontier() == ()
+
+
+def test_plan_approval_exposes_frontier(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        """# BUILD_PLAN: Example
+state: draft
+
+## feature 1: Workflow
+id: workflow
+state: pending
+
+## story 1: Work
+id: work
+parent: workflow
+state: pending
+""",
+    )
+
+    plan = set_plan_state(path, "approved")
+
+    assert plan.state == "approved"
+    assert [block.block_id for block in plan.runnable_frontier()] == ["work"]
+
+
+def test_non_executable_feature_closes_after_all_children(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        """# BUILD_PLAN: Example
+state: approved
+
+## feature 1: Workflow
+id: workflow
+state: pending
+
+## story 1: Work
+id: work
+parent: workflow
+state: closed/verified
+
+## ac 1: Workflow accepted
+id: workflow-accepted
+parent: workflow
+state: closed/verified
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    assert [block.block_id for block in plan.closable_features()] == ["workflow"]
+
+
+def test_feature_acceptance_runs_after_feature_work_closes(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "BUILD_PLAN.md",
+        """# BUILD_PLAN: Example
+state: approved
+
+## feature 1: Workflow
+id: workflow
+state: pending
+
+## story 1: Work
+id: work
+parent: workflow
+state: closed/verified
+
+## ac 1: Workflow accepted
+id: workflow-accepted
+parent: workflow
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    assert [block.block_id for block in plan.runnable_frontier()] == ["workflow-accepted"]

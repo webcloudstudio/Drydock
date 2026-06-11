@@ -42,6 +42,12 @@ drydock validate <Blueprint> --verbose
 
 drydock rigging compact <Blueprint> [--all] [--force]
 
+drydock import <Blueprint> <Source> --format markdown
+drydock plan init <Blueprint>
+drydock plan create <Blueprint> <Target>
+drydock plan approve <Blueprint> <Target>
+drydock plan revise <Blueprint> <Target> <Feedback>
+drydock plan reject <Blueprint> <Target> <Feedback>
 drydock plan show <Blueprint>
 drydock build status <Blueprint> <Target>
 ```
@@ -57,13 +63,11 @@ drydock document assemble <Blueprint> <Target>
 drydock document <Blueprint> <Target>
 drydock rigging update <Target>
 drydock rigging verify <Target>
-drydock plan init <Blueprint>
-drydock plan create <Blueprint>
 drydock build <Blueprint> <Target>
 drydock build score <Blueprint> <Target>
 drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 drydock analyze <Blueprint> [<Target>]
-drydock import <Blueprint> <Target> --format <auto|source|speckit>
+drydock import <Blueprint> <Source> --format <source|speckit>
 ```
 
 ## Configuration

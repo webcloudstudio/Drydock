@@ -164,6 +164,7 @@ def _print_plan_summary(plan) -> None:
             )
         )
     )
+    print(f"Plan state: {plan.state}")
 
 
 def cmd_plan_show(args: argparse.Namespace) -> int:
@@ -196,7 +197,7 @@ def cmd_plan_init(args: argparse.Namespace) -> int:
         print()
         print("Next steps:")
         print("  1. Reorder sections and files in BUILD_PLAN_INTENT.md")
-        print(f"  2. Run: drydock plan create {args.Blueprint}")
+        print(f"  2. Run: drydock plan create {args.Blueprint} <Target>")
     elif result.status == IntentStatus.UPDATED:
         print(f"Updated: {result.intent_path}")
         for name in result.appended_files:
@@ -204,6 +205,68 @@ def cmd_plan_init(args: argparse.Namespace) -> int:
     else:
         print("BUILD_PLAN_INTENT.md is up to date - no new spec files found.")
 
+    return 0
+
+
+def cmd_plan_create(args: argparse.Namespace) -> int:
+    from drydock.config import get_blueprint_directory, get_target_directory
+    from drydock.planning_session import create_plan
+
+    result = create_plan(
+        args.Blueprint,
+        args.Target,
+        get_blueprint_directory(),
+        get_target_directory(),
+    )
+    print(f"Blueprint: {result.plan.project}")
+    print(f"Plan: {result.plan.path}")
+    print(f"Plan state: {result.plan.state}")
+    print(f"Planning Session: {result.quarterdeck_dir}")
+    print()
+    _print_plan_blocks(result.plan)
+    _print_plan_summary(result.plan)
+    print()
+    print(
+        f"Next step: review the Planning Session, then run drydock plan approve {args.Blueprint} {args.Target}"
+    )
+    return 0
+
+
+def cmd_plan_decide(args: argparse.Namespace) -> int:
+    from drydock.build_plan import set_plan_state
+    from drydock.config import get_blueprint_directory, get_target_directory
+    from drydock.planning_session import sync_planning_session
+
+    state = "approved" if args.plan_command == "approve" else "draft"
+    feedback = getattr(args, "feedback", "") or ""
+    plan_path = get_blueprint_directory() / args.Blueprint / "BUILD_PLAN.md"
+    plan = set_plan_state(plan_path, state, feedback=feedback, decision=args.plan_command)
+    quarterdeck = sync_planning_session(plan, get_target_directory() / args.Target)
+    print(f"Plan: {plan.path}")
+    print(f"Decision: {args.plan_command}")
+    print(f"Plan state: {plan.state}")
+    print(f"Planning Session: {quarterdeck}")
+    return 0
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from drydock.config import get_blueprint_directory
+    from drydock.errors import UsageError
+    from drydock.import_markdown import import_markdown
+
+    if args.format not in {"auto", "markdown"}:
+        raise UsageError(
+            f"Import format {args.format!r} remains deferred; use --format markdown for Markdown input."
+        )
+    result = import_markdown(args.Blueprint, Path(args.Source), get_blueprint_directory())
+    print(f"Blueprint: {result.blueprint_dir}")
+    print(f"Source: {result.source}")
+    for path in result.imported:
+        print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
+    print()
+    print(f"Next step: drydock plan init {args.Blueprint}")
     return 0
 
 
@@ -218,6 +281,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 
     print(f"Blueprint: {plan.project}")
     print(f"Target: {target_path}")
+    print(f"Plan state: {plan.state}")
     print()
     _print_plan_blocks(plan, frontier_ids=frontier_ids)
     _print_plan_summary(plan)
@@ -345,11 +409,21 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_sub = p_plan.add_subparsers(dest="plan_command", metavar="<subcommand>")
     for verb, help_str in [
         ("init", "Create or update BUILD_PLAN_INTENT.md."),
-        ("create", "Run LLM analysis and produce BUILD_PLAN.md."),
         ("show", "Show the current build plan."),
     ]:
         pp = plan_sub.add_parser(verb, help=help_str)
         pp.add_argument("Blueprint", metavar="<Blueprint>")
+    p_plan_create = plan_sub.add_parser(
+        "create", help="Create a draft executable plan and target Planning Session."
+    )
+    p_plan_create.add_argument("Blueprint", metavar="<Blueprint>")
+    p_plan_create.add_argument("Target", metavar="<Target>")
+    for verb in ("approve", "revise", "reject"):
+        pp = plan_sub.add_parser(verb, help=f"{verb.title()} the complete Planning Session plan.")
+        pp.add_argument("Blueprint", metavar="<Blueprint>")
+        pp.add_argument("Target", metavar="<Target>")
+        if verb in {"revise", "reject"}:
+            pp.add_argument("feedback", metavar="<Feedback>")
 
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Blueprint> <Target>
@@ -390,8 +464,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
     p_import.add_argument("Blueprint", metavar="<Blueprint>")
-    p_import.add_argument("Target", metavar="<Target>")
-    p_import.add_argument("--format", choices=["auto", "source", "speckit"], default="auto")
+    p_import.add_argument("Source", metavar="<Source>")
+    p_import.add_argument(
+        "--format", choices=["auto", "markdown", "source", "speckit"], default="auto"
+    )
 
     return parser
 
@@ -471,9 +547,11 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if sub == "init":
             return cmd_plan_init(args)
         elif sub == "create":
-            not_implemented("plan create")
+            return cmd_plan_create(args)
         elif sub == "show":
             return cmd_plan_show(args)
+        elif sub in {"approve", "revise", "reject"}:
+            return cmd_plan_decide(args)
         else:
             not_implemented("plan")
 
@@ -487,7 +565,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         not_implemented("analyze")
 
     if command == "import":
-        not_implemented("import")
+        return cmd_import(args)
 
     return 0
 

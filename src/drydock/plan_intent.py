@@ -20,6 +20,18 @@ _SKIPPED_FILES = {
     "README.md",
     "SCORECARD.md",
     "UI-GENERAL.md",
+    "UI.md",
+    "HOMEPAGE.md",
+    "FEATURE-Example.md",
+    "SCREEN-Example.md",
+    "UI-Component-Example.md",
+}
+
+_IMPORTED_TEMPLATE_FILES = {
+    "DATABASE.md",
+    "FEATURE-Example.md",
+    "SCREEN-Example.md",
+    "UI-Component-Example.md",
 }
 
 
@@ -53,12 +65,28 @@ def _size_annotation(path: Path) -> str:
 
 
 def _discover_spec_files(blueprint_dir: Path) -> list[Path]:
-    return [path for path in sorted(blueprint_dir.glob("*.md")) if _is_plannable_file(path)]
+    top_level = [path for path in sorted(blueprint_dir.glob("*.md")) if _is_plannable_file(path)]
+    sources_dir = blueprint_dir / "sources"
+    if (sources_dir / ".drydock-import").is_file():
+        top_level = [path for path in top_level if path.name not in _IMPORTED_TEMPLATE_FILES]
+    sources = (
+        [path for path in sorted(sources_dir.rglob("*.md")) if path.is_file()]
+        if sources_dir.is_dir()
+        else []
+    )
+    return top_level + sources
 
 
-def _write_new_intent(intent_path: Path, blueprint: str, spec_files: list[Path]) -> int:
+def _display_name(path: Path, blueprint_dir: Path) -> str:
+    return path.relative_to(blueprint_dir).as_posix()
+
+
+def _write_new_intent(
+    intent_path: Path, blueprint: str, blueprint_dir: Path, spec_files: list[Path]
+) -> int:
     database = next((path for path in spec_files if path.name == "DATABASE.md"), None)
-    remaining = [path for path in spec_files if path.name != "DATABASE.md"]
+    sources = [path for path in spec_files if "sources" in path.relative_to(blueprint_dir).parts]
+    remaining = [path for path in spec_files if path.name != "DATABASE.md" and path not in sources]
 
     lines = [
         f"# BUILD_PLAN_INTENT.md — {blueprint}",
@@ -77,11 +105,16 @@ def _write_new_intent(intent_path: Path, blueprint: str, spec_files: list[Path])
     if remaining:
         lines.append("## Planned Work")
         for path in remaining:
-            lines.append(f"{path.name} {_size_annotation(path)}")
+            lines.append(f"{_display_name(path, blueprint_dir)} {_size_annotation(path)}")
+        lines.append("")
+    if sources:
+        lines.append("## Imported Sources")
+        for path in sources:
+            lines.append(f"{_display_name(path, blueprint_dir)} {_size_annotation(path)}")
         lines.append("")
 
     intent_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    return 1 + (1 if remaining else 0)
+    return 1 + (1 if remaining else 0) + (1 if sources else 0)
 
 
 def init_plan_intent(blueprint: str, blueprint_directory: Path) -> PlanIntentResult:
@@ -96,7 +129,7 @@ def init_plan_intent(blueprint: str, blueprint_directory: Path) -> PlanIntentRes
     spec_files = _discover_spec_files(blueprint_dir)
 
     if not intent_path.exists():
-        section_count = _write_new_intent(intent_path, blueprint, spec_files)
+        section_count = _write_new_intent(intent_path, blueprint, blueprint_dir, spec_files)
         return PlanIntentResult(
             blueprint=blueprint,
             blueprint_dir=blueprint_dir,
@@ -106,8 +139,12 @@ def init_plan_intent(blueprint: str, blueprint_directory: Path) -> PlanIntentRes
         )
 
     existing_text = intent_path.read_text(encoding="utf-8")
-    referenced = set(re.findall(r"\b([\w-]+\.md)\b", existing_text))
-    new_files = tuple(path.name for path in spec_files if path.name not in referenced)
+    referenced = set(re.findall(r"(?m)^#?\s*([^\s]+\.md)\b", existing_text))
+    new_files = tuple(
+        _display_name(path, blueprint_dir)
+        for path in spec_files
+        if _display_name(path, blueprint_dir) not in referenced
+    )
     if not new_files:
         return PlanIntentResult(
             blueprint=blueprint,

@@ -407,6 +407,96 @@ class TestPlanInit:
         assert rc == 0, err
         assert "up to date" in out
 
+    def test_plan_init_inventories_imported_sources(
+        self, tmp_spec_root, isolated_config, monkeypatch
+    ):
+        blueprint = self._setup_blueprint(tmp_spec_root, monkeypatch)
+        source = blueprint / "sources" / "notes" / "request.md"
+        source.parent.mkdir(parents=True)
+        source.write_text("# Request\n", encoding="utf-8")
+
+        rc, out, err = run_cli("plan", "init", "Example")
+
+        assert rc == 0, err
+        text = (blueprint / "BUILD_PLAN_INTENT.md").read_text(encoding="utf-8")
+        assert "## Imported Sources" in text
+        assert "sources/notes/request.md" in text
+
+
+class TestPlanningSession:
+    def _configure(self, tmp_spec_root, tmp_target_root, monkeypatch):
+        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
+        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+
+    def test_markdown_import_plan_create_and_approve(
+        self, tmp_path, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_spec_root, tmp_target_root, monkeypatch)
+        source = tmp_path / "request.md"
+        source.write_text(
+            "# Request\n\nBuild a status command.\n\n## Acceptance Criteria\n\n"
+            "- Status command exits successfully.\n",
+            encoding="utf-8",
+        )
+
+        rc, out, err = run_cli("import", "Example", str(source), "--format", "markdown")
+        assert rc == 0, err
+        assert (tmp_spec_root / "Example" / "sources" / "request.md").is_file()
+
+        assert run_cli("plan", "init", "Example")[0] == 0
+        rc, out, err = run_cli("plan", "create", "Example", "ExampleTarget")
+        assert rc == 0, err
+        assert "Plan state: draft" in out
+        plan_path = tmp_spec_root / "Example" / "BUILD_PLAN.md"
+        assert "Status command exits successfully." in plan_path.read_text(encoding="utf-8")
+        quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
+        assert (quarterdeck / "console.yaml").is_file()
+        assert (quarterdeck / "tickets.json").is_file()
+        assert (quarterdeck / "app.py").is_file()
+
+        rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
+        assert rc == 0, err
+        assert "Runnable frontier: (none)" in out
+
+        rc, out, err = run_cli("plan", "approve", "Example", "ExampleTarget")
+        assert rc == 0, err
+        assert "Plan state: approved" in out
+        rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
+        assert rc == 0, err
+        assert "Runnable frontier: story-request" in out
+
+        rc, out, err = run_cli(
+            "plan", "revise", "Example", "ExampleTarget", "Split the status behavior."
+        )
+        assert rc == 0, err
+        assert "Plan state: draft" in out
+        text = plan_path.read_text(encoding="utf-8")
+        assert "planning_decision: revise" in text
+        assert "planning_feedback: Split the status behavior." in text
+
+    def test_feature_spec_generates_feature_parent_and_acceptance(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_spec_root, tmp_target_root, monkeypatch)
+        blueprint = tmp_spec_root / "Example"
+        blueprint.mkdir()
+        (blueprint / "FEATURE-Catalog.md").write_text(
+            "# FEATURE: Catalog\n\n## Acceptance Criteria\n\n- Catalog lists items.\n"
+            "\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- Which sort order?\n",
+            encoding="utf-8",
+        )
+        assert run_cli("plan", "init", "Example")[0] == 0
+
+        rc, out, err = run_cli("plan", "create", "Example", "Target")
+
+        assert rc == 0, err
+        text = (blueprint / "BUILD_PLAN.md").read_text(encoding="utf-8")
+        assert "## feature 1: Catalog" in text
+        assert "parent: feature-catalog" in text
+        assert "Catalog workflow is accepted" in text
+        assert "Which sort order?" in text
+        assert "depends: spike-which-sort-order" in text
+
 
 class TestStubs:
     """Deferred commands must exit 2, print a message, and not write anything."""
@@ -417,13 +507,11 @@ class TestStubs:
         (["document", "MySpec", "MyTarget"], "document"),
         (["rigging", "update", "MyTarget"], "rigging update"),
         (["rigging", "verify", "MyTarget"], "rigging verify"),
-        (["plan", "create", "MySpec"], "plan create"),
         (["build", "score", "MySpec", "MyTarget"], "build score"),
         (["build", "MySpec", "MyTarget"], "build"),
         (["iterate", "MySpec", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "iterate"),
         (["iterate", "MySpec", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "iterate"),
         (["analyze", "MySpec"], "analyze"),
-        (["import", "MySpec", "MyTarget"], "import"),
     ]
 
     @pytest.mark.parametrize("args,label", STUB_CASES)

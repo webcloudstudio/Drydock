@@ -33,6 +33,14 @@ def _source_tree_prompts() -> Path | None:
     return None
 
 
+def _source_tree_quarterdeck() -> Path | None:
+    for candidate in _repo_root_candidates():
+        quarterdeck = candidate / "QuarterDeck"
+        if quarterdeck.is_dir() and (quarterdeck / "app.py").is_file():
+            return quarterdeck
+    return None
+
+
 def get_rigging_root() -> Path:
     """
     Return the authoritative Rigging/ directory.
@@ -76,6 +84,21 @@ def get_prompts_root() -> Path:
     except (FileNotFoundError, TypeError) as exc:
         raise FileNotFoundError(
             "Prompt resources not found. Reinstall drydock or run from the source tree."
+        ) from exc
+
+
+def get_quarterdeck_root() -> Path:
+    """Return the reusable QuarterDeck runtime template."""
+    src = _source_tree_quarterdeck()
+    if src is not None:
+        return src
+    try:
+        pkg_files = importlib.resources.files("drydock") / "resources" / "QuarterDeck"
+        with importlib.resources.as_file(pkg_files) as path:
+            return Path(path)
+    except (FileNotFoundError, TypeError) as exc:
+        raise FileNotFoundError(
+            "QuarterDeck resources not found. Reinstall drydock or run from the source tree."
         ) from exc
 
 
