@@ -1,11 +1,9 @@
 # SOUNDINGS.md — Drydock Acceptance And Readiness
 
-This is Drydock's authoritative implementation acceptance/readiness checklist. It records whether
-each public capability exists, whether its approved behavior has passed acceptance verification,
-and the evidence proving that state.
+This is Drydock's authoritative implementation acceptance/readiness checklist.
 
-Update the matching row whenever a task changes implementation or verification state. A capability
-is complete only when its row is `DONE` with concrete evidence.
+Update the matching row whenever a capability changes implementation or verification state; a
+capability is complete only at `DONE` with concrete evidence.
 
 ## State Contract
 
@@ -67,6 +65,8 @@ Drydock is command-complete only when every command row is `DONE`.
 | Canonical specification governance | `docs/Drydock_Specification.md` is the sole behavior authority; agents require product-owner approval before changing it; approved behavior and specification changes land together | DONE | `AGENTS.md`, `DRYDOCK_DEVELOPMENT.md`, `CONTRIBUTING.md` |
 | Soundings completion workflow | Every completed command or capability updates its state and evidence in this file | DONE | `DRYDOCK_DEVELOPMENT.md` Soundings state and verification contracts |
 | Owned-document viewing | QuarterDeck directly exposes the authoritative specification, Soundings, Sea Trials, rendered docs, and reservation artifacts | DONE | `QuarterDeck/console.json`; `tests/test_quarterdeck.py::test_drydock_console_exposes_existing_owned_documents` |
+| QuarterDeck standard artifacts | Commander's View, Soundings, and Sea Trials are the standard pinned Core Docs artifacts of every Drydock QuarterDeck (orientation / acceptance criteria / objectives) | DONE | `docs/Drydock_Specification.md` § The QuarterDeck → Standard QuarterDeck Artifacts; `QuarterDeck/console.json` |
+| QuarterDeck recategorize | Items move between sections via a section-only control (pin core, free elsewhere) written to `console.json`; type and content are never changed | DONE | `QuarterDeck/app.py` (`legal_target_sections`, `apply_section_change`, `write_config`, `POST /api/item/{id}/section`); `tests/test_quarterdeck.py` recategorize tests |
 | Agent-driven Ship's Log proving workflow | Drydock agents read the local capture contract, classify and record material decisions and milestones through a validated repository utility, perform a final capture review, and surface records through QuarterDeck; standard target deployment remains deferred | DONE | `SHIPS_LOG_PROCESS.md`, `AGENTS.md`, `bin/ships_log.py`, `QuarterDeck/console.json`, `tests/test_ships_log_tool.py`, `tests/test_quarterdeck.py`, `tests/test_cli.py::TestHelpAndVersion::test_help_does_not_expose_ships_log` |
 
 ## Product Acceptance

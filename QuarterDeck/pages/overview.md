@@ -1,9 +1,10 @@
 # Drydock Commander's View
 
-## Mission
+Orientation and current state for the Drydock build. Source of truth lives in the Core Docs; this
+page only orients.
 
-Drydock is the installable V2 successor to Prototyper: a governed, Blueprint-driven Python CLI
-that plans, builds, tests, reviews, and evolves software.
+Drydock is the installable V2 successor to Prototyper: a governed, Blueprint-driven Python CLI that
+plans, builds, tests, reviews, and evolves software.
 
 ## Current State
 
@@ -13,24 +14,20 @@ that plans, builds, tests, reviews, and evolves software.
 | Blueprint intake | Done | `drydock init` and `drydock validate` |
 | Plan workflow | Next | `drydock plan init`, `create`, and `show` are the next coherent capability |
 | Build and evidence | Backlog | Build status, execution, evidence, and score remain deferred |
-| QuarterDeck loop | Prototype | This authored console proves the review surface; automated projection and write-back remain to build |
-| Ship's Log | Working foundation | JSONL writer, audit, and QuarterDeck viewer are implemented; workflow integrations remain |
+| QuarterDeck loop | Prototype | This console proves the review surface; automated projection and write-back remain to build |
+| Ship's Log | Working foundation | JSONL writer, audit, and viewer are implemented; workflow integrations remain |
 
-## Use This QuarterDeck
+## Where To Go
 
-1. Open **Soundings** to inspect authoritative implementation acceptance and evidence.
-2. Open **Choose Next Slice** and save answers to give the next agent structured direction.
-3. Open **Initial Console Review** and record Approve, Revise, or Reject with feedback.
-4. Open **Ship's Log** to inspect canonical JSONL decision and milestone events.
-5. Open **Drydock Specification** for the sole authoritative behavior contract.
+- **Soundings** — acceptance criteria, current state, and evidence.
+- **Sea Trials** — objectives and success criteria for delivery.
+- **Drydock Specification** — the sole authoritative behavior contract.
+- **Choose Next Slice** / **Initial Console Review** — give direction and record sign-off.
+- **Ship's Log** — canonical JSONL decision and milestone events.
 
 ## Control Boundary
 
-This first cut is an authored project cockpit. It does not claim that QuarterDeck decisions already
-write back to `BUILD_PLAN.md` or append workflow decisions to `logs/ships_log.jsonl`. Those
-contracts are represented on the board as
-work to implement and prove.
-
-The sole authoritative product behavior is `docs/Drydock_Specification.md`. Implementation
-acceptance and completion evidence are authoritative in `docs/SOUNDINGS.md`; strategic product
-proof remains in `docs/SEA_TRIALS.md`.
+This is an authored cockpit: QuarterDeck decisions do not yet write back to `BUILD_PLAN.md` or
+append to `logs/ships_log.jsonl` — those are board items to build. Authority stays in
+`docs/Drydock_Specification.md` (behavior), `docs/SOUNDINGS.md` (acceptance), and
+`docs/SEA_TRIALS.md` (objectives).

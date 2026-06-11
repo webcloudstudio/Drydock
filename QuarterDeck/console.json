@@ -75,7 +75,7 @@
     {
       "id": "sea_trials",
       "label": "Sea Trials",
-      "section": "pages",
+      "section": "core",
       "type": "markdown",
       "path": "../docs/SEA_TRIALS.md"
     },

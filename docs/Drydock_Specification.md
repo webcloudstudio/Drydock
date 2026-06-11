@@ -873,6 +873,34 @@ regenerated at any time. This property keeps it honest: every decision made in t
 back through the decision writer, and failed work is reopened and revised here interactively
 rather than by hand-editing plan files. Decisions of record are appended to the Ship's Log.
 
+### Standard QuarterDeck Artifacts
+
+Every Drydock QuarterDeck carries three standard product-owner artifacts. They are the
+methodology's fixed reference points; Drydock's own repository is their reference instance. Each is
+a source-of-truth document, filed in **Core Docs** and pinned — it cannot be archived or
+recategorized.
+
+| Artifact | Purpose |
+|---|---|
+| **Commander's View** | The orientation page and default view: mission and current state at a glance. |
+| **Soundings** | The project's authoritative acceptance-criteria checklist — each capability, its state, and the evidence. The standard way Drydock tracks acceptance criteria. |
+| **Sea Trials** | The project's objectives and success criteria, derived from the specification — what the project must achieve to be declared delivered. The standard way Drydock states project objectives. |
+
+Soundings records *implementation acceptance* — whether each capability is built and verified. Sea
+Trials records *strategic outcomes* — whether the assembled product has proven its purpose. The two
+are complementary, not duplicates.
+
+**QuarterDeck pages are terse.** A page carries minimal exposition: a one-line statement of what it
+is, then the content. The standard artifacts are checklists and criteria, not essays — Soundings is
+a list of acceptance criteria under a single-sentence header, not a narrative.
+
+### Recategorizing Items
+
+Any item can be moved between sections from its page through a section-change control. The move
+changes only the item's `section`; it never changes the item's type or content. Source-of-truth
+Core Docs are pinned and cannot move. Every other item may move freely among Pages, Plan, Action
+Items, and Archive, which lets the product owner archive material without editing files.
+
 ## The Ship's Log — Your Decision Log
 
 The Ship's Log is a conceptual decision-log view backed only by Drydock's

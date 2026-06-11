@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_quarterdeck():
     path = Path(__file__).parents[1] / "QuarterDeck" / "app.py"
@@ -74,3 +76,87 @@ def test_drydock_console_exposes_existing_owned_documents():
     assert ships_log["type"] == "jsonl"
     assert ships_log["path"] == "../logs/ships_log.jsonl"
     assert "tags" in ships_log["fields"]
+
+
+def test_drydock_console_pins_the_three_standard_artifacts_in_core():
+    root = Path(__file__).parents[1]
+    config = json.loads((root / "QuarterDeck" / "console.json").read_text(encoding="utf-8"))
+    items = {item["id"]: item for item in config["items"]}
+    for standard in ("overview", "soundings", "sea_trials"):
+        assert items[standard]["section"] == "core", standard
+
+
+# ── Recategorize (section-only move; pin core, free elsewhere) ───────────────────
+
+
+def _sample_config() -> dict:
+    return {
+        "console": {"name": "Test", "default_item": "spec"},
+        "items": [
+            {"id": "spec", "label": "Spec", "section": "core", "type": "markdown", "path": "a.md"},
+            {
+                "id": "review",
+                "label": "Review",
+                "section": "pages",
+                "type": "markdown",
+                "path": "b.md",
+            },
+        ],
+    }
+
+
+def test_legal_target_sections_pins_core_and_frees_others():
+    quarterdeck = _load_quarterdeck()
+    assert quarterdeck.legal_target_sections({"id": "spec", "section": "core"}) == []
+    assert quarterdeck.legal_target_sections({"id": "review", "section": "pages"}) == [
+        "pages",
+        "plan",
+        "actions",
+        "archive",
+    ]
+
+
+def test_apply_section_change_moves_non_core_item():
+    quarterdeck = _load_quarterdeck()
+    config = _sample_config()
+    item = quarterdeck.apply_section_change(config, "review", "archive")
+    assert item["section"] == "archive"
+    assert config["items"][1]["section"] == "archive"  # mutated in place
+
+
+def test_apply_section_change_rejects_pinned_core():
+    quarterdeck = _load_quarterdeck()
+    config = _sample_config()
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.apply_section_change(config, "spec", "archive")
+    assert exc.value.status_code == 400
+    assert config["items"][0]["section"] == "core"  # unchanged
+
+
+def test_apply_section_change_rejects_illegal_target():
+    quarterdeck = _load_quarterdeck()
+    config = _sample_config()
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.apply_section_change(config, "review", "core")
+    assert exc.value.status_code == 400
+    assert config["items"][1]["section"] == "pages"  # unchanged
+
+
+def test_apply_section_change_rejects_unknown_item():
+    quarterdeck = _load_quarterdeck()
+    config = _sample_config()
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.apply_section_change(config, "nope", "archive")
+    assert exc.value.status_code == 404
+
+
+def test_write_config_round_trips_and_preserves_order(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "console.json"
+    monkeypatch.setattr(quarterdeck, "CONFIG_PATH", target)
+    config = _sample_config()
+    quarterdeck.apply_section_change(config, "review", "archive")
+    quarterdeck.write_config(config)
+    reloaded = json.loads(target.read_text(encoding="utf-8"))
+    assert [i["id"] for i in reloaded["items"]] == ["spec", "review"]
+    assert reloaded["items"][1]["section"] == "archive"

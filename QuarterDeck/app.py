@@ -62,6 +62,12 @@ SECTION_DOTS = {
 }
 _DEFAULT_DOT = "#94a3b8"
 
+# Recategorize ("move") rule — pin core, free elsewhere. Items in Core Docs are
+# source-of-truth and pinned; every other item may move freely among these sections.
+# A move changes only an item's `section`; it never changes its type or content, and
+# `core` is never a legal target (items are not promoted into the pinned zone).
+MOVABLE_SECTIONS = ("pages", "plan", "actions", "archive")
+
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
 STATUSES = [
     ("backlog", "Backlog"),
@@ -148,6 +154,42 @@ def nav_model() -> list[dict[str, Any]]:
             }
         )
     return sections
+
+
+# ── Recategorize (section-only move; pinned core) ───────────────────────────────
+
+
+def legal_target_sections(item: dict[str, Any]) -> list[str]:
+    """Sections an item may move to. Core Docs are pinned (no moves); every other
+    item may move freely among the movable sections. The item's current section is
+    included so the control can mark it."""
+    if item.get("section") == "core":
+        return []
+    return list(MOVABLE_SECTIONS)
+
+
+def apply_section_change(config: dict[str, Any], item_id: str, new_section: str) -> dict[str, Any]:
+    """Move one item to `new_section`, in place, enforcing the move rule. Mutates the
+    item's `section` only — never its type or content. Raises HTTPException on an
+    unknown item, a pinned item, or an illegal target."""
+    item = next((i for i in config.get("items", []) if i.get("id") == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"No item {item_id!r}")
+    targets = legal_target_sections(item)
+    if not targets:
+        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is pinned and cannot move")
+    if new_section not in targets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Illegal move for {item_id!r}: {new_section!r} not in {targets}",
+        )
+    item["section"] = new_section
+    return item
+
+
+def write_config(config: dict[str, Any]) -> None:
+    """Persist the console index, preserving block and item order (no key sorting)."""
+    CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
 # ── File resolution ─────────────────────────────────────────────────────────────
@@ -255,7 +297,7 @@ def render_jsonl_item(item: dict[str, Any]) -> str:
         cells = []
         for field in fields:
             value = _jsonl_value(record, field)
-            if isinstance(value, (dict, list)):
+            if isinstance(value, dict | list):
                 value = json.dumps(value, sort_keys=True)
             cells.append(f"<td>{html.escape(str(value if value is not None else ''))}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
@@ -472,6 +514,35 @@ def validate_item(item: dict[str, Any]) -> str | None:
     return None
 
 
+def _recategorize_control(item: dict[str, Any]) -> str:
+    """Top toolbar with a section-change dropdown. Pinned (core) items show a muted
+    'Pinned' note instead of a control. Changing the dropdown moves the item — its
+    `section` only, never its type or content."""
+    iid = html.escape(item["id"])
+    current = item.get("section", "pages")
+    targets = legal_target_sections(item)
+    if not targets:
+        return (
+            "<div class='page-toolbar'>"
+            "<span class='move-pinned' title='Core source-of-truth item — pinned'>Pinned</span>"
+            "</div>"
+        )
+    labels = dict(CANONICAL_SECTIONS)
+    opts = "".join(
+        f"<option value='{html.escape(s)}'{' selected' if s == current else ''}>"
+        f"{html.escape(labels.get(s, s.replace('_', ' ').title()))}"
+        f"{' (current)' if s == current else ''}</option>"
+        for s in targets
+    )
+    return (
+        "<div class='page-toolbar'>"
+        f"<label class='move-label' for='move-{iid}'>Section</label>"
+        f"<select class='move-select' id='move-{iid}' onchange=\"moveItem('{iid}', this.value)\">"
+        f"{opts}</select>"
+        "</div>"
+    )
+
+
 def render_item(item: dict[str, Any]) -> str:
     err = validate_item(item)
     if err:
@@ -482,6 +553,7 @@ def render_item(item: dict[str, Any]) -> str:
         return f"<div class='item-error'>{html.escape(str(exc.detail))}</div>"
     except (OSError, json.JSONDecodeError, KeyError) as exc:
         return f"<div class='item-error'>{html.escape(str(exc))}</div>"
+    out = _recategorize_control(item) + out
     if item.get("review"):
         out += _decision_bar(item)
     return out
@@ -632,6 +704,10 @@ class SourceUpdate(BaseModel):
     content: str
 
 
+class SectionUpdate(BaseModel):
+    section: str
+
+
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -671,6 +747,16 @@ def api_set_source(item_id: str, update: SourceUpdate) -> dict[str, Any]:
     path = resolve_path(item["path"])  # confined to Console/; must already exist
     path.write_text(update.content, encoding="utf-8")
     return {"ok": True, "item_id": item_id}
+
+
+@app.post("/api/item/{item_id}/section")
+def api_set_section(item_id: str, update: SectionUpdate) -> dict[str, Any]:
+    """Recategorize an item (section only). Enforces the pinned-core move rule and
+    persists the change to console.json; never touches the item's file."""
+    config = require_config()
+    item = apply_section_change(config, item_id, update.section)
+    write_config(config)
+    return {"ok": True, "item_id": item_id, "section": item["section"]}
 
 
 @app.get("/raw/{item_id}")
@@ -752,6 +838,13 @@ _STYLE = """
   .section-empty { padding:4px 24px; font-size:12px; color:#cbd5e1; }
   article { padding:24px 32px; max-width:1100px; overflow-x:auto; }
   article h1 { line-height:1.2; margin-top:0; }
+  .page-toolbar { display:flex; justify-content:flex-end; align-items:center; gap:8px;
+                  margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid #eef2f7; }
+  .move-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; }
+  .move-select { width:auto; max-width:200px; padding:5px 8px; font-size:13px;
+                 border:1px solid #cbd5e1; border-radius:3px; background:#fff; cursor:pointer; }
+  .move-pinned { font-size:11px; font-weight:700; letter-spacing:.04em; color:#64748b;
+                 background:#eef2f7; padding:2px 8px; border-radius:10px; }
   .subtle { color:#64748b; font-size:13px; }
   .state-done { font-size:12px; color:#166534; }
   .item-error { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:10px 12px;
@@ -945,10 +1038,25 @@ def index() -> str:
       if (!r.ok) {{ const d = await r.json().catch(() => ({{}})); alert('Save failed: ' + (d.detail || r.status)); return; }}
       loadDoc(itemId);
     }}
+    async function moveItem(itemId, section) {{
+      if (!confirm(`Move this item to "${{section}}"?`)) {{ loadDoc(itemId); return; }}
+      const r = await fetch(`/api/item/${{itemId}}/section`, {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{section}})
+      }});
+      if (!r.ok) {{
+        const d = await r.json().catch(() => ({{}}));
+        alert('Move failed: ' + (d.detail || r.status)); loadDoc(itemId); return;
+      }}
+      sessionStorage.setItem('qd.lastItem', itemId); // reopen after the reload
+      location.reload();
+    }}
     document.querySelectorAll('.doc-btn').forEach(btn => {{
       btn.onclick = () => loadDoc(btn.dataset.item);
     }});
-    {init_js}
+    const _last = sessionStorage.getItem('qd.lastItem');
+    if (_last) {{ sessionStorage.removeItem('qd.lastItem'); loadDoc(_last); }}
+    else {{ {init_js} }}
   </script>
 </body></html>"""
 

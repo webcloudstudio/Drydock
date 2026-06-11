@@ -13,7 +13,8 @@ those files; the Console only navigates and renders them. It owns no project sta
 decisions of its own, which keeps it safe for an agent to drive.
 
 **Stack:** Python / FastAPI / Uvicorn / SQLite. Single process, no auth, no external services,
-no build step. The only thing it persists is questionnaire answers.
+no build step. What it persists is small: questionnaire answers, edited document source, and item
+recategorizations (section moves).
 
 ### What it renders
 
@@ -81,13 +82,15 @@ All `path` values are relative to `Console/` and must resolve **inside the proje
 directory that contains `Console/`), so siblings such as `../evidence/STEP_1.md` are reachable
 while paths outside the project are rejected; a `link` `href` may be any URL.
 
-**What the Console writes.** Only two things. (1) **Questionnaire answers** — saved both back
+**What the Console writes.** Three things. (1) **Questionnaire answers** — saved both back
 into the questionnaire `.json` file (each question gains an `answer`, plus `state: "done"` and
 `answered_at`, so the next agent reads questions and answers as one plain file) and into the
 `document_state` table in `data/console_state.sqlite` (keyed `questionnaire.<id>`). (2)
-**`editable_markdown` source** — Save writes the edited markdown straight back to its `.md`.
-Everything else is read-only: tickets and plain markdown are edited by the framework, not the
-Console.
+**`editable_markdown` source** — Save writes the edited markdown straight back to its `.md`. (3)
+**Item recategorization** — the section-change control writes an item's new `section` to
+`console.json`; it changes only the `section`, never the item's type or content, and Core Docs are
+pinned (see *Recategorize* below). Everything else is read-only: tickets and plain markdown are
+edited by the framework, not the Console.
 
 ---
 
@@ -317,6 +320,16 @@ with **Verify** (✓ green) · **Fail** (✗ red) · **Reset** (○) per line, a
 `AC verified/total` chip (green when all pass, red if any fail). The assertions live in the
 read-only `tickets.json`; the verify/fail marks are stored under `ac.<item_id>.<ticket_id>`.
 
+### Recategorize (section move)
+
+Every item's page carries a **section** dropdown. Choosing a different section moves the item —
+it writes the new `section` to `console.json` and nothing else; the item's type and file content
+are untouched. The rule is **pin core, free elsewhere**: items in **Core Docs** are source-of-truth
+and pinned (the page shows *Pinned* instead of a control), while every other item moves freely
+among **Pages · Plan · Action Items · Archive**. `core` is never a target — items are not promoted
+into the pinned zone. This is a view-level write; on a *generated* console (see below) a move is not
+authoritative state and regeneration may reset it.
+
 ---
 
 ## API Reference
@@ -329,15 +342,17 @@ read-only `tickets.json`; the verify/fail marks are stored under `ac.<item_id>.<
 | `GET` | `/api/items` | Flat item list |
 | `GET` | `/api/document/{item_id}` | Rendered HTML + type for an item |
 | `POST` | `/api/document/{item_id}/source` | Write raw source back (editable_markdown items only) |
+| `POST` | `/api/item/{item_id}/section` | Recategorize an item — write its new `section` to `console.json` (pinned-core rule enforced) |
 | `GET` | `/api/ticket/{item_id}/{ticket_id}` | Rendered ticket detail (kanban items) |
 | `GET` | `/raw/{item_id}` | Raw file download |
 | `GET` | `/api/state/{key}` | Stored state record by key (`questionnaire.*`, `decision.*`, `ac.*`) |
 | `POST` | `/api/state/{key}` | Upsert state; `questionnaire.*` keys also write back to the JSON file |
 
-That is the entire surface. **File writes** are limited to two things — questionnaire answers
-and `editable_markdown` source. Everything else the human does (decisions, AC verify/fail) is
-**state** in SQLite via `/api/state`, keyed `decision.<item>` and `ac.<item>.<ticket>`; the
-tickets file and plain markdown are never modified by the Console.
+That is the entire surface. **File writes** are limited to three things — questionnaire answers,
+`editable_markdown` source, and an item's `section` (recategorization, in `console.json`).
+Everything else the human does (decisions, AC verify/fail) is **state** in SQLite via `/api/state`,
+keyed `decision.<item>` and `ac.<item>.<ticket>`; the tickets file and plain markdown are never
+modified by the Console.
 
 ---
 
