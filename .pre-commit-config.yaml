@@ -18,18 +18,8 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
-        # Rigging/ is a governed byte-for-byte mirror of Prototyper RulesEngine.
-        # It must never be reformatted; ruff would otherwise rewrite the templates.
+        # Rigging/ holds governed rule and template content, not application code.
+        # Ruff must not reformat it; doing so would rewrite the templates.
         exclude: ^Rigging/
       - id: ruff-format
         exclude: ^Rigging/
-
-  - repo: local
-    hooks:
-      - id: rigging-mirror
-        name: Rigging mirrors Prototyper RulesEngine
-        entry: python scripts/check_rigging_mirror.py
-        language: system
-        # Re-run only when a governed Rigging file changes; skips when Prototyper is absent.
-        files: ^Rigging/
-        pass_filenames: false

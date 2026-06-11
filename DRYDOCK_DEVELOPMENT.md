@@ -7,6 +7,18 @@ delegated implementation prompt, or explicitly require the delegated agent to re
 work. This requirement remains in effect while Drydock is being built and cannot yet supply all of
 its intended development context through working commands.
 
+Then read:
+
+1. The relevant sections of `docs/Drydock_Specification.md`.
+2. `docs/SOUNDINGS.md` to identify the current implementation and acceptance state.
+
+`docs/Drydock_Specification.md` is the only authoritative product specification. An agent must ask
+Ed for approval before changing it. Once approved, behavior and specification changes land
+together; the specification must never knowingly describe stale behavior.
+
+`docs/SOUNDINGS.md` is the authoritative implementation acceptance/readiness checklist. Every
+completed capability updates its Soundings state and evidence before the task is complete.
+
 ## Purpose
 
 Drydock is V2 of the working Blueprint-driven delivery system currently implemented in
@@ -43,7 +55,8 @@ Key Prototyper reference locations:
 | `bin/` | Working command implementations, shared libraries, process execution, and orchestration |
 | `prompts/` | Working prompt contracts and context assembly rules |
 | `RulesEngine/` | V1 governance, specification contract, templates, stack rules, and branding |
-| `docs/whitepapers/drydock.md` | Origin of the V2 product definition; Drydock's `specs/001-drydock/spec.md` is authoritative |
+| `docs/Drydock_Specification.md` | Sole authoritative V2 product behavior and contracts |
+| `docs/SOUNDINGS.md` | Authoritative implementation acceptance/readiness checklist |
 | `data/` and `logs/` | Build provenance and execution artifact examples when present |
 
 Inspect these locations as needed to understand working V1 behavior. Do not copy repository-bound
@@ -66,25 +79,42 @@ expected.
 - Drydock packaging copies `Rigging/` into installed package resources
   (`drydock/resources/Rigging/`); the packaged copy is not an independently editable source.
 
-## Sources And Decisions
+## Sources, Decisions, And Completion
 
 | Source | Role |
 |---|---|
-| `specs/001-drydock/spec.md` | Authoritative V2 Drydock Blueprint and target behavior |
+| `docs/Drydock_Specification.md` | Sole authoritative V2 Drydock specification and target behavior |
+| `docs/SOUNDINGS.md` | Authoritative checklist of implementation state, acceptance state, and evidence |
 | `src/drydock/`, `tests/` | Current implemented behavior and regression contract |
 | This file | Migration architecture, method, and V1 reference map |
 | `prototyper_directory` from `METADATA.md` | Read-only V1 behavior, algorithms, prompts, and edge cases |
 
 Do not assume V1 behavior is correct merely because it exists. For each capability:
 
-1. Read the relevant section of `specs/001-drydock/spec.md`.
-2. Inspect the mapped V1 files and their direct dependencies.
-3. State or encode the intended V2 contract.
-4. Implement it as a Drydock Python module and CLI command.
-5. Prove the contract with tests, including relevant V1 parity cases.
+1. Read the relevant section of `docs/Drydock_Specification.md` and the matching Soundings row.
+2. If intended behavior must change, obtain Ed's approval and update the specification.
+3. Inspect mapped V1 files and direct dependencies where useful.
+4. Implement the approved contract as a Drydock Python module and CLI command.
+5. Prove the contract with focused tests, relevant parity cases, and full verification.
+6. Update `docs/SOUNDINGS.md` with the final state and concrete evidence.
 
-If the Blueprint and V1 disagree, the Blueprint wins. If the Blueprint is silent, keep
+If the specification and V1 disagree, the specification wins. If the specification is silent, keep
 proven V1 behavior unless it conflicts with Drydock's package architecture or command contracts.
+
+### Soundings State Contract
+
+Each command or capability has one Soundings row. Use these states:
+
+| State | Meaning |
+|---|---|
+| `NOT STARTED` | No public command or implementation contract exists |
+| `STUBBED` | Command surface exists and returns the tested deferred response |
+| `IMPLEMENTED` | Real behavior exists, but required acceptance verification is incomplete |
+| `DONE` | Approved behavior is implemented and all required verification/evidence passes |
+
+Do not mark a row `DONE` based only on code presence. Record test names, integration evidence,
+package evidence, or other acceptance proof in the row. When behavior regresses or the
+specification changes, move the row back to the truthful state.
 
 ## Target Architecture
 
@@ -108,7 +138,9 @@ PowerShell files in `bin/` only locate the environment and invoke the package en
 
 | Data | Required location |
 |---|---|
-| Blueprint Typed Specification files and `BUILD_PLAN.md` | Configured Blueprint directory |
+| Drydock's own authoritative product specification | `docs/Drydock_Specification.md` |
+| Drydock's own implementation acceptance checklist | `docs/SOUNDINGS.md` |
+| Target-project Blueprint Typed Specification files and `BUILD_PLAN.md` | Configured Blueprint directory |
 | Built software, execution evidence, logs, and QuarterDeck state | Configured Target directory |
 | Drydock's distributable rules/templates | `Rigging/` and packaged resource copy |
 | User configuration | User-scoped Drydock configuration managed by `drydock config` |
@@ -163,6 +195,7 @@ Implement commands as vertical slices:
 7. Add integration tests for filesystem changes and failure handling.
 8. Compare representative output and artifacts against V1 where parity is intended.
 9. Update `README.md` when the command moves from deferred to working.
+10. Update `docs/SOUNDINGS.md` with the final state and verification evidence.
 
 Do not port multiple large V1 scripts into one module. Preserve clear contracts for path resolution,
 plan parsing, prompt assembly, process execution, evidence, and review state.
@@ -171,7 +204,7 @@ plan parsing, prompt assembly, process execution, evidence, and review state.
 
 The full Blueprint is intentionally not injected into every agent prompt.
 
-- Search `specs/001-drydock/spec.md` by command, workflow, artifact, or contract heading.
+- Search `docs/Drydock_Specification.md` by command, workflow, artifact, or contract heading.
 - Read the relevant section plus any directly referenced shared contract sections.
 - Load the full Blueprint only when changing cross-cutting architecture or product semantics.
 - Read mapped Prototyper files only for the active capability and direct dependencies.
@@ -238,6 +271,7 @@ Every completed capability must demonstrate:
 | Lint | `ruff check src/ tests/` |
 | Full suite | `python -m pytest` |
 | Package test | Required when changing Rigging resolution, package data, or launch behavior |
+| Soundings | Matching row updated to the truthful state with concrete evidence |
 
 LLM-assisted commands must isolate process execution behind an adapter so tests can use a fake
 runner. Tests must not spend API credits or require network access.
@@ -249,6 +283,8 @@ Working now:
 - `drydock config show|set`
 - `drydock init`
 - `drydock validate`
+- `drydock log append|audit`
+- `drydock rigging compact`
 - source-tree launchers, package foundation, and Rigging resource resolution
 
 All other visible commands are deferred stubs. The preferred implementation order follows the V2

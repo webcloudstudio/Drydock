@@ -16,8 +16,8 @@ cut that the product owner can test and revise.
 3. Inspect the project's source-of-truth specification, current implementation, tests, roadmap,
    acceptance criteria, and decision-log artifacts. Do not invent completed capabilities.
 4. If this is Drydock, read `DRYDOCK_DEVELOPMENT.md` in full and use this source precedence:
-   `specs/001-drydock/spec.md`, current code/tests, `DRYDOCK_DEVELOPMENT.md`, then read-only
-   Prototyper evidence.
+   `docs/Drydock_Specification.md`, `docs/SOUNDINGS.md`, current code/tests,
+   `DRYDOCK_DEVELOPMENT.md`, then read-only Prototyper evidence.
 
 ## Objective
 
@@ -41,7 +41,6 @@ QuarterDeck/
   tickets.json
   pages/overview.md
   pages/initial-review.md
-  pages/<decision-log-view>.md
   questionnaires/initial-direction.json
 ```
 

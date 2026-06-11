@@ -18,17 +18,20 @@ its repository-bound shell interface with the Drydock command surface and packag
 
 ## Required Context
 
-The full authoritative Drydock Blueprint is [specs/001-drydock/spec.md](specs/001-drydock/spec.md). It is
-the source of truth for intended V2 behavior, but do not load the entire document by default. Locate
-and read the sections relevant to the requested command, workflow, contract, or artifact. Read the
-full Blueprint only for cross-cutting design decisions.
+The sole authoritative Drydock product specification is
+[docs/Drydock_Specification.md](docs/Drydock_Specification.md). It is the source of truth for
+intended V2 behavior. Locate and read the sections relevant to the requested command, workflow,
+contract, or artifact; read the full document only for cross-cutting decisions. Any behavior change
+must update this document in the same change, and an agent must obtain Ed's approval before changing
+the specification.
 
 Context precedence:
 
-1. `specs/001-drydock/spec.md` — intended V2 product behavior and contracts.
-2. Current Drydock code and tests — implemented behavior that must remain stable unless changed.
-3. `DRYDOCK_DEVELOPMENT.md` — architecture and migration procedure.
-4. Prototyper, resolved from `prototyper_directory` in `METADATA.md` — read-only V1 implementation
+1. `docs/Drydock_Specification.md` — sole intended V2 product behavior and contract authority.
+2. `docs/SOUNDINGS.md` — authoritative implementation acceptance/readiness checklist.
+3. Current Drydock code and tests — implemented behavior that must remain stable unless changed.
+4. `DRYDOCK_DEVELOPMENT.md` — architecture and migration procedure.
+5. Prototyper, resolved from `prototyper_directory` in `METADATA.md` — read-only V1 implementation
    evidence. In this checkout it resolves to `/mnt/c/Users/barlo/projects/Prototyper`.
 
 When these conflict, implement the V2 Blueprint. Record intentional incompatibilities in code
@@ -38,9 +41,9 @@ tests or documentation rather than silently reproducing V1 behavior.
 
 Spec Kit is a separate, single-file specification language and SDD toolchain. Drydock is a
 **superset** of it: every Spec Kit concept maps to a Drydock equivalent, and Drydock adds
-capabilities with no Spec Kit counterpart (see `specs/001-drydock/spec.md` § "Spec Kit Compatibility"). Spec
-Kit is the canonical reference for `drydock import --format speckit` and the generated compatibility
-views. It is an external reference, not a Drydock source of truth.
+capabilities with no Spec Kit counterpart (see `docs/Drydock_Specification.md` § "Spec Kit
+Compatibility"). Spec Kit is the canonical reference for `drydock import --format speckit` and the
+generated compatibility views. It is an external reference, not a Drydock source of truth.
 
 - GitHub Spec Kit — https://github.com/github/spec-kit
 - Spec Kit documentation — https://github.github.com/spec-kit/
@@ -58,6 +61,7 @@ views. It is an external reference, not a Drydock source of truth.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
 - Add focused unit tests and CLI contract tests for every implemented command.
 - Preserve working commands while replacing deferred command stubs.
+- Update `docs/SOUNDINGS.md` when a capability's implementation or verification state changes.
 - When delegating work or constructing an agent prompt, include the V2 mission, context precedence,
   relevant Blueprint sections, and applicable V1 reference files. Do not inject the full Blueprint
   unless the task is cross-cutting.

@@ -8,8 +8,7 @@ import json
 import re
 from pathlib import Path
 
-DEFAULT_SPECIFICATION = Path("specs/001-drydock/spec.md")
-LEGACY_SPECIFICATION = Path("specs/drydock/spec.md")
+DEFAULT_SPECIFICATION = Path("docs/Drydock_Specification.md")
 DEFAULT_OUTPUT = Path("docs/index.html")
 
 
@@ -208,10 +207,7 @@ def _repository_root() -> Path:
 
 
 def _default_source(root: Path) -> Path:
-    source = root / DEFAULT_SPECIFICATION
-    if source.exists():
-        return source
-    return root / LEGACY_SPECIFICATION
+    return root / DEFAULT_SPECIFICATION
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -16,9 +16,11 @@ command surface and Typed Specification contract are unstable and may change bet
 - Continuous integration (GitHub Actions) across Python 3.11–3.13 on Linux and Windows, with a wheel
   build and installed-CLI smoke test.
 - Static type checking (mypy) and coverage reporting (pytest-cov).
-- `pre-commit` configuration, including a Rigging-mirror integrity hook.
-- `nox` sessions for lint, type, tests, build, and Rigging verification.
+- `pre-commit` configuration (whitespace, YAML/TOML, and ruff hooks).
+- `nox` sessions for lint, type, tests, and build.
 - Contributor guide and this changelog.
+- `drydock rigging compact` — the first LLM-assisted command and general compaction entry point —
+  with a versioned prompt contract (`prompts/<command>_<subcommand>.md` + required YAML frontmatter).
 
 ### Changed
 

@@ -55,8 +55,8 @@ Positive, testable outcomes. Drydock is delivered when every box is checked.
   plan files.
 - [ ] Both subscription providers (`claude`, `codex`) complete the same build.
 - [ ] Prototyper workflows fully ported; Prototyper archived as read-only V1 reference.
-- [ ] Typed Specification contract changes propagated to `RulesEngine/SPECIFICATION_CONTRACT.md`,
-  templates, and validation, with the Rigging mirror verified identical afterward.
+- [ ] Typed Specification contract changes propagated to `Rigging/SPECIFICATION_CONTRACT.md`,
+  templates, and validation.
 
 ## Communication
 

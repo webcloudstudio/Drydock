@@ -8,8 +8,9 @@ a Drydock Blueprint, its Typed Specification, and a strict source-precedence con
 Read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) in full. It defines the development
 architecture, the V1-to-V2 migration map, source precedence, and the verification contract that the
 current code cannot yet express through working commands. [AGENTS.md](AGENTS.md) summarizes the
-operating rules; [specs/001-drydock/spec.md](specs/001-drydock/spec.md) is the authoritative Drydock
-Blueprint.
+operating rules; [docs/Drydock_Specification.md](docs/Drydock_Specification.md) is the sole
+authoritative Drydock specification; [docs/SOUNDINGS.md](docs/SOUNDINGS.md) is the authoritative
+implementation acceptance/readiness checklist.
 
 ## Environment
 
@@ -25,9 +26,14 @@ uv run pre-commit install    # install the git hooks
 
 - **Source precedence.** When the Blueprint and V1 disagree, implement the Blueprint. Record
   intentional incompatibilities in tests or documentation rather than silently reproducing V1.
-- **Rigging mirror.** `Rigging/` is a governed mirror of Prototyper `RulesEngine/`. Do not edit,
-  rename, or reorganize either tree. A rule change requires explicit authorization and must be
-  applied identically to both trees. The `rigging-mirror` pre-commit hook guards this locally.
+- **Specification approval.** Obtain Ed's approval before changing `docs/Drydock_Specification.md`;
+  approved behavior changes and specification updates land together.
+- **Completion.** Update the matching `docs/SOUNDINGS.md` row and evidence before declaring a
+  capability complete.
+- **Rigging.** `Rigging/` began as a one-time copy of Prototyper `RulesEngine/` and is now
+  Drydock's own source of shared rules and templates. It evolves independently — there is no mirror
+  to keep in sync. Prototyper is frozen, read-only V1 (defect fixes only); all rule/template changes
+  go to `Rigging/`.
 - **Architecture.** Business logic lives in importable `src/drydock/` modules. `bin/` contains
   launchers only. Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - **No API-key LLM providers.** Use the subscription-authenticated `claude`/`codex` CLI through the

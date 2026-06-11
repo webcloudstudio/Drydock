@@ -27,7 +27,7 @@ PROMPT_NAME = "rigging_compact"
 COMPACT_SUFFIX = "_compact"
 
 # Files always expected to carry a compact derivative inside a Blueprint, even before a sibling
-# exists. Source: specs/001-drydock/spec.md — "Rigging - Specification Compaction".
+# exists. Source: docs/Drydock_Specification.md — "Rigging - Specification Compaction".
 REQUIRED_PAIRS: tuple[str, ...] = ("DATABASE.md", "BUSINESS_RULES.md")
 
 _GENERAL_OBJECTIVE = (
@@ -35,7 +35,7 @@ _GENERAL_OBJECTIVE = (
     "examples, and narrative. Keep the result behaviorally faithful to the source."
 )
 
-# Per-file "stripped to" targets from specs/001-drydock/spec.md.
+# Per-file "stripped to" targets from docs/Drydock_Specification.md.
 _OBJECTIVES: dict[str, str] = {
     "DATABASE.md": (
         "Strip to class names, method signatures, typed parameters, return types, and a one-line "

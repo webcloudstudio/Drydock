@@ -5,7 +5,6 @@ Run from any OS with uv installed:
     uv run nox -l            # list sessions
     uv run nox               # default sessions: lint, type, tests
     uv run nox -s build      # build wheel + sdist and verify embedded Rigging
-    uv run nox -s rigging    # verify Rigging mirrors Prototyper RulesEngine (local only)
 
 Sessions use the uv backend so dependency resolution matches CI.
 """
@@ -49,9 +48,3 @@ def build(session: nox.Session) -> None:
     session.install("hatchling", "build")
     session.run("python", "-m", "build")
     session.run("python", "scripts/check_wheel_rigging.py")
-
-
-@nox.session
-def rigging(session: nox.Session) -> None:
-    """Verify Rigging mirrors Prototyper RulesEngine (skips if Prototyper absent)."""
-    session.run("python", "scripts/check_rigging_mirror.py", external=True)
