@@ -65,6 +65,7 @@ The product is one loop: set up once, plan the work, build the frontier, review 
 iterate. Every pass through the loop starts and ends at the Blueprint.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -250,6 +251,7 @@ Install Drydock, configure its roots and runtime defaults, then initialize the T
 Process environment variables override values stored in Drydock's user-scoped `.env`.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -319,6 +321,7 @@ Bring existing software or a Spec Kit project under Drydock Blueprint control. S
 scopes the relevant technology rules automatically.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -390,6 +393,7 @@ agent call. Drydock warns — it does not fail — when an assembled block promp
 file. Each block records a content hash per input file; re-running rebuilds only stale work.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -416,6 +420,7 @@ the product owner approves, revises, or rejects and the decision writes back to 
 `drydock build` runs the approved frontier and stops at review gates.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -458,6 +463,7 @@ build quality, and acceptance criteria coverage. Output is `SCORECARD.md` in the
 directory.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -490,6 +496,7 @@ agent session. Interface-based dirtying ensures only affected work rebuilds — 
 rebuilds only downstream specs whose interface changed.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -1140,6 +1147,7 @@ freshness gate and recompacts everything in scope; `--all` additionally refreshe
 | `BUSINESS_RULES.md` | `BUSINESS_RULES_compact.md` | Actionable rules only; rationale and examples removed |
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -1180,6 +1188,7 @@ and consistently governed. `drydock rigging verify` checks compliance; `drydock 
 injects the current rigging.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
@@ -1212,6 +1221,7 @@ versioned `docs/index.html`. The two phases run independently so hand-edited `DO
 survive re-assembly without being overwritten.
 
 ```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold

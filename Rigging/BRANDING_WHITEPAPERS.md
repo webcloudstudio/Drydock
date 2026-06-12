@@ -95,7 +95,9 @@ Node labels:
 Conventions:
 
 - Solid arrows `-->` for the main flow; dashed `-.->` for feedback / decision write-back links.
-- Initialize mermaid with `theme:'neutral', flowchart:{curve:'linear'}`.
+- Initialize mermaid with `theme:'neutral', flowchart:{curve:'linear'}, themeVariables:{fontSize:'14px'}`.
+  In Markdown source files, embed this as a per-diagram init directive on the first line of each block:
+  `%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%`
 - Wrap each diagram in `.wp-diagram` (panel `--c-pre-bg`, border `--c-td-border`); add a one-line
   italic `.wp-diagram-cap` beneath it.
 - Include a small swatch legend when shapes/colors first appear.
