@@ -47,6 +47,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "SPECIFICATION_DIRECTORY",
         "TARGET_DIRECTORY",
         "LLM_PROVIDER",
+        "QUARTERDECK_PORT",
     ):
         monkeypatch.delenv(key, raising=False)
 

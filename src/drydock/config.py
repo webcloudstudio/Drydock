@@ -15,9 +15,11 @@ _KEY_MAP = {
     "target_directory": "TARGET_DIRECTORY",
     "llm_provider": "LLM_PROVIDER",
     "prompt_warn_kb": "PROMPT_WARN_KB",
+    "quarterdeck_port": "QUARTERDECK_PORT",
 }
 
 DEFAULT_PROMPT_WARN_KB = 50
+DEFAULT_QUARTERDECK_PORT = 8080
 
 
 def _config_path() -> Path:
@@ -82,6 +84,19 @@ def get_prompt_warn_kb() -> int:
     return kb
 
 
+def get_quarterdeck_port() -> int:
+    value, _source = _get("QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT))
+    try:
+        port = int(value or DEFAULT_QUARTERDECK_PORT)
+    except ValueError:
+        port = 0
+    if not (1 <= port <= 65535):
+        raise ConfigurationError(
+            f"Invalid QUARTERDECK_PORT: {value!r}\n  Expected an integer between 1 and 65535."
+        )
+    return port
+
+
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
     blueprint_value, blueprint_source = _get("BLUEPRINT_DIRECTORY")
@@ -92,6 +107,7 @@ def config_show() -> list[tuple[str, str, str]]:
         ("target_directory", "TARGET_DIRECTORY", None),
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("prompt_warn_kb", "PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB)),
+        ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
     ):
         value, source = _get(key_upper, default)
         rows.append((display_key, value or "(not set)", source))
@@ -113,6 +129,16 @@ def config_set(key: str, value: str) -> Path:
         if not value.isdigit() or int(value) <= 0:
             raise ConfigurationError(
                 f"Invalid prompt_warn_kb: {value!r}\n  Expected a positive integer (kilobytes)."
+            )
+        stored_value = value
+    elif upper == "QUARTERDECK_PORT":
+        try:
+            port = int(value)
+        except ValueError:
+            port = 0
+        if not (1 <= port <= 65535):
+            raise ConfigurationError(
+                f"Invalid quarterdeck_port: {value!r}\n  Expected an integer between 1 and 65535."
             )
         stored_value = value
     else:

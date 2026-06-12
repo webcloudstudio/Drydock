@@ -201,6 +201,27 @@ def cmd_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_document_assemble(argv: list[str]) -> int:
+    from drydock.build_documentation import main as _build_doc_main
+
+    return _build_doc_main(argv)
+
+
+def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
+    from drydock import quarterdeck_run as _qd
+    from drydock.config import get_quarterdeck_port, get_target_directory
+
+    target_dir = get_target_directory() / args.Target
+    port = args.port if args.port is not None else get_quarterdeck_port()
+    host = args.host
+
+    print(f"QuarterDeck: {args.Target}")
+    print(f"  http://{host}:{port}")
+
+    result = _qd.run_quarterdeck(target_dir, port=port, host=host)
+    return result.exit_code
+
+
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
     from drydock.config import get_target_directory
@@ -277,6 +298,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "target_directory",
             "llm_provider",
             "prompt_warn_kb",
+            "quarterdeck_port",
         ],
         type=_canonical_config_key,
     )
@@ -376,6 +398,25 @@ def _build_parser() -> argparse.ArgumentParser:
     p_analyze.add_argument("Blueprint", metavar="<Blueprint>")
     p_analyze.add_argument("Target", metavar="<Target>", nargs="?")
 
+    # ── run ───────────────────────────────────────────────────────────────────
+    p_run = sub.add_parser("run", help="Start a Drydock service.")
+    run_sub = p_run.add_subparsers(dest="run_command", metavar="<subcommand>")
+    p_run_qd = run_sub.add_parser("quarterdeck", help="Start the QuarterDeck for a target project.")
+    p_run_qd.add_argument("Target", metavar="<Target>")
+    p_run_qd.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help="Port to listen on (default: quarterdeck_port config or 8080).",
+    )
+    p_run_qd.add_argument(
+        "--host",
+        default="127.0.0.1",
+        metavar="HOST",
+        help="Host to bind to (default: 127.0.0.1).",
+    )
+
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
     p_import.add_argument("Blueprint", metavar="<Blueprint>")
@@ -400,7 +441,7 @@ def _dispatch_document(args: argparse.Namespace) -> int:
     if first == "generate":
         not_implemented("document generate")
     elif first == "assemble":
-        not_implemented("document assemble")
+        return cmd_document_assemble(tokens[1:])
     else:
         not_implemented("document")
     return 2  # unreachable; not_implemented exits
@@ -472,6 +513,13 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "analyze":
         not_implemented("analyze")
+
+    if command == "run":
+        sub = getattr(args, "run_command", None)
+        if sub == "quarterdeck":
+            return cmd_run_quarterdeck(args)
+        else:
+            not_implemented("run")
 
     if command == "import":
         return cmd_import(args)

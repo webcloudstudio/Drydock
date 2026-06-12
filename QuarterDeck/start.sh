@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
+# DEPRECATED: Use 'drydock run quarterdeck <Target>' instead.
 # CommandCenter Operation
 # Name: Start Service
 # Category: Operations
 # Port: 8080
 set -euo pipefail
+echo "WARNING: start.sh is deprecated. Use: drydock run quarterdeck <Target>" >&2
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

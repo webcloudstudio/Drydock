@@ -45,6 +45,7 @@ class TestHelpAndVersion:
             "iterate",
             "analyze",
             "import",
+            "run",
         ):
             assert cmd in out, f"Command {cmd!r} missing from --help"
 
@@ -388,7 +389,6 @@ class TestStubs:
 
     STUB_CASES = [
         (["document", "generate", "MySpec", "MyTarget"], "document generate"),
-        (["document", "assemble", "MySpec", "MyTarget"], "document assemble"),
         (["document", "MySpec", "MyTarget"], "document"),
         (["rigging", "update", "MyTarget"], "rigging update"),
         (["rigging", "verify", "MyTarget"], "rigging verify"),
@@ -416,3 +416,128 @@ class TestStubs:
         run_cli(*args)
         written = list(tmp_path.rglob("*"))
         assert not written, f"{label!r} wrote files: {written}"
+
+
+class TestDocumentAssemble:
+    """drydock document assemble is wired to build_documentation.main()."""
+
+    def test_document_assemble_builds_output(self, tmp_path):
+        source = tmp_path / "spec.md"
+        output = tmp_path / "index.html"
+        source.write_text(
+            "---\ntitle: Test\neyebrow: E\nsubtitle: S\nauthor: A\nstudio: St\nyear: 2026\n---\n\n# Body\n",
+            encoding="utf-8",
+        )
+        rc, out, err = run_cli(
+            "document", "assemble", "--source", str(source), "--output", str(output)
+        )
+        assert rc == 0
+        assert output.exists()
+        assert "Built documentation" in out
+
+    def test_document_assemble_no_args_uses_defaults_or_exits(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        rc, out, err = run_cli("document", "assemble")
+        # With no source available the default source path will not exist; exits non-zero.
+        assert rc != 0 or "Built" in out
+
+    def test_document_assemble_is_not_a_stub(self, tmp_path):
+        source = tmp_path / "spec.md"
+        source.write_text(
+            "---\ntitle: T\neyebrow: E\nsubtitle: S\nauthor: A\nstudio: St\nyear: 2026\n---\n\n# B\n",
+            encoding="utf-8",
+        )
+        rc, out, err = run_cli(
+            "document", "assemble", "--source", str(source), "--output", str(tmp_path / "out.html")
+        )
+        combined = out + err
+        assert "not implemented" not in combined.lower()
+
+
+class TestRunQuarterdeck:
+    """drydock run quarterdeck dispatches to quarterdeck_run.run_quarterdeck."""
+
+    @staticmethod
+    def _make_target(tmp_target_root, name: str = "MyTarget"):
+        qd = tmp_target_root / name / "QuarterDeck"
+        qd.mkdir(parents=True)
+        (qd / "app.py").write_text("# stub", encoding="utf-8")
+        return tmp_target_root / name
+
+    def test_run_quarterdeck_dispatches(self, tmp_target_root, isolated_config, monkeypatch):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        self._make_target(tmp_target_root)
+
+        calls: list = []
+
+        def fake_run(target_dir, *, port, host):
+            calls.append({"target_dir": target_dir, "port": port, "host": host})
+            return SimpleNamespace(exit_code=0)
+
+        monkeypatch.setattr("drydock.quarterdeck_run.run_quarterdeck", fake_run)
+        rc, out, err = run_cli("run", "quarterdeck", "MyTarget")
+        assert rc == 0
+        assert calls
+        assert calls[0]["port"] == 8080
+        assert calls[0]["host"] == "127.0.0.1"
+
+    def test_run_quarterdeck_custom_port(self, tmp_target_root, isolated_config, monkeypatch):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        self._make_target(tmp_target_root)
+
+        calls: list = []
+
+        def fake_run(target_dir, *, port, host):
+            calls.append(port)
+            return SimpleNamespace(exit_code=0)
+
+        monkeypatch.setattr("drydock.quarterdeck_run.run_quarterdeck", fake_run)
+        rc, out, err = run_cli("run", "quarterdeck", "MyTarget", "--port", "9090")
+        assert rc == 0
+        assert calls[0] == 9090
+
+    def test_run_quarterdeck_custom_host(self, tmp_target_root, isolated_config, monkeypatch):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        self._make_target(tmp_target_root)
+
+        calls: list = []
+
+        def fake_run(target_dir, *, port, host):
+            calls.append(host)
+            return SimpleNamespace(exit_code=0)
+
+        monkeypatch.setattr("drydock.quarterdeck_run.run_quarterdeck", fake_run)
+        rc, out, err = run_cli("run", "quarterdeck", "MyTarget", "--host", "0.0.0.0")
+        assert rc == 0
+        assert calls[0] == "0.0.0.0"
+
+    def test_run_quarterdeck_missing_app_py_raises(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        (tmp_target_root / "Empty").mkdir()
+        rc, out, err = run_cli("run", "quarterdeck", "Empty")
+        assert rc == 1
+        assert "error" in err.lower()
+
+    def test_run_quarterdeck_config_port_used(self, tmp_target_root, isolated_config, monkeypatch):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "quarterdeck_port", "7777")
+        self._make_target(tmp_target_root)
+
+        calls: list = []
+
+        def fake_run(target_dir, *, port, host):
+            calls.append(port)
+            return SimpleNamespace(exit_code=0)
+
+        monkeypatch.setattr("drydock.quarterdeck_run.run_quarterdeck", fake_run)
+        rc, out, err = run_cli("run", "quarterdeck", "MyTarget")
+        assert rc == 0
+        assert calls[0] == 7777

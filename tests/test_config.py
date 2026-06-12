@@ -12,6 +12,7 @@ from drydock.config import (
     get_blueprint_directory,
     get_llm_provider,
     get_prompt_warn_kb,
+    get_quarterdeck_port,
     get_target_directory,
 )
 from drydock.errors import ConfigurationError
@@ -84,9 +85,9 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_four_rows(self, isolated_config):
+    def test_show_returns_five_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 4
+        assert len(rows) == 5
 
     def test_show_not_set_when_empty(self, isolated_config):
         rows = config_show()
@@ -95,6 +96,7 @@ class TestConfigShow:
         assert by_name["target_directory"] == "(not set)"
         assert by_name["llm_provider"] == "claude"
         assert by_name["prompt_warn_kb"] == "50"
+        assert by_name["quarterdeck_port"] == "8080"
 
     def test_show_reports_source_after_set(self, tmp_spec_root, isolated_config):
         config_set("blueprint_directory", str(tmp_spec_root))
@@ -151,6 +153,49 @@ class TestGetters:
         monkeypatch.setenv("PROMPT_WARN_KB", "-5")
         with pytest.raises(ConfigurationError, match="positive integer"):
             get_prompt_warn_kb()
+
+    def test_quarterdeck_port_defaults_to_8080(self, isolated_config):
+        assert get_quarterdeck_port() == 8080
+
+    def test_quarterdeck_port_set_persists(self, isolated_config):
+        config_set("quarterdeck_port", "9090")
+        assert get_quarterdeck_port() == 9090
+
+    def test_quarterdeck_port_env_overrides_file(self, isolated_config, monkeypatch):
+        config_set("quarterdeck_port", "9090")
+        monkeypatch.setenv("QUARTERDECK_PORT", "7777")
+        assert get_quarterdeck_port() == 7777
+
+    def test_quarterdeck_port_invalid_raises(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("QUARTERDECK_PORT", "not-a-port")
+        with pytest.raises(ConfigurationError, match="65535"):
+            get_quarterdeck_port()
+
+
+class TestConfigSetQuarterdeckPort:
+    def test_set_valid_port(self, isolated_config):
+        config_set("quarterdeck_port", "9090")
+        assert get_quarterdeck_port() == 9090
+
+    def test_set_port_1_is_valid(self, isolated_config):
+        config_set("quarterdeck_port", "1")
+        assert get_quarterdeck_port() == 1
+
+    def test_set_port_65535_is_valid(self, isolated_config):
+        config_set("quarterdeck_port", "65535")
+        assert get_quarterdeck_port() == 65535
+
+    def test_set_port_0_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="65535"):
+            config_set("quarterdeck_port", "0")
+
+    def test_set_port_65536_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="65535"):
+            config_set("quarterdeck_port", "65536")
+
+    def test_set_non_integer_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="65535"):
+            config_set("quarterdeck_port", "eighty")
 
 
 def _effective(key: str, cfg_dir: Path) -> tuple[str, str]:
