@@ -625,6 +625,21 @@ class TestStatus:
         rc, out, err = run_cli("status")
         assert rc == 0
 
+    def test_status_no_args_configured_workspace_without_targets_recommends_init(
+        self, tmp_path, isolated_config, monkeypatch
+    ):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        run_cli("config", "set", "drydock_workspace", str(workspace))
+        monkeypatch.chdir(workspace)
+
+        rc, out, err = run_cli("status")
+
+        assert rc == 0, err
+        assert f"Workspace: {workspace}" in out
+        assert "drydock init <Target>" in out
+        assert "config set drydock_workspace" not in out
+
     def test_status_no_args_uses_last_activity(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup(tmp_target_root, monkeypatch)
         monkeypatch.chdir(tmp_target_root)

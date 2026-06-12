@@ -321,7 +321,12 @@ def cmd_status_blueprint(blueprint: str) -> int:
 
 
 def cmd_status_current() -> int:
-    from drydock.config import get_last_activity, get_target_directory, record_activity
+    from drydock.config import (
+        get_last_activity,
+        get_target_directory,
+        get_workspace,
+        record_activity,
+    )
     from drydock.status import status_current
 
     target_dir = get_target_directory()
@@ -330,7 +335,8 @@ def cmd_status_current() -> int:
         activity = get_last_activity()
         if not activity.get("blueprint"):
             print("No active Drydock project found.")
-            print("  Run: drydock config set drydock_workspace <path>")
+            print(f"  Workspace: {get_workspace()}")
+            print("  Run: drydock init <Target>")
             return 0
 
     result = status_current(target_dir)
