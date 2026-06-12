@@ -74,11 +74,9 @@ flowchart LR
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
   SETUP["Setup"]:::script --> PLAN["Plan"]:::script
-  PLAN --> BP{{"BUILD_PLAN.md"}}:::md
-  BP --> BUILD["Build"]:::script
+  PLAN --> BUILD["Build"]:::script
   BUILD --> SOFTWARE(["Working Software"]):::output
-  SOFTWARE --> CONSOLE["QuarterDeck"]:::web
-  CONSOLE --> ITERATE["Iterate"]:::script
+  BUILD --> ITERATE["Iterate"]:::script
   ITERATE -.-> PLAN
 ```
 
