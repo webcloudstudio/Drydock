@@ -65,7 +65,7 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from drydock.config import get_target_directory
+    from drydock.config import get_target_directory, record_activity
     from drydock.init_target import init_target
 
     result = init_target(args.Target, get_target_directory())
@@ -78,6 +78,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     if not result.created:
         print("  Nothing to do — target baseline is already initialized.")
 
+    record_activity("init", target=args.Target)
     print()
     print("Next steps:")
     print("  1. Import source material into a Blueprint.")
@@ -313,8 +314,12 @@ def cmd_status_current() -> int:
     if blueprint_dir is None or target_dir is None:
         activity = get_last_activity()
         if not activity.get("blueprint"):
-            print("No active Drydock project found.")
-            print("  Run: drydock config set blueprint_directory <path>")
+            if blueprint_dir is None:
+                print("No active Drydock project found.")
+                print("  Run: drydock config set blueprint_directory <path>")
+            else:
+                print("No active Drydock project found.")
+                print("  Run: drydock config set target_directory <path>")
             return 0
         from pathlib import Path
 
