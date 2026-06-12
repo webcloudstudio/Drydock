@@ -1,4 +1,4 @@
-"""drydock init — create or update a Blueprint from Typed Specification templates."""
+"""Internal Blueprint template initialization used by import and conformance workflows."""
 
 from __future__ import annotations
 

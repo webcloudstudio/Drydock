@@ -33,9 +33,7 @@ drydock config show
 drydock config set blueprint_directory <path>
 drydock config set target_directory <path>
 
-drydock init <Blueprint>
-drydock init <Blueprint> --update
-drydock init <Blueprint> --force
+drydock init <Target>
 
 drydock validate <Blueprint>
 drydock validate <Blueprint> --verbose
@@ -47,16 +45,19 @@ drydock plan create <Blueprint> <Target>
 drydock build status <Blueprint> <Target>
 ```
 
-The planning flow is three commands plus QuarterDeck approval:
+The planning flow starts with Target initialization, then uses three commands plus QuarterDeck
+approval:
 
 ```bash
+drydock init <Target>
 drydock import <Blueprint> <Source> --format markdown
 drydock plan create <Blueprint> <Target>
 # Review and approve the draft plan in <Target>/QuarterDeck.
 drydock build status <Blueprint> <Target>
 ```
 
-`import` creates the Blueprint workspace and preserves the source material. `plan create`
+`init` creates the specification-independent Target baseline and QuarterDeck. `import` creates the
+Blueprint workspace and preserves the source material. `plan create`
 internally inventories the Blueprint inputs and writes the executable `BUILD_PLAN.md` into the
 Target. Configured Blueprint and Target roots belong in Drydock's user-scoped `.env`, never project
 `METADATA.md`.
@@ -192,8 +193,9 @@ are removed before invoking either CLI.
 
 The installed wheel contains a synchronized copy of the Drydock Rigging at
 `drydock/resources/Rigging/`. This is the same tree as the root-level `Rigging/`
-directory; it is included so `drydock init` and `drydock validate` work from an
-installed wheel without access to the source checkout.
+directory; it is included so Blueprint import, validation, and Rigging commands work from an
+installed wheel without access to the source checkout. The installed wheel also contains the
+QuarterDeck runtime used by `drydock init <Target>`.
 
 When running from the source tree, Drydock uses the root-level `Rigging/` directly.
 When running from an installed wheel, it falls back to `importlib.resources`.

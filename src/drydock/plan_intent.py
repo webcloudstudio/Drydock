@@ -122,7 +122,8 @@ def init_plan_intent(blueprint: str, blueprint_directory: Path) -> PlanIntentRes
     blueprint_dir = blueprint_directory / blueprint
     if not blueprint_dir.is_dir():
         raise SpecificationError(
-            f"Blueprint directory not found: {blueprint_dir}\n  Run: drydock init {blueprint}"
+            f"Blueprint directory not found: {blueprint_dir}\n"
+            "  Import source material before creating a plan."
         )
 
     intent_path = blueprint_dir / "BUILD_PLAN_INTENT.md"

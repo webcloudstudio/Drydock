@@ -1,0 +1,39 @@
+"""Tests for target workspace initialization."""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+
+from drydock.errors import DrydockError
+from drydock.init_target import _validate_target, init_target
+
+
+def test_init_target_creates_specification_independent_baseline(tmp_target_root):
+    result = init_target("Example", tmp_target_root)
+
+    assert result.target_dir == tmp_target_root / "Example"
+    assert (result.target_dir / "QuarterDeck" / "console.yaml").is_file()
+    assert os.access(result.target_dir / "QuarterDeck" / "start.sh", os.X_OK)
+    assert (result.target_dir / "QuarterDeck" / "tickets.json").read_text(encoding="utf-8") == (
+        '{\n  "tickets": []\n}\n'
+    )
+    assert not (result.target_dir / "METADATA.md").exists()
+
+
+def test_init_target_preserves_existing_baseline_files(tmp_target_root):
+    first = init_target("Example", tmp_target_root)
+    config = first.target_dir / "QuarterDeck" / "console.yaml"
+    config.write_text("CUSTOM\n", encoding="utf-8")
+
+    second = init_target("Example", tmp_target_root)
+
+    assert config.read_text(encoding="utf-8") == "CUSTOM\n"
+    assert config in second.skipped
+
+
+@pytest.mark.parametrize("target", ["", "../bad", "nested/bad", "bad\\name"])
+def test_validate_target_rejects_invalid_names(target):
+    with pytest.raises(DrydockError):
+        _validate_target(target)

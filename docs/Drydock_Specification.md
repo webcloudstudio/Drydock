@@ -52,7 +52,7 @@ ideas:
 >
 > — OpenAI/Codex
 
-## Product
+## What is Drydock
 
 Drydock is a governed Blueprint-driven software delivery system.
 
@@ -85,15 +85,10 @@ flowchart LR
 
 ## Drydock Setup - Laying Your Keel
 
-Drydock setup installs the CLI, records user-scoped configuration, and initializes a Blueprint
+Drydock setup installs the CLI, records user-scoped configuration, and initializes a Target
 workspace. Process environment variables override the user-scoped Drydock `.env`. Configured
 Blueprint and Target roots never belong in project `METADATA.md`.
 
-| Step | Command | Description |
-|---|---|---|
-| **Install** | `pip install drydock` | User installs Drydock. |
-| **Configure** | `drydock config set ...` | User sets `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and planning defaults.<br>output: user-scoped Drydock `.env`. |
-| **Initialize** | `drydock init <Blueprint>` | Drydock creates the Blueprint workspace.<br>output: `<BLUEPRINT_DIRECTORY>/<Blueprint>/`. |
 
 ```mermaid
 flowchart LR
@@ -102,10 +97,16 @@ flowchart LR
 
   INSTALL["pip install drydock"]:::script --> CONFIG["drydock config set"]:::script
   CONFIG --> INIT["drydock init"]:::script
-  INIT --> BLUEPRINT(["Blueprint"]):::dir
+  INIT --> TARGET(["Target Baseline"]):::dir
 ```
 
-### Configuration
+| Step | Command | Description |
+|---|---|---|
+| **Install** | `pip install drydock` | User installs Drydock. |
+| **Config** | `drydock config set ...` | User sets `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and planning defaults.<br>output: user-scoped Drydock `.env`. |
+| **Initialize** | `drydock init <Target>` | Drydock creates the specification-independent Target baseline and QuarterDeck.<br>output: `<TARGET_DIRECTORY>/<Target>/`. |
+
+### Drydock Environment (.env)
 
 | Variable | Purpose |
 |---|---|
@@ -114,36 +115,31 @@ flowchart LR
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
 | `PROMPT_WARN_KB` | Warn when a build block's assembled prompt exceeds this size in KB (default `50`) |
 
+### drydock config
 ```text
 drydock config show                               # display current configuration
-drydock config set blueprint_directory <path>
-drydock config set target_directory <path>
-drydock config set llm_provider <claude|codex>
-drydock config set prompt_warn_kb <kb>
+drydock config set <key> <value>
 ```
 
-`SPECIFICATION_DIRECTORY` and `drydock config set specification_directory` are deprecated
-compatibility aliases for `BLUEPRINT_DIRECTORY` and `blueprint_directory`.
+### drydock init
 
-### Initialized Blueprint
-
-`drydock init <Blueprint>` creates the following workspace from Drydock's Typed Specification
-templates. It does not create imported sources, analysis, build configuration, or a build plan.
+`drydock init <Target>` initializes the Target baseline. It does not read, create, or require a
+Blueprint or Typed Specification. Existing baseline files are preserved.
 
 ```text
-<BLUEPRINT_DIRECTORY>/<Blueprint>/
-├── ACCEPTANCE_CRITERIA.md
-├── ARCHITECTURE.md
-├── DATABASE.md
-├── FEATURE-Example.md
-├── HOMEPAGE.md
-├── IDEAS.md
-├── INTENT.md
-├── METADATA.md
-├── README.md
-├── SCREEN-Example.md
-├── UI-Component-Example.md
-└── UI.md
+<TARGET_DIRECTORY>/<Target>/
+├── docs/
+├── evidence/
+├── logs/
+└── QuarterDeck/
+    ├── app.py
+    ├── console.yaml
+    ├── data/
+    ├── pages/
+    │   └── overview.md
+    ├── requirements.txt
+    ├── start.sh
+    └── tickets.json
 ```
 
 ## Drydock Project Planning
@@ -174,7 +170,7 @@ Planning artifacts have three distinct ownership and persistence classes:
 ## Drydock commands
 
 ```text
-drydock <verb> [<sub-verb>] <Blueprint> [<Target>] [--options]
+drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
 ### Command key
@@ -191,7 +187,7 @@ man pages.
 
 | Syntax | Purpose |
 |---|---|
-| `drydock init <Blueprint>` | Initialize a Blueprint from Typed Specification templates |
+| `drydock init <Target>` | Initialize the specification-independent Target baseline and QuarterDeck |
 | `drydock validate <Blueprint>` | Validate Blueprint completeness and conventions |
 
 ### Plan
@@ -526,17 +522,17 @@ reports specification changes not covered by a Ship's Log entry.
 not authored as specification files.
 
 - **`METADATA.md`** — Project identity, relationships, status, and stack
-  - Created: `drydock init`; `drydock import` (proposal)
+  - Created: `drydock import` (proposal); `drydock conform`
   - Updated: Product owner; platform metadata operations
 
 - **`README.md`** — Short human introduction to the Blueprint
-  - Created: `drydock init`; `drydock import` (proposal); Manual; other
+  - Created: `drydock import` (proposal); `drydock conform`; Manual; other
   - Updated: Product owner
 
 **Human-authored** — the product intent explicitly owned by the product owner.
 
 - **`INTENT.md`** — Product intent, constraints, success criteria, guardrails, and open questions
-  - Created: `drydock init` (starter file); `drydock import` (proposed intent)
+  - Created: `drydock import` (proposed intent); `drydock conform`
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
@@ -551,11 +547,11 @@ not authored as specification files.
 updated by `drydock iterate` as specification files and application code evolve.
 
 - **`ARCHITECTURE.md`** — Modules, routes, boundaries, interfaces, and technical decisions
-  - Created: `drydock init`; `drydock import` (proposal)
+  - Created: `drydock import` (proposal); `drydock conform`
   - Updated: `drydock iterate` (architecture-scoped)
 
 - **`DATABASE.md`** — Persistence stores, schemas, migrations, and typed access classes
-  - Created: `drydock init`; `drydock import` (proposal)
+  - Created: `drydock import` (proposal); `drydock conform`
   - Updated: `drydock iterate` (data-scoped)
 
 > **DATABASE.md enforces data access encapsulation.**
@@ -586,15 +582,15 @@ updated by `drydock iterate` as specification files and application code evolve.
 > class library — receives the full file.
 
 - **`FEATURE-{Name}.md`** — Feature purpose, status, behavior, reads, writes, routes, criteria, and guardrails
-  - Created: `drydock init`; `drydock import`; accepted change reconciliation
+  - Created: `drydock import`; `drydock conform`; accepted change reconciliation
   - Updated: `drydock iterate` (feature-scoped)
 
 - **`SCREEN-{Name}.md`** — Screen route, layout, interactions, and criteria
-  - Created: `drydock init`; `drydock import`; accepted change reconciliation
+  - Created: `drydock import`; `drydock conform`; accepted change reconciliation
   - Updated: `drydock iterate` (screen-scoped)
 
 - **`UI-GENERAL.md`** — Shared UI behavior and visual rules
-  - Created: `drydock init` or `drydock import` when the project has a UI
+  - Created: `drydock import` or `drydock conform` when the project has a UI
   - Updated: `drydock iterate` (UI-scoped)
 
 - **`changes/TICKET-NNN-{Name}.md`** — Post-baseline change, defect, or spike request

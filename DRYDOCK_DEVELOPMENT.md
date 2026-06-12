@@ -155,7 +155,7 @@ and follow their direct imports or sourced libraries as necessary.
 
 | Drydock command or contract | Primary Prototyper V1 reference |
 |---|---|
-| `drydock init` | `bin/setup.sh`, `RulesEngine/spec_template/` |
+| `drydock init` | V2 target-baseline initializer; no authoritative V1 implementation |
 | `drydock validate` | `bin/validate.sh`, `RulesEngine/SPECIFICATION_CONTRACT.md` |
 | Typed Specification relationships | `bin/build_spec_relationships.py` |
 | Internal planning-input inventory | `bin/build_plan.sh`, `bin/build_plan_auto.py` |

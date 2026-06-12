@@ -120,77 +120,63 @@ class TestConfigSet:
 
 
 class TestInit:
-    def test_init_creates_spec_dir(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+    def test_init_creates_target_baseline(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
         rc, out, err = run_cli("init", "TestProject")
         assert rc == 0
-        assert (tmp_spec_root / "TestProject").is_dir()
+        target = tmp_target_root / "TestProject"
+        assert "Target:" in out
+        for path in (
+            "docs/.gitkeep",
+            "evidence/.gitkeep",
+            "logs/.gitkeep",
+            "QuarterDeck/app.py",
+            "QuarterDeck/start.sh",
+            "QuarterDeck/requirements.txt",
+            "QuarterDeck/console.yaml",
+            "QuarterDeck/tickets.json",
+            "QuarterDeck/pages/overview.md",
+        ):
+            assert (target / path).is_file(), f"{path} missing"
+        assert not (target / "METADATA.md").exists()
+        assert not (target / "INTENT.md").exists()
 
-    def test_init_creates_metadata_md(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+    def test_init_is_idempotent_and_preserves_existing_files(
+        self, tmp_target_root, isolated_config
+    ):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
         run_cli("init", "TestProject")
-        assert (tmp_spec_root / "TestProject" / "METADATA.md").exists()
+        overview = tmp_target_root / "TestProject" / "QuarterDeck" / "pages" / "overview.md"
+        overview.write_text("CUSTOM", encoding="utf-8")
 
-    def test_init_creates_required_templates(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "TestProject")
-        spec_dir = tmp_spec_root / "TestProject"
-        for fname in ("METADATA.md", "README.md", "INTENT.md", "ARCHITECTURE.md"):
-            assert (spec_dir / fname).exists(), f"{fname} missing"
-
-    def test_init_replaces_tokens(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "TestProject")
-        metadata = (tmp_spec_root / "TestProject" / "METADATA.md").read_text()
-        assert "__PROJECT_NAME__" not in metadata
-        assert "__PROJECT_SLUG__" not in metadata
-        assert "TestProject" in metadata
-
-    def test_init_existing_dir_fails_by_default(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "TestProject")
         rc, out, err = run_cli("init", "TestProject")
-        assert rc == 1
 
-    def test_init_update_is_non_destructive(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "TestProject")
-        # Modify a template file
-        meta = tmp_spec_root / "TestProject" / "METADATA.md"
-        meta.write_text("MODIFIED CONTENT")
-        # --update should not overwrite it
-        run_cli("init", "TestProject", "--update")
-        assert meta.read_text() == "MODIFIED CONTENT"
+        assert rc == 0
+        assert overview.read_text(encoding="utf-8") == "CUSTOM"
+        assert "existing baseline files preserved" in out
 
-    def test_init_force_overwrites(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "TestProject")
-        meta = tmp_spec_root / "TestProject" / "METADATA.md"
-        meta.write_text("MODIFIED CONTENT")
-        run_cli("init", "TestProject", "--force")
-        assert meta.read_text() != "MODIFIED CONTENT"
+    def test_init_rejects_blueprint_options(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        rc, out, err = run_cli("init", "TestProject", "--force")
+        assert rc == 2
 
-    def test_init_rejects_path_traversal(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+    def test_init_rejects_path_traversal(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
         rc, out, err = run_cli("init", "../evil")
         assert rc == 1
 
-    def test_init_rejects_empty_name(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+    def test_init_rejects_empty_name(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "target_directory", str(tmp_target_root))
         rc, out, err = run_cli("init", "")
         assert rc != 0
-
-    def test_init_display_name_from_slug(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "my-cool-project")
-        metadata = (tmp_spec_root / "my-cool-project" / "METADATA.md").read_text()
-        assert "My Cool Project" in metadata
 
 
 class TestValidate:
     def _setup_spec(self, tmp_spec_root, isolated_config):
+        from drydock.init_specification import init_specification
+
         run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
-        run_cli("init", "TestProject")
+        init_specification("TestProject", tmp_spec_root)
         return tmp_spec_root / "TestProject"
 
     def test_validate_after_init_exits_zero(self, tmp_spec_root, isolated_config):

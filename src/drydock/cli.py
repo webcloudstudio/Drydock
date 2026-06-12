@@ -65,32 +65,23 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from drydock.config import get_blueprint_directory
-    from drydock.init_specification import init_specification
+    from drydock.config import get_target_directory
+    from drydock.init_target import init_target
 
-    blueprint_dir = get_blueprint_directory()
-    result = init_specification(
-        args.Blueprint,
-        blueprint_dir,
-        update=args.update,
-        force=args.force,
-    )
+    result = init_target(args.Target, get_target_directory())
 
-    print(f"Blueprint: {result.spec_dir}")
-    for fname in result.created():
-        print(f"  CREATED  {fname}")
-    for fname in result.updated():
-        print(f"  UPDATED  {fname}")
-    if result.skipped():
-        print(f"  ({len(result.skipped())} existing files skipped — use --force to overwrite)")
-    if not result.created() and not result.updated():
-        print("  Nothing to do — all template files already exist.")
+    print(f"Target: {result.target_dir}")
+    for path in result.created:
+        print(f"  CREATED  {path.relative_to(result.target_dir)}")
+    if result.skipped:
+        print(f"  ({len(result.skipped)} existing baseline files preserved)")
+    if not result.created:
+        print("  Nothing to do — target baseline is already initialized.")
 
     print()
     print("Next steps:")
-    print("  1. Edit INTENT.md — why does this project exist?")
-    print("  2. Edit METADATA.md — add stack, status, description")
-    print(f"  3. Run: drydock validate {args.Blueprint}")
+    print("  1. Import source material into a Blueprint.")
+    print(f"  2. Create a plan for target: {args.Target}")
     return 0
 
 
@@ -292,12 +283,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_set.add_argument("value", metavar="<path>")
 
     # ── init ─────────────────────────────────────────────────────────────────
-    p_init = sub.add_parser("init", help="Create or update a Blueprint from templates.")
-    p_init.add_argument("Blueprint", metavar="<Blueprint>")
-    p_init.add_argument("--update", action="store_true", help="Add only missing template files.")
-    p_init.add_argument(
-        "--force", action="store_true", help="Overwrite all template-managed files."
-    )
+    p_init = sub.add_parser("init", help="Initialize a target workspace.")
+    p_init.add_argument("Target", metavar="<Target>")
 
     # ── validate ─────────────────────────────────────────────────────────────
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
