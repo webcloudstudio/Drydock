@@ -71,7 +71,7 @@ class TestCompact:
         name, root = _blueprint(
             tmp_path, **{"DATABASE.md": "# DB\nclass X: ...\n", "BUSINESS_RULES.md": "must X\n"}
         )
-        result = compact(name, root, runner=fake_runner())
+        result = compact(name, root / name, runner=fake_runner())
         assert result.exit_code() == 0
         assert {i.status for i in result.items} == {"compacted"}
         compact_file = root / name / "DATABASE_compact.md"
@@ -81,16 +81,16 @@ class TestCompact:
 
     def test_freshness_gate_skips_then_force_recompacts(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
-        compact(name, root, runner=fake_runner())
+        compact(name, root / name, runner=fake_runner())
         # Make the compact strictly newer than the source.
         compact_file = root / name / "DATABASE_compact.md"
         future = compact_file.stat().st_mtime + 100
         os.utime(compact_file, (future, future))
 
-        again = compact(name, root, runner=fake_runner())
+        again = compact(name, root / name, runner=fake_runner())
         assert [i.status for i in again.items] == ["skipped-fresh"]
 
-        forced = compact(name, root, force=True, runner=fake_runner())
+        forced = compact(name, root / name, force=True, runner=fake_runner())
         assert [i.status for i in forced.items] == ["compacted"]
 
     def test_failed_runner_marks_failed_and_exit_one(self, tmp_path):
@@ -99,21 +99,21 @@ class TestCompact:
         def failing(prompt, wd, **kwargs):
             return FakeRun(ok=False, text="")
 
-        result = compact(name, root, runner=failing)
+        result = compact(name, root / name, runner=failing)
         assert result.exit_code() == 1
         assert result.items[0].status == "failed"
         assert not (root / name / "DATABASE_compact.md").exists()
 
     def test_empty_output_is_a_failure(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
-        result = compact(name, root, runner=lambda p, wd, **k: FakeRun(text="   \n"))
+        result = compact(name, root / name, runner=lambda p, wd, **k: FakeRun(text="   \n"))
         assert result.items[0].status == "failed"
         assert result.items[0].error == "empty output"
 
     def test_assembled_prompt_carries_job_context(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "secret-token\n"})
         runner = fake_runner()
-        compact(name, root, runner=runner)
+        compact(name, root / name, runner=runner)
         prompt = runner.seen[0]  # type: ignore[attr-defined]
         assert "## Compaction job" in prompt
         assert "SOURCE_PATH: DATABASE.md" in prompt
@@ -123,11 +123,11 @@ class TestCompact:
         root = tmp_path / "specs"
         root.mkdir()
         with pytest.raises(SpecificationError, match="not found"):
-            compact("missing", root, runner=fake_runner())
+            compact("missing", root / "missing", runner=fake_runner())
 
     def test_nothing_to_compact_is_clean(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"README.md": "no compactables\n"})
-        result = compact(name, root, runner=fake_runner())
+        result = compact(name, root / name, runner=fake_runner())
         assert result.items == []
         assert result.exit_code() == 0
 

@@ -73,7 +73,7 @@ def _soundings_state(plan_state: str) -> str:
 
 def sync_plan_soundings(plan: BuildPlan, target_dir: Path) -> Path:
     """Project plan acceptance gates into Soundings while preserving recorded evidence."""
-    path = target_dir / "docs" / "SOUNDINGS.md"
+    path = target_dir / "SOUNDINGS.md"
     existing = load_soundings(path)
     rows = []
     for block in plan.blocks:
@@ -95,12 +95,12 @@ def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:
             f"# Captain's Chair: {target}\n\n"
             "This target is initialized and ready for Blueprint import and planning.\n"
         ),
-        target_dir / "docs" / "SEA_TRIALS.md": (
+        target_dir / "SEA_TRIALS.md": (
             "# Sea Trials\n\n"
             "| ID | Objective / Success Criterion | State | Evidence |\n"
             "|---|---|---|---|\n"
         ),
-        target_dir / "docs" / "SOUNDINGS.md": render_soundings([]),
+        target_dir / "SOUNDINGS.md": render_soundings([]),
     }
     created = []
     for path, content in files.items():
@@ -142,8 +142,8 @@ sections:
 
 items:
   - {{ id: commanders_view, label: "Captain's Chair", section: core, type: markdown, path: pages/overview.md, order: 1 }}
-  - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../docs/SEA_TRIALS.md, order: 2 }}
-  - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../docs/SOUNDINGS.md, order: 3 }}
+  - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 2 }}
+  - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 3 }}
 {planning_item}  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
   - {{ id: acceptance_status, label: "Acceptance Status", section: project_pages, type: command_status }}
 """

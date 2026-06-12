@@ -13,6 +13,7 @@ from drydock.init_specification import init_specification
 @dataclass(frozen=True)
 class ImportResult:
     blueprint: str
+    target: str
     blueprint_dir: Path
     source: Path
     imported: tuple[Path, ...]
@@ -36,15 +37,15 @@ def _markdown_files(source: Path) -> list[tuple[Path, Path]]:
     return files
 
 
-def import_markdown(blueprint: str, source: Path, blueprint_directory: Path) -> ImportResult:
-    """Preserve a Markdown file or directory under ``<Blueprint>/sources/``."""
+def import_markdown(
+    blueprint: str, target: str, source: Path, target_directory: Path
+) -> ImportResult:
+    """Preserve Markdown under ``targets/<Target>/blueprint/sources/`` and seed templates."""
     source = source.expanduser().resolve()
-    blueprint_dir = blueprint_directory / blueprint
-    initialized = not blueprint_dir.exists()
-    if initialized:
-        init_specification(blueprint, blueprint_directory)
-    elif not blueprint_dir.is_dir():
-        raise SpecificationError(f"Blueprint path is not a directory: {blueprint_dir}")
+    target_dir = target_directory / target
+    blueprint_dir = target_dir / "blueprint"
+    initialized = not (blueprint_dir / "ARCHITECTURE.md").exists()
+    init_specification(blueprint, target_dir, update=True)
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
@@ -60,6 +61,7 @@ def import_markdown(blueprint: str, source: Path, blueprint_directory: Path) -> 
 
     return ImportResult(
         blueprint=blueprint,
+        target=target,
         blueprint_dir=blueprint_dir,
         source=source,
         imported=tuple(imported),

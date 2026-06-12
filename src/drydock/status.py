@@ -37,19 +37,24 @@ def status_blueprint_target(
     )
 
 
-def status_blueprint(blueprint: str, blueprint_dir: Path) -> StatusResult:
+def status_blueprint(blueprint: str, target_dir: Path) -> StatusResult:
     from drydock.validate_specification import validate_specification
 
-    result = validate_specification(blueprint, blueprint_dir)
+    result = validate_specification(blueprint, target_dir)
     return StatusResult(
         blueprint=blueprint,
         validation=result,
     )
 
 
-def status_current(blueprint_dir: Path, target_dir: Path) -> StatusResult | None:
-    """Orientation status: CWD-first, then last recorded activity."""
+def status_current(target_root: Path) -> StatusResult | None:
+    """Orientation status: CWD-first, then last recorded activity.
+
+    ``target_root`` is the ``targets/`` root; each Target's Blueprint resolves to
+    ``<target>/blueprint``.
+    """
     from drydock.config import get_last_activity
+    from drydock.validate_specification import validate_specification
 
     cwd = Path.cwd()
     plan_path = cwd / "BUILD_PLAN.md"
@@ -60,12 +65,10 @@ def status_current(blueprint_dir: Path, target_dir: Path) -> StatusResult | None
         plan = parse_build_plan(plan_path)
         blueprint = plan.project
         target = cwd.name
-        # Also run validation if blueprint_dir resolves
+        # The CWD is the Target; validate against the Target directory.
         validation = None
         try:
-            from drydock.validate_specification import validate_specification
-
-            validation = validate_specification(blueprint, blueprint_dir)
+            validation = validate_specification(blueprint, cwd)
         except Exception:
             pass
         activity = get_last_activity()
@@ -90,16 +93,14 @@ def status_current(blueprint_dir: Path, target_dir: Path) -> StatusResult | None
     last_time = activity.get("time", "")
 
     if tgt:
-        result = status_blueprint_target(bp, tgt, blueprint_dir, target_dir)
-        # Also run validation
+        target_dir = target_root / tgt
+        result = status_blueprint_target(bp, tgt, target_dir / "blueprint", target_root)
         try:
-            from drydock.validate_specification import validate_specification
-
-            result.validation = validate_specification(bp, blueprint_dir)
+            result.validation = validate_specification(bp, target_dir)
         except Exception:
             pass
     else:
-        result = status_blueprint(bp, blueprint_dir)
+        result = StatusResult(blueprint=bp)
 
     result.last_command = last_command
     result.last_time = last_time

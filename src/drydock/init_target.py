@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.errors import DrydockError
+from drydock.metadata import render_metadata
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
-from drydock.target_manifest import TargetManifest
 
 _TRAVERSAL_RE = re.compile(r"\.\.|[/\\]")
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
@@ -51,15 +51,15 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
 
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
-        for directory in ("docs", "evidence", "logs", "QuarterDeck/data"):
+        for directory in ("blueprint/sources", "evidence", "logs", "QuarterDeck/data"):
             path = target_dir / directory
             path.mkdir(parents=True, exist_ok=True)
             keep = path / ".gitkeep"
             _write_missing(keep, "", result)
 
         _write_missing(
-            target_dir / "target.yaml",
-            TargetManifest().render(),
+            target_dir / "METADATA.md",
+            render_metadata(target),
             result,
         )
 

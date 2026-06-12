@@ -6,15 +6,15 @@
 | CLI-002 | `drydock --version` shows version and copyright | DONE | `test_cli.py::TestHelpAndVersion` |
 | CLI-003 | `drydock config show` displays effective configuration values and sources | DONE | `test_cli.py::TestConfigShow`, `test_config.py::TestConfigShow` |
 | CLI-004 | `drydock config set drydock_workspace <path>` persists the workspace root | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
-| CLI-005 | Blueprint and Target roots resolve to `$DRYDOCK_WORKSPACE/blueprints` and `/targets` (git-root/cwd default) | DONE | `test_config.py::TestWorkspaceResolution` |
+| CLI-005 | Targets resolve to `$DRYDOCK_WORKSPACE/targets/<Target>` (git-root/cwd default); a Target's Blueprint is its `blueprint/` subtree | DONE | `test_config.py::TestWorkspaceResolution` |
 | CLI-006 | `drydock config set llm_provider <claude\|codex>` persists a valid subscription CLI provider | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-007 | `drydock config set prompt_warn_kb <kb>` persists a valid prompt-size threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-008 | `drydock config set quarterdeck_port <port>` persists a valid QuarterDeck port | DONE | `test_config.py` quarterdeck-port tests, `test_cli.py::TestRunQuarterdeck::test_run_quarterdeck_config_port_used` |
-| CLI-009 | `drydock init <Target>` creates the Target baseline with `target.yaml` and a state-only QuarterDeck console | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
+| CLI-009 | `drydock init <Target>` creates the minimal Target scaffold (`METADATA.md` manifest, root Sea Trials/Soundings, `blueprint/sources/`, state-only QuarterDeck) | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
 | CLI-010 | `drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]` serves the package runtime against a named or sole-Target in-tree console state | DONE | `test_cli.py::TestRunQuarterdeck`, `test_quarterdeck_run.py` |
-| CLI-011 | `drydock validate <Blueprint>` validates Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
-| CLI-012 | `drydock validate <Blueprint> --verbose` shows passing checks and findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |
-| CLI-013 | `drydock rigging compact <Blueprint> [--all] [--force]` refreshes stale compact derivatives with execution evidence | DONE | `test_cli.py::TestRiggingCompact`, `test_rigging_compact.py` |
+| CLI-011 | `drydock status <Blueprint> <Target>` validates a Target's Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
+| CLI-012 | `drydock status <Blueprint> <Target> --verbose` shows passing checks and findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |
+| CLI-013 | `drydock rigging compact <Blueprint> <Target> [--all] [--force]` refreshes stale compact derivatives with execution evidence | DONE | `test_cli.py::TestRiggingCompact`, `test_rigging_compact.py` |
 | CLI-014 | `drydock document generate <Blueprint> <Target>` creates `DOC-*.md` summaries | STUBBED | `test_cli.py::TestStubs` |
 | CLI-015 | `drydock document assemble <Blueprint> <Target>` renders existing Markdown documentation into HTML | DONE | `test_cli.py::TestDocumentAssemble`, `test_build_documentation.py` |
 | CLI-016 | `drydock document <Blueprint> <Target>` runs the full documentation pipeline | STUBBED | `test_cli.py::TestStubs` |
@@ -26,7 +26,7 @@
 | CLI-022 | `drydock build score <Blueprint> <Target>` generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` |
 | CLI-023 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` updates Blueprint and Target together | STUBBED | `test_cli.py::TestStubs` |
 | CLI-024 | `drydock analyze <Blueprint> [<Target>]` reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` |
-| CLI-025 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` preserves Markdown source bundles | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
+| CLI-025 | `drydock import <Blueprint> <Target> <Source> --format <auto\|markdown\|source\|speckit>` preserves Markdown source bundles under `<Target>/blueprint/sources/` | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
 | CLI-026 | `drydock status <Blueprint> <Target>` reports plan state and runnable frontier | DONE | `test_cli.py::TestStatus::test_status_blueprint_target_reports_plan_state`, `test_status.py::TestStatusBlueprintTarget` |
 | CLI-027 | `drydock status <Blueprint>` reports Blueprint validation summary | DONE | `test_cli.py::TestStatus::test_status_blueprint_reports_validation_summary`, `test_status.py::TestStatusBlueprint` |
 | CLI-028 | `drydock status` (no args) shows compact dashboard of last active project and records activity | DONE | `test_cli.py::TestStatus::test_status_no_args_*`, `test_status.py::TestStatusCurrent` |

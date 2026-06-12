@@ -65,33 +65,42 @@ def _apply_tokens(text: str, slug: str, display_name: str, today: str, today_com
     )
 
 
+# Templates that belong at the Target root rather than inside blueprint/.
+_ROOT_TEMPLATES = {"METADATA.md", "README.md", "INTENT.md"}
+
+
 def init_specification(
     spec_name: str,
-    blueprint_directory: Path,
+    target_dir: Path,
     *,
     update: bool = False,
     force: bool = False,
 ) -> InitResult:
     """
-    Create or update a Blueprint from packaged Typed Specification templates.
+    Create or update a Blueprint within a Target from packaged templates.
+
+    Root-level identity files (METADATA.md, README.md, INTENT.md) are written to
+    ``target_dir``; the Typed Specification corpus is written to
+    ``target_dir/blueprint``.
 
     Raises:
         SpecificationError: On invalid name or filesystem failure.
     """
     _validate_spec_name(spec_name)
 
-    spec_dir = blueprint_directory / spec_name
+    blueprint_dir = target_dir / "blueprint"
 
-    if spec_dir.exists() and not update and not force:
+    if blueprint_dir.exists() and not update and not force:
         raise SpecificationError(
-            f"Directory already exists: {spec_dir}\n"
+            f"Blueprint already exists: {blueprint_dir}\n"
             "  Use --update to add missing files, or --force to overwrite all."
         )
 
     try:
-        spec_dir.mkdir(parents=True, exist_ok=True)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        blueprint_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise SpecificationError(f"Cannot create directory {spec_dir}: {exc}") from exc
+        raise SpecificationError(f"Cannot create directory {blueprint_dir}: {exc}") from exc
 
     template_dir = get_spec_template_dir()
     if not template_dir.is_dir():
@@ -104,11 +113,11 @@ def init_specification(
     today_compact = date.today().strftime("%Y%m%d")
     display_name = _derive_display_name(spec_name)
 
-    result = InitResult(spec_name=spec_name, spec_dir=spec_dir)
+    result = InitResult(spec_name=spec_name, spec_dir=blueprint_dir)
 
     for tmpl_path in sorted(template_dir.glob("*.md")):
         fname = tmpl_path.name
-        dest = spec_dir / fname
+        dest = (target_dir if fname in _ROOT_TEMPLATES else blueprint_dir) / fname
         already_exists = dest.exists()
 
         if already_exists and not force:

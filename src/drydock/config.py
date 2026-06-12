@@ -72,14 +72,14 @@ def get_workspace() -> Path:
     return top if top is not None else Path.cwd()
 
 
-def get_blueprint_directory() -> Path:
-    """Root holding all Blueprints: ``$DRYDOCK_WORKSPACE/blueprints``."""
-    return get_workspace() / "blueprints"
-
-
 def get_target_directory() -> Path:
     """Root holding all Targets: ``$DRYDOCK_WORKSPACE/targets``."""
     return get_workspace() / "targets"
+
+
+def blueprint_dir_for(target_dir: Path) -> Path:
+    """The Blueprint subtree of a Target: ``targets/<Target>/blueprint``."""
+    return target_dir / "blueprint"
 
 
 def get_llm_provider() -> str:

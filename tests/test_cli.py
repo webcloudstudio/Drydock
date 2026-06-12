@@ -82,15 +82,15 @@ class TestConfigShow:
 
 
 class TestConfigSet:
-    def test_config_set_valid(self, tmp_spec_root, isolated_config):
-        rc, out, err = run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
+    def test_config_set_valid(self, tmp_workspace, isolated_config):
+        rc, out, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
         assert rc == 0
         assert "drydock_workspace" in out
 
-    def test_config_set_persists(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
+    def test_config_set_persists(self, tmp_workspace, isolated_config):
+        run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
         rc, out, _ = run_cli("config", "show")
-        assert str(tmp_spec_root.parent) in out
+        assert str(tmp_workspace) in out
 
     def test_config_set_nonexistent_dir_fails(self, isolated_config):
         rc, out, err = run_cli("config", "set", "drydock_workspace", "/does/not/exist")
@@ -121,8 +121,10 @@ class TestInit:
         target = tmp_target_root / "TestProject"
         assert "Target:" in out
         for path in (
-            "target.yaml",
-            "docs/.gitkeep",
+            "METADATA.md",
+            "SEA_TRIALS.md",
+            "SOUNDINGS.md",
+            "blueprint/sources/.gitkeep",
             "evidence/.gitkeep",
             "logs/.gitkeep",
             "QuarterDeck/console.yaml",
@@ -133,8 +135,8 @@ class TestInit:
         # The console runtime is served from the package, not copied into the target.
         assert not (target / "QuarterDeck" / "app.py").exists()
         assert not (target / "QuarterDeck" / "requirements.txt").exists()
-        assert not (target / "METADATA.md").exists()
-        assert not (target / "INTENT.md").exists()
+        assert not (target / "target.yaml").exists()
+        assert not (target / "docs").exists()
 
     def test_init_is_idempotent_and_preserves_existing_files(
         self, tmp_target_root, isolated_config
@@ -167,41 +169,42 @@ class TestInit:
 
 
 class TestValidate:
-    def _setup_spec(self, tmp_spec_root, isolated_config):
+    def _setup_spec(self, tmp_target_root, isolated_config):
         from drydock.init_specification import init_specification
 
-        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
-        init_specification("TestProject", tmp_spec_root)
-        return tmp_spec_root / "TestProject"
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target_dir = tmp_target_root / "TestProject"
+        init_specification("TestProject", target_dir)
+        return target_dir
 
-    def test_validate_after_init_exits_zero(self, tmp_spec_root, isolated_config):
-        self._setup_spec(tmp_spec_root, isolated_config)
-        rc, out, err = run_cli("validate", "TestProject")
+    def test_validate_after_init_exits_zero(self, tmp_target_root, isolated_config):
+        self._setup_spec(tmp_target_root, isolated_config)
+        rc, out, err = run_cli("validate", "TestProject", "TestProject")
         assert rc == 0  # warnings are OK, no failures expected after init
 
-    def test_validate_nonexistent_spec_fails(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
-        rc, out, err = run_cli("validate", "DoesNotExist")
+    def test_validate_nonexistent_spec_fails(self, tmp_target_root, isolated_config):
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        rc, out, err = run_cli("validate", "DoesNotExist", "DoesNotExist")
         assert rc == 1
 
-    def test_validate_verbose_shows_passes(self, tmp_spec_root, isolated_config):
-        self._setup_spec(tmp_spec_root, isolated_config)
-        rc_plain, out_plain, _ = run_cli("validate", "TestProject")
-        rc_verb, out_verb, _ = run_cli("validate", "TestProject", "--verbose")
+    def test_validate_verbose_shows_passes(self, tmp_target_root, isolated_config):
+        self._setup_spec(tmp_target_root, isolated_config)
+        rc_plain, out_plain, _ = run_cli("validate", "TestProject", "TestProject")
+        rc_verb, out_verb, _ = run_cli("validate", "TestProject", "TestProject", "--verbose")
         assert rc_verb == 0
         assert "PASS" in out_verb
         assert len(out_verb) > len(out_plain)
 
-    def test_validate_missing_required_file_fails(self, tmp_spec_root, isolated_config):
-        spec_dir = self._setup_spec(tmp_spec_root, isolated_config)
-        (spec_dir / "ARCHITECTURE.md").unlink()
-        rc, out, err = run_cli("validate", "TestProject")
+    def test_validate_missing_required_file_fails(self, tmp_target_root, isolated_config):
+        target_dir = self._setup_spec(tmp_target_root, isolated_config)
+        (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
+        rc, out, err = run_cli("validate", "TestProject", "TestProject")
         assert rc == 1
         assert "ARCHITECTURE" in out
 
-    def test_validate_shows_result_summary(self, tmp_spec_root, isolated_config):
-        self._setup_spec(tmp_spec_root, isolated_config)
-        rc, out, _ = run_cli("validate", "TestProject")
+    def test_validate_shows_result_summary(self, tmp_target_root, isolated_config):
+        self._setup_spec(tmp_target_root, isolated_config)
+        rc, out, _ = run_cli("validate", "TestProject", "TestProject")
         assert "RESULT" in out
 
 
@@ -217,10 +220,10 @@ class TestRiggingCompact:
 
         monkeypatch.setattr("drydock.rigging_compact.run_prompt", fake)
 
-    def _setup_blueprint(self, tmp_spec_root, name="Proj", **files):
-        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
-        spec = tmp_spec_root / name
-        spec.mkdir()
+    def _setup_blueprint(self, tmp_target_root, name="Proj", **files):
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        spec = tmp_target_root / name / "blueprint"
+        spec.mkdir(parents=True)
         for fname, body in (files or {"DATABASE.md": "class X: ...\n"}).items():
             (spec / fname).write_text(body, encoding="utf-8")
         return spec
@@ -230,26 +233,26 @@ class TestRiggingCompact:
         assert rc == 0
         assert "--all" in out and "--force" in out
 
-    def test_compacts_and_reports(self, tmp_spec_root, isolated_config, monkeypatch):
-        spec = self._setup_blueprint(tmp_spec_root)
+    def test_compacts_and_reports(self, tmp_target_root, isolated_config, monkeypatch):
+        spec = self._setup_blueprint(tmp_target_root)
         self._fake_run_prompt(monkeypatch)
-        rc, out, err = run_cli("rigging", "compact", "Proj")
+        rc, out, err = run_cli("rigging", "compact", "Proj", "Proj")
         assert rc == 0, err
         assert (spec / "DATABASE_compact.md").exists()
         assert "1 compacted" in out
         assert "exec-test" in out
 
-    def test_failed_execution_exits_one(self, tmp_spec_root, isolated_config, monkeypatch):
-        self._setup_blueprint(tmp_spec_root)
+    def test_failed_execution_exits_one(self, tmp_target_root, isolated_config, monkeypatch):
+        self._setup_blueprint(tmp_target_root)
         self._fake_run_prompt(monkeypatch, ok=False, text="")
-        rc, out, err = run_cli("rigging", "compact", "Proj")
+        rc, out, err = run_cli("rigging", "compact", "Proj", "Proj")
         assert rc == 1
         assert "1 failed" in out
 
-    def test_nothing_to_compact(self, tmp_spec_root, isolated_config, monkeypatch):
-        self._setup_blueprint(tmp_spec_root, **{"README.md": "no compactables\n"})
+    def test_nothing_to_compact(self, tmp_target_root, isolated_config, monkeypatch):
+        self._setup_blueprint(tmp_target_root, **{"README.md": "no compactables\n"})
         self._fake_run_prompt(monkeypatch)
-        rc, out, err = run_cli("rigging", "compact", "Proj")
+        rc, out, err = run_cli("rigging", "compact", "Proj", "Proj")
         assert rc == 0
         assert "Nothing to compact" in out
 
@@ -278,18 +281,16 @@ parent: awaiting-checks
 state: pending
 """
 
-    def _setup(self, tmp_spec_root, tmp_target_root, monkeypatch):
-        blueprint = tmp_spec_root / "Example"
-        blueprint.mkdir()
+    def _setup(self, tmp_target_root, monkeypatch):
         target = tmp_target_root / "ExampleTarget"
         target.mkdir()
         (target / "BUILD_PLAN.md").write_text(self.PLAN, encoding="utf-8")
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
     def test_build_status_reports_runnable_frontier(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_target_root, isolated_config, monkeypatch
     ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        self._setup(tmp_target_root, monkeypatch)
 
         rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
 
@@ -307,13 +308,13 @@ state: pending
 
 
 class TestPlanningSession:
-    def _configure(self, tmp_spec_root, tmp_target_root, monkeypatch):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
+    def _configure(self, tmp_target_root, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
     def test_markdown_import_plan_create_and_approve(
-        self, tmp_path, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
-        self._configure(tmp_spec_root, tmp_target_root, monkeypatch)
+        self._configure(tmp_target_root, monkeypatch)
         source = tmp_path / "request.md"
         source.write_text(
             "# Request\n\nBuild a status command.\n\n## Acceptance Criteria\n\n"
@@ -321,22 +322,25 @@ class TestPlanningSession:
             encoding="utf-8",
         )
 
-        rc, out, err = run_cli("import", "Example", str(source), "--format", "markdown")
+        rc, out, err = run_cli(
+            "import", "Example", "ExampleTarget", str(source), "--format", "markdown"
+        )
         assert rc == 0, err
-        assert (tmp_spec_root / "Example" / "sources" / "request.md").is_file()
+        bp = tmp_target_root / "ExampleTarget" / "blueprint"
+        assert (bp / "sources" / "request.md").is_file()
 
         rc, out, err = run_cli("plan", "create", "Example", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state: draft" in out
-        assert (tmp_spec_root / "Example" / "BUILD_PLAN_INTENT.md").is_file()
+        assert (bp / "BUILD_PLAN_INTENT.md").is_file()
         plan_path = tmp_target_root / "ExampleTarget" / "BUILD_PLAN.md"
         assert "Status command exits successfully." in plan_path.read_text(encoding="utf-8")
         quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
         assert (quarterdeck / "console.yaml").is_file()
         assert (quarterdeck / "tickets.json").is_file()
         assert not (quarterdeck / "app.py").exists()
-        assert (tmp_target_root / "ExampleTarget" / "docs" / "SEA_TRIALS.md").is_file()
-        soundings = tmp_target_root / "ExampleTarget" / "docs" / "SOUNDINGS.md"
+        assert (tmp_target_root / "ExampleTarget" / "SEA_TRIALS.md").is_file()
+        soundings = tmp_target_root / "ExampleTarget" / "SOUNDINGS.md"
         assert "Status command exits successfully." in soundings.read_text(encoding="utf-8")
         config = (quarterdeck / "console.yaml").read_text(encoding="utf-8")
         assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
@@ -353,11 +357,11 @@ class TestPlanningSession:
         assert "Runnable frontier: story-request" in out
 
     def test_feature_spec_generates_feature_parent_and_acceptance(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_target_root, isolated_config, monkeypatch
     ):
-        self._configure(tmp_spec_root, tmp_target_root, monkeypatch)
-        blueprint = tmp_spec_root / "Example"
-        blueprint.mkdir()
+        self._configure(tmp_target_root, monkeypatch)
+        blueprint = tmp_target_root / "Target" / "blueprint"
+        blueprint.mkdir(parents=True)
         (blueprint / "FEATURE-Catalog.md").write_text(
             "# FEATURE: Catalog\n\n## Acceptance Criteria\n\n- Catalog lists items.\n"
             "\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- Which sort order?\n",
@@ -585,19 +589,18 @@ state: closed/verified
 
 
 class TestStatus:
-    def _setup(self, tmp_spec_root, tmp_target_root, monkeypatch):
+    def _setup(self, tmp_target_root, monkeypatch):
         from drydock.init_specification import init_specification
 
-        init_specification("TestProject", tmp_spec_root)
-        tgt = tmp_target_root / "TestTarget"
-        tgt.mkdir()
-        (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
+        target_dir = tmp_target_root / "TestTarget"
+        init_specification("TestProject", target_dir)
+        (target_dir / "BUILD_PLAN.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
     def test_status_blueprint_target_reports_plan_state(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_target_root, isolated_config, monkeypatch
     ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestProject", "TestTarget")
         assert rc == 0, err
         assert "TestProject" in out
@@ -605,9 +608,9 @@ class TestStatus:
         assert "core-feature" in out
 
     def test_status_blueprint_reports_validation_summary(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_target_root, isolated_config, monkeypatch
     ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestProject")
         assert rc == 0, err
         assert "TestProject" in out
@@ -615,27 +618,25 @@ class TestStatus:
         assert "0 errors" in out
 
     def test_status_no_args_no_activity_exits_zero(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_target_root, isolated_config, monkeypatch
     ):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
         monkeypatch.chdir(tmp_target_root)
         rc, out, err = run_cli("status")
         assert rc == 0
 
-    def test_status_no_args_uses_last_activity(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
-    ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
-        monkeypatch.chdir(tmp_spec_root)
+    def test_status_no_args_uses_last_activity(self, tmp_target_root, isolated_config, monkeypatch):
+        self._setup(tmp_target_root, monkeypatch)
+        monkeypatch.chdir(tmp_target_root)
         run_cli("status", "TestProject", "TestTarget")
         rc, out, err = run_cli("status")
         assert rc == 0, err
         assert "TestProject" in out
 
     def test_activity_recorded_after_status_command(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+        self, tmp_target_root, isolated_config, monkeypatch
     ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        self._setup(tmp_target_root, monkeypatch)
         run_cli("status", "TestProject", "TestTarget")
 
         from drydock.config import get_last_activity
@@ -646,9 +647,7 @@ class TestStatus:
         assert activity["command"] == "status"
         assert activity["time"] != ""
 
-    def test_status_too_many_args_exits_2(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
-    ):
-        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+    def test_status_too_many_args_exits_2(self, tmp_target_root, isolated_config, monkeypatch):
+        self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "A", "B", "C")
         assert rc == 2

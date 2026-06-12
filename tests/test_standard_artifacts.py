@@ -33,8 +33,7 @@ state: pending
 """,
         encoding="utf-8",
     )
-    soundings = target / "docs" / "SOUNDINGS.md"
-    soundings.parent.mkdir()
+    soundings = target / "SOUNDINGS.md"
     soundings.write_text(
         "# Soundings\n\n"
         "| ID | Acceptance Criterion | State | Evidence |\n"

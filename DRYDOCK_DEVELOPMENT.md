@@ -139,13 +139,14 @@ PowerShell files in `bin/` only locate the environment and invoke the package en
 |---|---|
 | Drydock's own authoritative product specification | `docs/Drydock_Specification.md` |
 | Drydock's own implementation acceptance checklist | `docs/SOUNDINGS.md` |
-| Target-project Blueprint Typed Specification files and internal `BUILD_PLAN_INTENT.md` | Configured Blueprint directory |
-| `BUILD_PLAN.md`, built software, execution evidence, logs, and QuarterDeck state | Configured Target directory |
+| Target-project Blueprint Typed Specification files, `BUILD_CONFIGURATION.md`, and `BUILD_PLAN_INTENT.md` | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
+| `METADATA.md` manifest, `BUILD_PLAN.md`, `SCORECARD.md`, Sea Trials, Soundings, built software, evidence, logs, and QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
 | Drydock's distributable rules/templates | `Rigging/` and packaged resource copy |
 | User configuration | User-scoped Drydock configuration managed by `drydock config` |
 
-Commands must resolve `<Blueprint>` and `<Target>` relative to configured roots. They must not depend on
-the caller being in the Drydock or Prototyper repository.
+Commands must resolve `<Target>` under `$DRYDOCK_WORKSPACE/targets/` and the Blueprint as that
+Target's `blueprint/` subtree. They must not depend on the caller being in the Drydock or Prototyper
+repository.
 
 ## V1 To V2 Capability Map
 

@@ -190,7 +190,7 @@ def _finalize(text: str, *, rel_source: str, today: str) -> str:
 
 def compact(
     blueprint: str,
-    blueprint_directory: Path,
+    blueprint_dir: Path,
     *,
     include_rigging: bool = False,
     force: bool = False,
@@ -202,7 +202,7 @@ def compact(
     # Resolved at call time so tests can monkeypatch ``run_prompt`` through the CLI path.
     run = runner if runner is not None else run_prompt
 
-    spec_dir = blueprint_directory / blueprint
+    spec_dir = blueprint_dir
     if not spec_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {spec_dir}")
 

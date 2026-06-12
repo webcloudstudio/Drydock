@@ -102,7 +102,7 @@ The Drydock CLI uses two common arguments:
 
 | Definition | Meaning |
 |---|---|
-| `<Blueprint>` | Blueprint name under `$DRYDOCK_WORKSPACE/blueprints/` |
+| `<Blueprint>` | Blueprint name; its files live in `targets/<Target>/blueprint/` |
 | `<Target>` | Target project name under `$DRYDOCK_WORKSPACE/targets/` |
 
 ### Global commands
@@ -135,17 +135,12 @@ completes successfully.
 drydock status <Blueprint>
 ```
 
-Shows Blueprint validation state: error count, warning count, and a finding summary. Equivalent to
-`drydock validate <Blueprint>`.
-
 ```text
 drydock status <Blueprint> <Target>
 ```
 
 Shows plan block state and the current runnable frontier. Equivalent to
 `drydock build status <Blueprint> <Target>`.
-
-`drydock validate` and `drydock build status` remain available as direct aliases.
 
 ### Setup commands
 
@@ -165,8 +160,9 @@ Sets one of: `drydock_workspace`, `llm_provider`, `prompt_warn_kb`, or `quarterd
 drydock init <Target>
 ```
 
-Creates the specification-independent Target baseline under `$DRYDOCK_WORKSPACE/targets/<Target>/`,
-including its `target.yaml` manifest and a state-only QuarterDeck console.
+Creates the minimal Target scaffold under `$DRYDOCK_WORKSPACE/targets/<Target>/` (see Workspace
+Layout): `METADATA.md`, root `SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, and a
+state-only QuarterDeck console.
 
 ```text
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
@@ -180,14 +176,14 @@ contains exactly one Target, that Target is used.
 ### Plan commands
 
 ```text
-drydock import <Blueprint> <Source> --format <auto|markdown|source|speckit>
+drydock import <Blueprint> <Target> <Source> --format <auto|markdown|source|speckit>
 ```
 
-Imports source material into a Blueprint.
+Imports source material into a Target's Blueprint.
 
 
 ```text
-drydock validate <Blueprint> [--verbose]
+drydock status <Blueprint> [--verbose]
 ```
 
 Validates a Blueprint's Typed Specification files.
@@ -235,7 +231,7 @@ Updates Blueprint and Target together, or limits the change to the selected side
 ### Rigging commands
 
 ```text
-drydock rigging compact <Blueprint> [--all] [--force]
+drydock rigging compact <Blueprint> <Target> [--all] [--force]
 ```
 
 Refreshes stale compact derivatives; `--all` includes Drydock Rigging and `--force` ignores
@@ -273,6 +269,66 @@ drydock document assemble <Blueprint> <Target>
 
 Assembles existing `DOC-*.md` files into `docs/index.html`.
 
+## Workspace Layout
+
+Drydock manages everything inside one workspace tree; there is no separate
+`blueprints/` root. Every artifact for a project lives under
+`targets/<Target>/`, with the Blueprint as a named subtree at
+`targets/<Target>/blueprint/`. One Target is a self-contained project: spec,
+plan, build, and console together.
+
+```text
+$DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
+├── logs/
+│   └── ships_log.jsonl                   # workspace product/design decision ledger
+│
+└── targets/
+    └── <Target>/                         # one self-contained project: spec, plan, build, console
+        ├── METADATA.md                   # identity + manifest: Blueprint name, code_root, status, stack
+        ├── README.md                     # short human introduction to the project
+        ├── INTENT.md                     # product intent, constraints, success, guardrails
+        ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
+        ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
+        ├── BUILD_PLAN.md                 # the single executable build plan
+        ├── SCORECARD.md                  # seven-dimension quality + drift scores
+        │
+        ├── blueprint/                    # the Blueprint — conformed Typed Specification
+        │   ├── sources/                  # preserved unconformed import material
+        │   ├── BUILD_CONFIGURATION.md    # durable product-owner planning decisions
+        │   ├── BUILD_PLAN_INTENT.md      # internal inventory of inputs + planning groups
+        │   ├── ARCHITECTURE.md
+        │   ├── DATABASE.md
+        │   ├── FEATURE-{Name}.md
+        │   ├── SCREEN-{Name}.md
+        │   ├── UI-GENERAL.md
+        │   └── changes/
+        │       └── TICKET-NNN-{Name}.md
+        │
+        ├── evidence/                     # reviewable build evidence, named by build object
+        ├── logs/                         # target execution logs (e.g. executions.jsonl)
+        └── QuarterDeck/                  # console state only; runtime served from the package
+            ├── console.yaml
+            ├── tickets.json
+            ├── pages/
+            │   └── overview.md
+            ├── data/
+            ├── planning/
+            │   └── ANALYSIS.md
+            └── questionnaires/
+                └── planning.json
+```
+
+Project-level, human-authored files (`METADATA.md`, `README.md`, `INTENT.md`,
+`SEA_TRIALS.md`, `SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries
+the manifest: the Blueprint name and `code_root`. Built and served code lives at
+`code_root` — the workspace root for self-hosting or brownfield projects, or a
+path you set for greenfield builds.
+
+`drydock init <Target>` writes the minimal scaffold (`METADATA.md`, root
+`SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, `evidence/`,
+`logs/`, and a state-only `QuarterDeck/`). `import`, `plan create`, `build`, and
+`score` create the remaining files as the project progresses.
+
 ## Phase 1 — Setup: Laying the Keel
 
 Install Drydock, configure its roots and runtime defaults, then initialize the Target.
@@ -297,44 +353,22 @@ flowchart LR
 
 | Variable | Purpose |
 |---|---|
-| `DRYDOCK_WORKSPACE` | Workspace root containing `blueprints/` and `targets/`. Defaults to the Git top-level of the working directory, otherwise the working directory itself. |
+| `DRYDOCK_WORKSPACE` | Workspace root containing `targets/`. Defaults to the Git top-level of the working directory, otherwise the working directory itself. |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
 | `QUARTERDECK_PORT` | Default QuarterDeck service port |
 
-Drydock manages everything inside one workspace tree; there are no external Blueprint or Target
-roots. Blueprints resolve to `$DRYDOCK_WORKSPACE/blueprints/<Blueprint>/` and Targets to
-`$DRYDOCK_WORKSPACE/targets/<Target>/`. A Target may be self-hosting: the workspace can be the
-Drydock repository itself, simultaneously the control center, the Blueprint host, the Target host,
-and the served code. Each Target's `target.yaml` records its Blueprint and its `code_root` (see
-"The Initialized Target").
+Drydock manages everything inside one workspace tree; there is no separate Blueprint root. A Target
+resolves to `$DRYDOCK_WORKSPACE/targets/<Target>/` and its Blueprint to that Target's `blueprint/`
+subtree (see Workspace Layout). A Target may be self-hosting: the workspace can be the Drydock
+repository itself, simultaneously the control center, the Blueprint host, the Target host, and the
+served code. Each Target's `METADATA.md` records its Blueprint name and `code_root`.
 
 ### The Initialized Target
 
-`drydock init <Target>` creates the specification-independent baseline under the workspace. The
-QuarterDeck runtime is not copied here; only console state is written, and `drydock run quarterdeck`
-serves the runtime from the installed package:
-
-```text
-$DRYDOCK_WORKSPACE/targets/<Target>/
-├── target.yaml          # binds the Target to its Blueprint and code_root
-├── docs/
-│   ├── SEA_TRIALS.md
-│   └── SOUNDINGS.md
-├── evidence/
-├── logs/
-└── QuarterDeck/         # console state only; runtime served from the package
-    ├── console.yaml
-    ├── data/
-    ├── pages/
-    │   └── overview.md
-    └── tickets.json
-```
-
-`target.yaml` records the Target's `blueprint` name and its `code_root` — the directory holding the
-built and served application code. `code_root` defaults to `$DRYDOCK_WORKSPACE` (self-hosting or
-brownfield, where the code already exists in the workspace) and may instead reference a generated
-`targets/<Target>/code/` container for greenfield builds, or any other existing path.
+`drydock init <Target>` creates the minimal scaffold described in Workspace Layout. The QuarterDeck
+runtime is not copied here; only console state is written, and `drydock run quarterdeck` serves the
+runtime from the installed package.
 
 `drydock run quarterdeck [<Target>]` starts the console on `QUARTERDECK_PORT` (override with
 `--host` and `--port`), serving the package runtime against this in-tree console state. The
@@ -345,13 +379,13 @@ QuarterDeck is usable from this moment — planning, build, and review all surfa
 Planning turns source material into a reviewable, executable build plan.
 
 1. Import source material into a Blueprint with `drydock import`.
-2. Validate Typed Specification files with `drydock validate` when applicable.
+2. Validate Typed Specification files with `drydock status` when applicable.
 3. Use `drydock analyze` when gaps or drift need investigation.
 4. Create the draft executable plan with `drydock plan create`.
 5. Review and approve the complete plan in the Target's QuarterDeck Planning Session.
 
 `drydock plan create` reads all available Blueprint inputs, writes
-`<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
+`<Target>/blueprint/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
 Session. A draft plan has no runnable frontier. QuarterDeck approval establishes the executable
 baseline and exposes the runnable frontier.
 
@@ -407,7 +441,7 @@ presents optional features, executable stories and spikes, dependencies, and nes
 gates, together with the analysis and questionnaire produced by `drydock analyze`
 (`<Target>/QuarterDeck/planning/ANALYSIS.md` and
 `<Target>/QuarterDeck/questionnaires/planning.json`). Durable product-owner decisions from User
-Review are written to `<Blueprint>/BUILD_CONFIGURATION.md`.
+Review are written to `<Target>/blueprint/BUILD_CONFIGURATION.md`.
 
 Approval is whole-plan. The generated `plan_decision` page applies it through the authoritative
 plan-state writer; ordinary QuarterDeck review controls never approve a plan. Approval exposes the
@@ -646,8 +680,8 @@ updated by `drydock iterate` as specification files and application code evolve.
 - **`BUILD_PLAN_INTENT.md`** — Internal inventory of Blueprint inputs and planning groups
   - Created and updated: `drydock plan create <Blueprint> <Target>`
 
-- **`<Target>/target.yaml`** — Target manifest binding the Target to its Blueprint and `code_root`
-  - Created: `drydock init <Target>`
+- **`<Target>/METADATA.md`** — Project identity and manifest (Blueprint name, `code_root`, status, stack)
+  - Created: `drydock init <Target>`; enriched by `drydock import`
   - Updated: product owner; Drydock Target operations
 
 - **`<Target>/BUILD_PLAN.md`** — The single generated executable build plan
@@ -718,8 +752,7 @@ terminal sections. `drydock plan create` computes `Depends On`, `Provides`, and 
 ← Unresolved decisions that must be answered before this file can be fully implemented.
 ```
 
-A SCREEN file referencing a route not listed in any FEATURE `Provides` field is a
-`drydock validate` error.
+A SCREEN file referencing a route not listed in any FEATURE `Provides` field is an error.
 
 ### Specification Decomposition Methodology
 

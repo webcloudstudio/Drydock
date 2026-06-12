@@ -117,9 +117,9 @@ def _write_new_intent(
     return 1 + (1 if remaining else 0) + (1 if sources else 0)
 
 
-def init_plan_intent(blueprint: str, blueprint_directory: Path) -> PlanIntentResult:
+def init_plan_intent(blueprint: str, target_dir: Path) -> PlanIntentResult:
     """Create or update the curated BUILD_PLAN_INTENT.md file for a Blueprint."""
-    blueprint_dir = blueprint_directory / blueprint
+    blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(
             f"Blueprint directory not found: {blueprint_dir}\n"

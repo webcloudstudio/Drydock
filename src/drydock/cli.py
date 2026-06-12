@@ -88,11 +88,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from drydock.config import get_blueprint_directory
+    from drydock.config import get_target_directory
     from drydock.validate_specification import validate_specification
 
-    blueprint_dir = get_blueprint_directory()
-    result = validate_specification(args.Blueprint, blueprint_dir, verbose=args.verbose)
+    target_dir = get_target_directory() / args.Target
+    result = validate_specification(args.Blueprint, target_dir, verbose=args.verbose)
 
     print(f"Validating Blueprint: {args.Blueprint}  ({result.spec_dir})")
     _print_findings(result, args.verbose)
@@ -100,10 +100,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_rigging_compact(args: argparse.Namespace) -> int:
-    from drydock.config import get_blueprint_directory
+    from drydock.config import blueprint_dir_for, get_target_directory
     from drydock.rigging_compact import CompactItem, compact
 
-    blueprint_dir = get_blueprint_directory()
+    blueprint_dir = blueprint_dir_for(get_target_directory() / args.Target)
 
     def report(item: CompactItem) -> None:
         src = item.source.name
@@ -161,13 +161,12 @@ def _print_plan_summary(plan) -> None:
 
 
 def cmd_plan_create(args: argparse.Namespace) -> int:
-    from drydock.config import get_blueprint_directory, get_target_directory
+    from drydock.config import get_target_directory
     from drydock.planning_session import create_plan
 
     result = create_plan(
         args.Blueprint,
         args.Target,
-        get_blueprint_directory(),
         get_target_directory(),
     )
     print(f"Blueprint: {result.plan.project}")
@@ -185,7 +184,7 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
 def cmd_import(args: argparse.Namespace) -> int:
     from pathlib import Path
 
-    from drydock.config import get_blueprint_directory
+    from drydock.config import get_target_directory
     from drydock.errors import UsageError
     from drydock.import_markdown import import_markdown
 
@@ -193,13 +192,13 @@ def cmd_import(args: argparse.Namespace) -> int:
         raise UsageError(
             f"Import format {args.format!r} remains deferred; use --format markdown for Markdown input."
         )
-    result = import_markdown(args.Blueprint, Path(args.Source), get_blueprint_directory())
+    result = import_markdown(args.Blueprint, args.Target, Path(args.Source), get_target_directory())
     print(f"Blueprint: {result.blueprint_dir}")
     print(f"Source: {result.source}")
     for path in result.imported:
         print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
     print()
-    print(f"Next step: drydock plan create {args.Blueprint} <Target>")
+    print(f"Next step: drydock plan create {args.Blueprint} {args.Target}")
     return 0
 
 
@@ -209,14 +208,18 @@ def cmd_document_assemble(argv: list[str]) -> int:
     return _build_doc_main(argv)
 
 
+def _is_target_dir(path: Path) -> bool:
+    return (
+        (path / "QuarterDeck" / "console.yaml").is_file()
+        or (path / "blueprint").is_dir()
+        or (path / "METADATA.md").is_file()
+    )
+
+
 def _resolve_sole_target(targets_root: Path) -> Path:
     """Resolve the single initialized Target under the workspace, or error."""
     candidates = (
-        [
-            p
-            for p in sorted(targets_root.iterdir())
-            if (p / "QuarterDeck" / "console.yaml").is_file()
-        ]
+        [p for p in sorted(targets_root.iterdir()) if p.is_dir() and _is_target_dir(p)]
         if targets_root.is_dir()
         else []
     )
@@ -295,57 +298,42 @@ def _render_status(result) -> None:
 
 
 def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
-    from drydock.config import get_blueprint_directory, get_target_directory, record_activity
+    from drydock.config import blueprint_dir_for, get_target_directory, record_activity
     from drydock.status import status_blueprint_target
 
-    result = status_blueprint_target(
-        blueprint, target, get_blueprint_directory(), get_target_directory()
-    )
+    targets_root = get_target_directory()
+    blueprint_dir = blueprint_dir_for(targets_root / target)
+    result = status_blueprint_target(blueprint, target, blueprint_dir, targets_root)
     _render_status(result)
     record_activity("status", blueprint, target)
     return 0
 
 
 def cmd_status_blueprint(blueprint: str) -> int:
-    from drydock.config import get_blueprint_directory, record_activity
+    from drydock.config import get_target_directory, record_activity
     from drydock.status import status_blueprint
 
-    result = status_blueprint(blueprint, get_blueprint_directory())
+    target_dir = _resolve_sole_target(get_target_directory())
+    result = status_blueprint(blueprint, target_dir)
     _render_status(result)
     record_activity("status", blueprint)
     return 0
 
 
 def cmd_status_current() -> int:
-    from drydock.config import (
-        get_blueprint_directory,
-        get_last_activity,
-        get_target_directory,
-        record_activity,
-    )
+    from drydock.config import get_last_activity, get_target_directory, record_activity
     from drydock.status import status_current
 
-    try:
-        blueprint_dir = get_blueprint_directory()
-    except Exception:
-        blueprint_dir = None  # type: ignore[assignment]
-    try:
-        target_dir = get_target_directory()
-    except Exception:
-        target_dir = None  # type: ignore[assignment]
+    target_dir = get_target_directory()
 
-    if blueprint_dir is None or target_dir is None:
+    if not target_dir.is_dir():
         activity = get_last_activity()
         if not activity.get("blueprint"):
             print("No active Drydock project found.")
             print("  Run: drydock config set drydock_workspace <path>")
             return 0
-        from pathlib import Path
 
-        blueprint_dir = blueprint_dir or Path(".")
-        target_dir = target_dir or Path(".")
-
-    result = status_current(blueprint_dir, target_dir)
+    result = status_current(target_dir)
     if result is None:
         print("No active Drydock project found.")
         print("  Start with: drydock config show")
@@ -454,6 +442,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── validate ─────────────────────────────────────────────────────────────
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
     p_val.add_argument("Blueprint", metavar="<Blueprint>")
+    p_val.add_argument("Target", metavar="<Target>")
     p_val.add_argument("--verbose", action="store_true", help="Also show passing checks.")
 
     # ── document ─────────────────────────────────────────────────────────────
@@ -482,6 +471,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "compact", help="Compact stale rules/data/spec files to _compact.md siblings."
     )
     p_rig_c.add_argument("Blueprint", metavar="<Blueprint>")
+    p_rig_c.add_argument("Target", metavar="<Target>")
     p_rig_c.add_argument(
         "--all",
         dest="include_rigging",
@@ -568,6 +558,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
     p_import.add_argument("Blueprint", metavar="<Blueprint>")
+    p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("Source", metavar="<Source>")
     p_import.add_argument(
         "--format", choices=["auto", "markdown", "source", "speckit"], default="auto"

@@ -67,70 +67,86 @@ class TestDeriveDisplayName:
 
 
 class TestInitSpecification:
-    def test_creates_directory(self, tmp_spec_root):
-        init_specification("NewSpec", tmp_spec_root)
-        assert (tmp_spec_root / "NewSpec").is_dir()
+    def test_creates_blueprint_directory(self, tmp_target_root):
+        target_dir = tmp_target_root / "NewSpec"
+        init_specification("NewSpec", target_dir)
+        assert (target_dir / "blueprint").is_dir()
 
-    def test_creates_metadata(self, tmp_spec_root):
-        init_specification("NewSpec", tmp_spec_root)
-        assert (tmp_spec_root / "NewSpec" / "METADATA.md").exists()
+    def test_creates_metadata_at_target_root(self, tmp_target_root):
+        target_dir = tmp_target_root / "NewSpec"
+        init_specification("NewSpec", target_dir)
+        assert (target_dir / "METADATA.md").exists()
+        assert not (target_dir / "blueprint" / "METADATA.md").exists()
 
-    def test_returns_init_result(self, tmp_spec_root):
-        result = init_specification("NewSpec", tmp_spec_root)
+    def test_typed_spec_files_land_in_blueprint(self, tmp_target_root):
+        target_dir = tmp_target_root / "NewSpec"
+        init_specification("NewSpec", target_dir)
+        assert (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+
+    def test_returns_init_result(self, tmp_target_root):
+        target_dir = tmp_target_root / "NewSpec"
+        result = init_specification("NewSpec", target_dir)
         assert isinstance(result, InitResult)
         assert result.spec_name == "NewSpec"
+        assert result.spec_dir == target_dir / "blueprint"
 
-    def test_created_outcomes(self, tmp_spec_root):
-        result = init_specification("NewSpec", tmp_spec_root)
+    def test_created_outcomes(self, tmp_target_root):
+        result = init_specification("NewSpec", tmp_target_root / "NewSpec")
         assert len(result.created()) > 0
         assert len(result.skipped()) == 0
 
-    def test_token_replacement(self, tmp_spec_root):
-        init_specification("TestProject", tmp_spec_root)
-        metadata = (tmp_spec_root / "TestProject" / "METADATA.md").read_text()
+    def test_token_replacement(self, tmp_target_root):
+        target_dir = tmp_target_root / "TestProject"
+        init_specification("TestProject", target_dir)
+        metadata = (target_dir / "METADATA.md").read_text()
         assert "__PROJECT_NAME__" not in metadata
         assert "__PROJECT_SLUG__" not in metadata
         assert "TestProject" in metadata
 
-    def test_display_name_token(self, tmp_spec_root):
-        init_specification("my-project", tmp_spec_root)
-        metadata = (tmp_spec_root / "my-project" / "METADATA.md").read_text()
+    def test_display_name_token(self, tmp_target_root):
+        target_dir = tmp_target_root / "my-project"
+        init_specification("my-project", target_dir)
+        metadata = (target_dir / "METADATA.md").read_text()
         assert "My Project" in metadata
 
-    def test_metadata_does_not_store_configured_root_paths(self, tmp_spec_root):
-        init_specification("Spec", tmp_spec_root)
-        metadata = (tmp_spec_root / "Spec" / "METADATA.md").read_text()
+    def test_metadata_does_not_store_configured_root_paths(self, tmp_target_root):
+        target_dir = tmp_target_root / "Spec"
+        init_specification("Spec", target_dir)
+        metadata = (target_dir / "METADATA.md").read_text()
         assert "specification_directory:" not in metadata
         assert "blueprint_directory:" not in metadata
 
-    def test_existing_dir_raises_by_default(self, tmp_spec_root):
-        init_specification("Spec", tmp_spec_root)
+    def test_existing_blueprint_raises_by_default(self, tmp_target_root):
+        target_dir = tmp_target_root / "Spec"
+        init_specification("Spec", target_dir)
         with pytest.raises(SpecificationError, match="already exists"):
-            init_specification("Spec", tmp_spec_root)
+            init_specification("Spec", target_dir)
 
-    def test_update_skips_existing(self, tmp_spec_root):
-        init_specification("Spec", tmp_spec_root)
-        meta = tmp_spec_root / "Spec" / "METADATA.md"
-        meta.read_text()  # read before modification
+    def test_update_skips_existing(self, tmp_target_root):
+        target_dir = tmp_target_root / "Spec"
+        init_specification("Spec", target_dir)
+        meta = target_dir / "METADATA.md"
         meta.write_text("MODIFIED")
-        result = init_specification("Spec", tmp_spec_root, update=True)
+        result = init_specification("Spec", target_dir, update=True)
         assert meta.read_text() == "MODIFIED"
         assert FileOutcome.SKIPPED in [o for _, o in result.outcomes]
 
-    def test_force_overwrites(self, tmp_spec_root):
-        init_specification("Spec", tmp_spec_root)
-        meta = tmp_spec_root / "Spec" / "METADATA.md"
+    def test_force_overwrites(self, tmp_target_root):
+        target_dir = tmp_target_root / "Spec"
+        init_specification("Spec", target_dir)
+        meta = target_dir / "METADATA.md"
         meta.write_text("MODIFIED")
-        result = init_specification("Spec", tmp_spec_root, force=True)
+        result = init_specification("Spec", target_dir, force=True)
         assert meta.read_text() != "MODIFIED"
         assert FileOutcome.UPDATED in [o for _, o in result.outcomes]
 
-    def test_invalid_name_raises(self, tmp_spec_root):
+    def test_invalid_name_raises(self, tmp_target_root):
         with pytest.raises(SpecificationError):
-            init_specification("../evil", tmp_spec_root)
+            init_specification("../evil", tmp_target_root / "evil")
 
-    def test_utf8_output(self, tmp_spec_root):
-        init_specification("Spec", tmp_spec_root)
-        for f in (tmp_spec_root / "Spec").glob("*.md"):
+    def test_utf8_output(self, tmp_target_root):
+        target_dir = tmp_target_root / "Spec"
+        init_specification("Spec", target_dir)
+        for f in (target_dir / "blueprint").glob("*.md"):
             text = f.read_text(encoding="utf-8")
             assert isinstance(text, str)

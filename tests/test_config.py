@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from drydock.config import (
+    blueprint_dir_for,
     config_set,
     config_show,
-    get_blueprint_directory,
     get_llm_provider,
     get_prompt_warn_kb,
     get_quarterdeck_port,
@@ -102,11 +102,9 @@ class TestWorkspaceResolution:
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(other))
         assert get_workspace() == other
 
-    def test_blueprint_directory_is_workspace_blueprints(
-        self, tmp_workspace, isolated_config, monkeypatch
-    ):
-        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
-        assert get_blueprint_directory() == tmp_workspace / "blueprints"
+    def test_blueprint_dir_is_nested_in_target(self):
+        target_dir = Path("/ws/targets/Example")
+        assert blueprint_dir_for(target_dir) == target_dir / "blueprint"
 
     def test_target_directory_is_workspace_targets(
         self, tmp_workspace, isolated_config, monkeypatch

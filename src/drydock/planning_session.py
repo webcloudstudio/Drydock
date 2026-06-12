@@ -263,15 +263,14 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
 def create_plan(
     blueprint: str,
     target: str,
-    blueprint_directory: Path,
     target_directory: Path,
 ) -> PlanCreateResult:
-    blueprint_dir = blueprint_directory / blueprint
+    target_dir = target_directory / target
+    blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
-    init_plan_intent(blueprint, blueprint_directory)
+    init_plan_intent(blueprint, target_dir)
     inputs = _ordered_inputs(blueprint_dir)
-    target_dir = target_directory / target
     target_dir.mkdir(parents=True, exist_ok=True)
     plan_path = target_dir / "BUILD_PLAN.md"
     old = parse_build_plan(plan_path) if plan_path.is_file() else None

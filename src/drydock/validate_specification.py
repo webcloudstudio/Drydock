@@ -115,22 +115,26 @@ def _file_needs_typed_heading(fname: str) -> bool:
 
 def validate_specification(
     spec_name: str,
-    blueprint_directory: Path,
+    target_dir: Path,
     *,
     verbose: bool = False,
 ) -> ValidationResult:
     """
-    Run all validation rules against a Blueprint's Typed Specification.
+    Run all validation rules against a Target's Blueprint.
+
+    Root identity files (METADATA.md, README.md, INTENT.md) live at ``target_dir``;
+    the Typed Specification corpus lives at ``target_dir/blueprint``.
 
     Args:
         spec_name: Name of the Blueprint.
-        blueprint_directory: Root directory for Blueprints.
+        target_dir: The Target directory (``targets/<Target>``).
         verbose: If True, include PASS findings in output.
 
     Returns:
         ValidationResult with findings and exit code.
     """
-    spec_dir = blueprint_directory / spec_name
+    root_dir = target_dir
+    spec_dir = target_dir / "blueprint"
     result = ValidationResult(spec_name=spec_name, spec_dir=spec_dir)
 
     def p(section: str, msg: str) -> None:
@@ -144,22 +148,26 @@ def validate_specification(
 
     # --- Directory existence ---
     section = "Directory"
-    if not spec_dir.is_dir():
-        f(section, f"Blueprint directory not found: {spec_dir}")
+    if not root_dir.is_dir():
+        f(section, f"Blueprint directory not found: {root_dir}")
         return result
     p(section, f"Directory exists: {spec_dir}")
 
-    # --- Required files ---
+    # --- Required files (root identity files vs the blueprint corpus) ---
     section = "Required files"
-    for required in ("METADATA.md", "README.md", "ARCHITECTURE.md"):
-        if (spec_dir / required).exists():
+    for required, base in (
+        ("METADATA.md", root_dir),
+        ("README.md", root_dir),
+        ("ARCHITECTURE.md", spec_dir),
+    ):
+        if (base / required).exists():
             p(section, f"{required} exists")
         else:
             f(section, f"{required} is missing")
 
     # --- METADATA.md fields ---
     section = "METADATA fields"
-    metadata_path = spec_dir / "METADATA.md"
+    metadata_path = root_dir / "METADATA.md"
     metadata: dict[str, str] = {}
     if metadata_path.exists():
         metadata = parse_metadata(metadata_path)
