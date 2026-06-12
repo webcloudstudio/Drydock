@@ -342,6 +342,11 @@ class TestPlanningSession:
         assert (quarterdeck / "console.yaml").is_file()
         assert (quarterdeck / "tickets.json").is_file()
         assert (quarterdeck / "app.py").is_file()
+        assert (tmp_target_root / "ExampleTarget" / "docs" / "SEA_TRIALS.md").is_file()
+        soundings = tmp_target_root / "ExampleTarget" / "docs" / "SOUNDINGS.md"
+        assert "Status command exits successfully." in soundings.read_text(encoding="utf-8")
+        config = (quarterdeck / "console.yaml").read_text(encoding="utf-8")
+        assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
 
         rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
         assert rc == 0, err

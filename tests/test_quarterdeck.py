@@ -118,33 +118,20 @@ def test_drydock_console_pins_the_three_standard_artifacts_in_core():
     assert items["commanders_view"]["label"] == "Captain's Chair"
 
 
-# ── Command status (Core Docs only, read-only) ─────────────────────────────────
+# ── Acceptance status (Core Docs only, read-only) ──────────────────────────────
 
 
-def _command_status_markdown(
+def _soundings_markdown(
     *,
     done_evidence: str = "`test_done`",
     stubbed_state: str = "STUBBED",
-    done_summary: int = 1,
 ) -> str:
     return f"""# Soundings
 
-## Command Acceptance
-
-| Order | Command | Acceptance Criteria | State | Evidence / Notes |
-|---:|---|---|---|---|
-| 1 | `drydock done` | Works | DONE | {done_evidence} |
-| 2 | `drydock later` | Deferred | {stubbed_state} | exits 2 |
-
-## Summary
-
-| Category | Count |
-|---|---:|
-| Total commands | 2 |
-| DONE | {done_summary} |
-| IMPLEMENTED | 0 |
-| STUBBED | 1 |
-| NOT STARTED | 0 |
+| ID | Acceptance Criterion | State | Evidence |
+|---|---|---|---|
+| AC-001 | `drydock done` works | DONE | {done_evidence} |
+| AC-002 | `drydock later` is deferred | {stubbed_state} | exits 2 |
 """
 
 
@@ -173,25 +160,22 @@ def _configure_command_status(quarterdeck, monkeypatch, sources):
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda path: Source(texts[path]))
 
 
-def test_command_status_derives_status_and_core_reference_coverage(monkeypatch):
+def test_command_status_calculates_acceptance_totals(monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_command_status(
         quarterdeck,
         monkeypatch,
         [
-            ("soundings", "Soundings", "core", _command_status_markdown()),
-            ("spec", "Specification", "core", "Use `drydock done` and `drydock later`."),
-            ("roadmap", "Roadmap", "plan", "Use `drydock ignored`."),
+            ("soundings", "Soundings", "core", _soundings_markdown()),
         ],
     )
 
-    rendered = quarterdeck.render_command_status({"label": "Command Status"})
+    rendered = quarterdeck.render_command_status({"label": "Acceptance Status"})
 
     assert "Derived from Core Doc: Soundings" in rendered
+    assert "Total criteria</strong><br>2" in rendered
     assert "DONE (1)" in rendered
     assert "STUBBED (1)" in rendered
-    assert "Specification" in rendered
-    assert "Roadmap" not in rendered
     assert "no structured findings" in rendered
 
 
@@ -205,7 +189,7 @@ def test_command_status_reports_structured_findings(monkeypatch):
                 "soundings",
                 "Soundings",
                 "core",
-                _command_status_markdown(done_evidence="", stubbed_state="UNKNOWN", done_summary=9),
+                _soundings_markdown(done_evidence="", stubbed_state="UNKNOWN"),
             )
         ],
     )
@@ -214,24 +198,22 @@ def test_command_status_reports_structured_findings(monkeypatch):
 
     assert "DONE row has no evidence" in rendered
     assert "Unknown state" in rendered
-    assert "Summary mismatch for DONE" in rendered
-    assert "Summary mismatch for STUBBED" in rendered
 
 
-def test_command_status_requires_exactly_one_core_command_acceptance_table(monkeypatch):
+def test_command_status_requires_exactly_one_core_soundings_table(monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_command_status(
         quarterdeck,
         monkeypatch,
         [
-            ("one", "One", "core", _command_status_markdown()),
-            ("two", "Two", "core", _command_status_markdown()),
+            ("one", "One", "core", _soundings_markdown()),
+            ("two", "Two", "core", _soundings_markdown()),
         ],
     )
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Expected exactly one Core Doc Command Acceptance table; found 2" in rendered
+    assert "Expected exactly one Core Doc Soundings table; found 2" in rendered
 
 
 def test_drydock_command_status_renders_current_soundings():
@@ -239,11 +221,27 @@ def test_drydock_command_status_renders_current_soundings():
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Total commands</strong><br>25" in rendered
-    assert "DONE (15)" in rendered
+    assert "Total criteria</strong><br>38" in rendered
+    assert "DONE (28)" in rendered
     assert "IMPLEMENTED (2)" in rendered
     assert "STUBBED (8)" in rendered
     assert "no structured findings" in rendered
+
+
+def test_drydock_console_core_artifact_order():
+    config = _console_config()
+    core = sorted(
+        (item for item in config["items"] if item["section"] == "core"),
+        key=lambda item: item.get("order", 0),
+    )
+
+    assert [item["id"] for item in core] == [
+        "commanders_view",
+        "master_blueprint",
+        "sea_trials",
+        "soundings",
+        "ships_log",
+    ]
 
 
 def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):

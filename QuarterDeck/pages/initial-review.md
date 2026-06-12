@@ -11,7 +11,7 @@ It provides:
 - structured product-owner questions;
 - QuarterDeck sign-off controls;
 - a Ship's Log JSONL view that states the real implementation gap;
-- direct access to Soundings, Sea Trials, and the authoritative Drydock specification.
+- direct access to Sea Trials, Soundings, and the authoritative Drydock specification.
 
 ## Test Procedure
 

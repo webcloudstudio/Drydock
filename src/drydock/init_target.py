@@ -10,6 +10,7 @@ from pathlib import Path
 
 from drydock.errors import DrydockError
 from drydock.paths import get_quarterdeck_root
+from drydock.standard_artifacts import ensure_standard_artifacts, render_console
 
 _TRAVERSAL_RE = re.compile(r"\.\.|[/\\]")
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
@@ -32,10 +33,6 @@ def _validate_target(target: str) -> None:
         raise DrydockError(f"Target name contains invalid characters: {target!r}")
     if len(target) > 200:
         raise DrydockError("Target name is too long (max 200 characters).")
-
-
-def _slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "target"
 
 
 def _write_missing(path: Path, content: str, result: InitTargetResult) -> None:
@@ -77,12 +74,8 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
                 raise DrydockError(f"QuarterDeck runtime file not found: {source}")
             _copy_missing(source, target_dir / "QuarterDeck" / name, result)
 
-        _write_missing(
-            target_dir / "QuarterDeck" / "pages" / "overview.md",
-            f"# Captain's Chair: {target}\n\n"
-            "This target is initialized and ready for Blueprint import and planning.\n",
-            result,
-        )
+        for path in ensure_standard_artifacts(target, target_dir):
+            result.created.append(path)
         _write_missing(
             target_dir / "QuarterDeck" / "tickets.json",
             json.dumps({"tickets": []}, indent=2) + "\n",
@@ -90,27 +83,7 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
         )
         _write_missing(
             target_dir / "QuarterDeck" / "console.yaml",
-            f"""console:
-  name: {target} QuarterDeck
-  default_item: commanders_view
-  state_db: data/console_state.sqlite
-
-project:
-  id: {_slug(target)}
-  name: {target}
-  description: "Drydock target workspace."
-
-sections:
-  - {{ id: core, label: "Drydock Core", dot: "#0d9488", pinned: true }}
-  - {{ id: build_plan, label: "Build Plan", dot: "#d97706" }}
-  - {{ id: actions, label: "Action Items", dot: "#dc2626" }}
-  - {{ id: project_pages, label: "Project Pages", dot: "#2563eb" }}
-  - {{ id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }}
-
-items:
-  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: markdown, path: pages/overview.md }}
-  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
-""",
+            render_console(target),
             result,
         )
     except OSError as exc:

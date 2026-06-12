@@ -18,18 +18,25 @@
       "path": "pages/overview.md"
     },
     {
-      "id": "soundings",
-      "label": "Soundings",
-      "section": "core",
-      "type": "markdown",
-      "path": "../docs/SOUNDINGS.md"
-    },
-    {
       "id": "specification",
       "label": "Drydock Specification",
       "section": "core",
       "type": "markdown",
       "path": "../docs/Drydock_Specification.md"
+    },
+    {
+      "id": "sea_trials",
+      "label": "Sea Trials",
+      "section": "core",
+      "type": "markdown",
+      "path": "../docs/SEA_TRIALS.md"
+    },
+    {
+      "id": "soundings",
+      "label": "Soundings",
+      "section": "core",
+      "type": "markdown",
+      "path": "../docs/SOUNDINGS.md"
     },
     {
       "id": "ships_log",
@@ -51,7 +58,7 @@
     },
     {
       "id": "command_status",
-      "label": "Command Status",
+      "label": "Acceptance Status",
       "section": "pages",
       "type": "command_status"
     },
@@ -77,13 +84,6 @@
       "section": "actions",
       "type": "questionnaire",
       "path": "questionnaires/initial-direction.json"
-    },
-    {
-      "id": "sea_trials",
-      "label": "Sea Trials",
-      "section": "core",
-      "type": "markdown",
-      "path": "../docs/SEA_TRIALS.md"
     },
     {
       "id": "rendered_docs",

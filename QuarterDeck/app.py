@@ -19,7 +19,7 @@ Page types (one Python renderer each, in TYPES):
   - kanban        render a tickets JSON file as a board (read-only work tracking)
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
-  - command_status derive command readiness and consistency from configured Core Docs
+  - command_status derive acceptance readiness and consistency from configured Core Docs
   - plan_decision review and decide an authoritative Drydock BUILD_PLAN.md
 
 console.yaml also accepts:
@@ -480,93 +480,64 @@ def _core_markdown_sources() -> list[tuple[dict[str, Any], str]]:
     return sources
 
 
-def _command_references(text: str) -> set[str]:
-    return {match.group(1).strip() for match in re.finditer(r"`(drydock(?:\s+[^`\n]+)?)`", text)}
-
-
-def _render_command_table(rows: list[dict[str, str]]) -> str:
+def _render_acceptance_table(rows: list[dict[str, str]]) -> str:
     rendered = []
     for row in rows:
         rendered.append(
             "<tr>"
-            f"<td>{_inline_md(row['Command'])}</td>"
-            f"<td>{_inline_md(row['Acceptance Criteria'])}</td>"
-            f"<td>{_inline_md(row['Evidence / Notes'])}</td>"
+            f"<td>{_inline_md(row['ID'])}</td>"
+            f"<td>{_inline_md(row['Acceptance Criterion'])}</td>"
+            f"<td>{_inline_md(row['Evidence'])}</td>"
             "</tr>"
         )
     return (
-        "<table><thead><tr><th>Command</th><th>Acceptance Criteria</th>"
-        f"<th>Evidence / Notes</th></tr></thead><tbody>{''.join(rendered)}</tbody></table>"
+        "<table><thead><tr><th>ID</th><th>Acceptance Criterion</th>"
+        f"<th>Evidence</th></tr></thead><tbody>{''.join(rendered)}</tbody></table>"
     )
 
 
 def render_command_status(item: dict[str, Any]) -> str:
-    """Derive command readiness and structured consistency from configured Core Docs."""
+    """Derive acceptance readiness and structured consistency from configured Core Docs."""
     sources = _core_markdown_sources()
     candidates = []
     for source_item, text in sources:
         for heading, headers, rows in _markdown_tables(text):
-            if heading == "Command Acceptance":
+            if heading == "Soundings" and headers == [
+                "ID",
+                "Acceptance Criterion",
+                "State",
+                "Evidence",
+            ]:
                 candidates.append((source_item, text, headers, rows))
 
-    title = f"<h1>{html.escape(item.get('label', 'Command Status'))}</h1>"
+    title = f"<h1>{html.escape(item.get('label', 'Acceptance Status'))}</h1>"
     if len(candidates) != 1:
         return (
             title
             + "<div class='item-error'>"
             + html.escape(
-                f"Expected exactly one Core Doc Command Acceptance table; found {len(candidates)}."
+                f"Expected exactly one Core Doc Soundings table; found {len(candidates)}."
             )
             + "</div>"
         )
 
-    source_item, source_text, headers, raw_rows = candidates[0]
-    required = {"Order", "Command", "Acceptance Criteria", "State", "Evidence / Notes"}
-    if not required <= set(headers):
-        missing = ", ".join(sorted(required - set(headers)))
-        return (
-            title
-            + f"<div class='item-error'>Command Acceptance table missing: {html.escape(missing)}</div>"
-        )
-
+    source_item, _source_text, headers, raw_rows = candidates[0]
     rows = [dict(zip(headers, row, strict=True)) for row in raw_rows]
     findings: list[str] = []
     counts = {state: 0 for state in COMMAND_STATES}
-    seen_commands: set[str] = set()
-    seen_orders: set[str] = set()
+    seen_ids: set[str] = set()
     for row in rows:
-        command = row["Command"]
-        order = row["Order"]
+        criterion_id = row["ID"]
         state = row["State"]
-        if command in seen_commands:
-            findings.append(f"Duplicate command row: {command}")
-        seen_commands.add(command)
-        if order in seen_orders:
-            findings.append(f"Duplicate order value: {order}")
-        seen_orders.add(order)
+        if criterion_id in seen_ids:
+            findings.append(f"Duplicate acceptance ID: {criterion_id}")
+        seen_ids.add(criterion_id)
         if state not in counts:
-            findings.append(f"Unknown state {state!r}: {command}")
+            findings.append(f"Unknown state {state!r}: {criterion_id}")
         else:
             counts[state] += 1
-        if state == "DONE" and not row["Evidence / Notes"].strip():
-            findings.append(f"DONE row has no evidence: {command}")
-
-    summary_tables = [table for table in _markdown_tables(source_text) if table[0] == "Summary"]
-    if len(summary_tables) != 1:
-        findings.append(f"Expected exactly one Summary table; found {len(summary_tables)}")
-    else:
-        _, summary_headers, summary_rows = summary_tables[0]
-        if summary_headers == ["Category", "Count"]:
-            published = {row[0]: row[1] for row in summary_rows}
-            expected = {"Total commands": len(rows), **counts}
-            for category, count in expected.items():
-                if published.get(category) != str(count):
-                    findings.append(
-                        f"Summary mismatch for {category}: published "
-                        f"{published.get(category, 'missing')}, computed {count}"
-                    )
-        else:
-            findings.append("Summary table must have Category and Count columns")
+        if state == "DONE" and not row["Evidence"].strip():
+            findings.append(f"DONE row has no evidence: {criterion_id}")
 
     cards = "".join(
         f"<td><strong>{html.escape(state)}</strong><br>{counts[state]}</td>"
@@ -575,7 +546,7 @@ def render_command_status(item: dict[str, Any]) -> str:
     output = (
         title
         + f"<p class='subtle'>Derived from Core Doc: {html.escape(source_item.get('label', source_item.get('id', 'unknown')))}</p>"
-        + f"<table><tbody><tr><td><strong>Total commands</strong><br>{len(rows)}</td>{cards}</tr></tbody></table>"
+        + f"<table><tbody><tr><td><strong>Total criteria</strong><br>{len(rows)}</td>{cards}</tr></tbody></table>"
     )
     if findings:
         output += (
@@ -589,26 +560,9 @@ def render_command_status(item: dict[str, Any]) -> str:
     for state in COMMAND_STATES:
         state_rows = [row for row in rows if row["State"] == state]
         output += f"<h2>{html.escape(state)} ({len(state_rows)})</h2>"
-        output += _render_command_table(state_rows) if state_rows else "<p class='subtle'>None.</p>"
-
-    coverage = []
-    for core_item, text in sources:
-        if core_item is source_item:
-            continue
-        references = _command_references(text)
-        if references:
-            coverage.append(
-                f"<tr><td>{html.escape(core_item.get('label', core_item.get('id', 'unknown')))}</td>"
-                f"<td>{len(references)}</td></tr>"
-            )
-    output += (
-        "<h2>Other Core Doc Command References</h2>"
-        "<p class='subtle'>Coverage context only; references do not determine command status.</p>"
-        "<table><thead><tr><th>Core Doc</th><th>Distinct references</th></tr></thead>"
-        f"<tbody>{''.join(coverage)}</tbody></table>"
-        if coverage
-        else "<h2>Other Core Doc Command References</h2><p class='subtle'>None.</p>"
-    )
+        output += (
+            _render_acceptance_table(state_rows) if state_rows else "<p class='subtle'>None.</p>"
+        )
     return output
 
 

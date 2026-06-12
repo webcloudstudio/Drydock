@@ -17,6 +17,8 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
     assert "Captain's Chair" in (result.target_dir / "QuarterDeck" / "console.yaml").read_text(
         encoding="utf-8"
     )
+    assert (result.target_dir / "docs" / "SEA_TRIALS.md").is_file()
+    assert (result.target_dir / "docs" / "SOUNDINGS.md").is_file()
     assert (result.target_dir / "QuarterDeck" / "tickets.json").read_text(encoding="utf-8") == (
         '{\n  "tickets": []\n}\n'
     )
@@ -26,11 +28,14 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
 def test_init_target_preserves_existing_baseline_files(tmp_target_root):
     first = init_target("Example", tmp_target_root)
     config = first.target_dir / "QuarterDeck" / "console.yaml"
+    soundings = first.target_dir / "docs" / "SOUNDINGS.md"
     config.write_text("CUSTOM\n", encoding="utf-8")
+    soundings.write_text("# Custom Soundings\n", encoding="utf-8")
 
     second = init_target("Example", tmp_target_root)
 
     assert config.read_text(encoding="utf-8") == "CUSTOM\n"
+    assert soundings.read_text(encoding="utf-8") == "# Custom Soundings\n"
     assert config in second.skipped
 
 

@@ -19,8 +19,8 @@ plans, builds, tests, reviews, and evolves software.
 
 ## Where To Go
 
-- **Soundings** — acceptance criteria, current state, and evidence.
 - **Sea Trials** — objectives and success criteria for delivery.
+- **Soundings** — acceptance criteria, current state, and evidence.
 - **Drydock Specification** — the sole authoritative behavior contract.
 - **Choose Next Slice** / **Initial Console Review** — give direction and record sign-off.
 - **Ship's Log** — canonical JSONL decision and milestone events.

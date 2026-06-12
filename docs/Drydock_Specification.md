@@ -282,6 +282,8 @@ flowchart LR
 ```text
 <TARGET_DIRECTORY>/<Target>/
 ├── docs/
+│   ├── SEA_TRIALS.md
+│   └── SOUNDINGS.md
 ├── evidence/
 ├── logs/
 └── QuarterDeck/
@@ -932,9 +934,9 @@ Spikes and stories appear as tickets; acceptance criteria are folded under their
 assignment maps directly to object state.
 
 For Drydock's own repository, the QuarterDeck is also the primary viewer for project-owned
-artifacts under `docs/`: the authoritative specification, Soundings acceptance/readiness checklist,
-Sea Trials, rendered documentation, and supporting publication or reservation artifacts. The
-QuarterDeck points to those files directly and never duplicates their content.
+artifacts under `docs/`: the authoritative specification, Sea Trials, Soundings acceptance ledger,
+rendered documentation, and supporting publication or reservation artifacts. The QuarterDeck
+points to those files directly and never duplicates their content.
 
 ### Page Types
 
@@ -948,14 +950,14 @@ Each item declares exactly one renderer:
 | `kanban` | Renders `BUILD_PLAN.md`-derived tickets as a four-column board. |
 | `questionnaire` | Form backed by a JSON file; saves answers in SQLite and writes them back to the source file. |
 | `link` | External URL or local file; opens in a new tab. |
-| `command_status` | Derived read-only view of command readiness from Core Docs (see below). |
+| `command_status` | Derived read-only view of acceptance readiness from Core Docs (see below). |
 | `plan_decision` | Whole-plan approval for a `BUILD_PLAN.md`. |
 
-The reusable `command_status` page type derives a read-only command-readiness report using only
-configured Markdown Core Docs. It discovers the authoritative source by its structured
-`Command Acceptance` table, recomputes status totals, reports deterministic structural
-inconsistencies, and treats command references in other Core Docs as coverage context only. It does
-not inspect implementation files, tests, non-Core artifacts, or invoke an LLM.
+The reusable `command_status` page type derives a read-only acceptance-status report using only
+configured Markdown Core Docs. It discovers the authoritative Soundings source by its single table
+with `ID`, `Acceptance Criterion`, `State`, and `Evidence` columns, calculates status totals, and
+reports deterministic structural inconsistencies. It does not inspect implementation files, tests,
+non-Core artifacts, or invoke an LLM.
 
 ### Auto-Discovery and Overrides
 
@@ -995,7 +997,9 @@ rather than by hand-editing plan files. Decisions of record are appended to the 
 
 Every Drydock QuarterDeck carries three standard product-owner artifacts. They are the
 methodology's fixed reference points; Drydock's own repository is their reference instance. Each is
-a source-of-truth document, filed in **Drydock Core** and pinned.
+a source-of-truth document, filed in **Drydock Core** and pinned. When a Master Blueprint is
+available, Core presents the artifacts in this order: Captain's Chair, Master Blueprint, Sea
+Trials, Soundings, then Ship's Log.
 
 | Artifact | Purpose |
 |---|---|
@@ -1006,6 +1010,13 @@ a source-of-truth document, filed in **Drydock Core** and pinned.
 Soundings records *implementation acceptance* — whether each capability is built and verified. Sea
 Trials records *strategic outcomes* — whether the assembled product has proven its purpose. The two
 are complementary, not duplicates.
+
+`drydock init <Target>` creates target-local Captain's Chair, Sea Trials, and Soundings artifacts
+without overwriting existing files. Soundings contains one acceptance ledger with `ID`,
+`Acceptance Criterion`, `State`, and `Evidence` columns. `drydock plan create` preserves the
+standard artifacts, projects the plan's acceptance gates into Soundings by stable ID, updates their
+state from the plan, and preserves recorded evidence. QuarterDeck calculates summary totals from
+the ledger; Soundings does not store a redundant summary.
 
 **QuarterDeck pages are terse.** A page carries minimal exposition: a one-line statement of what it
 is, then the content. The standard artifacts are checklists and criteria, not essays — Soundings is

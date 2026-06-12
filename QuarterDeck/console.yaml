@@ -49,8 +49,7 @@ items:
     section: core
     type: markdown
     path: ../docs/SOUNDINGS.md
-    tabs: true
-    order: 3
+    order: 4
 
   - id: sea_trials
     label: "Sea Trials"
@@ -59,7 +58,7 @@ items:
     path_md:   ../docs/SEA_TRIALS.md
     path_html: ../docs/SEA_TRIALS.html
     path_pdf:  ../docs/SEA_TRIALS.pdf
-    order: 4
+    order: 3
 
   - id: ships_log
     label: "Ship's Log"
@@ -100,7 +99,7 @@ items:
 
   # Project Pages
   - id: command_status
-    label: "Command Status"
+    label: "Acceptance Status"
     section: project_pages
     type: command_status
 

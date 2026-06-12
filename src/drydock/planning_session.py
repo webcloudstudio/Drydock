@@ -14,6 +14,11 @@ from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
 from drydock.paths import get_quarterdeck_root
 from drydock.plan_intent import init_plan_intent
+from drydock.standard_artifacts import (
+    ensure_standard_artifacts,
+    render_console,
+    sync_plan_soundings,
+)
 
 _ENTRY_RE = re.compile(r"(?m)^([^#\s][^\s]*\.md)\b")
 _BULLET_RE = re.compile(r"^\s*[-*]\s+(?:\[[ xX]\]\s*)?(.*\S)\s*$")
@@ -216,6 +221,8 @@ def _ticket_status(state: str) -> str:
 def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck = target_dir / "QuarterDeck"
     quarterdeck.mkdir(parents=True, exist_ok=True)
+    ensure_standard_artifacts(plan.project, target_dir)
+    sync_plan_soundings(plan, target_dir)
     runtime = get_quarterdeck_root()
     for name in ("app.py", "requirements.txt"):
         source = runtime / name
@@ -252,25 +259,9 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
         "Approve the complete plan here before building.\n",
         encoding="utf-8",
     )
-    config = f"""console:
-  name: {plan.project} Planning Session
-  default_item: planning_session
-  state_db: data/console_state.sqlite
-
-project:
-  id: {_slug(plan.project)}
-  name: {plan.project}
-  description: "Review and approve the executable Drydock plan."
-
-sections:
-  - {{ id: core, label: "Drydock Core", dot: "#0d9488", pinned: true }}
-  - {{ id: build_plan, label: "Build Plan", dot: "#d97706" }}
-
-items:
-  - {{ id: planning_session, label: "Planning Session", section: core, type: plan_decision, plan_path: {json.dumps(str(plan.path))} }}
-  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
-"""
-    (quarterdeck / "console.yaml").write_text(config, encoding="utf-8")
+    (quarterdeck / "console.yaml").write_text(
+        render_console(plan.project, plan_path=plan.path), encoding="utf-8"
+    )
     return quarterdeck
 
 
