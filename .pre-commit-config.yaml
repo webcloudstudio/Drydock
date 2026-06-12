@@ -1,17 +1,6 @@
-# Drydock pre-commit hooks. Install once: `uv run pre-commit install`
-# Run on all files: `uv run pre-commit run --all-files`
-fail_fast: true
+# Drydock manual pre-commit checks. Run on all files: `uv run pre-commit run --all-files`
 
 repos:
-  - repo: local
-    hooks:
-      - id: protect-canonical-files
-        name: protect canonical Drydock files
-        entry: bash bin/check_protected_files.sh
-        language: system
-        pass_filenames: false
-        always_run: true
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

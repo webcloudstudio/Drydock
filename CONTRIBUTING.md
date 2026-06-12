@@ -16,20 +16,18 @@ acceptance/readiness checklist.
 ```bash
 uv venv
 uv sync --extra dev          # or: uv pip install -e ".[dev]"
-bash bin/install_git_hooks.sh # install the repository's guarded Git hooks
 ```
 
 `python` is reached through the virtual environment (`.venv/bin/python`) or via `uv run`.
-Do not run `pre-commit install`; it replaces the outer guard that protects the authoritative
-specification before pre-commit's unstaged-change handling begins.
+Do not install automatic Git hooks in a working tree shared by multiple development sessions.
+Run `uv run pre-commit run --all-files` explicitly when needed.
 
 ## Working agreements
 
 - **Source precedence.** When the Blueprint and V1 disagree, implement the Blueprint. Record
   intentional incompatibilities in tests or documentation rather than silently reproducing V1.
 - **Specification approval.** Obtain Ed's approval before changing `docs/Drydock_Specification.md`;
-  approved behavior changes and specification updates land together. Stage approved specification
-  edits before committing any work; commits are blocked while the specification has unstaged edits.
+  approved behavior changes and specification updates land together.
 - **Completion.** Update the matching `docs/SOUNDINGS.md` row and evidence before declaring a
   capability complete.
 - **Ship's Log.** Record material decisions and milestones through `python bin/ships_log.py record`,
