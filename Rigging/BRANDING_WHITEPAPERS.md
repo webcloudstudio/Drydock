@@ -14,9 +14,8 @@ A white paper is a single self-contained HTML page that links `styles/spec.css`,
 narrow column.
 
 **Build path:** white papers are **generated from conformed markdown** — author
-`docs/whitepapers/<slug>.md`, then run `bash bin/build_whitepaper.sh <slug>` (no arg builds all).
-A docs rebuild (`bin/build_documentation.sh`) also rebuilds every white paper. Do not hand-edit the
-generated HTML. The source format is documented in `prompts/whitepaper.md`.
+`docs/whitepapers/<slug>.md`, then run `drydock document assemble` to render the HTML. Do not
+hand-edit the generated HTML.
 
 ---
 
