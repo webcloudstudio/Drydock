@@ -41,7 +41,8 @@ Archive) that reflects its role. The Archive section is collapsed by default.
 ## Quick Start
 
 ```bash
-drydock run quarterdeck <Target>              # http://127.0.0.1:8080
+drydock run quarterdeck                       # current directory, http://127.0.0.1:8080
+drydock run quarterdeck <Target>              # named target under configured target_directory
 drydock run quarterdeck <Target> --port 9000  # custom port
 ```
 

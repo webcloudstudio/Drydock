@@ -98,7 +98,7 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock config show",
         "drydock config set <key> <value>",
         "drydock init <Target>",
-        "drydock run quarterdeck <Target> [--host HOST] [--port PORT]",
+        "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
         "drydock import <Blueprint> <Source> --format <auto|markdown|source|speckit>",
         "drydock validate <Blueprint> [--verbose]",
         "drydock analyze <Blueprint> [<Target>]",

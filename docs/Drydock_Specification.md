@@ -142,10 +142,11 @@ drydock init <Target>
 Creates the specification-independent Target baseline and QuarterDeck.
 
 ```text
-drydock run quarterdeck <Target> [--host HOST] [--port PORT]
+drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
 
-Starts the Target's QuarterDeck service.
+Starts the named configured Target's QuarterDeck service. When `<Target>` is omitted, starts the
+current directory's QuarterDeck.
 
 ### Plan commands
 
@@ -293,9 +294,9 @@ flowchart LR
     └── tickets.json
 ```
 
-`drydock run quarterdeck <Target>` starts the console on `QUARTERDECK_PORT` (override with
-`--host` and `--port`). The QuarterDeck is usable from this moment — planning, build, and review
-all surface through it.
+`drydock run quarterdeck [<Target>]` starts the console on `QUARTERDECK_PORT` (override with
+`--host` and `--port`). Omit `<Target>` to run the current directory's QuarterDeck. The QuarterDeck
+is usable from this moment — planning, build, and review all surface through it.
 
 ## Phase 2 — Plan: Charting the Build
 

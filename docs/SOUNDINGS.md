@@ -27,7 +27,7 @@ capability is complete only at `DONE` with concrete evidence.
 | 7 | `drydock config set prompt_warn_kb <kb>` | Persists and validates the prompt-size warning threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | 8 | `drydock config set quarterdeck_port <port>` | Persists and validates the default QuarterDeck port | DONE | `test_config.py` quarterdeck-port tests; `test_cli.py::TestRunQuarterdeck::test_run_quarterdeck_config_port_used` |
 | 9 | `drydock init <Target>` | Creates the specification-independent Target baseline and QuarterDeck while preserving existing files | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
-| 10 | `drydock run quarterdeck <Target> [--host HOST] [--port PORT]` | Starts the Target's QuarterDeck service | DONE | `test_cli.py::TestRunQuarterdeck` |
+| 10 | `drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]` | Starts a named configured Target's QuarterDeck, or the current directory's QuarterDeck when Target is omitted | DONE | `test_cli.py::TestRunQuarterdeck` |
 | 11 | `drydock validate <Blueprint>` | Validates Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
 | 12 | `drydock validate <Blueprint> --verbose` | Shows passing checks as well as findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |
 | 13 | `drydock rigging compact <Blueprint> [--all] [--force]` | Refreshes stale compact derivatives with deterministic writes and execution evidence | DONE | `test_cli.py::TestRiggingCompact`, `test_rigging_compact.py` |

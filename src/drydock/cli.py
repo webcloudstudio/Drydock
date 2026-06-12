@@ -208,14 +208,16 @@ def cmd_document_assemble(argv: list[str]) -> int:
 
 
 def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
     from drydock import quarterdeck_run as _qd
     from drydock.config import get_quarterdeck_port, get_target_directory
 
-    target_dir = get_target_directory() / args.Target
+    target_dir = get_target_directory() / args.Target if args.Target else Path.cwd()
     port = args.port if args.port is not None else get_quarterdeck_port()
     host = args.host
 
-    print(f"QuarterDeck: {args.Target}")
+    print(f"QuarterDeck: {target_dir}")
     print(f"  http://{host}:{port}")
 
     result = _qd.run_quarterdeck(target_dir, port=port, host=host)
@@ -402,7 +404,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run = sub.add_parser("run", help="Start a Drydock service.")
     run_sub = p_run.add_subparsers(dest="run_command", metavar="<subcommand>")
     p_run_qd = run_sub.add_parser("quarterdeck", help="Start the QuarterDeck for a target project.")
-    p_run_qd.add_argument("Target", metavar="<Target>")
+    p_run_qd.add_argument(
+        "Target",
+        metavar="<Target>",
+        nargs="?",
+        help="Configured target name; omit to run the current directory's QuarterDeck.",
+    )
     p_run_qd.add_argument(
         "--port",
         type=int,
@@ -519,7 +526,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if sub == "quarterdeck":
             return cmd_run_quarterdeck(args)
         else:
-            not_implemented("run")
+            parser.parse_args(["run", "--help"])
+            return 0
 
     if command == "import":
         return cmd_import(args)

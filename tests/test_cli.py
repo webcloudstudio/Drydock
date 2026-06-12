@@ -482,6 +482,31 @@ class TestRunQuarterdeck:
         assert calls[0]["port"] == 8080
         assert calls[0]["host"] == "127.0.0.1"
 
+    def test_run_shows_help_instead_of_stub(self):
+        rc, out, err = run_cli("run")
+
+        assert rc == 0
+        assert "quarterdeck" in out
+        assert "not implemented" not in out + err
+
+    def test_run_quarterdeck_without_target_uses_cwd(self, tmp_path, isolated_config, monkeypatch):
+        from types import SimpleNamespace
+
+        self._make_target(tmp_path, ".")
+        monkeypatch.chdir(tmp_path)
+        calls: list = []
+
+        def fake_run(target_dir, *, port, host):
+            calls.append({"target_dir": target_dir, "port": port, "host": host})
+            return SimpleNamespace(exit_code=0)
+
+        monkeypatch.setattr("drydock.quarterdeck_run.run_quarterdeck", fake_run)
+        rc, out, err = run_cli("run", "quarterdeck")
+
+        assert rc == 0
+        assert calls == [{"target_dir": tmp_path, "port": 8080, "host": "127.0.0.1"}]
+        assert str(tmp_path) in out
+
     def test_run_quarterdeck_custom_port(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 

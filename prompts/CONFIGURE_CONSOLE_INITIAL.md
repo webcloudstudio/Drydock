@@ -81,7 +81,8 @@ the intended source of truth and make the gap visible instead of creating a comp
 ## Verification
 
 1. Validate every authored JSON file parses.
-2. Start QuarterDeck using `drydock run quarterdeck <Target>`.
+2. Start QuarterDeck using `drydock run quarterdeck <Target>`, or from the Target directory using
+   `drydock run quarterdeck`.
 3. Verify `/health`, `/api/config`, every configured document, the board, and questionnaire load.
 4. Verify questionnaire answers and review decisions persist after restart when practical.
 5. Run the repository's narrowest relevant tests and lint required by its instructions.
