@@ -224,6 +224,114 @@ def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def _render_status(result) -> None:
+    """Print compact one-screen status output."""
+    header = f"Drydock status — {result.blueprint}"
+    if result.target:
+        header += f" / {result.target}"
+    print(header)
+    print()
+
+    col = 14
+
+    if result.last_command:
+        print(f"  {'Last command':<{col}}  {result.last_command:<22}  {result.last_time}")
+
+    if result.validation is not None:
+        from drydock.validate_specification import Severity
+
+        v = result.validation
+        n_fail = len(v.failures())
+        n_warn = len(v.warnings())
+        state = "FAIL" if n_fail else ("WARN" if n_warn else "PASS")
+        detail = f"{n_fail} errors · {n_warn} warnings"
+        print(f"  {'Blueprint':<{col}}  {state:<6}  {detail}")
+        if n_fail or n_warn:
+            for finding in v.findings:
+                if finding.severity != Severity.PASS:
+                    print(f"    {finding.severity.value:<4}  {finding.section}: {finding.message}")
+
+    if result.plan is not None:
+        counts = result.plan.state_counts()
+        total = len(result.plan.blocks)
+        verified = counts.get("closed/verified", 0)
+        pending = counts.get("pending", 0)
+        impl = counts.get("implemented", 0)
+        failed = counts.get("closed/failed", 0)
+        progress = f"{verified}/{total} verified"
+        detail = f"pending {pending} · implemented {impl} · failed {failed}"
+        print(f"  {'Plan':<{col}}  {progress:<22}  {detail}")
+
+        if result.frontier:
+            for i, block in enumerate(result.frontier):
+                label = "Frontier" if i == 0 else ""
+                print(f"  {label:<{col}}  {block.block_id}: {block.name}")
+        else:
+            print(f"  {'Frontier':<{col}}  (none)")
+
+
+def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
+    from drydock.config import get_blueprint_directory, get_target_directory, record_activity
+    from drydock.status import status_blueprint_target
+
+    result = status_blueprint_target(
+        blueprint, target, get_blueprint_directory(), get_target_directory()
+    )
+    _render_status(result)
+    record_activity("status", blueprint, target)
+    return 0
+
+
+def cmd_status_blueprint(blueprint: str) -> int:
+    from drydock.config import get_blueprint_directory, record_activity
+    from drydock.status import status_blueprint
+
+    result = status_blueprint(blueprint, get_blueprint_directory())
+    _render_status(result)
+    record_activity("status", blueprint)
+    return 0
+
+
+def cmd_status_current() -> int:
+    from drydock.config import (
+        get_blueprint_directory,
+        get_last_activity,
+        get_target_directory,
+        record_activity,
+    )
+    from drydock.status import status_current
+
+    try:
+        blueprint_dir = get_blueprint_directory()
+    except Exception:
+        blueprint_dir = None  # type: ignore[assignment]
+    try:
+        target_dir = get_target_directory()
+    except Exception:
+        target_dir = None  # type: ignore[assignment]
+
+    if blueprint_dir is None or target_dir is None:
+        activity = get_last_activity()
+        if not activity.get("blueprint"):
+            print("No active Drydock project found.")
+            print("  Run: drydock config set blueprint_directory <path>")
+            return 0
+        from pathlib import Path
+
+        blueprint_dir = blueprint_dir or Path(".")
+        target_dir = target_dir or Path(".")
+
+    result = status_current(blueprint_dir, target_dir)
+    if result is None:
+        print("No active Drydock project found.")
+        print("  Start with: drydock config show")
+        return 0
+
+    _render_status(result)
+    record_activity("status", result.blueprint or None, result.target or None)
+    return 0
+
+
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
     from drydock.config import get_target_directory
@@ -309,6 +417,22 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── init ─────────────────────────────────────────────────────────────────
     p_init = sub.add_parser("init", help="Initialize a target workspace.")
     p_init.add_argument("Target", metavar="<Target>")
+
+    # ── status ────────────────────────────────────────────────────────────────
+    # Handles: status
+    #          status <Blueprint>
+    #          status <Blueprint> <Target>
+    p_status = sub.add_parser(
+        "status",
+        help="Show project status and orientation.",
+        description=(
+            "drydock status                          — compact dashboard of last active project\n"
+            "drydock status <Blueprint>              — Blueprint validation summary\n"
+            "drydock status <Blueprint> <Target>     — plan state and runnable frontier"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Blueprint> [<Target>]]")
 
     # ── validate ─────────────────────────────────────────────────────────────
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
@@ -440,6 +564,18 @@ def _build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
+def _dispatch_status(args: argparse.Namespace) -> int:
+    tokens = args.args
+    if len(tokens) == 0:
+        return cmd_status_current()
+    elif len(tokens) == 1:
+        return cmd_status_blueprint(tokens[0])
+    elif len(tokens) == 2:
+        return cmd_status_blueprint_target(tokens[0], tokens[1])
+    else:
+        raise UsageError("Usage: drydock status [<Blueprint> [<Target>]]")
+
+
 def _dispatch_document(args: argparse.Namespace) -> int:
     tokens = args.args
     if not tokens:
@@ -462,7 +598,12 @@ def _dispatch_build(args: argparse.Namespace) -> int:
     if first == "status":
         if len(tokens) != 3:
             raise UsageError("Usage: drydock build status <Blueprint> <Target>")
-        return cmd_build_status(tokens[1], tokens[2])
+        rc = cmd_build_status(tokens[1], tokens[2])
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("build status", tokens[1], tokens[2])
+        return rc
     elif first == "score":
         not_implemented("build score")
     else:
@@ -477,6 +618,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         parser.print_help()
         return 0
 
+    if command == "status":
+        return _dispatch_status(args)
+
     if command == "config":
         if args.config_command == "show":
             return cmd_config_show(args)
@@ -489,7 +633,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return cmd_init(args)
 
     if command == "validate":
-        return cmd_validate(args)
+        rc = cmd_validate(args)
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("validate", args.Blueprint)
+        return rc
 
     if command == "document":
         return _dispatch_document(args)
@@ -497,7 +646,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "rigging":
         sub = getattr(args, "rigging_command", None)
         if sub == "compact":
-            return cmd_rigging_compact(args)
+            rc = cmd_rigging_compact(args)
+            if rc == 0:
+                from drydock.config import record_activity
+
+                record_activity("rigging compact", args.Blueprint)
+            return rc
         elif sub == "update":
             not_implemented("rigging update")
         elif sub == "verify":
@@ -508,7 +662,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "plan":
         sub = getattr(args, "plan_command", None)
         if sub == "create":
-            return cmd_plan_create(args)
+            rc = cmd_plan_create(args)
+            if rc == 0:
+                from drydock.config import record_activity
+
+                record_activity("plan create", args.Blueprint, args.Target)
+            return rc
         else:
             not_implemented("plan")
 
@@ -530,7 +689,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             return 0
 
     if command == "import":
-        return cmd_import(args)
+        rc = cmd_import(args)
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("import", args.Blueprint)
+        return rc
 
     return 0
 

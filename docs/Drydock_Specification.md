@@ -119,6 +119,34 @@ drydock --version
 
 Shows the installed Drydock version.
 
+### Status commands
+
+```text
+drydock status
+```
+
+Shows a compact one-screen orientation: the last active Blueprint and Target, last command run,
+Blueprint validation state, plan progress, and the current runnable frontier. Reads the current
+directory for a `BUILD_PLAN.md`; when none is found, uses the last recorded activity. Drydock
+records the Blueprint, Target, command name, and timestamp whenever any Blueprint or Target command
+completes successfully.
+
+```text
+drydock status <Blueprint>
+```
+
+Shows Blueprint validation state: error count, warning count, and a finding summary. Equivalent to
+`drydock validate <Blueprint>`.
+
+```text
+drydock status <Blueprint> <Target>
+```
+
+Shows plan block state and the current runnable frontier. Equivalent to
+`drydock build status <Blueprint> <Target>`.
+
+`drydock validate` and `drydock build status` remain available as direct aliases.
+
 ### Setup commands
 
 ```text
@@ -1128,18 +1156,17 @@ the relevant artifact type.
 | `BRANDING_WHITEPAPERS.md` | White papers |
 | `BRANDING_WEBSITE.md` | Web App Colors/Format/Branding |
 
-### Compaction — Full Rules for Builders, Compact Rules for Users
+### Compaction — Full Context for Builders, Compact Context for Users
 
-`drydock rigging compact <Blueprint>` refreshes prompt-injection derivatives for large
-specification files. It is the general compaction entry point: it discovers every file that needs a
-compact derivative and recompacts only the **stale** ones (a freshness gate — a source is
-recompacted when its `<stem>_compact.md` is missing or older than the source). No file arguments are
-required.
+`drydock rigging compact <file.md>` creates `<file_compact.md>`. The full prompt must be used to build the service.  The compact prompt is what is used in consumers.  Compacted files that exist are only recompacted if **stale*.   its `<stem>_compact.md` is missing or older than the source).
 
-The compactable set is the **required pairs** below — always expected when their source exists —
-**plus** any `<name>.md` already carrying a `<name>_compact.md` sibling. `--force` ignores the
-freshness gate and recompacts everything in scope; `--all` additionally refreshes Drydock's own
-`Rigging/` engine derivatives (existing siblings only).
+`--force` ignores the freshness gate
+`--all` creates/refreshes needed files
+
+Certain files, file types, and some `Rigging/` should always be compacted.
+
+TODO: Figure out what should be done.  The list below is incomplete.
+Note: Rigging should have config for this
 
 | Source | Compact | Stripped to |
 |--------|---------|-------------|
@@ -1177,8 +1204,7 @@ DATABASE_compact.md not found — run: drydock rigging compact <Blueprint>
 ```
 
 `drydock plan create` reports a staleness warning when a source file is newer than its compact
-derivative. Run `drydock rigging compact <Blueprint>` after any edit to `DATABASE.md` or
-`BUSINESS_RULES.md`.
+derivative.
 
 ### Workflow: Propagate the Rigging
 

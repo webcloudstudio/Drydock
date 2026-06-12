@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import dotenv_values, set_key
@@ -112,6 +113,31 @@ def config_show() -> list[tuple[str, str, str]]:
         value, source = _get(key_upper, default)
         rows.append((display_key, value or "(not set)", source))
     return rows
+
+
+def record_activity(
+    command: str,
+    blueprint: str | None = None,
+    target: str | None = None,
+) -> None:
+    cfg = _config_path()
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.touch()
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    set_key(cfg, "LAST_COMMAND", command)
+    set_key(cfg, "LAST_BLUEPRINT", blueprint or "")
+    set_key(cfg, "LAST_TARGET", target or "")
+    set_key(cfg, "LAST_COMMAND_TIME", now)
+
+
+def get_last_activity() -> dict[str, str]:
+    stored = _read_env_file(_config_path())
+    return {
+        "command": stored.get("LAST_COMMAND", ""),
+        "blueprint": stored.get("LAST_BLUEPRINT", ""),
+        "target": stored.get("LAST_TARGET", ""),
+        "time": stored.get("LAST_COMMAND_TIME", ""),
+    }
 
 
 def config_set(key: str, value: str) -> Path:

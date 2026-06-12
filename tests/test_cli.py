@@ -35,6 +35,7 @@ class TestHelpAndVersion:
     def test_help_shows_all_top_commands(self):
         rc, out, _ = run_cli("--help")
         for cmd in (
+            "status",
             "config",
             "init",
             "validate",
@@ -570,3 +571,91 @@ class TestRunQuarterdeck:
         rc, out, err = run_cli("run", "quarterdeck", "MyTarget")
         assert rc == 0
         assert calls[0] == 7777
+
+
+APPROVED_PLAN_STATUS = """\
+# BUILD_PLAN: TestProject
+state: approved
+updated: 2026-01-01T00:00:00
+plan_hash: abc123
+
+## story 1: Core feature
+id: core-feature
+state: pending
+
+## story 2: Done feature
+id: done-feature
+state: closed/verified
+"""
+
+
+class TestStatus:
+    def _setup(self, tmp_spec_root, tmp_target_root, monkeypatch):
+        from drydock.init_specification import init_specification
+
+        init_specification("TestProject", tmp_spec_root)
+        tgt = tmp_target_root / "TestTarget"
+        tgt.mkdir()
+        (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
+        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
+        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+
+    def test_status_blueprint_target_reports_plan_state(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "TestProject", "TestTarget")
+        assert rc == 0, err
+        assert "TestProject" in out
+        assert "TestTarget" in out
+        assert "core-feature" in out
+
+    def test_status_blueprint_reports_validation_summary(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "TestProject")
+        assert rc == 0, err
+        assert "TestProject" in out
+        assert "Blueprint" in out
+        assert "0 errors" in out
+
+    def test_status_no_args_no_activity_exits_zero(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
+        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.chdir(tmp_target_root)
+        rc, out, err = run_cli("status")
+        assert rc == 0
+
+    def test_status_no_args_uses_last_activity(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        monkeypatch.chdir(tmp_spec_root)
+        run_cli("status", "TestProject", "TestTarget")
+        rc, out, err = run_cli("status")
+        assert rc == 0, err
+        assert "TestProject" in out
+
+    def test_activity_recorded_after_status_command(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        run_cli("status", "TestProject", "TestTarget")
+
+        from drydock.config import get_last_activity
+
+        activity = get_last_activity()
+        assert activity["blueprint"] == "TestProject"
+        assert activity["target"] == "TestTarget"
+        assert activity["command"] == "status"
+        assert activity["time"] != ""
+
+    def test_status_too_many_args_exits_2(
+        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_spec_root, tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "A", "B", "C")
+        assert rc == 2

@@ -27,6 +27,9 @@
 | CLI-023 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` updates Blueprint and Target together | STUBBED | `test_cli.py::TestStubs` |
 | CLI-024 | `drydock analyze <Blueprint> [<Target>]` reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` |
 | CLI-025 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` preserves Markdown source bundles | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
+| CLI-026 | `drydock status <Blueprint> <Target>` reports plan state and runnable frontier | DONE | `test_cli.py::TestStatus::test_status_blueprint_target_reports_plan_state`, `test_status.py::TestStatusBlueprintTarget` |
+| CLI-027 | `drydock status <Blueprint>` reports Blueprint validation summary | DONE | `test_cli.py::TestStatus::test_status_blueprint_reports_validation_summary`, `test_status.py::TestStatusBlueprint` |
+| CLI-028 | `drydock status` (no args) shows compact dashboard of last active project and records activity | DONE | `test_cli.py::TestStatus::test_status_no_args_*`, `test_status.py::TestStatusCurrent` |
 | QD-001 | Captain's Chair, Sea Trials, and Soundings are standard pinned Core artifacts | DONE | `QuarterDeck/console.yaml`, `tests/test_quarterdeck.py::test_drydock_console_pins_the_three_standard_artifacts_in_core` |
 | QD-002 | Core artifacts appear in the order Captain's Chair, Master Blueprint, Sea Trials, Soundings, Ship's Log | DONE | `QuarterDeck/console.yaml`, `tests/test_quarterdeck.py::test_drydock_console_core_artifact_order` |
 | QD-003 | Soundings is a single acceptance ledger and QuarterDeck calculates acceptance totals | DONE | `QuarterDeck/app.py::render_command_status`, `tests/test_quarterdeck.py` |
