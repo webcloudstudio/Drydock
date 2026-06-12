@@ -1,13 +1,24 @@
 # Drydock pre-commit hooks. Install once: `uv run pre-commit install`
 # Run on all files: `uv run pre-commit run --all-files`
+fail_fast: true
+
 repos:
+  - repo: local
+    hooks:
+      - id: protect-canonical-files
+        name: protect canonical Drydock files
+        entry: bash bin/check_protected_files.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^Rigging/
+        exclude: ^(Rigging/|DRYDOCK_DEVELOPMENT\.md$|docs/Drydock_Specification\.md$|docs/drydock-(anchor|compass|helm|lighthouse)\.svg$)
       - id: end-of-file-fixer
-        exclude: ^Rigging/
+        exclude: ^(Rigging/|DRYDOCK_DEVELOPMENT\.md$|docs/Drydock_Specification\.md$|docs/drydock-(anchor|compass|helm|lighthouse)\.svg$)
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict

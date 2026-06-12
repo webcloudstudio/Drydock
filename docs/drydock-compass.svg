@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <title>Drydock — Compass Rose</title>
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="195" fill="#123047"/>
+  <circle cx="200" cy="200" r="195" fill="none" stroke="#2cb67d" stroke-width="6"/>
+
+  <!-- Subtle outer ring -->
+  <circle cx="200" cy="200" r="142" fill="none" stroke="#eaf2f5" stroke-width="1.5" opacity="0.35"/>
+
+  <!--
+    Compass rose: 4 large cardinal diamonds + 4 small diagonal diamonds.
+    Each is defined once as a path at the origin and rotated into place.
+    Large diamond: tip at (0,-120), width ±22 at midpoint (0,-60).
+    Small diamond: tip at (0,-75), width ±10 at midpoint (0,-37.5).
+  -->
+
+  <!-- Small diagonal points (behind large ones) -->
+  <path d="M 0,-75 L 10,-37.5 L 0,0 L -10,-37.5 Z"
+        fill="#eaf2f5" opacity="0.45" transform="translate(200,200) rotate(45)"/>
+  <path d="M 0,-75 L 10,-37.5 L 0,0 L -10,-37.5 Z"
+        fill="#eaf2f5" opacity="0.45" transform="translate(200,200) rotate(135)"/>
+  <path d="M 0,-75 L 10,-37.5 L 0,0 L -10,-37.5 Z"
+        fill="#eaf2f5" opacity="0.45" transform="translate(200,200) rotate(225)"/>
+  <path d="M 0,-75 L 10,-37.5 L 0,0 L -10,-37.5 Z"
+        fill="#eaf2f5" opacity="0.45" transform="translate(200,200) rotate(315)"/>
+
+  <!-- Large cardinal points — S, E, W in white -->
+  <path d="M 0,-120 L 22,-60 L 0,0 L -22,-60 Z"
+        fill="#eaf2f5" transform="translate(200,200) rotate(90)"/>
+  <path d="M 0,-120 L 22,-60 L 0,0 L -22,-60 Z"
+        fill="#eaf2f5" transform="translate(200,200) rotate(180)"/>
+  <path d="M 0,-120 L 22,-60 L 0,0 L -22,-60 Z"
+        fill="#eaf2f5" transform="translate(200,200) rotate(270)"/>
+
+  <!-- North point — green accent (tradition: north is special) -->
+  <path d="M 0,-120 L 22,-60 L 0,0 L -22,-60 Z"
+        fill="#2cb67d" transform="translate(200,200) rotate(0)"/>
+
+  <!-- Center medallion -->
+  <circle cx="200" cy="200" r="15" fill="#123047" stroke="#eaf2f5" stroke-width="3"/>
+  <circle cx="200" cy="200" r="6" fill="#2cb67d"/>
+</svg>
