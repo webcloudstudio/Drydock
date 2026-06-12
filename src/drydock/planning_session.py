@@ -217,7 +217,7 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck = target_dir / "QuarterDeck"
     quarterdeck.mkdir(parents=True, exist_ok=True)
     runtime = get_quarterdeck_root()
-    for name in ("app.py", "start.sh", "requirements.txt"):
+    for name in ("app.py", "requirements.txt"):
         source = runtime / name
         if source.is_file():
             shutil.copyfile(source, quarterdeck / name)

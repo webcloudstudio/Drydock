@@ -41,8 +41,8 @@ Archive) that reflects its role. The Archive section is collapsed by default.
 ## Quick Start
 
 ```bash
-bash QuarterDeck/start.sh             # http://127.0.0.1:8080
-PORT=9000 bash QuarterDeck/start.sh   # custom port
+drydock run quarterdeck <Target>              # http://127.0.0.1:8080
+drydock run quarterdeck <Target> --port 9000  # custom port
 ```
 
 `QuarterDeck/console.yaml` must exist. The QuarterDeck never generates it. If it is missing, the
@@ -61,7 +61,6 @@ QuarterDeck/
 ├── console.yaml            Index: sections + items → paths (the contract)
 ├── console.yaml.sample     Documented template to copy from
 ├── app.py                  The viewer (FastAPI)
-├── start.sh                Launch script
 ├── sample/                 The shipped test fixture's artifacts:
 │   ├── intent.md           editable_markdown item data (Edit/Save in the UI)
 │   ├── guide.md            markdown item data

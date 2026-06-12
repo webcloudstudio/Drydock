@@ -71,7 +71,7 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
             _write_missing(keep, "", result)
 
         runtime = get_quarterdeck_root()
-        for name in ("app.py", "start.sh", "requirements.txt"):
+        for name in ("app.py", "requirements.txt"):
             source = runtime / name
             if not source.is_file():
                 raise DrydockError(f"QuarterDeck runtime file not found: {source}")

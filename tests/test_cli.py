@@ -132,7 +132,6 @@ class TestInit:
             "evidence/.gitkeep",
             "logs/.gitkeep",
             "QuarterDeck/app.py",
-            "QuarterDeck/start.sh",
             "QuarterDeck/requirements.txt",
             "QuarterDeck/console.yaml",
             "QuarterDeck/tickets.json",

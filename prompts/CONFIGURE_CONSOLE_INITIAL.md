@@ -69,9 +69,6 @@ Build a deliberately small board:
 The decision-log page must state whether decision write-back is implemented. If it is not, explain
 the intended source of truth and make the gap visible instead of creating a competing ledger.
 
-Check the copied launcher. A raw copy may still import `Console.app:app`; when the directory is
-named `QuarterDeck`, update the launcher so `bash QuarterDeck/start.sh` starts the actual package.
-
 ## Constraints
 
 - Keep project truth in its authoritative files; QuarterDeck is a projection and communication
@@ -84,7 +81,7 @@ named `QuarterDeck`, update the launcher so `bash QuarterDeck/start.sh` starts t
 ## Verification
 
 1. Validate every authored JSON file parses.
-2. Start QuarterDeck using `bash QuarterDeck/start.sh`.
+2. Start QuarterDeck using `drydock run quarterdeck <Target>`.
 3. Verify `/health`, `/api/config`, every configured document, the board, and questionnaire load.
 4. Verify questionnaire answers and review decisions persist after restart when practical.
 5. Run the repository's narrowest relevant tests and lint required by its instructions.
