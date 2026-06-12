@@ -2,12 +2,7 @@
 set -euo pipefail
 
 protected_files=(
-  "DRYDOCK_DEVELOPMENT.md"
   "docs/Drydock_Specification.md"
-  "docs/drydock-anchor.svg"
-  "docs/drydock-compass.svg"
-  "docs/drydock-helm.svg"
-  "docs/drydock-lighthouse.svg"
 )
 
 failed=0

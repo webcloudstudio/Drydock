@@ -76,14 +76,13 @@ def test_repository_launcher_audits_canonical_log():
 def test_capture_contract_is_local_not_shared_rigging():
     root = Path(__file__).parents[1]
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
-    process = (root / "SHIPS_LOG_PROCESS.md").read_text(encoding="utf-8")
     shared_rules = "\n".join(
         (root / path).read_text(encoding="utf-8")
         for path in ("Rigging/BUSINESS_RULES.md", "Rigging/CLAUDE_RULES.md")
     )
 
-    assert "SHIPS_LOG_PROCESS.md" in agents
-    assert "final Ship's Log review" in process
+    assert "Ship's Log Process" in agents
+    assert "final Ship's Log review" in agents
     for classification in ("open-item", "deferred-item", "accepted-risk"):
-        assert classification in process
+        assert classification in agents
     assert "drydock log append" not in shared_rules

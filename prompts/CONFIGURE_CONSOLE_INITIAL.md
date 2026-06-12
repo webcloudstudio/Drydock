@@ -15,9 +15,9 @@ cut that the product owner can test and revise.
    acceptance-check, and path-confinement contracts as authoritative for this task.
 3. Inspect the project's source-of-truth specification, current implementation, tests, roadmap,
    acceptance criteria, and decision-log artifacts. Do not invent completed capabilities.
-4. If this is Drydock, read `DRYDOCK_DEVELOPMENT.md` in full and use this source precedence:
-   `docs/Drydock_Specification.md`, `docs/SOUNDINGS.md`, current code/tests,
-   `DRYDOCK_DEVELOPMENT.md`, then read-only Prototyper evidence.
+4. If this is Drydock, read `AGENTS.md` in full and use this source precedence:
+   `docs/Drydock_Specification.md`, `docs/SOUNDINGS.md`, current code/tests, `AGENTS.md`, then
+   read-only Prototyper evidence.
 
 ## Objective
 

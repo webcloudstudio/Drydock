@@ -16,9 +16,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(Rigging/|DRYDOCK_DEVELOPMENT\.md$|docs/Drydock_Specification\.md$|docs/drydock-(anchor|compass|helm|lighthouse)\.svg$)
+        exclude: ^(Rigging/|archive/|docs/Drydock_Specification\.md$)
       - id: end-of-file-fixer
-        exclude: ^(Rigging/|DRYDOCK_DEVELOPMENT\.md$|docs/Drydock_Specification\.md$|docs/drydock-(anchor|compass|helm|lighthouse)\.svg$)
+        exclude: ^(Rigging/|archive/|docs/Drydock_Specification\.md$)
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict
