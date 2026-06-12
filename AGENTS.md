@@ -55,6 +55,9 @@ generated compatibility views. It is an external reference, not a Drydock source
 - Add focused unit tests and CLI contract tests for every implemented command. Preserve working
   commands while replacing deferred command stubs.
 - Update `docs/SOUNDINGS.md` whenever a capability's implementation or verification state changes.
+- Install repository Git hooks with `bash bin/install_git_hooks.sh`; never run `pre-commit install`,
+  which replaces the outer canonical-specification guard. Stage approved
+  `docs/Drydock_Specification.md` edits before committing any work.
 - Follow the Ship's Log Process (below): record material decisions and milestones immediately, then
   perform a final capture review before committing or completing a task.
 - When delegating work or constructing an agent prompt, include the V2 mission, source precedence,

@@ -19,6 +19,6 @@ done
 
 if [[ "$failed" -ne 0 ]]; then
   printf '\nCommit blocked to prevent accidental deletion of canonical Drydock files.\n' >&2
-  printf 'Restore and stage the files, or intentionally bypass with SKIP=protect-canonical-files.\n' >&2
+  printf 'Restore and stage the files before committing.\n' >&2
   exit 1
 fi
