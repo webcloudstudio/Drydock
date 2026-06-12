@@ -79,7 +79,7 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
 
         _write_missing(
             target_dir / "QuarterDeck" / "pages" / "overview.md",
-            f"# Commander's View: {target}\n\n"
+            f"# Captain's Chair: {target}\n\n"
             "This target is initialized and ready for Blueprint import and planning.\n",
             result,
         )
@@ -108,7 +108,7 @@ sections:
   - {{ id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }}
 
 items:
-  - {{ id: commanders_view, label: "Commander's View", section: core, type: markdown, path: pages/overview.md }}
+  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: markdown, path: pages/overview.md }}
   - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
 """,
             result,

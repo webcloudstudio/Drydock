@@ -115,6 +115,7 @@ def test_drydock_console_pins_the_three_standard_artifacts_in_core():
     items = {item["id"]: item for item in config["items"]}
     for standard in ("commanders_view", "soundings", "sea_trials"):
         assert items[standard]["section"] == "core", standard
+    assert items["commanders_view"]["label"] == "Captain's Chair"
 
 
 # ── Command status (Core Docs only, read-only) ─────────────────────────────────

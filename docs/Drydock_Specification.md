@@ -999,7 +999,7 @@ a source-of-truth document, filed in **Drydock Core** and pinned.
 
 | Artifact | Purpose |
 |---|---|
-| **Commander's View** | The orientation page and default view: mission and current state at a glance. |
+| **Captain's Chair** | The orientation page and default view: mission and current state at a glance. |
 | **Soundings** | The project's authoritative acceptance-criteria checklist — each capability, its state, and the evidence. The standard way Drydock tracks acceptance criteria. |
 | **Sea Trials** | The project's objectives and success criteria, derived from the specification — what the project must achieve to be declared delivered. The standard way Drydock states project objectives. |
 

@@ -1,4 +1,4 @@
-# Drydock Commander's View
+# Drydock Captain's Chair
 
 Orientation and current state for the Drydock build. Source of truth lives in the Core Docs; this
 page only orients.

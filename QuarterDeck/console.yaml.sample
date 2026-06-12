@@ -27,7 +27,7 @@ sections:
 
 items:
   - id: commanders_view
-    label: "Commander's View"
+    label: "Captain's Chair"
     section: core
     type: editable_markdown
     path: pages/overview.md

@@ -12,7 +12,7 @@
   "items": [
     {
       "id": "overview",
-      "label": "Commander's View",
+      "label": "Captain's Chair",
       "section": "core",
       "type": "markdown",
       "path": "pages/overview.md"

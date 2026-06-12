@@ -14,6 +14,9 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
     assert result.target_dir == tmp_target_root / "Example"
     assert (result.target_dir / "QuarterDeck" / "console.yaml").is_file()
     assert (result.target_dir / "QuarterDeck" / "app.py").is_file()
+    assert "Captain's Chair" in (result.target_dir / "QuarterDeck" / "console.yaml").read_text(
+        encoding="utf-8"
+    )
     assert (result.target_dir / "QuarterDeck" / "tickets.json").read_text(encoding="utf-8") == (
         '{\n  "tickets": []\n}\n'
     )
