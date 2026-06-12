@@ -238,10 +238,10 @@ def test_drydock_command_status_renders_current_soundings():
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Total commands</strong><br>23" in rendered
-    assert "DONE (12)" in rendered
+    assert "Total commands</strong><br>25" in rendered
+    assert "DONE (15)" in rendered
     assert "IMPLEMENTED (2)" in rendered
-    assert "STUBBED (9)" in rendered
+    assert "STUBBED (8)" in rendered
     assert "no structured findings" in rendered
 
 

@@ -25,31 +25,33 @@ capability is complete only at `DONE` with concrete evidence.
 | 5 | `drydock config set target_directory <path>` | Persists the target root path | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | 6 | `drydock config set llm_provider <claude\|codex>` | Persists and validates the subscription CLI provider | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | 7 | `drydock config set prompt_warn_kb <kb>` | Persists and validates the prompt-size warning threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
-| 8 | `drydock init <Target>` | Creates the specification-independent Target baseline and QuarterDeck while preserving existing files | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
-| 9 | `drydock validate <Blueprint>` | Validates Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
-| 10 | `drydock validate <Blueprint> --verbose` | Shows passing checks as well as findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |
-| 11 | `drydock rigging compact <Blueprint> [--all] [--force]` | Refreshes stale compact derivatives with deterministic writes and execution evidence | DONE | `test_cli.py::TestRiggingCompact`, `test_rigging_compact.py` |
-| 12 | `drydock document generate <Blueprint> <Target>` | Creates `DOC-*.md` summaries | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 13 | `drydock document assemble <Blueprint> <Target>` | Renders `DOC-*.md` into `docs/index.html` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 14 | `drydock document <Blueprint> <Target>` | Runs the full documentation pipeline | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 15 | `drydock rigging update <Target>` | Propagates current Rigging to a target project | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 16 | `drydock rigging verify <Target>` | Verifies target-project Rigging compliance | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 17 | `drydock plan create <Blueprint> <Target>` | Internally inventories Blueprint inputs, writes draft `<Target>/BUILD_PLAN.md`, and creates the target-local Planning Session | IMPLEMENTED | Deterministic file/spec decomposition works: `test_cli.py::TestPlanningSession`; `test_build_plan.py::test_draft_plan_has_no_runnable_frontier`; isolated-wheel Markdown intake → create → approve → frontier verification. Semantic LLM decomposition, prompt-size analysis, and cost-reducing work grouping remain. |
-| 18 | `drydock build status <Blueprint> <Target>` | Reports target plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`; `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
-| 19 | `drydock build <Blueprint> <Target>` | Builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 20 | `drydock build score <Blueprint> <Target>` | Generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 21 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` | Updates Blueprint and target together | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 22 | `drydock analyze <Blueprint> [<Target>]` | Reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
-| 23 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` | Preserves Markdown source bundles; source and Spec Kit conversion remain deferred | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
+| 8 | `drydock config set quarterdeck_port <port>` | Persists and validates the default QuarterDeck port | DONE | `test_config.py` quarterdeck-port tests; `test_cli.py::TestRunQuarterdeck::test_run_quarterdeck_config_port_used` |
+| 9 | `drydock init <Target>` | Creates the specification-independent Target baseline and QuarterDeck while preserving existing files | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
+| 10 | `drydock run quarterdeck <Target> [--host HOST] [--port PORT]` | Starts the Target's QuarterDeck service | DONE | `test_cli.py::TestRunQuarterdeck` |
+| 11 | `drydock validate <Blueprint>` | Validates Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
+| 12 | `drydock validate <Blueprint> --verbose` | Shows passing checks as well as findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |
+| 13 | `drydock rigging compact <Blueprint> [--all] [--force]` | Refreshes stale compact derivatives with deterministic writes and execution evidence | DONE | `test_cli.py::TestRiggingCompact`, `test_rigging_compact.py` |
+| 14 | `drydock document generate <Blueprint> <Target>` | Creates `DOC-*.md` summaries | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 15 | `drydock document assemble <Blueprint> <Target>` | Renders existing Markdown documentation into HTML | DONE | `test_cli.py::TestDocumentAssemble`, `test_build_documentation.py` |
+| 16 | `drydock document <Blueprint> <Target>` | Runs the full documentation pipeline | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 17 | `drydock rigging update <Target>` | Propagates current Rigging to a target project | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 18 | `drydock rigging verify <Target>` | Verifies target-project Rigging compliance | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 19 | `drydock plan create <Blueprint> <Target>` | Internally inventories Blueprint inputs, writes draft `<Target>/BUILD_PLAN.md`, and creates the target-local Planning Session | IMPLEMENTED | Deterministic file/spec decomposition works: `test_cli.py::TestPlanningSession`; `test_build_plan.py::test_draft_plan_has_no_runnable_frontier`; isolated-wheel Markdown intake → create → approve → frontier verification. Semantic LLM decomposition, prompt-size analysis, and cost-reducing work grouping remain. |
+| 20 | `drydock build status <Blueprint> <Target>` | Reports target plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`; `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
+| 21 | `drydock build <Blueprint> <Target>` | Builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 22 | `drydock build score <Blueprint> <Target>` | Generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 23 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` | Updates Blueprint and target together | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 24 | `drydock analyze <Blueprint> [<Target>]` | Reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` — exits 2, no files written |
+| 25 | `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` | Preserves Markdown source bundles; source and Spec Kit conversion remain deferred | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
 
 ## Summary
 
 | Category | Count |
 |---|---:|
-| Total commands | 23 |
-| DONE | 12 |
+| Total commands | 25 |
+| DONE | 15 |
 | IMPLEMENTED | 2 |
-| STUBBED | 9 |
+| STUBBED | 8 |
 | NOT STARTED | 0 |
 
 Drydock is command-complete only when every command row is `DONE`.

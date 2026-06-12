@@ -90,3 +90,33 @@ def test_default_source_prefers_authoritative_path(tmp_path: Path):
     authoritative.write_text(SOURCE, encoding="utf-8")
 
     assert _default_source(tmp_path) == authoritative
+
+
+def test_canonical_specification_documents_current_command_surface():
+    specification = _default_source(Path(__file__).parents[1]).read_text(encoding="utf-8")
+    expected = (
+        "drydock config show",
+        "drydock config set <key> <value>",
+        "drydock init <Target>",
+        "drydock run quarterdeck <Target> [--host HOST] [--port PORT]",
+        "drydock import <Blueprint> <Source> --format <auto|markdown|source|speckit>",
+        "drydock validate <Blueprint> [--verbose]",
+        "drydock analyze <Blueprint> [<Target>]",
+        "drydock plan create <Blueprint> <Target>",
+        "drydock build <Blueprint> <Target>",
+        "drydock build status <Blueprint> <Target>",
+        "drydock build score <Blueprint> <Target>",
+        "drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>",
+        "drydock rigging compact <Blueprint> [--all] [--force]",
+        "drydock rigging update <Target>",
+        "drydock rigging verify <Target>",
+        "drydock document <Blueprint> <Target>",
+        "drydock document generate <Blueprint> <Target>",
+        "drydock document assemble <Blueprint> <Target>",
+    )
+
+    for command in expected:
+        assert f"```text\n{command}\n```" in specification
+
+    for nonexistent in ("drydock conform", "drydock plan validate", "drydock plan approve"):
+        assert nonexistent not in specification

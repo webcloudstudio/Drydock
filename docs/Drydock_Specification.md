@@ -83,12 +83,162 @@ flowchart LR
   ITERATE --> PLAN
 ```
 
-## Drydock Setup - Laying Your Keel
+## The drydock CLI
 
-Drydock setup installs the CLI, records user-scoped configuration, and initializes a Target
-workspace. Process environment variables override the user-scoped Drydock `.env`. Configured
-Blueprint and Target roots never belong in project `METADATA.md`.
+```text
+drydock <verb> [<sub-verb>] [arguments] [--options]
+```
 
+The Drydock CLI uses two common arguments:
+
+| Definition | Meaning |
+|---|---|
+| `<Blueprint>` | Blueprint name relative to `BLUEPRINT_DIRECTORY` |
+| `<Target>` | Target project name relative to `TARGET_DIRECTORY` |
+
+### Global commands
+
+```text
+drydock --help
+```
+
+Shows the public command surface.
+
+```text
+drydock --version
+```
+
+Shows the installed Drydock version.
+
+### Setup commands
+
+```text
+drydock config show
+```
+
+Shows effective configuration values and their sources.
+
+```text
+drydock config set <key> <value>
+```
+
+Sets one of: `blueprint_directory`, `target_directory`, `llm_provider`, `prompt_warn_kb`, or
+`quarterdeck_port`.
+
+```text
+drydock init <Target>
+```
+
+Creates the specification-independent Target baseline and QuarterDeck.
+
+```text
+drydock run quarterdeck <Target> [--host HOST] [--port PORT]
+```
+
+Starts the Target's QuarterDeck service.
+
+### Planning commands
+
+```text
+drydock import <Blueprint> <Source> --format <auto|markdown|source|speckit>
+```
+
+Imports source material into a Blueprint. Markdown import works now; source and Spec Kit conversion
+remain deferred.
+
+```text
+drydock validate <Blueprint> [--verbose]
+```
+
+Validates a Blueprint's Typed Specification files.
+
+```text
+drydock analyze <Blueprint> [<Target>]
+```
+
+Performs read-only analysis of Blueprint gaps and, when a Target is supplied, implementation drift.
+This command is currently deferred.
+
+```text
+drydock plan create <Blueprint> <Target>
+```
+
+Creates the draft executable `BUILD_PLAN.md` and Target Planning Session.
+
+### Build commands
+
+```text
+drydock build <Blueprint> <Target>
+```
+
+Builds the next runnable frontier. This command is currently deferred.
+
+```text
+drydock build status <Blueprint> <Target>
+```
+
+Shows plan state and the current runnable frontier.
+
+```text
+drydock build score <Blueprint> <Target>
+```
+
+Generates `SCORECARD.md`. This command is currently deferred.
+
+### Change command
+
+```text
+drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
+```
+
+Updates Blueprint and Target together, or limits the change to the selected side. This command is
+currently deferred.
+
+### Rigging commands
+
+```text
+drydock rigging compact <Blueprint> [--all] [--force]
+```
+
+Refreshes stale compact derivatives; `--all` includes Drydock Rigging and `--force` ignores
+freshness.
+
+```text
+drydock rigging update <Target>
+```
+
+Propagates current Rigging to a Target. This command is currently deferred.
+
+```text
+drydock rigging verify <Target>
+```
+
+Verifies Target compliance with Drydock Rigging. This command is currently deferred.
+
+### Documentation commands
+
+```text
+drydock document <Blueprint> <Target>
+```
+
+Runs documentation generation and assembly. This command is currently deferred.
+
+```text
+drydock document generate <Blueprint> <Target>
+```
+
+Generates `DOC-*.md` summaries. This command is currently deferred.
+
+```text
+drydock document assemble <Blueprint> <Target>
+```
+
+Assembles existing `DOC-*.md` files into `docs/index.html`.
+
+## Phase 1 - Drydock Setup - Laying Your Keel
+
+Install Drydock, configure its roots and runtime defaults, then initialize the Target.
+Process environment variables override values stored in Drydock's user-scoped `.env`.
 
 ```mermaid
 flowchart LR
@@ -100,31 +250,17 @@ flowchart LR
   INIT --> TARGET(["Target Baseline"]):::dir
 ```
 
-| Step | Command | Description |
-|---|---|---|
-| **Install** | `pip install drydock` | User installs Drydock. |
-| **Config** | `drydock config set ...` | User sets `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and planning defaults.<br>output: user-scoped Drydock `.env`. |
-| **Initialize** | `drydock init <Target>` | Drydock creates the specification-independent Target baseline and QuarterDeck.<br>output: `<TARGET_DIRECTORY>/<Target>/`. |
-
-### Drydock Environment (.env)
+### Drydock Environment Variables (.env)
 
 | Variable | Purpose |
 |---|---|
 | `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Blueprints |
-| `TARGET_DIRECTORY` | Root path containing all target software projects |
-| `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
-| `PROMPT_WARN_KB` | Warn when a build block's assembled prompt exceeds this size in KB (default `50`) |
+| `TARGET_DIRECTORY` | Root path containing all Target projects |
+| `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
+| `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
+| `QUARTERDECK_PORT` | Default QuarterDeck service port |
 
-### drydock config
-```text
-drydock config show                               # display current configuration
-drydock config set <key> <value>
-```
-
-### drydock init
-
-`drydock init <Target>` initializes the Target baseline. It does not read, create, or require a
-Blueprint or Typed Specification. Existing baseline files are preserved.
+### Initialized Target
 
 ```text
 <TARGET_DIRECTORY>/<Target>/
@@ -142,100 +278,36 @@ Blueprint or Typed Specification. Existing baseline files are preserved.
     └── tickets.json
 ```
 
-## Drydock Project Planning
+## Phase 2 - Drydock Project Planning (Agile)
 
-Planning turns available project material into a validated, accepted build plan. Conformance is
-optional: `drydock plan create` uses whatever Blueprint inputs are available, including preserved
-Markdown under `<Blueprint>/sources/`.
+Planning turns imported source material into a reviewable, executable build plan.
 
-| Step | Command | Description |
-|---|---|---|
-| **Import** | `drydock import <Blueprint> <Source> --format <Format>` | Drydock imports the user's Markdown.<br>output: `<Blueprint>/sources/`. |
-| **Analyze** | `drydock analyze <Blueprint> <Target>` | LLM identifies gaps, recommendations, questions, configuration choices, and potential spikes.<br>output: `<Target>/QuarterDeck/planning/ANALYSIS.md` and `<Target>/QuarterDeck/questionnaires/planning.json`. |
-| **User Review** | `QuarterDeck Review` | User answers planning questions and sets build options.<br>input: QuarterDeck analysis and questionnaire.<br>output: `<Blueprint>/BUILD_CONFIGURATION.md`. |
-| **Conform** | `drydock conform <Blueprint>` | LLM optionally converts available source material using the approved build configuration.<br>input: `<Blueprint>/sources/` and `<Blueprint>/BUILD_CONFIGURATION.md`.<br>output: Typed Specification files under `<Blueprint>/`. |
-| **Create** | `drydock plan create <Blueprint> <Target>` | LLM creates the Draft plan from all available Blueprint inputs and selected build rules.<br>output: `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
-| **User Review** | `QuarterDeck Review` | User reviews the Draft plan; orders and groups work.<br>input/output: `<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`. |
-| **Validate** | `drydock plan validate <Blueprint> <Target>` | Drydock validates the Draft plan.<br>input: `<Target>/BUILD_PLAN.md`.<br>output: validation result. |
-| **Approve** | `drydock plan approve <Blueprint> <Target>` | User accepts the validated Draft plan.<br>output: `<Target>/BUILD_PLAN.md` state changes from Draft to Accepted. |
+1. Import source material into a Blueprint with `drydock import`.
+2. Validate Typed Specification files with `drydock validate` when applicable.
+3. Use `drydock analyze` when gaps or drift need investigation.
+4. Create the draft executable plan with `drydock plan create`.
+5. Review and approve the complete plan in the Target's QuarterDeck Planning Session.
 
-Planning artifacts have three distinct ownership and persistence classes:
+`drydock plan create` reads all available Blueprint inputs, writes
+`<Blueprint>/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
+Session. A draft plan has no runnable frontier. QuarterDeck approval establishes the executable
+baseline and exposes the runnable frontier.
 
-- `<Blueprint>/sources/` — preserved imported source material.
-- `<Blueprint>/BUILD_CONFIGURATION.md` — durable user decisions that affect conformance and
-  planning.
-- `<Target>/QuarterDeck/planning/` and `<Target>/QuarterDeck/questionnaires/` — disposable analysis
-  and questionnaire presentation artifacts.
+## Phase 3 - Drydock Build
 
-## Drydock commands
+The build phase executes the accepted plan, reports progress, and measures delivery health.
 
-```text
-drydock <verb> [<sub-verb>] [arguments] [--options]
-```
+1. Inspect current plan state with `drydock build status`.
+2. Execute the next runnable frontier with `drydock build`.
+3. Measure delivery health with `drydock build score`.
 
-### Command key
+Every Target has one executable `BUILD_PLAN.md` stored in its Target root beside execution evidence,
+logs, and the QuarterDeck projection.
 
-| Notation | Meaning |
-|---|---|
-| `<Blueprint>` | Blueprint name, relative to `BLUEPRINT_DIRECTORY` |
-| `<Target>` | Target project name, relative to `TARGET_DIRECTORY` |
+## Phase 4 - Drydock Change
 
-This section shows the primary workflows. Complete operational options belong in command help and
-man pages.
-
-### Initialize and validate
-
-| Syntax | Purpose |
-|---|---|
-| `drydock init <Target>` | Initialize the specification-independent Target baseline and QuarterDeck |
-| `drydock validate <Blueprint>` | Validate Blueprint completeness and conventions |
-
-### Plan
-
-| Syntax | Purpose |
-|---|---|
-| `drydock plan create <Blueprint> <Target>` | Produce a draft executable plan and target-local Planning Session |
-| `drydock plan validate <Blueprint> <Target>` | Validate the draft executable plan |
-| `drydock plan approve <Blueprint> <Target>` | Accept the validated draft plan |
-
-`drydock plan create` reads all available Blueprint inputs and selected build rules, then writes a
-draft `<Target>/BUILD_PLAN.md`. Available inputs may be conformed Typed Specifications, preserved
-Markdown under `<Blueprint>/sources/`, or both. Input inventory and `BUILD_PLAN_INTENT.md`
-maintenance are internal parts of this command, not a separate user ceremony. It also creates the
-target workspace and generates its QuarterDeck Planning Session. A draft plan has no runnable
-frontier. During User Review, the product owner orders and groups work. Approval establishes the
-executable baseline and makes its frontier runnable.
-
-Every Target has one executable **BUILD_PLAN.md** stored in its Target root beside its execution
-evidence, logs, and QuarterDeck projection.
-
-### Build
-
-| Syntax | Purpose |
-|---|---|
-| `drydock build <Blueprint> <Target>` | Build next frontier according to `BUILD_PLAN.md` |
-| `drydock build status <Blueprint> <Target>` | Show per-block build state and current runnable frontier |
-| `drydock build score <Blueprint> <Target>` | Generate `SCORECARD.md` — measure delivery health across seven dimensions |
-
-### Change, import, and analyze
-
-| Syntax | Purpose |
-|---|---|
-| `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> "<Change>"` | Update Blueprint files and target software |
-| `drydock import <Blueprint> <Source> --format <auto\|markdown\|source\|speckit>` | Preserve Markdown input or reverse-engineer an existing project into a proposed Blueprint |
-| `drydock analyze <Blueprint> [<Target>]` | Read-only advisory: surface open questions, coverage gaps, and drift between Blueprint and built application |
-| `drydock conform <Blueprint>` | Optionally convert available source material into Typed Specifications using approved build configuration |
-
-### Drydock Rigging
-
-| Syntax | Purpose |
-|---|---|
-| `drydock rigging compact <Blueprint> [--all] [--force]` | Refresh stale compact derivatives in the Blueprint (required pairs + any `*_compact.md` pair); `--all` also refreshes Rigging |
-| `drydock rigging update <Target>` | Propagate current Drydock rigging to a target project |
-| `drydock rigging verify <Target>` | Verify target project compliance with Drydock rigging |
-| `drydock document <Blueprint> <Target>` | Full pipeline: generate then assemble |
-| `drydock document generate <Blueprint> <Target>` | AI pass only: create or overwrite all `DOC-*.md` summaries; destructive |
-| `drydock document assemble <Blueprint> <Target>` | Assembly only: render existing `DOC-*.md` into `docs/index.html`; no AI |
+`drydock iterate` is the post-build change workflow. It updates the Blueprint, Target, or both,
+then returns the affected work to planning and build execution.
 
 ## Rigging - Business Rules Compatibility
 
@@ -354,7 +426,7 @@ build stops:
 DATABASE_compact.md not found — run: drydock rigging compact <Blueprint>
 ```
 
-`drydock plan` reports a staleness warning when a source file is newer than its compact derivative.
+`drydock plan create` reports a staleness warning when a source file is newer than its compact derivative.
 Run `drydock rigging compact <Blueprint>` after any edit to `DATABASE.md` or `BUSINESS_RULES.md`.
 
 ### Update and verify
@@ -514,25 +586,25 @@ decisions the changes imply. Inference is lossy — a diff shows what changed, n
 analysis is the audit trail and backfill mechanism, not the primary capture. `drydock analyze`
 reports specification changes not covered by a Ship's Log entry.
 
-## Typed Specification Contract
+## Blueprints - Typed Specification Contracts
 
-### Artifact lifecycle
+### Blueprint lifecycle
 
 **Project records** — identity and introduction; not part of the Typed Specification Contract and
 not authored as specification files.
 
 - **`METADATA.md`** — Project identity, relationships, status, and stack
-  - Created: `drydock import` (proposal); `drydock conform`
+  - Created: `drydock import` conversion
   - Updated: Product owner; platform metadata operations
 
 - **`README.md`** — Short human introduction to the Blueprint
-  - Created: `drydock import` (proposal); `drydock conform`; Manual; other
+  - Created: `drydock import` conversion; Manual; other
   - Updated: Product owner
 
 **Human-authored** — the product intent explicitly owned by the product owner.
 
 - **`INTENT.md`** — Product intent, constraints, success criteria, guardrails, and open questions
-  - Created: `drydock import` (proposed intent); `drydock conform`
+  - Created: `drydock import` conversion
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
@@ -541,62 +613,37 @@ not authored as specification files.
 
 - **`BUILD_CONFIGURATION.md`** — Durable product-owner decisions controlling conformance and planning
   - Created and updated: QuarterDeck Planning Session User Review
-  - Used by: `drydock conform <Blueprint>` and `drydock plan create <Blueprint> <Target>`
+  - Used by: `drydock plan create <Blueprint> <Target>`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
 updated by `drydock iterate` as specification files and application code evolve.
 
 - **`ARCHITECTURE.md`** — Modules, routes, boundaries, interfaces, and technical decisions
-  - Created: `drydock import` (proposal); `drydock conform`
+  - Created: `drydock import` conversion
   - Updated: `drydock iterate` (architecture-scoped)
 
 - **`DATABASE.md`** — Persistence stores, schemas, migrations, and typed access classes
-  - Created: `drydock import` (proposal); `drydock conform`
+  - Created: `drydock import` conversion
   - Updated: `drydock iterate` (data-scoped)
 
-> **DATABASE.md enforces data access encapsulation.**
->
-> No application code calls the database directly. Every table, config store, file store, and
-> external service is accessed through a typed Python class. Route and business-logic code calls
-> `db.items.get(id)` — never raw SQL.
->
-> This eliminates a class of subtle bugs. A schema change — a timezone-aware datetime field
-> replacing a naive one, for example — requires changing only the encapsulation class. Downstream
-> code depends on the interface, not the storage detail, so nothing else breaks. Without the
-> boundary, the same change propagates silently to every callsite.
->
-> A code review that finds raw SQL, `os.environ` reads, `open()` on application data, or a cloud
-> SDK import outside its encapsulation class fails.
->
-> **Typed class library pattern.** `DATABASE.md` specifies both the schema and the Python classes
-> that encapsulate it. Each table maps to a `@dataclass` row type with fully typed fields. A
-> `Database` class owns the connection, manages the session lifecycle, and exposes only named
-> methods — no caller ever receives a raw cursor or row tuple. Methods raise domain exceptions
-> (`ItemNotFound`, `StorageError`) rather than propagating driver exceptions. The `Database` class
-> is instantiated once at application startup and passed by dependency injection; it is never
-> re-opened inline.
->
-> `DATABASE_compact.md` is the LLM-generated derivative containing only class names, method
-> signatures, parameter types, return types, and one-line summaries. Non-foundational build steps
-> inject the compact form. Only the story that `implements: DATABASE.md` — the one that builds the
-> class library — receives the full file.
-
 - **`FEATURE-{Name}.md`** — Feature purpose, status, behavior, reads, writes, routes, criteria, and guardrails
-  - Created: `drydock import`; `drydock conform`; accepted change reconciliation
+  - Created: `drydock import` conversion; accepted change reconciliation
   - Updated: `drydock iterate` (feature-scoped)
 
 - **`SCREEN-{Name}.md`** — Screen route, layout, interactions, and criteria
-  - Created: `drydock import`; `drydock conform`; accepted change reconciliation
+  - Created: `drydock import` conversion; accepted change reconciliation
   - Updated: `drydock iterate` (screen-scoped)
 
 - **`UI-GENERAL.md`** — Shared UI behavior and visual rules
-  - Created: `drydock import` or `drydock conform` when the project has a UI
+  - Created: `drydock import` conversion when the project has a UI
   - Updated: `drydock iterate` (UI-scoped)
 
 - **`changes/TICKET-NNN-{Name}.md`** — Post-baseline change, defect, or spike request
   - Created: Product owner or change intake workflow
   - Updated: Clarification, planning, build execution, evidence, review, and reconciliation
-  - Processing: Additional specification files are detected by `drydock plan`, placed in `BUILD_PLAN_INTENT.md` for ordering, and can be processed using `drydock build` one by one if needed. Context and needed related files are automatically added.
+  - Processing: Additional specification files are detected by `drydock plan create`, placed in
+    `BUILD_PLAN_INTENT.md` for ordering, and processed by `drydock build`. Required context is added
+    automatically.
 
 **Process Created Artifacts** — generated by Drydock commands; not authored directly.
 
@@ -638,11 +685,11 @@ build and review actions.
   - Created and updated: `drydock build` from `BUILD_PLAN.md`
   - Drydock follows feature/story best practices with acceptance criteria embedded
 
-### Specification File Format Standards
+### Blueprint Format Standards
 
 Every authored Specification file except `METADATA.md` and `README.md` opens with a typed heading
 and header table, followed by body sections specific to the file type, and ends with three common
-terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCREEN-specific
+terminal sections. `drydock plan create` computes `Depends On`, `Provides`, and the SCREEN-specific
 `Consumes` — do not edit these manually.
 
 ```markdown
@@ -653,32 +700,34 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 | Version     | 20260608 V1                    ← YYYYMMDD V<n>; increment on every write |
 | Description | One sentence summary. |
 | Route       | /catalog                       ← SCREEN only; required; the URL this screen serves |
-| Consumes    | GET /catalog/items             ← SCREEN only; routes called; computed by drydock plan (optional) |
+| Consumes    | GET /catalog/items             ← SCREEN only; routes called; computed by drydock plan create (optional) |
 | Nav Order   | 3                              ← SCREEN only; integer presentation order (optional) |
-| Depends On  | ARCHITECTURE.md, GET /catalog  ← file or route; computed by drydock plan |
-| Provides    | GET /catalog, POST /catalog   ← routes this file exposes; computed by drydock plan |
-| Build Order | 2                             ← integer; assigned by drydock plan when useful |
+| Depends On  | ARCHITECTURE.md, GET /catalog  ← file or route; computed by drydock plan create |
+| Provides    | GET /catalog, POST /catalog   ← routes this file exposes; computed by drydock plan create |
+| Build Order | 2                             ← integer; assigned by drydock plan create when useful |
 
 {body sections specific to the file type}
 
-## Acceptance Criteria
+## Blueprint Acceptance Criteris Section
 ← Positive, testable outcomes. State as bullet assertions.
 
-## Guardrails
+## Blueprint Guardrails Section
 ← Permanent negative assertions. Guard against model hallucination, not spec omission.
 
-## Open Questions
+## Blueprint Open Questions Section
 ← Unresolved decisions that must be answered before this file can be fully implemented.
 ```
 
 A SCREEN file referencing a route not listed in any FEATURE `Provides` field is a
 `drydock validate` error.
 
-### Interface Points Beyond Routes
+### Specification Decomposition Methedology
 
-HTTP routes are one interface vocabulary, not the only one. `Provides`, `Consumes`, and
-`Depends On` name the system's contract surface; the dependency hierarchy requires named
-interface points, not a web application.
+Our optimized decomposition methodology is for web applications. Each service that provides a web
+route is a feature specification file. Each screen is a screen specification file. This structure
+populates `Provides`, `Consumes`, and `Depends On`.
+
+Other applications can use different decomposition methods
 
 | System shape | Interface points named in `Provides` / `Consumes` |
 |---|---|
@@ -688,10 +737,35 @@ interface points, not a web application.
 | Data pipeline | Datasets, tables, and files produced and consumed |
 | Event-driven system | Topics, queues, and event types |
 
-SCREEN files apply only to systems with a UI. Other system shapes omit them; the FEATURE,
-ARCHITECTURE, and DATABASE files carry the dependency hierarchy alone.
+## Database Encapsulation
 
-## BUILD_PLAN.md
+**DATABASE.md enforces data access encapsulation.**
+
+No application code calls the database directly. Every table, config store, file store, and external
+service is accessed through a typed Python class. Route and business-logic code calls
+`db.items.get(id)` — never raw SQL.
+
+This eliminates a class of subtle bugs. A schema change — a timezone-aware datetime field replacing
+a naive one, for example — requires changing only the encapsulation class. Downstream code depends
+on the interface, not the storage detail, so nothing else breaks. Without the boundary, the same
+change propagates silently to every callsite.
+
+A code review that finds raw SQL, `os.environ` reads, `open()` on application data, or a cloud SDK
+import outside its encapsulation class fails.
+
+**Typed class library pattern.** `DATABASE.md` specifies both the schema and the Python classes that
+encapsulate it. Each table maps to a `@dataclass` row type with fully typed fields. A `Database`
+class owns the connection, manages the session lifecycle, and exposes only named methods — no caller
+ever receives a raw cursor or row tuple. Methods raise domain exceptions (`ItemNotFound`,
+`StorageError`) rather than propagating driver exceptions. The `Database` class is instantiated once
+at application startup and passed by dependency injection; it is never re-opened inline.
+
+`DATABASE_compact.md` is the LLM-generated derivative containing only class names, method
+signatures, parameter types, return types, and one-line summaries. Non-foundational build steps
+inject the compact form. Only the story that `implements: DATABASE.md` — the one that builds the
+class library — receives the full file.
+
+## The Manifest - BUILD_PLAN.md
 
 `BUILD_PLAN.md` is the single generated execution view of the Blueprint. It determines order,
 selects only required context, keeps work within useful context limits, identifies stale work, and
@@ -731,9 +805,7 @@ plan_hash:   abc123456789
 state:       draft
 ```
 
-Build provenance lives in the execution log, not the plan header: every build block records the
-content hash of each specification, stack, and prompt file injected into it. The plan header
-carries only the plan's own identity.
+Build provenance lives in the execution log, not the plan header: every build block records the content hash of each specification, stack, and prompt file injected into it. The plan header carries only the plan's own identity.
 
 ### Story
 
@@ -1091,7 +1163,7 @@ analysis and questionnaire. It does not create or modify `BUILD_PLAN.md`.
    detail that would create uncertainty during a build.
 2. `drydock analyze <Blueprint> <Target>` — compare the Blueprint against the built application;
    identify drift, incomplete implementation, and candidates for the next iteration.
-3. Apply findings with `drydock iterate` or `drydock plan` as appropriate.
+3. Apply findings with `drydock iterate` or `drydock plan create` as appropriate.
 
 `drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
 Planning Session outputs before running `drydock plan create`.
