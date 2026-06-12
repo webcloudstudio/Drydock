@@ -61,29 +61,45 @@ variables).
 
 ## Process Diagrams (mermaid)
 
-Process diagrams are **shape + color carry meaning, very few details.** Prefer `flowchart LR`,
-five-to-seven nodes, short labels. Reuse the canonical `classDef` block (matches `docs/workflows.js`):
+Process diagrams are **shape + color carry meaning, very few details.** Every diagram is
+`flowchart LR` with **four to seven nodes** — never fewer, never more. A reader who has seen one
+Drydock diagram can read them all: same colors, same shapes, same size on the page.
+
+Paste the canonical `classDef` block verbatim into **every** diagram, even when a class is unused.
+This keeps diagrams copy-paste consistent and stops per-diagram drift:
 
 ```
 classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
 classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
-classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff
+classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
 classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
 classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
+classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 ```
 
 | Class | Color | Shape | Means |
 |-------|-------|-------|-------|
-| `dir` | green | stadium `(["…"])` | source / directory / specification input |
-| `md` | gold | hexagon `{{"…"}}` | markdown plan or generated artifact |
-| `script` | blue | rect `["…"]` | script / process / monitor |
+| `dir` | green | stadium `(["…"])` | source: directory, Blueprint, or specification input |
+| `md` | gold | hexagon `{{"…"}}` | generated markdown artifact (`BUILD_PLAN.md`, `*_compact.md`, `SCORECARD.md`, evidence) |
+| `script` | blue | rect `["…"]` | a `drydock` verb or process step |
 | `prompt` | orange | stadium `(["…"])` | AI prompt / spike run |
-| `output` | purple | stadium `(["…"])` | product / final output |
+| `output` | purple | stadium `(["…"])` | delivered product (working software, published HTML) |
+| `web` | crimson | rect `["…"]` | QuarterDeck / interactive web console |
+
+Node labels:
+
+- One or two words. Blue nodes carry the verb only (`import`, `plan create`, `rigging compact`) —
+  never the full command line. Gold and green nodes carry the exact filename or a two-word noun.
+- The same concept always gets the same label and class in every diagram. `BUILD_PLAN.md` is always
+  a gold hexagon; the QuarterDeck is always a crimson rect; a Blueprint is always a green stadium.
 
 Conventions:
-- Solid arrows `-->` for the main flow; dashed `-.->` for monitor / feedback links.
+
+- Solid arrows `-->` for the main flow; dashed `-.->` for feedback / decision write-back links.
 - Initialize mermaid with `theme:'neutral', flowchart:{curve:'linear'}`.
 - Wrap each diagram in `.wp-diagram` (panel `--c-pre-bg`, border `--c-td-border`); add a one-line
   italic `.wp-diagram-cap` beneath it.
 - Include a small swatch legend when shapes/colors first appear.
-- Never encode fine detail in a diagram — that belongs in a table or the prose.
+- Never encode fine detail in a diagram — that belongs in a table or the prose. The four-to-seven
+  node band is what keeps rendered diagrams a uniform size; if a flow needs more nodes, split it
+  into two diagrams or cut it back to the decision the reader must understand.
