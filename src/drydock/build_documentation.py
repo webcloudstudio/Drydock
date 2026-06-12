@@ -117,7 +117,7 @@ def render_page(metadata: dict[str, object], body: str) -> str:
 <style>
 :root {{
   --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
-  --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5;
+  --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--paper); color: var(--ink);
@@ -147,7 +147,7 @@ h1 {{ font-size: 40px; line-height: 1.1; margin: 8px 0 12px; }}
 #content th, #content td {{ border: 1px solid var(--line); padding: 7px 10px; text-align: left; }}
 #content th {{ background: var(--navy); color: white; }}
 #content code {{ background: var(--code); border-radius: 3px; padding: 1px 4px; }}
-#content pre {{ background: var(--navy); color: #eaf2f5; overflow-x: auto; padding: 15px; }}
+#content pre {{ background: var(--pre-bg); color: var(--ink); overflow-x: auto; padding: 15px; border-left: 3px solid var(--line); }}
 #content pre code {{ background: transparent; padding: 0; }}
 #content blockquote {{ border-left: 4px solid var(--green); color: var(--muted);
   margin-left: 0; padding: 2px 18px; }}
