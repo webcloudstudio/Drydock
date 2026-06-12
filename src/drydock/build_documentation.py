@@ -121,41 +121,57 @@ def render_page(metadata: dict[str, object], body: str) -> str:
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--paper); color: var(--ink);
-  font: 15px/1.65 "Segoe UI", Arial, sans-serif; }}
-header {{ background: var(--navy); color: white; padding: 12px 28px;
+  font: 14px/1.5 "Segoe UI", Arial, sans-serif; }}
+header {{ background: var(--navy); color: white; padding: 10px 28px;
   display: flex; justify-content: space-between; gap: 24px; }}
 header strong {{ letter-spacing: .04em; }}
 header span {{ color: #c8d6df; font-size: 12px; }}
-main {{ max-width: 980px; margin: 0 auto; padding: 40px 32px 80px; }}
+main {{ max-width: 980px; margin: 0 auto; padding: 32px 32px 60px; }}
 .cover {{ background: var(--panel); border-top: 5px solid var(--green);
-  border-bottom: 1px solid var(--line); padding: 30px; margin-bottom: 28px; }}
+  border-bottom: 1px solid var(--line); padding: 24px 30px; margin-bottom: 22px; }}
 .eyebrow {{ color: var(--green); font-size: 11px; font-weight: 700;
   letter-spacing: .14em; text-transform: uppercase; }}
-h1 {{ font-size: 40px; line-height: 1.1; margin: 8px 0 12px; }}
-.subtitle {{ color: var(--muted); font-size: 17px; max-width: 800px; }}
-.meta {{ color: var(--muted); display: flex; gap: 18px; margin-top: 20px; font-size: 13px; }}
-.ideas {{ margin: 0 0 32px; }}
-.ideas h2, #content h2 {{ border-bottom: 2px solid var(--green); padding-bottom: 5px; }}
+h1 {{ font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }}
+.subtitle {{ color: var(--muted); font-size: 15px; max-width: 800px; }}
+.meta {{ color: var(--muted); display: flex; gap: 18px; margin-top: 14px; font-size: 12px; }}
+.ideas {{ margin: 0 0 22px; }}
+.ideas h2, #content h2 {{ border-bottom: 2px solid var(--green); padding-bottom: 4px; }}
 .idea {{ background: var(--panel); border-left: 4px solid var(--green);
-  margin: 10px 0; padding: 12px 16px; }}
-.idea ul {{ margin-bottom: 0; }}
-#content {{ background: var(--panel); border: 1px solid var(--line); padding: 30px; }}
-#content h2 {{ margin-top: 38px; }}
+  margin: 8px 0; padding: 8px 14px; }}
+.idea ul {{ margin: 4px 0 0; }}
+#content {{ background: var(--panel); border: 1px solid var(--line); padding: 26px 30px; }}
+#content h2 {{ margin-top: 28px; margin-bottom: 10px; }}
 #content h2:first-child {{ margin-top: 0; }}
-#content h3 {{ color: var(--green); margin-top: 26px; }}
-#content table {{ border-collapse: collapse; display: block; overflow-x: auto; width: 100%; }}
-#content th, #content td {{ border: 1px solid var(--line); padding: 7px 10px; text-align: left; }}
-#content th {{ background: var(--pre-bg); color: var(--ink); }}
-#content code {{ background: var(--code); border-radius: 3px; padding: 1px 4px; }}
-#content pre {{ background: var(--pre-bg); color: var(--ink); overflow-x: auto; padding: 15px; border-left: 3px solid var(--line); }}
-#content pre code {{ background: transparent; padding: 0; }}
-#content blockquote {{ border-left: 4px solid var(--green); color: var(--muted);
-  margin-left: 0; padding: 2px 18px; }}
-.diagram {{ background: white; border: 1px solid var(--line); overflow-x: auto; padding: 16px; }}
-footer {{ color: var(--muted); font-size: 12px; padding: 20px 28px; text-align: center; }}
+#content h3 {{ color: var(--green); margin-top: 18px; margin-bottom: 6px; }}
+#content p {{ margin: 6px 0 10px; }}
+#content table {{ border-collapse: collapse; display: block; overflow-x: auto; width: 100%; margin: 8px 0; }}
+#content th, #content td {{ border: 1px solid var(--line); padding: 3px 8px; text-align: left; }}
+#content th {{ background: var(--pre-bg); color: var(--ink); font-size: 13px; }}
+#content td {{ font-size: 13px; }}
+#content code {{ background: var(--code); border-radius: 3px; padding: 1px 4px; font-size: 13px; }}
+#content pre {{ background: var(--pre-bg); color: var(--ink); overflow-x: auto;
+  padding: 10px 14px; margin: 6px 0 12px; border-left: 3px solid var(--line); font-size: 13px; }}
+#content pre code {{ background: transparent; padding: 0; font-size: inherit; }}
+#content blockquote {{ border-left: 4px solid var(--green); background: var(--paper);
+  color: var(--muted); font-style: italic; margin: 14px 0 14px 18px;
+  padding: 10px 18px; border-radius: 0 3px 3px 0; }}
+#content blockquote p {{ margin: 4px 0; }}
+#content ul, #content ol {{ margin: 6px 0 10px; padding-left: 24px; }}
+#content li {{ margin-bottom: 3px; }}
+.diagram {{ background: white; border: 1px solid var(--line); overflow-x: auto; padding: 14px; margin: 8px 0; }}
+footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: center; }}
 @media (max-width: 680px) {{
-  main {{ padding: 20px 12px 50px; }} .cover, #content {{ padding: 20px; }}
-  header, .meta {{ flex-direction: column; gap: 4px; }} h1 {{ font-size: 32px; }}
+  main {{ padding: 16px 12px 40px; }} .cover, #content {{ padding: 16px; }}
+  header, .meta {{ flex-direction: column; gap: 4px; }} h1 {{ font-size: 28px; }}
+}}
+@media print {{
+  header, footer {{ display: none; }}
+  body {{ background: white; font-size: 12px; line-height: 1.45; }}
+  main {{ padding: 0; max-width: 100%; }}
+  #content {{ border: none; padding: 0; }}
+  .cover {{ border-top: 3px solid var(--green); padding: 16px; }}
+  #content pre, #content blockquote {{ break-inside: avoid; }}
+  #content h2, #content h3 {{ break-after: avoid; }}
 }}
 </style>
 </head>
