@@ -82,8 +82,7 @@ class TestStatusCurrent:
     def test_returns_none_when_no_activity_and_no_plan(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
     ):
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
         monkeypatch.chdir(tmp_target_root)
         result = status_current(tmp_spec_root, tmp_target_root)
         assert result is None
@@ -95,8 +94,7 @@ class TestStatusCurrent:
         tgt.mkdir()
         (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN, encoding="utf-8")
         monkeypatch.chdir(tgt)
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
         result = status_current(tmp_spec_root, tmp_target_root)
         assert result is not None
         assert result.blueprint == "TestProject"
@@ -110,8 +108,7 @@ class TestStatusCurrent:
         tgt.mkdir()
         (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN, encoding="utf-8")
         monkeypatch.chdir(tmp_spec_root)
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
 
         from drydock.config import record_activity
 

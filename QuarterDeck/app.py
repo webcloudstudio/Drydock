@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import sqlite3
 from collections.abc import Callable
@@ -53,8 +54,21 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent  # the project that contains QuarterDeck/
+# The console runtime may live in the package while its state lives in a Target
+# tree. ``QUARTERDECK_DIR`` overrides the state directory (holding console.yaml,
+# data/, and item paths); ``QUARTERDECK_PROJECT_ROOT`` overrides the project root
+# used by source globbing. Both default to a runtime that sits inside the Target.
+_RUNTIME_DIR = Path(__file__).resolve().parent
+BASE_DIR = (
+    Path(os.environ["QUARTERDECK_DIR"]).resolve()
+    if os.environ.get("QUARTERDECK_DIR")
+    else _RUNTIME_DIR
+)
+PROJECT_ROOT = (
+    Path(os.environ["QUARTERDECK_PROJECT_ROOT"]).resolve()
+    if os.environ.get("QUARTERDECK_PROJECT_ROOT")
+    else BASE_DIR.parent  # the project that contains QuarterDeck/
+)
 CONFIG_PATH = BASE_DIR / "console.yaml"
 
 _DONE_STATES = {"done", "answered", "complete", "verified"}

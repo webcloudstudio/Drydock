@@ -72,38 +72,30 @@ class TestConfigShow:
     def test_config_show_runs(self, isolated_config):
         rc, out, err = run_cli("config", "show")
         assert rc == 0
-        assert "blueprint_directory" in out
-        assert "target_directory" in out
+        assert "drydock_workspace" in out
 
-    def test_config_show_not_set(self, isolated_config):
+    def test_config_show_defaults_when_unset(self, isolated_config):
         rc, out, _ = run_cli("config", "show")
-        assert "not set" in out
+        assert rc == 0
+        assert "drydock_workspace" in out
+        assert "(default)" in out
 
 
 class TestConfigSet:
     def test_config_set_valid(self, tmp_spec_root, isolated_config):
-        rc, out, err = run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        rc, out, err = run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
         assert rc == 0
-        assert "blueprint_directory" in out
-
-    def test_legacy_config_key_is_accepted(self, tmp_spec_root, isolated_config):
-        rc, out, err = run_cli("config", "set", "specification_directory", str(tmp_spec_root))
-        assert rc == 0
-        assert "blueprint_directory" in out
+        assert "drydock_workspace" in out
 
     def test_config_set_persists(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
         rc, out, _ = run_cli("config", "show")
-        assert str(tmp_spec_root) in out
+        assert str(tmp_spec_root.parent) in out
 
     def test_config_set_nonexistent_dir_fails(self, isolated_config):
-        rc, out, err = run_cli("config", "set", "blueprint_directory", "/does/not/exist")
+        rc, out, err = run_cli("config", "set", "drydock_workspace", "/does/not/exist")
         assert rc == 1
         assert "error" in err.lower()
-
-    def test_config_set_target_directory(self, tmp_target_root, isolated_config):
-        rc, out, err = run_cli("config", "set", "target_directory", str(tmp_target_root))
-        assert rc == 0
 
     def test_config_set_llm_provider(self, isolated_config):
         rc, out, err = run_cli("config", "set", "llm_provider", "codex")
@@ -123,29 +115,31 @@ class TestConfigSet:
 
 class TestInit:
     def test_init_creates_target_baseline(self, tmp_target_root, isolated_config):
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         rc, out, err = run_cli("init", "TestProject")
         assert rc == 0
         target = tmp_target_root / "TestProject"
         assert "Target:" in out
         for path in (
+            "target.yaml",
             "docs/.gitkeep",
             "evidence/.gitkeep",
             "logs/.gitkeep",
-            "QuarterDeck/app.py",
-            "QuarterDeck/requirements.txt",
             "QuarterDeck/console.yaml",
             "QuarterDeck/tickets.json",
             "QuarterDeck/pages/overview.md",
         ):
             assert (target / path).is_file(), f"{path} missing"
+        # The console runtime is served from the package, not copied into the target.
+        assert not (target / "QuarterDeck" / "app.py").exists()
+        assert not (target / "QuarterDeck" / "requirements.txt").exists()
         assert not (target / "METADATA.md").exists()
         assert not (target / "INTENT.md").exists()
 
     def test_init_is_idempotent_and_preserves_existing_files(
         self, tmp_target_root, isolated_config
     ):
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         run_cli("init", "TestProject")
         overview = tmp_target_root / "TestProject" / "QuarterDeck" / "pages" / "overview.md"
         overview.write_text("CUSTOM", encoding="utf-8")
@@ -157,17 +151,17 @@ class TestInit:
         assert "existing baseline files preserved" in out
 
     def test_init_rejects_blueprint_options(self, tmp_target_root, isolated_config):
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         rc, out, err = run_cli("init", "TestProject", "--force")
         assert rc == 2
 
     def test_init_rejects_path_traversal(self, tmp_target_root, isolated_config):
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         rc, out, err = run_cli("init", "../evil")
         assert rc == 1
 
     def test_init_rejects_empty_name(self, tmp_target_root, isolated_config):
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         rc, out, err = run_cli("init", "")
         assert rc != 0
 
@@ -176,7 +170,7 @@ class TestValidate:
     def _setup_spec(self, tmp_spec_root, isolated_config):
         from drydock.init_specification import init_specification
 
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
         init_specification("TestProject", tmp_spec_root)
         return tmp_spec_root / "TestProject"
 
@@ -186,7 +180,7 @@ class TestValidate:
         assert rc == 0  # warnings are OK, no failures expected after init
 
     def test_validate_nonexistent_spec_fails(self, tmp_spec_root, isolated_config):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
         rc, out, err = run_cli("validate", "DoesNotExist")
         assert rc == 1
 
@@ -224,7 +218,7 @@ class TestRiggingCompact:
         monkeypatch.setattr("drydock.rigging_compact.run_prompt", fake)
 
     def _setup_blueprint(self, tmp_spec_root, name="Proj", **files):
-        run_cli("config", "set", "blueprint_directory", str(tmp_spec_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_spec_root.parent))
         spec = tmp_spec_root / name
         spec.mkdir()
         for fname, body in (files or {"DATABASE.md": "class X: ...\n"}).items():
@@ -290,8 +284,7 @@ state: pending
         target = tmp_target_root / "ExampleTarget"
         target.mkdir()
         (target / "BUILD_PLAN.md").write_text(self.PLAN, encoding="utf-8")
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
 
     def test_build_status_reports_runnable_frontier(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
@@ -315,8 +308,7 @@ state: pending
 
 class TestPlanningSession:
     def _configure(self, tmp_spec_root, tmp_target_root, monkeypatch):
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
 
     def test_markdown_import_plan_create_and_approve(
         self, tmp_path, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
@@ -342,7 +334,7 @@ class TestPlanningSession:
         quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
         assert (quarterdeck / "console.yaml").is_file()
         assert (quarterdeck / "tickets.json").is_file()
-        assert (quarterdeck / "app.py").is_file()
+        assert not (quarterdeck / "app.py").exists()
         assert (tmp_target_root / "ExampleTarget" / "docs" / "SEA_TRIALS.md").is_file()
         soundings = tmp_target_root / "ExampleTarget" / "docs" / "SOUNDINGS.md"
         assert "Status command exits successfully." in soundings.read_text(encoding="utf-8")
@@ -466,13 +458,14 @@ class TestRunQuarterdeck:
     def _make_target(tmp_target_root, name: str = "MyTarget"):
         qd = tmp_target_root / name / "QuarterDeck"
         qd.mkdir(parents=True)
-        (qd / "app.py").write_text("# stub", encoding="utf-8")
+        # State-only console marker; the runtime is served from the package.
+        (qd / "console.yaml").write_text("project: x\n", encoding="utf-8")
         return tmp_target_root / name
 
     def test_run_quarterdeck_dispatches(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         self._make_target(tmp_target_root)
 
         calls: list = []
@@ -495,11 +488,13 @@ class TestRunQuarterdeck:
         assert "quarterdeck" in out
         assert "not implemented" not in out + err
 
-    def test_run_quarterdeck_without_target_uses_cwd(self, tmp_path, isolated_config, monkeypatch):
+    def test_run_quarterdeck_without_target_uses_sole_target(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
         from types import SimpleNamespace
 
-        self._make_target(tmp_path, ".")
-        monkeypatch.chdir(tmp_path)
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target = self._make_target(tmp_target_root, "OnlyTarget")
         calls: list = []
 
         def fake_run(target_dir, *, port, host):
@@ -510,13 +505,13 @@ class TestRunQuarterdeck:
         rc, out, err = run_cli("run", "quarterdeck")
 
         assert rc == 0
-        assert calls == [{"target_dir": tmp_path, "port": 8080, "host": "127.0.0.1"}]
-        assert str(tmp_path) in out
+        assert calls == [{"target_dir": target, "port": 8080, "host": "127.0.0.1"}]
+        assert str(target) in out
 
     def test_run_quarterdeck_custom_port(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         self._make_target(tmp_target_root)
 
         calls: list = []
@@ -533,7 +528,7 @@ class TestRunQuarterdeck:
     def test_run_quarterdeck_custom_host(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         self._make_target(tmp_target_root)
 
         calls: list = []
@@ -548,7 +543,7 @@ class TestRunQuarterdeck:
         assert calls[0] == "0.0.0.0"
 
     def test_run_quarterdeck_missing_app_py_raises(self, tmp_target_root, isolated_config):
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         (tmp_target_root / "Empty").mkdir()
         rc, out, err = run_cli("run", "quarterdeck", "Empty")
         assert rc == 1
@@ -557,7 +552,7 @@ class TestRunQuarterdeck:
     def test_run_quarterdeck_config_port_used(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 
-        run_cli("config", "set", "target_directory", str(tmp_target_root))
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         run_cli("config", "set", "quarterdeck_port", "7777")
         self._make_target(tmp_target_root)
 
@@ -597,8 +592,7 @@ class TestStatus:
         tgt = tmp_target_root / "TestTarget"
         tgt.mkdir()
         (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
 
     def test_status_blueprint_target_reports_plan_state(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
@@ -623,8 +617,7 @@ class TestStatus:
     def test_status_no_args_no_activity_exits_zero(
         self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
     ):
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_spec_root))
-        monkeypatch.setenv("TARGET_DIRECTORY", str(tmp_target_root))
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_spec_root.parent))
         monkeypatch.chdir(tmp_target_root)
         rc, out, err = run_cli("status")
         assert rc == 0

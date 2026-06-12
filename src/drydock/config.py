@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,9 +12,7 @@ from dotenv import dotenv_values, set_key
 from drydock.errors import ConfigurationError
 
 _KEY_MAP = {
-    "blueprint_directory": "BLUEPRINT_DIRECTORY",
-    "specification_directory": "BLUEPRINT_DIRECTORY",
-    "target_directory": "TARGET_DIRECTORY",
+    "drydock_workspace": "DRYDOCK_WORKSPACE",
     "llm_provider": "LLM_PROVIDER",
     "prompt_warn_kb": "PROMPT_WARN_KB",
     "quarterdeck_port": "QUARTERDECK_PORT",
@@ -44,24 +43,43 @@ def _get(key_upper: str, default: str | None = None) -> tuple[str | None, str]:
     return default, "default"
 
 
-def get_blueprint_directory() -> Path:
-    val, _source = _get("BLUEPRINT_DIRECTORY")
-    if not val:
-        val, _source = _get("SPECIFICATION_DIRECTORY")
-    if not val:
-        raise ConfigurationError(
-            "BLUEPRINT_DIRECTORY is not set.\n  Run: drydock config set blueprint_directory <path>"
+def _git_toplevel(start: Path) -> Path | None:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=start,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
-    return Path(val)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode == 0 and proc.stdout.strip():
+        return Path(proc.stdout.strip())
+    return None
+
+
+def get_workspace() -> Path:
+    """Resolve the Drydock workspace root.
+
+    Precedence: ``DRYDOCK_WORKSPACE`` (environment or config file), then the Git
+    top-level of the working directory, then the working directory itself.
+    """
+    val, _source = _get("DRYDOCK_WORKSPACE")
+    if val:
+        return Path(val)
+    top = _git_toplevel(Path.cwd())
+    return top if top is not None else Path.cwd()
+
+
+def get_blueprint_directory() -> Path:
+    """Root holding all Blueprints: ``$DRYDOCK_WORKSPACE/blueprints``."""
+    return get_workspace() / "blueprints"
 
 
 def get_target_directory() -> Path:
-    val, _source = _get("TARGET_DIRECTORY")
-    if not val:
-        raise ConfigurationError(
-            "TARGET_DIRECTORY is not set.\n  Run: drydock config set target_directory <path>"
-        )
-    return Path(val)
+    """Root holding all Targets: ``$DRYDOCK_WORKSPACE/targets``."""
+    return get_workspace() / "targets"
 
 
 def get_llm_provider() -> str:
@@ -100,12 +118,11 @@ def get_quarterdeck_port() -> int:
 
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
-    blueprint_value, blueprint_source = _get("BLUEPRINT_DIRECTORY")
-    if not blueprint_value:
-        blueprint_value, blueprint_source = _get("SPECIFICATION_DIRECTORY")
-    rows.append(("blueprint_directory", blueprint_value or "(not set)", blueprint_source))
+    ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
+    if not ws_value:
+        ws_value, ws_source = str(get_workspace()), "default"
+    rows.append(("drydock_workspace", ws_value, ws_source))
     for display_key, key_upper, default in (
-        ("target_directory", "TARGET_DIRECTORY", None),
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("prompt_warn_kb", "PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),

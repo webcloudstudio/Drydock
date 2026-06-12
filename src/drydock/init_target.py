@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.errors import DrydockError
-from drydock.paths import get_quarterdeck_root
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
+from drydock.target_manifest import TargetManifest
 
 _TRAVERSAL_RE = re.compile(r"\.\.|[/\\]")
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
@@ -44,15 +43,6 @@ def _write_missing(path: Path, content: str, result: InitTargetResult) -> None:
     result.created.append(path)
 
 
-def _copy_missing(source: Path, destination: Path, result: InitTargetResult) -> None:
-    if destination.exists():
-        result.skipped.append(destination)
-        return
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    result.created.append(destination)
-
-
 def init_target(target: str, target_directory: Path) -> InitTargetResult:
     """Create the specification-independent baseline for a target project."""
     _validate_target(target)
@@ -67,12 +57,11 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
             keep = path / ".gitkeep"
             _write_missing(keep, "", result)
 
-        runtime = get_quarterdeck_root()
-        for name in ("app.py", "requirements.txt"):
-            source = runtime / name
-            if not source.is_file():
-                raise DrydockError(f"QuarterDeck runtime file not found: {source}")
-            _copy_missing(source, target_dir / "QuarterDeck" / name, result)
+        _write_missing(
+            target_dir / "target.yaml",
+            TargetManifest().render(),
+            result,
+        )
 
         for path in ensure_standard_artifacts(target, target_dir):
             result.created.append(path)

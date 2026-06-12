@@ -8,19 +8,28 @@ import pytest
 
 
 @pytest.fixture()
-def tmp_spec_root(tmp_path: Path) -> Path:
-    """A temporary directory to act as the blueprint_directory root."""
-    d = tmp_path / "specs"
-    d.mkdir()
-    return d
+def tmp_workspace(tmp_path: Path) -> Path:
+    """A temporary Drydock workspace containing blueprints/ and targets/.
+
+    Tests that need it set ``DRYDOCK_WORKSPACE`` to this path (or, equivalently,
+    to ``tmp_spec_root.parent``).
+    """
+    ws = tmp_path / "workspace"
+    (ws / "blueprints").mkdir(parents=True)
+    (ws / "targets").mkdir(parents=True)
+    return ws
 
 
 @pytest.fixture()
-def tmp_target_root(tmp_path: Path) -> Path:
-    """A temporary directory to act as the target_directory root."""
-    d = tmp_path / "targets"
-    d.mkdir()
-    return d
+def tmp_spec_root(tmp_workspace: Path) -> Path:
+    """The blueprints root inside the temporary workspace."""
+    return tmp_workspace / "blueprints"
+
+
+@pytest.fixture()
+def tmp_target_root(tmp_workspace: Path) -> Path:
+    """The targets root inside the temporary workspace."""
+    return tmp_workspace / "targets"
 
 
 @pytest.fixture()
@@ -43,9 +52,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     # Remove real env vars that could leak into tests
     for key in (
-        "BLUEPRINT_DIRECTORY",
-        "SPECIFICATION_DIRECTORY",
-        "TARGET_DIRECTORY",
+        "DRYDOCK_WORKSPACE",
         "LLM_PROVIDER",
         "QUARTERDECK_PORT",
     ):

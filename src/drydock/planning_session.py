@@ -5,14 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
-from drydock.paths import get_quarterdeck_root
 from drydock.plan_intent import init_plan_intent
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
@@ -223,11 +221,8 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck.mkdir(parents=True, exist_ok=True)
     ensure_standard_artifacts(plan.project, target_dir)
     sync_plan_soundings(plan, target_dir)
-    runtime = get_quarterdeck_root()
-    for name in ("app.py", "requirements.txt"):
-        source = runtime / name
-        if source.is_file():
-            shutil.copyfile(source, quarterdeck / name)
+    # The QuarterDeck runtime is served from the package; only console state is
+    # written into the Target (see quarterdeck_run.run_quarterdeck).
 
     ac_by_parent: dict[str, list[str]] = {}
     for block in plan.blocks:

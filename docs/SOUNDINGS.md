@@ -5,13 +5,13 @@
 | CLI-001 | `drydock --help` shows the complete public command surface | DONE | `test_cli.py::TestHelpAndVersion` |
 | CLI-002 | `drydock --version` shows version and copyright | DONE | `test_cli.py::TestHelpAndVersion` |
 | CLI-003 | `drydock config show` displays effective configuration values and sources | DONE | `test_cli.py::TestConfigShow`, `test_config.py::TestConfigShow` |
-| CLI-004 | `drydock config set blueprint_directory <path>` persists the Blueprint root | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
-| CLI-005 | `drydock config set target_directory <path>` persists the Target root | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
+| CLI-004 | `drydock config set drydock_workspace <path>` persists the workspace root | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
+| CLI-005 | Blueprint and Target roots resolve to `$DRYDOCK_WORKSPACE/blueprints` and `/targets` (git-root/cwd default) | DONE | `test_config.py::TestWorkspaceResolution` |
 | CLI-006 | `drydock config set llm_provider <claude\|codex>` persists a valid subscription CLI provider | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-007 | `drydock config set prompt_warn_kb <kb>` persists a valid prompt-size threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-008 | `drydock config set quarterdeck_port <port>` persists a valid QuarterDeck port | DONE | `test_config.py` quarterdeck-port tests, `test_cli.py::TestRunQuarterdeck::test_run_quarterdeck_config_port_used` |
-| CLI-009 | `drydock init <Target>` creates and preserves the Target baseline and standard QuarterDeck artifacts | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
-| CLI-010 | `drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]` starts a named or current-directory QuarterDeck | DONE | `test_cli.py::TestRunQuarterdeck` |
+| CLI-009 | `drydock init <Target>` creates the Target baseline with `target.yaml` and a state-only QuarterDeck console | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
+| CLI-010 | `drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]` serves the package runtime against a named or sole-Target in-tree console state | DONE | `test_cli.py::TestRunQuarterdeck`, `test_quarterdeck_run.py` |
 | CLI-011 | `drydock validate <Blueprint>` validates Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
 | CLI-012 | `drydock validate <Blueprint> --verbose` shows passing checks and findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |
 | CLI-013 | `drydock rigging compact <Blueprint> [--all] [--force]` refreshes stale compact derivatives with execution evidence | DONE | `test_cli.py::TestRiggingCompact`, `test_rigging_compact.py` |

@@ -14,32 +14,22 @@ from drydock.config import (
     get_prompt_warn_kb,
     get_quarterdeck_port,
     get_target_directory,
+    get_workspace,
 )
 from drydock.errors import ConfigurationError
 
 
 class TestConfigSet:
-    def test_set_blueprint_directory(self, tmp_spec_root, isolated_config):
-        cfg = config_set("blueprint_directory", str(tmp_spec_root))
+    def test_set_drydock_workspace(self, tmp_workspace, isolated_config):
+        cfg = config_set("drydock_workspace", str(tmp_workspace))
         assert cfg.exists()
         content = cfg.read_text()
-        assert "BLUEPRINT_DIRECTORY" in content
-        assert str(tmp_spec_root) in content
-
-    def test_legacy_specification_directory_sets_blueprint_directory(
-        self, tmp_spec_root, isolated_config
-    ):
-        cfg = config_set("specification_directory", str(tmp_spec_root))
-        assert "BLUEPRINT_DIRECTORY" in cfg.read_text()
-
-    def test_set_target_directory(self, tmp_target_root, isolated_config):
-        config_set("target_directory", str(tmp_target_root))
-        val, source = _effective("TARGET_DIRECTORY", isolated_config)
-        assert str(tmp_target_root) in val
+        assert "DRYDOCK_WORKSPACE" in content
+        assert str(tmp_workspace) in content
 
     def test_set_nonexistent_directory_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="does not exist"):
-            config_set("blueprint_directory", "/this/does/not/exist")
+            config_set("drydock_workspace", "/this/does/not/exist")
 
     def test_set_unknown_key_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="Unknown"):
@@ -47,21 +37,12 @@ class TestConfigSet:
 
     def test_set_expands_tilde(self, tmp_path, isolated_config, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
-        real_dir = tmp_path / "myspecs"
+        real_dir = tmp_path / "myws"
         real_dir.mkdir()
-        cfg = config_set("blueprint_directory", "~/myspecs")
+        cfg = config_set("drydock_workspace", "~/myws")
         content = cfg.read_text()
         assert str(real_dir) in content
         assert "~" not in content
-
-    def test_set_preserves_other_keys(self, tmp_spec_root, tmp_target_root, isolated_config):
-        config_set("blueprint_directory", str(tmp_spec_root))
-        config_set("target_directory", str(tmp_target_root))
-        from drydock.config import _config_path, _read_env_file
-
-        data = _read_env_file(_config_path())
-        assert "BLUEPRINT_DIRECTORY" in data
-        assert "TARGET_DIRECTORY" in data
 
     def test_set_llm_provider(self, isolated_config):
         config_set("llm_provider", "codex")
@@ -85,54 +66,61 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_five_rows(self, isolated_config):
+    def test_show_returns_four_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 5
+        assert len(rows) == 4
 
-    def test_show_not_set_when_empty(self, isolated_config):
+    def test_show_defaults_when_empty(self, isolated_config):
         rows = config_show()
-        by_name = {name: value for name, value, _source in rows}
-        assert by_name["blueprint_directory"] == "(not set)"
-        assert by_name["target_directory"] == "(not set)"
-        assert by_name["llm_provider"] == "claude"
-        assert by_name["prompt_warn_kb"] == "50"
-        assert by_name["quarterdeck_port"] == "8080"
+        by_name = {name: (value, source) for name, value, source in rows}
+        ws_value, ws_source = by_name["drydock_workspace"]
+        assert ws_value != "(not set)"
+        assert ws_source == "default"
+        assert by_name["llm_provider"][0] == "claude"
+        assert by_name["prompt_warn_kb"][0] == "50"
+        assert by_name["quarterdeck_port"][0] == "8080"
 
-    def test_show_reports_source_after_set(self, tmp_spec_root, isolated_config):
-        config_set("blueprint_directory", str(tmp_spec_root))
+    def test_show_reports_source_after_set(self, tmp_workspace, isolated_config):
+        config_set("drydock_workspace", str(tmp_workspace))
         rows = config_show()
-        spec_row = next(r for r in rows if r[0] == "blueprint_directory")
-        assert str(tmp_spec_root) in spec_row[1]
-        assert "config file" in spec_row[2]
+        ws_row = next(r for r in rows if r[0] == "drydock_workspace")
+        assert str(tmp_workspace) in ws_row[1]
+        assert "config file" in ws_row[2]
+
+
+class TestWorkspaceResolution:
+    def test_workspace_from_config_file(self, tmp_workspace, isolated_config):
+        config_set("drydock_workspace", str(tmp_workspace))
+        assert get_workspace() == tmp_workspace.resolve()
+
+    def test_workspace_env_overrides_file(
+        self, tmp_workspace, tmp_path, isolated_config, monkeypatch
+    ):
+        config_set("drydock_workspace", str(tmp_workspace))
+        other = tmp_path / "other"
+        other.mkdir()
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(other))
+        assert get_workspace() == other
+
+    def test_blueprint_directory_is_workspace_blueprints(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        assert get_blueprint_directory() == tmp_workspace / "blueprints"
+
+    def test_target_directory_is_workspace_targets(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        assert get_target_directory() == tmp_workspace / "targets"
+
+    def test_workspace_defaults_when_unset(self, isolated_config, tmp_path, monkeypatch):
+        # No DRYDOCK_WORKSPACE: falls back to the Git top-level of cwd, else cwd.
+        monkeypatch.chdir(tmp_path)
+        assert isinstance(get_workspace(), Path)
 
 
 class TestGetters:
-    def test_get_spec_dir_when_set(self, tmp_spec_root, isolated_config):
-        config_set("blueprint_directory", str(tmp_spec_root))
-        assert get_blueprint_directory() == tmp_spec_root
-
-    def test_get_spec_dir_raises_when_unset(self, isolated_config):
-        with pytest.raises(ConfigurationError):
-            get_blueprint_directory()
-
-    def test_legacy_environment_variable_is_supported(
-        self, tmp_spec_root, isolated_config, monkeypatch
-    ):
-        monkeypatch.setenv("SPECIFICATION_DIRECTORY", str(tmp_spec_root))
-        assert get_blueprint_directory() == tmp_spec_root
-
-    def test_get_target_dir_raises_when_unset(self, isolated_config):
-        with pytest.raises(ConfigurationError):
-            get_target_directory()
-
-    def test_env_var_overrides_file(
-        self, tmp_spec_root, tmp_target_root, isolated_config, monkeypatch
-    ):
-        config_set("blueprint_directory", str(tmp_spec_root))
-        monkeypatch.setenv("BLUEPRINT_DIRECTORY", str(tmp_target_root))
-        result = get_blueprint_directory()
-        assert result == tmp_target_root
-
     def test_llm_provider_defaults_to_claude(self, isolated_config):
         assert get_llm_provider() == "claude"
 
@@ -196,11 +184,3 @@ class TestConfigSetQuarterdeckPort:
     def test_set_non_integer_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="65535"):
             config_set("quarterdeck_port", "eighty")
-
-
-def _effective(key: str, cfg_dir: Path) -> tuple[str, str]:
-    from drydock.config import _read_env_file
-
-    env_file = cfg_dir / ".env"
-    data = _read_env_file(env_file)
-    return data.get(key, ""), "file"

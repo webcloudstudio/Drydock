@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import traceback
+from pathlib import Path
 
 from drydock import __copyright__, __version__
 from drydock.errors import DrydockError, UsageError
@@ -208,13 +209,35 @@ def cmd_document_assemble(argv: list[str]) -> int:
     return _build_doc_main(argv)
 
 
-def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
-    from pathlib import Path
+def _resolve_sole_target(targets_root: Path) -> Path:
+    """Resolve the single initialized Target under the workspace, or error."""
+    candidates = (
+        [
+            p
+            for p in sorted(targets_root.iterdir())
+            if (p / "QuarterDeck" / "console.yaml").is_file()
+        ]
+        if targets_root.is_dir()
+        else []
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise DrydockError(
+            f"No initialized Target found under {targets_root}\n  Run: drydock init <Target>"
+        )
+    names = ", ".join(p.name for p in candidates)
+    raise DrydockError(
+        f"Multiple Targets found ({names}); specify one: drydock run quarterdeck <Target>"
+    )
 
+
+def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
     from drydock import quarterdeck_run as _qd
     from drydock.config import get_quarterdeck_port, get_target_directory
 
-    target_dir = get_target_directory() / args.Target if args.Target else Path.cwd()
+    targets_root = get_target_directory()
+    target_dir = targets_root / args.Target if args.Target else _resolve_sole_target(targets_root)
     port = args.port if args.port is not None else get_quarterdeck_port()
     host = args.host
 
@@ -314,12 +337,8 @@ def cmd_status_current() -> int:
     if blueprint_dir is None or target_dir is None:
         activity = get_last_activity()
         if not activity.get("blueprint"):
-            if blueprint_dir is None:
-                print("No active Drydock project found.")
-                print("  Run: drydock config set blueprint_directory <path>")
-            else:
-                print("No active Drydock project found.")
-                print("  Run: drydock config set target_directory <path>")
+            print("No active Drydock project found.")
+            print("  Run: drydock config set drydock_workspace <path>")
             return 0
         from pathlib import Path
 
@@ -359,11 +378,6 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 # ---------------------------------------------------------------------------
 # Parser construction
 # ---------------------------------------------------------------------------
-
-
-def _canonical_config_key(value: str) -> str:
-    """Normalize deprecated public configuration aliases."""
-    return "blueprint_directory" if value == "specification_directory" else value
 
 
 def _canonical_iterate_mode(value: str) -> str:
@@ -409,15 +423,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_set.add_argument(
         "key",
         choices=[
-            "blueprint_directory",
-            "target_directory",
+            "drydock_workspace",
             "llm_provider",
             "prompt_warn_kb",
             "quarterdeck_port",
         ],
-        type=_canonical_config_key,
     )
-    p_set.add_argument("value", metavar="<path>")
+    p_set.add_argument("value", metavar="<value>")
 
     # ── init ─────────────────────────────────────────────────────────────────
     p_init = sub.add_parser("init", help="Initialize a target workspace.")
