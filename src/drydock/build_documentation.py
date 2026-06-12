@@ -145,7 +145,7 @@ h1 {{ font-size: 40px; line-height: 1.1; margin: 8px 0 12px; }}
 #content h3 {{ color: var(--green); margin-top: 26px; }}
 #content table {{ border-collapse: collapse; display: block; overflow-x: auto; width: 100%; }}
 #content th, #content td {{ border: 1px solid var(--line); padding: 7px 10px; text-align: left; }}
-#content th {{ background: var(--navy); color: white; }}
+#content th {{ background: var(--pre-bg); color: var(--ink); }}
 #content code {{ background: var(--code); border-radius: 3px; padding: 1px 4px; }}
 #content pre {{ background: var(--pre-bg); color: var(--ink); overflow-x: auto; padding: 15px; border-left: 3px solid var(--line); }}
 #content pre code {{ background: transparent; padding: 0; }}
