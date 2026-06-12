@@ -10,7 +10,7 @@
 | CLI-006 | `drydock config set llm_provider <claude\|codex>` persists a valid subscription CLI provider | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-007 | `drydock config set prompt_warn_kb <kb>` persists a valid prompt-size threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-008 | `drydock config set quarterdeck_port <port>` persists a valid QuarterDeck port | DONE | `test_config.py` quarterdeck-port tests, `test_cli.py::TestRunQuarterdeck::test_run_quarterdeck_config_port_used` |
-| CLI-009 | `drydock init <Target>` creates the minimal Target scaffold (`METADATA.md` manifest, root Sea Trials/Soundings, `blueprint/sources/`, state-only QuarterDeck) | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
+| CLI-009 | `drydock init <Target>` creates the minimal Target scaffold (`METADATA.md` project identity, root Sea Trials/Soundings, `blueprint/sources/`, state-only QuarterDeck) | DONE | `test_cli.py::TestInit`, `test_init_target.py` |
 | CLI-010 | `drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]` serves the package runtime against a named or sole-Target in-tree console state | DONE | `test_cli.py::TestRunQuarterdeck`, `test_quarterdeck_run.py` |
 | CLI-011 | `drydock status <Blueprint> <Target>` validates a Target's Blueprint completeness and conventions | DONE | `test_cli.py::TestValidate`, `test_validate_specification.py` |
 | CLI-012 | `drydock status <Blueprint> <Target> --verbose` shows passing checks and findings | DONE | `test_cli.py::TestValidate::test_validate_verbose_shows_passes` |

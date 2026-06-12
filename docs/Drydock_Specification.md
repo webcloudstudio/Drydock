@@ -1,6 +1,6 @@
 ---
 title: Drydock
-eyebrow: The Governed Blueprint Methodology for Software Delivery
+eyebrow: The SAIL Methodology for Governed Software Delivery
 subtitle: Drydock is under active development. It extends GitHub Spec Kit with new workflows, and each Drydock Blueprint is expressed through a Typed Specification designed around context-aware builds. Drydock is an incarnation of the working Prototyper project conformed to industry best practices.
 author: Ed Barlow
 studio: Web Cloud Studio
@@ -10,19 +10,13 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
 ideas_title: What Drydock Adds
 ideas:
-  - title: Simple Workflows make specification-driven delivery repeatable.
-    sub_list:
-      - Reverse-Engineer Existing Applications
-      - Build Projects From Blueprints
-      - QuarterDeck — Agile Development Console
-      - Update A Working SDD Application
-      - Drydock Rigging - Technology Rules & Propagation
-      - Build Documentation from Blueprints
-  - title: Typed Specifications define intent, architecture, data, features, screens, and changes.
-  - title: Build Dependencies determine order, optimize context, and enable repeatable incremental builds.
-  - title: Brownfield Decomposition imports your project from source code, Spec Kit projects, and specifications designed by your LLMs.
-  - title: QuarterDeck - a generated, throwaway development console surfacing evidence, spikes/stories/ac, and questionnaires; product-owner decisions write back into the build.
-  - title: Drydock Rigging standardizes code, documentation, and tooling across your entire portfolio.
+  - title: SAIL makes governed delivery memorable and repeatable - Set Up, Arrange, Implement, Loop.
+  - title: Blueprints preserve authoritative product intent as living Typed Specifications.
+  - title: Manifests turn Blueprints into dependency-ordered, review-gated executable work.
+  - title: QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions.
+  - title: Refits revise working software without bypassing its Blueprint or rebuilding unaffected work.
+  - title: Drydock Rigging standardizes code, documentation, tooling, prompts, and branding across the portfolio.
+  - title: The Ship's Log preserves the material decisions and milestones behind the product.
 ---
 
 ## Testimonials
@@ -32,7 +26,7 @@ ideas:
 > and clarification are first-class plan objects reviewed interactively, and governance is enforced
 > by the Rigging across every project in the portfolio. Drydock then adds what Spec Kit does not
 > attempt: governed build execution with staleness-driven incremental rebuilds, evidence-gated
-> review through a generated throwaway console, an append-only decision ledger, the iterate loop,
+> review through a generated throwaway console, an append-only decision ledger, the SAIL Loop,
 > and documentation generation. Two honest caveats: Spec Kit ships integrations for many coding
 > agents while Drydock targets two subscription CLI providers, and the superset claim is proven by
 > the concept mapping today and by working import adapters once they are delivered.
@@ -54,15 +48,17 @@ ideas:
 
 ## What is Drydock
 
-Drydock is a governed Blueprint-driven software delivery system.
+Drydock is a governed Blueprint-driven software delivery system built around the **SAIL
+methodology: Set Up, Arrange, Implement, Loop**.
 
 A **Drydock Blueprint** is the authoritative, living definition of a software product. It is
 expressed as a **Typed Specification** through files with prescribed roles. Drydock turns the
 Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
 increments through the QuarterDeck.
 
-The product is one loop: set up once, plan the work, build the frontier, review the evidence, and
-iterate. Every pass through the loop starts and ends at the Blueprint.
+SAIL is one complete delivery loop: **Set Up** the workspace, **Arrange** the work, **Implement**
+the accepted plan, then **Loop** through evidence-driven revision. Every pass starts and ends at the
+Blueprint.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -74,17 +70,17 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SETUP["Setup"]:::script --> PLAN["Plan"]:::script
-  PLAN --> BUILD["Build"]:::script
-  BUILD --> SOFTWARE(["Working Software"]):::output
-  BUILD --> ITERATE["Iterate"]:::script
-  ITERATE -.-> PLAN
+  SETUP["Set Up"]:::script --> ARRANGE["Arrange"]:::script
+  ARRANGE --> IMPLEMENT["Implement"]:::script
+  IMPLEMENT --> SOFTWARE(["Working Software"]):::output
+  IMPLEMENT --> LOOP["Loop"]:::script
+  LOOP -.-> ARRANGE
 ```
 
-This specification reads in that order. First the command surface, then the four lifecycle phases —
-Setup, Plan, Build, Iterate — each with exact command syntax and the workflows that answer "how do I
-do this." After the phases come the contracts behind them: the Blueprint, the Build Plan, the
-QuarterDeck, the Ship's Log, the Rigging, documentation generation, and Spec Kit compatibility.
+This specification reads in SAIL order. First the CLI orientation, then the four phases. Each phase
+presents its explanation, commands, and workflows before the specification moves to the contracts
+behind them: the Blueprint, the Manifest, the QuarterDeck, the Ship's Log, the Rigging,
+documentation generation, and Spec Kit compatibility.
 
 This file, `docs/Drydock_Specification.md`, is Drydock's sole authoritative product specification.
 It must always describe the intended current behavior. Any behavior change or new behavior requires
@@ -98,238 +94,51 @@ in `docs/SOUNDINGS.md`.
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-The Drydock CLI uses two common arguments:
+The CLI uses `<Blueprint>` for the Blueprint name whose files live in
+`targets/<Target>/blueprint/`, and `<Target>` for the project name under
+`$DRYDOCK_WORKSPACE/targets/`.
 
-| Definition | Meaning |
-|---|---|
-| `<Blueprint>` | Blueprint name; its files live in `targets/<Target>/blueprint/` |
-| `<Target>` | Target project name under `$DRYDOCK_WORKSPACE/targets/` |
+The public CLI is organized by SAIL phase:
 
-### Global commands
+| SAIL phase | Purpose | Primary commands |
+|---|---|---|
+| **Set Up** | Establish the workspace, Target, governance, orientation, and QuarterDeck | `config`, `init`, `status`, `validate`, `rigging update`, `rigging verify`, `run quarterdeck` |
+| **Arrange** | Import, inspect, compact, organize, and approve the work | `import`, `analyze`, `rigging compact`, `plan create` |
+| **Implement** | Execute the accepted Manifest, inspect progress, score delivery, and produce documentation | `build`, `build status`, `build score`, `document` |
+| **Loop** | Perform a governed Refit and return affected work to Arrange and Implement | `iterate` |
 
-```text
-drydock --help
-```
-
-Shows the public command surface.
-
-```text
-drydock --version
-```
-
-Shows the installed Drydock version.
-
-### Status commands
+`drydock --help` prints the installed command surface:
 
 ```text
-drydock status
+usage: drydock [-h] [--version] [--debug] <command> ...
+
+Drydock — governed Blueprint-driven software delivery.
+Copyright (c) 2026 Web Cloud Studio. All rights reserved.
+
+positional arguments:
+  <command>
+    config    Show or set Drydock configuration.
+    init      Initialize a target workspace.
+    status    Show project status and orientation.
+    validate  Validate a Blueprint's Typed Specification.
+    document  Generate and assemble Blueprint documentation.
+    rigging   Manage Drydock Rigging.
+    plan      Manage the build plan.
+    build     Build or inspect build state.
+    iterate   Update Blueprint and target software together.
+    analyze   Read-only advisory: surface gaps and drift.
+    run       Start a Drydock service.
+    import    Reverse-engineer a project into a Blueprint.
+
+options:
+  -h, --help  show this help message and exit
+  --version   show program's version number and exit
+  --debug     Show full traceback on unexpected errors.
 ```
 
-Shows a compact one-screen orientation: the last active Blueprint and Target, last command run,
-Blueprint validation state, plan progress, and the current runnable frontier. Reads the current
-directory for a `BUILD_PLAN.md`; when none is found, uses the last recorded activity. Drydock
-records the Blueprint, Target, command name, and timestamp whenever any Blueprint or Target command
-completes successfully.
+## SAIL Phase 1 — Set Up: Laying the Keel
 
-```text
-drydock status <Blueprint>
-```
-
-```text
-drydock status <Blueprint> <Target>
-```
-
-Shows plan block state and the current runnable frontier. Equivalent to
-`drydock build status <Blueprint> <Target>`.
-
-### Setup commands
-
-```text
-drydock config show
-```
-
-Shows effective configuration values and their sources.
-
-```text
-drydock config set <key> <value>
-```
-
-Sets one of: `drydock_workspace`, `llm_provider`, `prompt_warn_kb`, or `quarterdeck_port`.
-
-```text
-drydock init <Target>
-```
-
-Creates the minimal Target scaffold under `$DRYDOCK_WORKSPACE/targets/<Target>/` (see Workspace
-Layout): `METADATA.md`, root `SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, and a
-state-only QuarterDeck console.
-
-```text
-drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
-```
-
-Starts the named Target's QuarterDeck service, serving the console runtime from the installed
-package against the Target's in-tree console state under
-`$DRYDOCK_WORKSPACE/targets/<Target>/QuarterDeck/`. When `<Target>` is omitted and the workspace
-contains exactly one Target, that Target is used.
-
-### Plan commands
-
-```text
-drydock import <Blueprint> <Target> <Source> --format <auto|markdown|source|speckit>
-```
-
-Imports source material into a Target's Blueprint.
-
-
-```text
-drydock status <Blueprint> [--verbose]
-```
-
-Validates a Blueprint's Typed Specification files.
-
-```text
-drydock analyze <Blueprint> [<Target>]
-```
-
-Performs read-only analysis of Blueprint gaps and, when a Target is supplied, implementation drift.
-
-```text
-drydock plan create <Blueprint> <Target>
-```
-
-Creates the draft executable `BUILD_PLAN.md` and Target Planning Session.
-
-### Build commands
-
-```text
-drydock build <Blueprint> <Target>
-```
-
-Builds the next runnable frontier.
-
-```text
-drydock build status <Blueprint> <Target>
-```
-
-Shows plan state and the current runnable frontier.
-
-```text
-drydock build score <Blueprint> <Target>
-```
-
-Generates `SCORECARD.md`.
-
-### Iterate command
-
-```text
-drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
-```
-
-Updates Blueprint and Target together, or limits the change to the selected side.
-
-### Rigging commands
-
-```text
-drydock rigging compact <Blueprint> <Target> [--all] [--force]
-```
-
-Refreshes stale compact derivatives; `--all` includes Drydock Rigging and `--force` ignores
-freshness.
-
-```text
-drydock rigging update <Target>
-```
-
-Propagates current Rigging to a Target.
-
-```text
-drydock rigging verify <Target>
-```
-
-Verifies Target compliance with Drydock Rigging.
-
-### Documentation commands
-
-```text
-drydock document <Blueprint> <Target>
-```
-
-Runs documentation generation and assembly.
-
-```text
-drydock document generate <Blueprint> <Target>
-```
-
-Generates `DOC-*.md` summaries.
-
-```text
-drydock document assemble <Blueprint> <Target>
-```
-
-Assembles existing `DOC-*.md` files into `docs/index.html`.
-
-## Workspace Layout
-
-Drydock manages everything inside one workspace tree; there is no separate
-`blueprints/` root. Every artifact for a project lives under
-`targets/<Target>/`, with the Blueprint as a named subtree at
-`targets/<Target>/blueprint/`. One Target is a self-contained project: spec,
-plan, build, and console together.
-
-```text
-$DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
-├── logs/
-│   └── ships_log.jsonl                   # workspace product/design decision ledger
-│
-└── targets/
-    └── <Target>/                         # one self-contained project: spec, plan, build, console
-        ├── METADATA.md                   # identity + manifest: Blueprint name, code_root, status, stack
-        ├── README.md                     # short human introduction to the project
-        ├── INTENT.md                     # product intent, constraints, success, guardrails
-        ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
-        ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
-        ├── BUILD_PLAN.md                 # the single executable build plan
-        ├── SCORECARD.md                  # seven-dimension quality + drift scores
-        │
-        ├── blueprint/                    # the Blueprint — conformed Typed Specification
-        │   ├── sources/                  # preserved unconformed import material
-        │   ├── BUILD_CONFIGURATION.md    # durable product-owner planning decisions
-        │   ├── BUILD_PLAN_INTENT.md      # internal inventory of inputs + planning groups
-        │   ├── ARCHITECTURE.md
-        │   ├── DATABASE.md
-        │   ├── FEATURE-{Name}.md
-        │   ├── SCREEN-{Name}.md
-        │   ├── UI-GENERAL.md
-        │   └── changes/
-        │       └── TICKET-NNN-{Name}.md
-        │
-        ├── evidence/                     # reviewable build evidence, named by build object
-        ├── logs/                         # target execution logs (e.g. executions.jsonl)
-        └── QuarterDeck/                  # console state only; runtime served from the package
-            ├── console.yaml
-            ├── tickets.json
-            ├── pages/
-            │   └── overview.md
-            ├── data/
-            ├── planning/
-            │   └── ANALYSIS.md
-            └── questionnaires/
-                └── planning.json
-```
-
-Project-level, human-authored files (`METADATA.md`, `README.md`, `INTENT.md`,
-`SEA_TRIALS.md`, `SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries
-the manifest: the Blueprint name and `code_root`. Built and served code lives at
-`code_root` — the workspace root for self-hosting or brownfield projects, or a
-path you set for greenfield builds.
-
-`drydock init <Target>` writes the minimal scaffold (`METADATA.md`, root
-`SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, `evidence/`,
-`logs/`, and a state-only `QuarterDeck/`). `import`, `plan create`, `build`, and
-`score` create the remaining files as the project progresses.
-
-## Phase 1 — Setup: Laying the Keel
+### Explanation
 
 Install Drydock, configure its roots and runtime defaults, then initialize the Target.
 Process environment variables override values stored in Drydock's user-scoped `.env`.
@@ -349,7 +158,7 @@ flowchart LR
   INIT --> TARGET(["Target Baseline"]):::dir
 ```
 
-### Configuration Keys (.env)
+#### Configuration Keys (.env)
 
 | Variable | Purpose |
 |---|---|
@@ -364,7 +173,33 @@ subtree (see Workspace Layout). A Target may be self-hosting: the workspace can 
 repository itself, simultaneously the control center, the Blueprint host, the Target host, and the
 served code. Each Target's `METADATA.md` records its Blueprint name and `code_root`.
 
-### The Initialized Target
+### Commands
+
+```text
+drydock --help
+drydock --version
+drydock config show
+drydock config set <key> <value>
+drydock init <Target>
+drydock status [<Blueprint> [<Target>]]
+drydock validate <Blueprint> <Target> [--verbose]
+drydock rigging update <Target>
+drydock rigging verify <Target>
+drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
+```
+
+`drydock status` is the primary orientation command. With no arguments it shows the last active
+project; with a Blueprint it shows validation state; with a Blueprint and Target it adds plan
+progress and the current runnable frontier. `drydock validate` exposes the underlying focused
+Typed Specification validation command.
+
+`drydock config` establishes user-scoped defaults. `drydock init` creates the Target baseline.
+`drydock rigging update` and `drydock rigging verify` establish and check portfolio governance.
+`drydock run quarterdeck` opens the product-owner review surface.
+
+### Workflows
+
+#### Workflow: Initialize a Target
 
 `drydock init <Target>` creates the minimal scaffold described in Workspace Layout. The QuarterDeck
 runtime is not copied here; only console state is written, and `drydock run quarterdeck` serves the
@@ -374,22 +209,45 @@ runtime from the installed package.
 `--host` and `--port`), serving the package runtime against this in-tree console state. The
 QuarterDeck is usable from this moment — planning, build, and review all surface through it.
 
-## Phase 2 — Plan: Charting the Build
+#### Workflow: Establish Portfolio Governance
 
-Planning turns source material into a reviewable, executable build plan.
+Run `drydock rigging update <Target>` to propagate the current portfolio rules into a Target, then
+run `drydock rigging verify <Target>` to prove that the Target conforms. Repeat verification after
+material Rigging changes and before delivery gates that require portfolio compliance.
+
+## SAIL Phase 2 — Arrange: Charting the Build
+
+### Explanation
+
+Arrange turns source material into a reviewable, executable Manifest.
 
 1. Import source material into a Blueprint with `drydock import`.
-2. Validate Typed Specification files with `drydock status` when applicable.
-3. Use `drydock analyze` when gaps or drift need investigation.
-4. Create the draft executable plan with `drydock plan create`.
-5. Review and approve the complete plan in the Target's QuarterDeck Planning Session.
+2. Use `drydock analyze` when gaps or drift need investigation.
+3. Compact large specification and Rigging inputs when needed.
+4. Create the draft executable Manifest with `drydock plan create`.
+5. Review and approve the complete Manifest in the Target's QuarterDeck Planning Session.
 
 `drydock plan create` reads all available Blueprint inputs, writes
 `<Target>/blueprint/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
 Session. A draft plan has no runnable frontier. QuarterDeck approval establishes the executable
 baseline and exposes the runnable frontier.
 
-### Workflow: Reverse-Engineer an Existing Project
+### Commands
+
+```text
+drydock import <Blueprint> <Target> <Source> --format <auto|markdown|source|speckit>
+drydock analyze <Blueprint> [<Target>]
+drydock rigging compact <Blueprint> <Target> [--all] [--force]
+drydock plan create <Blueprint> <Target>
+```
+
+`drydock import` brings source material under Blueprint control. `drydock analyze` advises without
+changing the Manifest. `drydock rigging compact` refreshes stale compact context. `drydock plan
+create` organizes the work and creates the draft Manifest and Planning Session.
+
+### Workflows
+
+#### Workflow: Reverse-Engineer an Existing Project
 
 Bring existing software or a Spec Kit project under Drydock Blueprint control. Stack detection
 scopes the relevant technology rules automatically.
@@ -411,15 +269,15 @@ flowchart LR
   SPEC --> PLAN["plan create"]:::script
 ```
 
-1. `drydock import <Blueprint> <Source> --format markdown` — preserves arbitrary Markdown under
+1. `drydock import <Blueprint> <Target> <Source> --format markdown` — preserves arbitrary Markdown under
    the Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and
    Spec Kit adapters use the same intake boundary when implemented.
-2. Continue through planning. Analyze identifies ambiguity and configuration choices without
+2. Continue through Arrange. Analyze identifies ambiguity and configuration choices without
    silently turning them into requirements.
 3. Optionally conform the imported material after User Review establishes build configuration.
 4. Create, review, validate, and approve the plan before proceeding through its runnable frontier.
 
-### Workflow: Analyze Before You Plan
+#### Workflow: Analyze Before You Arrange
 
 `drydock analyze` evaluates available Blueprint inputs and — when `<Target>` is provided — the
 built application. During planning it creates the target-local Planning Session analysis and
@@ -428,13 +286,13 @@ questionnaire. It does not create or modify `BUILD_PLAN.md`.
 1. `drydock analyze <Blueprint>` — score Blueprint coverage; surface open questions and missing
    detail that would create uncertainty during a build.
 2. `drydock analyze <Blueprint> <Target>` — compare the Blueprint against the built application;
-   identify drift, incomplete implementation, and candidates for the next iteration.
+   identify drift, incomplete implementation, and candidates for the next Refit.
 3. Apply findings with `drydock iterate` or `drydock plan create` as appropriate.
 
 `drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
 Planning Session outputs before running `drydock plan create`.
 
-### The Planning Session
+#### Workflow: Approve the Manifest
 
 `drydock plan create` generates the draft plan and a target-local Planning Session. The QuarterDeck
 presents optional features, executable stories and spikes, dependencies, and nested acceptance
@@ -447,9 +305,12 @@ Approval is whole-plan. The generated `plan_decision` page applies it through th
 plan-state writer; ordinary QuarterDeck review controls never approve a plan. Approval exposes the
 runnable frontier, and `drydock build` may begin.
 
-## Phase 3 — Build: Working the Frontier
+## SAIL Phase 3 — Implement: Working the Frontier
 
-The build phase executes the accepted plan, reports progress, and measures delivery health.
+### Explanation
+
+Implement executes the accepted Manifest, reports progress, measures delivery health, and produces
+the documentation delivered with the software.
 
 1. Inspect current plan state with `drydock build status`.
 2. Execute the next runnable frontier with `drydock build`.
@@ -458,7 +319,24 @@ The build phase executes the accepted plan, reports progress, and measures deliv
 Every Target has one executable `BUILD_PLAN.md` stored in its Target root beside execution evidence,
 logs, and the QuarterDeck projection.
 
-### Workflow: Build the Accepted Plan
+### Commands
+
+```text
+drydock build <Blueprint> <Target>
+drydock build status <Blueprint> <Target>
+drydock build score <Blueprint> <Target>
+drydock document <Blueprint> <Target>
+drydock document generate <Blueprint> <Target>
+drydock document assemble <Blueprint> <Target>
+```
+
+`drydock build` executes the runnable frontier. `drydock build status` inspects the Manifest without
+changing it. `drydock build score` measures delivery health. The `drydock document` commands turn
+Blueprint material into delivered project documentation.
+
+### Workflows
+
+#### Workflow: Build the Accepted Manifest
 
 Build executes the accepted work blocks in `<Target>/BUILD_PLAN.md`. The accepted plan may have
 been created from Typed Specifications, imported Markdown, or both. Each block runs as a separate
@@ -487,7 +365,7 @@ flowchart LR
    conformed Typed Specifications are included only where durable authority, dependencies, or safe
    incremental delivery require them.
 
-### Workflow: Review the Evidence
+#### Workflow: Review the Evidence
 
 The QuarterDeck shows the stakeholder the evidence, demos, and questions needed for a decision;
 the product owner approves, revises, or rejects and the decision writes back to `BUILD_PLAN.md`.
@@ -516,7 +394,7 @@ flowchart LR
    `BUILD_PLAN.md`.
 3. Repeat until all objects and optional feature parents are accepted.
 
-### Workflow: Check Build Status
+#### Workflow: Check Build Status
 
 `drydock build status` reads `BUILD_PLAN.md` and the target directory and reports the state of every
 plan object — how many blocks are pending, implemented, verified, or failed, and which are
@@ -529,7 +407,7 @@ drydock build status <Blueprint> <Target>   # print per-block state and current 
 Use `drydock build status` to orient after a partial build, after a failed run, or before deciding
 whether to proceed or revise the plan.
 
-### Workflow: Score Delivery Health
+#### Workflow: Score Delivery Health
 
 `drydock build score` measures delivery health across seven dimensions — Typed Specification
 completeness, implementation coverage, test coverage, documentation coverage, Blueprint drift,
@@ -556,12 +434,32 @@ flowchart LR
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
    prioritize the next `drydock iterate` or `drydock plan create` run.
 
-## Phase 4 — Iterate: The Refit
+#### Workflow: Deliver Project Documentation
 
-`drydock iterate` is the post-build change workflow. It updates the Blueprint, Target, or both,
-then returns the affected work to planning and build execution. The Blueprint is never bypassed.
+Run `drydock document generate <Blueprint> <Target>` to produce Blueprint-derived `DOC-*.md`
+summaries, then `drydock document assemble <Blueprint> <Target>` to render the maintained summaries
+into `docs/index.html`. `drydock document <Blueprint> <Target>` runs both steps as one delivery
+pipeline.
 
-### Workflow: Update a Working SDD Application
+## SAIL Phase 4 — Loop: The Refit
+
+### Explanation
+
+A Refit is the governed post-build change workflow. It updates the Blueprint, Target, or both, then
+returns affected work to Arrange and Implement. The Blueprint is never bypassed.
+
+### Commands
+
+```text
+drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
+```
+
+`drydock iterate` performs the Refit. It updates the Blueprint and Target together, or limits the
+change to the selected side, then returns affected work to the SAIL cycle.
+
+### Workflows
+
+#### Workflow: Refit a Working SDD Application
 
 The post-build loop for an existing project when a human or agent must update a Blueprint and
 its target application together in one controlled step. It resolves a scope to the owning Core
@@ -600,7 +498,7 @@ keyed to the compact derivative's hash, so an edit that does not change the comp
 rationale, examples, internal detail — dirties no consumers. A change to a file's `Provides` or
 `Consumes` set additionally marks every dependent block stale.
 
-### Workflow: Raise a Change Ticket
+#### Workflow: Raise a Change Ticket
 
 Change tickets are incremental work items, not `iterate` sessions. A new ticket is just a new
 Specification file under `changes/` with the correct typed header and dependency fields. Planning
@@ -615,6 +513,85 @@ and build execution process it like any other Specification input.
 5. Review the result in the normal evidence or QuarterDeck flow.
 6. Reconcile accepted ticket facts into the owning core Specification files and close the ticket as
    retained change history.
+
+## What Drydock Adds
+
+Drydock gives specification-driven delivery a complete operating language. These are not decorative
+names pasted onto ordinary tools; each names a distinct contract in the system.
+
+| Core concept | Definition |
+|---|---|
+| **Drydock** | The governed delivery system: a controlled place to design, build, inspect, and refit software without losing the specification that defines it. |
+| **Rigging** | The reusable rules, technology standards, templates, prompts, and brand controls that make every build in the portfolio pull in the same direction. |
+| **SAIL** | The delivery methodology: **Set Up, Arrange, Implement, Loop**. It is short enough to remember and complete enough to run the product lifecycle. |
+| **QuarterDeck** | The product owner's command position: a generated review console where plans, evidence, questions, and decisions become visible and actionable. |
+| **Blueprint** | The authoritative living definition of the product, expressed as a Typed Specification rather than a disposable prompt or static requirements document. |
+| **Refit** | A governed pass through the SAIL Loop: revise the Blueprint, update affected software, and rebuild only what the change made stale. |
+| **Manifest** | The accepted executable build plan: ordered work, dependencies, state, review gates, and the next runnable frontier. |
+| **Ship's Log** | The append-only record of material product decisions, reversals, accepted risks, and delivery milestones. |
+
+Together they give Drydock its shape: the **Blueprint** says what must exist; the **Rigging** governs
+how it is built; the **Manifest** orders the work; **SAIL** moves it forward; the **QuarterDeck**
+keeps the product owner in command; the **Ship's Log** preserves why decisions were made; and a
+**Refit** changes the working vessel without abandoning its design authority.
+
+## Workspace Layout
+
+Drydock manages everything inside one workspace tree; there is no separate `blueprints/` root.
+Every artifact for a project lives under `targets/<Target>/`, with the Blueprint as a named subtree
+at `targets/<Target>/blueprint/`. One Target is a self-contained project: Blueprint, Manifest,
+software, evidence, and QuarterDeck together.
+
+```text
+$DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
+├── logs/
+│   └── ships_log.jsonl                   # workspace product/design decision ledger
+│
+└── targets/
+    └── <Target>/                         # one self-contained project
+        ├── METADATA.md                   # identity: Blueprint name, code_root, status, stack
+        ├── README.md                     # short human introduction to the project
+        ├── INTENT.md                     # product intent, constraints, success, guardrails
+        ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
+        ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
+        ├── BUILD_PLAN.md                 # the executable Manifest
+        ├── SCORECARD.md                  # seven-dimension quality + drift scores
+        │
+        ├── blueprint/                    # the Blueprint — conformed Typed Specification
+        │   ├── sources/                  # preserved unconformed import material
+        │   ├── BUILD_CONFIGURATION.md    # durable product-owner planning decisions
+        │   ├── BUILD_PLAN_INTENT.md      # internal inventory of inputs + planning groups
+        │   ├── ARCHITECTURE.md
+        │   ├── DATABASE.md
+        │   ├── FEATURE-{Name}.md
+        │   ├── SCREEN-{Name}.md
+        │   ├── UI-GENERAL.md
+        │   └── changes/
+        │       └── TICKET-NNN-{Name}.md
+        │
+        ├── evidence/                     # reviewable build evidence, named by build object
+        ├── logs/                         # target execution logs (e.g. executions.jsonl)
+        └── QuarterDeck/                  # console state only; runtime served from the package
+            ├── console.yaml
+            ├── tickets.json
+            ├── pages/
+            │   └── overview.md
+            ├── data/
+            ├── planning/
+            │   └── ANALYSIS.md
+            └── questionnaires/
+                └── planning.json
+```
+
+Project-level, human-authored files (`METADATA.md`, `README.md`, `INTENT.md`, `SEA_TRIALS.md`,
+`SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
+the accepted `BUILD_PLAN.md` is the executable Manifest. Built and served code lives at `code_root`
+— the workspace root for self-hosting or brownfield projects, or a path set for greenfield builds.
+
+`drydock init <Target>` writes the minimal scaffold (`METADATA.md`, root
+`SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, `evidence/`, `logs/`, and a
+state-only `QuarterDeck/`). `import`, `plan create`, `build`, and `score` create the remaining files
+as the project progresses.
 
 ## The Blueprint — Typed Specification Contract
 
@@ -638,7 +615,7 @@ not authored as specification files.
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
-  - Created and updated: `drydock import <Blueprint> <Source> --format markdown`
+  - Created and updated: `drydock import <Blueprint> <Target> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
 
 - **`BUILD_CONFIGURATION.md`** — Durable product-owner decisions controlling conformance and planning
@@ -680,7 +657,7 @@ updated by `drydock iterate` as specification files and application code evolve.
 - **`BUILD_PLAN_INTENT.md`** — Internal inventory of Blueprint inputs and planning groups
   - Created and updated: `drydock plan create <Blueprint> <Target>`
 
-- **`<Target>/METADATA.md`** — Project identity and manifest (Blueprint name, `code_root`, status, stack)
+- **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack)
   - Created: `drydock init <Target>`; enriched by `drydock import`
   - Updated: product owner; Drydock Target operations
 
@@ -798,19 +775,19 @@ signatures, parameter types, return types, and one-line summaries. Non-foundatio
 inject the compact form. Only the story that `implements: DATABASE.md` — the one that builds the
 class library — receives the full file.
 
-## The Build Plan — Execution Manifest
+## The Manifest — Executable Build Plan
 
 `BUILD_PLAN.md` is the single generated execution view of the Blueprint. It determines order,
 selects only required context, keeps work within useful context limits, identifies stale work, and
 preserves unaffected accepted work. It is not a second product definition.
 
-The build plan manages the full product life cycle:
+The Manifest manages the full product lifecycle:
 
 - specifications for individual components like screens can be changed resulting in
   context-minimized incremental builds
 - new files (such as change tickets) can be discovered and applied
 
-Each plan contains four block types:
+Each Manifest contains four block types:
 
 - `feature` optionally groups substantial workflows and owns feature-level acceptance
 - `story` builds something. A Drydock story is an enriched Spec Kit task: it has states,
@@ -818,7 +795,7 @@ Each plan contains four block types:
 - `spike` answers a question. Results feed future iterations
 - `ac` checks that something works. A failed AC blocks plan progress.
 
-The plan itself has one lifecycle state:
+The Manifest itself has one lifecycle state:
 
 - `draft` — the Planning Session is active and no work is runnable
 - `approved` — the product owner accepted the complete plan and the frontier is runnable
@@ -1207,7 +1184,10 @@ the relevant artifact type.
 
 ### Compaction — Full Context for Builders, Compact Context for Users
 
-`drydock rigging compact <file.md>` creates `<file_compact.md>`. The full prompt must be used to build the service.  The compact prompt is what is used in consumers.  Compacted files that exist are only recompacted if **stale*.   its `<stem>_compact.md` is missing or older than the source).
+`drydock rigging compact <Blueprint> <Target>` creates compact derivatives for eligible Blueprint
+inputs. The full source is used to build the service; consumers receive the compact derivative.
+Existing derivatives are regenerated only when stale: `<stem>_compact.md` is missing or older than
+its source.
 
 `--force` ignores the freshness gate
 `--all` creates/refreshes needed files
@@ -1249,13 +1229,13 @@ If a story references `DATABASE.md` via `context:` and `DATABASE_compact.md` doe
 build stops:
 
 ```text
-DATABASE_compact.md not found — run: drydock rigging compact <Blueprint>
+DATABASE_compact.md not found — run: drydock rigging compact <Blueprint> <Target>
 ```
 
 `drydock plan create` reports a staleness warning when a source file is newer than its compact
 derivative.
 
-### Workflow: Propagate the Rigging
+### Rigging Propagation Contract
 
 Drydock Rigging is the authoritative source for agent behavior and technology standards.
 Rules are propagated to target projects as a shared contract, making all projects interoperable
@@ -1278,7 +1258,7 @@ flowchart LR
   VERIFY --> REPORT{{"Compliance Report"}}:::md
 ```
 
-1. `drydock rigging compact <Blueprint>` — distills `BUSINESS_RULES.md` into
+1. `drydock rigging compact <Blueprint> <Target> --all` — distills `BUSINESS_RULES.md` into
    `BUSINESS_RULES_compact.md`. Run after every rules edit; the compact form is what agents read
    and what `rigging update` injects.
 2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
@@ -1370,7 +1350,7 @@ Drydock adds capabilities with no Spec Kit equivalent:
 | Drydock capability | Description |
 |---|---|
 | `SCREEN-*.md` | Dedicated specification file type for UI screens |
-| `drydock iterate` | Post-build spec-and-code update loop |
+| `drydock iterate` | Governed Refit of the Blueprint and working software |
 | QuarterDeck | Generated, throwaway review console; decisions write back into the build through the single decision writer |
 | Agile plan mode | Spike-and-story delivery with per-object state and review gates |
 | Ship's Log | Drydock-only JSONL append-only event ledger written automatically by development agents |
@@ -1379,10 +1359,10 @@ Drydock adds capabilities with no Spec Kit equivalent:
 | Brownfield import | Translate Spec Kit projects or source code into a Drydock Blueprint |
 | Documentation generation | Blueprint-to-HTML documentation pipeline |
 
-### Workflow: Import a Spec Kit Project
+### Spec Kit Import Contract
 
 ```text
-drydock import <Blueprint> <SpecKitProject> --format speckit
+drydock import <Blueprint> <Target> <SpecKitProject> --format speckit
 ```
 
 The translator reads `.specify/memory/constitution.md` and each Spec Kit feature directory, then

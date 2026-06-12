@@ -140,7 +140,7 @@ PowerShell files in `bin/` only locate the environment and invoke the package en
 | Drydock's own authoritative product specification | `docs/Drydock_Specification.md` |
 | Drydock's own implementation acceptance checklist | `docs/SOUNDINGS.md` |
 | Target-project Blueprint Typed Specification files, `BUILD_CONFIGURATION.md`, and `BUILD_PLAN_INTENT.md` | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
-| `METADATA.md` manifest, `BUILD_PLAN.md`, `SCORECARD.md`, Sea Trials, Soundings, built software, evidence, logs, and QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
+| `METADATA.md` project identity, `BUILD_PLAN.md` Manifest, `SCORECARD.md`, Sea Trials, Soundings, built software, evidence, logs, and QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
 | Drydock's distributable rules/templates | `Rigging/` and packaged resource copy |
 | User configuration | User-scoped Drydock configuration managed by `drydock config` |
 

@@ -1,6 +1,7 @@
 # Drydock
 
-Drydock is an installable Python CLI implementing the governed Drydock Blueprint Methodology.
+Drydock is an installable Python CLI implementing the governed Drydock Blueprint Methodology
+through **SAIL: Set Up, Arrange, Implement, Loop**.
 
 Copyright (c) 2026 Web Cloud Studio. All rights reserved. See [LICENSE](LICENSE).
 

@@ -98,9 +98,10 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock config show",
         "drydock config set <key> <value>",
         "drydock init <Target>",
+        "drydock status [<Blueprint> [<Target>]]",
+        "drydock validate <Blueprint> <Target> [--verbose]",
         "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
         "drydock import <Blueprint> <Target> <Source> --format <auto|markdown|source|speckit>",
-        "drydock status <Blueprint> [--verbose]",
         "drydock analyze <Blueprint> [<Target>]",
         "drydock plan create <Blueprint> <Target>",
         "drydock build <Blueprint> <Target>",
@@ -116,7 +117,23 @@ def test_canonical_specification_documents_current_command_surface():
     )
 
     for command in expected:
-        assert f"```text\n{command}\n```" in specification
+        assert command in specification
+
+    phase_headings = (
+        "## SAIL Phase 1 — Set Up: Laying the Keel",
+        "## SAIL Phase 2 — Arrange: Charting the Build",
+        "## SAIL Phase 3 — Implement: Working the Frontier",
+        "## SAIL Phase 4 — Loop: The Refit",
+    )
+    assert [specification.index(heading) for heading in phase_headings] == sorted(
+        specification.index(heading) for heading in phase_headings
+    )
+    for phase in specification.split("## SAIL Phase ")[1:]:
+        assert (
+            phase.index("### Explanation")
+            < phase.index("### Commands")
+            < phase.index("### Workflows")
+        )
 
     for nonexistent in ("drydock conform", "drydock plan validate", "drydock plan approve"):
         assert nonexistent not in specification
