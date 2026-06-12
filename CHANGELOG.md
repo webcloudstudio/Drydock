@@ -26,7 +26,7 @@ command surface and Typed Specification contract are unstable and may change bet
 ### Changed
 
 - Replaced the public `drydock log` commands and shared target-project capture rules with the
-  Drydock-only agent process in `SHIPS_LOG_PROCESS.md` and repository-local `bin/ships_log.py`.
+  Drydock-only agent process in `AGENTS.md` and repository-local `bin/ships_log.py`.
 - Renamed the public Blueprint root contract to `BLUEPRINT_DIRECTORY` and `blueprint_directory`;
   legacy specification-directory names remain accepted as deprecated migration aliases.
 - Renamed the public CLI project argument from `<Spec>` to `<Blueprint>` and the iterate-side mode

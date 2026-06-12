@@ -162,7 +162,8 @@ Timeouts terminate the child process and return exit code `124`; interruption te
 records exit code `130`, and re-raises `KeyboardInterrupt`.
 
 Material Drydock product decisions and delivery milestones are separate from execution mechanics.
-Agents developing Drydock follow `SHIPS_LOG_PROCESS.md` and use the repository-local utility:
+Agents developing Drydock follow the Ship's Log Process in `AGENTS.md` and use the repository-local
+utility:
 
 ```text
 python bin/ships_log.py record --event-type decision --title "..." --summary "..." \
@@ -182,7 +183,8 @@ is generated.
 - `docs/SOUNDINGS.md` — authoritative implementation acceptance/readiness checklist and completion
   evidence.
 - `docs/SEA_TRIALS.md` — strategic product outcomes and proof-of-methodology criteria.
-- `SHIPS_LOG_PROCESS.md` — mandatory Drydock-only agent decision-capture process.
+- `AGENTS.md` — operating rules, development architecture, and the mandatory Drydock-only agent
+  decision-capture (Ship's Log) process.
 
 QuarterDeck exposes these documents and the other owned artifacts under `docs/` directly.
 

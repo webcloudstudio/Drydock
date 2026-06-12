@@ -5,10 +5,8 @@ a Drydock Blueprint, its Typed Specification, and a strict source-precedence con
 
 ## Before you start
 
-Read [DRYDOCK_DEVELOPMENT.md](DRYDOCK_DEVELOPMENT.md) and
-[SHIPS_LOG_PROCESS.md](SHIPS_LOG_PROCESS.md) in full. They define the development architecture,
+Read [AGENTS.md](AGENTS.md) in full. It defines the operating rules, development architecture,
 source precedence, verification contract, and mandatory decision-capture process.
-[AGENTS.md](AGENTS.md) summarizes the operating rules;
 [docs/Drydock_Specification.md](docs/Drydock_Specification.md) is the sole authoritative Drydock
 specification; [docs/SOUNDINGS.md](docs/SOUNDINGS.md) is the authoritative implementation
 acceptance/readiness checklist.

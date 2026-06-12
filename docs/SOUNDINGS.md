@@ -40,6 +40,6 @@
 | QD-008 | QuarterDeck source rules auto-discover files while explicit items and overrides take priority | DONE | `QuarterDeck/app.py::_expand_sources`, `tests/test_quarterdeck.py` |
 | QD-009 | QuarterDeck archive controls preserve pinned Core artifacts | DONE | `QuarterDeck/app.py`, `tests/test_quarterdeck.py` |
 | QD-010 | Planning Session approval writes the authoritative plan state and exposes the runnable frontier | DONE | `QuarterDeck/app.py::api_plan_decision`, `tests/test_quarterdeck.py`, `tests/test_build_plan.py` |
-| GOV-001 | The Drydock specification is the sole approved behavior authority | DONE | `AGENTS.md`, `DRYDOCK_DEVELOPMENT.md`, `CONTRIBUTING.md` |
-| GOV-002 | Completed capabilities update Soundings state and evidence | DONE | `DRYDOCK_DEVELOPMENT.md` |
-| GOV-003 | Material decisions and milestones are recorded and audited through the Ship's Log workflow | DONE | `SHIPS_LOG_PROCESS.md`, `bin/ships_log.py`, `tests/test_ships_log_tool.py` |
+| GOV-001 | The Drydock specification is the sole approved behavior authority | DONE | `AGENTS.md`, `CONTRIBUTING.md` |
+| GOV-002 | Completed capabilities update Soundings state and evidence | DONE | `AGENTS.md` |
+| GOV-003 | Material decisions and milestones are recorded and audited through the Ship's Log workflow | DONE | `AGENTS.md`, `bin/ships_log.py`, `tests/test_ships_log_tool.py` |

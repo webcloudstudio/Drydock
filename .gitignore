@@ -39,6 +39,9 @@ htmlcov/
 # Drydock generated
 prompts/generated/
 
+# Drydock self-host workspace
+targets/
+
 # QuarterDeck local state
 QuarterDeck/data/*.sqlite
 
