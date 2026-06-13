@@ -168,20 +168,34 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+_VERDICT_LABELS = {
+    "ready": "Ready for plan create.",
+    "ready_with_questions": "Ready, but questions must be answered before plan create.",
+    "blocked": "Blocked — required Blueprint files are missing. Add them and re-run analyze.",
+    "unknown": "Verdict could not be determined.",
+}
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
     from drydock.config import get_target_directory
 
     target_dir = get_target_directory() / args.Target
     print(f"Analyzing Blueprint: {args.Target}")
-    result = analyze(args.Target, target_dir, on_text=lambda t: print(t, end="", flush=True))
+    print("Running analysis...", flush=True)
+    result = analyze(args.Target, target_dir)
     print()
     if not result.ok:
-        print(f"Error: {result.error}")
+        print(f"Error: {result.error}", file=sys.stderr)
         return 1
-    print(f"Analysis:  {result.analysis_path}")
-    print(f"Questions: {result.question_count} questionnaire item(s)")
+    print(f"  ANALYSIS.md  →  {result.analysis_path}")
+    print(f"  planning.json  →  {result.planning_path}")
+    print()
+    verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
     print(f"Verdict:   {result.verdict}")
+    print(f"           {verdict_label}")
+    if result.question_count:
+        print(f"Questions: {result.question_count} item(s) require answers in the Planning Session.")
     print()
     print(f"Next step: drydock run quarterdeck {args.Target}")
     return 0
