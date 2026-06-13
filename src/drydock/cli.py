@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import traceback
 from pathlib import Path
@@ -10,6 +11,8 @@ from pathlib import Path
 from drydock import __copyright__, __version__
 from drydock.errors import DrydockError, UsageError
 from drydock.stubs import not_implemented
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -66,9 +69,10 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from drydock.config import append_target_history, get_target_directory, record_activity
+    from drydock.config import append_command_history, get_target_directory, get_workspace, record_activity
     from drydock.init_target import init_target
 
+    logger.debug("cmd_init: target=%s", args.Target)
     targets_root = get_target_directory()
     result = init_target(
         args.Target,
@@ -86,7 +90,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  Nothing to do — target baseline is already initialized.")
 
     record_activity("init", target=args.Target)
-    append_target_history(result.target_dir, f"drydock init {args.Target}")
+    append_command_history(get_workspace(), f"drydock init {args.Target}", target=args.Target)
     t = args.Target
     print()
     print("Next steps:")
@@ -356,17 +360,14 @@ def _render_workspace_status(ws) -> None:
         print()
 
 
-def cmd_status_current(debug: bool = False) -> int:
+def cmd_status_current() -> int:
     from drydock.config import get_target_directory, get_workspace
     from drydock.status import status_workspace
 
-    if debug:
-        print()
+    logger.debug("cmd_status_current")
     workspace = get_workspace()
     targets_root = get_target_directory()
-    ws = status_workspace(workspace, targets_root, debug=debug)
-    if debug:
-        print()
+    ws = status_workspace(workspace, targets_root)
     _render_workspace_status(ws)
     return 0
 
@@ -606,7 +607,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _dispatch_status(args: argparse.Namespace) -> int:
     tokens = args.args
     if len(tokens) == 0:
-        return cmd_status_current(debug=getattr(args, "debug", False))
+        return cmd_status_current()
     elif len(tokens) == 1:
         return cmd_status_blueprint(tokens[0])
     elif len(tokens) == 2:
@@ -742,6 +743,17 @@ def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
     debug = getattr(args, "debug", False)
+
+    try:
+        from drydock.config import get_workspace
+        from drydock.logging import setup_run_logger
+
+        log_dir = get_workspace() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        setup_run_logger(log_dir / "run.log", debug=debug)
+        logger.info("command: %s", " ".join(sys.argv if argv is None else argv))
+    except Exception:
+        pass  # log setup failure must not prevent the command from running
 
     try:
         rc = _dispatch(args, parser)

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
-_HISTORY_FILENAME = "history.jsonl"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,7 +39,8 @@ def _has_blueprint_content(blueprint_dir: Path) -> bool:
     return False
 
 
-def _read_history(history_path: Path, limit: int = 5) -> list[dict]:
+def _read_workspace_history(history_path: Path, target: str, limit: int = 5) -> list[dict]:
+    """Return the most-recent *limit* records for *target* from the workspace history log."""
     if not history_path.exists():
         return []
     records: list[dict] = []
@@ -47,35 +49,33 @@ def _read_history(history_path: Path, limit: int = 5) -> list[dict]:
         if not line:
             continue
         try:
-            import json
-            records.append(json.loads(line))
+            rec = json.loads(line)
+            if rec.get("target", "") == target:
+                records.append(rec)
         except Exception:
             pass
     return records[-limit:]
 
 
-def _analyze_target(target_dir: Path, *, debug: bool = False) -> TargetInfo:
+def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     from drydock.metadata import get_field, parse_metadata
 
-    def _dbg(path: Path) -> None:
-        if debug:
-            print(f"  Reading {path}")
-
     name = target_dir.name
-    _dbg(target_dir / "METADATA.md")
-    meta = parse_metadata(target_dir / "METADATA.md")
+    metadata_path = target_dir / "METADATA.md"
+    logger.debug("Reading %s", metadata_path)
+    meta = parse_metadata(metadata_path)
     display_name = get_field(meta, "display_name") or name
     blueprint = get_field(meta, "blueprint") or name
 
     blueprint_dir = target_dir / "blueprint"
     build_plan_path = target_dir / "BUILD_PLAN.md"
-    history_path = target_dir / "logs" / _HISTORY_FILENAME
+    history_path = workspace / "logs" / "history.jsonl"
 
-    _dbg(blueprint_dir)
+    logger.debug("Reading %s", blueprint_dir)
     has_content = _has_blueprint_content(blueprint_dir)
-    _dbg(build_plan_path)
-    _dbg(history_path)
-    history = _read_history(history_path)
+    logger.debug("Reading %s", build_plan_path)
+    logger.debug("Reading %s", history_path)
+    history = _read_workspace_history(history_path, name)
 
     if not has_content:
         phase, detail = "Set Up", "Blueprint is empty — no source material imported yet"
@@ -139,22 +139,23 @@ def _analyze_target(target_dir: Path, *, debug: bool = False) -> TargetInfo:
 
 def status_workspace(workspace: Path, targets_root: Path, *, debug: bool = False) -> WorkspaceStatus:
     """Return status for all initialized targets in the workspace."""
+    logger.debug("status_workspace: workspace=%s targets_root=%s", workspace, targets_root)
     targets: list[TargetInfo] = []
     if targets_root.is_dir():
-        if debug:
-            print(f"  Reading {targets_root}/")
+        logger.debug("Reading %s/", targets_root)
         for entry in sorted(targets_root.iterdir()):
             if entry.is_dir() and (entry / "METADATA.md").exists():
                 try:
-                    info = _analyze_target(entry, debug=debug)
+                    info = _analyze_target(entry, workspace)
                 except Exception:
+                    logger.exception("Error analyzing target %s", entry.name)
                     info = TargetInfo(
                         name=entry.name, target_dir=entry, display_name=entry.name,
                         phase="Unknown", phase_detail="Error reading target state",
                     )
                 targets.append(info)
-    elif debug:
-        print(f"  Reading {targets_root}/  (not found)")
+    else:
+        logger.debug("targets_root not found: %s", targets_root)
     return WorkspaceStatus(workspace=workspace, targets_root=targets_root, targets=targets)
 
 
