@@ -107,7 +107,7 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock build <Blueprint> <Target>",
         "drydock build status <Blueprint> <Target>",
         "drydock build score <Blueprint> <Target>",
-        "drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>",
+        "drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>",
         "drydock rigging compact <Blueprint> <Target> [--all] [--force]",
         "drydock rigging update <Target>",
         "drydock rigging verify <Target>",

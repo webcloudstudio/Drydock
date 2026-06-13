@@ -374,8 +374,8 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _canonical_iterate_mode(value: str) -> str:
-    """Normalize the deprecated SPEC iterate mode."""
+def _canonical_refit_mode(value: str) -> str:
+    """Normalize the deprecated SPEC refit mode."""
     return "BLUEPRINT" if value == "SPEC" else value
 
 
@@ -519,15 +519,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "args", nargs=argparse.REMAINDER, metavar="[status|score] <Blueprint> <Target>"
     )
 
-    # ── iterate ───────────────────────────────────────────────────────────────
-    p_iter = sub.add_parser("iterate", help="Update Blueprint and target software together.")
+    # ── refit ─────────────────────────────────────────────────────────────────
+    p_iter = sub.add_parser("refit", help="Update Blueprint and target software together.")
     p_iter.add_argument("Blueprint", metavar="<Blueprint>")
     p_iter.add_argument("Target", metavar="<Target>")
     p_iter.add_argument(
         "Mode",
         metavar="<BOTH|BLUEPRINT|TGT>",
         choices=["BOTH", "BLUEPRINT", "TGT"],
-        type=_canonical_iterate_mode,
+        type=_canonical_refit_mode,
     )
     p_iter.add_argument("Scope", metavar="<Scope>")
     p_iter.add_argument("Change", metavar="<Change>")
@@ -688,8 +688,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "build":
         return _dispatch_build(args)
 
-    if command == "iterate":
-        not_implemented("iterate")
+    if command == "refit":
+        not_implemented("refit")
 
     if command == "analyze":
         not_implemented("analyze")

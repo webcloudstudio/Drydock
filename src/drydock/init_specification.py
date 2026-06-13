@@ -66,7 +66,7 @@ def _apply_tokens(text: str, slug: str, display_name: str, today: str, today_com
 
 
 # Templates that belong at the Target root rather than inside blueprint/.
-_ROOT_TEMPLATES = {"METADATA.md", "README.md", "INTENT.md"}
+_ROOT_TEMPLATES = {"METADATA.md", "README.md", "COMPASS.md"}
 
 
 def init_specification(
@@ -79,7 +79,7 @@ def init_specification(
     """
     Create or update a Blueprint within a Target from packaged templates.
 
-    Root-level identity files (METADATA.md, README.md, INTENT.md) are written to
+    Root-level identity files (METADATA.md, README.md, COMPASS.md) are written to
     ``target_dir``; the Typed Specification corpus is written to
     ``target_dir/blueprint``.
 

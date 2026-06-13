@@ -11,7 +11,7 @@ from pathlib import Path
 
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
-from drydock.plan_intent import init_plan_intent
+from drydock.plan_compass import init_plan_compass
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
@@ -53,18 +53,18 @@ def _section_bullets(text: str, heading: str) -> list[str]:
 
 
 def _ordered_inputs(blueprint_dir: Path) -> list[Path]:
-    intent = blueprint_dir / "BUILD_PLAN_INTENT.md"
-    if not intent.is_file():
+    compass = blueprint_dir / "BUILD_PLAN_COMPASS.md"
+    if not compass.is_file():
         raise SpecificationError(
-            f"BUILD_PLAN_INTENT.md not found after planning inventory: {intent}"
+            f"BUILD_PLAN_COMPASS.md not found after planning inventory: {compass}"
         )
     paths: list[Path] = []
-    for match in _ENTRY_RE.finditer(intent.read_text(encoding="utf-8")):
+    for match in _ENTRY_RE.finditer(compass.read_text(encoding="utf-8")):
         path = blueprint_dir / match.group(1)
         if path.is_file():
             paths.append(path)
     if not paths:
-        raise SpecificationError(f"No planned Markdown inputs found in {intent}")
+        raise SpecificationError(f"No planned Markdown inputs found in {compass}")
     return paths
 
 
@@ -269,7 +269,7 @@ def create_plan(
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
-    init_plan_intent(blueprint, target_dir)
+    init_plan_compass(blueprint, target_dir)
     inputs = _ordered_inputs(blueprint_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     plan_path = target_dir / "BUILD_PLAN.md"

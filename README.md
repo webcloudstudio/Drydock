@@ -76,7 +76,7 @@ drydock rigging update <Target>
 drydock rigging verify <Target>
 drydock build <Blueprint> <Target>
 drydock build score <Blueprint> <Target>
-drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
+drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 drydock analyze <Blueprint> [<Target>]
 drydock import <Blueprint> <Source> --format <source|speckit>
 ```

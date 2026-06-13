@@ -51,7 +51,7 @@ _VALID_STATUSES = {"IDEA", "PROTOTYPE", "ACTIVE", "PRODUCTION", "ARCHIVED"}
 _ALLOWED_ROOT_NAMES = {
     "METADATA.md",
     "README.md",
-    "INTENT.md",
+    "COMPASS.md",
     "ARCHITECTURE.md",
     "DATABASE.md",
     "UI.md",
@@ -61,7 +61,7 @@ _ALLOWED_ROOT_NAMES = {
     "IDEAS.md",
     "REFERENCE_GAPS.md",
     "SCORECARD.md",
-    "BUILD_PLAN_INTENT.md",
+    "BUILD_PLAN_COMPASS.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
     "SPEC_PATCHES.md",
@@ -78,7 +78,7 @@ _GENERATED_FILES = {
 }
 
 _TERMINAL_SECTIONS_REQUIRED = {"Acceptance Criteria", "Guardrails", "Open Questions"}
-_INTENT_EXTRA_SECTIONS = {"Intent", "Constraints", "Success Criteria"}
+_COMPASS_EXTRA_SECTIONS = {"Compass", "Constraints", "Success Criteria"}
 
 _EXAMPLE_FILES = {"SCREEN-Example.md", "FEATURE-Example.md", "UI-Component-Example.md"}
 
@@ -89,7 +89,7 @@ _NO_TERMINAL_NEEDED = {
     "IDEAS.md",
     "REFERENCE_GAPS.md",
     "SCORECARD.md",
-    "BUILD_PLAN_INTENT.md",
+    "BUILD_PLAN_COMPASS.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
 }
@@ -122,7 +122,7 @@ def validate_specification(
     """
     Run all validation rules against a Target's Blueprint.
 
-    Root identity files (METADATA.md, README.md, INTENT.md) live at ``target_dir``;
+    Root identity files (METADATA.md, README.md, COMPASS.md) live at ``target_dir``;
     the Typed Specification corpus lives at ``target_dir/blueprint``.
 
     Args:
@@ -268,16 +268,16 @@ def validate_specification(
                 else:
                     w(section, f"{fname} missing ## {heading}")
 
-        if fname == "INTENT.md":
-            for heading in _INTENT_EXTRA_SECTIONS:
+        if fname == "COMPASS.md":
+            for heading in _COMPASS_EXTRA_SECTIONS:
                 if _has_section(text, heading):
-                    p(section, f"INTENT.md has ## {heading}")
+                    p(section, f"COMPASS.md has ## {heading}")
                 else:
-                    w(section, f"INTENT.md missing ## {heading}")
+                    w(section, f"COMPASS.md missing ## {heading}")
             if _has_section(text, "Goals"):
                 w(
                     section,
-                    "INTENT.md contains legacy ## Goals section — merge into ## Success Criteria",
+                    "COMPASS.md contains legacy ## Goals section — merge into ## Success Criteria",
                 )
 
     # --- Typed spec file headers ---

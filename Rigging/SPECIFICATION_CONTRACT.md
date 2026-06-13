@@ -14,7 +14,7 @@ Used by: `bin/setup.sh`, `bin/validate.sh`, `bin/oneshot.sh`, `bin/oneshot_phase
 | `METADATA.md` | Project identity (name, display_name, short_description, status) | Yes |
 | `AGENTS.md` | Callable surface area: `## Endpoints`, `## Capabilities` (JSON), `## Links` | If exposes services |
 | `README.md` | One-line description + `## Intent` section | Yes |
-| `INTENT.md` | Product intent, constraints, and success criteria | Yes |
+| `COMPASS.md` | Product intent, constraints, and success criteria | Yes |
 | `ARCHITECTURE.md` | Modules, routes, directory layout | Yes |
 | `ARCHITECTURE_FUNC_compact.md` | Compact architecture for Functionality phases — module summaries, config, no routes table | No |
 | `ARCHITECTURE_UI_compact.md` | Compact architecture for UI phases — routes table, directory layout, Flask basics only | No |
@@ -26,11 +26,11 @@ Used by: `bin/setup.sh`, `bin/validate.sh`, `bin/oneshot.sh`, `bin/oneshot_phase
 | `HOMEPAGE-PUBLISHER.md` | Template-based homepage publishing configuration | If publishes a portfolio |
 | `IDEAS.md` | Feature ideas and backlog | No |
 | `*-AC.md` / `AC-*.md` / `*-AC-*.md` | Acceptance criteria — any file where `AC` is a whole word in the filename. Guardrails (negative assertions) stay permanent; positive facts reconcile into parent spec. | As needed |
-| `BUILD_PLAN_INTENT.md` | Internal planning-input inventory maintained by `drydock plan create` | Process-created |
+| `BUILD_PLAN_COMPASS.md` | Internal planning-input inventory maintained by `drydock plan create` | Process-created |
 | `REFERENCE_GAPS.md` | Specification completeness gaps (written by spec_iterate.sh) | No |
 | `SPEC_SCORECARD.md` | 7-dimension quality rating (written by spec_iterate.sh) | No |
 
-Every authored Specification file, including `INTENT.md`, ends with `## Acceptance Criteria`, `## Guardrails`, and `## Open Questions`.
+Every authored Specification file, including `COMPASS.md`, ends with `## Acceptance Criteria`, `## Guardrails`, and `## Open Questions`.
 
 `ARCHITECTURE_FUNC_compact.md` and `ARCHITECTURE_UI_compact.md` are compact derivatives of `ARCHITECTURE.md` authored by the spec author. When present, `build_plan_auto.py` automatically selects the appropriate variant based on phase content (FEATURE-* files → FUNC compact; SCREEN-* files → UI compact). Both fall back to `ARCHITECTURE.md` if absent.
 
@@ -232,7 +232,7 @@ Every authored Specification file except `METADATA.md` and `README.md` must begi
 | Phase       | 2 |
 ```
 
-**FileType values:** `INTENT`, `SCREEN`, `FEATURE`, `DATABASE`, `UI-GENERAL`, `ARCHITECTURE`, `HOMEPAGE`
+**FileType values:** `COMPASS`, `SCREEN`, `FEATURE`, `DATABASE`, `UI-GENERAL`, `ARCHITECTURE`, `HOMEPAGE`
 
 **ObjectName:** Human-readable name matching the file subject (e.g., `Welcome Summary`, `Service Catalog`).
 
@@ -278,7 +278,7 @@ Specification file ends with these sections, using `- None.` when no entries app
 - None.
 ```
 
-`INTENT.md` uses `## Intent`, `## Constraints`, and `## Success Criteria` as its file-specific body
+`COMPASS.md` uses `## Compass`, `## Constraints`, and `## Success Criteria` as its file-specific body
 sections. Do not use `## Goals`; measurable product outcomes belong in `## Success Criteria`.
 
 ---

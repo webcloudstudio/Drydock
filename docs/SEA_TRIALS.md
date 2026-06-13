@@ -27,7 +27,7 @@ Positive, testable outcomes. Drydock is delivered when every box is checked.
   produce `SCORECARD.md`.
 - [ ] The QuarterDeck serves evidence, questionnaires, and the sprint board; approve, revise,
   reject, and reopen-failed all write back through the single decision writer.
-- [ ] `drydock iterate` updates Blueprint and target together and appends rationale to the
+- [ ] `drydock refit` updates Blueprint and target together and appends rationale to the
   Ship's Log.
 - [ ] `drydock analyze` reports drift, open questions, and specification changes not covered by a
   Ship's Log entry.

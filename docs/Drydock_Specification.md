@@ -105,7 +105,7 @@ The public CLI is organized by SAIL phase:
 | **Set Up** | Establish the workspace, Target, governance, orientation, and QuarterDeck | `config`, `init`, `status`, `validate`, `rigging update`, `rigging verify`, `run quarterdeck` |
 | **Arrange** | Import, inspect, compact, organize, and approve the work | `import`, `analyze`, `rigging compact`, `plan create` |
 | **Implement** | Execute the accepted Manifest, inspect progress, score delivery, and produce documentation | `build`, `build status`, `build score`, `document` |
-| **Loop** | Perform a governed Refit and return affected work to Arrange and Implement | `iterate` |
+| **Loop** | Perform a governed Refit and return affected work to Arrange and Implement | `refit` |
 
 `drydock --help` prints the installed command surface:
 
@@ -125,7 +125,7 @@ positional arguments:
     rigging   Manage Drydock Rigging.
     plan      Manage the build plan.
     build     Build or inspect build state.
-    iterate   Update Blueprint and target software together.
+    refit     Update Blueprint and target software together.
     analyze   Read-only advisory: surface gaps and drift.
     run       Start a Drydock service.
     import    Reverse-engineer a project into a Blueprint.
@@ -226,7 +226,7 @@ Arrange turns source material into a reviewable, executable Manifest.
 5. Review and approve the complete Manifest in the Target's QuarterDeck Planning Session.
 
 `drydock plan create` reads all available Blueprint inputs, writes
-`<Target>/blueprint/BUILD_PLAN_INTENT.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
+`<Target>/blueprint/BUILD_PLAN_COMPASS.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
 Session. A draft plan has no runnable frontier. QuarterDeck approval establishes the executable
 baseline and exposes the runnable frontier.
 
@@ -283,7 +283,7 @@ questionnaire. It does not create or modify `BUILD_PLAN.md`.
    detail that would create uncertainty during a build.
 2. `drydock analyze <Blueprint> <Target>` — compare the Blueprint against the built application;
    identify drift, incomplete implementation, and candidates for the next Refit.
-3. Apply findings with `drydock iterate` or `drydock plan create` as appropriate.
+3. Apply findings with `drydock refit` or `drydock plan create` as appropriate.
 
 `drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
 Planning Session outputs before running `drydock plan create`.
@@ -426,7 +426,7 @@ flowchart LR
 1. `drydock build score <Blueprint> <Target>` — compare the Blueprint against the built application;
    surfaces drift between what was specified and what was delivered.
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
-   prioritize the next `drydock iterate` or `drydock plan create` run.
+   prioritize the next `drydock refit` or `drydock plan create` run.
 
 ### Workflow: Deliver Project Documentation
 
@@ -445,10 +445,10 @@ returns affected work to Arrange and Implement. The Blueprint is never bypassed.
 ### Commands
 
 ```text
-drydock iterate <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
+drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 ```
 
-`drydock iterate` performs the Refit. It updates the Blueprint and Target together, or limits the
+`drydock refit` performs the Refit. It updates the Blueprint and Target together, or limits the
 change to the selected side, then returns affected work to the SAIL cycle.
 
 ### Workflow: Refit a Working SDD Application
@@ -469,12 +469,12 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  CHANGE(["Change Request"]):::dir --> ITERATE["iterate"]:::script
-  ITERATE --> SPECOUT(["Updated Blueprint"]):::dir
-  ITERATE --> SOFTWARE(["Updated Software"]):::output
+  CHANGE(["Change Request"]):::dir --> REFIT["refit"]:::script
+  REFIT --> SPECOUT(["Updated Blueprint"]):::dir
+  REFIT --> SOFTWARE(["Updated Software"]):::output
 ```
 
-1. `drydock iterate <Blueprint> <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL,
+1. `drydock refit <Blueprint> <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL,
    keyword, or filename) to the owning `FEATURE-*.md`, `SCREEN-*.md`, `DATABASE.md`, or
    `ARCHITECTURE.md`.
 2. `BLUEPRINT` or `BOTH` updates the owning file, increments its `Version`, records criteria,
@@ -492,7 +492,7 @@ rationale, examples, internal detail — dirties no consumers. A change to a fil
 
 ### Workflow: Raise a Change Ticket
 
-Change tickets are incremental work items, not `iterate` sessions. A new ticket is just a new
+Change tickets are incremental work items, not `refit` sessions. A new ticket is just a new
 Specification file under `changes/` with the correct typed header and dependency fields. Planning
 and build execution process it like any other Specification input.
 
@@ -543,7 +543,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
     └── <Target>/                         # one self-contained project
         ├── METADATA.md                   # identity: Blueprint name, code_root, status, stack
         ├── README.md                     # short human introduction to the project
-        ├── INTENT.md                     # product intent, constraints, success, guardrails
+        ├── COMPASS.md                     # product intent, constraints, success, guardrails
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
         ├── BUILD_PLAN.md                 # the executable Manifest
@@ -552,7 +552,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── blueprint/                    # the Blueprint — conformed Typed Specification
         │   ├── sources/                  # preserved unconformed import material
         │   ├── BUILD_CONFIGURATION.md    # durable product-owner planning decisions
-        │   ├── BUILD_PLAN_INTENT.md      # internal inventory of inputs + planning groups
+        │   ├── BUILD_PLAN_COMPASS.md      # internal inventory of inputs + planning groups
         │   ├── ARCHITECTURE.md
         │   ├── DATABASE.md
         │   ├── FEATURE-{Name}.md
@@ -575,7 +575,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
                 └── planning.json
 ```
 
-Project-level, human-authored files (`METADATA.md`, `README.md`, `INTENT.md`, `SEA_TRIALS.md`,
+Project-level, human-authored files (`METADATA.md`, `README.md`, `COMPASS.md`, `SEA_TRIALS.md`,
 `SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
 the accepted `BUILD_PLAN.md` is the executable Manifest. Built and served code lives at `code_root`
 — the workspace root for self-hosting or brownfield projects, or a path set for greenfield builds.
@@ -602,7 +602,7 @@ not authored as specification files.
 
 **Human-authored** — the product intent explicitly owned by the product owner.
 
-- **`INTENT.md`** — Product intent, constraints, success criteria, guardrails, and open questions
+- **`COMPASS.md`** — Product intent, constraints, success criteria, guardrails, and open questions
   - Created: `drydock import` conversion
   - Updated: Product owner
 
@@ -615,38 +615,38 @@ not authored as specification files.
   - Used by: `drydock plan create <Blueprint> <Target>`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
-updated by `drydock iterate` as specification files and application code evolve.
+updated by `drydock refit` as specification files and application code evolve.
 
 - **`ARCHITECTURE.md`** — Modules, routes, boundaries, interfaces, and technical decisions
   - Created: `drydock import` conversion
-  - Updated: `drydock iterate` (architecture-scoped)
+  - Updated: `drydock refit` (architecture-scoped)
 
 - **`DATABASE.md`** — Persistence stores, schemas, migrations, and typed access classes
   - Created: `drydock import` conversion
-  - Updated: `drydock iterate` (data-scoped)
+  - Updated: `drydock refit` (data-scoped)
 
 - **`FEATURE-{Name}.md`** — Feature purpose, status, behavior, reads, writes, routes, criteria, and guardrails
   - Created: `drydock import` conversion; accepted change reconciliation
-  - Updated: `drydock iterate` (feature-scoped)
+  - Updated: `drydock refit` (feature-scoped)
 
 - **`SCREEN-{Name}.md`** — Screen route, layout, interactions, and criteria
   - Created: `drydock import` conversion; accepted change reconciliation
-  - Updated: `drydock iterate` (screen-scoped)
+  - Updated: `drydock refit` (screen-scoped)
 
 - **`UI-GENERAL.md`** — Shared UI behavior and visual rules
   - Created: `drydock import` conversion when the project has a UI
-  - Updated: `drydock iterate` (UI-scoped)
+  - Updated: `drydock refit` (UI-scoped)
 
 - **`changes/TICKET-NNN-{Name}.md`** — Post-baseline change, defect, or spike request
   - Created: Product owner or change intake workflow
   - Updated: Clarification, planning, build execution, evidence, review, and reconciliation
   - Processing: Additional specification files are detected by `drydock plan create`, placed in
-    `BUILD_PLAN_INTENT.md` for ordering, and processed by `drydock build`. Required context is added
+    `BUILD_PLAN_COMPASS.md` for ordering, and processed by `drydock build`. Required context is added
     automatically.
 
 **Process Created Artifacts** — generated by Drydock commands; not authored directly.
 
-- **`BUILD_PLAN_INTENT.md`** — Internal inventory of Blueprint inputs and planning groups
+- **`BUILD_PLAN_COMPASS.md`** — Internal inventory of Blueprint inputs and planning groups
   - Created and updated: `drydock plan create <Blueprint> <Target>`
 
 - **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack)
@@ -1307,7 +1307,7 @@ surface that have no Spec Kit counterpart.
 
 | Spec Kit concept | Drydock equivalent | Compatibility level | Status | Lossiness |
 |---|---|---|---|---|
-| `constitution.md` — governing principles | `INTENT.md` for product-specific intent plus Drydock Rigging for reusable governance | Enriched | Native | Partial split: one Spec Kit artifact maps to two Drydock layers |
+| `constitution.md` — governing principles | `COMPASS.md` for product-specific intent plus Drydock Rigging for reusable governance | Enriched | Native | Partial split: one Spec Kit artifact maps to two Drydock layers |
 | `specs/<feature>/spec.md` — functional requirements | Owning `FEATURE-{Name}.md` plus `SCREEN-{Name}.md` when UI behavior is first-class | Enriched | Native plus generated compatibility view | Low: behavior is preserved, but typed ownership may split one source into multiple Drydock files |
 | Generated `spec.md` view | QuarterDeck-rendered or exported compatibility view assembled from the owning typed Specification files | Approximate | Planned compatibility view | Moderate: generated for interchange and review; not a native authoring artifact |
 | `plan.md` — technical architecture and implementation plan | `ARCHITECTURE.md`, `DATABASE.md`, and `BUILD_PLAN.md` together, plus a generated `plan.md` compatibility view | Enriched | Native plus generated compatibility view | Low: planning detail is preserved but distributed across Drydock artifacts |
@@ -1342,12 +1342,12 @@ Drydock adds capabilities with no Spec Kit equivalent:
 | Drydock capability | Description |
 |---|---|
 | `SCREEN-*.md` | Dedicated specification file type for UI screens |
-| `drydock iterate` | Governed Refit of the Blueprint and working software |
+| `drydock refit` | Governed Refit of the Blueprint and working software |
 | QuarterDeck | Generated, throwaway review console; decisions write back into the build through the single decision writer |
 | Agile plan mode | Spike-and-story delivery with per-object state and review gates |
 | Ship's Log | Drydock-only JSONL append-only event ledger written automatically by development agents |
 | Drydock Rigging | Technology governance propagated to all target projects |
-| Ordered build planning | `BUILD_PLAN_INTENT.md`-driven work ordering with context optimization |
+| Ordered build planning | `BUILD_PLAN_COMPASS.md`-driven work ordering with context optimization |
 | Brownfield import | Translate Spec Kit projects or source code into a Drydock Blueprint |
 | Documentation generation | Blueprint-to-HTML documentation pipeline |
 
@@ -1363,10 +1363,10 @@ product-owner review.
 
 | Spec Kit input | Drydock destination |
 |---|---|
-| `.specify/memory/constitution.md` | Project-specific intent, constraints, and success criteria in `INTENT.md`; reusable engineering rules remain governed by Drydock |
+| `.specify/memory/constitution.md` | Project-specific intent, constraints, and success criteria in `COMPASS.md`; reusable engineering rules remain governed by Drydock |
 | `specs/<feature>/spec.md` | One `FEATURE-{Name}.md`; clearly identified UI behavior also contributes to `SCREEN-*.md` |
 | `spec.md` user stories and acceptance scenarios | Feature behavior and acceptance criteria in the owning `FEATURE-*.md` |
-| `spec.md` success criteria and assumptions | `INTENT.md` when project-wide; otherwise the owning `FEATURE-*.md` |
+| `spec.md` success criteria and assumptions | `COMPASS.md` when project-wide; otherwise the owning `FEATURE-*.md` |
 | `plan.md` technical context and structure | `ARCHITECTURE.md`, `METADATA.md`, and `DATABASE.md` where applicable |
 | `research.md` accepted decisions | The owning `FEATURE-*.md`, `ARCHITECTURE.md`, or `DATABASE.md` |
 | `research.md` unresolved decisions | `## Open Questions` in the owning Drydock file |

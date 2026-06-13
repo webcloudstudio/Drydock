@@ -13,9 +13,9 @@ _SKIPPED_FILES = {
     "ACCEPTANCE_CRITERIA.md",
     "ARCHITECTURE.md",
     "BUILD_PLAN.md",
-    "BUILD_PLAN_INTENT.md",
+    "BUILD_PLAN_COMPASS.md",
     "IDEAS.md",
-    "INTENT.md",
+    "COMPASS.md",
     "METADATA.md",
     "README.md",
     "SCORECARD.md",
@@ -35,18 +35,18 @@ _IMPORTED_TEMPLATE_FILES = {
 }
 
 
-class IntentStatus(Enum):
+class CompassStatus(Enum):
     CREATED = auto()
     UPDATED = auto()
     UNCHANGED = auto()
 
 
 @dataclass(frozen=True)
-class PlanIntentResult:
+class PlanCompassResult:
     blueprint: str
     blueprint_dir: Path
-    intent_path: Path
-    status: IntentStatus
+    compass_path: Path
+    status: CompassStatus
     appended_files: tuple[str, ...] = ()
     section_count: int = 0
 
@@ -81,15 +81,15 @@ def _display_name(path: Path, blueprint_dir: Path) -> str:
     return path.relative_to(blueprint_dir).as_posix()
 
 
-def _write_new_intent(
-    intent_path: Path, blueprint: str, blueprint_dir: Path, spec_files: list[Path]
+def _write_new_compass(
+    compass_path: Path, blueprint: str, blueprint_dir: Path, spec_files: list[Path]
 ) -> int:
     database = next((path for path in spec_files if path.name == "DATABASE.md"), None)
     sources = [path for path in spec_files if "sources" in path.relative_to(blueprint_dir).parts]
     remaining = [path for path in spec_files if path.name != "DATABASE.md" and path not in sources]
 
     lines = [
-        f"# BUILD_PLAN_INTENT.md — {blueprint}",
+        f"# BUILD_PLAN_COMPASS.md — {blueprint}",
         f"# Created by: drydock plan create {blueprint} <Target>",
         "#",
         "# Reorder sections to set build order.",
@@ -113,12 +113,12 @@ def _write_new_intent(
             lines.append(f"{_display_name(path, blueprint_dir)} {_size_annotation(path)}")
         lines.append("")
 
-    intent_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    compass_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return 1 + (1 if remaining else 0) + (1 if sources else 0)
 
 
-def init_plan_intent(blueprint: str, target_dir: Path) -> PlanIntentResult:
-    """Create or update the curated BUILD_PLAN_INTENT.md file for a Blueprint."""
+def init_plan_compass(blueprint: str, target_dir: Path) -> PlanCompassResult:
+    """Create or update the curated BUILD_PLAN_COMPASS.md file for a Blueprint."""
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(
@@ -126,20 +126,20 @@ def init_plan_intent(blueprint: str, target_dir: Path) -> PlanIntentResult:
             "  Import source material before creating a plan."
         )
 
-    intent_path = blueprint_dir / "BUILD_PLAN_INTENT.md"
+    compass_path = blueprint_dir / "BUILD_PLAN_COMPASS.md"
     spec_files = _discover_spec_files(blueprint_dir)
 
-    if not intent_path.exists():
-        section_count = _write_new_intent(intent_path, blueprint, blueprint_dir, spec_files)
-        return PlanIntentResult(
+    if not compass_path.exists():
+        section_count = _write_new_compass(compass_path, blueprint, blueprint_dir, spec_files)
+        return PlanCompassResult(
             blueprint=blueprint,
             blueprint_dir=blueprint_dir,
-            intent_path=intent_path,
-            status=IntentStatus.CREATED,
+            compass_path=compass_path,
+            status=CompassStatus.CREATED,
             section_count=section_count,
         )
 
-    existing_text = intent_path.read_text(encoding="utf-8")
+    existing_text = compass_path.read_text(encoding="utf-8")
     referenced = set(re.findall(r"(?m)^#?\s*([^\s]+\.md)\b", existing_text))
     new_files = tuple(
         _display_name(path, blueprint_dir)
@@ -147,24 +147,24 @@ def init_plan_intent(blueprint: str, target_dir: Path) -> PlanIntentResult:
         if _display_name(path, blueprint_dir) not in referenced
     )
     if not new_files:
-        return PlanIntentResult(
+        return PlanCompassResult(
             blueprint=blueprint,
             blueprint_dir=blueprint_dir,
-            intent_path=intent_path,
-            status=IntentStatus.UNCHANGED,
+            compass_path=compass_path,
+            status=CompassStatus.UNCHANGED,
         )
 
     lines = ["", "", "## New Specs - place in build order"]
     for name in new_files:
         lines.append(f"{name} {_size_annotation(blueprint_dir / name)}")
     lines.append("")
-    with intent_path.open("a", encoding="utf-8", newline="\n") as handle:
+    with compass_path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines))
 
-    return PlanIntentResult(
+    return PlanCompassResult(
         blueprint=blueprint,
         blueprint_dir=blueprint_dir,
-        intent_path=intent_path,
-        status=IntentStatus.UPDATED,
+        compass_path=compass_path,
+        status=CompassStatus.UPDATED,
         appended_files=new_files,
     )

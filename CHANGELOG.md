@@ -25,6 +25,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- Renamed the `INTENT.md` Typed Specification file and `INTENT` FileType to `COMPASS.md` /
+  `COMPASS`, the `## Intent` body section to `## Compass`, and the `BUILD_PLAN_INTENT.md` planning
+  inventory to `BUILD_PLAN_COMPASS.md`. "Compass" is the nautical term for the product's
+  direction-setting document.
+- Renamed the `drydock iterate` command to `drydock refit`, aligning the verb with the canonical
+  SAIL Loop "Refit" concept. The `<BOTH|BLUEPRINT|TGT>` modes are unchanged.
 - Replaced the public `drydock log` commands and shared target-project capture rules with the
   Drydock-only agent process in `AGENTS.md` and repository-local `bin/ships_log.py`.
 - Renamed the public Blueprint root contract to `BLUEPRINT_DIRECTORY` and `blueprint_directory`;

@@ -43,7 +43,7 @@ class TestHelpAndVersion:
             "rigging",
             "plan",
             "build",
-            "iterate",
+            "refit",
             "analyze",
             "import",
             "run",
@@ -332,7 +332,7 @@ class TestPlanningSession:
         rc, out, err = run_cli("plan", "create", "Example", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state: draft" in out
-        assert (bp / "BUILD_PLAN_INTENT.md").is_file()
+        assert (bp / "BUILD_PLAN_COMPASS.md").is_file()
         plan_path = tmp_target_root / "ExampleTarget" / "BUILD_PLAN.md"
         assert "Status command exits successfully." in plan_path.read_text(encoding="utf-8")
         quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
@@ -395,8 +395,8 @@ class TestStubs:
         (["rigging", "verify", "MyTarget"], "rigging verify"),
         (["build", "score", "MySpec", "MyTarget"], "build score"),
         (["build", "MySpec", "MyTarget"], "build"),
-        (["iterate", "MySpec", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "iterate"),
-        (["iterate", "MySpec", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "iterate"),
+        (["refit", "MySpec", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
+        (["refit", "MySpec", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
         (["analyze", "MySpec"], "analyze"),
     ]
 

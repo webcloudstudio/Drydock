@@ -24,7 +24,7 @@
 | CLI-020 | `drydock build status <Blueprint> <Target>` reports Target plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`, `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
 | CLI-021 | `drydock build <Blueprint> <Target>` builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` |
 | CLI-022 | `drydock build score <Blueprint> <Target>` generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` |
-| CLI-023 | `drydock iterate <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` updates Blueprint and Target together | STUBBED | `test_cli.py::TestStubs` |
+| CLI-023 | `drydock refit <Blueprint> <Target> [BOTH\|BLUEPRINT\|TGT] <Scope> <Change>` updates Blueprint and Target together | STUBBED | `test_cli.py::TestStubs` |
 | CLI-024 | `drydock analyze <Blueprint> [<Target>]` reports gaps, drift, and missing Ship's Log coverage | STUBBED | `test_cli.py::TestStubs` |
 | CLI-025 | `drydock import <Blueprint> <Target> <Source> --format <auto\|markdown\|source\|speckit>` preserves Markdown source bundles under `<Target>/blueprint/sources/` | IMPLEMENTED | `test_cli.py::TestPlanningSession::test_markdown_import_plan_create_and_approve` |
 | CLI-026 | `drydock status <Blueprint> <Target>` reports plan state and runnable frontier | DONE | `test_cli.py::TestStatus::test_status_blueprint_target_reports_plan_state`, `test_status.py::TestStatusBlueprintTarget` |

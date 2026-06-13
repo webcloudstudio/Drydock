@@ -107,7 +107,7 @@ installed resolution paths must work; see `src/drydock/paths.py`.
 |---|---|
 | Drydock's own authoritative product specification | `docs/Drydock_Specification.md` |
 | Drydock's own implementation acceptance checklist | `docs/SOUNDINGS.md` |
-| Target-project Blueprint Typed Specification files, `BUILD_CONFIGURATION.md`, and `BUILD_PLAN_INTENT.md` | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
+| Target-project Blueprint Typed Specification files, `BUILD_CONFIGURATION.md`, and `BUILD_PLAN_COMPASS.md` | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
 | `METADATA.md` project identity and manifest, `BUILD_PLAN.md`, `SCORECARD.md`, Sea Trials, Soundings, built software, evidence, logs, and QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
 | Drydock's distributable rules and templates | `Rigging/` and the packaged resource copy |
 | User configuration | User-scoped configuration managed by `drydock config` |
@@ -166,7 +166,7 @@ being built and follow their direct imports or sourced libraries.
 | Build provenance and staleness | `bin/oneshot_phased.sh`, `data/executions.jsonl` behavior |
 | `drydock build status` | `bin/build_plan_status.py`, `bin/build_plan.sh` |
 | `drydock build score` | `bin/scorecard.sh` |
-| `drydock iterate` | `bin/iterate.sh`, `bin/build_spec_relationships.py` |
+| `drydock refit` | `bin/iterate.sh`, `bin/build_spec_relationships.py` |
 | `drydock analyze` | `bin/spec_iterate.sh`, `bin/update_reference_gaps.sh` |
 | `drydock import --format source` | `bin/decompose.sh` |
 | `drydock import --format speckit` | V2 Blueprint; no authoritative V1 implementation |
@@ -303,7 +303,7 @@ implemented. The preferred implementation order follows the V2 delivery dependen
 2. Stabilize Planning Session approval, adaptive decomposition, and cost-reducing work grouping.
 3. Implement evidence contracts and `drydock build`.
 4. Implement QuarterDeck review reconciliation.
-5. Implement `iterate`, `analyze`, and score.
+5. Implement `refit`, `analyze`, and score.
 6. Implement Rigging update, verification, and compaction.
 7. Implement documentation workflows.
 8. Implement source and Spec Kit import adapters.
