@@ -640,13 +640,20 @@ class TestStatus:
         assert "drydock init <Target>" in out
         assert "config set drydock_workspace" not in out
 
-    def test_status_no_args_uses_last_activity(self, tmp_target_root, isolated_config, monkeypatch):
-        self._setup(tmp_target_root, monkeypatch)
-        monkeypatch.chdir(tmp_target_root)
-        run_cli("status", "TestProject", "TestTarget")
+    def test_status_no_args_shows_initialized_target(
+        self, tmp_path, isolated_config, monkeypatch
+    ):
+        from drydock.init_target import init_target
+
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(workspace))
+        init_target("MyProject", workspace / "targets")
+
         rc, out, err = run_cli("status")
         assert rc == 0, err
-        assert "TestProject" in out
+        assert "MyProject" in out
+        assert "Next Operation" in out
 
     def test_activity_recorded_after_status_command(
         self, tmp_target_root, isolated_config, monkeypatch

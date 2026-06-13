@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from datetime import UTC, datetime
@@ -198,3 +199,33 @@ def config_set(key: str, value: str) -> Path:
     cfg.touch()
     set_key(cfg, upper, stored_value)
     return cfg
+
+
+_HISTORY_FILENAME = "history.jsonl"
+
+
+def append_target_history(target_dir: Path, command: str) -> None:
+    """Append one timestamped command record to the target's history log."""
+    history_path = target_dir / "logs" / _HISTORY_FILENAME
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    record = json.dumps({"command": command, "time": now})
+    with history_path.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(record + "\n")
+
+
+def read_target_history(target_dir: Path, limit: int = 5) -> list[dict]:
+    """Return up to *limit* most-recent records from the target's history log."""
+    history_path = target_dir / "logs" / _HISTORY_FILENAME
+    if not history_path.exists():
+        return []
+    records: list[dict] = []
+    for line in history_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except Exception:
+            pass
+    return records[-limit:]

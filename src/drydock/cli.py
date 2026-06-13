@@ -66,12 +66,13 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from drydock.config import get_target_directory, record_activity
+    from drydock.config import append_target_history, get_target_directory, record_activity
     from drydock.init_target import init_target
 
+    targets_root = get_target_directory()
     result = init_target(
         args.Target,
-        get_target_directory(),
+        targets_root,
         display_name=getattr(args, "display_name", ""),
         short_description=getattr(args, "short_description", ""),
     )
@@ -85,6 +86,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  Nothing to do — target baseline is already initialized.")
 
     record_activity("init", target=args.Target)
+    append_target_history(result.target_dir, f"drydock init {args.Target}")
     t = args.Target
     print()
     print("Next steps:")
@@ -327,57 +329,45 @@ def cmd_status_blueprint(blueprint: str) -> int:
     return 0
 
 
-def _render_workspace_status(ws, last_activity: dict) -> None:
+def _render_workspace_status(ws) -> None:
     """Print the workspace-level dashboard for `drydock status` with no args."""
-    from drydock.status import WorkspaceStatus
-
     print(f"Workspace: {ws.workspace}")
-
-    last_cmd = last_activity.get("command", "")
-    last_bp = last_activity.get("blueprint", "")
-    last_tgt = last_activity.get("target", "")
-    last_time = last_activity.get("time", "")
-    if last_cmd:
-        parts = [last_cmd]
-        if last_bp:
-            parts.append(last_bp)
-        if last_tgt:
-            parts.append(last_tgt)
-        print(f"Last run:  {' '.join(parts)}  {last_time}")
-
     print()
 
     if not ws.targets:
         print("  No targets found.")
         print()
-        print("Getting started:")
-        print(f"  Initialize a target:  drydock init <Target>")
-        print(f"  Check configuration:  drydock config show")
+        print("  Next Operation: drydock init <Target>")
         return
 
-    n = len(ws.targets)
-    print(f"Targets: {n}")
-
     for info in ws.targets:
-        label = info.display_name if info.display_name != info.name else info.name
+        rel_history = (
+            info.history_path.relative_to(ws.workspace)
+            if info.history_path and info.history_path.is_relative_to(ws.workspace)
+            else info.history_path
+        )
+        print(f"Target: {info.name}  [{info.phase}]")
+        print(f"  {info.phase_detail}")
+        print(f"  Next Operation: {info.next_operation}")
+        if rel_history:
+            print(f"  History:        {rel_history}")
+            for rec in reversed(info.history):
+                print(f"    {rec.get('time', ''):16}  {rec.get('command', '')}")
         print()
-        print(f"  {label}  [{info.phase}]")
-        print(f"    {info.phase_detail}")
-        if info.next_steps:
-            print(f"    Next:")
-            for step in info.next_steps:
-                print(f"      {step}")
 
 
-def cmd_status_current() -> int:
-    from drydock.config import get_last_activity, get_target_directory, get_workspace
+def cmd_status_current(debug: bool = False) -> int:
+    from drydock.config import get_target_directory, get_workspace
     from drydock.status import status_workspace
 
+    if debug:
+        print()
     workspace = get_workspace()
     targets_root = get_target_directory()
-    ws = status_workspace(workspace, targets_root)
-    last = get_last_activity()
-    _render_workspace_status(ws, last)
+    ws = status_workspace(workspace, targets_root, debug=debug)
+    if debug:
+        print()
+    _render_workspace_status(ws)
     return 0
 
 
@@ -616,7 +606,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _dispatch_status(args: argparse.Namespace) -> int:
     tokens = args.args
     if len(tokens) == 0:
-        return cmd_status_current()
+        return cmd_status_current(debug=getattr(args, "debug", False))
     elif len(tokens) == 1:
         return cmd_status_blueprint(tokens[0])
     elif len(tokens) == 2:
