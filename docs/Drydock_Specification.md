@@ -556,6 +556,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
         ├── BUILD_PLAN.md                 # the executable Manifest
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
+        ├── tickets.json                  # target ticketing system / board projection
         │
         ├── blueprint/                    # the Blueprint — conformed Typed Specification
         │   ├── sources/                  # preserved unconformed import material
@@ -572,8 +573,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── evidence/                     # reviewable build evidence, named by build object
         ├── logs/                         # target execution logs (e.g. executions.jsonl)
         └── QuarterDeck/                  # console state only; runtime served from the package
-            ├── console.yaml
-            ├── tickets.json
+            ├── quarterdeck.yaml
             ├── pages/
             │   └── overview.md
             ├── data/
@@ -687,11 +687,11 @@ build and review actions.
 - **`<Target>/evidence/*`** — Reviewable build evidence named by the producing build object
   - Created and updated: `drydock build`
 
-- **`<Target>/QuarterDeck/console.yaml`** — QuarterDeck workflow index; defines project identity, the
+- **`<Target>/QuarterDeck/quarterdeck.yaml`** — QuarterDeck workflow index; defines project identity, the
   default view, and all renderable navigation items
   - Created and updated: `drydock build`
 
-- **`<Target>/QuarterDeck/tickets.json`** — Generated sprint board; features, spikes, and stories
+- **`<Target>/tickets.json`** — Target ticketing system projection; features, spikes, and stories
   projected as tickets with acceptance criteria folded under their parent
   - Created and updated: `drydock build` from `BUILD_PLAN.md`
   - Drydock follows feature/story best practices with acceptance criteria embedded
@@ -969,9 +969,9 @@ the build.
 The QuarterDeck is metadata-driven: it accepts evidence and manages a simple Agile board (kanban)
 designed to show project state, blockers, and decisions that require product-owner input.
 
-### Console Index — console.yaml
+### Console Index — quarterdeck.yaml
 
-**`<Target>/QuarterDeck/console.yaml`** is the QuarterDeck workflow index. It defines project
+**`<Target>/QuarterDeck/quarterdeck.yaml`** is the QuarterDeck workflow index. It defines project
 identity, the default view, the sidebar section taxonomy (id / label / dot / collapsed / pinned),
 and all renderable navigation items: Blueprint snapshots, sprint boards, questionnaires, evidence
 pages, and review pages. Each item declares its section, renderer, source path, and optional review
@@ -988,7 +988,8 @@ target. The five canonical sections are:
 The **Master Blueprint** is the standard label for the authoritative project specification file in
 the Drydock Core section.
 
-**`<Target>/QuarterDeck/tickets.json`** is a generated projection of the Agile `BUILD_PLAN.md`.
+**`<Target>/tickets.json`** is the target ticketing-system artifact and a generated projection of
+the Agile `BUILD_PLAN.md`.
 Spikes and stories appear as tickets; acceptance criteria are folded under their parent. Column
 assignment maps directly to object state.
 
@@ -1020,7 +1021,7 @@ non-Core artifacts, or invoke an LLM.
 
 ### Auto-Discovery and Overrides
 
-The **`sources:`** key in `console.yaml` accepts a list of glob rules
+The **`sources:`** key in `quarterdeck.yaml` accepts a list of glob rules
 (`{glob, section, type, ...}`) that auto-discover files as items. Items in the explicit `items:`
 list (matched by ID or by resolved path) take priority — a file already referenced by an explicit
 item is never duplicated. The optional **`overrides:`** list (`{match: <path>, <fields>}`) adjusts
