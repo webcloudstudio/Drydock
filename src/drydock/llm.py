@@ -72,6 +72,7 @@ def _command(
         command = [
             "claude",
             "-p",
+            "--verbose",
             "--output-format",
             "stream-json",
             "--include-partial-messages",
