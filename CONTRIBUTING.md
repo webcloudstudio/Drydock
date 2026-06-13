@@ -27,7 +27,11 @@ Run `uv run pre-commit run --all-files` explicitly when needed.
 - **Source precedence.** When the Blueprint and V1 disagree, implement the Blueprint. Record
   intentional incompatibilities in tests or documentation rather than silently reproducing V1.
 - **Specification approval.** Obtain Ed's approval before changing `docs/Drydock_Specification.md`;
-  approved behavior changes and specification updates land together.
+  approved behavior changes and specification updates land together. Only one active writer edits
+  the specification; other agents propose exact replacement text.
+- **Concurrent sessions.** Before committing, preserve other writers' changes and commit only the
+  active task. If Git state changed, reread affected files, resolve conflicts preserving both
+  intents, and retry. Never restore, reset, delete, stage, or commit another writer's changes.
 - **Completion.** Update the matching `docs/SOUNDINGS.md` row and evidence before declaring a
   capability complete.
 - **Ship's Log.** Record material decisions and milestones through `python bin/ships_log.py record`,

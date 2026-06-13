@@ -55,6 +55,13 @@ generated compatibility views. It is an external reference, not a Drydock source
 - Add focused unit tests and CLI contract tests for every implemented command. Preserve working
   commands while replacing deferred command stubs.
 - Update `docs/SOUNDINGS.md` whenever a capability's implementation or verification state changes.
+- Multiple agents and Ed may edit this shared working directory concurrently. Before committing,
+  inspect the current diff and preserve changes made by other writers. If Git state changed or the
+  commit fails due to concurrent activity, reread the affected files, resolve conflicts while
+  preserving both intents, and retry. Never restore, reset, delete, stage, or commit changes that
+  are not part of the active task.
+- `docs/Drydock_Specification.md` has one active writer at a time. Unless explicitly assigned as
+  that writer, agents may read it and propose exact replacement text, but must not edit it.
 - Follow the Ship's Log Process (below): record material decisions and milestones immediately, then
   perform a final capture review before committing or completing a task.
 - When delegating work or constructing an agent prompt, include the V2 mission, source precedence,
