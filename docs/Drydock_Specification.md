@@ -94,9 +94,10 @@ in `docs/SOUNDINGS.md`.
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-The CLI uses `<Blueprint>` for the Blueprint name whose files live in
-`targets/<Target>/blueprint/`, and `<Target>` for the project name under
-`$DRYDOCK_WORKSPACE/targets/`.
+The CLI uses `<Target>` for the project name under `$DRYDOCK_WORKSPACE/targets/`. Every command
+that previously accepted a separate `<Blueprint>` argument now resolves the Blueprint from the
+Target's `METADATA.md`; there is no external Blueprint root and no need to name it on the command
+line.
 
 The public CLI is organized by SAIL phase:
 
@@ -181,17 +182,17 @@ drydock --version
 drydock config show
 drydock config set <key> <value>
 drydock init <Target>
-drydock status [<Blueprint> [<Target>]]
-drydock validate <Blueprint> <Target> [--verbose]
+drydock status [<Target>]
+drydock validate <Target> [--verbose]
 drydock rigging update <Target>
 drydock rigging verify <Target>
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
 
-`drydock status` is the primary orientation command. With no arguments it shows the last active
-project; with a Blueprint it shows validation state; with a Blueprint and Target it adds plan
-progress and the current runnable frontier. `drydock validate` exposes the underlying focused
-Typed Specification validation command.
+`drydock status` is the primary orientation command. With no arguments it shows the workspace
+dashboard across all initialized Targets. With a `<Target>` argument it filters to that Target,
+showing its validation state, plan progress, and current runnable frontier. `drydock validate`
+exposes the underlying focused Typed Specification validation command.
 
 `drydock config` establishes user-scoped defaults. `drydock init` creates the Target baseline.
 `drydock run quarterdeck` opens the product-owner review surface.
@@ -226,10 +227,10 @@ baseline and exposes the runnable frontier.
 ### Commands
 
 ```text
-drydock import <Blueprint> <Target> <Source> --format <auto|markdown|source|speckit>
-drydock analyze <Blueprint> [<Target>]
-drydock rigging compact <Blueprint> <Target> [--all] [--force]
-drydock plan create <Blueprint> <Target>
+drydock import <Target> <Source> --format <auto|markdown|source|speckit>
+drydock analyze <Target>
+drydock rigging compact <Target> [--all] [--force]
+drydock plan create <Target>
 ```
 
 `drydock import` brings source material under Blueprint control. `drydock analyze` advises without
@@ -258,9 +259,9 @@ flowchart LR
   SPEC --> PLAN["plan create"]:::script
 ```
 
-1. `drydock import <Blueprint> <Target> <Source> --format markdown` — preserves arbitrary Markdown under
-   the Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and
-   Spec Kit adapters use the same intake boundary when implemented.
+1. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
+   Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and Spec
+   Kit adapters use the same intake boundary when implemented.
 2. Continue through Arrange. Analyze identifies ambiguity and configuration choices without
    silently turning them into requirements.
 3. Optionally conform the imported material after User Review establishes build configuration.
@@ -268,15 +269,14 @@ flowchart LR
 
 ### Workflow: Analyze Before You Arrange
 
-`drydock analyze` evaluates available Blueprint inputs and — when `<Target>` is provided — the
-built application. During planning it creates the target-local Planning Session analysis and
-questionnaire. It does not create or modify `BUILD_PLAN.md`.
+`drydock analyze` evaluates available Blueprint inputs and — when a Target with built code is
+provided — the built application. During planning it creates the target-local Planning Session
+analysis and questionnaire. It does not create or modify `BUILD_PLAN.md`.
 
-1. `drydock analyze <Blueprint>` — score Blueprint coverage; surface open questions and missing
-   detail that would create uncertainty during a build.
-2. `drydock analyze <Blueprint> <Target>` — compare the Blueprint against the built application;
-   identify drift, incomplete implementation, and candidates for the next Refit.
-3. Apply findings with `drydock refit` or `drydock plan create` as appropriate.
+1. `drydock analyze <Target>` — score Blueprint coverage and, when code exists, compare the
+   Blueprint against the built application; surface open questions, missing detail, drift,
+   incomplete implementation, and candidates for the next Refit.
+2. Apply findings with `drydock refit` or `drydock plan create` as appropriate.
 
 `drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
 Planning Session outputs before running `drydock plan create`.
@@ -311,12 +311,12 @@ logs, and the QuarterDeck projection.
 ### Commands
 
 ```text
-drydock build <Blueprint> <Target>
-drydock build status <Blueprint> <Target>
-drydock build score <Blueprint> <Target>
-drydock document <Blueprint> <Target>
-drydock document generate <Blueprint> <Target>
-drydock document assemble <Blueprint> <Target>
+drydock build <Target>
+drydock build status <Target>
+drydock build score <Target>
+drydock document <Target>
+drydock document generate <Target>
+drydock document assemble <Target>
 ```
 
 `drydock build` executes the runnable frontier. `drydock build status` inspects the Manifest without
@@ -347,7 +347,7 @@ flowchart LR
 ```
 
 1. Complete planning and approve `<Target>/BUILD_PLAN.md`.
-2. `drydock build <Blueprint> <Target>` executes the approved frontier — spikes in parallel,
+2. `drydock build <Target>` executes the approved frontier — spikes in parallel,
    stories serially — and writes an evidence file for each object. Stories that create or update
    conformed Typed Specifications are included only where durable authority, dependencies, or safe
    incremental delivery require them.
@@ -374,8 +374,8 @@ flowchart LR
   CONSOLE -.-> BP
 ```
 
-1. `drydock build <Blueprint> <Target>` — computes the runnable frontier, executes it, and writes
-   evidence files for each object.
+1. `drydock build <Target>` — computes the runnable frontier, executes it, and writes evidence
+   files for each object.
 2. The QuarterDeck surfaces each completed object with the evidence and review material needed for
    the next decision. The product owner approves, revises, or rejects; decisions write back to
    `BUILD_PLAN.md`.
@@ -388,7 +388,7 @@ plan object — how many blocks are pending, implemented, verified, or failed, a
 currently runnable. No build state is modified.
 
 ```text
-drydock build status <Blueprint> <Target>   # print per-block state and current runnable frontier
+drydock build status <Target>   # print per-block state and current runnable frontier
 ```
 
 Use `drydock build status` to orient after a partial build, after a failed run, or before deciding
@@ -416,17 +416,16 @@ flowchart LR
   SCORE --> SC{{"SCORECARD.md"}}:::md
 ```
 
-1. `drydock build score <Blueprint> <Target>` — compare the Blueprint against the built application;
-   surfaces drift between what was specified and what was delivered.
+1. `drydock build score <Target>` — compare the Blueprint against the built application; surfaces
+   drift between what was specified and what was delivered.
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
    prioritize the next `drydock refit` or `drydock plan create` run.
 
 ### Workflow: Deliver Project Documentation
 
-Run `drydock document generate <Blueprint> <Target>` to produce Blueprint-derived `DOC-*.md`
-summaries, then `drydock document assemble <Blueprint> <Target>` to render the maintained summaries
-into `docs/index.html`. `drydock document <Blueprint> <Target>` runs both steps as one delivery
-pipeline.
+Run `drydock document generate <Target>` to produce Blueprint-derived `DOC-*.md` summaries, then
+`drydock document assemble <Target>` to render the maintained summaries into `docs/index.html`.
+`drydock document <Target>` runs both steps as one delivery pipeline.
 
 ## SAIL Phase 4 — Loop: The Refit
 
@@ -438,7 +437,7 @@ returns affected work to Arrange and Implement. The Blueprint is never bypassed.
 ### Commands
 
 ```text
-drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
+drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 ```
 
 `drydock refit` performs the Refit. It updates the Blueprint and Target together, or limits the
@@ -467,7 +466,7 @@ flowchart LR
   REFIT --> SOFTWARE(["Updated Software"]):::output
 ```
 
-1. `drydock refit <Blueprint> <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL,
+1. `drydock refit <Target> BOTH <Scope> "<Change>"` — resolves the scope (a URL,
    keyword, or filename) to the owning `FEATURE-*.md`, `SCREEN-*.md`, `DATABASE.md`, or
    `ARCHITECTURE.md`.
 2. `BLUEPRINT` or `BOTH` updates the owning file, increments its `Version`, records criteria,
@@ -482,7 +481,7 @@ flowchart LR
 Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
 changes back into an existing Target and proves continued conformance after the change.
 
-1. `drydock rigging compact <Blueprint> <Target> --all` — distills `BUSINESS_RULES.md` into
+1. `drydock rigging compact <Target> --all` — distills `BUSINESS_RULES.md` into
    `BUSINESS_RULES_compact.md`. Run after every rules edit; the compact form is what agents read
    and what `rigging update` injects.
 2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
@@ -506,10 +505,10 @@ and build execution process it like any other Specification input.
 
 1. Create `changes/TICKET-NNN-{Name}.md` with its description, acceptance criteria, guardrails,
    and open questions.
-2. Run `drydock plan create <Blueprint> <Target>` to update the plan with the new ticket.
+2. Run `drydock plan create <Target>` to update the plan with the new ticket.
 3. `drydock plan create` updates dependency headers so the ticket lands in the correct place in
    the build.
-4. Run `drydock build <Blueprint> <Target>` to execute the incremental work and produce evidence.
+4. Run `drydock build <Target>` to execute the incremental work and produce evidence.
 5. Review the result in the normal evidence or QuarterDeck flow.
 6. Reconcile accepted ticket facts into the owning core Specification files and close the ticket as
    retained change history.
@@ -615,12 +614,12 @@ not authored as specification files.
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
-  - Created and updated: `drydock import <Blueprint> <Target> <Source> --format markdown`
+  - Created and updated: `drydock import <Target> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
 
 - **`BUILD_CONFIGURATION.md`** — Durable product-owner decisions controlling conformance and planning
   - Created and updated: QuarterDeck Planning Session User Review
-  - Used by: `drydock plan create <Blueprint> <Target>`
+  - Used by: `drydock plan create <Target>`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
 updated by `drydock refit` as specification files and application code evolve.
@@ -655,22 +654,22 @@ updated by `drydock refit` as specification files and application code evolve.
 **Process Created Artifacts** — generated by Drydock commands; not authored directly.
 
 - **`BUILD_PLAN_COMPASS.md`** — Internal inventory of Blueprint inputs and planning groups
-  - Created and updated: `drydock plan create <Blueprint> <Target>`
+  - Created and updated: `drydock plan create <Target>`
 
 - **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack)
   - Created: `drydock init <Target>`; enriched by `drydock import`
   - Updated: product owner; Drydock Target operations
 
 - **`<Target>/BUILD_PLAN.md`** — The single generated executable build plan
-  - Created: `drydock plan create <Blueprint> <Target>`
+  - Created: `drydock plan create <Target>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
 
 - **`<Target>/QuarterDeck/planning/ANALYSIS.md`** — Disposable Planning Session analysis
-  - Created and updated: `drydock analyze <Blueprint> <Target>`
+  - Created and updated: `drydock analyze <Target>`
 
 - **`<Target>/QuarterDeck/questionnaires/planning.json`** — Disposable Planning Session questions
   and configuration choices
-  - Created and updated: `drydock analyze <Blueprint> <Target>`
+  - Created and updated: `drydock analyze <Target>`
   - Answered through: QuarterDeck Planning Session User Review
 
 - **`SCORECARD.md`** — Blueprint and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Blueprint and the built software
@@ -1185,7 +1184,7 @@ the relevant artifact type.
 
 ### Compaction — Full Context for Builders, Compact Context for Users
 
-`drydock rigging compact <Blueprint> <Target>` creates compact derivatives for eligible Blueprint
+`drydock rigging compact <Target>` creates compact derivatives for eligible Blueprint
 inputs. The full source is used to build the service; consumers receive the compact derivative.
 Existing derivatives are regenerated only when stale: `<stem>_compact.md` is missing or older than
 its source.
@@ -1230,7 +1229,7 @@ If a story references `DATABASE.md` via `context:` and `DATABASE_compact.md` doe
 build stops:
 
 ```text
-DATABASE_compact.md not found — run: drydock rigging compact <Blueprint> <Target>
+DATABASE_compact.md not found — run: drydock rigging compact <Target>
 ```
 
 `drydock plan create` reports a staleness warning when a source file is newer than its compact
@@ -1259,12 +1258,12 @@ flowchart LR
   ASSEMBLE --> HTML(["docs/index.html"]):::output
 ```
 
-1. `drydock document generate <Blueprint> <Target>` — AI pass only; creates or overwrites all
-   `DOC-*.md` summaries for each Specification section. **Destructive** — hand-edited `DOC-*.md`
-   files are overwritten without warning. Does not assemble.
-2. `drydock document assemble <Blueprint> <Target>` — no AI; reads existing `DOC-*.md` files and
-   renders them into a versioned `docs/index.html`. Safe to re-run after manual edits.
-3. `drydock document <Blueprint> <Target>` — runs generate then assemble (full pipeline).
+1. `drydock document generate <Target>` — AI pass only; creates or overwrites all `DOC-*.md`
+   summaries for each Specification section. **Destructive** — hand-edited `DOC-*.md` files are
+   overwritten without warning. Does not assemble.
+2. `drydock document assemble <Target>` — no AI; reads existing `DOC-*.md` files and renders them
+   into a versioned `docs/index.html`. Safe to re-run after manual edits.
+3. `drydock document <Target>` — runs generate then assemble (full pipeline).
 
 Edit `DOC-*.md` files directly to refine documentation without re-running the AI pass; then
 run `drydock document assemble` to regenerate the HTML.
@@ -1330,7 +1329,7 @@ Drydock adds capabilities with no Spec Kit equivalent:
 ### Spec Kit Import Contract
 
 ```text
-drydock import <Blueprint> <Target> <SpecKitProject> --format speckit
+drydock import <Target> <SpecKitProject> --format speckit
 ```
 
 The translator reads `.specify/memory/constitution.md` and each Spec Kit feature directory, then
