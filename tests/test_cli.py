@@ -452,7 +452,7 @@ class TestImport:
 
         assert rc == 1
 
-    def test_import_source_format_calls_import_source(
+    def test_import_source_copies_code_files(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         self._configure(tmp_target_root, monkeypatch)
@@ -460,41 +460,26 @@ class TestImport:
         src_dir.mkdir()
         (src_dir / "app.py").write_text("x = 1\n", encoding="utf-8")
 
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeResult:
-            blueprint: str = "BP"
-            target: str = "Tgt"
-            blueprint_dir: object = None
-            source: object = None
-            files_written: tuple = ("ARCHITECTURE.md",)
-            execution_id: str = "fake"
-
-            def __post_init__(self):
-                self.blueprint_dir = tmp_target_root / "Tgt" / "blueprint"
-                self.source = src_dir
-
-        import drydock.cli as cli_mod
-
-        monkeypatch.setattr(
-            cli_mod,
-            "cmd_import",
-            lambda args: (
-                print(f"Blueprint: {tmp_target_root / 'Tgt' / 'blueprint'}")
-                or print(f"Source: {src_dir}")
-                or print("  IMPORTED  ARCHITECTURE.md")
-                or print()
-                or print("Next step: drydock plan create BP Tgt")
-                or 0
-            ),
-        )
-
         rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "source")
-        # The monkeypatch means rc may differ; we just confirm dispatch reaches cmd_import
-        assert rc in (0, 1, 2)
 
-    def test_import_speckit_format_calls_import_speckit(
+        assert rc == 0, err
+        assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
+        assert "IMPORTED" in out
+
+    def test_import_source_auto_detects_code_directory(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        src_dir = tmp_path / "myapp"
+        src_dir.mkdir()
+        (src_dir / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "auto")
+
+        assert rc == 0, err
+        assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
+
+    def test_import_speckit_copies_specify_structure(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         self._configure(tmp_target_root, monkeypatch)
@@ -502,36 +487,28 @@ class TestImport:
         (src_dir / ".specify" / "memory").mkdir(parents=True)
         (src_dir / ".specify" / "memory" / "constitution.md").write_text("# C\n", encoding="utf-8")
 
-        from drydock.import_speckit import ImportSpecKitResult
-
-        fake_bp = tmp_target_root / "Tgt" / "blueprint"
-        fake_report = fake_bp / "sources" / "speckit_conversion_report.md"
-
-        fake_result = ImportSpecKitResult(
-            blueprint="BP",
-            target="Tgt",
-            blueprint_dir=fake_bp,
-            source=src_dir,
-            features_found=(),
-            files_written=("COMPASS.md",),
-            conversion_report=fake_report,
-            execution_id="fake",
-        )
-
-        import drydock.import_speckit as speckit_mod
-
-        monkeypatch.setattr(speckit_mod, "import_speckit", lambda *a, **kw: fake_result)
-
-        # Blueprint dir and report must exist for output formatting
-        fake_bp.mkdir(parents=True, exist_ok=True)
-        (fake_bp / "sources").mkdir(parents=True, exist_ok=True)
-        fake_report.write_text("# Report\n", encoding="utf-8")
-        fake_bp.mkdir(parents=True, exist_ok=True)
-
         rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "speckit")
 
         assert rc == 0, err
-        assert "COMPASS.md" in out
+        assert (
+            tmp_target_root / "Tgt" / "blueprint" / "sources" / ".specify" / "memory" / "constitution.md"
+        ).is_file()
+        assert "IMPORTED" in out
+
+    def test_import_speckit_auto_detects_speckit_directory(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        src_dir = tmp_path / "sk"
+        (src_dir / ".specify" / "memory").mkdir(parents=True)
+        (src_dir / ".specify" / "memory" / "constitution.md").write_text("# C\n", encoding="utf-8")
+
+        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "auto")
+
+        assert rc == 0, err
+        assert (
+            tmp_target_root / "Tgt" / "blueprint" / "sources" / ".specify" / "memory" / "constitution.md"
+        ).is_file()
 
     def test_import_help_shows_arguments(self):
         rc, out, err = run_cli("import", "--help")

@@ -6,8 +6,12 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.errors import SpecificationError
+from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
+
+_CODE_EXTENSIONS: frozenset[str] = frozenset(
+    {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".rb", ".java", ".cpp", ".c", ".h"}
+)
 
 
 @dataclass(frozen=True)
@@ -18,6 +22,28 @@ class ImportResult:
     source: Path
     imported: tuple[Path, ...]
     initialized: bool
+
+
+def detect_import_format(source: Path) -> str:
+    """Infer the import format from the source path.
+
+    Precedence: speckit (.specify/ present) → source (code files present) → markdown.
+    Raises UsageError when format cannot be determined.
+    """
+    if (source / ".specify").is_dir():
+        return "speckit"
+    if source.is_dir() and any(
+        p.suffix in _CODE_EXTENSIONS for p in source.rglob("*") if p.is_file()
+    ):
+        return "source"
+    if source.suffix.lower() == ".md":
+        return "markdown"
+    if source.is_dir() and any(p.suffix.lower() == ".md" for p in source.rglob("*") if p.is_file()):
+        return "markdown"
+    raise UsageError(
+        f"Cannot detect import format for: {source}\n"
+        "  Specify --format markdown, --format source, or --format speckit."
+    )
 
 
 def _markdown_files(source: Path) -> list[tuple[Path, Path]]:

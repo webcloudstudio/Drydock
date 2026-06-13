@@ -1,40 +1,13 @@
-"""Unit tests for import_source — fake runner, no API credits spent."""
+"""Unit tests for import_source — file copy, no LLM calls."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
-from drydock.errors import LlmError, SpecificationError
-from drydock.import_source import (
-    _collect_source_files,
-    _detect_stack,
-    _directory_tree,
-    import_source,
-    parse_file_blocks,
-)
-
-
-@dataclass
-class FakeRun:
-    ok: bool = True
-    text: str = '<file path="ARCHITECTURE.md"># ARCHITECTURE: Test\n</file>'
-    execution_id: str = "exec-fake"
-
-
-def fake_runner(response: FakeRun | None = None):
-    run = response or FakeRun()
-    seen: list[str] = []
-
-    def _run(prompt, working_directory, **kwargs):
-        seen.append(prompt)
-        return run
-
-    _run.seen = seen  # type: ignore[attr-defined]
-    return _run
-
+from drydock.errors import SpecificationError
+from drydock.import_source import _is_excluded, detect_stack, import_source
 
 # ---------------------------------------------------------------------------
 # Stack detection
@@ -44,144 +17,56 @@ def fake_runner(response: FakeRun | None = None):
 class TestDetectStack:
     def test_python_from_requirements(self, tmp_path):
         (tmp_path / "requirements.txt").write_text("flask\n", encoding="utf-8")
-        assert "Python" in _detect_stack(tmp_path)
+        assert "Python" in detect_stack(tmp_path)
 
     def test_node_from_package_json(self, tmp_path):
         (tmp_path / "package.json").write_text("{}", encoding="utf-8")
-        assert "Node.js" in _detect_stack(tmp_path)
+        assert "Node.js" in detect_stack(tmp_path)
 
     def test_rust_from_cargo(self, tmp_path):
         (tmp_path / "Cargo.toml").write_text("[package]", encoding="utf-8")
-        assert "Rust" in _detect_stack(tmp_path)
+        assert "Rust" in detect_stack(tmp_path)
 
     def test_go_from_go_mod(self, tmp_path):
         (tmp_path / "go.mod").write_text("module example.com/m", encoding="utf-8")
-        assert "Go" in _detect_stack(tmp_path)
+        assert "Go" in detect_stack(tmp_path)
 
     def test_flask_detected_from_requirements_content(self, tmp_path):
         (tmp_path / "requirements.txt").write_text("Flask==3.0\n", encoding="utf-8")
-        hints = _detect_stack(tmp_path)
-        assert "Flask" in hints
+        assert "Flask" in detect_stack(tmp_path)
 
     def test_empty_directory_returns_empty_list(self, tmp_path):
-        assert _detect_stack(tmp_path) == []
+        assert detect_stack(tmp_path) == []
 
     def test_no_duplicate_labels(self, tmp_path):
         (tmp_path / "requirements.txt").write_text("flask\n", encoding="utf-8")
-        hints = _detect_stack(tmp_path)
-        assert hints.count("Python") == 1
+        assert detect_stack(tmp_path).count("Python") == 1
 
 
 # ---------------------------------------------------------------------------
-# Source file collection
+# Exclusion helper
 # ---------------------------------------------------------------------------
 
 
-class TestCollectSourceFiles:
-    def test_python_files_included(self, tmp_path):
-        (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
-        items = _collect_source_files(tmp_path)
-        labels = [label for label, _ in items]
-        assert "app.py" in labels
+class TestIsExcluded:
+    def test_venv_excluded(self):
+        assert _is_excluded(Path("venv/lib/site-packages/foo.py"))
 
-    def test_venv_excluded(self, tmp_path):
-        venv = tmp_path / "venv"
-        venv.mkdir()
-        (venv / "lib.py").write_text("x = 1\n", encoding="utf-8")
-        items = _collect_source_files(tmp_path)
-        labels = [label for label, _ in items]
-        assert all("venv" not in label for label in labels)
+    def test_node_modules_excluded(self):
+        assert _is_excluded(Path("node_modules/lodash/index.js"))
 
-    def test_node_modules_excluded(self, tmp_path):
-        nm = tmp_path / "node_modules"
-        nm.mkdir()
-        (nm / "index.js").write_text("module.exports = {}", encoding="utf-8")
-        items = _collect_source_files(tmp_path)
-        labels = [label for label, _ in items]
-        assert all("node_modules" not in label for label in labels)
+    def test_pycache_excluded(self):
+        assert _is_excluded(Path("src/__pycache__/mod.cpython-311.pyc"))
 
-    def test_config_files_collected(self, tmp_path):
-        (tmp_path / "requirements.txt").write_text("flask\n", encoding="utf-8")
-        items = _collect_source_files(tmp_path)
-        labels = [label for label, _ in items]
-        assert "requirements.txt" in labels
+    def test_normal_file_not_excluded(self):
+        assert not _is_excluded(Path("src/app.py"))
 
-    def test_long_files_capped(self, tmp_path):
-        content = "\n".join(f"line {i}" for i in range(300))
-        (tmp_path / "big.py").write_text(content, encoding="utf-8")
-        items = _collect_source_files(tmp_path)
-        _, text = next((label, t) for label, t in items if label == "big.py")
-        assert "300 lines total" in text
-        assert "showing first 200" in text
+    def test_nested_normal_file_not_excluded(self):
+        assert not _is_excluded(Path("src/utils/helpers.py"))
 
 
 # ---------------------------------------------------------------------------
-# Directory tree
-# ---------------------------------------------------------------------------
-
-
-class TestDirectoryTree:
-    def test_basic_tree(self, tmp_path):
-        (tmp_path / "app.py").write_text("x", encoding="utf-8")
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        (sub / "mod.py").write_text("y", encoding="utf-8")
-        tree = _directory_tree(tmp_path)
-        assert "app.py" in tree
-        assert "sub/" in tree
-
-    def test_excluded_dirs_omitted(self, tmp_path):
-        (tmp_path / "__pycache__").mkdir()
-        tree = _directory_tree(tmp_path)
-        assert "__pycache__" not in tree
-
-
-# ---------------------------------------------------------------------------
-# File block parsing
-# ---------------------------------------------------------------------------
-
-
-class TestParseFileBlocks:
-    def test_single_block(self):
-        text = '<file path="ARCHITECTURE.md"># ARCH\n</file>'
-        result = parse_file_blocks(text)
-        assert "ARCHITECTURE.md" in result
-        assert result["ARCHITECTURE.md"] == "# ARCH"
-
-    def test_multiple_blocks(self):
-        text = (
-            '<file path="METADATA.md">name: Proj\n</file>\n'
-            '<file path="ARCHITECTURE.md"># ARCH\n</file>'
-        )
-        result = parse_file_blocks(text)
-        assert set(result.keys()) == {"METADATA.md", "ARCHITECTURE.md"}
-
-    def test_path_traversal_rejected(self):
-        text = '<file path="../../../etc/passwd">evil</file>'
-        result = parse_file_blocks(text)
-        assert result == {}
-
-    def test_absolute_path_rejected(self):
-        text = '<file path="/etc/passwd">evil</file>'
-        result = parse_file_blocks(text)
-        assert result == {}
-
-    def test_lowercase_filename_rejected(self):
-        text = '<file path="architecture.md">content</file>'
-        result = parse_file_blocks(text)
-        assert result == {}
-
-    def test_valid_feature_filename(self):
-        text = '<file path="FEATURE-Auth.md">content</file>'
-        result = parse_file_blocks(text)
-        assert "FEATURE-Auth.md" in result
-
-    def test_no_blocks_returns_empty(self):
-        assert parse_file_blocks("No blocks here.") == {}
-
-
-# ---------------------------------------------------------------------------
-# import_source integration
+# import_source
 # ---------------------------------------------------------------------------
 
 
@@ -190,84 +75,100 @@ class TestImportSource:
         src = tmp_path / "myapp"
         src.mkdir()
         (src / "app.py").write_text("x = 1\n", encoding="utf-8")
+        (src / "requirements.txt").write_text("flask\n", encoding="utf-8")
+        sub = src / "utils"
+        sub.mkdir()
+        (sub / "helpers.py").write_text("def f(): pass\n", encoding="utf-8")
         return src
 
-    def test_writes_files_from_llm_output(self, tmp_path):
+    def test_copies_files_to_sources(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
-        response = FakeRun(
-            text='<file path="ARCHITECTURE.md"># ARCHITECTURE: Test\n</file>'
-        )
-        runner = fake_runner(response)
 
-        result = import_source("Proj", "Tgt", src, td, runner=runner)
+        result = import_source("Proj", "Tgt", src, td)
 
-        assert "ARCHITECTURE.md" in result.files_written
-        assert (result.blueprint_dir / "ARCHITECTURE.md").is_file()
+        sources = result.blueprint_dir / "sources"
+        assert (sources / "app.py").is_file()
+        assert (sources / "requirements.txt").is_file()
+        assert (sources / "utils" / "helpers.py").is_file()
 
-    def test_root_template_written_to_target_dir(self, tmp_path):
+    def test_preserves_directory_structure(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
-        response = FakeRun(
-            text='<file path="METADATA.md">name: Proj\n</file>'
-        )
 
-        result = import_source("Proj", "Tgt", src, td, runner=fake_runner(response))
+        result = import_source("Proj", "Tgt", src, td)
 
-        # METADATA.md is a root template — goes to target_dir, not blueprint_dir
-        target_dir = td / "Tgt"
-        assert (target_dir / "METADATA.md").is_file()
-        assert "METADATA.md" in result.files_written
+        assert (result.blueprint_dir / "sources" / "utils" / "helpers.py").is_file()
 
-    def test_runner_failure_raises_llm_error(self, tmp_path):
+    def test_drydock_import_marker_written(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
-        response = FakeRun(ok=False, text="", execution_id="bad-exec")
 
-        with pytest.raises(LlmError, match="import_source"):
-            import_source("Proj", "Tgt", src, td, runner=fake_runner(response))
+        result = import_source("Proj", "Tgt", src, td)
 
-    def test_empty_output_raises_specification_error(self, tmp_path):
+        marker = result.blueprint_dir / "sources" / ".drydock-import"
+        assert marker.is_file()
+        text = marker.read_text(encoding="utf-8")
+        assert "format: source" in text
+
+    def test_excluded_dirs_skipped(self, tmp_path):
+        src = self._make_source(tmp_path)
+        venv = src / "venv"
+        venv.mkdir()
+        (venv / "lib.py").write_text("x\n", encoding="utf-8")
+        td = tmp_path / "targets"
+        td.mkdir()
+
+        result = import_source("Proj", "Tgt", src, td)
+
+        sources = result.blueprint_dir / "sources"
+        assert not (sources / "venv").exists()
+
+    def test_imported_tuple_contains_all_copied_files(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
-        response = FakeRun(text="No blocks produced.")
 
-        with pytest.raises(SpecificationError, match="no <file"):
-            import_source("Proj", "Tgt", src, td, runner=fake_runner(response))
+        result = import_source("Proj", "Tgt", src, td)
 
-    def test_non_directory_source_raises(self, tmp_path):
-        file_src = tmp_path / "app.py"
-        file_src.write_text("x = 1\n", encoding="utf-8")
-        td = tmp_path / "targets"
-        td.mkdir()
-
-        with pytest.raises(SpecificationError, match="must be a directory"):
-            import_source("Proj", "Tgt", file_src, td)
-
-    def test_prompt_contains_project_name(self, tmp_path):
-        src = self._make_source(tmp_path)
-        td = tmp_path / "targets"
-        td.mkdir()
-        runner = fake_runner()
-
-        import_source("UniqueProjectXYZ", "Tgt", src, td, runner=runner)
-
-        assert runner.seen
-        assert "UniqueProjectXYZ" in runner.seen[0]
+        assert len(result.imported) >= 3  # app.py, requirements.txt, utils/helpers.py
 
     def test_blueprint_templates_seeded(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
-        response = FakeRun(
-            text='<file path="ARCHITECTURE.md"># ARCH\n</file>'
-        )
 
-        result = import_source("Proj", "Tgt", src, td, runner=fake_runner(response))
+        result = import_source("Proj", "Tgt", src, td)
 
-        # init_specification should have run
-        assert result.blueprint_dir.is_dir()
+        assert (result.blueprint_dir / "ARCHITECTURE.md").is_file()
+
+    def test_initialized_true_on_first_import(self, tmp_path):
+        src = self._make_source(tmp_path)
+        td = tmp_path / "targets"
+        td.mkdir()
+
+        result = import_source("Proj", "Tgt", src, td)
+
+        assert result.initialized is True
+
+    def test_initialized_false_on_reimport(self, tmp_path):
+        src = self._make_source(tmp_path)
+        td = tmp_path / "targets"
+        td.mkdir()
+
+        import_source("Proj", "Tgt", src, td)
+        result2 = import_source("Proj", "Tgt", src, td)
+
+        assert result2.initialized is False
+
+    def test_non_directory_raises(self, tmp_path):
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+        td = tmp_path / "targets"
+        td.mkdir()
+
+        with pytest.raises(SpecificationError, match="must be a directory"):
+            import_source("Proj", "Tgt", f, td)

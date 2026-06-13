@@ -203,32 +203,14 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
     return 0
 
 
-def _detect_import_format(source: Path) -> str:
-    """Infer import format from source layout."""
-    if (source / ".specify").is_dir():
-        return "speckit"
-    code_exts = {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".rb", ".java", ".cpp", ".c"}
-    if source.is_dir() and any(p.suffix in code_exts for p in source.rglob("*") if p.is_file()):
-        return "source"
-    if source.suffix.lower() == ".md":
-        return "markdown"
-    if source.is_dir() and any(
-        p.suffix.lower() == ".md" for p in source.rglob("*") if p.is_file()
-    ):
-        return "markdown"
-    raise UsageError(
-        f"Cannot detect import format for: {source}\n"
-        "  Specify --format markdown, --format source, or --format speckit."
-    )
-
-
 def cmd_import(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory
+    from drydock.import_markdown import detect_import_format
 
     source = Path(args.Source)
     fmt = args.format
     if fmt == "auto":
-        fmt = _detect_import_format(source)
+        fmt = detect_import_format(source)
 
     td = get_target_directory()
 
@@ -250,8 +232,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         result = import_source(args.Blueprint, args.Target, source, td)
         print(f"Blueprint: {result.blueprint_dir}")
         print(f"Source: {result.source}")
-        for name in result.files_written:
-            print(f"  IMPORTED  {name}")
+        for path in result.imported:
+            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
         print()
         print(f"Next step: drydock plan create {args.Blueprint} {args.Target}")
         return 0
@@ -263,9 +245,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"Blueprint: {result.blueprint_dir}")
         print(f"Source: {result.source}")
         print(f"Features: {', '.join(result.features_found) or '(none)'}")
-        for name in result.files_written:
-            print(f"  IMPORTED  {name}")
-        print(f"  REPORT    {result.conversion_report.relative_to(result.blueprint_dir)}")
+        for path in result.imported:
+            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
         print()
         print(f"Next step: drydock plan create {args.Blueprint} {args.Target}")
         return 0
