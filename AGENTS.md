@@ -1,19 +1,14 @@
 # AGENTS.md — Drydock
 
-Drydock is the installable V2 successor to Prototyper: a Python CLI that plans, builds, tests,
-reviews, and evolves software from Drydock Blueprints expressed as Typed Specifications. Development
-occurs in this repository.
+Drydock is a specification driven design methedology
 
-Prototyper is a read-only V1 behavioral reference. It preserves proven workflows while Drydock
-replaces its repository-bound shell interface with a coherent command surface and an installable
-package architecture. Prototyper is not enhanced during the migration; it is a source of regression
-cases only.
+It is based on the Prototyper which is stored in /mnt/c/Users/barlo/projects/Prototyper
 
-## Source Precedence And Authority
+## the canonical specification 
 
-`docs/Drydock_Specification.md` is the sole authoritative product specification — a crafted
-definition of the future ideal state, including scope and contracts. It is not a place for status or
-deprecation notes. Agents must obtain Ed's approval before changing it; once approved, behavior and
+`docs/Drydock_Specification.md` is the authoritative product specification — a crafted
+definition of the future ideal state, including scope and contracts. It is not a location 
+for project status or change notes. Obtain Ed's approval before changing it; once approved, behavior and
 specification change together, and the specification must never knowingly describe stale behavior.
 
 Context precedence, highest first:
