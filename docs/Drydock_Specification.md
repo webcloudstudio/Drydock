@@ -736,13 +736,13 @@ terminal sections. `drydock plan create` computes `Depends On`, `Provides`, and 
 
 {body sections specific to the file type}
 
-## Blueprint Acceptance Criteria Section
+## Acceptance Criteria
 ← Positive, testable outcomes. State as bullet assertions.
 
-## Blueprint Guardrails Section
+## Guardrails
 ← Permanent negative assertions. Guard against model hallucination, not spec omission.
 
-## Blueprint Open Questions Section
+## Open Questions
 ← Unresolved decisions that must be answered before this file can be fully implemented.
 ```
 
