@@ -69,7 +69,12 @@ def cmd_init(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory, record_activity
     from drydock.init_target import init_target
 
-    result = init_target(args.Target, get_target_directory())
+    result = init_target(
+        args.Target,
+        get_target_directory(),
+        display_name=getattr(args, "display_name", ""),
+        short_description=getattr(args, "short_description", ""),
+    )
 
     print(f"Target: {result.target_dir}")
     for path in result.created:
@@ -80,10 +85,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  Nothing to do — target baseline is already initialized.")
 
     record_activity("init", target=args.Target)
+    t = args.Target
     print()
     print("Next steps:")
-    print("  1. Import source material into a Blueprint.")
-    print(f"  2. Create a plan for target: {args.Target}")
+    print(f"  1. Import source material:  drydock import {t} {t} <source> --format markdown")
+    print(f"  2. Create a plan:           drydock plan create {t} {t}")
+    print(f"  3. Review and approve:      drydock run quarterdeck {t}")
     return 0
 
 
@@ -320,33 +327,57 @@ def cmd_status_blueprint(blueprint: str) -> int:
     return 0
 
 
+def _render_workspace_status(ws, last_activity: dict) -> None:
+    """Print the workspace-level dashboard for `drydock status` with no args."""
+    from drydock.status import WorkspaceStatus
+
+    print(f"Workspace: {ws.workspace}")
+
+    last_cmd = last_activity.get("command", "")
+    last_bp = last_activity.get("blueprint", "")
+    last_tgt = last_activity.get("target", "")
+    last_time = last_activity.get("time", "")
+    if last_cmd:
+        parts = [last_cmd]
+        if last_bp:
+            parts.append(last_bp)
+        if last_tgt:
+            parts.append(last_tgt)
+        print(f"Last run:  {' '.join(parts)}  {last_time}")
+
+    print()
+
+    if not ws.targets:
+        print("  No targets found.")
+        print()
+        print("Getting started:")
+        print(f"  Initialize a target:  drydock init <Target>")
+        print(f"  Check configuration:  drydock config show")
+        return
+
+    n = len(ws.targets)
+    print(f"Targets: {n}")
+
+    for info in ws.targets:
+        label = info.display_name if info.display_name != info.name else info.name
+        print()
+        print(f"  {label}  [{info.phase}]")
+        print(f"    {info.phase_detail}")
+        if info.next_steps:
+            print(f"    Next:")
+            for step in info.next_steps:
+                print(f"      {step}")
+
+
 def cmd_status_current() -> int:
-    from drydock.config import (
-        get_last_activity,
-        get_target_directory,
-        get_workspace,
-        record_activity,
-    )
-    from drydock.status import status_current
+    from drydock.config import get_last_activity, get_target_directory, get_workspace
+    from drydock.status import status_workspace
 
-    target_dir = get_target_directory()
-
-    if not target_dir.is_dir():
-        activity = get_last_activity()
-        if not activity.get("blueprint"):
-            print("No active Drydock project found.")
-            print(f"  Workspace: {get_workspace()}")
-            print("  Run: drydock init <Target>")
-            return 0
-
-    result = status_current(target_dir)
-    if result is None:
-        print("No active Drydock project found.")
-        print("  Start with: drydock config show")
-        return 0
-
-    _render_status(result)
-    record_activity("status", result.blueprint or None, result.target or None)
+    workspace = get_workspace()
+    targets_root = get_target_directory()
+    ws = status_workspace(workspace, targets_root)
+    last = get_last_activity()
+    _render_workspace_status(ws, last)
     return 0
 
 
@@ -428,6 +459,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── init ─────────────────────────────────────────────────────────────────
     p_init = sub.add_parser("init", help="Initialize a target workspace.")
     p_init.add_argument("Target", metavar="<Target>")
+    p_init.add_argument("--display-name", dest="display_name", default="", metavar="<name>",
+                        help="Human-readable project name (default: target name).")
+    p_init.add_argument("--description", dest="short_description", default="", metavar="<desc>",
+                        help="One-line project description.")
 
     # ── status ────────────────────────────────────────────────────────────────
     # Handles: status

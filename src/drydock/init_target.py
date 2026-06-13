@@ -43,7 +43,13 @@ def _write_missing(path: Path, content: str, result: InitTargetResult) -> None:
     result.created.append(path)
 
 
-def init_target(target: str, target_directory: Path) -> InitTargetResult:
+def init_target(
+    target: str,
+    target_directory: Path,
+    *,
+    display_name: str = "",
+    short_description: str = "",
+) -> InitTargetResult:
     """Create the specification-independent baseline for a target project."""
     _validate_target(target)
     target_dir = target_directory / target
@@ -59,7 +65,7 @@ def init_target(target: str, target_directory: Path) -> InitTargetResult:
 
         _write_missing(
             target_dir / "METADATA.md",
-            render_metadata(target),
+            render_metadata(target, display_name=display_name, short_description=short_description),
             result,
         )
 

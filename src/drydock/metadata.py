@@ -44,12 +44,20 @@ def get_field(metadata: dict[str, str], key: str) -> str | None:
 
 
 def render_metadata(
-    target: str, *, blueprint: str | None = None, code_root: str = DEFAULT_CODE_ROOT
+    target: str,
+    *,
+    blueprint: str | None = None,
+    code_root: str = DEFAULT_CODE_ROOT,
+    display_name: str = "",
+    short_description: str = "",
 ) -> str:
     """Render a minimal project METADATA.md carrying the manifest fields."""
+    dn = display_name.strip() or target
+    sd = short_description.strip()
     return (
         f"# {target}\n\n"
-        "Drydock target project.\n\n"
+        f"display_name: {dn}\n"
+        f"short_description: {sd}\n\n"
         f"name: {target}\n"
         f"blueprint: {blueprint or target}\n"
         f"code_root: {code_root}\n"
