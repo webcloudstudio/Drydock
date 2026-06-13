@@ -24,9 +24,9 @@ studio: Studio
 year: 2026
 ideas_title: Adds
 ideas:
-  - title: First idea
+  - title: First **idea**
     sub_list:
-      - One
+      - One **signal**
       - Two
 ---
 
@@ -41,7 +41,7 @@ def test_parse_source_reads_frontmatter_and_body():
 
     assert metadata["title"] == "Example"
     assert metadata["ideas"] == [
-        {"title": "First idea", "sub_list": ["One", "Two"]},
+        {"title": "First **idea**", "sub_list": ["One **signal**", "Two"]},
     ]
     assert body.startswith("## Product")
 
@@ -57,7 +57,8 @@ def test_render_page_embeds_metadata_and_markdown_safely():
     page = render_page(metadata, body + "\n</script>")
 
     assert "<title>Example Documentation</title>" in page
-    assert "<strong>First idea</strong>" in page
+    assert '<div class="idea-title">First <strong>idea</strong></div>' in page
+    assert "<li>One <strong>signal</strong></li>" in page
     assert r"<\/script>" in page
     assert "marked.parse(BODY)" in page
     assert "mermaid.run" in page

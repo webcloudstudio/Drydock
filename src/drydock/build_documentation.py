@@ -73,17 +73,17 @@ def _render_ideas(metadata: dict[str, object]) -> str:
 
     parts = ['<section class="ideas">']
     ideas_title = str(metadata.get("ideas_title", "What Drydock Adds"))
-    parts.append(f"<h2>{html.escape(ideas_title)}</h2>")
+    parts.append(f"<h2>{_render_inline_markup(ideas_title)}</h2>")
     for item in ideas:
         if not isinstance(item, dict):
             continue
-        title = html.escape(str(item.get("title", "")))
+        title = _render_inline_markup(str(item.get("title", "")))
         parts.append('<article class="idea">')
-        parts.append(f"<strong>{title}</strong>")
+        parts.append(f'<div class="idea-title">{title}</div>')
         sub_list = item.get("sub_list", [])
         if isinstance(sub_list, list) and sub_list:
             parts.append("<ul>")
-            parts.extend(f"<li>{html.escape(str(value))}</li>" for value in sub_list)
+            parts.extend(f"<li>{_render_inline_markup(str(value))}</li>" for value in sub_list)
             parts.append("</ul>")
         parts.append("</article>")
     parts.append("</section>")
@@ -92,6 +92,16 @@ def _render_ideas(metadata: dict[str, object]) -> str:
 
 def _json_for_script(value: str) -> str:
     return json.dumps(value).replace("</", r"<\/")
+
+
+def _render_inline_markup(text: str) -> str:
+    """Render a small inline-markup subset safely for metadata fields."""
+    escaped = html.escape(text)
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"__(.+?)__", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)", r"<em>\1</em>", escaped)
+    escaped = re.sub(r"(?<!_)_(?!\s)(.+?)(?<!\s)_(?!_)", r"<em>\1</em>", escaped)
+    return escaped
 
 
 def render_page(metadata: dict[str, object], body: str) -> str:
@@ -136,9 +146,11 @@ h1 {{ font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }}
 .meta {{ color: var(--muted); display: flex; gap: 18px; margin-top: 14px; font-size: 12px; }}
 .ideas {{ margin: 0 0 22px; }}
 .ideas h2, #content h2 {{ border-bottom: 2px solid var(--green); padding-bottom: 4px; }}
-.idea {{ background: var(--panel); border-left: 4px solid var(--green);
-  margin: 8px 0; padding: 8px 14px; }}
-.idea ul {{ margin: 4px 0 0; }}
+.ideas h2 {{ font-size: 1.08rem; letter-spacing: .03em; text-transform: uppercase; }}
+.idea {{ background: var(--panel); border-left: 5px solid var(--green);
+  margin: 8px 0; padding: 10px 14px 10px 16px; }}
+.idea-title {{ color: var(--navy); font-size: 1.14rem; font-weight: 800; line-height: 1.2; }}
+.idea ul {{ margin: 6px 0 0; color: var(--muted); }}
 #content {{ background: var(--panel); border: 1px solid var(--line); padding: 26px 30px; }}
 #content h2 {{ margin-top: 28px; margin-bottom: 10px; }}
 #content h2:first-child {{ margin-top: 0; }}
