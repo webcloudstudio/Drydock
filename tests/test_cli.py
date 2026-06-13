@@ -197,6 +197,8 @@ class TestValidate:
 
     def test_validate_missing_required_file_fails(self, tmp_target_root, isolated_config):
         target_dir = self._setup_spec(tmp_target_root, isolated_config)
+        # Put target in Implement phase so ARCHITECTURE.md is required
+        (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
         (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
         rc, out, err = run_cli("validate", "TestProject", "TestProject")
         assert rc == 1
@@ -205,7 +207,7 @@ class TestValidate:
     def test_validate_shows_result_summary(self, tmp_target_root, isolated_config):
         self._setup_spec(tmp_target_root, isolated_config)
         rc, out, _ = run_cli("validate", "TestProject", "TestProject")
-        assert "RESULT" in out
+        assert "✓" in out or "✗" in out or "⚠" in out
 
 
 class TestRiggingCompact:

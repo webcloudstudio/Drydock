@@ -40,17 +40,33 @@ class TestMissingFiles:
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()
 
-    def test_missing_architecture_is_failure(self, tmp_target_root):
+    def test_missing_architecture_is_failure_at_implement_phase(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
+        # Simulate Implement phase (BUILD_PLAN.md present) so ARCHITECTURE.md is required
+        (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
         (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()
 
-    def test_missing_readme_is_failure(self, tmp_target_root):
+    def test_missing_readme_is_failure_at_implement_phase(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
+        # Simulate Implement phase so README.md is required
+        (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
         (target_dir / "README.md").unlink()
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()
+
+    def test_missing_architecture_not_required_at_setup_phase(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
+        result = validate_specification("TestProject", target_dir)
+        assert not result.has_failures()
+
+    def test_missing_readme_not_required_at_setup_phase(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        (target_dir / "README.md").unlink()
+        result = validate_specification("TestProject", target_dir)
+        assert not result.has_failures()
 
 
 class TestNonExistentSpec:

@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+_SEVERITY_ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗"}
+
+
 def _print_findings(result, verbose: bool) -> None:
     from drydock.validate_specification import Severity
 
@@ -32,17 +35,18 @@ def _print_findings(result, verbose: bool) -> None:
             continue
         print(f"\n{section}:")
         for finding in visible:
-            print(f"  {finding.severity.value:<4}  {finding.message}")
+            icon = _SEVERITY_ICON.get(finding.severity.value, "?")
+            print(f"  {icon}  {finding.message}")
 
     print()
     total_fail = len(result.failures())
     total_warn = len(result.warnings())
     if total_fail > 0:
-        print(f"RESULT: FAIL ({total_fail} errors, {total_warn} warnings)")
+        print(f"✗ FAIL ({total_fail} errors, {total_warn} warnings)")
     elif total_warn > 0:
-        print(f"RESULT: PASS with warnings ({total_warn} warnings)")
+        print(f"⚠ PASS with warnings ({total_warn} warnings)")
     else:
-        print("RESULT: PASS")
+        print("✓ PASS")
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +73,12 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from drydock.config import append_command_history, get_target_directory, get_workspace, record_activity
+    from drydock.config import (
+        append_command_history,
+        get_target_directory,
+        get_workspace,
+        record_activity,
+    )
     from drydock.init_target import init_target
 
     logger.debug("cmd_init: target=%s", args.Target)
@@ -283,13 +292,14 @@ def _render_status(result) -> None:
         v = result.validation
         n_fail = len(v.failures())
         n_warn = len(v.warnings())
-        state = "FAIL" if n_fail else ("WARN" if n_warn else "PASS")
+        state_icon = "✗" if n_fail else ("⚠" if n_warn else "✓")
         detail = f"{n_fail} errors · {n_warn} warnings"
-        print(f"  {'Blueprint':<{col}}  {state:<6}  {detail}")
+        print(f"  {'Blueprint':<{col}}  {state_icon}  {detail}")
         if n_fail or n_warn:
             for finding in v.findings:
                 if finding.severity != Severity.PASS:
-                    print(f"    {finding.severity.value:<4}  {finding.section}: {finding.message}")
+                    icon = _SEVERITY_ICON.get(finding.severity.value, "?")
+                    print(f"    {icon}  {finding.section}: {finding.message}")
 
     if result.plan is not None:
         counts = result.plan.state_counts()
@@ -347,8 +357,8 @@ def _render_workspace_status(ws) -> None:
         for rec in reversed(info.history):
             cmd = rec.get("command", "")
             rc = rec.get("return_code")
-            prefix = str(rc) if rc is not None else "?"
-            print(f"   {prefix}:{cmd}")
+            icon = "·" if rc is None else ("✓" if rc == 0 else "✗")
+            print(f"   {icon} {cmd}")
         print()
 
 

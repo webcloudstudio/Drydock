@@ -153,17 +153,33 @@ def validate_specification(
         return result
     p(section, f"Directory exists: {spec_dir}")
 
-    # --- Required files (root identity files vs the blueprint corpus) ---
+    # Determine SAIL phase from filesystem state so required-file checks are stage-gated.
+    # Set Up: blueprint dir is empty (no real files)
+    # Arrange: blueprint has content, no BUILD_PLAN.md
+    # Implement+: BUILD_PLAN.md exists
+    def _blueprint_has_content() -> bool:
+        if not spec_dir.is_dir():
+            return False
+        return any(f_path.is_file() and f_path.name != ".gitkeep" for f_path in spec_dir.rglob("*"))
+
+    _has_content = _blueprint_has_content()
+    _has_plan = (root_dir / "BUILD_PLAN.md").exists()
+    _phase = "implement" if _has_plan else ("arrange" if _has_content else "setup")
+
+    # --- Required files (gated by SAIL phase) ---
     section = "Required files"
-    for required, base in (
-        ("METADATA.md", root_dir),
-        ("README.md", root_dir),
-        ("ARCHITECTURE.md", spec_dir),
-    ):
-        if (base / required).exists():
-            p(section, f"{required} exists")
-        else:
-            f(section, f"{required} is missing")
+    # METADATA.md is required at every phase
+    if (root_dir / "METADATA.md").exists():
+        p(section, "METADATA.md exists")
+    else:
+        f(section, "METADATA.md is missing")
+    # README.md and ARCHITECTURE.md are Implement-phase deliverables
+    if _phase == "implement":
+        for required, base in (("README.md", root_dir), ("ARCHITECTURE.md", spec_dir)):
+            if (base / required).exists():
+                p(section, f"{required} exists")
+            else:
+                f(section, f"{required} is missing")
 
     # --- METADATA.md fields ---
     section = "METADATA fields"
