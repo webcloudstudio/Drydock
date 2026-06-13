@@ -540,7 +540,6 @@ class TestStubs:
         (["build", "MyTarget"], "build"),
         (["refit", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
         (["refit", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
-        (["analyze", "MyTarget"], "analyze"),
     ]
 
     @pytest.mark.parametrize("args,label", STUB_CASES)

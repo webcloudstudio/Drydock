@@ -168,6 +168,26 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_analyze(args: argparse.Namespace) -> int:
+    from drydock.analyze import analyze
+    from drydock.config import get_target_directory
+
+    target_dir = get_target_directory() / args.Target
+    print(f"Analyzing Blueprint: {args.Target}")
+    result = analyze(args.Target, target_dir, on_text=lambda t: print(t, end="", flush=True))
+    print()
+    if not result.ok:
+        print(f"Error: {result.error}")
+        return 1
+    print(f"Analysis:  {result.analysis_path}")
+    print(f"Questions: {result.question_count} questionnaire item(s)")
+    print(f"Verdict:   {result.verdict}")
+    if result.question_count > 0:
+        print()
+        print("Next step: answer questions in the Planning Session before drydock plan create.")
+    return 0
+
+
 def _print_plan_blocks(plan, *, frontier_ids: set[str] | None = None) -> None:
     frontier_ids = frontier_ids or set()
     for block in plan.blocks:
@@ -836,7 +856,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         not_implemented("refit")
 
     if command == "analyze":
-        not_implemented("analyze")
+        rc = cmd_analyze(args)
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("analyze", args.Target, args.Target)
+        return rc
 
     if command == "survey":
         rc = cmd_survey(args)
