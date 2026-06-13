@@ -194,7 +194,6 @@ progress and the current runnable frontier. `drydock validate` exposes the under
 Typed Specification validation command.
 
 `drydock config` establishes user-scoped defaults. `drydock init` creates the Target baseline.
-`drydock rigging update` and `drydock rigging verify` establish and check portfolio governance.
 `drydock run quarterdeck` opens the product-owner review surface.
 
 ### Workflow: Initialize a Target
@@ -206,12 +205,6 @@ runtime from the installed package.
 `drydock run quarterdeck [<Target>]` starts the console on `QUARTERDECK_PORT` (override with
 `--host` and `--port`), serving the package runtime against this in-tree console state. The
 QuarterDeck is usable from this moment — planning, build, and review all surface through it.
-
-### Workflow: Establish Portfolio Governance
-
-Run `drydock rigging update <Target>` to propagate the current portfolio rules into a Target, then
-run `drydock rigging verify <Target>` to prove that the Target conforms. Repeat verification after
-material Rigging changes and before delivery gates that require portfolio compliance.
 
 ## SAIL Phase 2 — Arrange: Charting the Build
 
@@ -483,6 +476,21 @@ flowchart LR
 3. `drydock plan create` refreshes `Depends On` and `Provides`. Interface or route changes mark
    affected downstream work stale — only changed work rebuilds, unaffected work stays clean.
 4. `BOTH` or `TGT` applies the change to `<Target>/`, runs tests, and records evidence.
+
+### Workflow: Refit Portfolio Governance
+
+Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
+changes back into an existing Target and proves continued conformance after the change.
+
+1. `drydock rigging compact <Blueprint> <Target> --all` — distills `BUSINESS_RULES.md` into
+   `BUSINESS_RULES_compact.md`. Run after every rules edit; the compact form is what agents read
+   and what `rigging update` injects.
+2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
+   into the target project.
+3. `drydock rigging verify <Target>` — checks target project compliance with the Drydock rigging
+   contract across all required standards.
+4. Repeat verification after material Rigging changes and before delivery gates that require
+   portfolio compliance.
 
 Staleness is computed from content hashes at the form each block consumes. A block that
 `implements:` a file is keyed to the full file's hash; a block that receives it as `context:` is
@@ -1226,39 +1234,6 @@ DATABASE_compact.md not found — run: drydock rigging compact <Blueprint> <Targ
 
 `drydock plan create` reports a staleness warning when a source file is newer than its compact
 derivative.
-
-### Rigging Propagation Contract
-
-Drydock Rigging is the authoritative source for agent behavior and technology standards.
-Rules are propagated to target projects as a shared contract, making all projects interoperable
-and consistently governed. `drydock rigging verify` checks compliance; `drydock rigging update`
-injects the current rigging.
-
-```mermaid
-%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart LR
-  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
-  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
-  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
-  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
-
-  BRC{{"Compact Rules"}}:::md --> UPDATE["rigging update"]:::script
-  UPDATE --> TARGET(["Target Project"]):::dir
-  TARGET --> VERIFY["rigging verify"]:::script
-  VERIFY --> REPORT{{"Compliance Report"}}:::md
-```
-
-1. `drydock rigging compact <Blueprint> <Target> --all` — distills `BUSINESS_RULES.md` into
-   `BUSINESS_RULES_compact.md`. Run after every rules edit; the compact form is what agents read
-   and what `rigging update` injects.
-2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
-   into the target project.
-3. `drydock rigging verify <Target>` — checks target project compliance with the Drydock rigging
-   contract across all required standards.
-4. All projects sharing the same rigging contract are interoperable; verification ensures no
-   project diverges silently.
 
 ## Documentation — From Blueprint to docs/index.html
 
