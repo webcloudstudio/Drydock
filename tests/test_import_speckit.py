@@ -12,7 +12,9 @@ def _make_speckit(root, features=None):
     """Create a minimal Spec Kit project directory."""
     specify = root / ".specify" / "memory"
     specify.mkdir(parents=True)
-    (specify / "constitution.md").write_text("# Constitution\n\nProject intent.\n", encoding="utf-8")
+    (specify / "constitution.md").write_text(
+        "# Constitution\n\nProject intent.\n", encoding="utf-8"
+    )
     if features:
         for name, files in features.items():
             fdir = root / "specs" / name

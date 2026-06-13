@@ -404,9 +404,9 @@ def test_expand_sources_skips_files_covered_by_explicit_items(tmp_path):
         }
         quarterdeck._expand_sources(config)
         ids = [item["id"] for item in config["items"]]
-        assert ids == [
-            "master_blueprint"
-        ], "source must not duplicate a path covered by an explicit item"
+        assert ids == ["master_blueprint"], (
+            "source must not duplicate a path covered by an explicit item"
+        )
     finally:
         quarterdeck.PROJECT_ROOT = tmp_path.parent
         quarterdeck.BASE_DIR = tmp_path.parent / "QuarterDeck"

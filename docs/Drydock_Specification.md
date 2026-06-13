@@ -110,7 +110,7 @@ The public CLI is organized by SAIL phase:
 |---|---|---|
 | **Set Up** | Establish the workspace, Target, governance, orientation, and QuarterDeck | `config`, `init`, `status`, `validate`, `rigging update`, `rigging verify`, `run quarterdeck` |
 | **Arrange** | Import, inspect, compact, organize, and approve the work | `import`, `analyze`, `rigging compact`, `plan create` |
-| **Implement** | Execute the accepted Manifest, inspect progress, score delivery, and produce documentation | `build`, `build status`, `build score`, `document` |
+| **Implement** | Execute the accepted Manifest, inspect progress, score delivery, and produce documentation | `build`, `build status`, `build score`, `survey`, `document` |
 | **Loop** | Perform a governed Refit and return affected work to Arrange and Implement | `refit` |
 
 `drydock --help` prints the installed command surface:
@@ -133,6 +133,7 @@ positional arguments:
     build     Build or inspect build state.
     refit     Update Blueprint and target software together.
     analyze   Read-only advisory: surface gaps and drift.
+    survey    Score a target's build process against its acceptance criteria.
     run       Start a Drydock service.
     import    Reverse-engineer a project into a Blueprint.
 
@@ -425,6 +426,39 @@ flowchart LR
    drift between what was specified and what was delivered.
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
    prioritize the next `drydock refit` or `drydock plan create` run.
+
+### Workflow: Survey The Build Process
+
+`drydock build score` scores the delivered *product* against the Blueprint. `drydock survey`
+scores the *process and its specifications* against per-command acceptance criteria, and emits
+generalized, actionable fixes the next build iteration can apply. The two are directionally the
+same instrument — measuring quality and surfacing the highest-value gap — and `drydock survey`
+may in time subsume the SCORECARD.
+
+```text
+drydock survey <Target>             # render the latest scoreboard
+drydock survey <Target> --run       # score (LLM-assisted) and append results
+drydock survey <Target> --import D   # re-read a Blueprint/sources directory and regenerate AC
+drydock survey <Target> --command status   # filter to one command
+```
+
+A Target carries one Surveyor workspace at `<Target>/survey/`: per-command acceptance-criteria
+files under `survey/ac/SURVEY-<command>.md`, an append-only `survey/scores.jsonl`, and the scoring
+`survey/RUBRIC.md`. Each command is scored on five weighted dimensions — behavioral correctness,
+specification quality, process integrity, evidence/reproducibility, and contract conformance — to a
+0–100 score and a band (`SEAWORTHY`, `SEA_TRIALS`, `TAKING_WATER`, `DRY_DOCK`). A guardrail breach
+or regression caps the band regardless of the number.
+
+The scoring math is deterministic and lives in the command. An LLM judges each acceptance
+criterion and synthesizes recommendations; the command computes the scores and writes the files, so
+runs need no file-write permission and tests substitute a fake runner. `--import` regenerates the
+acceptance-criteria files from the specification so the process can iterate on its own definitions.
+
+1. `drydock survey <Target> --run` — judge each command against its AC; record one scored entry
+   per command with root-cause flags and generalized recommended fixes.
+2. The scoreboard surfaces which dimension of which command is dragging; a flag recurring across
+   commands (e.g. `unresolved-uncertainty`) signals a *process* defect to fix in the prompt or
+   command contract, not a one-off code fix.
 
 ### Workflow: Deliver Project Documentation
 

@@ -21,6 +21,19 @@ logger = logging.getLogger(__name__)
 
 _SEVERITY_ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗"}
 
+# Post-command "Next step:" hints, centralized in one place because the workflow is still
+# evolving. Keyed by command; value is a template formatted with the resolved target.
+_NEXT_STEP_HINTS: dict[str, str] = {
+    "import": "drydock analyze {target}",
+}
+
+
+def _print_next_step(command: str, target: str) -> None:
+    hint = _NEXT_STEP_HINTS.get(command)
+    if hint:
+        print()
+        print(f"Next step: {hint.format(target=target)}")
+
 
 def _print_findings(result, verbose: bool) -> None:
     from drydock.validate_specification import Severity
@@ -74,9 +87,7 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 def cmd_init(args: argparse.Namespace) -> int:
     from drydock.config import (
-        append_command_history,
         get_target_directory,
-        get_workspace,
         record_activity,
     )
     from drydock.init_target import init_target
@@ -99,15 +110,13 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  Nothing to do — target baseline is already initialized.")
 
     record_activity("init", target=args.Target)
-    append_command_history(
-        get_workspace(), f"drydock init {args.Target}", target=args.Target, return_code=0
-    )
     t = args.Target
     print()
     print("Next steps:")
     print(f"  1. Import source material:  drydock import {t} <source> --format markdown")
-    print(f"  2. Create a plan:           drydock plan create {t}")
-    print(f"  3. Review and approve:      drydock run quarterdeck {t}")
+    print(f"  2. Analyze the spec:        drydock analyze {t}")
+    print(f"  3. Create a plan:           drydock plan create {t}")
+    print(f"  4. Review and approve:      drydock run quarterdeck {t}")
     return 0
 
 
@@ -205,6 +214,47 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_survey(args: argparse.Namespace) -> int:
+    from pathlib import Path as _Path
+
+    from drydock.config import get_target_directory
+    from drydock.errors import UsageError
+    from drydock.survey import (
+        import_specs,
+        load_records,
+        render_scoreboard,
+        run_survey,
+        survey_dir_for,
+    )
+
+    target_dir = get_target_directory() / args.Target
+    if not target_dir.is_dir():
+        raise UsageError(f"Target not found: {args.Target}")
+
+    if args.import_path:
+        written = import_specs(args.Target, target_dir, _Path(args.import_path))
+        print(f"Regenerated {len(written)} acceptance-criteria file(s):")
+        for path in written:
+            print(f"  {path.name}")
+        return 0
+
+    if args.run:
+        print(f"Surveying: {args.Target}")
+        records = run_survey(args.Target, target_dir, command=args.command_filter)
+        print(f"  scored {len(records)} command(s)")
+
+    records = load_records(survey_dir_for(target_dir))
+    if args.raw:
+        import json as _json
+
+        for rec in records:
+            print(_json.dumps(rec))
+        return 0
+
+    print(render_scoreboard(records, command=args.command_filter))
+    return 0
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory
     from drydock.import_markdown import detect_import_format
@@ -224,8 +274,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"Source: {result.source}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
-        print()
-        print(f"Next step: drydock plan create {args.Target}")
+        _print_next_step("import", args.Target)
         return 0
 
     if fmt == "source":
@@ -236,8 +285,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"Source: {result.source}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
-        print()
-        print(f"Next step: drydock plan create {args.Target}")
+        _print_next_step("import", args.Target)
         return 0
 
     if fmt == "speckit":
@@ -249,8 +297,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"Features: {', '.join(result.features_found) or '(none)'}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
-        print()
-        print(f"Next step: drydock plan create {args.Target}")
+        _print_next_step("import", args.Target)
         return 0
 
     raise UsageError(f"Unknown format: {fmt!r}")
@@ -603,6 +650,40 @@ def _build_parser() -> argparse.ArgumentParser:
     p_analyze = sub.add_parser("analyze", help="Read-only advisory: surface gaps and drift.")
     p_analyze.add_argument("Target", metavar="<Target>")
 
+    # ── survey ────────────────────────────────────────────────────────────────
+    p_survey = sub.add_parser(
+        "survey",
+        help="Score a target's build process against its acceptance criteria.",
+        description=(
+            "drydock survey <Target>            — render the latest scoreboard\n"
+            "drydock survey <Target> --run      — score (LLM-assisted) and append results\n"
+            "drydock survey <Target> --import D  — regenerate AC files from a spec directory\n"
+            "drydock survey <Target> --command status   — filter to one command"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_survey.add_argument("Target", metavar="<Target>")
+    p_survey.add_argument(
+        "--command",
+        dest="command_filter",
+        default=None,
+        metavar="<name>",
+        help="Filter to one command.",
+    )
+    p_survey.add_argument(
+        "--import",
+        dest="import_path",
+        default=None,
+        metavar="<path>",
+        help="Re-read a Blueprint/sources directory and regenerate AC files.",
+    )
+    p_survey.add_argument(
+        "--run",
+        action="store_true",
+        help="Perform a fresh survey (LLM-assisted) and append scores.",
+    )
+    p_survey.add_argument("--raw", action="store_true", help="Print raw score records as JSON.")
+
     # ── run ───────────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Start a Drydock service.")
     run_sub = p_run.add_subparsers(dest="run_command", metavar="<subcommand>")
@@ -757,6 +838,14 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "analyze":
         not_implemented("analyze")
 
+    if command == "survey":
+        rc = cmd_survey(args)
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("survey", args.Target, args.Target)
+        return rc
+
     if command == "run":
         sub = getattr(args, "run_command", None)
         if sub == "quarterdeck":
@@ -776,6 +865,26 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     return 0
 
 
+# Commands that are pure reports and are never recorded in history.jsonl.
+# Everything else (including failures) is logged with its return code.
+def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: int) -> None:
+    """Append one history line for any non-report command. Must never raise to the caller."""
+    command = getattr(args, "command", None)
+    if command is None:
+        return  # bare `drydock` / help text
+    if command == "status":
+        return  # pure report
+    if command == "config" and getattr(args, "config_command", None) == "show":
+        return  # pure report
+
+    from drydock.config import append_command_history, get_workspace
+
+    tokens = argv if argv is not None else sys.argv[1:]
+    cmd_str = "drydock " + " ".join(tokens)
+    target = getattr(args, "Target", "") or ""
+    append_command_history(get_workspace(), cmd_str, target=target, return_code=rc)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -792,22 +901,28 @@ def main(argv: list[str] | None = None) -> None:
     except Exception:
         pass  # log setup failure must not prevent the command from running
 
+    exit_code = 0
     try:
-        rc = _dispatch(args, parser)
+        exit_code = _dispatch(args, parser)
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        sys.exit(2)
+        exit_code = 2
     except DrydockError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except SystemExit:
-        raise
+        exit_code = 1
+    except SystemExit as exc:
+        exit_code = exc.code if isinstance(exc.code, int) else 1
     except Exception as exc:
         if debug:
             traceback.print_exc()
         else:
             print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
             print("Run with --debug for a full traceback.", file=sys.stderr)
-        sys.exit(1)
+        exit_code = 1
 
-    sys.exit(rc)
+    try:
+        _log_command_history(args, argv, exit_code)
+    except Exception:
+        pass  # history logging must never change the command's outcome
+
+    sys.exit(exit_code)

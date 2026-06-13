@@ -78,7 +78,10 @@ def detect_stack(source: Path) -> list[str]:
                 for p in subdir.rglob("*"):
                     if p.is_file():
                         try:
-                            if "bootstrap" in p.read_text(encoding="utf-8", errors="replace").lower():
+                            if (
+                                "bootstrap"
+                                in p.read_text(encoding="utf-8", errors="replace").lower()
+                            ):
                                 add("Bootstrap")
                                 break
                         except OSError:
@@ -108,9 +111,7 @@ def import_source(
     """Copy source code files to ``blueprint/sources/`` and seed Blueprint templates."""
     source = source.expanduser().resolve()
     if not source.is_dir():
-        raise SpecificationError(
-            f"Import source must be a directory for --format source: {source}"
-        )
+        raise SpecificationError(f"Import source must be a directory for --format source: {source}")
 
     target_dir = target_directory / target
     blueprint_dir = target_dir / "blueprint"

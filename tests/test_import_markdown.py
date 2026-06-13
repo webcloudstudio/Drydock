@@ -21,7 +21,9 @@ class TestImportMarkdownFile:
         dest = td / "MyTarget" / "blueprint" / "sources" / "spec.md"
         assert dest.is_file()
         assert dest.read_text(encoding="utf-8") == "# Spec\n\nContent.\n"
-        assert "sources/spec.md" in [str(p.relative_to(result.blueprint_dir)) for p in result.imported]
+        assert "sources/spec.md" in [
+            str(p.relative_to(result.blueprint_dir)) for p in result.imported
+        ]
 
     def test_drydock_import_marker_written(self, tmp_path):
         source = tmp_path / "req.md"

@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 _RUN_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file
-_RUN_LOG_BACKUP_COUNT = 5              # keep run.log + 5 rotated copies
+_RUN_LOG_BACKUP_COUNT = 5  # keep run.log + 5 rotated copies
 
 
 def setup_run_logger(log_file: Path, *, debug: bool = False) -> None:
