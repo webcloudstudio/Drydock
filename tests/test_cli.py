@@ -179,18 +179,18 @@ class TestValidate:
 
     def test_validate_after_init_exits_zero(self, tmp_target_root, isolated_config):
         self._setup_spec(tmp_target_root, isolated_config)
-        rc, out, err = run_cli("validate", "TestProject", "TestProject")
+        rc, out, err = run_cli("validate", "TestProject")
         assert rc == 0  # warnings are OK, no failures expected after init
 
     def test_validate_nonexistent_spec_fails(self, tmp_target_root, isolated_config):
         run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
-        rc, out, err = run_cli("validate", "DoesNotExist", "DoesNotExist")
+        rc, out, err = run_cli("validate", "DoesNotExist")
         assert rc == 1
 
     def test_validate_verbose_shows_passes(self, tmp_target_root, isolated_config):
         self._setup_spec(tmp_target_root, isolated_config)
-        rc_plain, out_plain, _ = run_cli("validate", "TestProject", "TestProject")
-        rc_verb, out_verb, _ = run_cli("validate", "TestProject", "TestProject", "--verbose")
+        rc_plain, out_plain, _ = run_cli("validate", "TestProject")
+        rc_verb, out_verb, _ = run_cli("validate", "TestProject", "--verbose")
         assert rc_verb == 0
         assert "PASS" in out_verb
         assert len(out_verb) > len(out_plain)
@@ -200,13 +200,13 @@ class TestValidate:
         # Put target in Implement phase so ARCHITECTURE.md is required
         (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
         (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
-        rc, out, err = run_cli("validate", "TestProject", "TestProject")
+        rc, out, err = run_cli("validate", "TestProject")
         assert rc == 1
         assert "ARCHITECTURE" in out
 
     def test_validate_shows_result_summary(self, tmp_target_root, isolated_config):
         self._setup_spec(tmp_target_root, isolated_config)
-        rc, out, _ = run_cli("validate", "TestProject", "TestProject")
+        rc, out, _ = run_cli("validate", "TestProject")
         assert "✓" in out or "✗" in out or "⚠" in out
 
 
@@ -238,7 +238,7 @@ class TestRiggingCompact:
     def test_compacts_and_reports(self, tmp_target_root, isolated_config, monkeypatch):
         spec = self._setup_blueprint(tmp_target_root)
         self._fake_run_prompt(monkeypatch)
-        rc, out, err = run_cli("rigging", "compact", "Proj", "Proj")
+        rc, out, err = run_cli("rigging", "compact", "Proj")
         assert rc == 0, err
         assert (spec / "DATABASE_compact.md").exists()
         assert "1 compacted" in out
@@ -247,14 +247,14 @@ class TestRiggingCompact:
     def test_failed_execution_exits_one(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup_blueprint(tmp_target_root)
         self._fake_run_prompt(monkeypatch, ok=False, text="")
-        rc, out, err = run_cli("rigging", "compact", "Proj", "Proj")
+        rc, out, err = run_cli("rigging", "compact", "Proj")
         assert rc == 1
         assert "1 failed" in out
 
     def test_nothing_to_compact(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup_blueprint(tmp_target_root, **{"README.md": "no compactables\n"})
         self._fake_run_prompt(monkeypatch)
-        rc, out, err = run_cli("rigging", "compact", "Proj", "Proj")
+        rc, out, err = run_cli("rigging", "compact", "Proj")
         assert rc == 0
         assert "Nothing to compact" in out
 
@@ -294,7 +294,7 @@ state: pending
     ):
         self._setup(tmp_target_root, monkeypatch)
 
-        rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
+        rc, out, err = run_cli("build", "status", "ExampleTarget")
 
         assert rc == 0, err
         assert f"Target: {tmp_target_root / 'ExampleTarget'}" in out
@@ -303,7 +303,7 @@ state: pending
         assert "Runnable frontier: import-documents, system-starts" in out
 
     def test_build_status_usage_error(self):
-        rc, out, err = run_cli("build", "status", "Example")
+        rc, out, err = run_cli("build", "status")
 
         assert rc == 2
         assert "Usage: drydock build status" in err
@@ -324,14 +324,12 @@ class TestPlanningSession:
             encoding="utf-8",
         )
 
-        rc, out, err = run_cli(
-            "import", "Example", "ExampleTarget", str(source), "--format", "markdown"
-        )
+        rc, out, err = run_cli("import", "ExampleTarget", str(source), "--format", "markdown")
         assert rc == 0, err
         bp = tmp_target_root / "ExampleTarget" / "blueprint"
         assert (bp / "sources" / "request.md").is_file()
 
-        rc, out, err = run_cli("plan", "create", "Example", "ExampleTarget")
+        rc, out, err = run_cli("plan", "create", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state: draft" in out
         assert (bp / "BUILD_PLAN_COMPASS.md").is_file()
@@ -347,14 +345,14 @@ class TestPlanningSession:
         config = (quarterdeck / "console.yaml").read_text(encoding="utf-8")
         assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
 
-        rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
+        rc, out, err = run_cli("build", "status", "ExampleTarget")
         assert rc == 0, err
         assert "Runnable frontier: (none)" in out
 
         from drydock.build_plan import set_plan_state
 
         set_plan_state(plan_path, "approved", decision="approve")
-        rc, out, err = run_cli("build", "status", "Example", "ExampleTarget")
+        rc, out, err = run_cli("build", "status", "ExampleTarget")
         assert rc == 0, err
         assert "Runnable frontier: story-request" in out
 
@@ -369,7 +367,7 @@ class TestPlanningSession:
             "\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- Which sort order?\n",
             encoding="utf-8",
         )
-        rc, out, err = run_cli("plan", "create", "Example", "Target")
+        rc, out, err = run_cli("plan", "create", "Target")
 
         assert rc == 0, err
         text = (tmp_target_root / "Target" / "BUILD_PLAN.md").read_text(encoding="utf-8")
@@ -398,7 +396,7 @@ class TestImport:
         source = tmp_path / "spec.md"
         source.write_text("# Spec\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(source), "--format", "markdown")
+        rc, out, err = run_cli("import", "Tgt", str(source), "--format", "markdown")
 
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "spec.md").is_file()
@@ -410,7 +408,7 @@ class TestImport:
         source = tmp_path / "req.md"
         source.write_text("# Req\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(source), "--format", "markdown")
+        rc, out, err = run_cli("import", "Tgt", str(source), "--format", "markdown")
 
         assert rc == 0, err
         assert "IMPORTED" in out
@@ -423,7 +421,7 @@ class TestImport:
         source = tmp_path / "spec.md"
         source.write_text("# Spec\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(source), "--format", "auto")
+        rc, out, err = run_cli("import", "Tgt", str(source), "--format", "auto")
 
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "spec.md").is_file()
@@ -436,7 +434,7 @@ class TestImport:
         src_dir.mkdir()
         (src_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "auto")
+        rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "auto")
 
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "spec.md").is_file()
@@ -447,7 +445,7 @@ class TestImport:
         self._configure(tmp_target_root, monkeypatch)
 
         rc, out, err = run_cli(
-            "import", "BP", "Tgt", str(tmp_path / "nonexistent.md"), "--format", "markdown"
+            "import", "Tgt", str(tmp_path / "nonexistent.md"), "--format", "markdown"
         )
 
         assert rc == 1
@@ -460,7 +458,7 @@ class TestImport:
         src_dir.mkdir()
         (src_dir / "app.py").write_text("x = 1\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "source")
+        rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "source")
 
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
@@ -474,7 +472,7 @@ class TestImport:
         src_dir.mkdir()
         (src_dir / "app.py").write_text("x = 1\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "auto")
+        rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "auto")
 
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
@@ -487,11 +485,17 @@ class TestImport:
         (src_dir / ".specify" / "memory").mkdir(parents=True)
         (src_dir / ".specify" / "memory" / "constitution.md").write_text("# C\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "speckit")
+        rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "speckit")
 
         assert rc == 0, err
         assert (
-            tmp_target_root / "Tgt" / "blueprint" / "sources" / ".specify" / "memory" / "constitution.md"
+            tmp_target_root
+            / "Tgt"
+            / "blueprint"
+            / "sources"
+            / ".specify"
+            / "memory"
+            / "constitution.md"
         ).is_file()
         assert "IMPORTED" in out
 
@@ -503,18 +507,23 @@ class TestImport:
         (src_dir / ".specify" / "memory").mkdir(parents=True)
         (src_dir / ".specify" / "memory" / "constitution.md").write_text("# C\n", encoding="utf-8")
 
-        rc, out, err = run_cli("import", "BP", "Tgt", str(src_dir), "--format", "auto")
+        rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "auto")
 
         assert rc == 0, err
         assert (
-            tmp_target_root / "Tgt" / "blueprint" / "sources" / ".specify" / "memory" / "constitution.md"
+            tmp_target_root
+            / "Tgt"
+            / "blueprint"
+            / "sources"
+            / ".specify"
+            / "memory"
+            / "constitution.md"
         ).is_file()
 
     def test_import_help_shows_arguments(self):
         rc, out, err = run_cli("import", "--help")
         assert rc == 0
         combined = out + err
-        assert "<Blueprint>" in combined
         assert "<Target>" in combined
         assert "<Source>" in combined
 
@@ -523,15 +532,15 @@ class TestStubs:
     """Deferred commands must exit 2, print a message, and not write anything."""
 
     STUB_CASES = [
-        (["document", "generate", "MySpec", "MyTarget"], "document generate"),
-        (["document", "MySpec", "MyTarget"], "document"),
+        (["document", "generate", "MyTarget"], "document generate"),
+        (["document", "MyTarget"], "document"),
         (["rigging", "update", "MyTarget"], "rigging update"),
         (["rigging", "verify", "MyTarget"], "rigging verify"),
-        (["build", "score", "MySpec", "MyTarget"], "build score"),
-        (["build", "MySpec", "MyTarget"], "build"),
-        (["refit", "MySpec", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
-        (["refit", "MySpec", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
-        (["analyze", "MySpec"], "analyze"),
+        (["build", "score", "MyTarget"], "build score"),
+        (["build", "MyTarget"], "build"),
+        (["refit", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
+        (["refit", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
+        (["analyze", "MyTarget"], "analyze"),
     ]
 
     @pytest.mark.parametrize("args,label", STUB_CASES)
@@ -707,7 +716,7 @@ class TestRunQuarterdeck:
 
 
 APPROVED_PLAN_STATUS = """\
-# BUILD_PLAN: TestProject
+# BUILD_PLAN: TestTarget
 state: approved
 updated: 2026-01-01T00:00:00
 plan_hash: abc123
@@ -727,7 +736,7 @@ class TestStatus:
         from drydock.init_specification import init_specification
 
         target_dir = tmp_target_root / "TestTarget"
-        init_specification("TestProject", target_dir)
+        init_specification("TestTarget", target_dir)
         (target_dir / "BUILD_PLAN.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
@@ -735,9 +744,8 @@ class TestStatus:
         self, tmp_target_root, isolated_config, monkeypatch
     ):
         self._setup(tmp_target_root, monkeypatch)
-        rc, out, err = run_cli("status", "TestProject", "TestTarget")
+        rc, out, err = run_cli("status", "TestTarget")
         assert rc == 0, err
-        assert "TestProject" in out
         assert "TestTarget" in out
         assert "core-feature" in out
 
@@ -745,9 +753,9 @@ class TestStatus:
         self, tmp_target_root, isolated_config, monkeypatch
     ):
         self._setup(tmp_target_root, monkeypatch)
-        rc, out, err = run_cli("status", "TestProject")
+        rc, out, err = run_cli("status", "TestTarget")
         assert rc == 0, err
-        assert "TestProject" in out
+        assert "TestTarget" in out
         assert "Blueprint" in out
         assert "0 errors" in out
 
@@ -773,9 +781,7 @@ class TestStatus:
         assert "drydock init <Target>" in out
         assert "config set drydock_workspace" not in out
 
-    def test_status_no_args_shows_initialized_target(
-        self, tmp_path, isolated_config, monkeypatch
-    ):
+    def test_status_no_args_shows_initialized_target(self, tmp_path, isolated_config, monkeypatch):
         from drydock.init_target import init_target
 
         workspace = tmp_path / "ws"
@@ -792,12 +798,12 @@ class TestStatus:
         self, tmp_target_root, isolated_config, monkeypatch
     ):
         self._setup(tmp_target_root, monkeypatch)
-        run_cli("status", "TestProject", "TestTarget")
+        run_cli("status", "TestTarget")
 
         from drydock.config import get_last_activity
 
         activity = get_last_activity()
-        assert activity["blueprint"] == "TestProject"
+        assert activity["blueprint"] == "TestTarget"
         assert activity["target"] == "TestTarget"
         assert activity["command"] == "status"
         assert activity["time"] != ""

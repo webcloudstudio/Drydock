@@ -98,22 +98,22 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock config show",
         "drydock config set <key> <value>",
         "drydock init <Target>",
-        "drydock status [<Blueprint> [<Target>]]",
-        "drydock validate <Blueprint> <Target> [--verbose]",
+        "drydock status [<Target>]",
+        "drydock validate <Target> [--verbose]",
         "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
-        "drydock import <Blueprint> <Target> <Source> --format <auto|markdown|source|speckit>",
-        "drydock analyze <Blueprint> [<Target>]",
-        "drydock plan create <Blueprint> <Target>",
-        "drydock build <Blueprint> <Target>",
-        "drydock build status <Blueprint> <Target>",
-        "drydock build score <Blueprint> <Target>",
-        "drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>",
-        "drydock rigging compact <Blueprint> <Target> [--all] [--force]",
+        "drydock import <Target> <Source> --format <auto|markdown|source|speckit>",
+        "drydock analyze <Target>",
+        "drydock plan create <Target>",
+        "drydock build <Target>",
+        "drydock build status <Target>",
+        "drydock build score <Target>",
+        "drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>",
+        "drydock rigging compact <Target> [--all] [--force]",
         "drydock rigging update <Target>",
         "drydock rigging verify <Target>",
-        "drydock document <Blueprint> <Target>",
-        "drydock document generate <Blueprint> <Target>",
-        "drydock document assemble <Blueprint> <Target>",
+        "drydock document <Target>",
+        "drydock document generate <Target>",
+        "drydock document assemble <Target>",
     )
 
     for command in expected:
@@ -132,7 +132,7 @@ def test_canonical_specification_documents_current_command_surface():
         assert (
             phase.index("### Explanation")
             < phase.index("### Commands")
-            < phase.index("### Workflows")
+            < phase.index("### Workflow:")
         )
 
     for nonexistent in ("drydock conform", "drydock plan validate", "drydock plan approve"):

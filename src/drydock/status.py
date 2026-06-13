@@ -15,7 +15,7 @@ class TargetInfo:
     name: str
     target_dir: Path
     display_name: str
-    phase: str          # Set Up | Arrange | Implement | Loop | Unknown
+    phase: str  # Set Up | Arrange | Implement | Loop | Unknown
     phase_detail: str
     next_operation: str = ""
     history: list[dict] = field(default_factory=list)
@@ -65,7 +65,6 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     logger.debug("Reading %s", metadata_path)
     meta = parse_metadata(metadata_path)
     display_name = get_field(meta, "display_name") or name
-    blueprint = get_field(meta, "blueprint") or name
 
     blueprint_dir = target_dir / "blueprint"
     build_plan_path = target_dir / "BUILD_PLAN.md"
@@ -79,22 +78,28 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
 
     if not has_content:
         phase, detail = "Set Up", "Blueprint is empty — no source material imported yet"
-        next_op = f"drydock import {blueprint} {name} <source> --format markdown"
+        next_op = f"drydock import {name} <source> --format markdown"
     elif not build_plan_path.exists():
         phase, detail = "Arrange", "Blueprint has content — plan not yet created"
-        next_op = f"drydock plan create {blueprint} {name}"
+        next_op = f"drydock plan create {name}"
     else:
         try:
             from drydock.build_plan import parse_build_plan
+
             plan = parse_build_plan(build_plan_path)
         except Exception:
             phase = "Arrange"
             detail = "BUILD_PLAN.md could not be parsed — check its format"
-            next_op = f"drydock plan create {blueprint} {name}"
+            next_op = f"drydock plan create {name}"
             return TargetInfo(
-                name=name, target_dir=target_dir, display_name=display_name,
-                phase=phase, phase_detail=detail, next_operation=next_op,
-                history=history, history_path=history_path,
+                name=name,
+                target_dir=target_dir,
+                display_name=display_name,
+                phase=phase,
+                phase_detail=detail,
+                next_operation=next_op,
+                history=history,
+                history_path=history_path,
             )
 
         if plan.state == "draft":
@@ -112,7 +117,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
             if total > 0 and verified == total:
                 phase = "Loop"
                 detail = f"All {total} blocks verified — ready for Refit"
-                next_op = f"drydock refit {blueprint} {name} BOTH <Scope> <Change>"
+                next_op = f"drydock refit {name} BOTH <Scope> <Change>"
             else:
                 frontier = plan.runnable_frontier()
                 parts = [f"{verified}/{total} verified", f"{pending} pending"]
@@ -124,20 +129,27 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
                 detail = "  ·  ".join(parts)
                 if frontier:
                     next_op = (
-                        f"drydock build {blueprint} {name}"
+                        f"drydock build {name}"
                         f"  (frontier: {', '.join(b.name for b in frontier[:2])})"
                     )
                 else:
-                    next_op = f"drydock build {blueprint} {name}"
+                    next_op = f"drydock build {name}"
 
     return TargetInfo(
-        name=name, target_dir=target_dir, display_name=display_name,
-        phase=phase, phase_detail=detail, next_operation=next_op,
-        history=history, history_path=history_path,
+        name=name,
+        target_dir=target_dir,
+        display_name=display_name,
+        phase=phase,
+        phase_detail=detail,
+        next_operation=next_op,
+        history=history,
+        history_path=history_path,
     )
 
 
-def status_workspace(workspace: Path, targets_root: Path, *, debug: bool = False) -> WorkspaceStatus:
+def status_workspace(
+    workspace: Path, targets_root: Path, *, debug: bool = False
+) -> WorkspaceStatus:
     """Return status for all initialized targets in the workspace."""
     logger.debug("status_workspace: workspace=%s targets_root=%s", workspace, targets_root)
     targets: list[TargetInfo] = []
@@ -150,8 +162,11 @@ def status_workspace(workspace: Path, targets_root: Path, *, debug: bool = False
                 except Exception:
                     logger.exception("Error analyzing target %s", entry.name)
                     info = TargetInfo(
-                        name=entry.name, target_dir=entry, display_name=entry.name,
-                        phase="Unknown", phase_detail="Error reading target state",
+                        name=entry.name,
+                        target_dir=entry,
+                        display_name=entry.name,
+                        phase="Unknown",
+                        phase_detail="Error reading target state",
                     )
                 targets.append(info)
     else:

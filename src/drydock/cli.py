@@ -99,12 +99,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  Nothing to do — target baseline is already initialized.")
 
     record_activity("init", target=args.Target)
-    append_command_history(get_workspace(), f"drydock init {args.Target}", target=args.Target, return_code=0)
+    append_command_history(
+        get_workspace(), f"drydock init {args.Target}", target=args.Target, return_code=0
+    )
     t = args.Target
     print()
     print("Next steps:")
-    print(f"  1. Import source material:  drydock import {t} {t} <source> --format markdown")
-    print(f"  2. Create a plan:           drydock plan create {t} {t}")
+    print(f"  1. Import source material:  drydock import {t} <source> --format markdown")
+    print(f"  2. Create a plan:           drydock plan create {t}")
     print(f"  3. Review and approve:      drydock run quarterdeck {t}")
     return 0
 
@@ -114,9 +116,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
     from drydock.validate_specification import validate_specification
 
     target_dir = get_target_directory() / args.Target
-    result = validate_specification(args.Blueprint, target_dir, verbose=args.verbose)
+    result = validate_specification(args.Target, target_dir, verbose=args.verbose)
 
-    print(f"Validating Blueprint: {args.Blueprint}  ({result.spec_dir})")
+    print(f"Validating Blueprint: {args.Target}  ({result.spec_dir})")
     _print_findings(result, args.verbose)
     return result.exit_code()
 
@@ -138,9 +140,9 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         else:
             print(f"  [failed]   {src}: {item.error}  see logs/ ({item.execution_id})")
 
-    print(f"Compacting Blueprint: {args.Blueprint}")
+    print(f"Compacting Blueprint: {args.Target}")
     result = compact(
-        args.Blueprint,
+        args.Target,
         blueprint_dir,
         include_rigging=args.include_rigging,
         force=args.force,
@@ -187,7 +189,7 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
     from drydock.planning_session import create_plan
 
     result = create_plan(
-        args.Blueprint,
+        args.Target,
         args.Target,
         get_target_directory(),
     )
@@ -217,38 +219,38 @@ def cmd_import(args: argparse.Namespace) -> int:
     if fmt == "markdown":
         from drydock.import_markdown import import_markdown
 
-        result = import_markdown(args.Blueprint, args.Target, source, td)
+        result = import_markdown(args.Target, args.Target, source, td)
         print(f"Blueprint: {result.blueprint_dir}")
         print(f"Source: {result.source}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
         print()
-        print(f"Next step: drydock plan create {args.Blueprint} {args.Target}")
+        print(f"Next step: drydock plan create {args.Target}")
         return 0
 
     if fmt == "source":
         from drydock.import_source import import_source
 
-        result = import_source(args.Blueprint, args.Target, source, td)
+        result = import_source(args.Target, args.Target, source, td)
         print(f"Blueprint: {result.blueprint_dir}")
         print(f"Source: {result.source}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
         print()
-        print(f"Next step: drydock plan create {args.Blueprint} {args.Target}")
+        print(f"Next step: drydock plan create {args.Target}")
         return 0
 
     if fmt == "speckit":
         from drydock.import_speckit import import_speckit
 
-        result = import_speckit(args.Blueprint, args.Target, source, td)
+        result = import_speckit(args.Target, args.Target, source, td)
         print(f"Blueprint: {result.blueprint_dir}")
         print(f"Source: {result.source}")
         print(f"Features: {', '.join(result.features_found) or '(none)'}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
         print()
-        print(f"Next step: drydock plan create {args.Blueprint} {args.Target}")
+        print(f"Next step: drydock plan create {args.Target}")
         return 0
 
     raise UsageError(f"Unknown format: {fmt!r}")
@@ -355,8 +357,15 @@ def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
     from drydock.status import status_blueprint_target
 
     targets_root = get_target_directory()
-    blueprint_dir = blueprint_dir_for(targets_root / target)
+    target_dir = targets_root / target
+    blueprint_dir = blueprint_dir_for(target_dir)
     result = status_blueprint_target(blueprint, target, blueprint_dir, targets_root)
+    try:
+        from drydock.validate_specification import validate_specification
+
+        result.validation = validate_specification(blueprint, target_dir)
+    except Exception:
+        pass
     _render_status(result)
     record_activity("status", blueprint, target)
     return 0
@@ -482,51 +491,56 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── init ─────────────────────────────────────────────────────────────────
     p_init = sub.add_parser("init", help="Initialize a target workspace.")
     p_init.add_argument("Target", metavar="<Target>")
-    p_init.add_argument("--display-name", dest="display_name", default="", metavar="<name>",
-                        help="Human-readable project name (default: target name).")
-    p_init.add_argument("--description", dest="short_description", default="", metavar="<desc>",
-                        help="One-line project description.")
+    p_init.add_argument(
+        "--display-name",
+        dest="display_name",
+        default="",
+        metavar="<name>",
+        help="Human-readable project name (default: target name).",
+    )
+    p_init.add_argument(
+        "--description",
+        dest="short_description",
+        default="",
+        metavar="<desc>",
+        help="One-line project description.",
+    )
 
     # ── status ────────────────────────────────────────────────────────────────
     # Handles: status
-    #          status <Blueprint>
-    #          status <Blueprint> <Target>
+    #          status <Target>
     p_status = sub.add_parser(
         "status",
         help="Show project status and orientation.",
         description=(
-            "drydock status                          — compact dashboard of last active project\n"
-            "drydock status <Blueprint>              — Blueprint validation summary\n"
-            "drydock status <Blueprint> <Target>     — plan state and runnable frontier"
+            "drydock status           — compact dashboard of all targets\n"
+            "drydock status <Target>  — validation summary and plan state"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Blueprint> [<Target>]]")
+    p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Target>]")
 
     # ── validate ─────────────────────────────────────────────────────────────
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
-    p_val.add_argument("Blueprint", metavar="<Blueprint>")
     p_val.add_argument("Target", metavar="<Target>")
     p_val.add_argument("--verbose", action="store_true", help="Also show passing checks.")
 
     # ── document ─────────────────────────────────────────────────────────────
-    # Handles: document <Blueprint> <Target>
-    #          document generate <Blueprint> <Target>
-    #          document assemble <Blueprint> <Target>
+    # Handles: document <Target>
+    #          document generate <Target>
+    #          document assemble <Target>
     # Strategy: use REMAINDER args and dispatch on first token.
     p_doc = sub.add_parser(
         "document",
         help="Generate and assemble Blueprint documentation.",
         description=(
-            "drydock document <Blueprint> <Target>           — full pipeline\n"
-            "drydock document generate <Blueprint> <Target>  — AI pass only\n"
-            "drydock document assemble <Blueprint> <Target>  — assembly only"
+            "drydock document <Target>           — full pipeline\n"
+            "drydock document generate <Target>  — AI pass only\n"
+            "drydock document assemble <Target>  — assembly only"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_doc.add_argument(
-        "args", nargs=argparse.REMAINDER, metavar="[generate|assemble] <Blueprint> <Target>"
-    )
+    p_doc.add_argument("args", nargs=argparse.REMAINDER, metavar="[generate|assemble] <Target>")
 
     # ── rigging ──────────────────────────────────────────────────────────────
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
@@ -534,7 +548,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rig_c = rig_sub.add_parser(
         "compact", help="Compact stale rules/data/spec files to _compact.md siblings."
     )
-    p_rig_c.add_argument("Blueprint", metavar="<Blueprint>")
     p_rig_c.add_argument("Target", metavar="<Target>")
     p_rig_c.add_argument(
         "--all",
@@ -556,30 +569,26 @@ def _build_parser() -> argparse.ArgumentParser:
     p_plan_create = plan_sub.add_parser(
         "create", help="Create a draft executable plan and target Planning Session."
     )
-    p_plan_create.add_argument("Blueprint", metavar="<Blueprint>")
     p_plan_create.add_argument("Target", metavar="<Target>")
 
     # ── build ─────────────────────────────────────────────────────────────────
-    # Handles: build <Blueprint> <Target>
-    #          build status <Blueprint> <Target>
-    #          build score <Blueprint> <Target>
+    # Handles: build <Target>
+    #          build status <Target>
+    #          build score <Target>
     p_build = sub.add_parser(
         "build",
         help="Build or inspect build state.",
         description=(
-            "drydock build <Blueprint> <Target>          — build next frontier\n"
-            "drydock build status <Blueprint> <Target>   — show build state\n"
-            "drydock build score <Blueprint> <Target>    — generate SCORECARD.md"
+            "drydock build <Target>          — build next frontier\n"
+            "drydock build status <Target>   — show build state\n"
+            "drydock build score <Target>    — generate SCORECARD.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_build.add_argument(
-        "args", nargs=argparse.REMAINDER, metavar="[status|score] <Blueprint> <Target>"
-    )
+    p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── refit ─────────────────────────────────────────────────────────────────
     p_iter = sub.add_parser("refit", help="Update Blueprint and target software together.")
-    p_iter.add_argument("Blueprint", metavar="<Blueprint>")
     p_iter.add_argument("Target", metavar="<Target>")
     p_iter.add_argument(
         "Mode",
@@ -592,8 +601,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser("analyze", help="Read-only advisory: surface gaps and drift.")
-    p_analyze.add_argument("Blueprint", metavar="<Blueprint>")
-    p_analyze.add_argument("Target", metavar="<Target>", nargs="?")
+    p_analyze.add_argument("Target", metavar="<Target>")
 
     # ── run ───────────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Start a Drydock service.")
@@ -621,7 +629,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
-    p_import.add_argument("Blueprint", metavar="<Blueprint>")
     p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("Source", metavar="<Source>")
     p_import.add_argument(
@@ -641,11 +648,9 @@ def _dispatch_status(args: argparse.Namespace) -> int:
     if len(tokens) == 0:
         return cmd_status_current()
     elif len(tokens) == 1:
-        return cmd_status_blueprint(tokens[0])
-    elif len(tokens) == 2:
-        return cmd_status_blueprint_target(tokens[0], tokens[1])
+        return cmd_status_blueprint_target(tokens[0], tokens[0])
     else:
-        raise UsageError("Usage: drydock status [<Blueprint> [<Target>]]")
+        raise UsageError("Usage: drydock status [<Target>]")
 
 
 def _dispatch_document(args: argparse.Namespace) -> int:
@@ -668,13 +673,13 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         not_implemented("build")
     first = tokens[0] if tokens else ""
     if first == "status":
-        if len(tokens) != 3:
-            raise UsageError("Usage: drydock build status <Blueprint> <Target>")
-        rc = cmd_build_status(tokens[1], tokens[2])
+        if len(tokens) != 2:
+            raise UsageError("Usage: drydock build status <Target>")
+        rc = cmd_build_status(tokens[1], tokens[1])
         if rc == 0:
             from drydock.config import record_activity
 
-            record_activity("build status", tokens[1], tokens[2])
+            record_activity("build status", tokens[1], tokens[1])
         return rc
     elif first == "score":
         not_implemented("build score")
@@ -709,7 +714,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if rc == 0:
             from drydock.config import record_activity
 
-            record_activity("validate", args.Blueprint)
+            record_activity("validate", args.Target)
         return rc
 
     if command == "document":
@@ -722,7 +727,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             if rc == 0:
                 from drydock.config import record_activity
 
-                record_activity("rigging compact", args.Blueprint)
+                record_activity("rigging compact", args.Target)
             return rc
         elif sub == "update":
             not_implemented("rigging update")
@@ -738,7 +743,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             if rc == 0:
                 from drydock.config import record_activity
 
-                record_activity("plan create", args.Blueprint, args.Target)
+                record_activity("plan create", args.Target, args.Target)
             return rc
         else:
             not_implemented("plan")
@@ -765,7 +770,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if rc == 0:
             from drydock.config import record_activity
 
-            record_activity("import", args.Blueprint)
+            record_activity("import", args.Target)
         return rc
 
     return 0
