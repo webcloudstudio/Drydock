@@ -182,9 +182,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print(f"Analysis:  {result.analysis_path}")
     print(f"Questions: {result.question_count} questionnaire item(s)")
     print(f"Verdict:   {result.verdict}")
-    if result.question_count > 0:
-        print()
-        print("Next step: answer questions in the Planning Session before drydock plan create.")
+    print()
+    print(f"Next step: drydock run quarterdeck {args.Target}")
     return 0
 
 
