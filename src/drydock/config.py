@@ -204,7 +204,12 @@ def config_set(key: str, value: str) -> Path:
 _HISTORY_FILENAME = "history.jsonl"
 
 
-def append_command_history(workspace: Path, command: str, target: str = "") -> None:
+def append_command_history(
+    workspace: Path,
+    command: str,
+    target: str = "",
+    return_code: int | None = None,
+) -> None:
     """Append one timestamped command record to the workspace command-execution log.
 
     All drydock CLI invocations that touch a named target pass ``target``; workspace-only
@@ -216,6 +221,8 @@ def append_command_history(workspace: Path, command: str, target: str = "") -> N
     record: dict = {"command": command, "time": now}
     if target:
         record["target"] = target
+    if return_code is not None:
+        record["return_code"] = return_code
     with history_path.open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps(record) + "\n")
 

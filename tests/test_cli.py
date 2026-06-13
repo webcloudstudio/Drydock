@@ -636,7 +636,6 @@ class TestStatus:
         rc, out, err = run_cli("status")
 
         assert rc == 0, err
-        assert f"Workspace: {workspace}" in out
         assert "drydock init <Target>" in out
         assert "config set drydock_workspace" not in out
 
@@ -653,7 +652,7 @@ class TestStatus:
         rc, out, err = run_cli("status")
         assert rc == 0, err
         assert "MyProject" in out
-        assert "Next Operation" in out
+        assert "Next Step:" in out
 
     def test_activity_recorded_after_status_command(
         self, tmp_target_root, isolated_config, monkeypatch

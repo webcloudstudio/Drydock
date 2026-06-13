@@ -90,7 +90,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("  Nothing to do — target baseline is already initialized.")
 
     record_activity("init", target=args.Target)
-    append_command_history(get_workspace(), f"drydock init {args.Target}", target=args.Target)
+    append_command_history(get_workspace(), f"drydock init {args.Target}", target=args.Target, return_code=0)
     t = args.Target
     print()
     print("Next steps:")
@@ -335,28 +335,20 @@ def cmd_status_blueprint(blueprint: str) -> int:
 
 def _render_workspace_status(ws) -> None:
     """Print the workspace-level dashboard for `drydock status` with no args."""
-    print(f"Workspace: {ws.workspace}")
-    print()
-
     if not ws.targets:
-        print("  No targets found.")
-        print()
-        print("  Next Operation: drydock init <Target>")
+        print("No targets found.")
+        print("  Next Step: drydock init <Target>")
         return
 
     for info in ws.targets:
-        rel_history = (
-            info.history_path.relative_to(ws.workspace)
-            if info.history_path and info.history_path.is_relative_to(ws.workspace)
-            else info.history_path
-        )
-        print(f"Target: {info.name}  [{info.phase}]")
-        print(f"  {info.phase_detail}")
-        print(f"  Next Operation: {info.next_operation}")
-        if rel_history:
-            print(f"  History:        {rel_history}")
-            for rec in reversed(info.history):
-                print(f"    {rec.get('time', ''):16}  {rec.get('command', '')}")
+        print(f"Target: {info.name}")
+        print(f"   Status:    {info.phase_detail}")
+        print(f"   Next Step: {info.next_operation}")
+        for rec in reversed(info.history):
+            cmd = rec.get("command", "")
+            rc = rec.get("return_code")
+            prefix = str(rc) if rc is not None else "?"
+            print(f"   {prefix}:{cmd}")
         print()
 
 
