@@ -144,6 +144,7 @@ items:
   - {{ id: commanders_view, label: "Captain's Chair", section: core, type: markdown, path: pages/overview.md, order: 1 }}
   - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 2 }}
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 3 }}
-{planning_item}  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
+{planning_item}  - {{ id: compass_edit, label: "Blueprint: Compass", section: actions, type: editable_markdown, path: ../blueprint/COMPASS.md }}
+  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
   - {{ id: acceptance_status, label: "Acceptance Status", section: project_pages, type: command_status }}
 """

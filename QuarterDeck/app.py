@@ -259,6 +259,15 @@ def resolve_path(path_value: str) -> Path:
     return path
 
 
+def resolve_write_path(path_value: str) -> Path:
+    """Resolve for write: confined within the project root; creates parent dirs; file need not exist."""
+    path = (BASE_DIR / path_value).resolve()
+    if PROJECT_ROOT not in path.parents and path != PROJECT_ROOT:
+        raise HTTPException(status_code=400, detail=f"Path escapes the project: {path_value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _md(text: str) -> str:
     return markdown.markdown(text, extensions=["tables", "fenced_code", "sane_lists"])
 
@@ -329,13 +338,18 @@ def render_markdown_item(item: dict[str, Any]) -> str:
 
 def render_editable_markdown(item: dict[str, Any]) -> str:
     """Markdown that the human can edit in place. Renders the doc plus an Edit
-    toggle; Save POSTs the raw source back to the file (write-confined to Console/)."""
-    raw = resolve_path(item["path"]).read_text(encoding="utf-8")
+    toggle; Save POSTs the raw source back to the file (creates the file if absent)."""
     item_id = html.escape(item["id"])
+    try:
+        raw = resolve_path(item["path"]).read_text(encoding="utf-8")
+        rendered = _md(raw)
+    except HTTPException:
+        raw = ""
+        rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
     return (
         f"<div class='editable' data-item='{item_id}'>"
         f"<div class='edit-toolbar'><button class='edit-btn' onclick=\"editDoc('{item_id}')\">Edit</button></div>"
-        f"<div class='doc-view'>{_md(raw)}</div>"
+        f"<div class='doc-view'>{rendered}</div>"
         f"<div class='doc-edit' style='display:none'>"
         f"<textarea class='doc-source' spellcheck='false'>{html.escape(raw)}</textarea>"
         f"<div class='doc-edit-actions'>"
@@ -1076,7 +1090,7 @@ def api_set_source(item_id: str, update: SourceUpdate) -> dict[str, Any]:
     item = find_item(item_id)
     if item.get("type") != "editable_markdown":
         raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not editable")
-    path = resolve_path(item["path"])  # confined to Console/; must already exist
+    path = resolve_write_path(item["path"])
     path.write_text(update.content, encoding="utf-8")
     return {"ok": True, "item_id": item_id}
 

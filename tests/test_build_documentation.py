@@ -102,7 +102,7 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock status [<Target>]",
         "drydock validate <Target> [--verbose]",
         "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
-        "drydock import <Target> <Source> --format <auto|markdown|source|speckit>",
+        "drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>",
         "drydock analyze <Target>",
         "drydock plan create <Target>",
         "drydock build <Target>",

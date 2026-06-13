@@ -233,7 +233,7 @@ baseline and exposes the runnable frontier.
 ### Commands
 
 ```text
-drydock import <Target> <Source> --format <auto|markdown|source|speckit>
+drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>
 drydock analyze <Target>
 drydock rigging compact <Target> [--all] [--force]
 drydock plan create <Target>
@@ -265,7 +265,11 @@ flowchart LR
   SPEC --> PLAN["plan create"]:::script
 ```
 
-1. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
+1. `drydock import <Target> <Source> --format intent` — copies the source file to
+   `blueprint/COMPASS.md`. Use when the user has a written project brief or intent document and
+   wants to seed the Blueprint's north-star file directly. No LLM or template transformation is
+   applied; edit the result to match the COMPASS.md format before running `drydock analyze`.
+2. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
    Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and Spec
    Kit adapters use the same intake boundary when implemented.
 2. Continue through Arrange. Analyze identifies ambiguity and configuration choices without

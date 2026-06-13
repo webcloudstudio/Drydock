@@ -333,6 +333,19 @@ def cmd_import(args: argparse.Namespace) -> int:
         _print_next_step("import", args.Target)
         return 0
 
+    if fmt == "intent":
+        from drydock.import_markdown import import_intent
+
+        result = import_intent(args.Target, source, td)
+        print(f"Blueprint: {result.blueprint_dir}")
+        print(f"Source: {result.source}")
+        for path in result.imported:
+            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
+        print()
+        print("COMPASS.md placed in Blueprint. Edit it to match the required format,")
+        print("then run: drydock analyze", args.Target)
+        return 0
+
     raise UsageError(f"Unknown format: {fmt!r}")
 
 
@@ -746,7 +759,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("Source", metavar="<Source>")
     p_import.add_argument(
-        "--format", choices=["auto", "markdown", "source", "speckit"], default="auto"
+        "--format", choices=["auto", "markdown", "source", "speckit", "intent"], default="auto"
     )
 
     return parser
