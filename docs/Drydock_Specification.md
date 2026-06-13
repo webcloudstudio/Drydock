@@ -10,13 +10,14 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
 ideas_title: What Drydock Adds
 ideas:
-  - title: The SAIL Method - Set Up, Analyze & Arrange, Implement, Loop 
-  - title: Import your projects into Blueprints - Typed Specifications
+  - title: The **SAIL** Method - Set Up, Analyze & Arrange, Implement, Loop |
+  - title: The **Drydock** is the governing cli for the system. |
+  - title: Import your projects into **Blueprints** - Typed Specifications
   - title: Your Compass is your constitiution or project intent
   - title: Analyze uses agile decompostion to Features, Stories, AC, Spikes
-  - title: Plan creates your build plan based on the Analysis
+  - title: Plan creates your Manifest based on the Analysis
+  - title: Build your software plan in managed chunks based on the Manifest
   - title: Your Rigging is your Enterprise Branding and Build Rules
-  - title: Build your plan in managed chunks
   - title: QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions.
   - title: Refits with a simple ticket workflow maintain Blueprint rebuilability
   - title: Your Ship's Log preserves material decisions and milestones 
@@ -224,7 +225,7 @@ Arrange turns source material into a reviewable, executable Manifest.
 5. Review and approve the complete Manifest in the Target's QuarterDeck Planning Session.
 
 `drydock plan create` reads all available Blueprint inputs, writes
-`<Target>/blueprint/BUILD_PLAN_COMPASS.md` and `<Target>/BUILD_PLAN.md`, and generates the Target Planning
+`<Target>/blueprint/BUILD_PLAN_COMPASS.md` and `<Target>/MANIFEST.md`, and generates the Target Planning
 Session. A draft plan has no runnable frontier. QuarterDeck approval establishes the executable
 baseline and exposes the runnable frontier.
 
@@ -275,7 +276,7 @@ flowchart LR
 
 `drydock analyze` evaluates available Blueprint inputs and — when a Target with built code is
 provided — the built application. During planning it creates the target-local Planning Session
-analysis and questionnaire. It does not create or modify `BUILD_PLAN.md`.
+analysis and questionnaire. It does not create or modify `MANIFEST.md`.
 
 1. `drydock analyze <Target>` — score Blueprint coverage and, when code exists, compare the
    Blueprint against the built application; surface open questions, missing detail, drift,
@@ -309,7 +310,7 @@ the documentation delivered with the software.
 2. Execute the next runnable frontier with `drydock build`.
 3. Measure delivery health with `drydock build score`.
 
-Every Target has one executable `BUILD_PLAN.md` stored in its Target root beside execution evidence,
+Every Target has one executable `MANIFEST.md` stored in its Target root beside execution evidence,
 logs, and the QuarterDeck projection.
 
 ### Commands
@@ -329,7 +330,7 @@ Blueprint material into delivered project documentation.
 
 ### Workflow: Build the Accepted Manifest
 
-Build executes the accepted work blocks in `<Target>/BUILD_PLAN.md`. The accepted plan may have
+Build executes the accepted work blocks in `<Target>/MANIFEST.md`. The accepted plan may have
 been created from Typed Specifications, imported Markdown, or both. Each block runs as a separate
 agent call. Drydock warns — it does not fail — when an assembled block prompt exceeds
 `PROMPT_WARN_KB` (default 50KB); resolve the warning by splitting the story or compacting an input
@@ -345,12 +346,12 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  BP{{"BUILD_PLAN.md"}}:::md --> BUILD["build"]:::script
+  BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
   BUILD --> EV{{"Evidence"}}:::md
   BUILD --> SOFTWARE(["Working Software"]):::output
 ```
 
-1. Complete planning and approve `<Target>/BUILD_PLAN.md`.
+1. Complete planning and approve `<Target>/MANIFEST.md`.
 2. `drydock build <Target>` executes the approved frontier — spikes in parallel,
    stories serially — and writes an evidence file for each object. Stories that create or update
    conformed Typed Specifications are included only where durable authority, dependencies, or safe
@@ -359,7 +360,7 @@ flowchart LR
 ### Workflow: Review the Evidence
 
 The QuarterDeck shows the stakeholder the evidence, demos, and questions needed for a decision;
-the product owner approves, revises, or rejects and the decision writes back to `BUILD_PLAN.md`.
+the product owner approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
 `drydock build` runs the approved frontier and stops at review gates.
 
 ```mermaid
@@ -372,7 +373,7 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  BP{{"BUILD_PLAN.md"}}:::md --> BUILD["build"]:::script
+  BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
   BUILD --> EVIDENCE{{"Evidence"}}:::md
   EVIDENCE --> CONSOLE["QuarterDeck"]:::web
   CONSOLE -.-> BP
@@ -382,12 +383,12 @@ flowchart LR
    files for each object.
 2. The QuarterDeck surfaces each completed object with the evidence and review material needed for
    the next decision. The product owner approves, revises, or rejects; decisions write back to
-   `BUILD_PLAN.md`.
+   `MANIFEST.md`.
 3. Repeat until all objects and optional feature parents are accepted.
 
 ### Workflow: Check Build Status
 
-`drydock build status` reads `BUILD_PLAN.md` and the target directory and reports the state of every
+`drydock build status` reads `MANIFEST.md` and the target directory and reports the state of every
 plan object — how many blocks are pending, implemented, verified, or failed, and which are
 currently runnable. No build state is modified.
 
@@ -517,27 +518,6 @@ and build execution process it like any other Specification input.
 6. Reconcile accepted ticket facts into the owning core Specification files and close the ticket as
    retained change history.
 
-## What Drydock Adds
-
-Drydock gives specification-driven delivery a complete operating language. These are not decorative
-names pasted onto ordinary tools; each names a distinct contract in the system.
-
-| Core concept | Definition |
-|---|---|
-| **Drydock** | The governed delivery system: a controlled place to design, build, inspect, and refit software without losing the specification that defines it. |
-| **Rigging** | The reusable rules, technology standards, templates, prompts, and brand controls that make every build in the portfolio pull in the same direction. |
-| **SAIL** | The delivery methodology: **Set Up, Arrange, Implement, Loop**. It is short enough to remember and complete enough to run the product lifecycle. |
-| **QuarterDeck** | The product owner's command position: a generated review console where plans, evidence, questions, and decisions become visible and actionable. |
-| **Blueprint** | The authoritative living definition of the product, expressed as a Typed Specification rather than a disposable prompt or static requirements document. |
-| **Refit** | A governed pass through the SAIL Loop: revise the Blueprint, update affected software, and rebuild only what the change made stale. |
-| **Manifest** | The accepted executable build plan: ordered work, dependencies, state, review gates, and the next runnable frontier. |
-| **Ship's Log** | The append-only record of material product decisions, reversals, accepted risks, and delivery milestones. |
-
-Together they give Drydock its shape: the **Blueprint** says what must exist; the **Rigging** governs
-how it is built; the **Manifest** orders the work; **SAIL** moves it forward; the **QuarterDeck**
-keeps the product owner in command; the **Ship's Log** preserves why decisions were made; and a
-**Refit** changes the working vessel without abandoning its design authority.
-
 ## Workspace Layout
 
 Drydock manages everything inside one workspace tree; there is no separate `blueprints/` root.
@@ -557,7 +537,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── COMPASS.md                     # product intent, constraints, success, guardrails
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
-        ├── BUILD_PLAN.md                 # the executable Manifest
+        ├── MANIFEST.md                 # the executable Manifest
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
         ├── tickets.json                  # target ticketing system / board projection
         │
@@ -588,7 +568,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
 
 Project-level, human-authored files (`METADATA.md`, `README.md`, `COMPASS.md`, `SEA_TRIALS.md`,
 `SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
-the accepted `BUILD_PLAN.md` is the executable Manifest. Built and served code lives at `code_root`
+the accepted `MANIFEST.md` is the executable Manifest. Built and served code lives at `code_root`
 — the workspace root for self-hosting or brownfield projects, or a path set for greenfield builds.
 
 `drydock init <Target>` writes the minimal scaffold (`METADATA.md`, root
@@ -664,7 +644,7 @@ updated by `drydock refit` as specification files and application code evolve.
   - Created: `drydock init <Target>`; enriched by `drydock import`
   - Updated: product owner; Drydock Target operations
 
-- **`<Target>/BUILD_PLAN.md`** — The single generated executable build plan
+- **`<Target>/MANIFEST.md`** — The single generated executable build plan
   - Created: `drydock plan create <Target>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
 
@@ -696,7 +676,7 @@ build and review actions.
 
 - **`<Target>/tickets.json`** — Target ticketing system projection; features, spikes, and stories
   projected as tickets with acceptance criteria folded under their parent
-  - Created and updated: `drydock build` from `BUILD_PLAN.md`
+  - Created and updated: `drydock build` from `MANIFEST.md`
   - Drydock follows feature/story best practices with acceptance criteria embedded
 
 ### Specification File Format
@@ -780,7 +760,7 @@ class library — receives the full file.
 
 ## The Manifest — Executable Build Plan
 
-`BUILD_PLAN.md` is the single generated execution view of the Blueprint. It determines order,
+`MANIFEST.md` is the single generated execution view of the Blueprint. It determines order,
 selects only required context, keeps work within useful context limits, identifies stale work, and
 preserves unaffected accepted work. It is not a second product definition.
 
@@ -807,7 +787,7 @@ The Manifest itself has one lifecycle state:
 ### Plan Header
 
 ```markdown
-# BUILD_PLAN: {ProjectName}
+# MANIFEST: {ProjectName}
 updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
 state:       draft
@@ -911,7 +891,7 @@ blocked.
 `closed/failed` is not terminal. The product owner reopens failed work from the QuarterDeck —
 revising the block's instructions, acceptance criteria, or scope interactively — and the decision
 writer returns it to `pending` with the revision recorded. The decision writer is the only mutator
-of plan state; recovery never requires hand-editing `BUILD_PLAN.md`.
+of plan state; recovery never requires hand-editing `MANIFEST.md`.
 
 Guardrails and Acceptance Criteria embedded in the Specification files — not in the plan as `ac`
 blocks — must also pass before a `story` is marked `closed/verified`. A story that satisfies its
@@ -921,7 +901,7 @@ is resolved.
 ### Worked Example
 
 ```markdown
-# BUILD_PLAN: MyProject
+# MANIFEST: MyProject
 updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
 
@@ -983,7 +963,7 @@ target. The five canonical sections are:
 | Section id | Label | Behavior |
 |---|---|---|
 | `core` | Drydock Core | Fixed and pinned — source-of-truth docs always visible |
-| `build_plan` | Build Plan | Kanban board and work tracking |
+| `manifest` | Manifest | Kanban board and work tracking |
 | `actions` | Action Items | Questionnaires and items requiring product-owner input |
 | `project_pages` | Project Pages | Generated or supporting documentation and derived views |
 | `archive` | Archive | Retired or done items; collapsed by default |
@@ -992,7 +972,7 @@ The **Master Blueprint** is the standard label for the authoritative project spe
 the Drydock Core section.
 
 **`<Target>/tickets.json`** is the target ticketing-system artifact and a generated projection of
-the Agile `BUILD_PLAN.md`.
+the Agile `MANIFEST.md`.
 Spikes and stories appear as tickets; acceptance criteria are folded under their parent. Column
 assignment maps directly to object state.
 
@@ -1010,11 +990,11 @@ Each item declares exactly one renderer:
 | `markdown` | Renders a single `.md` file as HTML; `tabs: true` splits `##` headings into clickable tabs. |
 | `document` | Collapses related `path_md` / `path_html` / `path_pdf` variants into a tab bar (Read / View HTML / PDF). Missing variants are silently omitted; a single present variant renders without tabs. |
 | `jsonl` | Read-only table from an append-only JSONL file; supports field selection, date truncation, and badge coloring. |
-| `kanban` | Renders `BUILD_PLAN.md`-derived tickets as a four-column board. |
+| `kanban` | Renders `MANIFEST.md`-derived tickets as a four-column board. |
 | `questionnaire` | Form backed by a JSON file; saves answers in SQLite and writes them back to the source file. |
 | `link` | External URL or local file; opens in a new tab. |
 | `command_status` | Derived read-only view of acceptance readiness from Core Docs (see below). |
-| `plan_decision` | Whole-plan approval for a `BUILD_PLAN.md`. |
+| `plan_decision` | Whole-plan approval for a `MANIFEST.md`. |
 
 The reusable `command_status` page type derives a read-only acceptance-status report using only
 configured Markdown Core Docs. It discovers the authoritative Soundings source by its single table
@@ -1040,18 +1020,18 @@ non-pinned sections carry an archive `↓` button.
 ### Decisions Write Back
 
 Review decisions made in the QuarterDeck — approve, revise, reject, add defect — are written back
-to `BUILD_PLAN.md` by the same decision writer used by the CLI. Both files regenerate after each
+to `MANIFEST.md` by the same decision writer used by the CLI. Both files regenerate after each
 decision.
 
 Before execution begins, the generated `plan_decision` page runs the Planning Session. It presents
 the Draft plan and applies whole-plan approval through the authoritative plan-state
 writer. Ordinary QuarterDeck review controls do not approve a plan.
 
-The QuarterDeck does not replace the Blueprint, `BUILD_PLAN.md`, or build engine. It renders
+The QuarterDeck does not replace the Blueprint, `MANIFEST.md`, or build engine. It renders
 their state and records decisions through a standardized interface.
 
 **The QuarterDeck is a generated, throwaway projection.** It holds no state of its own —
-`BUILD_PLAN.md` remains the single source of build state, and the console can be deleted and
+`MANIFEST.md` remains the single source of build state, and the console can be deleted and
 regenerated at any time. This property keeps it honest: every decision made in the console writes
 back through the decision writer, and failed work is reopened and revised here interactively
 rather than by hand-editing plan files. Decisions of record are appended to the Ship's Log.
@@ -1143,7 +1123,7 @@ agents receive only the actionable instructions.
 ### Technology Stack Rules
 
 Stack files live in `Rigging/stack/` — one file per technology. Each file is prescriptive,
-opinionated, standalone, and copy-paste ready. `BUILD_PLAN.md` declares which stack files apply to
+opinionated, standalone, and copy-paste ready. `MANIFEST.md` declares which stack files apply to
 each build block; `drydock build` injects them into the prompt.
 
 Early build blocks receive the full stack file — rationale, examples, and constraints included.
@@ -1289,10 +1269,10 @@ surface that have no Spec Kit counterpart.
 | `constitution.md` — governing principles | `COMPASS.md` for product-specific intent plus Drydock Rigging for reusable governance | Enriched | Native | Partial split: one Spec Kit artifact maps to two Drydock layers |
 | `specs/<feature>/spec.md` — functional requirements | Owning `FEATURE-{Name}.md` plus `SCREEN-{Name}.md` when UI behavior is first-class | Enriched | Native plus generated compatibility view | Low: behavior is preserved, but typed ownership may split one source into multiple Drydock files |
 | Generated `spec.md` view | QuarterDeck-rendered or exported compatibility view assembled from the owning typed Specification files | Approximate | Planned compatibility view | Moderate: generated for interchange and review; not a native authoring artifact |
-| `plan.md` — technical architecture and implementation plan | `ARCHITECTURE.md`, `DATABASE.md`, and `BUILD_PLAN.md` together, plus a generated `plan.md` compatibility view | Enriched | Native plus generated compatibility view | Low: planning detail is preserved but distributed across Drydock artifacts |
+| `plan.md` — technical architecture and implementation plan | `ARCHITECTURE.md`, `DATABASE.md`, and `MANIFEST.md` together, plus a generated `plan.md` compatibility view | Enriched | Native plus generated compatibility view | Low: planning detail is preserved but distributed across Drydock artifacts |
 | `data-model.md` — persistence schema | `DATABASE.md` with schema, stores, migrations, and typed access classes | Exact or enriched | Native | Low: exact for most systems; enriched when Drydock carries additional persistence detail |
 | `research.md` — technology research and decisions | Agile spikes, findings, evidence files, and reviewed outcomes surfaced through the QuarterDeck | Enriched | Native | Moderate: chronology and evidence are preserved, but the artifact is not a single native markdown file |
-| `tasks.md` — ordered task breakdown | `BUILD_PLAN.md` execution objects, QuarterDeck tickets, and a generated `tasks.md` compatibility view | Enriched | Native plus generated compatibility view | Low: order and state are preserved; Drydock carries richer execution state than plain tasks |
+| `tasks.md` — ordered task breakdown | `MANIFEST.md` execution objects, QuarterDeck tickets, and a generated `tasks.md` compatibility view | Enriched | Native plus generated compatibility view | Low: order and state are preserved; Drydock carries richer execution state than plain tasks |
 | `contracts/` — API contracts | Routes and interfaces in `FEATURE-*.md` and `ARCHITECTURE.md` | Enriched | Native | Low: contracts remain intact but live inside typed ownership files |
 | `quickstart.md` — setup and validation | `README.md`, `AGENTS.md`, and generated QuarterDeck guidance where useful | Enriched | Native plus generated guidance | Low: operational guidance is preserved, but may be redistributed |
 | `/clarify` — ambiguity resolution | `Open Questions`, `drydock analyze`, and review decisions recorded through the QuarterDeck | Enriched | Native workflow | Low: same intent, broader system scope |
@@ -1309,9 +1289,9 @@ generates it as a compatibility view over the authoritative Typed Specification 
 - `spec.md` is a generated feature-level compatibility view assembled from the owning typed
   Specification files. It is presented through the QuarterDeck or exported on demand.
 - `plan.md` is a generated compatibility view over `ARCHITECTURE.md`, `DATABASE.md`, and the
-  relevant planning state in `BUILD_PLAN.md`.
+  relevant planning state in `MANIFEST.md`.
 - `tasks.md` is a generated compatibility view over execution objects, evidence, and review state
-  already present in `BUILD_PLAN.md` and the QuarterDeck.
+  already present in `MANIFEST.md` and the QuarterDeck.
 
 These views improve compatibility without collapsing Drydock back into a single-file specification
 model.
@@ -1352,7 +1332,7 @@ product-owner review.
 | `data-model.md` | `DATABASE.md` |
 | `contracts/` | Routes and interfaces in `FEATURE-*.md` and `ARCHITECTURE.md` |
 | `quickstart.md` | Useful operating instructions in `README.md` or `AGENTS.md`; otherwise ignored |
-| `tasks.md` | Generated `tasks.md` compatibility view plus QuarterDeck task state projected from `BUILD_PLAN.md` |
+| `tasks.md` | Generated `tasks.md` compatibility view plus QuarterDeck task state projected from `MANIFEST.md` |
 
 Translation performs these steps:
 
