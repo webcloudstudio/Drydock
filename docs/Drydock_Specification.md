@@ -1,7 +1,7 @@
 ---
 title: Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle: Drydock is under active development. It extends GitHub Spec Kit with new workflows, and each Drydock Blueprint is expressed through a Typed Specification designed around context-aware builds. Drydock is an incarnation of the working Prototyper project conformed to industry best practices.
+subtitle: Drydock is a full implementation of the SAIL Methedology to build programs from specifications.  It is under active development. We will need volunteers to test the methedology during our active release phase.
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 11 2026
@@ -10,13 +10,17 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
 ideas_title: What Drydock Adds
 ideas:
-  - title: SAIL makes governed delivery memorable and repeatable - Set Up, Arrange, Implement, Loop.
-  - title: Blueprints preserve authoritative product intent as living Typed Specifications.
-  - title: Manifests turn Blueprints into dependency-ordered, review-gated executable work.
+  - title: The SAIL Method - Set Up, Analyze & Arrange, Implement, Loop 
+  - title: Import your projects into Blueprints - Typed Specifications
+  - title: Your Compass is your constitiution or project intent
+  - title: Analyze uses agile decompostion to Features, Stories, AC, Spikes
+  - title: Plan creates your build plan based on the Analysis
+  - title: Your Rigging is your Enterprise Branding and Build Rules
+  - title: Build your plan in managed chunks
   - title: QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions.
-  - title: Refits revise working software without bypassing its Blueprint or rebuilding unaffected work.
-  - title: Drydock Rigging standardizes code, documentation, tooling, prompts, and branding across the portfolio.
-  - title: The Ship's Log preserves the material decisions and milestones behind the product.
+  - title: Refits with a simple ticket workflow maintain Blueprint rebuilability
+  - title: Your Ship's Log preserves material decisions and milestones 
+  - title: Auto create consistent documentation from your specification
 ---
 
 ## Testimonials
