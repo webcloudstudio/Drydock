@@ -72,9 +72,9 @@ Tag each: `[filename] question text`.
 
 | Verdict | Condition |
 |---|---|
-| `ready` | COMPASS present; stack declared; zero structural gaps; no blocking open questions |
+| `ready` | COMPASS present; stack declared; zero structural gaps; no open questions |
 | `ready_with_questions` | Required files present but open questions or minor gaps exist |
-| `blocked` | COMPASS.md missing from Blueprint; or structural errors that prevent plan creation |
+| `needs-work` | Structural gaps, missing required files, or unpopulated templates |
 
 ---
 
@@ -117,7 +117,7 @@ stack: {declared value | "not declared"}
 {One sentence.}
 
 ## Readiness Verdict
-verdict: {ready | ready_with_questions | blocked}
+verdict: {ready | ready_with_questions | needs-work}
 {One sentence reason.}
 
 ## Notes

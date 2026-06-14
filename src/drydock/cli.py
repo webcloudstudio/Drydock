@@ -168,13 +168,6 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
-_VERDICT_LABELS = {
-    "ready": "Ready for plan create.",
-    "ready_with_questions": "Ready, but questions must be answered before plan create.",
-    "blocked": "Blueprint is not ready for planning. See ANALYSIS.md for details.",
-    "unknown": "Verdict could not be determined.",
-}
-
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
@@ -197,15 +190,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     for spike_path in result.spike_paths:
         print(f"  {spike_path.name:<20} →  {spike_path.relative_to(tdir)}")
     print()
-    print(f"Verdict:   {result.verdict}")
-    if result.verdict_reason:
-        print(f"           {result.verdict_reason}")
-    else:
-        verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
-        print(f"           {verdict_label}")
-    if result.verdict not in ("ready",):
-        print(f"           Details: {result.analysis_path.relative_to(tdir)}")
-    print()
+    print("Analysis complete. Review in QuarterDeck to proceed.")
     print(f"Next step: drydock run quarterdeck {args.Target}")
     return 0
 
