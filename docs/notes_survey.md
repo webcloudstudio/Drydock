@@ -1,30 +1,33 @@
-# Notes — `drydock survey`
+# NOTES: Survey
 
-Working notes for the Surveyor command. Authoritative product behavior lives in
-`docs/Drydock_Specification.md` ("Workflow: Survey The Build Process"); this file is the
-developer-facing reference.
+| Field | Value |
+|-------|-------|
+| Version | 2026-06-14 V2 |
+| Route | survey |
+| Status | Working notes — not canonical specification |
+| Description | Design and implementation reference for drydock survey: scoring model, data layout, AC file format, and feedback loop. |
+| Pending spec | 3 recommended items |
+| Pending impl | 0 unimplemented sections |
 
----
+## Goal
 
-## Purpose
-
-`drydock survey` scores a Target's **build process and its specifications** against per-command
-acceptance criteria, and emits generalized, actionable fixes the next iteration can apply.
+Score a Target's build process and its specifications against per-command acceptance criteria,
+and emit generalized, actionable fixes the next iteration can apply.
 
 `drydock build score` scores the delivered *product* against the Blueprint (seven dimensions →
 `SCORECARD.md`). `drydock survey` scores the *process/spec quality* (five dimensions →
-`scores.jsonl`). They are the same instrument pointed at different things; survey may in time
-subsume the scorecard.
+`scores.jsonl`). Same instrument pointed at different things; survey may in time subsume the scorecard.
 
----
+## Decisions
 
-## Command surface
+### Command Surface
+`2026-06-13` · `spec:recommended` · `impl:implemented`
 
 ```text
 drydock survey <Target>                     # render the latest scoreboard (deterministic, no LLM)
 drydock survey <Target> --run               # score each command (LLM-assisted) and append results
 drydock survey <Target> --import <path>     # re-read a Blueprint/sources dir and regenerate AC files
-drydock survey <Target> --command <name>    # filter render/run/score to one command (e.g. status)
+drydock survey <Target> --command <name>    # filter render/run/score to one command
 drydock survey <Target> --raw               # print raw score records as JSON
 ```
 
@@ -39,12 +42,11 @@ drydock survey <Target> --raw               # print raw score records as JSON
 Exit codes: `0` success, `1` operational failure (missing AC dir, LLM failure), `2` usage error
 (missing `<Target>`).
 
-> Implementation note: `--command` uses `dest="command_filter"` — a bare `--command` collides with
-> the top-level subparsers' `dest="command"` and silently nulls the dispatched command.
+Implementation note: `--command` uses `dest="command_filter"` — a bare `--command` collides with
+the top-level subparsers' `dest="command"` and silently nulls the dispatched command.
 
----
-
-## Data layout — per Target
+### Data Layout
+`2026-06-13` · `spec:recommended` · `impl:implemented`
 
 ```text
 targets/<Target>/survey/
@@ -60,11 +62,10 @@ targets/<Target>/survey/
 `scores.jsonl` is append-only; never rewrite a prior line. Its first line is a
 `{"type":"meta",...}` schema marker that readers skip.
 
----
+### AC File Format
+`2026-06-13` · `spec:recommended` · `impl:implemented`
 
-## Acceptance-criteria files (`survey/ac/SURVEY-<command>.md`)
-
-The standard each command is scored against. One file per command. Format:
+The standard each command is scored against. One file per command.
 
 ```markdown
 # SURVEY-SPEC: drydock <command>
@@ -90,17 +91,16 @@ The standard each command is scored against. One file per command. Format:
 
 Parser (`survey.parse_ac_file`) keys off the `# SURVEY-SPEC:` H1 for the command name, the
 `## Goal` section, and any table row whose first cell matches `^[A-Z][A-Z0-9]*-[A-Z0-9]+$`.
-Columns are fixed: `ID | Criterion | Dim | Check | Weight | Verify`.
+Columns: `ID | Criterion | Dim | Check | Weight | Verify`.
 `Check` is `A` (assertion) or `J` (judgment); `Dim` is `D1`–`D5`; `Weight` is a number.
 
----
-
-## Scoring model
+### Scoring Model
+`2026-06-13` · `spec:recommended` · `impl:implemented`
 
 Deterministic and owned by the command (`src/drydock/survey.py`). The LLM only judges each AC
 (`pass` / `partial` / `fail`) and writes recommendations; the module computes the numbers.
 
-**Five dimensions, fixed weights** (`DIMENSION_WEIGHTS`):
+**Five dimensions, fixed weights:**
 
 | Dim | Weight | Measures |
 |-----|--------|----------|
@@ -112,17 +112,16 @@ Deterministic and owned by the command (`src/drydock/survey.py`). The LLM only j
 
 - Result value: `pass=1.0`, `partial=0.5`, `fail=0.0`.
 - Dimension score = `100 × Σ(weight·value) / Σ(weight)` over that dimension's assessed AC.
-- Composite = weighted mean of assessed dimensions, with the dimension weights **redistributed
-  across only the assessed dimensions**.
+- Composite = weighted mean of assessed dimensions, redistributed across only the assessed dimensions.
 - `provisional = true` when not every dimension that has AC was assessed.
 
 **Bands:** `SEAWORTHY` ≥ 90 · `SEA_TRIALS` ≥ 75 · `TAKING_WATER` ≥ 60 · `DRY_DOCK` < 60.
-A `guardrail-breach` or `regression` flag **caps** the band at `TAKING_WATER` regardless of score.
+A `guardrail-breach` or `regression` flag caps the band at `TAKING_WATER` regardless of score.
 
 **Root-cause flags:** `guardrail-breach`, `unresolved-uncertainty`, `contract-drift`,
 `missing-evidence`, `decomposition-defect`, `regression`, `incomplete`.
 
-### `scores.jsonl` record (schema 1)
+**`scores.jsonl` record (schema 1):**
 
 ```json
 {
@@ -142,9 +141,8 @@ A `guardrail-breach` or `regression` flag **caps** the band at `TAKING_WATER` re
 }
 ```
 
----
-
-## Internals
+### Module Internals
+`2026-06-13` · `spec:na` · `impl:implemented`
 
 `src/drydock/survey.py`:
 
@@ -163,12 +161,10 @@ A `guardrail-breach` or `regression` flag **caps** the band at `TAKING_WATER` re
 no credits and need no network. The model emits text; the module writes every file.
 
 Prompts: `prompts/survey.md` (scoring → JSON), `prompts/survey_import.md` (AC regeneration →
-delimited `=== SURVEY-<command>.md ===` blocks). Both obey the frontmatter contract
-(`prompts.load_prompt`).
+delimited `=== SURVEY-<command>.md ===` blocks). Both obey the frontmatter contract.
 
----
-
-## Feedback loop
+### Feedback Loop
+`2026-06-13` · `spec:na` · `impl:implemented`
 
 1. **Pre-author** `ac/SURVEY-<command>.md` before the work lands.
 2. **Build** happens in another window.
@@ -180,9 +176,8 @@ delimited `=== SURVEY-<command>.md ===` blocks). Both obey the frontmatter contr
 Generalized fixes, not line-level patches: prefer "route plan reads through one loader so a rename
 propagates" over "edit line 70 to MANIFEST.md".
 
----
-
-## Testing & state
+### Testing State
+`2026-06-13` · `spec:na` · `impl:implemented`
 
 - Unit/CLI tests: `tests/test_survey.py` (parsing, scoring math, bands, fake-runner run, render,
   import). Run via `bash bin/test.sh tests/test_survey.py` or `python -m pytest`.
@@ -191,3 +186,28 @@ propagates" over "edit line 70 to MANIFEST.md".
   in `scores.jsonl` was hand-authored from a code read; re-run `--run` for an LLM-scored record.
   Per-command deterministic assertion execution (running each AC's `Verify` automatically) is a
   later enhancement — today assertions are judged by the LLM like judgment AC.
+
+## Acceptance Criteria
+
+- `drydock survey <Target>` renders the scoreboard without LLM; deterministic.
+- `--run` scores all commands, appends to `scores.jsonl`, then renders.
+- `--import <path>` regenerates AC files from spec dir without scoring.
+- `--command <name>` correctly filters without colliding with `dest="command"` in argparse.
+- Band cap applies: `guardrail-breach` or `regression` locks band at `TAKING_WATER` or below.
+- `scores.jsonl` is append-only; meta line present; readers skip it.
+
+## Guardrails
+
+- `scores.jsonl` is append-only. Never rewrite or delete a prior record.
+- The LLM judges only; the module computes all scores. No score arithmetic in the prompt.
+- `runner` is injected; tests never spend credits or require network.
+- `--command` must use `dest="command_filter"` to avoid argparse collision.
+
+## Open Questions
+
+- Per-command deterministic assertion execution (running `Verify` automatically vs LLM judgment).
+
+## Not in scope yet
+
+- Automatic assertion runner for `Verify` column items.
+- Survey subsuming `build score` / SCORECARD.md.
