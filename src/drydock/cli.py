@@ -193,15 +193,18 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print(f"  SEA_TRIALS.md →  {result.sea_trials_path.relative_to(tdir)}")
     print(f"  SOUNDINGS.md  →  {result.soundings_path.relative_to(tdir)}")
     if result.compass_path:
-        print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}")
+        print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}  (created)")
     for spike_path in result.spike_paths:
         print(f"  {spike_path.name:<20} →  {spike_path.relative_to(tdir)}")
     print()
-    verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
     print(f"Verdict:   {result.verdict}")
-    print(f"           {verdict_label}")
+    if result.verdict_reason:
+        print(f"           {result.verdict_reason}")
+    else:
+        verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
+        print(f"           {verdict_label}")
     if result.verdict not in ("ready",):
-        print(f"           Details: {result.analysis_path.relative_to(result.target_dir)}")
+        print(f"           Details: {result.analysis_path.relative_to(tdir)}")
     print()
     print(f"Next step: drydock run quarterdeck {args.Target}")
     return 0

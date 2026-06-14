@@ -267,7 +267,7 @@ class TestParseBlocks:
 
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
-        analysis, sea_trials, soundings, compass, spikes, verdict = _parse_output(_VALID_LLM_OUTPUT)
+        analysis, sea_trials, soundings, compass, spikes, verdict, _ = _parse_output(_VALID_LLM_OUTPUT)
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
         assert "Soundings" in soundings
@@ -280,7 +280,7 @@ class TestParseOutput:
         assert "spike-guardrails.json" in spikes
 
     def test_no_compass_block_returns_none(self):
-        _, _, _, compass, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
+        _, _, _, compass, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
         assert compass is None
 
     def test_missing_analysis_block_raises(self):
@@ -310,12 +310,12 @@ class TestParseOutput:
 
     def test_unknown_verdict_when_absent(self):
         no_verdict = _VALID_LLM_OUTPUT.replace("verdict: ready", "")
-        _, _, _, _, _, verdict = _parse_output(no_verdict)
+        _, _, _, _, _, verdict, _ = _parse_output(no_verdict)
         assert verdict == "unknown"
 
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
-        _, _, _, _, spikes, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "spike-auth.json" in spikes
 
 

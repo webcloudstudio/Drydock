@@ -37,6 +37,7 @@ _FIXED_SPIKES = ("spike-intent.json", "spike-stack.json", "spike-gaps-ac.json", 
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _VERDICT_RE = re.compile(r"^verdict:\s*(\S+)", re.MULTILINE)
+_VERDICT_REASON_RE = re.compile(r"^verdict:\s*\S+[^\n]*\n([^\n#][^\n]+)", re.MULTILINE)
 
 
 class CompletedRun(Protocol):
@@ -60,6 +61,7 @@ class AnalyzeResult:
     compass_path: Path | None
     spike_paths: tuple[Path, ...]
     verdict: str
+    verdict_reason: str | None
     execution_id: str | None
     ok: bool
     error: str | None = None
@@ -110,8 +112,8 @@ def _parse_blocks(text: str) -> dict[str, str]:
     return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
 
 
-def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict], str]:
-    """Return (analysis, sea_trials, soundings, compass_or_none, spikes_dict, verdict).
+def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict], str, str | None]:
+    """Return (analysis, sea_trials, soundings, compass_or_none, spikes_dict, verdict, verdict_reason).
 
     ``spikes_dict`` maps filename → parsed dict for every spike-*.json block.
     Raises ValueError on missing required blocks or invalid JSON.
@@ -134,18 +136,23 @@ def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict]
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
 
-    verdict_match = _VERDICT_RE.search(blocks["ANALYSIS.md"])
+    analysis_text = blocks["ANALYSIS.md"]
+    verdict_match = _VERDICT_RE.search(analysis_text)
     verdict = verdict_match.group(1) if verdict_match else "unknown"
+
+    reason_match = _VERDICT_REASON_RE.search(analysis_text)
+    verdict_reason = reason_match.group(1).strip() if reason_match else None
 
     compass_content = blocks.get("COMPASS.md") or None
 
     return (
-        blocks["ANALYSIS.md"],
+        analysis_text,
         blocks["SEA_TRIALS.md"],
         blocks["SOUNDINGS.md"],
         compass_content,
         spikes,
         verdict,
+        verdict_reason,
     )
 
 
@@ -197,6 +204,7 @@ def analyze(
             compass_path=None,
             spike_paths=spike_placeholder,
             verdict="unknown",
+            verdict_reason=None,
             execution_id=exec_id,
             ok=False,
             error=msg,
@@ -206,7 +214,7 @@ def analyze(
         return _fail("LLM execution failed")
 
     try:
-        analysis_text, sea_trials_text, soundings_text, compass_text, spikes, verdict = (
+        analysis_text, sea_trials_text, soundings_text, compass_text, spikes, verdict, verdict_reason = (
             _parse_output(result.text)
         )
     except ValueError as exc:
@@ -238,6 +246,7 @@ def analyze(
         compass_path=written_compass,
         spike_paths=tuple(sorted(spike_paths)),
         verdict=verdict,
+        verdict_reason=verdict_reason,
         execution_id=exec_id,
         ok=True,
     )
