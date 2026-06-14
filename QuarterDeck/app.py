@@ -340,6 +340,8 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
     """Markdown that the human can edit in place. Renders the doc plus an Edit
     toggle; Save POSTs the raw source back to the file (creates the file if absent)."""
     item_id = html.escape(item["id"])
+    label = html.escape(item.get("label", ""))
+    filename = html.escape(Path(item["path"]).name)
     try:
         raw = resolve_path(item["path"]).read_text(encoding="utf-8")
         rendered = _md(raw)
@@ -348,7 +350,12 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
         rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
     return (
         f"<div class='editable' data-item='{item_id}'>"
-        f"<div class='edit-toolbar'><button class='edit-btn' onclick=\"editDoc('{item_id}')\">Edit</button></div>"
+        f"<h1>{label}</h1>"
+        f"<div class='edit-toolbar'>"
+        f"<button class='edit-btn' onclick=\"editDoc('{item_id}')\">Edit</button>"
+        f"<span class='edit-filename'>Filename: {filename}</span>"
+        f"</div>"
+        f"<hr class='edit-divider'>"
         f"<div class='doc-view'>{rendered}</div>"
         f"<div class='doc-edit' style='display:none'>"
         f"<textarea class='doc-source' spellcheck='false'>{html.escape(raw)}</textarea>"
@@ -1301,7 +1308,9 @@ _STYLE = """
                   border-radius:4px; margin:8px 0; font-size:13px; }
   .link-list { margin:4px 0 0; padding-left:18px; }
   .link-btn { background:none; border:none; color:#2563eb; cursor:pointer; padding:0; font-size:13px; text-decoration:underline; }
-  .edit-toolbar { display:flex; justify-content:flex-end; margin-bottom:6px; }
+  .edit-toolbar { display:flex; align-items:center; gap:16px; margin-bottom:6px; }
+  .edit-filename { font-size:13px; color:#64748b; }
+  .edit-divider { border:none; border-top:1px solid #d7dde5; margin:0 0 14px; }
   .edit-btn, .save-btn, .cancel-btn { padding:6px 12px; border-radius:3px; cursor:pointer; font-size:13px; border:1px solid #cbd5e1; }
   .edit-btn { background:#fff; color:#111827; }
   .edit-btn:hover { background:#eef2f7; }
