@@ -165,13 +165,13 @@ class TestCollectBlueprintFiles:
         (bp / "COMPASS.md").write_text("c", encoding="utf-8")
         (bp / "FEATURE-Auth.md").write_text("f", encoding="utf-8")
         names = [p.name for p in _collect_blueprint_files(bp)]
-        assert "COMPASS.md" in names
+        assert "COMPASS.md" not in names  # COMPASS lives at target root, not blueprint
         assert "FEATURE-Auth.md" in names
 
     def test_excludes_meta_files(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        for name in ("METADATA.md", "README.md", "IDEAS.md"):
+        for name in ("METADATA.md", "README.md", "IDEAS.md", "COMPASS.md", "ACCEPTANCE_CRITERIA.md"):
             (bp / name).write_text("x", encoding="utf-8")
         assert _collect_blueprint_files(bp) == []
 
@@ -185,7 +185,7 @@ class TestCollectBlueprintFiles:
     def test_returns_sorted(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        for name in ("SCREEN-Home.md", "ARCHITECTURE.md", "COMPASS.md"):
+        for name in ("SCREEN-Home.md", "ARCHITECTURE.md", "FEATURE-Login.md"):
             (bp / name).write_text("x", encoding="utf-8")
         names = [p.name for p in _collect_blueprint_files(bp)]
         assert names == sorted(names)
@@ -200,7 +200,6 @@ class TestAssemblePrompt:
     def test_contains_job_block(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        (bp / "COMPASS.md").write_text("compass content", encoding="utf-8")
         result = _assemble_prompt("PROMPT BODY", bp, "2026-06-14", compass_exists=False)
         assert "## Analysis job" in result
         assert "BLUEPRINT_PATH:" in result
@@ -219,8 +218,8 @@ class TestAssemblePrompt:
         (bp / "COMPASS.md").write_text("compass content", encoding="utf-8")
         (bp / "FEATURE-Auth.md").write_text("auth content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### COMPASS.md" in result
-        assert "compass content" in result
+        assert "### COMPASS.md" not in result   # blueprint COMPASS.md is skipped
+        assert "compass content" not in result
         assert "### FEATURE-Auth.md" in result
         assert "auth content" in result
 

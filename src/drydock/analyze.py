@@ -24,7 +24,13 @@ from drydock.prompts import load_prompt
 
 PROMPT_NAME = "analyze"
 
-_SKIP_FILES = frozenset({"METADATA.md", "README.md", "IDEAS.md"})
+_SKIP_FILES = frozenset({
+    "METADATA.md",
+    "README.md",
+    "IDEAS.md",
+    "COMPASS.md",           # lives at target root; blueprint copy is always a stub
+    "ACCEPTANCE_CRITERIA.md",  # not a typed spec file type
+})
 _SKIP_PREFIX = "BUILD_"
 
 _FIXED_SPIKES = ("spike-intent.json", "spike-stack.json", "spike-gaps-ac.json", "spike-guardrails.json")
@@ -170,7 +176,7 @@ def analyze(
 
     result = run(
         assembled,
-        blueprint_dir,
+        target_dir,
         model=prompt.model,
         command_name="analyze",
         parameters={"target": target, "blueprint": str(blueprint_dir)},

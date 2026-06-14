@@ -200,6 +200,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
     print(f"Verdict:   {result.verdict}")
     print(f"           {verdict_label}")
+    if result.verdict not in ("ready",):
+        print(f"           Details: {result.analysis_path.relative_to(result.target_dir)}")
     print()
     print(f"Next step: drydock run quarterdeck {args.Target}")
     return 0
