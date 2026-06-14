@@ -203,8 +203,6 @@ exposes the underlying focused Typed Specification validation command.
 `drydock config` establishes user-scoped defaults. `drydock init` creates the Target baseline.
 `drydock run quarterdeck` opens the product-owner review surface.
 
-### Workflow: Initialize a Target
-
 `drydock init <Target>` creates the minimal scaffold described in Workspace Layout. The QuarterDeck
 runtime is not copied here; only console state is written, and `drydock run quarterdeck` serves the
 runtime from the installed package.
@@ -243,7 +241,7 @@ drydock plan create <Target>
 changing the Manifest. `drydock rigging compact` refreshes stale compact context. `drydock plan
 create` organizes the work and creates the draft Manifest and Planning Session.
 
-### Workflow: Reverse-Engineer an Existing Project
+### Importing a specification into your Drydock
 
 Bring existing software or a Spec Kit project under Drydock Blueprint control. Stack detection
 scopes the relevant technology rules automatically.
@@ -278,7 +276,7 @@ flowchart LR
 3. Optionally conform the imported material after User Review establishes build configuration.
 4. Create, review, validate, and approve the plan before proceeding through its runnable frontier.
 
-### Workflow: Analyze Before You Arrange
+### Analyze Your Specifiction
 
 `drydock analyze` evaluates available Blueprint inputs and — when a Target with built code is
 provided — the built application. During planning it creates the target-local Planning Session
@@ -292,12 +290,12 @@ analysis and questionnaire. It does not create or modify `MANIFEST.md`.
 `drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
 Planning Session outputs before running `drydock plan create`.
 
-### Workflow: Approve the Manifest
+### Building and Reviewing the Build Plan / Manifest
 
 `drydock plan create` generates the draft plan and a target-local Planning Session. The QuarterDeck
 presents optional features, executable stories and spikes, dependencies, and nested acceptance
 gates, together with the analysis and questionnaire produced by `drydock analyze`
-(`<Target>/QuarterDeck/planning/ANALYSIS.md` and
+(`<Target>/ANALYSIS.md` and
 `<Target>/QuarterDeck/questionnaires/planning.json`). Durable product-owner decisions from User
 Review are written to `<Target>/blueprint/BUILD_CONFIGURATION.md`.
 
@@ -334,7 +332,7 @@ drydock document assemble <Target>
 changing it. `drydock build score` measures delivery health. The `drydock document` commands turn
 Blueprint material into delivered project documentation.
 
-### Workflow: Build the Accepted Manifest
+### Build the Accepted Manifest
 
 Build executes the accepted work blocks in `<Target>/MANIFEST.md`. The accepted plan may have
 been created from Typed Specifications, imported Markdown, or both. Each block runs as a separate
@@ -363,7 +361,7 @@ flowchart LR
    conformed Typed Specifications are included only where durable authority, dependencies, or safe
    incremental delivery require them.
 
-### Workflow: Review the Evidence
+### Review the Build Evidence
 
 The QuarterDeck shows the stakeholder the evidence, demos, and questions needed for a decision;
 the product owner approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
@@ -392,7 +390,7 @@ flowchart LR
    `MANIFEST.md`.
 3. Repeat until all objects and optional feature parents are accepted.
 
-### Workflow: Check Build Status
+### Check Build Status
 
 `drydock build status` reads `MANIFEST.md` and the target directory and reports the state of every
 plan object — how many blocks are pending, implemented, verified, or failed, and which are
@@ -405,7 +403,7 @@ drydock build status <Target>   # print per-block state and current runnable fro
 Use `drydock build status` to orient after a partial build, after a failed run, or before deciding
 whether to proceed or revise the plan.
 
-### Workflow: Score Delivery Health
+### Score your Build - How well did it go
 
 `drydock build score` measures delivery health across seven dimensions — Typed Specification
 completeness, implementation coverage, test coverage, documentation coverage, Blueprint drift,
@@ -432,8 +430,6 @@ flowchart LR
 2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
    prioritize the next `drydock refit` or `drydock plan create` run.
 
-### Workflow: Survey The Build Process
-
 `drydock build score` scores the delivered *product* against the Blueprint. `drydock survey`
 scores the *process and its specifications* against per-command acceptance criteria, and emits
 generalized, actionable fixes the next build iteration can apply. The two are directionally the
@@ -446,6 +442,8 @@ drydock survey <Target> --run       # score (LLM-assisted) and append results
 drydock survey <Target> --import D   # re-read a Blueprint/sources directory and regenerate AC
 drydock survey <Target> --command status   # filter to one command
 ```
+
+### Survey The Build Process
 
 A Target carries one Surveyor workspace at `<Target>/survey/`: per-command acceptance-criteria
 files under `survey/ac/SURVEY-<command>.md`, an append-only `survey/scores.jsonl`, and the scoring
@@ -465,7 +463,7 @@ acceptance-criteria files from the specification so the process can iterate on i
    commands (e.g. `unresolved-uncertainty`) signals a *process* defect to fix in the prompt or
    command contract, not a one-off code fix.
 
-### Workflow: Deliver Project Documentation
+### Consistent Project Documentation
 
 Run `drydock document generate <Target>` to produce Blueprint-derived `DOC-*.md` summaries, then
 `drydock document assemble <Target>` to render the maintained summaries into `docs/index.html`.
@@ -487,7 +485,7 @@ drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 `drydock refit` performs the Refit. It updates the Blueprint and Target together, or limits the
 change to the selected side, then returns affected work to the SAIL cycle.
 
-### Workflow: Refit a Working SDD Application
+### Ongoing Application Support - Refit a Working SDD Application
 
 The post-build loop for an existing project when a human or agent must update a Blueprint and
 its target application together in one controlled step. It resolves a scope to the owning Core
@@ -520,7 +518,7 @@ flowchart LR
    affected downstream work stale — only changed work rebuilds, unaffected work stays clean.
 4. `BOTH` or `TGT` applies the change to `<Target>/`, runs tests, and records evidence.
 
-### Workflow: Refit Portfolio Governance
+### Refit Portfolio Governance
 
 Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
 changes back into an existing Target and proves continued conformance after the change.
@@ -541,7 +539,7 @@ keyed to the compact derivative's hash, so an edit that does not change the comp
 rationale, examples, internal detail — dirties no consumers. A change to a file's `Provides` or
 `Consumes` set additionally marks every dependent block stale.
 
-### Workflow: Raise a Change Ticket
+### Raise a Change Ticket
 
 Change tickets are incremental work items, not `refit` sessions. A new ticket is just a new
 Specification file under `changes/` with the correct typed header and dependency fields. Planning
@@ -690,7 +688,7 @@ updated by `drydock refit` as specification files and application code evolve.
   - Created: `drydock plan create <Target>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
 
-- **`<Target>/QuarterDeck/planning/ANALYSIS.md`** — Disposable Planning Session analysis
+- **`<Target>/ANALYSIS.md`** — Disposable Planning Session analysis
   - Created and updated: `drydock analyze <Target>`
 
 - **`<Target>/QuarterDeck/questionnaires/planning.json`** — Disposable Planning Session questions

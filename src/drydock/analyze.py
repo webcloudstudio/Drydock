@@ -3,7 +3,7 @@
 Single LLM call producing all analyze outputs via delimited blocks. Writes deterministically;
 tests inject a fake runner and never spend API credits.
 
-Outputs: ANALYSIS.md (QuarterDeck/planning/), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if
+Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if
 absent), spike-intent.json, spike-stack.json, spike-gaps-ac.json, spike-guardrails.json, and
 any variable spikes the LLM discovers.
 """
@@ -168,9 +168,8 @@ def analyze(
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
 
-    planning_dir = target_dir / "QuarterDeck" / "planning"
     questionnaires_dir = target_dir / "QuarterDeck" / "questionnaires"
-    analysis_path = planning_dir / "ANALYSIS.md"
+    analysis_path = target_dir / "ANALYSIS.md"
     sea_trials_path = target_dir / "SEA_TRIALS.md"
     soundings_path = target_dir / "SOUNDINGS.md"
     compass_target = target_dir / "COMPASS.md"
@@ -220,7 +219,6 @@ def analyze(
     except ValueError as exc:
         return _fail(str(exc))
 
-    planning_dir.mkdir(parents=True, exist_ok=True)
     questionnaires_dir.mkdir(parents=True, exist_ok=True)
 
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")

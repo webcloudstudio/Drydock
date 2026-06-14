@@ -333,10 +333,10 @@ class TestAnalyze:
         assert result.sea_trials_path.exists()
         assert result.soundings_path.exists()
 
-    def test_analysis_path_is_under_quarterdeck_planning(self, tmp_path):
+    def test_analysis_path_is_at_target_root(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert "QuarterDeck/planning" in result.analysis_path.as_posix()
+        assert result.analysis_path == target_dir / "ANALYSIS.md"
 
     def test_sea_trials_at_target_root(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

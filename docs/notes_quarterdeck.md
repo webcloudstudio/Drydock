@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-14 V2 |
+| Version | 2026-06-14 V3 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck workflow mapping and analyze command design decisions. |
@@ -42,7 +42,7 @@ delivery workflow, not unconditionally. Build analyze to produce the correct set
 | Output | Location | LLM analytical goal |
 |---|---|---|
 | COMPASS.md | `COMPASS.md` (target root) | Constitution/system prompt — generated if absent |
-| ANALYSIS.md | `QuarterDeck/planning/ANALYSIS.md` | Narrative gap and coverage report |
+| ANALYSIS.md | `ANALYSIS.md` (target root) | Narrative gap and coverage report |
 | SEA_TRIALS.md | `SEA_TRIALS.md` | High-level strategic objectives |
 | SOUNDINGS.md | `SOUNDINGS.md` | AC blocks projected from the spec |
 | Intent spike | `QuarterDeck/questionnaires/spike-intent.json` | What is this product trying to do? |
@@ -69,7 +69,7 @@ Workflow stage is detected by artifact existence, not command history.
 |---|---|
 | 1 — Initialized | `METADATA.md` exists |
 | 2 — Blueprint imported | `blueprint/sources/.drydock-import` exists |
-| 3 — Analyzed | `QuarterDeck/planning/ANALYSIS.md` exists |
+| 3 — Analyzed | `ANALYSIS.md` exists (target root) |
 | 4 — Plan drafted | `BUILD_PLAN.md` exists with `state: draft` |
 | 5 — Plan approved | `BUILD_PLAN.md` has `state: approved` |
 
@@ -78,6 +78,13 @@ Workflow stage is detected by artifact existence, not command history.
 - QuarterDeck hides items whose file is absent; shows them automatically once the file exists.
 - `analyze` produces the full output set in one LLM call.
 - Fixed four spikes always created; variable spikes auto-discovered via `sources:` glob.
+
+### ANALYSIS.md location (2026-06-14)
+- Moved from `QuarterDeck/planning/ANALYSIS.md` to `ANALYSIS.md` at target root.
+- Rationale: ANALYSIS.md is a primary artifact alongside METADATA.md, SEA_TRIALS.md, and
+  SOUNDINGS.md. `QuarterDeck/planning/` was an invented subfolder with no design basis.
+- Changes: `analyze.py` path computation, spec artifact table, stage detection table,
+  test assertion, module docstring.
 
 ## Guardrails
 
