@@ -171,7 +171,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 _VERDICT_LABELS = {
     "ready": "Ready for plan create.",
     "ready_with_questions": "Ready, but questions must be answered before plan create.",
-    "blocked": "Blocked — required Blueprint files are missing. Add them and re-run analyze.",
+    "blocked": "Blueprint is not ready for planning. See ANALYSIS.md for details.",
     "unknown": "Verdict could not be determined.",
 }
 
@@ -188,13 +188,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
         return 1
-    print(f"  ANALYSIS.md   →  {result.analysis_path}")
-    print(f"  SEA_TRIALS.md →  {result.sea_trials_path}")
-    print(f"  SOUNDINGS.md  →  {result.soundings_path}")
+    tdir = result.target_dir
+    print(f"  ANALYSIS.md   →  {result.analysis_path.relative_to(tdir)}")
+    print(f"  SEA_TRIALS.md →  {result.sea_trials_path.relative_to(tdir)}")
+    print(f"  SOUNDINGS.md  →  {result.soundings_path.relative_to(tdir)}")
     if result.compass_path:
-        print(f"  COMPASS.md    →  {result.compass_path}")
+        print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}")
     for spike_path in result.spike_paths:
-        print(f"  {spike_path.name:<20} →  {spike_path}")
+        print(f"  {spike_path.name:<20} →  {spike_path.relative_to(tdir)}")
     print()
     verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
     print(f"Verdict:   {result.verdict}")
