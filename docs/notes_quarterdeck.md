@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-14 V3 |
+| Version | 2026-06-14 V4 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck workflow mapping and analyze command design decisions. |
@@ -36,6 +36,32 @@ delivery workflow, not unconditionally. Build analyze to produce the correct set
 ### Analyze: Single LLM call, multiple output blocks
 - One LLM call produces all analyze outputs via delimited blocks (extends current `=== ANALYSIS.md ===`
   pattern). Token-efficient; parser writes each file deterministically.
+
+### Analyze: Blueprint files skipped during collection (2026-06-14)
+- `COMPASS.md` in blueprint is always a stub template; real COMPASS.md is at target root. Skip it.
+- `ACCEPTANCE_CRITERIA.md` is not a typed spec file type and has no place in the blueprint.
+  Removed from `Rigging/spec_template/`; added to `_SKIP_FILES` in `analyze.py`.
+- `_collect_blueprint_files` skip list: `METADATA.md`, `README.md`, `IDEAS.md`, `COMPASS.md`,
+  `ACCEPTANCE_CRITERIA.md`, and any `BUILD_*` prefix.
+
+### Analyze: LLM execution log location (2026-06-14)
+- Execution logs must go to `<target>/logs/`, not `<target>/blueprint/logs/`.
+- Root cause: `run_prompt` was called with `blueprint_dir` as working directory; corrected to
+  `target_dir`. `ExecutionArtifacts` derives log path from the working directory.
+
+### Analyze: Verdict terminology and CLI output (2026-06-14)
+- "blocked" is an Agile term for a story needing an external dependency — never use it for
+  plan readiness.
+- Prompt verdict values: `ready`, `ready_with_questions`, `needs-work`.
+- CLI does not echo the verdict. When analyze succeeds it prints "Analysis complete. Review in
+  QuarterDeck to proceed." The details are in ANALYSIS.md, read via QuarterDeck.
+
+### ANALYSIS.md location (2026-06-14)
+- Moved from `QuarterDeck/planning/ANALYSIS.md` to `ANALYSIS.md` at target root.
+- Rationale: ANALYSIS.md is a primary artifact alongside METADATA.md, SEA_TRIALS.md, and
+  SOUNDINGS.md. `QuarterDeck/planning/` was an invented subfolder with no design basis.
+- Changes: `analyze.py` path computation, spec artifact table, stage detection table,
+  test assertion, module docstring.
 
 ## Analyze Output Contract
 
@@ -78,13 +104,6 @@ Workflow stage is detected by artifact existence, not command history.
 - QuarterDeck hides items whose file is absent; shows them automatically once the file exists.
 - `analyze` produces the full output set in one LLM call.
 - Fixed four spikes always created; variable spikes auto-discovered via `sources:` glob.
-
-### ANALYSIS.md location (2026-06-14)
-- Moved from `QuarterDeck/planning/ANALYSIS.md` to `ANALYSIS.md` at target root.
-- Rationale: ANALYSIS.md is a primary artifact alongside METADATA.md, SEA_TRIALS.md, and
-  SOUNDINGS.md. `QuarterDeck/planning/` was an invented subfolder with no design basis.
-- Changes: `analyze.py` path computation, spec artifact table, stage detection table,
-  test assertion, module docstring.
 
 ## Guardrails
 
