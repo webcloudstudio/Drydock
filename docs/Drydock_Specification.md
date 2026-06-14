@@ -266,9 +266,10 @@ flowchart LR
 ```
 
 1. `drydock import <Target> <Source> --format intent` — copies the source file to
-   `blueprint/COMPASS.md`. Use when the user has a written project brief or intent document and
-   wants to seed the Blueprint's north-star file directly. No LLM or template transformation is
-   applied; edit the result to match the COMPASS.md format before running `drydock analyze`.
+   `COMPASS.md` at the Target root. Use when the user has a written project brief or intent
+   document and wants to seed the project's constitution file directly. No LLM or template
+   transformation is applied; edit the result to match the COMPASS.md format before running
+   `drydock analyze`.
 2. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
    Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and Spec
    Kit adapters use the same intake boundary when implemented.
@@ -631,8 +632,11 @@ not authored as specification files.
 
 **Human-authored** — the product intent explicitly owned by the product owner.
 
-- **`COMPASS.md`** — Product intent, constraints, success criteria, guardrails, and open questions
-  - Created: `drydock import` conversion
+- **`COMPASS.md`** — Project constitution: intent, constraints, success criteria, guardrails, and
+  open questions. Lives at the Target root (not inside `blueprint/`). Injected into every LLM run
+  as ambient project context. Created by `drydock analyze` (generated from spec if absent) or
+  seeded via `drydock import --format intent`. Updated by the product owner via QuarterDeck.
+  - Created: `drydock analyze` (auto-generated); `drydock import --format intent` (user-supplied)
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`

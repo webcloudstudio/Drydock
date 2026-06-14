@@ -31,7 +31,7 @@ class TestImportIntent:
         result = import_intent("Tgt", source, target_dir)
 
         assert result.target == "Tgt"
-        assert result.blueprint_dir == target_dir / "Tgt" / "blueprint"
+        assert result.blueprint_dir == target_dir / "Tgt"
         assert len(result.imported) == 1
         assert result.imported[0].name == "COMPASS.md"
 
@@ -48,7 +48,7 @@ class TestImportIntent:
         source = tmp_path / "brief.md"
         source.write_text("new content", encoding="utf-8")
         target_dir = tmp_path / "targets"
-        bp = target_dir / "MyTarget" / "blueprint"
+        bp = target_dir / "MyTarget"
         bp.mkdir(parents=True)
         (bp / "COMPASS.md").write_text("old content", encoding="utf-8")
 

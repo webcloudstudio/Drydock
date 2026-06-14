@@ -342,7 +342,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
         print()
-        print("COMPASS.md placed in Blueprint. Edit it to match the required format,")
+        print("COMPASS.md placed at Target root. Edit it to match the required format,")
         print("then run: drydock analyze", args.Target)
         return 0
 
