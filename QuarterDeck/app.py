@@ -193,6 +193,25 @@ def items() -> list[dict[str, Any]]:
     return require_config().get("items", [])
 
 
+# Item types that have no backing file — always visible regardless of file existence.
+_UNTRACKED_TYPES = frozenset({"link"})
+
+
+def _item_file_exists(item: dict[str, Any]) -> bool:
+    """Return False when the item has a backing file path that does not exist."""
+    item_type = item.get("type", "")
+    if item_type in _UNTRACKED_TYPES:
+        return True
+    path_key = "plan_path" if item_type == "plan_decision" else "path"
+    path_val = item.get(path_key)
+    if not path_val:
+        return True
+    try:
+        return (BASE_DIR / path_val).resolve().exists()
+    except Exception:
+        return True
+
+
 def find_item(item_id: str) -> dict[str, Any]:
     for item in items():
         if item.get("id") == item_id:
@@ -202,6 +221,9 @@ def find_item(item_id: str) -> dict[str, Any]:
 
 def nav_model() -> list[dict[str, Any]]:
     """Group items into sidebar sections, config order first.
+
+    Items whose backing file does not exist are hidden from the sidebar; they
+    reappear automatically once the file is created — no console.yaml rewrite needed.
 
     Archived items (from non-pinned sections) are transparently moved to the
     archive section; pinned-section items are immune to archiving.
@@ -214,6 +236,8 @@ def nav_model() -> list[dict[str, Any]]:
     by_section: dict[str, list[dict[str, Any]]] = {}
     order: list[str] = []
     for item in items():
+        if not _item_file_exists(item):
+            continue
         original_sid = item.get("section", "project_pages")
         if item.get("id") in archived_ids and original_sid not in pinned_sids:
             sid = "archive"

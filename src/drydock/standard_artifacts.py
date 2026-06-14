@@ -95,12 +95,6 @@ def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:
             f"# Captain's Chair: {target}\n\n"
             "This target is initialized and ready for Blueprint import and planning.\n"
         ),
-        target_dir / "SEA_TRIALS.md": (
-            "# Sea Trials\n\n"
-            "| ID | Objective / Success Criterion | State | Evidence |\n"
-            "|---|---|---|---|\n"
-        ),
-        target_dir / "SOUNDINGS.md": render_soundings([]),
     }
     created = []
     for path, content in files.items():
@@ -146,5 +140,9 @@ items:
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 3 }}
 {planning_item}  - {{ id: compass_edit, label: "Compass", section: actions, type: editable_markdown, path: ../COMPASS.md }}
   - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
-  - {{ id: acceptance_status, label: "Acceptance Status", section: project_pages, type: command_status }}
+
+sources:
+  - glob: "QuarterDeck/questionnaires/spike-*.json"
+    section: actions
+    type: questionnaire
 """

@@ -81,8 +81,8 @@ def test_capture_contract_is_local_not_shared_rigging():
         for path in ("Rigging/BUSINESS_RULES.md", "Rigging/CLAUDE_RULES.md")
     )
 
-    assert "Ship's Log Process" in agents
-    assert "final Ship's Log review" in agents
+    assert "Ship's Log" in agents
+    assert "When to evaluate" in agents
     for classification in ("open-item", "deferred-item", "accepted-risk"):
         assert classification in agents
     assert "drydock log append" not in shared_rules

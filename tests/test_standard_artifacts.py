@@ -11,7 +11,14 @@ def test_render_console_places_sea_trials_before_soundings(tmp_path):
 
     assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
     assert 'label: "Planning Session"' in config
-    assert 'label: "Acceptance Status"' in config
+    assert "command_status" not in config
+
+
+def test_render_console_includes_spike_questionnaire_source(tmp_path):
+    config = render_console("Example")
+
+    assert "spike-*.json" in config
+    assert "questionnaire" in config
 
 
 def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):

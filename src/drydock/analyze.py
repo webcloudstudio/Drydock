@@ -1,11 +1,11 @@
-"""``drydock analyze`` — read-only Blueprint analysis: ANALYSIS.md + planning.json.
+"""``drydock analyze`` — Blueprint analysis: ANALYSIS.md, spikes, and target artifacts.
 
-Evaluates typed specification files in a Blueprint, surfaces gaps and spike candidates,
-and writes two Planning Session artifacts to the Target's QuarterDeck. Does not write to
-the Blueprint, BUILD_CONFIGURATION.md, or MANIFEST.md.
+Single LLM call producing all analyze outputs via delimited blocks. Writes deterministically;
+tests inject a fake runner and never spend API credits.
 
-The LLM emits text; this module writes files deterministically, so tests inject a fake
-runner and never spend API credits.
+Outputs: ANALYSIS.md (QuarterDeck/planning/), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if
+absent), spike-intent.json, spike-stack.json, spike-gaps-ac.json, spike-guardrails.json, and
+any variable spikes the LLM discovers.
 """
 
 from __future__ import annotations
@@ -27,14 +27,9 @@ PROMPT_NAME = "analyze"
 _SKIP_FILES = frozenset({"METADATA.md", "README.md", "IDEAS.md"})
 _SKIP_PREFIX = "BUILD_"
 
-_ANALYSIS_BLOCK = re.compile(
-    r"=== ANALYSIS\.md ===\n(.*?)\n=== END ANALYSIS\.md ===",
-    re.DOTALL,
-)
-_PLANNING_BLOCK = re.compile(
-    r"=== planning\.json ===\n(.*?)\n=== END planning\.json ===",
-    re.DOTALL,
-)
+_FIXED_SPIKES = ("spike-intent.json", "spike-stack.json", "spike-gaps-ac.json", "spike-guardrails.json")
+
+_BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _VERDICT_RE = re.compile(r"^verdict:\s*(\S+)", re.MULTILINE)
 
 
@@ -54,9 +49,11 @@ TextCallback = Callable[[str], None]
 class AnalyzeResult:
     target_dir: Path
     analysis_path: Path
-    planning_path: Path
+    sea_trials_path: Path
+    soundings_path: Path
+    compass_path: Path | None
+    spike_paths: tuple[Path, ...]
     verdict: str
-    question_count: int
     execution_id: str | None
     ok: bool
     error: str | None = None
@@ -66,7 +63,7 @@ class AnalyzeResult:
 
 
 def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
-    """Return spec files for analysis, excluding meta/build files and changes/."""
+    """Return spec files for analysis, excluding meta/build files."""
     files = []
     for path in sorted(blueprint_dir.glob("*.md")):
         if path.name in _SKIP_FILES:
@@ -77,7 +74,7 @@ def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
     return files
 
 
-def _assemble_prompt(body: str, blueprint_dir: Path, today: str) -> str:
+def _assemble_prompt(body: str, blueprint_dir: Path, today: str, *, compass_exists: bool) -> str:
     files = _collect_blueprint_files(blueprint_dir)
     parts = [
         body,
@@ -86,6 +83,7 @@ def _assemble_prompt(body: str, blueprint_dir: Path, today: str) -> str:
         "",
         f"- BLUEPRINT_PATH: {blueprint_dir}",
         f"- DATE: {today}",
+        f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
         "",
         "## Blueprint files",
         "",
@@ -101,32 +99,48 @@ def _assemble_prompt(body: str, blueprint_dir: Path, today: str) -> str:
     return "\n".join(parts)
 
 
-def _parse_output(text: str) -> tuple[str, dict, str, int]:
-    """Return (analysis_text, planning_data, verdict, question_count).
+def _parse_blocks(text: str) -> dict[str, str]:
+    """Return a dict of block-name → stripped content from === NAME === delimiters."""
+    return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
 
-    Raises ValueError on missing blocks or invalid JSON.
+
+def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict], str]:
+    """Return (analysis, sea_trials, soundings, compass_or_none, spikes_dict, verdict).
+
+    ``spikes_dict`` maps filename → parsed dict for every spike-*.json block.
+    Raises ValueError on missing required blocks or invalid JSON.
     """
-    analysis_match = _ANALYSIS_BLOCK.search(text)
-    if not analysis_match:
-        raise ValueError("LLM output missing === ANALYSIS.md === block")
-    analysis_text = analysis_match.group(1).strip()
+    blocks = _parse_blocks(text)
 
-    planning_match = _PLANNING_BLOCK.search(text)
-    if not planning_match:
-        raise ValueError("LLM output missing === planning.json === block")
-    planning_raw = planning_match.group(1).strip()
+    for required in ("ANALYSIS.md", "SEA_TRIALS.md", "SOUNDINGS.md"):
+        if required not in blocks:
+            raise ValueError(f"LLM output missing === {required} === block")
 
-    try:
-        planning_data = json.loads(planning_raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"planning.json block is not valid JSON: {exc}") from exc
+    for spike_name in _FIXED_SPIKES:
+        if spike_name not in blocks:
+            raise ValueError(f"LLM output missing === {spike_name} === block")
 
-    verdict_match = _VERDICT_RE.search(analysis_text)
+    spikes: dict[str, dict] = {}
+    for name, content in blocks.items():
+        if name.startswith("spike-") and name.endswith(".json"):
+            try:
+                spikes[name] = json.loads(content)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
+
+    verdict_match = _VERDICT_RE.search(blocks["ANALYSIS.md"])
     verdict = verdict_match.group(1) if verdict_match else "unknown"
 
-    question_count = len(planning_data.get("questions", []))
+    compass_content = blocks.get("COMPASS.md") or None
 
-    return analysis_text, planning_data, verdict, question_count
+    return (
+        blocks["ANALYSIS.md"],
+        blocks["SEA_TRIALS.md"],
+        blocks["SOUNDINGS.md"],
+        compass_content,
+        spikes,
+        verdict,
+    )
 
 
 def analyze(
@@ -136,7 +150,7 @@ def analyze(
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
 ) -> AnalyzeResult:
-    """Analyze a Blueprint and write ANALYSIS.md + planning.json to the Planning Session."""
+    """Analyze a Blueprint and write all analyze artifacts to the Target."""
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
@@ -144,12 +158,15 @@ def analyze(
     planning_dir = target_dir / "QuarterDeck" / "planning"
     questionnaires_dir = target_dir / "QuarterDeck" / "questionnaires"
     analysis_path = planning_dir / "ANALYSIS.md"
-    planning_path = questionnaires_dir / "planning.json"
+    sea_trials_path = target_dir / "SEA_TRIALS.md"
+    soundings_path = target_dir / "SOUNDINGS.md"
+    compass_target = target_dir / "COMPASS.md"
+    compass_exists = compass_target.is_file()
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
-    assembled = _assemble_prompt(prompt.body, blueprint_dir, today)
+    assembled = _assemble_prompt(prompt.body, blueprint_dir, today, compass_exists=compass_exists)
 
     result = run(
         assembled,
@@ -162,13 +179,18 @@ def analyze(
 
     exec_id = getattr(result, "execution_id", None)
 
+    # Placeholder paths for failure results
+    spike_placeholder: tuple[Path, ...] = ()
+
     def _fail(msg: str) -> AnalyzeResult:
         return AnalyzeResult(
             target_dir=target_dir,
             analysis_path=analysis_path,
-            planning_path=planning_path,
+            sea_trials_path=sea_trials_path,
+            soundings_path=soundings_path,
+            compass_path=None,
+            spike_paths=spike_placeholder,
             verdict="unknown",
-            question_count=0,
             execution_id=exec_id,
             ok=False,
             error=msg,
@@ -178,23 +200,38 @@ def analyze(
         return _fail("LLM execution failed")
 
     try:
-        analysis_text, planning_data, verdict, question_count = _parse_output(result.text)
+        analysis_text, sea_trials_text, soundings_text, compass_text, spikes, verdict = (
+            _parse_output(result.text)
+        )
     except ValueError as exc:
         return _fail(str(exc))
 
     planning_dir.mkdir(parents=True, exist_ok=True)
     questionnaires_dir.mkdir(parents=True, exist_ok=True)
+
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
-    planning_path.write_text(
-        json.dumps(planning_data, indent=2) + "\n", encoding="utf-8", newline="\n"
-    )
+    sea_trials_path.write_text(sea_trials_text + "\n", encoding="utf-8", newline="\n")
+    soundings_path.write_text(soundings_text + "\n", encoding="utf-8", newline="\n")
+
+    written_compass: Path | None = None
+    if compass_text and not compass_exists:
+        compass_target.write_text(compass_text + "\n", encoding="utf-8", newline="\n")
+        written_compass = compass_target
+
+    spike_paths: list[Path] = []
+    for name, data in spikes.items():
+        spike_path = questionnaires_dir / name
+        spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
+        spike_paths.append(spike_path)
 
     return AnalyzeResult(
         target_dir=target_dir,
         analysis_path=analysis_path,
-        planning_path=planning_path,
+        sea_trials_path=sea_trials_path,
+        soundings_path=soundings_path,
+        compass_path=written_compass,
+        spike_paths=tuple(sorted(spike_paths)),
         verdict=verdict,
-        question_count=question_count,
-        execution_id=result.execution_id,
+        execution_id=exec_id,
         ok=True,
     )

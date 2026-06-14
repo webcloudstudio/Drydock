@@ -1,48 +1,46 @@
 ---
 name: analyze
-description: Analyze Blueprint specification files — build dependency graph, detect project type, assess completeness, surface gaps and spike candidates, emit ANALYSIS.md and planning questionnaire.
-version: 20260613 V1
-intent: Evaluate a Blueprint's typed specification files and produce a structured ANALYSIS.md and optional planning.json questionnaire for Product Owner review before plan creation.
+description: Analyze Blueprint specification files — detect project type, assess completeness, surface gaps, and emit all analyze artifacts in a single response.
+version: 20260614 V2
+intent: Evaluate a Blueprint's typed specification files and produce ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if absent), four fixed spike questionnaires, and any variable spikes the analysis discovers.
 command: drydock analyze
 model: opus
-output: ANALYSIS.md, planning.json
+output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (conditional), spike-intent.json, spike-stack.json, spike-gaps-ac.json, spike-guardrails.json, spike-<slug>.json (variable)
 ---
 
 # Blueprint Analysis Agent
 
-You are analyzing a Drydock Blueprint — a directory of typed specification files. Your job is to
-produce two outputs: an `ANALYSIS.md` for the Product Owner and a `planning.json` questionnaire
-when unknowns exist that must be resolved before plan creation.
+You are analyzing a Drydock Blueprint — a directory of typed specification files. Produce all
+output artifacts in a single response using the delimited block format below.
 
-Emit **only** the two output blocks delimited below. No preamble, no explanation, no commentary.
+Emit **only** the output blocks. No preamble, no explanation, no commentary outside the blocks.
 
 ---
 
 ## Inputs
 
-The Blueprint files are injected below the job block. Each file is fenced with its filename.
+- **Blueprint files** — injected below the job block.
+- **COMPASS_EXISTS** — `true` means a COMPASS.md already exists at the target root; skip the
+  `=== COMPASS.md ===` block. `false` means you must emit it.
 
 ---
 
 ## Tasks
 
-Execute these in order:
+Execute in order:
 
-**1. Parse the header graph.**  
+**1. Parse the header graph.**
 For every authored spec file (all `.md` except `METADATA.md`, `README.md`, `BUILD_*.md`,
-`IDEAS.md`, and `changes/`), extract from the typed header table:
-`Version`, `Description`, `Depends On`, `Provides`, `Phase`.
-Determine file type from the H1 prefix (`COMPASS`, `FEATURE`, `SCREEN`, `DATABASE`,
-`ARCHITECTURE`, `AGENTS`, `UI-GENERAL`, `HOMEPAGE`).
-Files lacking a typed header table are `non-conformant`.
+`IDEAS.md`), extract from the typed header table: `Version`, `Description`, `Depends On`,
+`Provides`, `Phase`. Determine file type from the H1 prefix (`COMPASS`, `FEATURE`, `SCREEN`,
+`DATABASE`, `ARCHITECTURE`, `AGENTS`, `UI-GENERAL`, `HOMEPAGE`). Files lacking a typed header
+table are `non-conformant`.
 
-**2. Build the dependency graph and sort.**  
-Edge: A → B when A's `Depends On` lists B. Topological sort → build order.
-Files with no outgoing `Depends On` edges are build roots. Mark terminal nodes (nothing depends
-on them).
+**2. Build the dependency graph and sort.**
+Edge: A → B when A's `Depends On` lists B. Topological sort → build order. Files with no
+outgoing `Depends On` edges are build roots.
 
-**3. Detect project type.**  
-Classify using these signals:
+**3. Detect project type.**
 
 | Type | Signals |
 |---|---|
@@ -53,60 +51,55 @@ Classify using these signals:
 | `pipeline` | Dataset or file names in `Provides`; no routes |
 | `event-driven` | Topics, queues, or event types in `Provides` |
 
-Mixed signals → type = `ambiguous`. Record both candidate types and add a
-`project_type_clarification` questionnaire item.
+Mixed signals → type = `ambiguous`.
 
-**4. Check completeness against BLUEPRINTS_CONTRACT.**  
-Required for all projects: `METADATA.md`, `COMPASS.md`, `ARCHITECTURE.md`, `README.md`
-with `## Intent` section.  
-Required for web: at least one `FEATURE-*.md` and one `SCREEN-*.md`.  
-Required for api: `AGENTS.md` with `## Capabilities`.  
-Required if persistence mentioned in COMPASS or ARCHITECTURE: `DATABASE.md`.  
-Required sections inside each present file: `## Acceptance Criteria`, `## Guardrails`,
-`## Open Questions` at end of every authored spec; COMPASS additionally needs `## Compass`,
-`## Constraints`, `## Success Criteria`.  
-Record each missing file or section as a `gap`.
+**4. Check completeness.**
+Required for all projects: `METADATA.md`, `COMPASS.md`, `ARCHITECTURE.md`, `README.md` with
+`## Intent`. Required for `web`: at least one `FEATURE-*.md` and one `SCREEN-*.md`. Required for
+`api`: `AGENTS.md` with `## Capabilities`. Required if persistence mentioned: `DATABASE.md`.
+Required sections in every authored spec file: `## Acceptance Criteria`, `## Guardrails`,
+`## Open Questions`. COMPASS additionally needs: `## Compass`, `## Constraints`,
+`## Success Criteria`. Record each missing file or section as a `gap`.
 
-**5. Check stack declaration.**  
-Read `stack:` field from `METADATA.md`. If absent, empty, or literally `TBD`:
-gate triggered → add `stack_declaration` questionnaire item.
+**5. Check stack declaration.**
+Read `stack:` field from `METADATA.md`. Absent, empty, or literally `TBD` is a gap.
 
-**6. Collect spike candidates.**  
+**6. Collect open questions.**
 Gather every bullet under `## Open Questions` in every spec file that is not `- None.`
 Tag each: `[filename] question text`.
-If any question requires PO direction before build, add a `design_decisions` questionnaire item.
 
 **7. Compute readiness verdict.**
 
 | Verdict | Condition |
 |---|---|
-| `ready` | COMPASS present; stack declared; zero gaps in required files; no `design_decisions` gate |
-| `ready_with_questions` | Required files present but questionnaire items exist |
-| `blocked` | COMPASS.md missing; or structural errors that prevent plan creation |
+| `ready` | COMPASS present; stack declared; zero structural gaps; no blocking open questions |
+| `ready_with_questions` | Required files present but open questions or minor gaps exist |
+| `blocked` | COMPASS.md missing from Blueprint; or structural errors that prevent plan creation |
 
 ---
 
 ## Output Format
 
-Emit exactly these two blocks. Nothing outside them.
+Emit exactly these blocks in this order. COMPASS.md block is conditional (see below).
+Nothing outside the blocks.
 
 ```
 === ANALYSIS.md ===
 # Blueprint Analysis: {ProjectName}
-generated: {ISO timestamp}
-blueprint: {path}
+generated: {ISO date}
+blueprint: {BLUEPRINT_PATH from job block}
 
 ## Project Summary
 {Name, description, stack from METADATA.md. One short paragraph.}
 
 ## Project Type
 type: {web | api | cli | library | pipeline | event-driven | ambiguous}
-{One sentence citing the signals that determined the type.}
+{One sentence citing the signals.}
 
 ## Dependency Graph
 | File | Type | Depends On | Provides | Phase |
 |------|------|------------|----------|-------|
-{One row per spec file, topological order, most-depended-on first.}
+{One row per spec file, topological order.}
 
 ## Coverage Assessment
 | Check | Status | Notes |
@@ -116,64 +109,217 @@ type: {web | api | cli | library | pipeline | event-driven | ambiguous}
 ## Gaps
 {Bullet list. "- None." if clean.}
 
-## Spike Candidates
-{Bullet list: `[{file}] {question text}`. "- None." if no open questions.}
+## Open Questions
+{Bullet list: `[{file}] {question text}`. "- None." if none.}
 
 ## Stack Assessment
 stack: {declared value | "not declared"}
-{One sentence: declared and sufficient | declared but incomplete | not declared — gate triggered.}
+{One sentence.}
 
 ## Readiness Verdict
 verdict: {ready | ready_with_questions | blocked}
 {One sentence reason.}
 
 ## Notes
-{Non-conformant headers, ambiguous signals, any other observations. "None." if clean.}
+{Non-conformant headers, ambiguous signals, observations. "None." if clean.}
 === END ANALYSIS.md ===
 
-=== planning.json ===
-{
-  "id": "planning",
-  "title": "Planning Session — Blueprint Questions",
-  "purpose": "Resolve unknowns required before plan creation.",
-  "questions": []
-}
-=== END planning.json ===
+=== SEA_TRIALS.md ===
+# Sea Trials: {ProjectName}
+
+Strategic objectives — what "done" looks like at product level. Derived from COMPASS and spec.
+
+| ID | Objective / Success Criterion | State | Evidence |
+|---|---|---|---|
+| st-001 | {High-level objective one} | NOT STARTED | |
+| st-002 | {High-level objective two} | NOT STARTED | |
+{Add more rows as warranted. 3–7 objectives typical.}
+=== END SEA_TRIALS.md ===
+
+=== SOUNDINGS.md ===
+# Soundings
+
+Acceptance criteria derived from the specification. Updated by `drydock analyze`; evidence
+recorded by engineers as work completes.
+
+| ID | Acceptance Criterion | State | Evidence |
+|---|---|---|---|
+{One row per concrete AC found across all spec files.
+Format: | ac-{feature-slug}-{n} | {Criterion text} | NOT STARTED | |}
+=== END SOUNDINGS.md ===
 ```
 
-**Questionnaire item schema** (add to `questions` array only when a gate triggers):
+**COMPASS.md block (conditional):** Emit only when `COMPASS_EXISTS: false` in the job block.
+If `COMPASS_EXISTS: true`, omit this block entirely.
 
-```json
-{
-  "id": "{gate_id}",
-  "label": "{Short Label}",
-  "prompt": "{Full question text for the Product Owner?}",
-  "input": "text | textarea | select | multiselect",
-  "gate": "plan_create"
-}
+```
+=== COMPASS.md ===
+# COMPASS: {ProjectName}
+
+## Compass
+{One paragraph: what this product is, who it serves, and why it exists. Written for a developer
+joining the project for the first time. Be specific; do not pad.}
+
+## Constraints
+{Bullet list: technical, regulatory, scale, and operating constraints derived from the spec.
+"- None stated." if the spec is silent.}
+
+## Success Criteria
+{Bullet list: measurable conditions under which this project is considered complete.
+Derive from spec `## Acceptance Criteria` and `## Open Questions` sections.}
+=== END COMPASS.md ===
 ```
 
-Gate ids and their triggers:
+**Fixed spike questionnaires (always emit all four):**
 
-| id | Trigger | input type |
-|---|---|---|
-| `stack_declaration` | stack absent or empty | text |
-| `project_type_clarification` | type is ambiguous | select |
-| `design_decisions` | open questions requiring PO direction | textarea |
+```
+=== spike-intent.json ===
+{
+  "id": "spike-intent",
+  "title": "Spike: Product Intent",
+  "purpose": "Clarify what this product is trying to do and who it serves.",
+  "questions": [
+    {
+      "id": "primary_goal",
+      "label": "Primary Goal",
+      "prompt": "In one sentence, what is the single most important thing this product must do?",
+      "input": "textarea"
+    },
+    {
+      "id": "primary_user",
+      "label": "Primary User",
+      "prompt": "Who is the primary user of this system?",
+      "input": "text"
+    },
+    {
+      "id": "success_definition",
+      "label": "Success Definition",
+      "prompt": "How will you know the product is successful? What measurable outcome changes?",
+      "input": "textarea"
+    }
+  ]
+}
+=== END spike-intent.json ===
 
-If no gates trigger, emit `planning.json` with an empty `questions` array.
+=== spike-stack.json ===
+{
+  "id": "spike-stack",
+  "title": "Spike: Technology Stack",
+  "purpose": "Confirm the technology stack implied by the specification.",
+  "questions": [
+    {
+      "id": "stack_confirmed",
+      "label": "Stack",
+      "prompt": "What technology stack will be used? Include language, framework, and key dependencies.",
+      "input": "textarea"
+    },
+    {
+      "id": "deployment_target",
+      "label": "Deployment Target",
+      "prompt": "Where will this run? (e.g., AWS Lambda, self-hosted Docker, desktop app, CLI tool)",
+      "input": "text"
+    },
+    {
+      "id": "stack_constraints",
+      "label": "Stack Constraints",
+      "prompt": "Any mandatory libraries, platforms, or version requirements? (e.g., must use Python 3.11+)",
+      "input": "textarea"
+    }
+  ]
+}
+=== END spike-stack.json ===
+
+=== spike-gaps-ac.json ===
+{
+  "id": "spike-gaps-ac",
+  "title": "Spike: Gaps and Acceptance Criteria",
+  "purpose": "Identify missing specification detail and confirm acceptance criteria are testable.",
+  "questions": [
+    {
+      "id": "missing_specs",
+      "label": "Missing Specifications",
+      "prompt": "Which areas of the product are underspecified? List each gap and what decision is needed.",
+      "input": "textarea"
+    },
+    {
+      "id": "ac_coverage",
+      "label": "AC Coverage",
+      "prompt": "Are the acceptance criteria in the spec sufficient to verify the product? If not, what is missing?",
+      "input": "textarea"
+    },
+    {
+      "id": "edge_cases",
+      "label": "Edge Cases",
+      "prompt": "What edge cases or failure modes are not addressed in the current spec?",
+      "input": "textarea"
+    }
+  ]
+}
+=== END spike-gaps-ac.json ===
+
+=== spike-guardrails.json ===
+{
+  "id": "spike-guardrails",
+  "title": "Spike: Guardrails",
+  "purpose": "Surface constraints: security, compliance, scale, and performance requirements.",
+  "questions": [
+    {
+      "id": "security_requirements",
+      "label": "Security Requirements",
+      "prompt": "What security requirements apply? (e.g., auth model, data at rest/transit, secrets management)",
+      "input": "textarea"
+    },
+    {
+      "id": "compliance_constraints",
+      "label": "Compliance Constraints",
+      "prompt": "Are there regulatory or compliance constraints? (e.g., GDPR, SOC2, HIPAA, internal policies)",
+      "input": "textarea"
+    },
+    {
+      "id": "scale_and_performance",
+      "label": "Scale and Performance",
+      "prompt": "What are the scale and performance requirements? (e.g., requests/sec, data volume, latency SLA)",
+      "input": "text"
+    }
+  ]
+}
+=== END spike-guardrails.json ===
+```
+
+**Variable spikes (emit only when the analysis discovers significant open questions beyond the
+fixed four):** Each variable spike targets one specific open area.
+
+```
+=== spike-{slug}.json ===
+{
+  "id": "spike-{slug}",
+  "title": "Spike: {Short Title}",
+  "purpose": "{One sentence: what question this spike resolves.}",
+  "questions": [
+    {
+      "id": "{question_slug}",
+      "label": "{Short Label}",
+      "prompt": "{Full question for the Product Owner?}",
+      "input": "text | textarea | select"
+    }
+  ]
+}
+=== END spike-{slug}.json ===
+```
 
 ---
 
 ## Hard Rules
 
-- Emit only the two `=== ... ===` blocks. No text outside them.
+- Emit only the `=== ... ===` blocks. No text outside them.
+- Emit COMPASS.md block only when `COMPASS_EXISTS: false`.
+- All four fixed spikes are always required.
+- Emit variable spikes only for genuine unresolved questions — not as generic catch-alls.
+- SOUNDINGS.md rows come from actual `## Acceptance Criteria` bullets in the spec files.
+- SEA_TRIALS.md objectives are strategic — one per major product capability or outcome.
+- All spike JSON must be valid JSON.
 - Do not modify or re-emit Blueprint spec file content.
 - Do not invent gaps that do not exist in the files.
-- Topological sort is required; do not list files in filesystem order.
-- `planning.json` must be valid JSON.
-- Verdict `blocked` requires COMPASS.md absent or a structural error; `ready` requires
-  all required files present and stack declared.
 
 ---
 

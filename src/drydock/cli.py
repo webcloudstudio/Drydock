@@ -188,14 +188,17 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
         return 1
-    print(f"  ANALYSIS.md  →  {result.analysis_path}")
-    print(f"  planning.json  →  {result.planning_path}")
+    print(f"  ANALYSIS.md   →  {result.analysis_path}")
+    print(f"  SEA_TRIALS.md →  {result.sea_trials_path}")
+    print(f"  SOUNDINGS.md  →  {result.soundings_path}")
+    if result.compass_path:
+        print(f"  COMPASS.md    →  {result.compass_path}")
+    for spike_path in result.spike_paths:
+        print(f"  {spike_path.name:<20} →  {spike_path}")
     print()
     verdict_label = _VERDICT_LABELS.get(result.verdict, result.verdict)
     print(f"Verdict:   {result.verdict}")
     print(f"           {verdict_label}")
-    if result.question_count:
-        print(f"Questions: {result.question_count} item(s) require answers in the Planning Session.")
     print()
     print(f"Next step: drydock run quarterdeck {args.Target}")
     return 0
