@@ -189,9 +189,22 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}  (created)")
     for spike_path in result.spike_paths:
         print(f"  {spike_path.name:<20} →  {spike_path.relative_to(tdir)}")
+    if result.captains_chair_path:
+        print(f"  captains_chair  →  {result.captains_chair_path.relative_to(tdir)}  (lifecycle: analyzed)")
     print()
-    print("Analysis complete. Review in QuarterDeck to proceed.")
-    print(f"Next step: drydock run quarterdeck {args.Target}")
+    _quality_icon = {"Ready": "✓", "Questions": "⚠", "Blocked": "✗"}.get(result.quality, "?")
+    print(f"Quality: {_quality_icon}  {result.quality}  "
+          f"({result.story_count} stories · {result.question_count} questions · "
+          f"{result.blocker_count} blockers)")
+    print()
+    if result.quality == "Ready":
+        print(f"Next step: drydock plan create {args.Target}")
+    elif result.quality == "Questions":
+        print("Review open questions in ANALYSIS.md, then run:")
+        print(f"  drydock plan create {args.Target}")
+    else:
+        print("Resolve blockers listed in ANALYSIS.md, then re-run:")
+        print(f"  drydock analyze {args.Target}")
     return 0
 
 

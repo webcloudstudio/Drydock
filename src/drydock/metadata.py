@@ -14,6 +14,8 @@ from pathlib import Path
 METADATA_NAME = "METADATA.md"
 DEFAULT_CODE_ROOT = "../.."
 
+BUILD_STATE_LADDER: tuple[str, ...] = ("init", "analyzed", "planned", "building", "built")
+
 
 def parse_metadata(path: Path) -> dict[str, str]:
     """
@@ -67,6 +69,42 @@ def render_metadata(
         "Record unresolved questions in the `## Open Questions` section of the "
         "relevant blueprint file.\n"
     )
+
+
+def get_build_state(target_dir: Path) -> str:
+    """Return the current ``drydock_build_state`` from METADATA.md, defaulting to ``init``."""
+    fields = parse_metadata(target_dir / METADATA_NAME)
+    state = fields.get("drydock_build_state", "init")
+    return state if state in BUILD_STATE_LADDER else "init"
+
+
+def set_build_state(target_dir: Path, state: str) -> bool:
+    """Advance ``drydock_build_state`` in METADATA.md (forward-only).
+
+    Returns True if the state was written, False if already at or past ``state``.
+    Does nothing if METADATA.md does not exist.
+    """
+    if state not in BUILD_STATE_LADDER:
+        raise ValueError(f"Unknown build state: {state!r}")
+    path = target_dir / METADATA_NAME
+    if not path.exists():
+        return False
+    current = get_build_state(target_dir)
+    curr_idx = BUILD_STATE_LADDER.index(current)
+    new_idx = BUILD_STATE_LADDER.index(state)
+    if new_idx <= curr_idx:
+        return False
+    text = path.read_text(encoding="utf-8")
+    field = "drydock_build_state"
+    new_line = f"{field}: {state}"
+    if re.search(rf"^{field}:", text, re.MULTILINE):
+        text = re.sub(rf"^{field}:.*$", new_line, text, flags=re.MULTILINE)
+    elif re.search(r"^## ", text, re.MULTILINE):
+        text = re.sub(r"^(## )", rf"{new_line}\n\n\1", text, count=1, flags=re.MULTILINE)
+    else:
+        text = text.rstrip("\n") + f"\n{new_line}\n"
+    path.write_text(text, encoding="utf-8", newline="\n")
+    return True
 
 
 def get_code_root(target_dir: Path) -> Path:

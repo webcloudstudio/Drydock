@@ -11,6 +11,8 @@ import pytest
 from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
+    _fill_captains_chair,
+    _is_compass_unpopulated,
     _parse_blocks,
     _parse_output,
     analyze,
@@ -26,38 +28,39 @@ _ANALYSIS_CONTENT = """\
 generated: 2026-06-14
 blueprint: /some/path
 
-## Project Summary
-A test project.
+## Analysis Summary
 
-## Project Type
-type: web
-Signals: SCREEN files present.
-
-## Dependency Graph
-| File | Type | Depends On | Provides | Phase |
-|------|------|------------|----------|-------|
-| COMPASS.md | COMPASS | — | — | — |
-
-## Coverage Assessment
-| Check | Status | Notes |
-|-------|--------|-------|
-| COMPASS.md | pass | present |
-
-## Gaps
-- None.
+Quality: Ready
+  blockers: 0
+  questions: 0
+  stories: 5
+  stack: python/flask
+  screens: 2
 
 ## Open Questions
+
 - None.
 
-## Stack Assessment
-stack: python/flask
-Stack declared and sufficient.
+## Story List
 
-## Readiness Verdict
-verdict: ready
-All required files present and stack declared.
+| Area | Story |
+|------|-------|
+| Auth | User login |
+| Auth | User registration |
+| Dashboard | Dashboard view |
+| API | REST endpoints |
+| UI | Login screen |
+
+### Tuning Options
+- Option A: Decompose by feature (recommended)
+- Option B: Decompose by layer
+
+## Blockers
+
+- None.
 
 ## Notes
+
 None."""
 
 _SEA_TRIALS_CONTENT = """\
@@ -115,9 +118,10 @@ _SPIKE_GUARDRAILS = json.dumps({
 }, indent=2)
 
 
-def _make_llm_output(*, include_compass: bool = True, extra_spike: bool = False) -> str:
+def _make_llm_output(*, include_compass: bool = True, extra_spike: bool = False, quality: str = "Ready") -> str:
+    analysis = _ANALYSIS_CONTENT.replace("Quality: Ready", f"Quality: {quality}")
     blocks = [
-        f"=== ANALYSIS.md ===\n{_ANALYSIS_CONTENT}\n=== END ANALYSIS.md ===",
+        f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
         f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
         f"=== SOUNDINGS.md ===\n{_SOUNDINGS_CONTENT}\n=== END SOUNDINGS.md ===",
         f"=== spike-intent.json ===\n{_SPIKE_INTENT}\n=== END spike-intent.json ===",
@@ -154,6 +158,39 @@ def _target(tmp_path: Path, **blueprint_files: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# _is_compass_unpopulated
+# ---------------------------------------------------------------------------
+
+
+class TestIsCompassUnpopulated:
+    def test_nonexistent_file_returns_false(self, tmp_path):
+        assert not _is_compass_unpopulated(tmp_path / "COMPASS.md")
+
+    def test_html_comment_placeholder_returns_true(self, tmp_path):
+        p = tmp_path / "COMPASS.md"
+        p.write_text("# COMPASS\n\n## Compass\n<!-- fill me in -->\n", encoding="utf-8")
+        assert _is_compass_unpopulated(p)
+
+    def test_all_none_sections_returns_true(self, tmp_path):
+        p = tmp_path / "COMPASS.md"
+        p.write_text("# COMPASS\n\n## Compass\n- None.\n\n## Constraints\n- None.\n", encoding="utf-8")
+        assert _is_compass_unpopulated(p)
+
+    def test_populated_file_returns_false(self, tmp_path):
+        p = tmp_path / "COMPASS.md"
+        p.write_text("# COMPASS\n\n## Compass\nThis is a real project.\n", encoding="utf-8")
+        assert not _is_compass_unpopulated(p)
+
+    def test_mixed_content_returns_false(self, tmp_path):
+        p = tmp_path / "COMPASS.md"
+        p.write_text(
+            "# COMPASS\n\n## Compass\nA real project.\n\n## Constraints\n- None.\n",
+            encoding="utf-8",
+        )
+        assert not _is_compass_unpopulated(p)
+
+
+# ---------------------------------------------------------------------------
 # _collect_blueprint_files
 # ---------------------------------------------------------------------------
 
@@ -165,7 +202,7 @@ class TestCollectBlueprintFiles:
         (bp / "COMPASS.md").write_text("c", encoding="utf-8")
         (bp / "FEATURE-Auth.md").write_text("f", encoding="utf-8")
         names = [p.name for p in _collect_blueprint_files(bp)]
-        assert "COMPASS.md" not in names  # COMPASS lives at target root, not blueprint
+        assert "COMPASS.md" not in names
         assert "FEATURE-Auth.md" in names
 
     def test_excludes_meta_files(self, tmp_path):
@@ -215,20 +252,32 @@ class TestAssemblePrompt:
     def test_injects_spec_files_fenced(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        (bp / "COMPASS.md").write_text("compass content", encoding="utf-8")
         (bp / "FEATURE-Auth.md").write_text("auth content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### COMPASS.md" not in result   # blueprint COMPASS.md is skipped
-        assert "compass content" not in result
         assert "### FEATURE-Auth.md" in result
         assert "auth content" in result
 
     def test_excludes_build_files(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        (bp / "BUILD_CONFIGURATION.md").write_text("should not appear", encoding="utf-8")
+        (bp / "BUILD_CONFIGURATION.md").write_text("should not appear in spec section", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "should not appear" not in result
+        # BUILD_CONFIGURATION.md should be in the Prior PO answers section if present, not spec section
+        assert "### BUILD_CONFIGURATION.md" not in result
+
+    def test_injects_build_configuration_if_present(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        (bp / "BUILD_CONFIGURATION.md").write_text("stack: flask\n", encoding="utf-8")
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "Prior PO answers" in result
+        assert "stack: flask" in result
+
+    def test_no_build_configuration_section_when_absent(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "Prior PO answers" not in result
 
     def test_prompt_body_comes_first(self, tmp_path):
         bp = tmp_path / "blueprint"
@@ -267,17 +316,35 @@ class TestParseBlocks:
 
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
-        analysis, sea_trials, soundings, compass, spikes, verdict, _ = _parse_output(_VALID_LLM_OUTPUT)
+        analysis, sea_trials, soundings, compass, spikes, quality, summary = _parse_output(_VALID_LLM_OUTPUT)
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
         assert "Soundings" in soundings
         assert compass is not None
         assert "COMPASS" in compass
-        assert verdict == "ready"
+        assert quality == "Ready"
         assert "spike-intent.json" in spikes
         assert "spike-stack.json" in spikes
         assert "spike-gaps-ac.json" in spikes
         assert "spike-guardrails.json" in spikes
+
+    def test_summary_fields_parsed(self):
+        _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT)
+        assert summary.get("stories") == "5"
+        assert summary.get("blockers") == "0"
+        assert summary.get("questions") == "0"
+        assert summary.get("stack") == "python/flask"
+        assert summary.get("screens") == "2"
+
+    def test_blocked_quality_parsed(self):
+        output = _make_llm_output(quality="Blocked")
+        _, _, _, _, _, quality, _ = _parse_output(output)
+        assert quality == "Blocked"
+
+    def test_questions_quality_parsed(self):
+        output = _make_llm_output(quality="Questions")
+        _, _, _, _, _, quality, _ = _parse_output(output)
+        assert quality == "Questions"
 
     def test_no_compass_block_returns_none(self):
         _, _, _, compass, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
@@ -308,15 +375,68 @@ class TestParseOutput:
         with pytest.raises(ValueError, match="not valid JSON"):
             _parse_output(bad)
 
-    def test_unknown_verdict_when_absent(self):
-        no_verdict = _VALID_LLM_OUTPUT.replace("verdict: ready", "")
-        _, _, _, _, _, verdict, _ = _parse_output(no_verdict)
-        assert verdict == "unknown"
+    def test_unknown_quality_when_absent(self):
+        no_quality = _VALID_LLM_OUTPUT.replace("Quality: Ready", "")
+        _, _, _, _, _, quality, _ = _parse_output(no_quality)
+        assert quality == "unknown"
 
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
         _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "spike-auth.json" in spikes
+
+
+# ---------------------------------------------------------------------------
+# _fill_captains_chair
+# ---------------------------------------------------------------------------
+
+
+class TestFillCaptainsChair:
+    _TEMPLATE = (
+        "{{PROJECT_NAME}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
+        "{{STORY_COUNT}}|{{QUESTION_COUNT}}|{{BLOCKER_COUNT}}|{{SCREEN_COUNT}}|"
+        "{{STACK}}|{{NEXT_STEP}}|{{GENERATED_DATE}}"
+    )
+
+    def test_ready_fill(self):
+        result = _fill_captains_chair(
+            self._TEMPLATE,
+            quality="Ready",
+            story_count=10,
+            question_count=0,
+            blocker_count=0,
+            screen_count=3,
+            stack="python/flask",
+            next_step="drydock plan create Foo",
+            project_name="Foo",
+            generated_date="2026-06-14",
+        )
+        assert "Foo" in result
+        assert "Ready" in result
+        assert "ready" in result
+        assert "✓" in result
+        assert "10" in result
+        assert "python/flask" in result
+
+    def test_blocked_css_class(self):
+        result = _fill_captains_chair(
+            "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
+            quality="Blocked",
+            story_count=0, question_count=0, blocker_count=1, screen_count=0,
+            stack="", next_step="", project_name="X", generated_date="",
+        )
+        assert "blocked" in result
+        assert "✗" in result
+
+    def test_questions_css_class(self):
+        result = _fill_captains_chair(
+            "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
+            quality="Questions",
+            story_count=0, question_count=2, blocker_count=0, screen_count=0,
+            stack="", next_step="", project_name="X", generated_date="",
+        )
+        assert "questions" in result
+        assert "⚠" in result
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +468,20 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.soundings_path == target_dir / "SOUNDINGS.md"
 
+    def test_quality_signal_in_result(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.quality == "Ready"
+
+    def test_summary_counts_in_result(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.story_count == 5
+        assert result.blocker_count == 0
+        assert result.question_count == 0
+        assert result.screen_count == 2
+        assert result.stack == "python/flask"
+
     def test_compass_written_when_absent(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
@@ -355,13 +489,21 @@ class TestAnalyze:
         assert result.compass_path == target_dir / "COMPASS.md"
         assert result.compass_path.exists()
 
+    def test_compass_written_when_unpopulated_template(self, tmp_path):
+        target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
+        compass = target_dir / "COMPASS.md"
+        compass.write_text("# COMPASS\n\n## Compass\n<!-- fill me in -->\n", encoding="utf-8")
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.ok
+        assert result.compass_path is not None
+
     def test_compass_not_overwritten_when_present(self, tmp_path):
-        target_dir = _target(tmp_path, **{"COMPASS.md": "existing"})
-        (target_dir / "COMPASS.md").write_text("original content\n", encoding="utf-8")
+        target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
+        (target_dir / "COMPASS.md").write_text("# COMPASS\n\n## Compass\nReal content.\n", encoding="utf-8")
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.ok
         assert result.compass_path is None
-        assert (target_dir / "COMPASS.md").read_text(encoding="utf-8") == "original content\n"
+        assert (target_dir / "COMPASS.md").read_text(encoding="utf-8").startswith("# COMPASS")
 
     def test_four_fixed_spikes_written(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -434,6 +576,56 @@ class TestAnalyze:
             "MyTarget", target_dir, runner=lambda *a, **k: FakeRun(ok=False, text="")
         )
         assert result.exit_code() == 1
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle state
+# ---------------------------------------------------------------------------
+
+
+class TestLifecycleState:
+    def test_state_advances_to_analyzed_on_first_run(self, tmp_path):
+        from drydock.metadata import get_build_state, render_metadata
+
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "METADATA.md").write_text(render_metadata("MyTarget"), encoding="utf-8")
+        assert get_build_state(target_dir) == "init"
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert get_build_state(target_dir) == "analyzed"
+
+    def test_captains_chair_written_on_first_run(self, tmp_path):
+        from drydock.metadata import render_metadata
+
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "METADATA.md").write_text(render_metadata("MyTarget"), encoding="utf-8")
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.captains_chair_path is not None
+        assert result.captains_chair_path.exists()
+
+    def test_captains_chair_not_overwritten_when_state_does_not_advance(self, tmp_path):
+        from drydock.metadata import render_metadata, set_build_state
+
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "METADATA.md").write_text(render_metadata("MyTarget"), encoding="utf-8")
+        set_build_state(target_dir, "analyzed")
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.captains_chair_path is None
+
+    def test_captains_chair_not_written_when_no_metadata(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.captains_chair_path is None
+
+    def test_state_not_reversed_when_already_planned(self, tmp_path):
+        from drydock.metadata import get_build_state, render_metadata, set_build_state
+
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "METADATA.md").write_text(render_metadata("MyTarget"), encoding="utf-8")
+        set_build_state(target_dir, "analyzed")
+        set_build_state(target_dir, "planned")
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert get_build_state(target_dir) == "planned"
 
 
 # ---------------------------------------------------------------------------

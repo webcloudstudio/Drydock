@@ -1,11 +1,11 @@
-"""``drydock analyze`` — Blueprint analysis: ANALYSIS.md, spikes, and target artifacts.
+"""``drydock analyze`` — Scrum-team Blueprint analysis: quality signal, story list, artifacts.
 
 Single LLM call producing all analyze outputs via delimited blocks. Writes deterministically;
 tests inject a fake runner and never spend API credits.
 
-Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if
-absent), spike-intent.json, spike-stack.json, spike-gaps-ac.json, spike-guardrails.json, and
-any variable spikes the LLM discovers.
+Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if absent or
+unpopulated), spike-intent.json, spike-stack.json, spike-gaps-ac.json, spike-guardrails.json,
+variable spikes, captains_chair.html (when lifecycle state advances to analyzed).
 """
 
 from __future__ import annotations
@@ -20,6 +20,8 @@ from typing import Protocol
 
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
+from drydock.metadata import set_build_state
+from drydock.paths import get_rigging_root
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "analyze"
@@ -28,16 +30,27 @@ _SKIP_FILES = frozenset({
     "METADATA.md",
     "README.md",
     "IDEAS.md",
-    "COMPASS.md",           # lives at target root; blueprint copy is always a stub
-    "ACCEPTANCE_CRITERIA.md",  # not a typed spec file type
+    "COMPASS.md",
+    "ACCEPTANCE_CRITERIA.md",
 })
 _SKIP_PREFIX = "BUILD_"
 
-_FIXED_SPIKES = ("spike-intent.json", "spike-stack.json", "spike-gaps-ac.json", "spike-guardrails.json")
+_FIXED_SPIKES = (
+    "spike-intent.json",
+    "spike-stack.json",
+    "spike-gaps-ac.json",
+    "spike-guardrails.json",
+)
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
-_VERDICT_RE = re.compile(r"^verdict:\s*(\S+)", re.MULTILINE)
-_VERDICT_REASON_RE = re.compile(r"^verdict:\s*\S+[^\n]*\n([^\n#][^\n]+)", re.MULTILINE)
+_QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
+_SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
+
+_QUALITY_META: dict[str, tuple[str, str, str]] = {
+    "Ready":     ("ready",     "✓", "All blockers resolved. Ready for plan create."),
+    "Questions": ("questions", "⚠", "Open questions remain. Plan create can proceed."),
+    "Blocked":   ("blocked",   "✗", "Unresolved blockers. Review before continuing."),
+}
 
 
 class CompletedRun(Protocol):
@@ -59,9 +72,14 @@ class AnalyzeResult:
     sea_trials_path: Path
     soundings_path: Path
     compass_path: Path | None
+    captains_chair_path: Path | None
     spike_paths: tuple[Path, ...]
-    verdict: str
-    verdict_reason: str | None
+    quality: str
+    story_count: int
+    question_count: int
+    blocker_count: int
+    screen_count: int
+    stack: str
     execution_id: str | None
     ok: bool
     error: str | None = None
@@ -82,7 +100,38 @@ def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
     return files
 
 
-def _assemble_prompt(body: str, blueprint_dir: Path, today: str, *, compass_exists: bool) -> str:
+_EMPTY_LINE = frozenset({"", "- None.", "- None"})
+
+
+def _is_compass_unpopulated(path: Path) -> bool:
+    """Return True if COMPASS.md exists but is an unfilled template."""
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if "<!--" in text:
+        return True
+    # Collect content lines inside ## sections (skip H1 title and headers themselves)
+    content_lines: list[str] = []
+    in_section = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            in_section = True
+        elif line.startswith("# "):
+            in_section = False
+        elif in_section:
+            content_lines.append(line.strip())
+    if not content_lines:
+        return True
+    return all(line in _EMPTY_LINE for line in content_lines)
+
+
+def _assemble_prompt(
+    body: str,
+    blueprint_dir: Path,
+    today: str,
+    *,
+    compass_exists: bool,
+) -> str:
     files = _collect_blueprint_files(blueprint_dir)
     parts = [
         body,
@@ -93,9 +142,41 @@ def _assemble_prompt(body: str, blueprint_dir: Path, today: str, *, compass_exis
         f"- DATE: {today}",
         f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
         "",
-        "## Blueprint files",
-        "",
     ]
+
+    # Inject prior PO answers if BUILD_CONFIGURATION.md exists
+    config_path = blueprint_dir / "BUILD_CONFIGURATION.md"
+    if config_path.is_file():
+        config_text = config_path.read_text(encoding="utf-8")
+        parts += [
+            "## Prior PO answers (BUILD_CONFIGURATION.md)",
+            "",
+            "Do not re-ask questions that are already answered here.",
+            "",
+            "```markdown",
+            config_text,
+            "```",
+            "",
+        ]
+
+    # Inject Rigging stack catalog reference
+    try:
+        stack_readme = get_rigging_root() / "stack" / "README.md"
+        if stack_readme.is_file():
+            parts += [
+                "## Rigging stack catalog",
+                "",
+                "Use these concrete technology names when populating spike-stack.json options.",
+                "",
+                "```markdown",
+                stack_readme.read_text(encoding="utf-8"),
+                "```",
+                "",
+            ]
+    except Exception:
+        pass
+
+    parts += ["## Blueprint files", ""]
     for path in files:
         content = path.read_text(encoding="utf-8")
         parts.append(f"### {path.name}")
@@ -112,10 +193,22 @@ def _parse_blocks(text: str) -> dict[str, str]:
     return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
 
 
-def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict], str, str | None]:
-    """Return (analysis, sea_trials, soundings, compass_or_none, spikes_dict, verdict, verdict_reason).
+def _parse_summary_fields(analysis_text: str) -> dict[str, str]:
+    """Extract the indented sub-fields under '## Analysis Summary'."""
+    fields: dict[str, str] = {}
+    m = re.search(r"^## Analysis Summary\s*$(.*?)^## ", analysis_text, re.MULTILINE | re.DOTALL)
+    section = m.group(1) if m else analysis_text
+    for fm in _SUMMARY_FIELD_RE.finditer(section):
+        fields[fm.group(1)] = fm.group(2).strip()
+    return fields
 
-    ``spikes_dict`` maps filename → parsed dict for every spike-*.json block.
+
+def _parse_output(
+    text: str,
+) -> tuple[str, str, str, str | None, dict[str, dict], str, dict[str, str]]:
+    """Return (analysis, sea_trials, soundings, compass_or_none, spikes, quality, summary).
+
+    ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, screens.
     Raises ValueError on missing required blocks or invalid JSON.
     """
     blocks = _parse_blocks(text)
@@ -137,12 +230,10 @@ def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict]
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
 
     analysis_text = blocks["ANALYSIS.md"]
-    verdict_match = _VERDICT_RE.search(analysis_text)
-    verdict = verdict_match.group(1) if verdict_match else "unknown"
+    quality_match = _QUALITY_RE.search(analysis_text)
+    quality = quality_match.group(1) if quality_match else "unknown"
 
-    reason_match = _VERDICT_REASON_RE.search(analysis_text)
-    verdict_reason = reason_match.group(1).strip() if reason_match else None
-
+    summary = _parse_summary_fields(analysis_text)
     compass_content = blocks.get("COMPASS.md") or None
 
     return (
@@ -151,9 +242,50 @@ def _parse_output(text: str) -> tuple[str, str, str, str | None, dict[str, dict]
         blocks["SOUNDINGS.md"],
         compass_content,
         spikes,
-        verdict,
-        verdict_reason,
+        quality,
+        summary,
     )
+
+
+def _fill_captains_chair(
+    template: str,
+    *,
+    quality: str,
+    story_count: int,
+    question_count: int,
+    blocker_count: int,
+    screen_count: int,
+    stack: str,
+    next_step: str,
+    project_name: str,
+    generated_date: str,
+) -> str:
+    css_class, icon, desc = _QUALITY_META.get(quality, ("blocked", "?", quality))
+    replacements = {
+        "{{PROJECT_NAME}}": project_name,
+        "{{GENERATED_DATE}}": generated_date,
+        "{{QUALITY}}": quality,
+        "{{QUALITY_CSS}}": css_class,
+        "{{QUALITY_ICON}}": icon,
+        "{{QUALITY_DESC}}": desc,
+        "{{STORY_COUNT}}": str(story_count),
+        "{{QUESTION_COUNT}}": str(question_count),
+        "{{BLOCKER_COUNT}}": str(blocker_count),
+        "{{SCREEN_COUNT}}": str(screen_count),
+        "{{STACK}}": stack or "not declared",
+        "{{NEXT_STEP}}": next_step,
+    }
+    for key, value in replacements.items():
+        template = template.replace(key, value)
+    return template
+
+
+def _next_step_hint(quality: str, target: str) -> str:
+    if quality == "Blocked":
+        return f"Resolve blockers, then re-run: drydock analyze {target}"
+    if quality == "Questions":
+        return f"Review open questions, then run: drydock plan create {target}"
+    return f"drydock plan create {target}"
 
 
 def analyze(
@@ -173,7 +305,9 @@ def analyze(
     sea_trials_path = target_dir / "SEA_TRIALS.md"
     soundings_path = target_dir / "SOUNDINGS.md"
     compass_target = target_dir / "COMPASS.md"
-    compass_exists = compass_target.is_file()
+
+    # COMPASS is (re)written when absent or when the existing file is an unpopulated template.
+    compass_exists = compass_target.is_file() and not _is_compass_unpopulated(compass_target)
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
@@ -191,9 +325,6 @@ def analyze(
 
     exec_id = getattr(result, "execution_id", None)
 
-    # Placeholder paths for failure results
-    spike_placeholder: tuple[Path, ...] = ()
-
     def _fail(msg: str) -> AnalyzeResult:
         return AnalyzeResult(
             target_dir=target_dir,
@@ -201,9 +332,14 @@ def analyze(
             sea_trials_path=sea_trials_path,
             soundings_path=soundings_path,
             compass_path=None,
-            spike_paths=spike_placeholder,
-            verdict="unknown",
-            verdict_reason=None,
+            captains_chair_path=None,
+            spike_paths=(),
+            quality="unknown",
+            story_count=0,
+            question_count=0,
+            blocker_count=0,
+            screen_count=0,
+            stack="",
             execution_id=exec_id,
             ok=False,
             error=msg,
@@ -213,11 +349,23 @@ def analyze(
         return _fail("LLM execution failed")
 
     try:
-        analysis_text, sea_trials_text, soundings_text, compass_text, spikes, verdict, verdict_reason = (
+        analysis_text, sea_trials_text, soundings_text, compass_text, spikes, quality, summary = (
             _parse_output(result.text)
         )
     except ValueError as exc:
         return _fail(str(exc))
+
+    def _safe_int(key: str) -> int:
+        try:
+            return int(summary.get(key, "0"))
+        except (ValueError, TypeError):
+            return 0
+
+    story_count = _safe_int("stories")
+    question_count = _safe_int("questions")
+    blocker_count = _safe_int("blockers")
+    screen_count = _safe_int("screens")
+    stack = summary.get("stack", "not declared")
 
     questionnaires_dir.mkdir(parents=True, exist_ok=True)
 
@@ -236,15 +384,47 @@ def analyze(
         spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         spike_paths.append(spike_path)
 
+    # Lifecycle state and Captain's Chair — only when state advances to "analyzed".
+    captains_chair_path: Path | None = None
+    state_advanced = set_build_state(target_dir, "analyzed")
+    if state_advanced:
+        try:
+            template_path = get_rigging_root() / "templates" / "captains_chair.html"
+            if template_path.is_file():
+                template = template_path.read_text(encoding="utf-8")
+                filled = _fill_captains_chair(
+                    template,
+                    quality=quality,
+                    story_count=story_count,
+                    question_count=question_count,
+                    blocker_count=blocker_count,
+                    screen_count=screen_count,
+                    stack=stack,
+                    next_step=_next_step_hint(quality, target),
+                    project_name=target,
+                    generated_date=today,
+                )
+                chair_path = target_dir / "QuarterDeck" / "captains_chair.html"
+                chair_path.parent.mkdir(parents=True, exist_ok=True)
+                chair_path.write_text(filled, encoding="utf-8", newline="\n")
+                captains_chair_path = chair_path
+        except Exception:
+            pass  # Captain's Chair failure must not abort a successful analysis
+
     return AnalyzeResult(
         target_dir=target_dir,
         analysis_path=analysis_path,
         sea_trials_path=sea_trials_path,
         soundings_path=soundings_path,
         compass_path=written_compass,
+        captains_chair_path=captains_chair_path,
         spike_paths=tuple(sorted(spike_paths)),
-        verdict=verdict,
-        verdict_reason=verdict_reason,
+        quality=quality,
+        story_count=story_count,
+        question_count=question_count,
+        blocker_count=blocker_count,
+        screen_count=screen_count,
+        stack=stack,
         execution_id=exec_id,
         ok=True,
     )
