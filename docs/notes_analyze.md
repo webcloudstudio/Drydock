@@ -6,8 +6,8 @@
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
 | Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. Ready to implement. |
-| Pending spec | 10 approved items |
-| Pending impl | 1 unimplemented sections |
+| Pending spec | 0 approved items |
+| Pending impl | 0 unimplemented sections |
 
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
 `drydock plan create`. The two commands have a tight interface and are designed together.
@@ -26,7 +26,7 @@ ratified facts persist.
 ## Decisions
 
 ### What analyze reads
-`2026-06-14` · `spec:approved` · `impl:unimplemented`
+`2026-06-14` · `spec:applied` · `impl:implemented`
 
 `drydock analyze` reads the **imported source files** from `blueprint/sources/` only.
 Top-level typed spec template files (`ARCHITECTURE.md`, `FEATURE-*.md`, etc.) in `blueprint/`
@@ -40,7 +40,7 @@ This may be extended in a future session to also include hand-written top-level 
 ---
 
 ### Two Decomposition Passes at Different Altitudes
-`2026-06-14` · `spec:approved` · `impl:implemented`
+`2026-06-14` · `spec:applied` · `impl:implemented`
 
 - **`analyze` (Sprint Planning Part 1):** reads imported material. Derives the story list at
   title + high-level AC level. Surfaces spikes and blockers. Output: story list + questions.
@@ -120,7 +120,7 @@ carry on. Questions do not block Quality reaching `Ready`.
 ---
 
 ### Analyze Output Files
-`2026-06-14` · `spec:approved` · `impl:implemented`
+`2026-06-14` · `spec:applied` · `impl:implemented`
 
 All written by `drydock analyze`. Read-only w.r.t. `blueprint/` spec files,
 `BUILD_CONFIGURATION.md`, and `MANIFEST.md`.
@@ -215,7 +215,7 @@ CSS dependency — file must be self-contained.
 ---
 
 ### Lifecycle State Persistence
-`2026-06-14` · `spec:approved` · `impl:implemented`
+`2026-06-14` · `spec:applied` · `impl:implemented`
 
 Lifecycle state tracked in `METADATA.md` at the **target root** via field: `drydock build state:`.
 

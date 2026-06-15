@@ -218,7 +218,7 @@ QuarterDeck is usable from this moment — planning, build, and review all surfa
 Arrange turns source material into a reviewable, executable Manifest.
 
 1. Import source material into a Blueprint with `drydock import`.
-2. Use `drydock analyze` when gaps or drift need investigation.
+2. Analyze imported source material with `drydock analyze` to derive a story list, compute a quality signal, and surface open questions.
 3. Compact large specification and Rigging inputs when needed.
 4. Create the draft executable Manifest with `drydock plan create`.
 5. Review and approve the complete Manifest in the Target's QuarterDeck Planning Session.
@@ -276,19 +276,57 @@ flowchart LR
 3. Optionally conform the imported material after User Review establishes build configuration.
 4. Create, review, validate, and approve the plan before proceeding through its runnable frontier.
 
-### Analyze Your Specifiction
+### Analyze Your Specification
 
-`drydock analyze` evaluates available Blueprint inputs and — when a Target with built code is
-provided — the built application. During planning it creates the target-local Planning Session
-analysis and questionnaire. It does not create or modify `MANIFEST.md`.
+`drydock analyze` is Sprint Planning Part 1. It reads imported source material from
+`<Target>/blueprint/sources/` and acts as a Scrum Development Team to derive a story list at
+title + high-level AC level, compute a quality signal, and surface blockers and open questions.
+It does not write typed specification files into `blueprint/` and does not create or modify
+`MANIFEST.md`.
 
-1. `drydock analyze <Target>` — score Blueprint coverage and, when code exists, compare the
-   Blueprint against the built application; surface open questions, missing detail, drift,
-   incomplete implementation, and candidates for the next Refit.
-2. Apply findings with `drydock refit` or `drydock plan create` as appropriate.
+**What analyze reads.** All Markdown files under `<Target>/blueprint/sources/` — the material
+deposited by `drydock import`. Top-level typed specification templates (`ARCHITECTURE.md`,
+`FEATURE-*.md`, etc.) are excluded; they are outputs of `plan create`, not inputs to `analyze`.
+Multiple imports are additive: each successive `drydock import` lands files in `sources/`
+alongside prior imports, and `analyze` reads all of them.
 
-`drydock analyze` examines and advises. Run it when the problem is not yet well-defined; review its
-Planning Session outputs before running `drydock plan create`.
+**Quality signal.** After analysis the command computes one of three values:
+
+| Quality | Condition |
+|---|---|
+| `Blocked` | One or more blockers unresolved — pipeline halted |
+| `Questions` | No blockers; open questions remain; `plan create` can proceed |
+| `Ready` | No blockers; no open questions; `plan create` can proceed |
+
+A **blocker** is something the Scrum team genuinely cannot proceed without (no project name,
+fundamental contradictions). A **question** is an open item that does not stop decomposition.
+Running `plan create` when Quality is `Questions` or `Ready` is the pipeline gate.
+
+**Re-analyze loop.** PO answers write to `<Target>/blueprint/BUILD_CONFIGURATION.md`.
+Re-running `drydock analyze` picks up all prior answers and does not re-ask settled questions.
+Re-runs are explicit — answering questions does not trigger one automatically.
+
+**Outputs.** All outputs are written to the Target root or `QuarterDeck/questionnaires/`. The
+command is read-only with respect to `blueprint/` specification files, `BUILD_CONFIGURATION.md`,
+and `MANIFEST.md`.
+
+| Output | Location | Notes |
+|---|---|---|
+| `ANALYSIS.md` | Target root | Quality signal, blocker list, question list, story list with tuning options |
+| `SEA_TRIALS.md` | Target root | Strategic objectives at product level; 3–7 rows |
+| `SOUNDINGS.md` | Target root | Acceptance milestones derived from decomposition |
+| `COMPASS.md` | Target root | Written when absent or unpopulated template; omitted otherwise |
+| `spike-intent.json` | `QuarterDeck/questionnaires/` | Fixed: product intent |
+| `spike-stack.json` | `QuarterDeck/questionnaires/` | Fixed: technology stack with Rigging-derived options |
+| `spike-gaps-ac.json` | `QuarterDeck/questionnaires/` | Fixed: gaps and acceptance criteria |
+| `spike-guardrails.json` | `QuarterDeck/questionnaires/` | Fixed: security, compliance, and performance |
+| `spike-<slug>.json` | `QuarterDeck/questionnaires/` | Variable: one per genuine unresolved unknown |
+| `captains_chair.html` | `QuarterDeck/` | Template-filled dashboard; written on state advance |
+
+**Lifecycle state.** `drydock analyze` advances `drydock build state:` in `METADATA.md` from
+`init` to `analyzed` on first successful run. The full state ladder is forward-only:
+`init → analyzed → planned → building → built`. A re-analyze run does not overwrite the
+Captain's Chair if state would go backwards.
 
 ### Building and Reviewing the Build Plan / Manifest
 
@@ -680,21 +718,26 @@ updated by `drydock refit` as specification files and application code evolve.
 - **`BUILD_PLAN_COMPASS.md`** — Internal inventory of Blueprint inputs and planning groups
   - Created and updated: `drydock plan create <Target>`
 
-- **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack)
+- **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack) and
+  lifecycle state (`drydock build state:` field; forward-only ladder: `init → analyzed → planned → building → built`)
   - Created: `drydock init <Target>`; enriched by `drydock import`
-  - Updated: product owner; Drydock Target operations
+  - Updated: product owner; Drydock Target operations; each command on state advance
 
 - **`<Target>/MANIFEST.md`** — The single generated executable build plan
   - Created: `drydock plan create <Target>`
   - Updated: plan regeneration, planning merges, build execution, and review decisions
 
-- **`<Target>/ANALYSIS.md`** — Disposable Planning Session analysis
+- **`<Target>/ANALYSIS.md`** — Planning Session analysis: quality signal, story list, blockers, open questions
   - Created and updated: `drydock analyze <Target>`
 
-- **`<Target>/QuarterDeck/questionnaires/planning.json`** — Disposable Planning Session questions
-  and configuration choices
+- **`<Target>/QuarterDeck/questionnaires/spike-*.json`** — Planning Session questionnaires; four
+  fixed spikes (intent, stack, gaps-ac, guardrails) plus variable spikes for genuine unknowns
   - Created and updated: `drydock analyze <Target>`
-  - Answered through: QuarterDeck Planning Session User Review
+  - Answered through: QuarterDeck Planning Session or `BUILD_CONFIGURATION.md`
+
+- **`<Target>/QuarterDeck/captains_chair.html`** — Template-filled orientation dashboard; quality
+  signal, story count, stack, and next recommended step
+  - Created: `drydock analyze <Target>` on first run; updated when lifecycle state advances
 
 - **`SCORECARD.md`** — Blueprint and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Blueprint and the built software
   - Created and updated: `drydock build score`
