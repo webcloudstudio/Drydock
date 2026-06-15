@@ -39,6 +39,18 @@ h1 { font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }
   border: 1px solid var(--line);
   padding: 20px 22px 10px;
 }
+.sail-lead {
+  margin: 2px 0 16px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sail-lead p {
+  margin: 0 0 6px;
+  color: var(--navy);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.sail-lead p:last-child { margin-bottom: 0; }
 .sail-grid { display: grid; gap: 16px; }
 .sail-card {
   display: grid;
@@ -113,6 +125,10 @@ footer { color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: c
 </section>
 <section class="ideas ideas-sail">
 <h2>The SAIL Method</h2>
+<div class="sail-lead">
+<p>Your Compass (constitution/intent) guides your build</p>
+<p>QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions</p>
+</div>
 <div class="sail-grid">
 <article class="sail-card">
 <div class="sail-letter">S</div>
@@ -126,10 +142,8 @@ footer { color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: c
 <div class="idea-title">Analyze and Arrange</div>
 <ul>
 <li>Import your projects into <strong>Blueprints</strong> - Typed Specifications</li>
-<li>Your Compass is your constitution or project intent</li>
 <li>Agile Decomposition is used to Create Features, Stories, AC, Spikes...</li>
 <li>Plan creates your Manifest based on the analysis</li>
-<li>QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions</li>
 </ul>
 </div>
 </article>

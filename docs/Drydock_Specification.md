@@ -10,15 +10,16 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
 ideas_title: The SAIL Method
 ideas_layout: sail
+sail_lead:
+  - Your Compass (constitution/intent) guides your build
+  - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
 ideas:
   - title: **S** — Setup and Install Drydock
   - title: **A** — Analyze and Arrange
     sub_list:
       - Import your projects into **Blueprints** - Typed Specifications
-      - Your Compass is your constitution or project intent
       - Agile Decomposition is used to Create Features, Stories, AC, Spikes...
       - Plan creates your Manifest based on the analysis
-      - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
   - title: **I** — Implement
     sub_list:
       - Build your software plan in managed chunks based on the Manifest

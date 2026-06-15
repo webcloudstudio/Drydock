@@ -22,17 +22,26 @@ def parse_source(text: str) -> tuple[dict[str, object], str]:
 
 def parse_frontmatter(frontmatter: str) -> dict[str, object]:
     """Parse the scalar and ideas-list subset used by the Drydock Blueprint."""
-    metadata: dict[str, object] = {"ideas": []}
+    metadata: dict[str, object] = {"ideas": [], "sail_lead": []}
     ideas = metadata["ideas"]
+    sail_lead = metadata["sail_lead"]
     assert isinstance(ideas, list)
+    assert isinstance(sail_lead, list)
 
     current_idea: dict[str, object] | None = None
     in_ideas = False
     in_sub_list = False
+    in_sail_lead = False
 
     for line in frontmatter.splitlines():
         if not line.strip():
             continue
+
+        if in_sail_lead:
+            lead_item = re.match(r"^\s*-\s+(.+)$", line)
+            if lead_item:
+                sail_lead.append(lead_item.group(1).strip())
+                continue
 
         if in_ideas and in_sub_list and current_idea is not None:
             sub_item = re.match(r"^\s{4,}-\s+(.+)$", line)
@@ -58,7 +67,13 @@ def parse_frontmatter(frontmatter: str) -> dict[str, object]:
         key = re.match(r"^([A-Za-z][\w_]*):\s*(.*)$", line)
         if key:
             name, value = key.group(1), key.group(2).strip()
+            if name == "sail_lead" and not value:
+                in_sail_lead = True
+                in_ideas = False
+                in_sub_list = False
+                continue
             in_ideas = name == "ideas" and not value
+            in_sail_lead = False
             in_sub_list = False
             if not in_ideas:
                 metadata[name] = value
@@ -98,6 +113,11 @@ def _render_sail_ideas(metadata: dict[str, object], ideas: list[object]) -> str:
     parts = ['<section class="ideas ideas-sail">']
     ideas_title = str(metadata.get("ideas_title", "The SAIL Method"))
     parts.append(f"<h2>{_render_inline_markup(ideas_title)}</h2>")
+    sail_lead = metadata.get("sail_lead", [])
+    if isinstance(sail_lead, list) and sail_lead:
+        parts.append('<div class="sail-lead">')
+        parts.extend(f"<p>{_render_inline_markup(str(value))}</p>" for value in sail_lead)
+        parts.append("</div>")
     parts.append('<div class="sail-grid">')
     for item in ideas:
         if not isinstance(item, dict):
@@ -191,6 +211,18 @@ h1 {{ font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }}
   border: 1px solid var(--line);
   padding: 20px 22px 10px;
 }}
+.sail-lead {{
+  margin: 2px 0 16px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}}
+.sail-lead p {{
+  margin: 0 0 6px;
+  color: var(--navy);
+  font-size: 1rem;
+  font-weight: 600;
+}}
+.sail-lead p:last-child {{ margin-bottom: 0; }}
 .sail-grid {{ display: grid; gap: 16px; }}
 .sail-card {{
   display: grid;

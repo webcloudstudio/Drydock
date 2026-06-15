@@ -44,6 +44,9 @@ studio: Studio
 year: 2026
 ideas_title: The SAIL Method
 ideas_layout: sail
+sail_lead:
+  - Your Compass (constitution/intent) guides your build
+  - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
 ideas:
   - title: **S** — Setup and Install Drydock
   - title: **A** — Analyze and Arrange
@@ -66,6 +69,15 @@ def test_parse_source_reads_frontmatter_and_body():
         {"title": "First **idea**", "sub_list": ["One **signal**", "Two"]},
     ]
     assert body.startswith("## Product")
+
+
+def test_parse_source_reads_sail_lead_lines():
+    metadata, _body = parse_source(SAIL_SOURCE)
+
+    assert metadata["sail_lead"] == [
+        "Your Compass (constitution/intent) guides your build",
+        "QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions",
+    ]
 
 
 def test_parse_source_requires_frontmatter():
@@ -92,8 +104,10 @@ def test_render_page_supports_sail_cover_layout():
     page = render_page(metadata, body)
 
     assert 'class="ideas ideas-sail"' in page
+    assert 'class="sail-lead"' in page
     assert '<div class="sail-letter">S</div>' in page
     assert '<div class="sail-letter">A</div>' in page
+    assert "<p>Your Compass (constitution/intent) guides your build</p>" in page
     assert '<div class="idea-title">Setup and Install Drydock</div>' in page
     assert "<li>Import your projects into <strong>Blueprints</strong> - Typed Specifications</li>" in page
 
