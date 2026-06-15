@@ -71,6 +71,10 @@ def _render_ideas(metadata: dict[str, object]) -> str:
     if not isinstance(ideas, list) or not ideas:
         return ""
 
+    layout = str(metadata.get("ideas_layout", "")).strip().lower()
+    if layout == "sail":
+        return _render_sail_ideas(metadata, ideas)
+
     parts = ['<section class="ideas">']
     ideas_title = str(metadata.get("ideas_title", "What Drydock Adds"))
     parts.append(f"<h2>{_render_inline_markup(ideas_title)}</h2>")
@@ -86,6 +90,36 @@ def _render_ideas(metadata: dict[str, object]) -> str:
             parts.extend(f"<li>{_render_inline_markup(str(value))}</li>" for value in sub_list)
             parts.append("</ul>")
         parts.append("</article>")
+    parts.append("</section>")
+    return "\n".join(parts)
+
+
+def _render_sail_ideas(metadata: dict[str, object], ideas: list[object]) -> str:
+    parts = ['<section class="ideas ideas-sail">']
+    ideas_title = str(metadata.get("ideas_title", "The SAIL Method"))
+    parts.append(f"<h2>{_render_inline_markup(ideas_title)}</h2>")
+    parts.append('<div class="sail-grid">')
+    for item in ideas:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", "")).strip()
+        match = re.match(r"^\*\*([SAIL])\*\*\s+[—-]\s+(.+)$", title)
+        if match:
+            letter, label = match.group(1), match.group(2)
+        else:
+            letter, label = title[:1].upper(), title[1:].strip(" -—")
+        parts.append('<article class="sail-card">')
+        parts.append(f'<div class="sail-letter">{html.escape(letter)}</div>')
+        parts.append('<div class="sail-copy">')
+        parts.append(f'<div class="idea-title">{_render_inline_markup(label)}</div>')
+        sub_list = item.get("sub_list", [])
+        if isinstance(sub_list, list) and sub_list:
+            parts.append("<ul>")
+            parts.extend(f"<li>{_render_inline_markup(str(value))}</li>" for value in sub_list)
+            parts.append("</ul>")
+        parts.append("</div>")
+        parts.append("</article>")
+    parts.append("</div>")
     parts.append("</section>")
     return "\n".join(parts)
 
@@ -151,6 +185,33 @@ h1 {{ font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }}
   margin: 8px 0; padding: 10px 14px 10px 16px; }}
 .idea-title {{ color: var(--navy); font-size: 1.14rem; font-weight: 800; line-height: 1.2; }}
 .idea ul {{ margin: 6px 0 0; color: var(--muted); }}
+.ideas-sail {{ background:
+  linear-gradient(135deg, rgba(18, 48, 71, 0.06), rgba(10, 118, 80, 0.03)),
+  var(--panel);
+  border: 1px solid var(--line);
+  padding: 20px 22px 10px;
+}}
+.sail-grid {{ display: grid; gap: 16px; }}
+.sail-card {{
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--line);
+}}
+.sail-card:last-child {{ border-bottom: none; }}
+.sail-letter {{
+  color: var(--green);
+  font-size: 4.8rem;
+  line-height: 0.9;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  text-shadow: 2px 2px 0 rgba(18, 48, 71, 0.08);
+}}
+.sail-copy .idea-title {{ font-size: 1.22rem; margin-bottom: 4px; }}
+.sail-copy ul {{ margin: 0; padding-left: 20px; color: var(--muted); }}
+.sail-copy li {{ margin-bottom: 4px; }}
 #content {{ background: var(--panel); border: 1px solid var(--line); padding: 26px 30px; }}
 #content h2 {{ margin-top: 28px; margin-bottom: 10px; }}
 #content h2:first-child {{ margin-top: 0; }}
@@ -175,6 +236,9 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
 @media (max-width: 680px) {{
   main {{ padding: 16px 12px 40px; }} .cover, #content {{ padding: 16px; }}
   header, .meta {{ flex-direction: column; gap: 4px; }} h1 {{ font-size: 28px; }}
+  .ideas-sail {{ padding: 16px; }}
+  .sail-card {{ grid-template-columns: 1fr; gap: 8px; }}
+  .sail-letter {{ font-size: 3.8rem; }}
 }}
 @media print {{
   header, footer {{ display: none; }}
@@ -182,6 +246,9 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
   main {{ padding: 0; max-width: 100%; }}
   #content {{ border: none; padding: 0; }}
   .cover {{ border-top: 3px solid var(--green); padding: 16px; }}
+  .ideas-sail {{ border: 1px solid var(--line); padding: 14px 16px 8px; }}
+  .sail-card {{ break-inside: avoid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; }}
+  .sail-letter {{ font-size: 3rem; }}
   #content pre, #content blockquote {{ break-inside: avoid; }}
   #content h2, #content h3 {{ break-after: avoid; }}
 }}

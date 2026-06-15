@@ -35,6 +35,28 @@ ideas:
 Body with `code`.
 """
 
+SAIL_SOURCE = """---
+title: Example
+eyebrow: Blueprint
+subtitle: Example subtitle
+author: Ed
+studio: Studio
+year: 2026
+ideas_title: The SAIL Method
+ideas_layout: sail
+ideas:
+  - title: **S** — Setup and Install Drydock
+  - title: **A** — Analyze and Arrange
+    sub_list:
+      - Import your projects into **Blueprints** - Typed Specifications
+      - Plan creates your Manifest based on the analysis
+---
+
+## Product
+
+Body with `code`.
+"""
+
 
 def test_parse_source_reads_frontmatter_and_body():
     metadata, body = parse_source(SOURCE)
@@ -62,6 +84,18 @@ def test_render_page_embeds_metadata_and_markdown_safely():
     assert r"<\/script>" in page
     assert "marked.parse(BODY)" in page
     assert "mermaid.run" in page
+
+
+def test_render_page_supports_sail_cover_layout():
+    metadata, body = parse_source(SAIL_SOURCE)
+
+    page = render_page(metadata, body)
+
+    assert 'class="ideas ideas-sail"' in page
+    assert '<div class="sail-letter">S</div>' in page
+    assert '<div class="sail-letter">A</div>' in page
+    assert '<div class="idea-title">Setup and Install Drydock</div>' in page
+    assert "<li>Import your projects into <strong>Blueprints</strong> - Typed Specifications</li>" in page
 
 
 def test_build_documentation_writes_output(tmp_path: Path):

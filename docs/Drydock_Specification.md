@@ -9,6 +9,7 @@ nav_active: drydock.html
 header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
 ideas_title: The SAIL Method
+ideas_layout: sail
 ideas:
   - title: **S** — Setup and Install Drydock
   - title: **A** — Analyze and Arrange
@@ -211,6 +212,8 @@ exposes the underlying focused Typed Specification validation command.
 runtime is not copied here; only console state is written, and `drydock run quarterdeck` serves the
 runtime from the installed package.
 
+### Workflow:
+
 `drydock run quarterdeck [<Target>]` starts the console on `QUARTERDECK_PORT` (override with
 `--host` and `--port`), serving the package runtime against this in-tree console state. The
 QuarterDeck is usable from this moment — planning, build, and review all surface through it.
@@ -244,6 +247,8 @@ drydock plan create <Target>
 `drydock import` brings source material under Blueprint control. `drydock analyze` advises without
 changing the Manifest. `drydock rigging compact` refreshes stale compact context. `drydock plan
 create` organizes the work and creates the draft Manifest and Planning Session.
+
+### Workflow:
 
 ### Importing a specification into your Drydock
 
@@ -373,6 +378,8 @@ drydock document assemble <Target>
 `drydock build` executes the runnable frontier. `drydock build status` inspects the Manifest without
 changing it. `drydock build score` measures delivery health. The `drydock document` commands turn
 Blueprint material into delivered project documentation.
+
+### Workflow:
 
 ### Build the Accepted Manifest
 
@@ -526,6 +533,8 @@ drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 
 `drydock refit` performs the Refit. It updates the Blueprint and Target together, or limits the
 change to the selected side, then returns affected work to the SAIL cycle.
+
+### Workflow:
 
 ### Ongoing Application Support - Refit a Working SDD Application
 
