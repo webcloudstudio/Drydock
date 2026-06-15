@@ -178,7 +178,7 @@ wheels = [
 ]
 
 [[package]]
-name = "drydock"
+name = "drydock-sdd"
 source = { editable = "." }
 dependencies = [
     { name = "python-dotenv" },

@@ -1,0 +1,1 @@
+This is the Charter for the drydock project.  It is a specification driven design methedology we will be working on.  I will add to it.

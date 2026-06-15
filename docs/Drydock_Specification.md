@@ -1,7 +1,7 @@
 ---
 title: Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle: Drydock is a full implementation of the SAIL methodology for building software from specifications. Under active development.
+subtitle: Drydock is a full implementation of the SAIL Methedology to build programs from specifications.  Under active development. 
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 11 2026
@@ -11,26 +11,29 @@ copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of t
 ideas_title: The SAIL Method
 ideas_layout: sail
 sail_lead:
+  - You are the Commander - the product owner - and the llm is your team.
   - Your Compass (constitution/intent) guides your build
-  - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
-  - Your Ship's Log preserves material decisions and milestones
+  - The QuarterDeck keeps you in command at all times
+  - A Ship's Log preserves material decisions and milestones
 ideas:
   - title: **S** — Setup and Install Drydock
     sub_list:
-      - pip install, drydock config, drydock init
-  - title: **A** — Agile Analyze and Arrange
+      - pip install
+      - drydock config
+      - drydock init
+  - title: **A** — Agile Analyze 
     sub_list:
-      - Import your projects into **Blueprints** - Typed Specifications
-      - Agile Decomposition is used to Create Features, Stories, AC, Spikes...
-      - Plan creates your Manifest based on the analysis
+      - drydock import to ingest your specifications and notes for analysis
+      - drydock analyze converts your projects into Blueprints using Agile Decomposition
+      - drydock plan creates a Manifest based on the Blueprints
   - title: **I** — Implement
     sub_list:
-      - Build your software plan in managed chunks based on the Manifest
-      - Your Rigging is your enterprise branding and build rules
+      - drydock build - to implement your software plan in managed chunks using the Manifest
+      - drydock rigging is your enterprise branding and build rules
   - title: **L** — Loop
     sub_list:
-      - Refits with a simple ticket workflow maintain Blueprint rebuildability
-      - Auto-create consistent documentation from your specification
+      - drydock refit is our incremental build process - Blueprints and Code consistency
+      - drydock document create consistent documentation from your specification
 ---
 
 ## Testimonials
@@ -65,8 +68,8 @@ ideas:
 Drydock is a governed Blueprint-driven software delivery system built around the **SAIL
 methodology: Set Up, Analyze, Implement, Loop**.
 
-A **Drydock Blueprint** is the authoritative, living definition of a software product. It is
-expressed as a **Typed Specification** through files with prescribed roles. Drydock turns the
+**Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are
+composed of **Typed Specification Files** with prescribed roles. Drydock turns the
 Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
 increments through the QuarterDeck.
 
@@ -568,9 +571,8 @@ flowchart LR
 Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
 changes back into an existing Target and proves continued conformance after the change.
 
-1. `drydock rigging compact <Target> --all` — distills `BUSINESS_RULES.md` into
-   `BUSINESS_RULES_compact.md`. Run after every rules edit; the compact form is what agents read
-   and what `rigging update` injects.
+1. `drydock rigging compact <Target> --all` — compacts your architecture files from `x.md` to
+   `x_compact.md`. Drydock agents use the Full or compact form as needed.
 2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
    into the target project.
 3. `drydock rigging verify <Target>` — checks target project compliance with the Drydock rigging
@@ -640,15 +642,16 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
             ├── pages/
             │   └── overview.md
             ├── data/
+            ├── planning/
+            │   └── ANALYSIS.md
             └── questionnaires/
                 └── planning.json
 ```
 
-Target-root project records and generated planning artifacts (`METADATA.md`, `README.md`,
-`COMPASS.md`, `SEA_TRIALS.md`, `SOUNDINGS.md`, `ANALYSIS.md`, `MANIFEST.md`) sit at the Target
-root. `METADATA.md` carries the project identity and `code_root`; the accepted `MANIFEST.md` is
-the executable Manifest. Built and served code lives at `code_root` — the workspace root for
-self-hosting or brownfield projects, or a path set for greenfield builds.
+Project-level, human-authored files (`METADATA.md`, `README.md`, `COMPASS.md`, `SEA_TRIALS.md`,
+`SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
+the accepted `MANIFEST.md` is the executable Manifest. Built and served code lives at `code_root`
+— the workspace root for self-hosting or brownfield projects, or a path set for greenfield builds.
 
 `drydock init <Target>` writes the minimal scaffold (`METADATA.md`, root
 `SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, `evidence/`, `logs/`, and a

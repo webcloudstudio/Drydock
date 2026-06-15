@@ -1,0 +1,25 @@
+{
+  "id": "spike-intent",
+  "title": "Spike: Product Intent",
+  "purpose": "Clarify what this product is trying to do and who it serves.",
+  "questions": [
+    {
+      "id": "primary_goal",
+      "label": "Primary Goal",
+      "prompt": "In one sentence, what is the single most important thing this product must do?",
+      "input": "textarea"
+    },
+    {
+      "id": "primary_user",
+      "label": "Primary User",
+      "prompt": "Who is the primary user of this system?",
+      "input": "text"
+    },
+    {
+      "id": "success_definition",
+      "label": "Success Definition",
+      "prompt": "How will you know the product is successful? What measurable outcome changes?",
+      "input": "textarea"
+    }
+  ]
+}
