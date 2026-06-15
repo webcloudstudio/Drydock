@@ -13,8 +13,11 @@ ideas_layout: sail
 sail_lead:
   - Your Compass (constitution/intent) guides your build
   - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
+  - Your Ship's Log preserves material decisions and milestones
 ideas:
   - title: **S** — Setup and Install Drydock
+    sub_list:
+      - pip install, drydock config, drydock init
   - title: **A** — Analyze and Arrange
     sub_list:
       - Import your projects into **Blueprints** - Typed Specifications
@@ -27,7 +30,6 @@ ideas:
   - title: **L** — Loop
     sub_list:
       - Refits with a simple ticket workflow maintain Blueprint rebuildability
-      - Your Ship's Log preserves material decisions and milestones
       - Auto-create consistent documentation from your specification
 ---
 
