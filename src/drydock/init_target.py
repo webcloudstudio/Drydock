@@ -5,7 +5,7 @@ from __future__ import annotations
 import errno
 import json
 import re
-import time
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,19 +17,38 @@ _TRAVERSAL_RE = re.compile(r"\.\.|[/\\]")
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
 
 
+def _mkdir_one(path: Path) -> None:
+    try:
+        path.mkdir(exist_ok=True)
+        return
+    except OSError as exc:
+        if exc.errno != errno.EEXIST or path.is_dir():
+            raise
+
+    # WSL/DrvFs zombie: stat returns ENOENT but mkdir returns EEXIST.
+    # cmd.exe can create the directory on the Windows side, resolving the inconsistency.
+    try:
+        win_path = subprocess.check_output(
+            ["wslpath", "-w", str(path)], stderr=subprocess.DEVNULL, timeout=5
+        ).decode().strip()
+        subprocess.run(
+            ["cmd.exe", "/c", "mkdir", win_path],
+            check=False, capture_output=True, timeout=10,
+        )
+    except Exception:
+        pass
+
+    if not path.is_dir():
+        raise OSError(errno.EEXIST, "File exists (WSL/DrvFs zombie — run `wsl --shutdown` and retry)", str(path))
+
+
 def _mkdir(path: Path) -> None:
-    # WSL/DrvFs can report EEXIST while stat returns ENOENT due to stale cache;
-    # retry once after a brief pause to let the filesystem settle.
-    for attempt in range(2):
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-            return
-        except OSError as exc:
-            if exc.errno != errno.EEXIST or path.is_dir():
-                raise
-            if attempt == 0:
-                time.sleep(0.15)
-    path.mkdir(parents=True, exist_ok=True)
+    # Walk ancestors top-down so each parent uses the resilient _mkdir_one,
+    # avoiding Python's built-in mkdir(parents=True) which hits the same stale-cache
+    # bug when recursing into parent creation.
+    if not path.parent.exists():
+        _mkdir(path.parent)
+    _mkdir_one(path)
 
 
 @dataclass
