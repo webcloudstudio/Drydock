@@ -1,7 +1,7 @@
 ---
 title: Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle: Drydock is a full implementation of the SAIL Methedology to build programs from specifications.  Under active development. 
+subtitle: Drydock is a full implementation of the SAIL methodology for building software from specifications. Under active development.
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 11 2026
