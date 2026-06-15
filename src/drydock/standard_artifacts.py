@@ -88,22 +88,9 @@ def sync_plan_soundings(plan: BuildPlan, target_dir: Path) -> Path:
     return path
 
 
-def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:
+def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:  # noqa: ARG001
     """Create missing standard artifact files without overwriting authored content."""
-    files = {
-        target_dir / "QuarterDeck" / "pages" / "overview.md": (
-            f"# Captain's Chair: {target}\n\n"
-            "This target is initialized and ready for Blueprint import and planning.\n"
-        ),
-    }
-    created = []
-    for path, content in files.items():
-        if path.exists():
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8", newline="\n")
-        created.append(path)
-    return created
+    return []
 
 
 def render_console(target: str, *, plan_path: Path | None = None) -> str:
@@ -135,7 +122,7 @@ sections:
   - {{ id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }}
 
 items:
-  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: markdown, path: pages/overview.md, order: 1 }}
+  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1 }}
   - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 2 }}
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 3 }}
 {planning_item}  - {{ id: compass_edit, label: "Compass", section: actions, type: editable_markdown, path: ../COMPASS.md }}

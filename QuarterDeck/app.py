@@ -202,8 +202,25 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
     item_type = item.get("type", "")
     if item_type in _UNTRACKED_TYPES:
         return True
-    path_key = "plan_path" if item_type == "plan_decision" else "path"
-    path_val = item.get(path_key)
+    if item_type == "plan_decision":
+        path_val = item.get("plan_path")
+        if not path_val:
+            return True
+        try:
+            return (BASE_DIR / path_val).resolve().exists()
+        except Exception:
+            return True
+    if item_type == "document":
+        for key in ("path_html", "path_md", "path_pdf"):
+            path_val = item.get(key)
+            if path_val:
+                try:
+                    if (BASE_DIR / path_val).resolve().exists():
+                        return True
+                except Exception:
+                    pass
+        return not any(item.get(k) for k in ("path_html", "path_md", "path_pdf"))
+    path_val = item.get("path")
     if not path_val:
         return True
     try:

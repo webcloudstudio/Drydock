@@ -14,6 +14,15 @@ def test_render_console_places_sea_trials_before_soundings(tmp_path):
     assert "command_status" not in config
 
 
+def test_render_console_commanders_view_is_document_type():
+    config = render_console("Example")
+
+    assert "type: document" in config
+    assert "path_html: captains_chair.html" in config
+    assert "commanders_view" in config
+    assert "pages/overview.md" not in config
+
+
 def test_render_console_includes_spike_questionnaire_source(tmp_path):
     config = render_console("Example")
 

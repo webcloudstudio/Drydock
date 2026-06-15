@@ -349,6 +349,47 @@ def test_document_renderer_missing_all_paths():
     assert "No files found" in rendered
 
 
+# ── _item_file_exists ────────────────────────────────────────────────────────
+
+
+def test_item_file_exists_document_hidden_until_path_html_present(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
+
+    item = {"id": "chair", "type": "document", "path_html": "captains_chair.html"}
+    assert not quarterdeck._item_file_exists(item)
+
+    (tmp_path / "QuarterDeck" / "captains_chair.html").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "QuarterDeck" / "captains_chair.html").write_text("<html/>", encoding="utf-8")
+    assert quarterdeck._item_file_exists(item)
+
+
+def test_item_file_exists_document_visible_when_any_variant_exists(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
+
+    item = {
+        "id": "doc",
+        "type": "document",
+        "path_md": "doc.md",
+        "path_html": "doc.html",
+        "path_pdf": "doc.pdf",
+    }
+    assert not quarterdeck._item_file_exists(item)
+
+    (tmp_path / "QuarterDeck" / "doc.md").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "QuarterDeck" / "doc.md").write_text("# Doc", encoding="utf-8")
+    assert quarterdeck._item_file_exists(item)
+
+
+def test_item_file_exists_document_no_paths_always_visible(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
+
+    item = {"id": "doc", "type": "document"}
+    assert quarterdeck._item_file_exists(item)
+
+
 # ── sources expansion ────────────────────────────────────────────────────────
 
 
