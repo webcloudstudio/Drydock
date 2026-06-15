@@ -516,3 +516,4 @@
 {"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-187/test_document_assemble_is_not_0/spec.md --output /tmp/pytest-of-barlo/pytest-187/test_document_assemble_is_not_0/out.html", "time": "2026-06-14 17:30", "return_code": 0}
 {"command": "drydock run", "time": "2026-06-14 17:30", "return_code": 0}
 {"command": "drydock analyze Drydock", "time": "2026-06-14 17:56", "target": "Drydock", "return_code": 0}
+{"command": "drydock run quarterdeck Drydock", "time": "2026-06-15 00:23", "target": "Drydock", "return_code": 1}
