@@ -196,36 +196,41 @@ class TestIsCompassUnpopulated:
 
 
 class TestCollectBlueprintFiles:
-    def test_returns_spec_files(self, tmp_path):
+    def test_returns_imported_sources(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        sources = bp / "sources"
+        sources.mkdir(parents=True)
+        (sources / "spec.md").write_text("content", encoding="utf-8")
+        names = [p.name for p in _collect_blueprint_files(bp)]
+        assert names == ["spec.md"]
+
+    def test_no_sources_dir_returns_empty(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        (bp / "COMPASS.md").write_text("c", encoding="utf-8")
         (bp / "FEATURE-Auth.md").write_text("f", encoding="utf-8")
-        names = [p.name for p in _collect_blueprint_files(bp)]
-        assert "COMPASS.md" not in names
-        assert "FEATURE-Auth.md" in names
-
-    def test_excludes_meta_files(self, tmp_path):
-        bp = tmp_path / "blueprint"
-        bp.mkdir()
-        for name in ("METADATA.md", "README.md", "IDEAS.md", "COMPASS.md", "ACCEPTANCE_CRITERIA.md"):
-            (bp / name).write_text("x", encoding="utf-8")
         assert _collect_blueprint_files(bp) == []
 
-    def test_excludes_build_prefix(self, tmp_path):
+    def test_empty_sources_dir_returns_empty(self, tmp_path):
         bp = tmp_path / "blueprint"
-        bp.mkdir()
-        (bp / "BUILD_CONFIGURATION.md").write_text("x", encoding="utf-8")
-        (bp / "BUILD_PLAN_COMPASS.md").write_text("x", encoding="utf-8")
+        (bp / "sources").mkdir(parents=True)
         assert _collect_blueprint_files(bp) == []
 
-    def test_returns_sorted(self, tmp_path):
+    def test_returns_sorted_recursive(self, tmp_path):
         bp = tmp_path / "blueprint"
-        bp.mkdir()
-        for name in ("SCREEN-Home.md", "ARCHITECTURE.md", "FEATURE-Login.md"):
-            (bp / name).write_text("x", encoding="utf-8")
+        sources = bp / "sources"
+        sources.mkdir(parents=True)
+        for name in ("zzz.md", "aaa.md", "mmm.md"):
+            (sources / name).write_text("x", encoding="utf-8")
+        paths = _collect_blueprint_files(bp)
+        assert paths == sorted(paths)
+
+    def test_returns_subdirectory_files(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        sub = bp / "sources" / "sub"
+        sub.mkdir(parents=True)
+        (sub / "deep.md").write_text("d", encoding="utf-8")
         names = [p.name for p in _collect_blueprint_files(bp)]
-        assert names == sorted(names)
+        assert "deep.md" in names
 
 
 # ---------------------------------------------------------------------------
@@ -249,21 +254,22 @@ class TestAssemblePrompt:
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=True)
         assert "COMPASS_EXISTS: true" in result
 
-    def test_injects_spec_files_fenced(self, tmp_path):
+    def test_injects_source_files_fenced(self, tmp_path):
         bp = tmp_path / "blueprint"
-        bp.mkdir()
-        (bp / "FEATURE-Auth.md").write_text("auth content", encoding="utf-8")
+        sources = bp / "sources"
+        sources.mkdir(parents=True)
+        (sources / "spec.md").write_text("imported content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### FEATURE-Auth.md" in result
-        assert "auth content" in result
+        assert "### spec.md" in result
+        assert "imported content" in result
 
-    def test_excludes_build_files(self, tmp_path):
+    def test_top_level_blueprint_files_not_injected(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        (bp / "BUILD_CONFIGURATION.md").write_text("should not appear in spec section", encoding="utf-8")
+        (bp / "FEATURE-Auth.md").write_text("should not appear", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        # BUILD_CONFIGURATION.md should be in the Prior PO answers section if present, not spec section
-        assert "### BUILD_CONFIGURATION.md" not in result
+        assert "### FEATURE-Auth.md" not in result
+        assert "should not appear" not in result
 
     def test_injects_build_configuration_if_present(self, tmp_path):
         bp = tmp_path / "blueprint"

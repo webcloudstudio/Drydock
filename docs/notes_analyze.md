@@ -6,8 +6,8 @@
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
 | Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. Ready to implement. |
-| Pending spec | 9 approved items |
-| Pending impl | 0 unimplemented sections |
+| Pending spec | 10 approved items |
+| Pending impl | 1 unimplemented sections |
 
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
 `drydock plan create`. The two commands have a tight interface and are designed together.
@@ -24,6 +24,20 @@ ratified facts persist.
 ---
 
 ## Decisions
+
+### What analyze reads
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
+
+`drydock analyze` reads the **imported source files** from `blueprint/sources/` only.
+Top-level typed spec template files (`ARCHITECTURE.md`, `FEATURE-*.md`, etc.) in `blueprint/`
+are NOT injected — they are empty at analyze time and are outputs of `plan create`, not inputs.
+
+Multiple imports are supported: each `drydock import` lands files in `blueprint/sources/`
+alongside prior imports. `analyze` reads all `.md` files under `blueprint/sources/` recursively.
+
+This may be extended in a future session to also include hand-written top-level spec files.
+
+---
 
 ### Two Decomposition Passes at Different Altitudes
 `2026-06-14` · `spec:approved` · `impl:implemented`

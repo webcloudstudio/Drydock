@@ -26,14 +26,7 @@ from drydock.prompts import load_prompt
 
 PROMPT_NAME = "analyze"
 
-_SKIP_FILES = frozenset({
-    "METADATA.md",
-    "README.md",
-    "IDEAS.md",
-    "COMPASS.md",
-    "ACCEPTANCE_CRITERIA.md",
-})
-_SKIP_PREFIX = "BUILD_"
+_SOURCES_SUBDIR = "sources"
 
 _FIXED_SPIKES = (
     "spike-intent.json",
@@ -89,15 +82,11 @@ class AnalyzeResult:
 
 
 def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
-    """Return spec files for analysis, excluding meta/build files."""
-    files = []
-    for path in sorted(blueprint_dir.glob("*.md")):
-        if path.name in _SKIP_FILES:
-            continue
-        if path.name.startswith(_SKIP_PREFIX):
-            continue
-        files.append(path)
-    return files
+    """Return imported source files from blueprint/sources/ for analysis."""
+    sources_dir = blueprint_dir / _SOURCES_SUBDIR
+    if not sources_dir.is_dir():
+        return []
+    return sorted(sources_dir.rglob("*.md"))
 
 
 _EMPTY_LINE = frozenset({"", "- None.", "- None"})
@@ -176,7 +165,7 @@ def _assemble_prompt(
     except Exception:
         pass
 
-    parts += ["## Blueprint files", ""]
+    parts += ["## Imported source files", ""]
     for path in files:
         content = path.read_text(encoding="utf-8")
         parts.append(f"### {path.name}")
