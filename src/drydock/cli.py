@@ -950,6 +950,7 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    print(f"Drydock {__version__}  {__copyright__}", file=sys.stderr)
     debug = getattr(args, "debug", False)
 
     try:

@@ -67,6 +67,11 @@ class TestHelpAndVersion:
         assert rc == 0
         assert "drydock" in out.lower()
 
+    def test_command_prints_copyright_to_stderr(self, isolated_config):
+        _, _, err = run_cli("config", "show")
+        assert __copyright__ in err
+        assert __version__ in err
+
 
 class TestConfigShow:
     def test_config_show_runs(self, isolated_config):
