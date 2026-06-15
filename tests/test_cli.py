@@ -39,6 +39,7 @@ class TestHelpAndVersion:
             "config",
             "init",
             "validate",
+            "prompt",
             "document",
             "rigging",
             "plan",
@@ -71,6 +72,41 @@ class TestHelpAndVersion:
         _, _, err = run_cli("config", "show")
         assert __copyright__ in err
         assert __version__ in err
+
+
+class TestPromptReview:
+    def test_help_lists_review_subcommand(self):
+        rc, out, _ = run_cli("prompt", "--help")
+        assert rc == 0
+        assert "review" in out
+
+    def test_prompt_review_runs(self, tmp_path, isolated_config, monkeypatch):
+        import drydock.config
+
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        result = type(
+            "ReviewResult",
+            (),
+            {
+                "review_path": repo_root / "docs" / "prompt_reviews" / "analyze.md",
+                "archive_path": None,
+                "overall_score": 8.4,
+                "rating_band": "Workable",
+                "review_model": "opus",
+            },
+        )()
+        result.review_path.parent.mkdir(parents=True)
+        result.review_path.write_text("review\n", encoding="utf-8")
+        monkeypatch.setattr(drydock.config, "get_workspace", lambda: tmp_path)
+        monkeypatch.setattr("drydock.paths.get_repo_root", lambda: repo_root)
+        monkeypatch.setattr("drydock.prompt_review.review_prompt", lambda component: result)
+
+        rc, out, err = run_cli("prompt", "review", "analyze")
+
+        assert rc == 0
+        assert "Score: 8.4/10" in out
+        assert "prompt_reviews/analyze.md" in out
 
 
 class TestConfigShow:

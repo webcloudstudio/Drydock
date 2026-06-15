@@ -168,7 +168,6 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
-
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
     from drydock.config import get_target_directory
@@ -190,12 +189,16 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     for spike_path in result.spike_paths:
         print(f"  {spike_path.name:<20} →  {spike_path.relative_to(tdir)}")
     if result.captains_chair_path:
-        print(f"  captains_chair  →  {result.captains_chair_path.relative_to(tdir)}  (lifecycle: analyzed)")
+        print(
+            f"  captains_chair  →  {result.captains_chair_path.relative_to(tdir)}  (lifecycle: analyzed)"
+        )
     print()
     _quality_icon = {"Ready": "✓", "Questions": "⚠", "Blocked": "✗"}.get(result.quality, "?")
-    print(f"Quality: {_quality_icon}  {result.quality}  "
-          f"({result.story_count} stories · {result.question_count} questions · "
-          f"{result.blocker_count} blockers)")
+    print(
+        f"Quality: {_quality_icon}  {result.quality}  "
+        f"({result.story_count} stories · {result.question_count} questions · "
+        f"{result.blocker_count} blockers)"
+    )
     print()
     if result.quality == "Ready":
         print(f"Next step: drydock plan create {args.Target}")
@@ -292,6 +295,24 @@ def cmd_survey(args: argparse.Namespace) -> int:
         return 0
 
     print(render_scoreboard(records, command=args.command_filter))
+    return 0
+
+
+def cmd_prompt_review(args: argparse.Namespace) -> int:
+    from drydock.paths import get_repo_root
+    from drydock.prompt_review import review_prompt
+
+    print(f"Reviewing prompt: {args.Component}")
+    result = review_prompt(args.Component)
+    repo_root = get_repo_root()
+    print(f"  review      →  {result.review_path.relative_to(repo_root)}")
+    if result.archive_path:
+        print(f"  archived    →  {result.archive_path.relative_to(repo_root)}")
+    print()
+    print(
+        f"Score: {result.overall_score:.1f}/10  "
+        f"({result.rating_band}; model: {result.review_model})"
+    )
     return 0
 
 
@@ -741,6 +762,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_survey.add_argument("--raw", action="store_true", help="Print raw score records as JSON.")
 
+    # ── prompt ────────────────────────────────────────────────────────────────
+    p_prompt = sub.add_parser("prompt", help="Review Drydock prompt contracts.")
+    prompt_sub = p_prompt.add_subparsers(dest="prompt_command", metavar="<subcommand>")
+    p_prompt_review = prompt_sub.add_parser(
+        "review",
+        help="Evaluate one prompt against the spec, matching notes, and consumer contracts.",
+    )
+    p_prompt_review.add_argument("Component", metavar="<component>")
+
     # ── run ───────────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Start a Drydock service.")
     run_sub = p_run.add_subparsers(dest="run_command", metavar="<subcommand>")
@@ -907,6 +937,18 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
             record_activity("survey", args.Target, args.Target)
         return rc
+
+    if command == "prompt":
+        sub = getattr(args, "prompt_command", None)
+        if sub == "review":
+            rc = cmd_prompt_review(args)
+            if rc == 0:
+                from drydock.config import record_activity
+
+                record_activity("prompt review", args.Component)
+            return rc
+        parser.parse_args(["prompt", "--help"])
+        return 0
 
     if command == "run":
         sub = getattr(args, "run_command", None)

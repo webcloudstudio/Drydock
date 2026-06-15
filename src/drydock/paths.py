@@ -41,6 +41,18 @@ def _source_tree_quarterdeck() -> Path | None:
     return None
 
 
+def _source_tree_repo_root() -> Path | None:
+    """Return the repository root when running from the source tree."""
+    for candidate in _repo_root_candidates():
+        if (
+            (candidate / "src" / "drydock").is_dir()
+            and (candidate / "prompts").is_dir()
+            and (candidate / "docs" / "Drydock_Specification.md").is_file()
+        ):
+            return candidate
+    return None
+
+
 def get_rigging_root() -> Path:
     """
     Return the authoritative Rigging/ directory.
@@ -110,3 +122,13 @@ def get_spec_template_dir() -> Path:
 def get_stack_dir() -> Path:
     """Return the stack/ directory inside Rigging."""
     return get_rigging_root() / "stack"
+
+
+def get_repo_root() -> Path:
+    """Return the Drydock repository root when running from a source checkout."""
+    src = _source_tree_repo_root()
+    if src is not None:
+        return src
+    raise FileNotFoundError(
+        "Drydock repository root not found. `drydock prompt review` requires a source checkout."
+    )

@@ -42,6 +42,7 @@ drydock validate <Blueprint> --verbose
 drydock rigging compact <Blueprint> [--all] [--force]
 
 drydock import <Blueprint> <Source> --format markdown
+drydock prompt review <component>
 drydock plan create <Blueprint> <Target>
 drydock build status <Blueprint> <Target>
 ```

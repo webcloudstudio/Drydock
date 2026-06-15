@@ -16,6 +16,7 @@ prompts here; deferred commands have no prompts yet.
 | Command | Prompt file | Status |
 |---|---|---|
 | `drydock rigging compact` | `rigging_compact.md` | Implemented |
+| `drydock prompt review` | `prompt_review.md` | Implemented |
 | `drydock plan create` | `plan_create.md` | Not yet ported — command is deferred |
 | `drydock document generate` | `document_generate.md` | Not yet ported — command is deferred |
 | `drydock import` | `import_source.md`, `import_speckit.md` | Not yet ported — command is deferred |
