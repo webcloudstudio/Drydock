@@ -108,15 +108,20 @@ def _is_excluded(rel: Path) -> bool:
 def import_source(
     blueprint: str, target: str, source: Path, target_directory: Path
 ) -> ImportSourceResult:
-    """Copy source code files to ``blueprint/sources/`` and seed Blueprint templates."""
+    """Copy source code files to ``blueprint/sources/``.
+
+    Seeds only root identity files (METADATA.md, README.md). After import,
+    ``blueprint/`` holds only ``sources/``; typed spec files are ``plan create``
+    outputs and COMPASS.md is an ``analyze`` output.
+    """
     source = source.expanduser().resolve()
     if not source.is_dir():
         raise SpecificationError(f"Import source must be a directory for --format source: {source}")
 
     target_dir = target_directory / target
     blueprint_dir = target_dir / "blueprint"
-    initialized = not (blueprint_dir / "ARCHITECTURE.md").exists()
-    init_specification(blueprint, target_dir, update=True)
+    initialized = not (target_dir / "METADATA.md").exists()
+    init_specification(blueprint, target_dir, update=True, root_identity_only=True)
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)

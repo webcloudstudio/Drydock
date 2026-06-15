@@ -136,14 +136,15 @@ class TestImportSource:
 
         assert len(result.imported) >= 3  # app.py, requirements.txt, utils/helpers.py
 
-    def test_blueprint_templates_seeded(self, tmp_path):
+    def test_root_identity_seeded_no_blueprint_corpus(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
 
         result = import_source("Proj", "Tgt", src, td)
 
-        assert (result.blueprint_dir / "ARCHITECTURE.md").is_file()
+        assert ((td / "Tgt") / "METADATA.md").is_file()
+        assert not (result.blueprint_dir / "ARCHITECTURE.md").exists()
 
     def test_initialized_true_on_first_import(self, tmp_path):
         src = self._make_source(tmp_path)

@@ -97,16 +97,24 @@ class TestImportMarkdownDirectory:
 
 
 class TestImportMarkdownInitialization:
-    def test_blueprint_templates_seeded_on_first_import(self, tmp_path):
+    def test_root_identity_seeded_blueprint_holds_only_sources(self, tmp_path):
         source = tmp_path / "s.md"
         source.write_text("# S\n", encoding="utf-8")
         td = tmp_path / "targets"
         td.mkdir()
 
         result = import_markdown("Proj", "Tgt", source, td)
+        target_dir = td / "Tgt"
 
         assert result.initialized is True
-        assert (result.blueprint_dir / "ARCHITECTURE.md").is_file()
+        # Root identity anchor for lifecycle state.
+        assert (target_dir / "METADATA.md").is_file()
+        # No typed-spec corpus seeded into blueprint/; COMPASS.md is an analyze output.
+        assert not (result.blueprint_dir / "ARCHITECTURE.md").exists()
+        assert not (result.blueprint_dir / "DATABASE.md").exists()
+        assert not (target_dir / "COMPASS.md").exists()
+        # blueprint/ contains only the sources subtree.
+        assert {p.name for p in result.blueprint_dir.iterdir()} == {"sources"}
 
     def test_initialized_false_on_reimport(self, tmp_path):
         source = tmp_path / "s.md"

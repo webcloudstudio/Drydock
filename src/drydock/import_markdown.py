@@ -66,12 +66,17 @@ def _markdown_files(source: Path) -> list[tuple[Path, Path]]:
 def import_markdown(
     blueprint: str, target: str, source: Path, target_directory: Path
 ) -> ImportResult:
-    """Preserve Markdown under ``targets/<Target>/blueprint/sources/`` and seed templates."""
+    """Preserve Markdown under ``targets/<Target>/blueprint/sources/``.
+
+    Seeds only root identity files (METADATA.md, README.md). Typed spec files are
+    ``plan create`` outputs; COMPASS.md is an ``analyze`` output. After import,
+    ``blueprint/`` holds only ``sources/``.
+    """
     source = source.expanduser().resolve()
     target_dir = target_directory / target
     blueprint_dir = target_dir / "blueprint"
-    initialized = not (blueprint_dir / "ARCHITECTURE.md").exists()
-    init_specification(blueprint, target_dir, update=True)
+    initialized = not (target_dir / "METADATA.md").exists()
+    init_specification(blueprint, target_dir, update=True, root_identity_only=True)
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)

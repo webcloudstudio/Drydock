@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, open questions, and all analyze artifacts.
-version: 20260614 V4
+version: 20260615 V5
 intent: Act as a Scrum Development Team: analyze imported source material, derive a story list, compute a quality signal, surface blockers and open questions, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -53,72 +53,104 @@ Something one role needs to proceed but can estimate → **question**.
 
 After analysis, compute one of three quality values:
 
-| Quality | Condition |
-|---|---|
-| `Blocked` | One or more blockers exist that prevent meaningful decomposition |
-| `Questions` | No blockers; open questions remain but story list can be derived |
-| `Ready` | No blockers; no open questions; `plan create` can proceed |
+| Quality | Condition | Pipeline |
+|---|---|---|
+| `Blocked` | One or more blockers exist | Halts — `plan create` must not proceed |
+| `Questions` | No blockers; open questions remain | `plan create` may proceed |
+| `Ready` | No blockers; no open questions | `plan create` may proceed |
 
 **Blocker** — the team genuinely cannot proceed without this. Examples: no project name, no
 understanding of what the product does, fundamental contradictions in the spec. Quality stays
 `Blocked` until the human resolves it.
 
 **Question** — open item that does not stop decomposition. Carried as open items into the plan.
-Questions do not block Quality reaching `Ready`.
+
+Only blockers halt the pipeline. Both `Questions` and `Ready` permit `plan create`; open
+questions distinguish the two but do not gate.
 
 ---
 
 ## Completeness Checklist
 
-Run this checklist over the spec. Each unmet item → one question (unless the team cannot proceed
-without it → blocker instead):
+Run this checklist over the **imported sources** (and prior `BUILD_CONFIGURATION.md` answers, if
+injected). There are no typed spec files at analyze time — judge each item solely against what the
+sources state. Each unmet item → one question (unless the team cannot proceed without it → blocker
+instead):
 
-- [ ] Product goal is stated (COMPASS.md or feature files describe what and why)
-- [ ] Stack chosen (METADATA.md `stack:` field is not empty or TBD)
-- [ ] Persistence model defined (DATABASE.md present if the spec persists data)
-- [ ] Auth model named (if user accounts or protected resources exist)
-- [ ] Success criteria present (COMPASS.md `## Success Criteria`)
-- [ ] AC present per feature or screen
-- [ ] Deployment target known
-- [ ] UI component structure is clear enough to decompose (for web projects)
+- [ ] Product goal is stated in the sources (what the product is and why)
+- [ ] Stack is named in the sources or prior answers (not empty or TBD)
+- [ ] Persistence model is described in the sources (if the product persists data)
+- [ ] Auth model is named in the sources (if user accounts or protected resources are described)
+- [ ] Success criteria are stated in the sources
+- [ ] Acceptance criteria are stated per described feature or screen
+- [ ] Deployment target is stated in the sources
+- [ ] UI structure is described clearly enough to decompose (for web products)
 
 ---
 
 ## Tasks
 
-Execute in this order:
+This is a sequential pipeline. Execute the steps in order; each step **consumes** the prior
+step's output and **emits** the named result. Do not re-derive an artifact independently when a
+prior step already produced its input.
 
-**1. Each role reviews the Blueprint independently.**
-Note what is clear, what is missing, and what must be answered before proceeding.
+**1. Roles review the sources.**
+- *Consumes:* imported sources + prior `BUILD_CONFIGURATION.md`.
+- *Emits:* per-role notes — what is clear, what is missing, what must be answered.
 
-**2. Identify blockers vs questions.**
+**2. Detect project type.**
+- *Consumes:* the content and structure of the imported sources.
+- *Emits:* one of `web | api | cli | library | pipeline | event-driven` (or `ambiguous`).
+
+Detect from what the sources *describe*, not from any filename — there are no typed spec files
+at analyze time:
+
+| Type | Signals in the sources |
+|---|---|
+| `web` | Described screens, pages, or HTTP routes for human users |
+| `api` | Described programmatic endpoints / capabilities; no screens |
+| `cli` | Described commands and sub-verbs; no routes or screens |
+| `library` | Described public API symbols consumed by other code; no routes, no screens |
+| `pipeline` | Described datasets, files, or batch transforms; no routes |
+| `event-driven` | Described topics, queues, or event types |
+
+Mixed signals → `ambiguous`.
+
+**3. Identify blockers vs questions.**
+- *Consumes:* the role notes + completeness checklist.
+- *Emits:* the blocker list and the open-questions list.
+
 Blockers halt the pipeline. Questions are carried forward. A spike is a valid resolution for a
 blocker — schedule the spike, mark it answered, carry on.
 
-**3. Derive the story list.**
-Decompose the Blueprint into atomic stories at title + high-level AC level.
+**4. Derive the story list.**
+- *Consumes:* the sources + role notes + project type.
+- *Emits:* the story list at title + high-level AC level (powers ANALYSIS.md `## Story List`).
 - Each story corresponds to one spec file scope.
 - Story cap: ~100 stories. If you identify more than 100, the spec is over-decomposed; surface
   this as a blocker and offer to consolidate.
 - Group by feature area. Organize as the project shape suggests — no prescribed order.
 - Offer 2–3 tuning options (e.g., "decompose by module vs by layer").
 
-**4. Detect project type.**
+**5. Derive SOUNDINGS milestones from the story list.**
+- *Consumes:* the story list (and any explicit acceptance criteria stated in the sources).
+- *Emits:* SOUNDINGS.md rows. See the SOUNDINGS precedence rule in Output Format.
 
-| Type | Signals |
-|---|---|
-| `web` | SCREEN-*.md present; HTTP routes in `Provides`; HTTP verbs in ARCHITECTURE |
-| `api` | AGENTS.md with `## Capabilities`; no SCREEN-*.md; commands/verbs in `Provides` |
-| `cli` | Commands and sub-verbs in `Provides`; no routes or screens |
-| `library` | Public API symbols in `Provides`; no routes, no screens |
-| `pipeline` | Dataset or file names in `Provides`; no routes |
-| `event-driven` | Topics, queues, or event types in `Provides` |
+**6. Derive SEA_TRIALS objectives.**
+- *Consumes:* the story list + the COMPASS (existing file or the COMPASS you will emit in step 9).
+- *Emits:* SEA_TRIALS.md strategic objectives.
 
-Mixed signals → `ambiguous`.
+**7. Compute the quality signal.**
+- *Consumes:* the blocker and question counts from step 3.
+- *Emits:* `Blocked | Questions | Ready` per the Quality Signal table.
 
-**5. Compute the quality signal.** Apply the table above.
+**8. Build the questionnaires.**
+- *Consumes:* the project type + open questions + injected stack catalog.
+- *Emits:* the four fixed spikes plus any variable spikes. `spike-stack.json` options come from
+  the stack catalog filtered to the project type (see Hard Rules).
 
-**6. Produce all output blocks.** See Output Format below.
+**9. Emit all output blocks.** See Output Format below. Emit the COMPASS.md block only when
+`COMPASS_EXISTS: false`.
 
 ---
 
@@ -179,11 +211,12 @@ Strategic objectives at product level. Derived from COMPASS and spec. 3–7 rows
 === SOUNDINGS.md ===
 # Soundings
 
-Acceptance milestones derived from the specification.
+Acceptance milestones derived from the imported sources and the story list.
 
 | ID | Acceptance Criterion | State | Evidence |
 |---|---|---|---|
-{One row per concrete AC found across all spec files.
+{Precedence: where a source states explicit acceptance criteria, use them. Otherwise synthesize
+one milestone per feature area / screen / persistence area from the project shape and story list.
 Format: | ac-{feature-slug}-{n} | {Criterion text} | NOT STARTED | |}
 === END SOUNDINGS.md ===
 ```
@@ -200,14 +233,21 @@ If `COMPASS_EXISTS: true`, omit this block entirely.
 Written for a developer joining the project for the first time. Be specific.}
 
 ## Constraints
-{Bullet list: technical, regulatory, scale, and operating constraints derived from the spec.
-"- None stated." if the spec is silent.}
+{Bullet list: technical, regulatory, scale, and operating constraints derived from the sources.
+"- None stated." if the sources are silent.}
 
 ## Success Criteria
 {Bullet list: measurable conditions under which this project is considered complete.
-Derive from spec `## Acceptance Criteria` and `## Open Questions` sections.}
+Derive from the sources and the story list.}
 === END COMPASS.md ===
 ```
+
+**`spike-stack.json` options contract.** The `options` array above is a placeholder. Replace it
+with the stack-catalog slugs from the injected **Rigging stack catalog**, filtered to the detected
+project type, always ending with `"other"`. Do **not** open or read the per-technology stack files —
+you only list their catalog slugs. If a source already names the stack, pre-select it (list it
+first); if the sources are silent, leave it as an open questionnaire item for the PO. `"other"`
+points the PO to the relevant Rigging stack document.
 
 **Fixed spike questionnaires (always emit all four):**
 
@@ -248,10 +288,10 @@ Derive from spec `## Acceptance Criteria` and `## Open Questions` sections.}
   "questions": [
     {
       "id": "framework",
-      "label": "Web Framework",
-      "prompt": "Which framework should be used? Options come from Rigging/stack/.",
+      "label": "Framework / Stack",
+      "prompt": "Which stack should be used? Options are drawn from the injected stack catalog.",
       "input": "select",
-      "options": {detected framework options from project type — flask/django/fastapi/other for Python web; fill from Rigging catalog}
+      "options": ["flask", "django", "fastapi", "other"]
     },
     {
       "id": "deployment_target",
@@ -357,12 +397,16 @@ Derive from spec `## Acceptance Criteria` and `## Open Questions` sections.}
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
 - Never re-ask a question already answered in BUILD_CONFIGURATION.md.
-- Technology options in `spike-stack.json` must be concrete names (from Rigging catalog if injected).
-- SOUNDINGS.md rows come from actual `## Acceptance Criteria` bullets in spec files.
+- `spike-stack.json` options are stack-catalog slugs from the injected catalog, filtered to the
+  detected project type, plus `"other"`. Never open the per-technology stack files — list slugs only.
+- SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise
+  synthesize one milestone per feature area / screen / persistence area.
 - SEA_TRIALS.md objectives are strategic — one per major product capability or outcome.
 - All spike JSON must be valid JSON.
-- Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources only — do not invent typed spec file structure.
-- Do not invent gaps that do not exist in the files.
+- Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources only — there are no
+  typed spec files at analyze time, so do not inspect or invent them.
+- Do not fabricate requirements or problems the sources do not imply. A genuinely absent decision
+  (e.g. no auth model stated) is a real gap — surface it as a question, not an invented requirement.
 
 ---
 

@@ -68,6 +68,11 @@ def _apply_tokens(text: str, slug: str, display_name: str, today: str, today_com
 # Templates that belong at the Target root rather than inside blueprint/.
 _ROOT_TEMPLATES = {"METADATA.md", "README.md", "COMPASS.md"}
 
+# Persistent identity files seeded by import. METADATA.md anchors lifecycle state;
+# README.md is the Target identity document. COMPASS.md is excluded: it is an
+# analyze output, not an import seed.
+_IDENTITY_TEMPLATES = {"METADATA.md", "README.md"}
+
 
 def init_specification(
     spec_name: str,
@@ -75,6 +80,7 @@ def init_specification(
     *,
     update: bool = False,
     force: bool = False,
+    root_identity_only: bool = False,
 ) -> InitResult:
     """
     Create or update a Blueprint within a Target from packaged templates.
@@ -82,6 +88,12 @@ def init_specification(
     Root-level identity files (METADATA.md, README.md, COMPASS.md) are written to
     ``target_dir``; the Typed Specification corpus is written to
     ``target_dir/blueprint``.
+
+    When ``root_identity_only`` is set, only the persistent root identity files
+    (METADATA.md, README.md) are written; the Typed Specification corpus and the
+    COMPASS.md seed are skipped. Import workflows use this so a freshly imported
+    Target holds only ``blueprint/sources/`` plus root identity files — typed spec
+    files are ``plan create`` outputs and COMPASS.md is an ``analyze`` output.
 
     Raises:
         SpecificationError: On invalid name or filesystem failure.
@@ -117,6 +129,8 @@ def init_specification(
 
     for tmpl_path in sorted(template_dir.glob("*.md")):
         fname = tmpl_path.name
+        if root_identity_only and fname not in _IDENTITY_TEMPLATES:
+            continue
         dest = (target_dir if fname in _ROOT_TEMPLATES else blueprint_dir) / fname
         already_exists = dest.exists()
 
