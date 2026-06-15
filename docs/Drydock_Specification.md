@@ -8,20 +8,25 @@ year: June 11 2026
 nav_active: drydock.html
 header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
-ideas_title: What Drydock Adds
+ideas_title: The SAIL Method
 ideas:
-  - title: The **SAIL** Method - Set Up, Analyze & Arrange, Implement, Loop |
-  - title: The **Drydock** is the governing cli for the system. |
-  - title: Import your projects into **Blueprints** - Typed Specifications
-  - title: Your Compass is your constitiution or project intent
-  - title: Analyze uses agile decompostion to Features, Stories, AC, Spikes
-  - title: Plan creates your Manifest based on the Analysis
-  - title: Build your software plan in managed chunks based on the Manifest
-  - title: Your Rigging is your Enterprise Branding and Build Rules
-  - title: QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions.
-  - title: Refits with a simple ticket workflow maintain Blueprint rebuilability
-  - title: Your Ship's Log preserves material decisions and milestones 
-  - title: Auto create consistent documentation from your specification
+  - title: **S** — Setup and Install Drydock
+  - title: **A** — Analyze and Arrange
+    sub_list:
+      - Import your projects into **Blueprints** - Typed Specifications
+      - Your Compass is your constitution or project intent
+      - Agile Decomposition is used to Create Features, Stories, AC, Spikes...
+      - Plan creates your Manifest based on the analysis
+      - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
+  - title: **I** — Implement
+    sub_list:
+      - Build your software plan in managed chunks based on the Manifest
+      - Your Rigging is your enterprise branding and build rules
+  - title: **L** — Loop
+    sub_list:
+      - Refits with a simple ticket workflow maintain Blueprint rebuildability
+      - Your Ship's Log preserves material decisions and milestones
+      - Auto-create consistent documentation from your specification
 ---
 
 ## Testimonials
@@ -160,9 +165,8 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  INSTALL["install"]:::script --> CONFIG["config set"]:::script
+  INSTALL["pip install"]:::script --> CONFIG["config"]:::script
   CONFIG --> INIT["init"]:::script
-  INIT --> TARGET(["Target Baseline"]):::dir
 ```
 
 #### Configuration Keys (.env)
