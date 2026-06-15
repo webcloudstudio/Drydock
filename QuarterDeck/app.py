@@ -71,7 +71,7 @@ PROJECT_ROOT = (
 )
 CONFIG_PATH = BASE_DIR / "console.yaml"
 
-_DONE_STATES = {"done", "answered", "complete", "verified"}
+_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 _DEFAULT_DOT = "#94a3b8"
 
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
@@ -255,11 +255,14 @@ def nav_model() -> list[dict[str, Any]]:
     for item in items():
         if not _item_file_exists(item):
             continue
-        original_sid = item.get("section", "project_pages")
-        if item.get("id") in archived_ids and original_sid not in pinned_sids:
+        home_sid = item.get("section", "project_pages")
+        iid = item.get("id")
+        if iid in archived_ids and home_sid not in pinned_sids:
             sid = "archive"
+        elif item_pending(item):
+            sid = "actions"
         else:
-            sid = original_sid
+            sid = home_sid
         if sid not in by_section:
             by_section[sid] = []
             order.append(sid)
@@ -417,28 +420,16 @@ def render_link_item(item: dict[str, Any]) -> str:
 
 
 def render_document_item(item: dict[str, Any]) -> str:
-    """Render a document with md/html/pdf variants as a tabbed view."""
+    """Render a document using priority: html > pdf > md (single format, no tabs)."""
     label = item.get("label", "Document")
     iid = item["id"]
-    tabs: list[tuple[str, str]] = []
-
-    if item.get("path_md"):
-        try:
-            text = _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
-            tabs.append(("Read", _md(text)))
-        except HTTPException:
-            pass
+    title = f"<h1>{html.escape(label)}</h1>"
 
     if item.get("path_html"):
         try:
             resolve_path(item["path_html"])
             url = f"/raw/{iid}?variant=html"
-            tabs.append(
-                (
-                    "View HTML",
-                    f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>",
-                )
-            )
+            return title + f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
         except HTTPException:
             pass
 
@@ -446,33 +437,21 @@ def render_document_item(item: dict[str, Any]) -> str:
         try:
             resolve_path(item["path_pdf"])
             url = f"/raw/{iid}?variant=pdf"
-            tabs.append(
-                (
-                    "PDF",
-                    f"<p><a href='{url}' target='_blank' rel='noopener' class='pdf-open-btn'>Open PDF ↗</a></p>",
-                )
+            return (
+                title
+                + f"<p><a href='{url}' target='_blank' rel='noopener' class='pdf-open-btn'>Open PDF ↗</a></p>"
             )
         except HTTPException:
             pass
 
-    title = f"<h1>{html.escape(label)}</h1>"
-    if not tabs:
-        return title + "<p class='subtle'>No files found for this document.</p>"
-    if len(tabs) == 1:
-        return title + tabs[0][1]
-    tab_btns = "".join(
-        f"<button class='md-tab-btn{' active' if i == 0 else ''}' onclick='mdTab(this,{i})'>"
-        f"{html.escape(t)}</button>"
-        for i, (t, _) in enumerate(tabs)
-    )
-    tab_panes = "".join(
-        f"<div class='md-tab-pane{' active' if i == 0 else ''}' data-tab='{i}'>{c}</div>"
-        for i, (_, c) in enumerate(tabs)
-    )
-    return (
-        title + f"<div class='md-tabs'><div class='md-tab-bar'>{tab_btns}</div>"
-        f"<div class='md-tab-body'>{tab_panes}</div></div>"
-    )
+    if item.get("path_md"):
+        try:
+            text = _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
+            return title + _md(text)
+        except HTTPException:
+            pass
+
+    return title + "<p class='subtle'>No files found for this document.</p>"
 
 
 def render_plan_decision(item: dict[str, Any]) -> str:
@@ -932,9 +911,7 @@ def render_item(item: dict[str, Any]) -> str:
         return f"<div class='item-error'>{html.escape(str(exc.detail))}</div>"
     except (OSError, json.JSONDecodeError, KeyError) as exc:
         return f"<div class='item-error'>{html.escape(str(exc))}</div>"
-    if item.get("review"):
-        out += _decision_bar(item)
-    return out
+    return _wrap_page(item, out)
 
 
 # ── State store (questionnaire answers) ─────────────────────────────────────────
@@ -978,6 +955,32 @@ def _archived_item_ids() -> set[str]:
         return set()
 
 
+def item_pending(item: dict[str, Any]) -> bool:
+    """Return True when this item has an outstanding action requiring user input."""
+    t = item.get("type", "")
+    if t in _UNTRACKED_TYPES or t == "command_status":
+        return False
+    if t == "questionnaire":
+        path = item.get("path")
+        if not path:
+            return False
+        try:
+            p = (BASE_DIR / path).resolve()
+            if not p.exists():
+                return True
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return str(data.get("state", "open")) not in _DONE_STATES
+        except Exception:
+            return True
+    if item.get("review"):
+        try:
+            st = read_state(f"decision.{item['id']}")
+            return st.get("state", "open") != "approved"
+        except Exception:
+            return True
+    return False
+
+
 def read_state(key: str) -> dict[str, Any]:
     with connect_db() as conn:
         row = conn.execute(
@@ -988,31 +991,54 @@ def read_state(key: str) -> dict[str, Any]:
     return {"state": row[0], "payload": json.loads(row[1])}
 
 
-# ── Decision / review (an approve · revise · reject control on any item) ─────────
+# ── Page header (title row + action buttons + divider) ──────────────────────────
 
-_DECISION_BANNER = {"approved": "Approved", "revise": "Needs revision", "rejected": "Rejected"}
-_DECISION_BANNER_CLASS = {
-    "approved": "db-approved",
-    "revise": "db-revise",
-    "rejected": "db-rejected",
-}
+_H1_RE = re.compile(r"^\s*<h1[^>]*>.*?</h1>\s*", re.DOTALL | re.IGNORECASE)
 
 
-def _decision_bar(item: dict[str, Any]) -> str:
+def _wrap_page(item: dict[str, Any], body: str) -> str:
+    """Wrap rendered body with the standard page header: title, filename, action buttons."""
+    label = html.escape(item.get("label", ""))
     iid = html.escape(item["id"])
-    st = read_state(f"decision.{item['id']}")
-    cur, fb = st["state"], st["payload"].get("feedback", "")
-    banner = ""
-    if cur in _DECISION_BANNER:
-        tail = f" — {html.escape(fb)}" if fb else ""
-        banner = f"<div class='decision-banner {_DECISION_BANNER_CLASS[cur]}'>{_DECISION_BANNER[cur]}{tail}</div>"
+    t = item.get("type", "")
+
+    fname = ""
+    for key in ("path", "path_md", "path_html", "path_pdf", "href"):
+        v = item.get(key)
+        if v:
+            fname = Path(v).name
+            break
+    fname_html = (
+        f"<span class='ph-filename'>{html.escape(fname)}</span>" if fname else ""
+    )
+
+    btns: list[str] = []
+    if t == "editable_markdown":
+        btns.append(
+            f"<button class='ph-btn ph-edit' onclick=\"editDoc('{iid}')\">Edit</button>"
+        )
+    if item.get("review") and t != "questionnaire":
+        try:
+            cur = read_state(f"decision.{item['id']}").get("state", "open")
+        except Exception:
+            cur = "open"
+        if cur == "approved":
+            btns.append("<span class='ph-approved'>✓ Approved</span>")
+        else:
+            btns.append(
+                f"<button class='ph-btn ph-approve'"
+                f" onclick=\"submitDecision('{iid}','approved')\">Approve</button>"
+            )
+
+    acts_html = f"<div class='ph-actions'>{''.join(btns)}</div>" if btns else ""
+    body = _H1_RE.sub("", body, count=1)
     return (
-        "<div class='decision'>" + banner + "<div class='decision-bar'>"
-        f"<input class='decision-feedback' id='fb-{iid}' placeholder='Optional feedback…' value='{html.escape(fb)}'>"
-        f"<button class='d-btn d-approve' onclick=\"submitDecision('{iid}','approved')\">Approve</button>"
-        f"<button class='d-btn d-revise'  onclick=\"submitDecision('{iid}','revise')\">Revise</button>"
-        f"<button class='d-btn d-reject'  onclick=\"submitDecision('{iid}','rejected')\">Reject</button>"
-        "</div></div>"
+        f"<div class='page-header'>"
+        f"<div class='ph-title-row'><h1 class='ph-title'>{label}</h1>{fname_html}</div>"
+        f"{acts_html}"
+        f"<hr class='ph-divider'>"
+        f"</div>"
+        + body
     )
 
 
@@ -1254,38 +1280,19 @@ def health() -> dict[str, str]:
 # ── Nav item status ──────────────────────────────────────────────────────────────
 
 _NAV_STATUS_HTML: dict[str, str] = {
-    "missing": "<span class='nav-st ns-miss'>✗</span>",
-    "pending": "<span class='nav-st ns-pend'>○</span>",
-    "done": "<span class='nav-st ns-done'>✓</span>",
+    "pending": "<span class='nav-status ns-pending'>✗</span>",
+    "done": "<span class='nav-status ns-done'>✓</span>",
 }
 
 
-def item_nav_status(item: dict[str, Any]) -> str:
-    """Quick status for nav icon: 'ok', 'missing', 'pending', or 'done'."""
-    t = item.get("type")
-    if t == "command_status":
-        return "ok"
-    if t == "document":
-        for key in ("path_md", "path_html", "path_pdf"):
-            p = item.get(key)
-            if p and (BASE_DIR / p).resolve().exists():
-                return "ok"
-        return "missing"
-    path = item.get("path")
-    href = item.get("href")
-    if path:
-        if not (BASE_DIR / path).resolve().exists():
-            return "missing"
-    elif href and not re.match(r"^https?://", href):
-        if not (BASE_DIR / href).resolve().exists():
-            return "missing"
-    if t == "questionnaire" and path:
-        try:
-            st = read_state(f"questionnaire.{item['id']}")
-            return "done" if st.get("state", "open") in _DONE_STATES else "pending"
-        except Exception:
-            return "pending"
-    return "ok"
+def item_nav_status(item: dict[str, Any]) -> str | None:
+    """Return 'pending', 'done', or None (no icon) for the nav status box."""
+    t = item.get("type", "")
+    if t in _UNTRACKED_TYPES or t == "command_status":
+        return None
+    if item_pending(item):
+        return "pending"
+    return "done"
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────────
@@ -1304,8 +1311,9 @@ _STYLE = """
   .section-head .collapse-arrow { margin-left:auto; font-size:9px; color:#94a3b8; }
   .nav-section.collapsed .collapse-arrow::after { content:"▶"; }
   .nav-section:not(.collapsed) .collapse-arrow::after { content:"▼"; }
-  .doc-btn { width:100%; margin:0 0 3px; padding:7px 10px 7px 24px; border:1px solid transparent;
-             background:#fff; text-align:left; cursor:pointer; font-size:13px; color:#1b2430; border-radius:3px; }
+  .doc-btn { width:100%; margin:0 0 3px; padding:7px 10px 7px 8px; border:1px solid transparent;
+             background:#fff; text-align:left; cursor:pointer; font-size:13px; color:#1b2430; border-radius:3px;
+             display:flex; align-items:center; }
   .doc-btn:hover { background:#eef2f7; }
   .doc-btn.active { background:#111827; color:#fff; }
   .nav-section[data-sec="archive"] .doc-btn { color:#94a3b8; }
@@ -1360,16 +1368,18 @@ _STYLE = """
   .doc-source { width:100%; min-height:60vh; padding:12px; border:1px solid #cbd5e1; border-radius:4px;
                 box-sizing:border-box; font-family:ui-monospace,'Cascadia Code',Consolas,monospace; font-size:13px; line-height:1.5; }
   .doc-edit-actions { display:flex; gap:8px; margin-top:10px; }
-  .decision { margin-top:22px; border-top:2px solid #e2e8f0; padding-top:14px; }
-  .decision-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .decision-feedback { flex:1; min-width:180px; padding:8px; border:1px solid #cbd5e1; border-radius:3px; }
-  .d-btn { padding:8px 16px; border:none; border-radius:3px; cursor:pointer; font-weight:600; color:#fff; }
-  .d-btn:hover { opacity:.9; }
-  .d-approve { background:#16a34a; } .d-revise { background:#d97706; } .d-reject { background:#dc2626; }
-  .decision-banner { padding:8px 12px; border-radius:4px; margin-bottom:10px; font-weight:600; font-size:13px; }
-  .db-approved { background:#dcfce7; color:#166534; }
-  .db-revise   { background:#fef3c7; color:#92400e; }
-  .db-rejected { background:#fee2e2; color:#991b1b; }
+  .page-header { margin-bottom:0; }
+  .ph-title-row { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:6px; }
+  .ph-title { margin:0; line-height:1.2; font-size:1.5em; }
+  .ph-filename { font-size:12px; color:#94a3b8; font-family:ui-monospace,'Cascadia Code',Consolas,monospace; white-space:nowrap; }
+  .ph-actions { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .ph-btn { padding:5px 14px; border-radius:3px; cursor:pointer; font-size:13px; font-weight:600; border:1px solid transparent; }
+  .ph-edit { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
+  .ph-edit:hover { background:#e2e8f0; }
+  .ph-approve { background:#16a34a; color:#fff; border-color:#15803d; }
+  .ph-approve:hover { opacity:.9; }
+  .ph-approved { font-size:13px; font-weight:600; color:#16a34a; }
+  .ph-divider { border:none; border-top:1px solid #e2e8f0; margin:0 0 20px; }
   .ac-list { list-style:none; padding:0; margin:6px 0; }
   .ac-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
   .ac-icon { font-weight:700; width:16px; text-align:center; }
@@ -1379,8 +1389,10 @@ _STYLE = """
   .ac-actions button:hover { background:#eef2f7; }
   .ac-chip { font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; background:#e2e8f0; color:#475569; }
   .ac-chip-ok { background:#dcfce7; color:#166534; } .ac-chip-fail { background:#fee2e2; color:#991b1b; }
-  .nav-st { font-size:10px; font-weight:700; margin-right:3px; }
-  .ns-miss { color:#dc2626; } .ns-pend { color:#d97706; } .ns-done { color:#16a34a; }
+  .nav-status { display:inline-flex; width:18px; height:18px; border-radius:3px; align-items:center;
+               justify-content:center; font-weight:900; font-size:11px; flex:none; margin-right:6px; }
+  .ns-pending { background:#fee2e2; color:#dc2626; border:1.5px solid #fca5a5; }
+  .ns-done    { background:#dcfce7; color:#16a34a; border:1.5px solid #86efac; }
   .ext-arrow { font-size:10px; margin-left:3px; opacity:.55; }
   .q-done-mark { color:#16a34a; font-size:1.15em; font-weight:900; margin-right:2px; }
   .j-badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; color:#fff; }
@@ -1430,7 +1442,7 @@ def index() -> str:
             for d in s["items"]:
                 lbl = html.escape(d.get("label", d["id"]))
                 iid = html.escape(d["id"])
-                icon = _NAV_STATUS_HTML.get(item_nav_status(d), "")
+                icon = _NAV_STATUS_HTML.get(item_nav_status(d) or "", "")
                 # Archive/unarchive toggle — not shown for pinned sections
                 if s["id"] == "archive":
                     arc = f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" title='Unarchive'>↑</button>"

@@ -9,27 +9,23 @@ project:
   description: "Principal Developer cockpit for the Drydock V2 delivery loop."
 
 sections:
-  - { id: core,          label: "Drydock Core",  dot: "#0d9488", pinned: true }
-  - { id: build_plan,    label: "Build Plan",     dot: "#d97706" }
-  - { id: actions,       label: "Action Items",   dot: "#dc2626" }
-  - { id: project_pages, label: "Project Pages",  dot: "#2563eb" }
-  - { id: archive,       label: "Archive",        dot: "#94a3b8", collapsed: true }
+  - { id: core,    label: "Core",    dot: "#0d9488", pinned: true }
+  - { id: actions, label: "Actions", dot: "#dc2626" }
+  - { id: docs,    label: "Docs",    dot: "#2563eb" }
+  - { id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }
 
 # Auto-discover files into sections. Explicit items (matched by ID or by path) take
 # priority; overrides adjust source-generated items before insertion.
 sources:
   - glob: "docs/*.md"
-    section: project_pages
+    section: docs
     type: markdown
-  - glob: "logs/*.jsonl"
-    section: project_pages
-    type: jsonl
   - glob: "QuarterDeck/pages/*.md"
-    section: project_pages
+    section: docs
     type: markdown
 
 items:
-  # Drydock Core — fixed, source-of-truth (order: 1–5 controls nav sequence)
+  # Core — fixed, source-of-truth (order controls nav sequence)
   - id: commanders_view
     label: "Captain's Chair"
     section: core
@@ -44,13 +40,6 @@ items:
     path: ../docs/Drydock_Specification.md
     order: 2
 
-  - id: soundings
-    label: "Soundings"
-    section: core
-    type: markdown
-    path: ../docs/SOUNDINGS.md
-    order: 4
-
   - id: sea_trials
     label: "Sea Trials"
     section: core
@@ -58,7 +47,15 @@ items:
     path_md:   ../docs/SEA_TRIALS.md
     path_html: ../docs/SEA_TRIALS.html
     path_pdf:  ../docs/SEA_TRIALS.pdf
+    review: true
     order: 3
+
+  - id: soundings
+    label: "Soundings"
+    section: core
+    type: markdown
+    path: ../docs/SOUNDINGS.md
+    order: 4
 
   - id: ships_log
     label: "Ship's Log"
@@ -75,50 +72,50 @@ items:
       milestone: "#d97706"
     order: 5
 
-  # Build Plan
   - id: board
     label: "Delivery Board"
-    section: build_plan
+    section: core
     type: kanban
     path: tickets.json
     review: true
+    order: 6
 
-  # Action Items
-  - id: choose_next_slice
-    label: "Choose Next Slice"
-    section: actions
-    type: questionnaire
-    path: questionnaires/initial-direction.json
-
+  # Actions — items with review or completion requirement
   - id: initial_review
     label: "Initial Console Review"
-    section: actions
+    section: core
     type: markdown
     path: pages/initial-review.md
     review: true
 
-  # Project Pages
-  - id: command_status
-    label: "Acceptance Status"
-    section: project_pages
-    type: command_status
+  # Archive — completed ephemeral items
+  - id: choose_next_slice
+    label: "Choose Next Slice"
+    section: archive
+    type: questionnaire
+    path: questionnaires/initial-direction.json
 
-  - id: rendered_docs
-    label: "Rendered Documentation"
-    section: project_pages
-    type: link
-    href: ../docs/index.html
-
-  - id: pypi_reservation
-    label: "PyPI Name Reservation"
-    section: project_pages
-    type: document
-    path_md:  ../docs/PYPI_NAME_RESERVATION.md
-    path_pdf: ../docs/PYPI_NAME_RESERVATION.pdf
-
-  # Archive — collapsed by default
   - id: console_contract
     label: "QuarterDeck Contract"
     section: archive
     type: markdown
     path: README.md
+
+  # Docs — explicit known items (shadow glob-discovered duplicates)
+  - id: rendered_docs
+    label: "Rendered Documentation"
+    section: docs
+    type: link
+    href: ../docs/index.html
+
+  - id: pypi_reservation
+    label: "PyPI Name Reservation"
+    section: docs
+    type: document
+    path_md:  ../docs/PYPI_NAME_RESERVATION.md
+    path_pdf: ../docs/PYPI_NAME_RESERVATION.pdf
+
+  - id: command_status
+    label: "Acceptance Status"
+    section: docs
+    type: command_status

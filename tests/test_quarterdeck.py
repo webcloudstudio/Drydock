@@ -56,10 +56,10 @@ def test_jsonl_renderer_sorts_fields_and_isolates_invalid_lines(tmp_path, monkey
     assert "line 2" in rendered
 
 
-def test_drydock_console_has_five_configured_sections():
+def test_drydock_console_has_four_configured_sections():
     config = _console_config()
     section_ids = [s["id"] for s in config["sections"]]
-    assert section_ids == ["core", "build_plan", "actions", "project_pages", "archive"]
+    assert section_ids == ["core", "actions", "docs", "archive"]
 
 
 def test_drydock_console_archive_section_is_collapsed():
@@ -232,8 +232,8 @@ def test_drydock_command_status_renders_current_soundings():
 def test_drydock_console_core_artifact_order():
     config = _console_config()
     core = sorted(
-        (item for item in config["items"] if item["section"] == "core"),
-        key=lambda item: item.get("order", 0),
+        (item for item in config["items"] if item["section"] == "core" and item.get("order")),
+        key=lambda item: item["order"],
     )
 
     assert [item["id"] for item in core] == [
@@ -242,6 +242,7 @@ def test_drydock_console_core_artifact_order():
         "sea_trials",
         "soundings",
         "ships_log",
+        "board",
     ]
 
 
@@ -289,7 +290,8 @@ def test_plan_decision_rejects_non_approval(tmp_path, monkeypatch):
 # ── document type renderer ────────────────────────────────────────────────────
 
 
-def test_document_renderer_tabs_md_html_pdf(tmp_path, monkeypatch):
+def test_document_renderer_html_takes_priority(tmp_path, monkeypatch):
+    """With all three variants present, html is rendered (highest priority)."""
     quarterdeck = _load_quarterdeck()
     md_file = tmp_path / "doc.md"
     html_file = tmp_path / "doc.html"
@@ -318,10 +320,32 @@ def test_document_renderer_tabs_md_html_pdf(tmp_path, monkeypatch):
         }
     )
 
-    assert "Read" in rendered
-    assert "View HTML" in rendered
-    assert "PDF" in rendered
-    assert "md-tabs" in rendered
+    assert "doc-frame" in rendered  # html iframe rendered
+    assert "variant=html" in rendered
+    assert "md-tabs" not in rendered  # no tabs
+
+
+def test_document_renderer_pdf_fallback_when_no_html(tmp_path, monkeypatch):
+    """Without html, pdf is rendered next."""
+    quarterdeck = _load_quarterdeck()
+    pdf_file = tmp_path / "doc.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4")
+
+    def fake_resolve(path_value: str):
+        m = {"../doc.pdf": pdf_file}
+        p = m.get(path_value)
+        if p is None:
+            raise quarterdeck.HTTPException(status_code=404, detail="not found")
+        return p
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", fake_resolve)
+
+    rendered = quarterdeck.render_document_item(
+        {"id": "test_doc", "label": "Test Doc", "type": "document", "path_pdf": "../doc.pdf"}
+    )
+
+    assert "pdf-open-btn" in rendered
+    assert "variant=pdf" in rendered
 
 
 def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
