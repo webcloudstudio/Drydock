@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,6 +15,21 @@ from drydock.standard_artifacts import ensure_standard_artifacts, render_console
 
 _TRAVERSAL_RE = re.compile(r"\.\.|[/\\]")
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
+
+
+def _mkdir(path: Path) -> None:
+    # WSL/DrvFs can report EEXIST while stat returns ENOENT due to stale cache;
+    # retry once after a brief pause to let the filesystem settle.
+    for attempt in range(2):
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            return
+        except OSError as exc:
+            if exc.errno != errno.EEXIST or path.is_dir():
+                raise
+            if attempt == 0:
+                time.sleep(0.15)
+    path.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -38,7 +55,7 @@ def _write_missing(path: Path, content: str, result: InitTargetResult) -> None:
     if path.exists():
         result.skipped.append(path)
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _mkdir(path.parent)
     path.write_text(content, encoding="utf-8", newline="\n")
     result.created.append(path)
 
@@ -56,10 +73,10 @@ def init_target(
     result = InitTargetResult(target=target, target_dir=target_dir)
 
     try:
-        target_dir.mkdir(parents=True, exist_ok=True)
+        _mkdir(target_dir)
         for directory in ("blueprint/sources", "evidence", "logs", "QuarterDeck/data"):
             path = target_dir / directory
-            path.mkdir(parents=True, exist_ok=True)
+            _mkdir(path)
             keep = path / ".gitkeep"
             _write_missing(keep, "", result)
 
