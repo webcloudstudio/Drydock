@@ -1,7 +1,7 @@
 ---
 title: Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle: Drydock is a full implementation of the SAIL Methedology to build programs from specifications.  It is under active development. We will need volunteers to test the methedology during our active release phase.
+subtitle: Drydock is a full implementation of the SAIL Methedology to build programs from specifications.  Under active development. 
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 11 2026
@@ -18,7 +18,7 @@ ideas:
   - title: **S** — Setup and Install Drydock
     sub_list:
       - pip install, drydock config, drydock init
-  - title: **A** — Analyze and Arrange
+  - title: **A** — Agile Analyze and Arrange
     sub_list:
       - Import your projects into **Blueprints** - Typed Specifications
       - Agile Decomposition is used to Create Features, Stories, AC, Spikes...
@@ -63,14 +63,14 @@ ideas:
 ## What is Drydock
 
 Drydock is a governed Blueprint-driven software delivery system built around the **SAIL
-methodology: Set Up, Arrange, Implement, Loop**.
+methodology: Set Up, Analyze, Implement, Loop**.
 
 A **Drydock Blueprint** is the authoritative, living definition of a software product. It is
 expressed as a **Typed Specification** through files with prescribed roles. Drydock turns the
 Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
 increments through the QuarterDeck.
 
-SAIL is one complete delivery loop: **Set Up** the workspace, **Arrange** the work, **Implement**
+SAIL is one complete delivery loop: **Set Up** the workspace, **Analyze** the work, **Implement**
 the accepted plan, then **Loop** through evidence-driven revision. Every pass starts and ends at the
 Blueprint.
 
@@ -84,11 +84,11 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SETUP["Set Up"]:::script --> ARRANGE["Arrange"]:::script
-  ARRANGE --> IMPLEMENT["Implement"]:::script
+  SETUP["Set Up"]:::script --> ANALYZE["Analyze"]:::script
+  ANALYZE --> IMPLEMENT["Implement"]:::script
   IMPLEMENT --> SOFTWARE(["Working Software"]):::output
   IMPLEMENT --> LOOP["Loop"]:::script
-  LOOP -.-> ARRANGE
+  LOOP -.-> ANALYZE
 ```
 
 This specification reads in SAIL order. First the CLI orientation, then the four phases. Each phase
@@ -108,19 +108,16 @@ in `docs/SOUNDINGS.md`.
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-The CLI uses `<Target>` for the project name under `$DRYDOCK_WORKSPACE/targets/`. Every command
-that previously accepted a separate `<Blueprint>` argument now resolves the Blueprint from the
-Target's `METADATA.md`; there is no external Blueprint root and no need to name it on the command
-line.
+The CLI uses `<Target>` for the project name under `$DRYDOCK_WORKSPACE/targets/`. 
 
 The public CLI is organized by SAIL phase:
 
 | SAIL phase | Purpose | Primary commands |
 |---|---|---|
 | **Set Up** | Establish the workspace, Target, governance, orientation, and QuarterDeck | `config`, `init`, `status`, `validate`, `rigging update`, `rigging verify`, `run quarterdeck` |
-| **Arrange** | Import, inspect, compact, organize, and approve the work | `import`, `analyze`, `rigging compact`, `plan create` |
+| **Analyze** | Import, inspect, compact, organize, and approve the work | `import`, `analyze`, `rigging compact`, `plan create` |
 | **Implement** | Execute the accepted Manifest, inspect progress, score delivery, and produce documentation | `build`, `build status`, `build score`, `survey`, `document` |
-| **Loop** | Perform a governed Refit and return affected work to Arrange and Implement | `refit` |
+| **Loop** | Perform a governed Refit and return affected work to Analyze and Implement | `refit` |
 
 `drydock --help` prints the installed command surface:
 
@@ -182,12 +179,6 @@ flowchart LR
 | `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
 | `QUARTERDECK_PORT` | Default QuarterDeck service port |
 
-Drydock manages everything inside one workspace tree; there is no separate Blueprint root. A Target
-resolves to `$DRYDOCK_WORKSPACE/targets/<Target>/` and its Blueprint to that Target's `blueprint/`
-subtree (see Workspace Layout). A Target may be self-hosting: the workspace can be the Drydock
-repository itself, simultaneously the control center, the Blueprint host, the Target host, and the
-served code. Each Target's `METADATA.md` records its Blueprint name and `code_root`.
-
 ### Commands
 
 ```text
@@ -221,11 +212,11 @@ runtime from the installed package.
 `--host` and `--port`), serving the package runtime against this in-tree console state. The
 QuarterDeck is usable from this moment — planning, build, and review all surface through it.
 
-## SAIL Phase 2 — Arrange: Charting the Build
+## SAIL Phase 2 — Analyze: Charting the Build
 
 ### Explanation
 
-Arrange turns source material into a reviewable, executable Manifest.
+Analyze turns source material into a reviewable, executable Manifest.
 
 1. Import source material into a Blueprint with `drydock import`.
 2. Analyze imported source material with `drydock analyze` to derive a story list, compute a quality signal, and surface open questions.
@@ -283,7 +274,7 @@ flowchart LR
 2. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
    Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and Spec
    Kit adapters use the same intake boundary when implemented.
-2. Continue through Arrange. Analyze identifies ambiguity and configuration choices without
+2. Continue through Analyze. Analyze identifies ambiguity and configuration choices without
    silently turning them into requirements.
 3. Optionally conform the imported material after User Review establishes build configuration.
 4. Create, review, validate, and approve the plan before proceeding through its runnable frontier.
@@ -526,7 +517,7 @@ Run `drydock document generate <Target>` to produce Blueprint-derived `DOC-*.md`
 ### Explanation
 
 A Refit is the governed post-build change workflow. It updates the Blueprint, Target, or both, then
-returns affected work to Arrange and Implement. The Blueprint is never bypassed.
+returns affected work to Analyze and Implement. The Blueprint is never bypassed.
 
 ### Commands
 
@@ -611,10 +602,8 @@ and build execution process it like any other Specification input.
 
 ## Workspace Layout
 
-Drydock manages everything inside one workspace tree; there is no separate `blueprints/` root.
-Every artifact for a project lives under `targets/<Target>/`, with the Blueprint as a named subtree
-at `targets/<Target>/blueprint/`. One Target is a self-contained project: Blueprint, Manifest,
-software, evidence, and QuarterDeck together.
+Drydock manages everything inside one workspace tree under targets/.  The targets workspace is under `targets/<Target>/` and all work
+is done within this self-contained build environment.   The QuarterDeck is configuration driven and uses files from within that tree. 
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
@@ -651,16 +640,15 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
             ├── pages/
             │   └── overview.md
             ├── data/
-            ├── planning/
-            │   └── ANALYSIS.md
             └── questionnaires/
                 └── planning.json
 ```
 
-Project-level, human-authored files (`METADATA.md`, `README.md`, `COMPASS.md`, `SEA_TRIALS.md`,
-`SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
-the accepted `MANIFEST.md` is the executable Manifest. Built and served code lives at `code_root`
-— the workspace root for self-hosting or brownfield projects, or a path set for greenfield builds.
+Target-root project records and generated planning artifacts (`METADATA.md`, `README.md`,
+`COMPASS.md`, `SEA_TRIALS.md`, `SOUNDINGS.md`, `ANALYSIS.md`, `MANIFEST.md`) sit at the Target
+root. `METADATA.md` carries the project identity and `code_root`; the accepted `MANIFEST.md` is
+the executable Manifest. Built and served code lives at `code_root` — the workspace root for
+self-hosting or brownfield projects, or a path set for greenfield builds.
 
 `drydock init <Target>` writes the minimal scaffold (`METADATA.md`, root
 `SEA_TRIALS.md`/`SOUNDINGS.md`, an empty `blueprint/sources/`, `evidence/`, `logs/`, and a
