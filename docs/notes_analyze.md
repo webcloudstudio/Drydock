@@ -6,7 +6,7 @@
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
 | Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. Ready to implement. |
-| Pending spec | 9 recommended items |
+| Pending spec | 9 approved items |
 | Pending impl | 9 unimplemented sections |
 
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
@@ -26,7 +26,7 @@ ratified facts persist.
 ## Decisions
 
 ### Two Decomposition Passes at Different Altitudes
-`2026-06-14` · `spec:recommended` · `impl:unimplemented`
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
 
 - **`analyze` (Sprint Planning Part 1):** reads imported material. Derives the story list at
   title + high-level AC level. Surfaces spikes and blockers. Output: story list + questions.
@@ -40,7 +40,7 @@ ratified facts persist.
 ---
 
 ### Process Flow
-`2026-06-14` · `spec:recommended` · `impl:unimplemented`
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
 
 ```
 import → analyze → [re-analyze loop] → plan create → build
@@ -62,7 +62,7 @@ PO runs `drydock analyze <tgt>` again explicitly. Each re-run reads all prior
 ---
 
 ### Agent Structure — Scrum Team Persona
-`2026-06-14` · `spec:recommended` · `impl:unimplemented`
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
 
 **Persona:** "You are a Scrum Development Team following Agile Best Practices."
 
@@ -85,7 +85,7 @@ but can guess at → question.
 ---
 
 ### Blockers vs Questions
-`2026-06-14` · `spec:recommended` · `impl:unimplemented`
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
 
 - **Blocker** — the LLM genuinely cannot proceed without it. Example: no project name,
   no understanding of what the product does. Quality stays `Blocked` until cleared.
@@ -106,7 +106,7 @@ carry on. Questions do not block Quality reaching `Ready`.
 ---
 
 ### Analyze Output Files
-`2026-06-14` · `spec:recommended` · `impl:unimplemented`
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
 
 All written by `drydock analyze`. Read-only w.r.t. `blueprint/` spec files,
 `BUILD_CONFIGURATION.md`, and `MANIFEST.md`.
@@ -201,7 +201,7 @@ CSS dependency — file must be self-contained.
 ---
 
 ### Lifecycle State Persistence
-`2026-06-14` · `spec:recommended` · `impl:unimplemented`
+`2026-06-14` · `spec:approved` · `impl:unimplemented`
 
 Lifecycle state tracked in `METADATA.md` at the **target root** via field: `drydock build state:`.
 
@@ -217,7 +217,7 @@ The Captain's Chair is write-only from commands — display artifact, never read
 ---
 
 ### Work Graph Model
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-13` · `spec:approved` · `impl:unimplemented`
 
 One graph — no "spec graph vs build graph" split. ~100 nodes, plain Python, held in memory.
 The LLM produces the graph at `plan create`, not `analyze`.
@@ -249,7 +249,7 @@ frontier pushes to newly-unblocked nodes.
 ---
 
 ### MANIFEST Node Header Format
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-13` · `spec:approved` · `impl:unimplemented`
 
 `MANIFEST.md` is headers-on-file. Same markdown syntax as Typed Specification.
 
@@ -289,7 +289,7 @@ Fields: `type` (story|spike|ac|feature|root), `spec` (story only), `parent` (mul
 ---
 
 ### Source of Truth — Three Kinds of Fact
-`2026-06-13` · `spec:recommended` · `impl:implemented`
+`2026-06-13` · `spec:approved` · `impl:implemented`
 
 | Kind | What it is | Home |
 |---|---|---|
