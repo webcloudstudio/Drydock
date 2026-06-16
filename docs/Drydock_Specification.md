@@ -170,17 +170,21 @@ QuarterDeck is usable from this moment — planning, build, and review all surfa
 
 ## SAIL Phase 2 — Analyze: Charting the Build
 
-The Analyze phase turns your source material into a reviewable, executable Manifest.
+The Analyze phase turns imported source material into a reviewed plan basis, then into an
+executable Manifest. The sequence is:
 
+1. `drydock analyze` reads the imported sources and derives stories, acceptance milestones,
+   blockers, questions, and any needed spikes.
+2. `drydock run quarterdeck` lets the product owner review those artifacts, approve the intake,
+   and resolve action items.
+3. `drydock plan create` converts the reviewed analysis into the Blueprint files and executable
+   Manifest used by the build phase.
 
 ### Commands
 
 ```text
-# `drydock import` imports source material 
-drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>
-# `drydock analyze` generates agile stories 
 drydock analyze <Target>
-# `drydock plan create` creates the executable Manifest 
+drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 drydock plan create <Target>
 ```
 
@@ -194,87 +198,84 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SRC1(["Existing Software"]):::dir --> IMPORT["import"]:::script
-  SRC2(["Spec Kit"]):::dir --> IMPORT
-  SRC3(["Specifications"]):::dir --> IMPORT
-  IMPORT --> RAW(["Raw"]):::dir
-  RAW --> ANALYZE["analyze"]:::script
-  ANALYZE --> ANALYSIS["Analysis"]:::dir
-  ANALYSIS --> PLANCREATE["plan create"]:::script
-  PLANCREATE --> PLAN["Blueprint"]:::dir
-
+  SOURCES["Imported Sources"]:::dir --> ANALYZE["analyze"]:::script
+  ANALYZE --> ANALYSIS("Analysis"):::dir
+  ANALYSIS --> QUARTERDECK["run quarterdeck"]:::web
+  QUARTERDECK --> PLANCREATE["plan create"]:::script
+  PLANCREATE --> BLUEPRINT("Blueprint"):::dir
+  PLANCREATE --> MANIFEST{{"MANIFEST.md"}}:::md
 ```
-
-### drydock import
-
-Copy existing specifications under Drydock Blueprint control. 
-
-1. `drydock import <Target> <Source> --format intent` — copies the source file to
-   `COMPASS.md` at the Target root. Use when the user has a written project brief or intent
-   document and wants to seed the project's constitution file directly. No LLM or template
-   transformation is applied; edit the result to match the COMPASS.md format before running
-   `drydock analyze`.
-2. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
-   Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and Spec
-   Kit adapters use the same intake boundary when implemented.
 
 ### drydock analyze
 
-`drydock analyze` reads imported source material from `<Target>/blueprint/sources/`.
-The agent acts as a Scrum Development Team and it will perform an agile decomposition
-to break the imported features into a list of features, stories, and spikes, it will derive project
-AC, and it will surface blockers and open questions.
+`drydock analyze` is Sprint Planning Part 1. It reads the imported source material under
+`<Target>/blueprint/sources/` and performs an agile decomposition of the product. The output is a
+reviewable analysis set: what the product appears to be, what stories it should be built from,
+what acceptance milestones define success, what is still unknown, and what must be answered before
+execution can proceed safely.
 
-**Quality signal.** After analysis the command computes one of three values:
+`drydock analyze` is read-only with respect to typed Blueprint specification files, `MANIFEST.md`,
+and other build outputs. It does not create the executable plan. It prepares the material that will
+later be reviewed and turned into one.
 
-| Quality | Condition |
-|---|---|
-| `Blocked` | One or more blockers unresolved — pipeline halted |
-| `Questions` | No blockers; open questions remain; `plan create` can proceed |
-| `Ready` | No blockers; no open questions; `plan create` can proceed |
+It writes these primary artifacts:
 
-A **blocker** is something the Scrum team genuinely cannot proceed without (no project name,
-fundamental contradictions). A **question** is an open item that does not stop decomposition.
-Running `plan create` when Quality is `Questions` or `Ready` is the pipeline gate.
-
-**Re-analyze loop.** PO answers write to `<Target>/blueprint/BUILD_CONFIGURATION.md`.
-Re-running `drydock analyze` picks up all prior answers and does not re-ask settled questions.
-Re-runs are explicit — answering questions does not trigger one automatically.
-
-**Outputs.** All outputs are written to the Target root or `QuarterDeck/questionnaires/`. The
-command is read-only with respect to `blueprint/` specification files, `BUILD_CONFIGURATION.md`,
-and `MANIFEST.md`.
-
-| Output | Location | Notes |
+| Artifact | Location | Purpose |
 |---|---|---|
-| `ANALYSIS.md` | Target root | Quality signal, blocker list, question list, story list with tuning options |
-| `SEA_TRIALS.md` | Target root | Strategic objectives at product level; 3–7 rows |
-| `SOUNDINGS.md` | Target root | Acceptance milestones derived from decomposition |
-| `COMPASS.md` | Target root | Written when absent or unpopulated template; omitted otherwise |
-| `spike-intent.json` | `QuarterDeck/questionnaires/` | Fixed: product intent |
-| `spike-stack.json` | `QuarterDeck/questionnaires/` | Fixed: technology stack with Rigging-derived options |
-| `spike-gaps-ac.json` | `QuarterDeck/questionnaires/` | Fixed: gaps and acceptance criteria |
-| `spike-guardrails.json` | `QuarterDeck/questionnaires/` | Fixed: security, compliance, and performance |
-| `spike-<slug>.json` | `QuarterDeck/questionnaires/` | Variable: one per genuine unresolved unknown |
-| `captains_chair.html` | `QuarterDeck/` | Template-filled dashboard; written on state advance |
+| `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
+| `SEA_TRIALS.md` | Target root | Product-level objectives and success criteria |
+| `SOUNDINGS.md` | Target root | Acceptance milestones derived from the analyzed work |
+| `COMPASS.md` | Target root | Created or refreshed only when a usable project compass is missing |
+| `spike-*.json` | `QuarterDeck/questionnaires/` | Review questionnaires for unresolved decisions and genuine research spikes |
+| `captains_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
-**Lifecycle state.** `drydock analyze` advances `drydock build state:` in `METADATA.md` from
-`init` to `analyzed` on first successful run. The full state ladder is forward-only:
-`init → analyzed → planned → building → built`. A re-analyze run does not overwrite the
-Captain's Chair if state would go backwards.
+Questionnaires are not a fixed catalog. `drydock analyze` emits as many as are needed for the
+actual imported material. Some runs may produce only a small set of clarification questions; other
+runs may produce several spikes because the sources leave major technical or product choices open.
+A spike exists only when a real unknown must be investigated before downstream work is reliable.
 
-### Building and Reviewing the Build Plan / Manifest
+After writing the artifacts, `drydock analyze` reports a quality signal:
 
-`drydock plan create` generates the draft plan and a target-local Planning Session. The QuarterDeck
-presents optional features, executable stories and spikes, dependencies, and nested acceptance
-gates, together with the analysis and questionnaire produced by `drydock analyze`
-(`<Target>/ANALYSIS.md` and
-`<Target>/QuarterDeck/questionnaires/planning.json`). Durable product-owner decisions from User
-Review are written to `<Target>/blueprint/BUILD_CONFIGURATION.md`.
+| Quality | Meaning |
+|---|---|
+| `Blocked` | One or more blockers prevent planning from proceeding |
+| `Questions` | Planning may proceed, but open questions remain |
+| `Ready` | No blockers and no open questions remain |
 
-Approval is whole-plan. The generated `plan_decision` page applies it through the authoritative
-plan-state writer; ordinary QuarterDeck review controls never approve a plan. Approval exposes the
-runnable frontier, and `drydock build` may begin.
+A blocker stops the pipeline until it is addressed. A question does not stop planning, but it is
+surfaced for product-owner review. Answers are stored in
+`<Target>/blueprint/BUILD_CONFIGURATION.md`, and re-running `drydock analyze` uses those answers
+instead of re-asking settled items.
+
+### drydock run quarterdeck
+
+`drydock run quarterdeck` starts the QuarterDeck review surface for the Target. In this phase it is
+used before plan creation to review the imported and analyzed material, not just the later build
+plan.
+
+The product owner reviews the analysis artifacts produced so far, confirms that the imported
+material is being interpreted correctly, and approves or redirects the work before Typed
+Specification files and the Manifest are generated. Blockers, questions, and spikes appear as
+action items. Those action items are the controlled place to resolve ambiguity, choose among
+options, or direct further analysis.
+
+QuarterDeck review writes durable answers and decisions to
+`<Target>/blueprint/BUILD_CONFIGURATION.md`. If the review changes the understanding of the
+project, the next step is another explicit `drydock analyze` run. When the review is satisfactory,
+the Target is ready for `drydock plan create`.
+
+### drydock plan create
+
+`drydock plan create` is Sprint Planning Part 2. It reads the imported sources, the analysis
+artifacts, and the approved decisions in `BUILD_CONFIGURATION.md`, then turns them into the working
+Blueprint and executable plan.
+
+The command writes the conformed Typed Specification files under `<Target>/blueprint/`, generates
+`BUILD_PLAN_COMPASS.md`, and creates `<Target>/MANIFEST.md`. This is the point where the draft
+Blueprint structure, dependency ordering, build graph, and runnable frontier are established.
+
+`drydock plan create` follows review; it does not replace review. Its job is to convert approved
+analysis into executable planning artifacts so SAIL Phase 3 can begin.
 
 ## SAIL Phase 3 — Implement: Working the Frontier
 
