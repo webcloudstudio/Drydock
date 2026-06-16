@@ -218,7 +218,7 @@ flowchart LR
 `drydock import <Target> <Source> --format markdown` copies the source into
 `<Target>/blueprint/sources/`. `drydock analyze` reads from there.
 
-`drydock import <Target> <Source> --format intent` copies the source into the Target-root
+`drydock import <Target> <Source> --format compass` copies the source into the Target-root
 `COMPASS.md`. Use it when the source is already your product brief or project intent.
 
 ### drydock analyze
@@ -619,8 +619,8 @@ not authored as specification files.
 - **`COMPASS.md`** — Project constitution: intent, constraints, success criteria, guardrails, and
   open questions. Lives at the Target root (not inside `blueprint/`). Injected into every LLM run
   as ambient project context. Created by `drydock analyze` (generated from spec if absent) or
-  seeded via `drydock import --format intent`. Updated by the product owner via QuarterDeck.
-  - Created: `drydock analyze` (auto-generated); `drydock import --format intent` (user-supplied)
+  seeded via `drydock import --format compass`. Updated by the product owner via QuarterDeck.
+  - Created: `drydock analyze` (auto-generated); `drydock import --format compass` (user-supplied)
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
