@@ -1,10 +1,10 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files, BUILD_PLAN_COMPASS.md, and MANIFEST.md with computed header relationships.
-version: 20260616 V2
+version: 20260616 V3
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
-model: opus
+model: sonnet
 output: Blueprint specification files, BUILD_PLAN_COMPASS.md, MANIFEST.md
 ---
 
@@ -56,20 +56,31 @@ into the smallest durable spec structure that preserves correctness and clear ow
 
 ## Inputs
 
-- **Imported source files** — the original material under `blueprint/sources/`, injected below.
-- **`ANALYSIS.md`** — reviewed decomposition, quality signal, story list, open questions, tuning
-  options, and notes.
+The job block injects the following. `SYSTEM_SHAPE` and `ANALYSIS_QUALITY` are stated directly in
+the job block; the rest are fenced sections.
+
+- **`ANALYSIS.md`** — the reviewed plan: quality signal, the **story list (treat as the file
+  map)**, open questions, tuning options, and notes. Each analyzed story names the durable file(s)
+  it becomes; honor that mapping rather than re-deriving it from scratch.
+- **`SYSTEM_SHAPE`** — the determined project type (`web|api|cli|library|pipeline|event-driven`),
+  parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
   analyze. Use these as planning context; do not overwrite their intent.
+- **Answered spikes** (`spike-*.json`) — settled decisions on stack, gaps/AC, and guardrails.
+  Consume these as authoritative; do not re-raise a question that a spike has already answered.
 - **`BUILD_CONFIGURATION.md`** — durable commander decisions and stack choices, if present.
-- **`BLOCKERS.md` answers** — injected if present. Treat answered blockers as settled decisions.
 - **`COMPASS.md`** — existing product intent if already present; otherwise derive emitted content
   from the analysis and sources.
+- **Existing `MANIFEST.md`** — injected on a re-run for context. Keep stable ids for blocks that
+  still apply; the calling module preserves prior block states by id, so you always emit
+  `state: pending`.
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field
   contracts for the outputs.
+- **Imported source files** — the original material under `blueprint/sources/`, injected below.
+  The authored spec files are fundamentally a structured rewrite of this material per the file map.
 
-If the injected analysis quality is `Blocked`, planning must not proceed. Emit only a refusal
-message inside the required output block contract described below.
+If `ANALYSIS_QUALITY` is `Blocked`, planning must not proceed. Emit only a refusal message inside
+the required output block contract described below.
 
 ---
 
@@ -137,13 +148,27 @@ Rules:
 - A SCREEN route must be backed by a provider in some FEATURE or service definition.
 - Do not leave relationship fields contradictory across files.
 
-**6. Build the planning inventory.**
-- *Consumes:* the authored spec set.
-- *Emits:* `BUILD_PLAN_COMPASS.md`.
+**6. Build the build-ordering inventory.**
+- *Consumes:* the authored spec set and their computed `Phase`/`Depends On` relationships.
+- *Emits:* `BUILD_PLAN_COMPASS.md` — the single build-ordering file consumed by `drydock build`.
 
-This file is the curated internal inventory of Blueprint inputs and planning groups. It must list
-the authored spec files in a useful planning order and may summarize the grouping rationale
-briefly.
+`BUILD_PLAN_COMPASS.md` is an ordered list of the authored spec file names, one per line, in build
+order, `#`-delimited into batches. Each batch is one build step. **Never mix stacks or component
+types within a batch** — a feature and a screen must not share a batch (a `#` delimiter separates
+them). Foundation precedes the work that depends on it. Lines beginning with `#` on their own are
+batch delimiters or comments; spec file lines are bare relative paths.
+
+```text
+# Foundation
+ARCHITECTURE.md
+DATABASE.md
+#
+FEATURE-Catalog.md
+FEATURE-Checkout.md
+#
+SCREEN-Catalog.md
+SCREEN-Checkout.md
+```
 
 **7. Build the executable plan.**
 - *Consumes:* authored spec files, open questions, and stack decisions.

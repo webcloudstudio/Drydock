@@ -1,25 +1,59 @@
-"""Create deterministic draft MANIFEST.md files and Planning Session projections."""
+"""``drydock plan create`` — LLM-driven authoring of the Blueprint and executable Manifest.
+
+`plan create` implements the reviewed analysis. In one LLM call it rewrites the imported source
+material into typed Blueprint specification files, emits the single ``BUILD_PLAN_COMPASS.md``
+build-ordering file, and the executable ``MANIFEST.md`` — all as delimited ``=== NAME ===`` blocks.
+The module parses the blocks, merges prior block states, runs a deterministic integrity gate, and
+writes the files. The model emits text; the module writes files. Tests inject a fake runner and
+never spend API credits.
+"""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Protocol
 
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
-from drydock.plan_compass import init_plan_compass
+from drydock.llm import run_prompt
+from drydock.paths import get_prompts_root
+from drydock.prompts import load_prompt
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
     sync_plan_soundings,
 )
 
-_ENTRY_RE = re.compile(r"(?m)^([^#\s][^\s]*\.md)\b")
-_BULLET_RE = re.compile(r"^\s*[-*]\s+(?:\[[ xX]\]\s*)?(.*\S)\s*$")
+PROMPT_NAME = "plan_create"
+
+_BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+_QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
+_SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
+_ID_RE = re.compile(r"^id:\s*(.+?)\s*$", re.MULTILINE)
+_STATE_RE = re.compile(r"^state:\s*.+?\s*$", re.MULTILINE)
+_MANIFEST_SPLIT_RE = re.compile(r"(?m)(?=^## (?:feature|story|spike|ac)\s+\d+:)")
+
+# Block names the LLM emits that are not authored Blueprint spec files.
+_RESERVED_BLOCKS = frozenset({"MANIFEST.md", "BUILD_PLAN_COMPASS.md", "PLAN_CREATE_BLOCKED.txt"})
+
+_CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
+
+
+class CompletedRun(Protocol):
+    @property
+    def ok(self) -> bool: ...
+
+    text: str
+    execution_id: str
+
+
+RunnerFn = Callable[..., CompletedRun]
+TextCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -28,183 +62,187 @@ class PlanCreateResult:
     target_dir: Path
     quarterdeck_dir: Path
     changed: bool
+    authored_files: tuple[Path, ...] = ()
+    warnings: tuple[str, ...] = ()
+    execution_id: str | None = None
 
 
-def _slug(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug[:64] or "work"
+# ── Parsing ──────────────────────────────────────────────────────────────────────
 
 
-def _section_bullets(text: str, heading: str) -> list[str]:
-    lines = text.splitlines()
-    active = False
-    bullets: list[str] = []
-    for line in lines:
-        if re.match(rf"^##\s+{re.escape(heading)}\s*$", line, re.IGNORECASE):
-            active = True
-            continue
-        if active and line.startswith("## "):
-            break
-        if active:
-            match = _BULLET_RE.match(line)
-            if match and match.group(1).lower() not in {"none.", "none", "(add criteria here)"}:
-                bullets.append(match.group(1))
-    return bullets
+def _parse_blocks(text: str) -> dict[str, str]:
+    """Return block-name → stripped content from ``=== NAME ===`` delimiters."""
+    return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
 
 
-def _ordered_inputs(blueprint_dir: Path) -> list[Path]:
-    compass = blueprint_dir / "BUILD_PLAN_COMPASS.md"
-    if not compass.is_file():
-        raise SpecificationError(
-            f"BUILD_PLAN_COMPASS.md not found after planning inventory: {compass}"
+def _read_if(path: Path) -> str | None:
+    return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+def _collect_sources(blueprint_dir: Path) -> list[Path]:
+    sources_dir = blueprint_dir / "sources"
+    if not sources_dir.is_dir():
+        return []
+    return sorted(p for p in sources_dir.rglob("*.md") if p.is_file())
+
+
+def _collect_spikes(target_dir: Path) -> list[Path]:
+    qd = target_dir / "QuarterDeck" / "questionnaires"
+    if not qd.is_dir():
+        return []
+    return sorted(qd.glob("spike-*.json"))
+
+
+# ── Prompt assembly ────────────────────────────────────────────────────────────────
+
+
+def _fenced(label: str, body: str, *, lang: str = "markdown") -> list[str]:
+    return [f"## {label}", "", f"```{lang}", body.rstrip("\n"), "```", ""]
+
+
+def _assemble_prompt(
+    body: str,
+    target_dir: Path,
+    blueprint_dir: Path,
+    analysis_text: str,
+    today: str,
+    *,
+    old_manifest: str | None,
+) -> str:
+    shape_match = _SHAPE_RE.search(analysis_text)
+    quality_match = _QUALITY_RE.search(analysis_text)
+    parts: list[str] = [
+        body,
+        "",
+        "## Planning job",
+        "",
+        f"- TARGET: {target_dir.name}",
+        f"- BLUEPRINT_PATH: {blueprint_dir}",
+        f"- DATE: {today}",
+        f"- SYSTEM_SHAPE: {shape_match.group(1) if shape_match else 'unknown'}",
+        f"- ANALYSIS_QUALITY: {quality_match.group(1) if quality_match else 'unknown'}",
+        "",
+    ]
+
+    parts += _fenced("ANALYSIS.md (the reviewed plan)", analysis_text)
+
+    for name in ("SEA_TRIALS.md", "SOUNDINGS.md", "COMPASS.md"):
+        text = _read_if(target_dir / name)
+        if text:
+            parts += _fenced(name, text)
+
+    config_text = _read_if(blueprint_dir / "BUILD_CONFIGURATION.md")
+    if config_text:
+        parts += _fenced("BUILD_CONFIGURATION.md (settled commander decisions)", config_text)
+
+    spikes = _collect_spikes(target_dir)
+    if spikes:
+        parts += ["## Answered spikes (consume these decisions)", ""]
+        for spike in spikes:
+            parts += [f"### {spike.name}", "", "```json", spike.read_text(encoding="utf-8").rstrip(), "```", ""]
+
+    if old_manifest:
+        parts += _fenced(
+            "Existing MANIFEST.md (prior plan — block states are preserved by the module)",
+            old_manifest,
         )
-    paths: list[Path] = []
-    for match in _ENTRY_RE.finditer(compass.read_text(encoding="utf-8")):
-        path = blueprint_dir / match.group(1)
-        if path.is_file():
-            paths.append(path)
-    if not paths:
-        raise SpecificationError(f"No planned Markdown inputs found in {compass}")
-    return paths
+
+    try:
+        prompts_root = get_prompts_root()
+        for contract in _CONTRACT_FILES:
+            contract_path = prompts_root / contract
+            if contract_path.is_file():
+                parts += _fenced(contract, contract_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    parts += ["## Imported source files", ""]
+    for path in _collect_sources(blueprint_dir):
+        parts += [f"### {path.relative_to(blueprint_dir).as_posix()}", "", "```markdown",
+                  path.read_text(encoding="utf-8").rstrip(), "```", ""]
+
+    return "\n".join(parts)
 
 
-def _plan_hash(paths: list[Path]) -> str:
-    digest = hashlib.sha256()
-    for path in paths:
-        digest.update(path.as_posix().encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()[:12]
+# ── State merge ─────────────────────────────────────────────────────────────────────
 
 
-def _block(
-    block_type: str,
-    number: int,
-    name: str,
-    **fields: str,
-) -> str:
-    lines = [f"## {block_type} {number}: {name}"]
-    lines.extend(f"{key}: {value}" for key, value in fields.items() if value)
-    return "\n".join(lines)
+def _merge_states(manifest_text: str, old_states: dict[str, str]) -> str:
+    """Preserve prior non-``pending`` block states by id when re-authoring the Manifest."""
+    if not old_states:
+        return manifest_text
+    chunks = _MANIFEST_SPLIT_RE.split(manifest_text)
+
+    def _patch(chunk: str) -> str:
+        id_match = _ID_RE.search(chunk)
+        if not id_match:
+            return chunk
+        prior = old_states.get(id_match.group(1).strip())
+        if not prior or prior == "pending":
+            return chunk
+        if _STATE_RE.search(chunk):
+            return _STATE_RE.sub(f"state: {prior}", chunk, count=1)
+        return chunk
+
+    return "".join(_patch(chunk) for chunk in chunks)
 
 
-def _generate_plan_text(
-    blueprint: str, blueprint_dir: Path, inputs: list[Path], old: BuildPlan | None
-) -> str:
-    old_states = {block.block_id: block.state for block in old.blocks} if old else {}
-    digest = _plan_hash(inputs)
-    unchanged = old is not None and old.plan_hash == digest
-    plan_state = old.state if unchanged else "draft"
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")  # noqa: UP017
+# ── Integrity gate ──────────────────────────────────────────────────────────────────
 
-    blocks: list[str] = []
-    feature_number = story_number = spike_number = ac_number = 0
-    last_story = ""
-    for path in inputs:
-        relative = path.relative_to(blueprint_dir).as_posix()
-        name = path.stem.removeprefix("FEATURE-").removeprefix("SCREEN-").replace("-", " ")
-        name = name.strip().title()
-        text = path.read_text(encoding="utf-8")
-        parent = ""
-        file_spikes: list[str] = []
 
-        if path.name.startswith("FEATURE-"):
-            feature_number += 1
-            feature_id = f"feature-{_slug(name)}"
-            parent = feature_id
-            blocks.append(
-                _block(
-                    "feature",
-                    feature_number,
-                    name,
-                    id=feature_id,
-                    summary=f"Deliver the {name} workflow.",
-                    state=old_states.get(feature_id, "pending"),
-                )
-            )
+def _has_cycle(edges: dict[str, set[str]]) -> bool:
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {node: WHITE for node in edges}
 
-        for question in _section_bullets(text, "Open Questions"):
-            spike_number += 1
-            spike_id = f"spike-{_slug(question)}"
-            file_spikes.append(spike_id)
-            fields = {
-                "id": spike_id,
-                "summary": question,
-                "question": question,
-                "context": relative,
-                "state": old_states.get(spike_id, "pending"),
-            }
-            if parent:
-                fields["parent"] = parent
-            blocks.append(_block("spike", spike_number, question, **fields))
-            ac_number += 1
-            ac_id = f"ac-{spike_id}-resolved"
-            blocks.append(
-                _block(
-                    "ac",
-                    ac_number,
-                    f"Decision resolves: {question}",
-                    id=ac_id,
-                    parent=spike_id,
-                    kind="assertion",
-                    state=old_states.get(ac_id, "pending"),
-                )
-            )
+    def visit(node: str) -> bool:
+        color[node] = GRAY
+        for nxt in edges.get(node, set()):
+            if nxt not in color:
+                continue
+            if color[nxt] == GRAY or (color[nxt] == WHITE and visit(nxt)):
+                return True
+        color[node] = BLACK
+        return False
 
-        story_number += 1
-        story_id = f"story-{_slug(path.stem)}"
-        fields = {
-            "id": story_id,
-            "summary": f"Deliver the work defined by {relative}.",
-            "implements": relative,
-            "scope": "both" if path.name.startswith(("FEATURE-", "SCREEN-")) else "target",
-            "state": old_states.get(story_id, "pending"),
-        }
-        if parent:
-            fields["parent"] = parent
-        dependencies = ([last_story] if last_story else []) + file_spikes
-        if dependencies:
-            fields["depends"] = ", ".join(dependencies)
-        blocks.append(_block("story", story_number, f"Deliver {name}", **fields))
-        last_story = story_id
+    return any(color[node] == WHITE and visit(node) for node in edges)
 
-        criteria = _section_bullets(text, "Acceptance Criteria")
-        if not criteria:
-            criteria = [f"Delivered behavior matches {relative}"]
-        for criterion in criteria:
-            ac_number += 1
-            ac_id = f"ac-{story_id}-{_slug(criterion)}"
-            blocks.append(
-                _block(
-                    "ac",
-                    ac_number,
-                    criterion,
-                    id=ac_id,
-                    parent=story_id,
-                    kind="assertion",
-                    state=old_states.get(ac_id, "pending"),
-                )
-            )
-        if parent:
-            ac_number += 1
-            ac_id = f"ac-{parent}-accepted"
-            blocks.append(
-                _block(
-                    "ac",
-                    ac_number,
-                    f"{name} workflow is accepted",
-                    id=ac_id,
-                    parent=parent,
-                    kind="assertion",
-                    state=old_states.get(ac_id, "pending"),
-                )
-            )
 
-    return (
-        f"# MANIFEST: {blueprint}\n"
-        f"updated: {now}\n"
-        f"plan_hash: {digest}\n"
-        f"state: {plan_state}\n\n" + "\n\n".join(blocks) + "\n"
-    )
+def _integrity_check(plan: BuildPlan, blueprint_dir: Path) -> list[str]:
+    """Fatal issues raise SpecificationError; non-fatal issues return as warnings."""
+    ids = {block.block_id for block in plan.blocks}
+    fatal: list[str] = []
+    warnings: list[str] = []
+
+    edges: dict[str, set[str]] = {}
+    for block in plan.blocks:
+        edges[block.block_id] = set(block.depends)
+        for dep in block.depends:
+            if dep not in ids:
+                fatal.append(f"{block.block_id}: depends on unknown id {dep!r}")
+
+    if _has_cycle(edges):
+        fatal.append("dependency graph contains a cycle")
+
+    for block in plan.blocks:
+        if block.block_type != "story":
+            continue
+        implements = block.fields.get("implements", ())
+        targets = implements if isinstance(implements, tuple) else (implements,)
+        for name in targets:
+            if name and not (blueprint_dir / name).is_file():
+                fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
+        has_ac = any(b.block_type == "ac" and b.parent == block.block_id for b in plan.blocks)
+        if not has_ac:
+            warnings.append(f"{block.block_id}: story has no acceptance check")
+
+    if fatal:
+        raise SpecificationError(
+            "Plan integrity check failed:\n  " + "\n  ".join(fatal)
+        )
+    return warnings
+
+
+# ── QuarterDeck projection ──────────────────────────────────────────────────────────
 
 
 def _ticket_status(state: str) -> str:
@@ -260,25 +298,121 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     return quarterdeck
 
 
+# ── File writing ────────────────────────────────────────────────────────────────────
+
+
+def _safe_blueprint_path(blueprint_dir: Path, name: str) -> Path:
+    """Resolve an emitted block name under blueprint/, rejecting path traversal."""
+    dest = (blueprint_dir / name).resolve()
+    if blueprint_dir.resolve() not in dest.parents and dest != blueprint_dir.resolve():
+        raise SpecificationError(f"Emitted file escapes the Blueprint directory: {name!r}")
+    return dest
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
+
+
+# ── Entry point ─────────────────────────────────────────────────────────────────────
+
+
 def create_plan(
     blueprint: str,
     target: str,
     target_directory: Path,
+    *,
+    runner: RunnerFn | None = None,
+    on_text: TextCallback | None = None,
 ) -> PlanCreateResult:
+    """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
-        raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
-    init_plan_compass(blueprint, target_dir)
-    inputs = _ordered_inputs(blueprint_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
+        raise SpecificationError(
+            f"Blueprint directory not found: {blueprint_dir}\n  Import source material first."
+        )
+
+    analysis_path = target_dir / "ANALYSIS.md"
+    analysis_text = _read_if(analysis_path)
+    if not analysis_text:
+        raise SpecificationError(
+            f"ANALYSIS.md not found: {analysis_path}\n  Run: drydock analyze {target}"
+        )
+
+    if (target_dir / "BLOCKERS.md").is_file():
+        raise SpecificationError(
+            "BLOCKERS.md is present — planning is blocked. Answer the blockers and re-run "
+            f"`drydock analyze {target}` before `drydock plan create {target}`."
+        )
+    quality_match = _QUALITY_RE.search(analysis_text)
+    if quality_match and quality_match.group(1).lower() == "blocked":
+        raise SpecificationError(
+            "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
+        )
+
     plan_path = target_dir / "MANIFEST.md"
+    old_manifest = _read_if(plan_path)
     old = parse_build_plan(plan_path) if plan_path.is_file() else None
-    text = _generate_plan_text(blueprint, blueprint_dir, inputs, old)
-    changed = not plan_path.is_file() or plan_path.read_text(encoding="utf-8") != text
-    plan_path.write_text(text, encoding="utf-8", newline="\n")
+    old_states = {block.block_id: block.state for block in old.blocks} if old else {}
+
+    run = runner if runner is not None else run_prompt
+    prompt = load_prompt(PROMPT_NAME)
+    today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
+    assembled = _assemble_prompt(
+        prompt.body, target_dir, blueprint_dir, analysis_text, today, old_manifest=old_manifest
+    )
+
+    result = run(
+        assembled,
+        target_dir,
+        model=prompt.model,
+        command_name="plan create",
+        parameters={"target": target, "blueprint": str(blueprint_dir)},
+        on_text=on_text,
+    )
+    exec_id = getattr(result, "execution_id", None)
+    if not result.ok or not result.text.strip():
+        raise SpecificationError("plan create LLM execution failed")
+
+    blocks = _parse_blocks(result.text)
+    if "PLAN_CREATE_BLOCKED.txt" in blocks:
+        raise SpecificationError(
+            "Planning cannot proceed — analysis is Blocked. "
+            "The existing Blueprint is preserved.\n  " + blocks["PLAN_CREATE_BLOCKED.txt"].strip()
+        )
+    for required in ("MANIFEST.md", "BUILD_PLAN_COMPASS.md"):
+        if required not in blocks:
+            raise SpecificationError(f"plan create output missing === {required} === block")
+
+    # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
+    authored: list[Path] = []
+    for name, content in blocks.items():
+        if name in _RESERVED_BLOCKS:
+            continue
+        dest = _safe_blueprint_path(blueprint_dir, name)
+        _write_text(dest, content)
+        authored.append(dest)
+
+    # 2. The single build-ordering inventory.
+    _write_text(blueprint_dir / "BUILD_PLAN_COMPASS.md", blocks["BUILD_PLAN_COMPASS.md"])
+
+    # 3. The executable plan, with prior block states preserved.
+    manifest_text = _merge_states(blocks["MANIFEST.md"], old_states)
+    _write_text(plan_path, manifest_text)
+
+    # 4. Structural validation + deterministic integrity gate.
     plan = parse_build_plan(plan_path)
+    warnings = _integrity_check(plan, blueprint_dir)
+
+    changed = old_manifest != (plan_path.read_text(encoding="utf-8"))
     quarterdeck = _write_quarterdeck(plan, target_dir)
     return PlanCreateResult(
-        plan=plan, target_dir=target_dir, quarterdeck_dir=quarterdeck, changed=changed
+        plan=plan,
+        target_dir=target_dir,
+        quarterdeck_dir=quarterdeck,
+        changed=changed,
+        authored_files=tuple(sorted(authored)),
+        warnings=tuple(warnings),
+        execution_id=exec_id,
     )

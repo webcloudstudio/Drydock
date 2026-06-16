@@ -244,14 +244,25 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
         args.Target,
         args.Target,
         get_target_directory(),
+        on_text=lambda text: print(text, end="", flush=True),
     )
+    print()
     print(f"Blueprint: {result.plan.project}")
     print(f"Plan: {result.plan.path}")
     print(f"Plan state: {result.plan.state}")
     print(f"Planning Session: {result.quarterdeck_dir}")
+    if result.authored_files:
+        print(f"Authored {len(result.authored_files)} Blueprint spec file(s):")
+        for path in result.authored_files:
+            print(f"  {path.relative_to(result.target_dir)}")
     print()
     _print_plan_blocks(result.plan)
     _print_plan_summary(result.plan)
+    if result.warnings:
+        print()
+        print("Planning warnings:")
+        for warning in result.warnings:
+            print(f"  - {warning}")
     print()
     print("Next step: review and approve the plan in the Planning Session.")
     return 0

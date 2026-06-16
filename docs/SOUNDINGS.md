@@ -20,7 +20,7 @@
 | CLI-016 | `drydock document <Blueprint> <Target>` runs the full documentation pipeline | STUBBED | `test_cli.py::TestStubs` |
 | CLI-017 | `drydock rigging update <Target>` propagates current Rigging to a Target | STUBBED | `test_cli.py::TestStubs` |
 | CLI-018 | `drydock rigging verify <Target>` verifies Target Rigging compliance | STUBBED | `test_cli.py::TestStubs` |
-| CLI-019 | `drydock plan create <Blueprint> <Target>` inventories inputs, writes a draft plan, projects acceptance gates into Soundings, and creates the Planning Session | IMPLEMENTED | `test_cli.py::TestPlanningSession`, `test_standard_artifacts.py` |
+| CLI-019 | `drydock plan create <Target>` authors typed Blueprint spec files from the reviewed analysis (single LLM call, delimited blocks), emits the one `BUILD_PLAN_COMPASS.md` build-ordering file and a draft `MANIFEST.md` with prior states merged, runs a deterministic integrity gate, and writes the Planning Session | IMPLEMENTED | `test_planning_session.py`, `test_cli.py::TestPlanningSession`, `test_standard_artifacts.py` |
 | CLI-020 | `drydock build status <Blueprint> <Target>` reports Target plan state and runnable frontier | DONE | `test_build_plan.py::test_runnable_frontier_applies_dependency_and_ac_parent_rules`, `test_cli.py::TestPlanInspection::test_build_status_reports_runnable_frontier` |
 | CLI-021 | `drydock build <Blueprint> <Target>` builds the next runnable frontier and records evidence | STUBBED | `test_cli.py::TestStubs` |
 | CLI-022 | `drydock build score <Blueprint> <Target>` generates `SCORECARD.md` | STUBBED | `test_cli.py::TestStubs` |
