@@ -1,7 +1,7 @@
 ---
 title: Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle: Drydock is a full implementation of the SAIL Methedology to build programs from specifications.  Under active development. 
+subtitle: Drydock is a full implementation of the SAIL Methodology to build programs from specifications.  Under active development. 
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 11 2026
@@ -25,7 +25,7 @@ ideas:
     sub_list:
       - drydock import to ingest your specifications and notes for analysis
       - drydock analyze analyzes projects using Agile Decomposition
-      - drydock plan converts your specificatons in to Blueprints
+      - drydock plan converts your specifications into Blueprints
   - title: **I** — Implement
     sub_list:
       - drydock build - to implement your software plan in managed chunks using the Manifest
@@ -45,7 +45,7 @@ methodology: Set Up, Analyze, Implement, Loop**.
 composed of **Typed Specification Files** with prescribed roles. The Drydock Analyze phase turns your 
 specifications into Blueprints ready for execution.  The Manifest or optimized build plan is executed in 
 the Implement phase delivering working software.  The build is implemented using a context aware 
-specification chunking strategy that ensures that the work done well.  The loop phase iterates your
+specification chunking strategy that ensures the work is done well.  The loop phase iterates your
 application preserving the specification as source of truth.
 
 SAIL is one complete delivery loop: **Set Up** the workspace, **Analyze** the work, **Implement**
@@ -99,7 +99,7 @@ positional arguments:
     plan      Manage the build plan.
     build     Build or inspect build state.
     refit     Update Blueprint and target software together.
-    analyze   Read-only advisory: surface gaps and drift.
+    analyze   Decompose imported sources into stories, blockers, and acceptance milestones.
     survey    Score a target's build process against its acceptance criteria.
     run       Start a Drydock service.
     import    Reverse-engineer a project into a Blueprint.
@@ -223,12 +223,12 @@ flowchart LR
 
 ### drydock analyze
 
-`drydock analyze` is Sprint Planning Part is sprint planning. Using `<Target>/blueprint/sources/` the llm
+`drydock analyze` is Sprint Planning Part 1. Using `<Target>/blueprint/sources/` the llm
 decomposes the imported material into buildable agile work. It prepares the following files for Commander review.
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `BLOCKER.md` | Target root | Questions on any blockers the LLM has found |
+| `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
 | `SEA_TRIALS.md` | Target root | Product-level objectives and success criteria |
 | `SOUNDINGS.md` | Target root | Acceptance milestones derived from the analyzed work |
@@ -245,14 +245,14 @@ finds blockers, it will bring them to the Commanders attention and stop the buil
 |---|---|
 | `Blocked` | One or more blockers prevent planning from proceeding |
 | `Questions` | Planning may proceed, but open questions remain |
-| `Ready` | No blockers and no open questions remain |
+| `Ready` | No blockers remain |
 
-blockers stops the pipeline.  The BLOCKER.md file holds blocker question and answers.  
-`drydock analyze` uses those answers to compute the build readinss state
+Blockers stop the pipeline.  The BLOCKERS.md file holds blocker questions and answers.
+`drydock analyze` uses those answers to compute the build readiness state.
 
 ### drydock run quarterdeck
 
-`drydock run quarterdeck` starts the a throwaway web console for the Commander (product owner).
+`drydock run quarterdeck` starts a throwaway web console for the Commander (product owner).
 
 The QuarterDeck shows the artifacts, blockers, questions, questionnaires, and activity that need review. 
 
@@ -263,13 +263,13 @@ BLOCKERS.md can be edited directly or modified in the quarterdeck to respond.  T
 
 Commander Responses in QuarterDeck are preserved for the build. 
 
-The commander can adjust the `drydock analyze` output by importing with  `build import`.  All information is used. 
+The commander can adjust the `drydock analyze` output by importing with `drydock import`.  All information is used. 
 
-The quarderdeck will require the Commander to approve core decisions.  
+The QuarterDeck will require the Commander to approve core decisions.  
 
 ### drydock plan create
 
-`drydock plan create` is Sprint is story creation.  Imported source files are read as are all information output 
+`drydock plan create` is Sprint Planning Part 2.  Imported source files are read as are all information output
 by the analysis steps.  The objective of this step is to create Typed Specification files under `<Target>/blueprint/`.
 Additionally, a file `BUILD_PLAN_COMPASS.md` and a `<Target>/MANIFEST.md` are created. 
 
@@ -277,7 +277,7 @@ The headers of the blueprints are structured as a dependency graph and the runna
 
 ## SAIL Phase 3 — Implement: Working the Frontier
 
-Implement executes the Blueprint using the Manifest 
+Implement the Blueprint using the Manifest 
 
 * The Manifest exposes the phases with `drydock build status`.
 * Run phases `drydock build`.
@@ -298,10 +298,6 @@ drydock rigging compact <Target> [--all] [--force]
 drydock rigging update <Target>
 drydock rigging verify <Target>
 ```
-
-`drydock build` executes the runnable frontier. `drydock build status` inspects the Manifest without
-changing it. `drydock build score` measures delivery health. The `drydock document` commands turn
-Blueprint material into delivered project documentation.
 
 ### drydock build
 

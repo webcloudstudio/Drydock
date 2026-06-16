@@ -725,7 +725,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_iter.add_argument("Change", metavar="<Change>")
 
     # ── analyze ───────────────────────────────────────────────────────────────
-    p_analyze = sub.add_parser("analyze", help="Read-only advisory: surface gaps and drift.")
+    p_analyze = sub.add_parser("analyze", help="Decompose imported sources into stories, blockers, and acceptance milestones.")
     p_analyze.add_argument("Target", metavar="<Target>")
 
     # ── survey ────────────────────────────────────────────────────────────────
