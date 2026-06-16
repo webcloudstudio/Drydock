@@ -213,28 +213,22 @@ flowchart LR
 
 ### drydock import
 
-`drydock import` is the intake step for Phase 2. It copies source material into the Target so the
-rest of the planning pipeline can operate on governed local inputs instead of ad hoc external
-files.
+`drydock import` is the intake step. It brings external material under Drydock control.
 
-For document-style intake, `drydock import <Target> <Source> --format markdown` preserves the
-material under `<Target>/blueprint/sources/`, where `drydock analyze` will read it. For
-intent-first intake, `drydock import <Target> <Source> --format intent` copies the source into the
-Target-root `COMPASS.md` so the project starts with an explicit product compass. Other import
-formats follow the same contract: bring the source material under Drydock control so analysis can
-work from a stable local copy.
+`drydock import <Target> <Source> --format markdown` copies the source into
+`<Target>/blueprint/sources/`. `drydock analyze` reads from there.
+
+`drydock import <Target> <Source> --format intent` copies the source into the Target-root
+`COMPASS.md`. Use it when the source is already your product brief or project intent.
 
 ### drydock analyze
 
-`drydock analyze` is Sprint Planning Part 1. It reads the imported source material under
-`<Target>/blueprint/sources/` and performs an agile decomposition of the product. The output is a
-reviewable analysis set: what the product appears to be, what stories it should be built from,
-what acceptance milestones define success, what is still unknown, and what must be answered before
-execution can proceed safely.
+`drydock analyze` is Sprint Planning Part 1. It reads
+`<Target>/blueprint/sources/` and decomposes the imported material into buildable agile work.
 
-`drydock analyze` is read-only with respect to typed Blueprint specification files, `MANIFEST.md`,
-and other build outputs. It does not create the executable plan. It prepares the material that will
-later be reviewed and turned into one.
+It writes the story list, acceptance milestones, blockers, open questions, and any required
+spikes. It does not create the Blueprint or `MANIFEST.md`. It prepares the material that the
+product owner reviews before planning continues.
 
 It writes these primary artifacts:
 
@@ -247,10 +241,9 @@ It writes these primary artifacts:
 | `spike-*.json` | `QuarterDeck/questionnaires/` | Review questionnaires for unresolved decisions and genuine research spikes |
 | `captains_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
-Questionnaires are not a fixed catalog. `drydock analyze` emits as many as are needed for the
-actual imported material. Some runs may produce only a small set of clarification questions; other
-runs may produce several spikes because the sources leave major technical or product choices open.
-A spike exists only when a real unknown must be investigated before downstream work is reliable.
+Questionnaires are not fixed. `drydock analyze` emits only the questions and spikes required by the
+actual source material. A spike exists only when a real unknown must be investigated before later
+planning is reliable.
 
 After writing the artifacts, `drydock analyze` reports a quality signal:
 
@@ -260,27 +253,23 @@ After writing the artifacts, `drydock analyze` reports a quality signal:
 | `Questions` | Planning may proceed, but open questions remain |
 | `Ready` | No blockers and no open questions remain |
 
-A blocker stops the pipeline until it is addressed. A question does not stop planning, but it is
-surfaced for product-owner review. Answers are stored in
-`<Target>/blueprint/BUILD_CONFIGURATION.md`, and re-running `drydock analyze` uses those answers
-instead of re-asking settled items.
+A blocker stops the pipeline. A question does not. Answers are stored in
+`<Target>/blueprint/BUILD_CONFIGURATION.md`. Re-running `drydock analyze` uses those answers and
+does not re-ask settled items.
 
 ### drydock run quarterdeck
 
-`drydock run quarterdeck` starts the QuarterDeck review surface for the Target. In this phase it is
-used before plan creation to review the imported and analyzed material, not just the later build
-plan.
+`drydock run quarterdeck` starts a throwaway web console for the commander acting as product owner.
+It is the review surface for the analyzed work.
 
-The product owner reviews the analysis artifacts produced so far, confirms that the imported
-material is being interpreted correctly, and approves or redirects the work before Typed
-Specification files and the Manifest are generated. Blockers, questions, and spikes appear as
-action items. Those action items are the controlled place to resolve ambiguity, choose among
-options, or direct further analysis.
+After `drydock analyze`, QuarterDeck shows the artifacts, blockers, questions, questionnaires, and
+spikes that need review. Blockers are required decisions or guidance. They prevent `drydock plan
+create`. Questions and questionnaires capture decisions that guide planning but do not stop it.
 
-QuarterDeck review writes durable answers and decisions to
-`<Target>/blueprint/BUILD_CONFIGURATION.md`. If the review changes the understanding of the
-project, the next step is another explicit `drydock analyze` run. When the review is satisfactory,
-the Target is ready for `drydock plan create`.
+Anything entered in QuarterDeck becomes future planning context. Durable decisions are written to
+`<Target>/blueprint/BUILD_CONFIGURATION.md` and become part of later prompts. If the review changes
+the understanding of the project, run `drydock analyze` again. When the review is acceptable, run
+`drydock plan create`.
 
 ### drydock plan create
 
@@ -292,8 +281,8 @@ The command writes the conformed Typed Specification files under `<Target>/bluep
 `BUILD_PLAN_COMPASS.md`, and creates `<Target>/MANIFEST.md`. This is the point where the draft
 Blueprint structure, dependency ordering, build graph, and runnable frontier are established.
 
-`drydock plan create` follows review; it does not replace review. Its job is to convert approved
-analysis into executable planning artifacts so SAIL Phase 3 can begin.
+`drydock plan create` follows review. It converts approved analysis into executable planning
+artifacts so SAIL Phase 3 can begin.
 
 ## SAIL Phase 3 — Implement: Working the Frontier
 
