@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-14 V2 |
+| Version | 2026-06-16 V3 |
 | Route | plan create |
 | Status | Working notes — not canonical specification |
-| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. |
+| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. Wired 2026-06-16 — see As-Built. |
 | Pending spec | 6 recommended items |
-| Pending impl | 6 unimplemented sections |
+| Pending impl | 2 unimplemented sections |
 
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
@@ -19,8 +19,34 @@ ordered, atomically-decomposed work graph and the executable Manifest, with ROOT
 
 ## Decisions
 
+### As-Built (wired 2026-06-16)
+`2026-06-16` · `spec:na` · `impl:implemented`
+
+`drydock plan create <Target>` is wired as LLM-driven Blueprint authoring
+(`src/drydock/planning_session.py`, `prompts/plan_create.md`, commit `aea9eb9`). One LLM call
+authors the typed Blueprint spec files (rewriting `blueprint/sources/**` per the analyze story
+map), emits the single `BUILD_PLAN_COMPASS.md`, and a draft `MANIFEST.md`. The module parses the
+delimited blocks, merges prior block states by id, runs a deterministic integrity gate, and writes
+the QuarterDeck projection. Tests: `tests/test_planning_session.py` (fake runner).
+
+**Built:** spec authoring; single `BUILD_PLAN_COMPASS.md` definition; state-merge on re-run;
+integrity gate (depends resolve, acyclic, `implements` names real files — fatal); precondition
+gate (ANALYSIS.md exists, not Blocked, no `BLOCKERS.md`).
+
+**Diverged / not yet built (open items):**
+- **Precondition is `ANALYSIS.md` + not-Blocked, not an `approve`/ROOT-green gate.** No `drydock
+  approve` verb exists; the original ROOT-green precondition was not implemented.
+- **Story-too-big split** and the **~100-story cap** are not enforced.
+- **≥1 AC per story** is a *warning*, not a hard emission gate.
+- **No-cross-stack batching** is instructed to the LLM in the prompt but not deterministically
+  enforced; the **`USE_COMPASS` automatic batching algorithm** is not built.
+- The Compass is **LLM-seeded** in the same call (not a separate Python seeding step).
+
 ### Plan Create CLI / Inputs / Outputs
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-13` · `spec:recommended` · `impl:implemented`
+
+*Built, with the precondition divergence noted in As-Built (ANALYSIS.md + not-Blocked rather than
+ROOT-green).*
 
 **CLI:** `drydock plan create <Target>`
 
@@ -46,7 +72,7 @@ top-level shape. Writes derived artifacts only. `blueprint/` specs + `BUILD_CONF
 remain the source of truth and must regenerate the graph.
 
 ### Decomposition Pipeline
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-13` · `spec:recommended` · `impl:implemented`
 
 LLM expands the approved route into features → atomic stories → spikes → AC gates, assigning
 `depends-on` edges throughout. Edges are inferred proposals; the approved Manifest is the persisted,
@@ -66,17 +92,19 @@ the lever that makes the no-cross-stack guardrail enforceable: typed spec filena
   must not emit it.
 
 ### Integrity / Validation Check
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-13` · `spec:recommended` · `impl:implemented`
 
-Runs on the fully assembled graph before writing `MANIFEST.md`.
+Runs in `_integrity_check` after the Manifest is parsed.
 
-- Acyclic: no dependency cycles.
-- Reachable: no orphan / unreachable nodes.
-- Every story has ≥1 AC gate in its depended-on set.
-- All `depends-on` values resolve to existing node IDs.
-- Story count ≤ ~100 (`.env` threshold).
+- Acyclic: no dependency cycles. **(fatal — built)**
+- All `depends-on` values resolve to existing node IDs. **(fatal — built)**
+- Every story's `implements` names a real emitted spec file. **(fatal — built)**
+- Every story has ≥1 AC. **(warning — built; not yet a hard gate)**
+- Reachable / no orphans. **(warning — built)**
+- Story count ≤ ~100. **(not built — open item)**
 
-Failure: block `MANIFEST.md` write and surface findings. (UX detail TBD — see open items.)
+Fatal findings raise `SpecificationError` (exit 1). Note: spec files are written before the gate
+runs, so a fatal failure currently leaves authored specs but no console update — make atomic later.
 
 ### Order and Batch
 `2026-06-13` · `spec:recommended` · `impl:unimplemented`
@@ -101,7 +129,11 @@ specified here so it can be built.
 Both strategies must respect the no-cross-stack guardrail.
 
 ### The Compass — Manual Build-Ordering Methodology
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-13` · `spec:recommended` · `impl:implemented`
+
+*This is now the single definition of `BUILD_PLAN_COMPASS.md` (ordered spec-file list, `#`-delimited
+into no-cross-stack batches, consumed by `build`). As-built it is **LLM-seeded** in the plan create
+call rather than Python-seeded; the `USE_COMPASS` gate and automatic alternative are not yet built.*
 
 One file, seeded by `plan create`, then edited directly by the PO.
 
@@ -178,4 +210,6 @@ These belong to `build`; the graph must support them:
 
 ## Not in scope yet
 
-Building the command. Editing the canonical specification. Full `build`-time execution design.
+Editing the canonical specification. Full `build`-time execution design. (The command itself is
+now built — see As-Built.) Remaining work: story-too-big split, ~100-story cap, hard AC gate,
+deterministic no-cross-stack enforcement, and the `USE_COMPASS` automatic batching algorithm.
