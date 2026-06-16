@@ -170,19 +170,22 @@ QuarterDeck is usable from this moment — planning, build, and review all surfa
 
 ## SAIL Phase 2 — Analyze: Charting the Build
 
-The Analyze phase turns imported source material into a reviewed plan basis, then into an
+The Analyze phase turns external source material into a reviewed plan basis, then into an
 executable Manifest. The sequence is:
 
-1. `drydock analyze` reads the imported sources and derives stories, acceptance milestones,
+1. `drydock import` brings source material under Drydock control in
+   `<Target>/blueprint/sources/` or seeds `COMPASS.md` directly for intent-driven intake.
+2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones,
    blockers, questions, and any needed spikes.
-2. `drydock run quarterdeck` lets the product owner review those artifacts, approve the intake,
+3. `drydock run quarterdeck` lets the product owner review those artifacts, approve the intake,
    and resolve action items.
-3. `drydock plan create` converts the reviewed analysis into the Blueprint files and executable
+4. `drydock plan create` converts the reviewed analysis into the Blueprint files and executable
    Manifest used by the build phase.
 
 ### Commands
 
 ```text
+drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>
 drydock analyze <Target>
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 drydock plan create <Target>
@@ -198,13 +201,28 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SOURCES["Imported Sources"]:::dir --> ANALYZE["analyze"]:::script
+  SRC["Source Material"]:::dir --> IMPORT["import"]:::script
+  IMPORT --> SOURCES("Imported Sources"):::dir
+  SOURCES --> ANALYZE["analyze"]:::script
   ANALYZE --> ANALYSIS("Analysis"):::dir
   ANALYSIS --> QUARTERDECK["run quarterdeck"]:::web
   QUARTERDECK --> PLANCREATE["plan create"]:::script
   PLANCREATE --> BLUEPRINT("Blueprint"):::dir
   PLANCREATE --> MANIFEST{{"MANIFEST.md"}}:::md
 ```
+
+### drydock import
+
+`drydock import` is the intake step for Phase 2. It copies source material into the Target so the
+rest of the planning pipeline can operate on governed local inputs instead of ad hoc external
+files.
+
+For document-style intake, `drydock import <Target> <Source> --format markdown` preserves the
+material under `<Target>/blueprint/sources/`, where `drydock analyze` will read it. For
+intent-first intake, `drydock import <Target> <Source> --format intent` copies the source into the
+Target-root `COMPASS.md` so the project starts with an explicit product compass. Other import
+formats follow the same contract: bring the source material under Drydock control so analysis can
+work from a stable local copy.
 
 ### drydock analyze
 
