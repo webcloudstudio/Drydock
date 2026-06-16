@@ -12,7 +12,7 @@ from drydock.errors import SpecificationError
 _SKIPPED_FILES = {
     "ACCEPTANCE_CRITERIA.md",
     "ARCHITECTURE.md",
-    "BUILD_PLAN.md",
+    "MANIFEST.md",
     "BUILD_PLAN_COMPASS.md",
     "IDEAS.md",
     "COMPASS.md",

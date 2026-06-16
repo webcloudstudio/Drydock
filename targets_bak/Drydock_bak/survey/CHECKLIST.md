@@ -78,7 +78,7 @@ Status: ☐ not started · ◐ in progress / partial · ☑ verified by survey.
 | S2 | Output gives the **next step** | A | output contains next-op line | ☑ |
 | S3 | Output gives **history of last 10 commands by target** | A | seed 11 records, assert 10 shown, filtered by target | ☒ |
 | S4 | Three invocation forms work (no args / `<Blueprint>` / `<Blueprint> <Target>`) | A | `test_status.py` | ◐ |
-| S5 | Reads `MANIFEST.md` (not `BUILD_PLAN.md`) | A | grep source for artifact name | ☒ |
+| S5 | Reads `MANIFEST.md` (not a legacy build-plan filename) | A | grep source for artifact name | ☒ |
 
 Legend addition: ☒ = surveyed and **failing** (see `scores.jsonl`).
 

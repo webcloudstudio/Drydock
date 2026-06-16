@@ -1,4 +1,4 @@
-"""Tests for canonical BUILD_PLAN.md parsing and frontier calculation."""
+"""Tests for canonical MANIFEST.md parsing and frontier calculation."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ def write_plan(path: Path, body: str) -> Path:
 @pytest.fixture()
 def plan_path(tmp_path: Path) -> Path:
     return write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        """# BUILD_PLAN: Example
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
 updated:     2026-06-11T12:00:00
 plan_hash:   abc123
 
@@ -84,14 +84,14 @@ def test_state_counts(plan_path: Path):
 
 
 def test_missing_plan_raises(tmp_path: Path):
-    with pytest.raises(SpecificationError, match="BUILD_PLAN.md not found"):
-        parse_build_plan(tmp_path / "BUILD_PLAN.md")
+    with pytest.raises(SpecificationError, match="MANIFEST.md not found"):
+        parse_build_plan(tmp_path / "MANIFEST.md")
 
 
 def test_missing_id_raises(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        "# BUILD_PLAN: Example\n\n## story 1: No id\nstate: pending\n",
+        tmp_path / "MANIFEST.md",
+        "# MANIFEST: Example\n\n## story 1: No id\nstate: pending\n",
     )
 
     with pytest.raises(SpecificationError, match="Missing id"):
@@ -100,8 +100,8 @@ def test_missing_id_raises(tmp_path: Path):
 
 def test_duplicate_id_raises(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        """# BUILD_PLAN: Example
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
 
 ## story 1: First
 id: duplicate
@@ -119,8 +119,8 @@ state: pending
 
 def test_ac_requires_parent(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        "# BUILD_PLAN: Example\n\n## ac 1: Check\nid: check\nstate: pending\n",
+        tmp_path / "MANIFEST.md",
+        "# MANIFEST: Example\n\n## ac 1: Check\nid: check\nstate: pending\n",
     )
 
     with pytest.raises(SpecificationError, match="Missing parent"):
@@ -129,8 +129,8 @@ def test_ac_requires_parent(tmp_path: Path):
 
 def test_invalid_state_raises(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        "# BUILD_PLAN: Example\n\n## story 1: Bad\nid: bad\nstate: running\n",
+        tmp_path / "MANIFEST.md",
+        "# MANIFEST: Example\n\n## story 1: Bad\nid: bad\nstate: running\n",
     )
 
     with pytest.raises(SpecificationError, match="Invalid state"):
@@ -139,8 +139,8 @@ def test_invalid_state_raises(tmp_path: Path):
 
 def test_draft_plan_has_no_runnable_frontier(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        """# BUILD_PLAN: Example
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
 state: draft
 
 ## story 1: Work
@@ -159,8 +159,8 @@ state: pending
 
 def test_plan_approval_exposes_frontier(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        """# BUILD_PLAN: Example
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
 state: draft
 
 ## feature 1: Workflow
@@ -182,8 +182,8 @@ state: pending
 
 def test_non_executable_feature_closes_after_all_children(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        """# BUILD_PLAN: Example
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
 state: approved
 
 ## feature 1: Workflow
@@ -209,8 +209,8 @@ state: closed/verified
 
 def test_feature_acceptance_runs_after_feature_work_closes(tmp_path: Path):
     path = write_plan(
-        tmp_path / "BUILD_PLAN.md",
-        """# BUILD_PLAN: Example
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
 state: approved
 
 ## feature 1: Workflow

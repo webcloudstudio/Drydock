@@ -42,8 +42,8 @@ class TestMissingFiles:
 
     def test_missing_architecture_is_failure_at_implement_phase(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
-        # Simulate Implement phase (BUILD_PLAN.md present) so ARCHITECTURE.md is required
-        (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
+        # Simulate Implement phase (MANIFEST.md present) so ARCHITECTURE.md is required
+        (target_dir / "MANIFEST.md").write_text("# MANIFEST: Example\n", encoding="utf-8")
         (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()
@@ -51,7 +51,7 @@ class TestMissingFiles:
     def test_missing_readme_is_failure_at_implement_phase(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         # Simulate Implement phase so README.md is required
-        (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
+        (target_dir / "MANIFEST.md").write_text("# MANIFEST: Example\n", encoding="utf-8")
         (target_dir / "README.md").unlink()
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()

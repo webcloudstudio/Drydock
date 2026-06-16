@@ -24,7 +24,7 @@ services, no build step. What it persists is small: questionnaire answers and ed
 | Questionnaire | `questionnaire` | Asking the human structured questions; answers are saved and read back |
 | Work board | `kanban` | Sprint/backlog tracking from a tickets file: features own stories, with priority/urgency/blocked flags and acceptance-criteria checklists |
 | Hyperlink | `link` | Pointing at an external or local resource |
-| Plan decision | `plan_decision` | Approve an authoritative Drydock `BUILD_PLAN.md` |
+| Plan decision | `plan_decision` | Approve an authoritative Drydock `MANIFEST.md` |
 | Sign-off | `"review": true` on any item | Approve · revise · reject a demo, review, or doc, with feedback recorded |
 
 Every artifact is filed under a **section** (Drydock Core, Build Plan, Action Items, Project Pages,

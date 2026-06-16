@@ -155,15 +155,15 @@ def validate_specification(
 
     # Determine SAIL phase from filesystem state so required-file checks are stage-gated.
     # Set Up: blueprint dir is empty (no real files)
-    # Arrange: blueprint has content, no BUILD_PLAN.md
-    # Implement+: BUILD_PLAN.md exists
+    # Arrange: blueprint has content, no MANIFEST.md
+    # Implement+: MANIFEST.md exists
     def _blueprint_has_content() -> bool:
         if not spec_dir.is_dir():
             return False
         return any(f_path.is_file() and f_path.name != ".gitkeep" for f_path in spec_dir.rglob("*"))
 
     _has_content = _blueprint_has_content()
-    _has_plan = (root_dir / "BUILD_PLAN.md").exists()
+    _has_plan = (root_dir / "MANIFEST.md").exists()
     _phase = "implement" if _has_plan else ("arrange" if _has_content else "setup")
 
     # --- Required files (gated by SAIL phase) ---

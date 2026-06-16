@@ -20,7 +20,7 @@ Page types (one Python renderer each, in TYPES):
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
   - command_status derive acceptance readiness and consistency from configured Core Docs
-  - plan_decision review and decide an authoritative Drydock BUILD_PLAN.md
+  - plan_decision review and decide an authoritative Drydock MANIFEST.md
 
 console.yaml also accepts:
   sources:   list of {glob, section, type, ...} rules that auto-discover files as items.

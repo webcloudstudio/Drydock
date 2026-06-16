@@ -239,7 +239,7 @@ class TestValidate:
     def test_validate_missing_required_file_fails(self, tmp_target_root, isolated_config):
         target_dir = self._setup_spec(tmp_target_root, isolated_config)
         # Put target in Implement phase so ARCHITECTURE.md is required
-        (target_dir / "BUILD_PLAN.md").write_text("# Build Plan\n", encoding="utf-8")
+        (target_dir / "MANIFEST.md").write_text("# MANIFEST: Example\n", encoding="utf-8")
         (target_dir / "blueprint" / "ARCHITECTURE.md").unlink()
         rc, out, err = run_cli("validate", "TestProject")
         assert rc == 1
@@ -301,7 +301,7 @@ class TestRiggingCompact:
 
 
 class TestPlanInspection:
-    PLAN = """# BUILD_PLAN: Example
+    PLAN = """# MANIFEST: Example
 updated: 2026-06-11T12:00:00
 plan_hash: abc123
 
@@ -327,7 +327,7 @@ state: pending
     def _setup(self, tmp_target_root, monkeypatch):
         target = tmp_target_root / "ExampleTarget"
         target.mkdir()
-        (target / "BUILD_PLAN.md").write_text(self.PLAN, encoding="utf-8")
+        (target / "MANIFEST.md").write_text(self.PLAN, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
     def test_build_status_reports_runnable_frontier(
@@ -374,7 +374,7 @@ class TestPlanningSession:
         assert rc == 0, err
         assert "Plan state: draft" in out
         assert (bp / "BUILD_PLAN_COMPASS.md").is_file()
-        plan_path = tmp_target_root / "ExampleTarget" / "BUILD_PLAN.md"
+        plan_path = tmp_target_root / "ExampleTarget" / "MANIFEST.md"
         assert "Status command exits successfully." in plan_path.read_text(encoding="utf-8")
         quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
         assert (quarterdeck / "console.yaml").is_file()
@@ -410,7 +410,7 @@ class TestPlanningSession:
         rc, out, err = run_cli("plan", "create", "Target")
 
         assert rc == 0, err
-        text = (tmp_target_root / "Target" / "BUILD_PLAN.md").read_text(encoding="utf-8")
+        text = (tmp_target_root / "Target" / "MANIFEST.md").read_text(encoding="utf-8")
         assert "## feature 1: Catalog" in text
         assert "parent: feature-catalog" in text
         assert "Catalog workflow is accepted" in text
@@ -755,7 +755,7 @@ class TestRunQuarterdeck:
 
 
 APPROVED_PLAN_STATUS = """\
-# BUILD_PLAN: TestTarget
+# MANIFEST: TestTarget
 state: approved
 updated: 2026-01-01T00:00:00
 plan_hash: abc123
@@ -776,7 +776,7 @@ class TestStatus:
 
         target_dir = tmp_target_root / "TestTarget"
         init_specification("TestTarget", target_dir)
-        (target_dir / "BUILD_PLAN.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
+        (target_dir / "MANIFEST.md").write_text(APPROVED_PLAN_STATUS, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
     def test_status_blueprint_target_reports_plan_state(

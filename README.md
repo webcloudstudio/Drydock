@@ -60,7 +60,7 @@ drydock build status <Blueprint> <Target>
 
 `init` creates the specification-independent Target baseline and QuarterDeck. `import` creates the
 Blueprint workspace and preserves the source material. `plan create`
-internally inventories the Blueprint inputs and writes the executable `BUILD_PLAN.md` into the
+internally inventories the Blueprint inputs and writes the executable `MANIFEST.md` into the
 Target. Configured Blueprint and Target roots belong in Drydock's user-scoped `.env`, never project
 `METADATA.md`.
 

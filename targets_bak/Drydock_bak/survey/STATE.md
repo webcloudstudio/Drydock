@@ -27,7 +27,7 @@ review of `MANIFEST.md`. **Not met.**
 ## Top actions for the implementation window
 
 1. **status** — history limit 5 → 10, filtered by target; add the 11-record test (STATUS-C3).
-2. **status** — replace `BUILD_PLAN.md` / `parse_build_plan` with `MANIFEST.md` / `load_target_plan`
+2. **status** — replace legacy build-plan filenames with `MANIFEST.md` / `load_target_plan`
    (STATUS-D2 contract-drift). Affects `status.py` lines 70, 82, 228, 230–233.
 3. **analyze** — still STUBBED; build against `docs/SPEC_ANALYZE.md` + `prompts/analyze.md`.
 4. **plan create** — IMPLEMENTED but no MANIFEST exists for target `Drydock`; produce one so the

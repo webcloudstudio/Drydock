@@ -32,7 +32,7 @@ about completion.
 | ID | Criterion | Dim | Check | Weight | Verify |
 |----|-----------|-----|-------|--------|--------|
 | STATUS-D1 | A spec/feature file describes the same three outputs (status, next step, last-10 history) | D2 | J | 2 | read the status feature spec |
-| STATUS-D2 | Artifact names match the current contract — `MANIFEST.md`, not `BUILD_PLAN.md` | D5 | A | 2 | grep `src/drydock/status.py` for `BUILD_PLAN` |
+| STATUS-D2 | Artifact names match the current contract — `MANIFEST.md`, not a legacy build-plan filename | D5 | A | 2 | grep `src/drydock/status.py` for legacy artifact names |
 | STATUS-D3 | History limit is specified as 10 and named, not a magic number | D2 | A | 1 | grep for `limit` default in source |
 
 ## Guardrails

@@ -66,7 +66,7 @@ file/AC and the fix.
 |------|---------|
 | `guardrail-breach` | A declared guardrail was violated. |
 | `unresolved-uncertainty` | An Open Question / spike was bypassed and the work implemented anyway. |
-| `contract-drift` | Output, file name, or location diverges from the contract (e.g. `BUILD_PLAN.md` vs `MANIFEST.md`). |
+| `contract-drift` | Output, file name, or location diverges from the contract (for example a legacy build-plan filename vs `MANIFEST.md`). |
 | `missing-evidence` | No reproducible evidence in `logs/` or `evidence/`. |
 | `decomposition-defect` | Scrum Master finding: bad story/AC/spike granularity, ordering, or dependency. |
 | `regression` | A previously-passing AC now fails. |
@@ -93,11 +93,11 @@ One JSON object per line, append-only. Never rewrite a prior line.
   "flags": ["contract-drift", "incomplete"],
   "ac": [
     { "id": "STATUS-C3", "result": "partial", "note": "history limit=5; AC requires 10" },
-    { "id": "STATUS-D2", "result": "fail", "note": "reads BUILD_PLAN.md; MANIFEST_CONTRACT says MANIFEST.md" }
+    { "id": "STATUS-D2", "result": "fail", "note": "reads a legacy build-plan filename; MANIFEST_CONTRACT says MANIFEST.md" }
   ],
   "actions": [
     "status.py: raise history limit 5 -> 10",
-    "status.py: read MANIFEST.md and load_target_plan, drop BUILD_PLAN.md"
+    "status.py: read MANIFEST.md and load_target_plan, drop legacy build-plan filename references"
   ]
 }
 ```

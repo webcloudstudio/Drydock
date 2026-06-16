@@ -1,4 +1,4 @@
-"""Parse and inspect the canonical Drydock BUILD_PLAN.md format."""
+"""Parse and inspect the canonical Drydock MANIFEST.md format."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ SCOPES = ("blueprint", "target", "both")
 
 _HEADER_RE = re.compile(r"^##\s+(feature|story|spike|ac)\s+(\d+):\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$")
-_PLAN_HEADER_RE = re.compile(r"^#\s+BUILD_PLAN:\s*(.+?)\s*$")
+_PLAN_HEADER_RE = re.compile(r"^#\s+MANIFEST:\s*(.+?)\s*$")
 _LIST_FIELDS = {"depends", "implements", "context", "stack", "rules"}
 
 
@@ -144,9 +144,9 @@ def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
 
 
 def parse_build_plan(path: Path) -> BuildPlan:
-    """Parse one BUILD_PLAN.md and validate its structural execution contract."""
+    """Parse one MANIFEST.md and validate its structural execution contract."""
     if not path.is_file():
-        raise SpecificationError(f"BUILD_PLAN.md not found: {path}\n  Run: drydock plan create")
+        raise SpecificationError(f"MANIFEST.md not found: {path}\n  Run: drydock plan create")
 
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -187,7 +187,7 @@ def parse_build_plan(path: Path) -> BuildPlan:
             fields[key] = _split_list(value) if key in _LIST_FIELDS else value
 
     if not project:
-        raise SpecificationError(f"Missing '# BUILD_PLAN: <ProjectName>' header in {path}")
+        raise SpecificationError(f"Missing '# MANIFEST: <ProjectName>' header in {path}")
 
     blocks = tuple(_parse_block(raw, path) for raw in raw_blocks)
     plan_state = metadata.get("state", "approved")
@@ -213,15 +213,15 @@ def parse_build_plan(path: Path) -> BuildPlan:
 
 def load_target_plan(target: str, target_directory: Path) -> BuildPlan:
     """Load the canonical executable plan for a configured Target name."""
-    return parse_build_plan(target_directory / target / "BUILD_PLAN.md")
+    return parse_build_plan(target_directory / target / "MANIFEST.md")
 
 
 def set_plan_state(path: Path, state: str, *, feedback: str = "", decision: str = "") -> BuildPlan:
-    """Atomically apply a Planning Session decision to a BUILD_PLAN.md."""
+    """Atomically apply a Planning Session decision to a MANIFEST.md."""
     if state not in PLAN_STATES:
         raise SpecificationError(f"Invalid plan state {state!r}")
     if not path.is_file():
-        raise SpecificationError(f"BUILD_PLAN.md not found: {path}")
+        raise SpecificationError(f"MANIFEST.md not found: {path}")
 
     lines = path.read_text(encoding="utf-8").splitlines()
     updated = datetime.now(timezone.utc).isoformat(timespec="seconds")  # noqa: UP017

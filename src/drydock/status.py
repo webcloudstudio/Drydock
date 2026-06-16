@@ -67,7 +67,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     display_name = get_field(meta, "display_name") or name
 
     blueprint_dir = target_dir / "blueprint"
-    build_plan_path = target_dir / "BUILD_PLAN.md"
+    build_plan_path = target_dir / "MANIFEST.md"
     history_path = workspace / "logs" / "history.jsonl"
 
     logger.debug("Reading %s", blueprint_dir)
@@ -89,7 +89,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
             plan = parse_build_plan(build_plan_path)
         except Exception:
             phase = "Arrange"
-            detail = "BUILD_PLAN.md could not be parsed — check its format"
+            detail = "MANIFEST.md could not be parsed — check its format"
             next_op = f"drydock plan create {name}"
             return TargetInfo(
                 name=name,
@@ -225,7 +225,7 @@ def status_current(target_root: Path) -> StatusResult | None:
     from drydock.validate_specification import validate_specification
 
     cwd = Path.cwd()
-    plan_path = cwd / "BUILD_PLAN.md"
+    plan_path = cwd / "MANIFEST.md"
 
     if plan_path.exists():
         from drydock.build_plan import parse_build_plan

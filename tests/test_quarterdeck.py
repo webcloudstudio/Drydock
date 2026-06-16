@@ -221,9 +221,9 @@ def test_drydock_command_status_renders_current_soundings():
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Total criteria</strong><br>42" in rendered
-    assert "DONE (32)" in rendered
-    assert "IMPLEMENTED (3)" in rendered
+    assert "Total criteria</strong><br>44" in rendered
+    assert "DONE (33)" in rendered
+    assert "IMPLEMENTED (4)" in rendered
     assert "STUBBED (7)" in rendered
     assert "NOT STARTED (0)" in rendered
     assert "no structured findings" in rendered
@@ -248,9 +248,9 @@ def test_drydock_console_core_artifact_order():
 
 def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
-    plan_path = tmp_path / "BUILD_PLAN.md"
+    plan_path = tmp_path / "MANIFEST.md"
     plan_path.write_text(
-        "# BUILD_PLAN: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
+        "# MANIFEST: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
         encoding="utf-8",
     )
     item = {
@@ -273,9 +273,9 @@ def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):
 
 def test_plan_decision_rejects_non_approval(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
-    plan_path = tmp_path / "BUILD_PLAN.md"
+    plan_path = tmp_path / "MANIFEST.md"
     plan_path.write_text(
-        "# BUILD_PLAN: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
+        "# MANIFEST: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
         encoding="utf-8",
     )
     item = {"type": "plan_decision", "plan_path": str(plan_path)}

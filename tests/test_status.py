@@ -7,7 +7,7 @@ import pytest
 from drydock.status import StatusResult, status_blueprint, status_blueprint_target, status_current
 
 APPROVED_PLAN = """\
-# BUILD_PLAN: TestProject
+# MANIFEST: TestProject
 state: approved
 updated: 2026-01-01T00:00:00
 plan_hash: abc123
@@ -26,7 +26,7 @@ class TestStatusBlueprintTarget:
     def _setup(self, tmp_target_root):
         tgt = tmp_target_root / "TestTarget"
         tgt.mkdir()
-        (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN, encoding="utf-8")
+        (tgt / "MANIFEST.md").write_text(APPROVED_PLAN, encoding="utf-8")
         return tgt
 
     def test_returns_plan_and_frontier(self, tmp_target_root):
@@ -88,7 +88,7 @@ class TestStatusCurrent:
     def test_uses_cwd_build_plan(self, tmp_target_root, isolated_config, monkeypatch):
         tgt = tmp_target_root / "TestTarget"
         tgt.mkdir()
-        (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN, encoding="utf-8")
+        (tgt / "MANIFEST.md").write_text(APPROVED_PLAN, encoding="utf-8")
         monkeypatch.chdir(tgt)
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
         result = status_current(tmp_target_root)
@@ -100,7 +100,7 @@ class TestStatusCurrent:
     def test_falls_back_to_last_activity(self, tmp_target_root, isolated_config, monkeypatch):
         tgt = tmp_target_root / "TestTarget"
         tgt.mkdir()
-        (tgt / "BUILD_PLAN.md").write_text(APPROVED_PLAN, encoding="utf-8")
+        (tgt / "MANIFEST.md").write_text(APPROVED_PLAN, encoding="utf-8")
         monkeypatch.chdir(tmp_target_root.parent)
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 

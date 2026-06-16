@@ -136,7 +136,7 @@ A `guardrail-breach` or `regression` flag caps the band at `TAKING_WATER` regard
   "band": "TAKING_WATER",
   "provisional": true,
   "flags": ["contract-drift", "incomplete"],
-  "ac": [{ "id": "STATUS-D2", "result": "fail", "note": "reads BUILD_PLAN.md" }],
+  "ac": [{ "id": "STATUS-D2", "result": "fail", "note": "reads MANIFEST.md" }],
   "actions": ["Route plan-state reads through one loader so artifact renames propagate"]
 }
 ```

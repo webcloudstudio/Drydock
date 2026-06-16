@@ -97,7 +97,7 @@ SOUNDINGS.md. `QuarterDeck/planning/` was an invented subfolder with no design b
 | Guardrails spike | `QuarterDeck/questionnaires/spike-guardrails.json` | Constraints: security, compliance, scale, performance |
 | Variable spikes | `QuarterDeck/questionnaires/spike-<slug>.json` | Additional open questions discovered |
 
-Does NOT touch: `BUILD_PLAN.md`, `tickets.json`, `console.yaml`.
+Does NOT touch: `MANIFEST.md`, `tickets.json`, `console.yaml`.
 
 ### Spike Contract
 `2026-06-14` · `spec:na` · `impl:implemented`
@@ -122,8 +122,8 @@ Workflow stage is detected by artifact existence, not command history.
 | 1 — Initialized | `METADATA.md` exists |
 | 2 — Blueprint imported | `blueprint/sources/.drydock-import` exists |
 | 3 — Analyzed | `ANALYSIS.md` exists (target root) |
-| 4 — Plan drafted | `BUILD_PLAN.md` exists with `state: draft` |
-| 5 — Plan approved | `BUILD_PLAN.md` has `state: approved` |
+| 4 — Plan drafted | `MANIFEST.md` exists with `state: draft` |
+| 5 — Plan approved | `MANIFEST.md` has `state: approved` |
 
 ### Section Model: Home-Based Routing
 `2026-06-15` · `spec:na` · `impl:implemented`

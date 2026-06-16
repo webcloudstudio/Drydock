@@ -44,9 +44,9 @@ items:
     label: "Sea Trials"
     section: core
     type: document
-    path_md:   ../docs/SEA_TRIALS.md
-    path_html: ../docs/SEA_TRIALS.html
-    path_pdf:  ../docs/SEA_TRIALS.pdf
+    path_md:   ../docs/SEA_TRIALS_SAMPLE.md
+    path_html: ../docs/SEA_TRIALS_SAMPLE.html
+    path_pdf:  ../docs/SEA_TRIALS_SAMPLE.pdf
     review: true
     order: 3
 

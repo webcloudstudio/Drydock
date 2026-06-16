@@ -7,7 +7,7 @@ from drydock.standard_artifacts import Sounding, load_soundings, render_console,
 
 
 def test_render_console_places_sea_trials_before_soundings(tmp_path):
-    config = render_console("Example", plan_path=tmp_path / "BUILD_PLAN.md")
+    config = render_console("Example", plan_path=tmp_path / "MANIFEST.md")
 
     assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
     assert 'label: "Planning Session"' in config
@@ -66,9 +66,9 @@ def test_render_console_includes_blockers_section_first():
 def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):
     target = tmp_path / "Target"
     target.mkdir()
-    plan_path = target / "BUILD_PLAN.md"
+    plan_path = target / "MANIFEST.md"
     plan_path.write_text(
-        """# BUILD_PLAN: Example
+        """# MANIFEST: Example
 state: draft
 
 ## story 1: Work

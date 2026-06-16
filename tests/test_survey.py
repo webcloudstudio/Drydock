@@ -43,7 +43,7 @@ A user knows where the project stands, what to do next, and what just happened.
 
 | ID | Criterion | Dim | Check | Weight | Verify |
 |----|-----------|-----|-------|--------|--------|
-| STATUS-D2 | Reads MANIFEST.md not BUILD_PLAN.md | D5 | A | 2 | grep source |
+| STATUS-D2 | Reads MANIFEST.md not legacy build-plan filenames | D5 | A | 2 | grep source |
 """
 
 

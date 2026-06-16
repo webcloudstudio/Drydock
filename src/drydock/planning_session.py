@@ -1,4 +1,4 @@
-"""Create deterministic draft BUILD_PLAN.md files and Planning Session projections."""
+"""Create deterministic draft MANIFEST.md files and Planning Session projections."""
 
 from __future__ import annotations
 
@@ -200,7 +200,7 @@ def _generate_plan_text(
             )
 
     return (
-        f"# BUILD_PLAN: {blueprint}\n"
+        f"# MANIFEST: {blueprint}\n"
         f"updated: {now}\n"
         f"plan_hash: {digest}\n"
         f"state: {plan_state}\n\n" + "\n\n".join(blocks) + "\n"
@@ -272,7 +272,7 @@ def create_plan(
     init_plan_compass(blueprint, target_dir)
     inputs = _ordered_inputs(blueprint_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    plan_path = target_dir / "BUILD_PLAN.md"
+    plan_path = target_dir / "MANIFEST.md"
     old = parse_build_plan(plan_path) if plan_path.is_file() else None
     text = _generate_plan_text(blueprint, blueprint_dir, inputs, old)
     changed = not plan_path.is_file() or plan_path.read_text(encoding="utf-8") != text

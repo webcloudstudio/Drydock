@@ -27,7 +27,7 @@ plans, builds, tests, reviews, and evolves software.
 
 ## Control Boundary
 
-The Planning Session approval writes to the target `BUILD_PLAN.md`. Other QuarterDeck decisions do
+The Planning Session approval writes to the target `MANIFEST.md`. Other QuarterDeck decisions do
 not yet append to `logs/ships_log.jsonl`; that remains a board item to build. Authority stays in
 `docs/Drydock_Specification.md` (behavior), `docs/SOUNDINGS.md` (acceptance), and
 `docs/SEA_TRIALS.md` (objectives).

@@ -28,7 +28,7 @@
       "urgency": false,
       "ac": [
         "`drydock plan init` creates or updates `BUILD_PLAN_INTENT.md`",
-        "`drydock plan create` generates and merges `BUILD_PLAN.md`",
+        "`drydock plan create` generates and merges `MANIFEST.md`",
         "`drydock plan show` reports the current plan",
         "Focused, CLI, integration, and regression tests pass"
       ],

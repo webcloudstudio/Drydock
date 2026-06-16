@@ -79,7 +79,7 @@ classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 | Class | Color | Shape | Means |
 |-------|-------|-------|-------|
 | `dir` | green | stadium `(["…"])` | source: directory, Blueprint, or specification input |
-| `md` | gold | hexagon `{{"…"}}` | generated markdown artifact (`BUILD_PLAN.md`, `*_compact.md`, `SCORECARD.md`, evidence) |
+| `md` | gold | hexagon `{{"…"}}` | generated markdown artifact (`MANIFEST.md`, `*_compact.md`, `SCORECARD.md`, evidence) |
 | `script` | blue | rect `["…"]` | a `drydock` verb or process step |
 | `prompt` | orange | stadium `(["…"])` | AI prompt / spike run |
 | `output` | purple | stadium `(["…"])` | delivered product (working software, published HTML) |
@@ -89,7 +89,7 @@ Node labels:
 
 - One or two words. Blue nodes carry the verb only (`import`, `plan create`, `rigging compact`) —
   never the full command line. Gold and green nodes carry the exact filename or a two-word noun.
-- The same concept always gets the same label and class in every diagram. `BUILD_PLAN.md` is always
+- The same concept always gets the same label and class in every diagram. `MANIFEST.md` is always
   a gold hexagon; the QuarterDeck is always a crimson rect; a Blueprint is always a green stadium.
 
 Conventions:
