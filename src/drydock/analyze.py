@@ -28,6 +28,15 @@ PROMPT_NAME = "analyze"
 
 _SOURCES_SUBDIR = "sources"
 
+_FEEDBACK_FILENAME = "ANALYSIS_FEEDBACK.md"
+_FEEDBACK_DEFAULT = (
+    "# Analysis Feedback\n\n"
+    "These instructions are injected into every `drydock analyze` run for this target. "
+    "Edit this file to steer the analysis. It persists across runs and is never overwritten "
+    "by Drydock.\n\n"
+    "Enter Direction for the Analysis Run\n"
+)
+
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
@@ -85,6 +94,33 @@ def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
     return sorted(sources_dir.rglob("*.md"))
 
 
+def ensure_feedback_file(target_dir: Path) -> str:
+    """Create ANALYSIS_FEEDBACK.md with the default prompt if absent; never overwrite.
+
+    The feedback file is a persistent, human-owned standing directive re-injected into every
+    ``drydock analyze`` run. Returns the file's current text.
+    """
+    path = target_dir / _FEEDBACK_FILENAME
+    if not path.is_file():
+        path.write_text(_FEEDBACK_DEFAULT, encoding="utf-8", newline="\n")
+    return path.read_text(encoding="utf-8")
+
+
+def _rigging_catalog_names() -> list[str]:
+    """Return the stack-option filenames offered to the stack questionnaire.
+
+    Names only — analyze never opens these files. Source: ``Rigging/BRA*.md`` plus
+    ``Rigging/stack/*.md``, excluding ``README.md``.
+    """
+    try:
+        root = get_rigging_root()
+    except Exception:
+        return []
+    names = [p.name for p in root.glob("BRA*.md")]
+    names += [p.name for p in (root / "stack").glob("*.md")]
+    return sorted(name for name in names if name != "README.md")
+
+
 _EMPTY_LINE = frozenset({"", "- None.", "- None"})
 
 
@@ -116,6 +152,7 @@ def _assemble_prompt(
     today: str,
     *,
     compass_exists: bool,
+    feedback_text: str | None = None,
     blockers_text: str | None = None,
 ) -> str:
     files = _collect_blueprint_files(blueprint_dir)
@@ -129,6 +166,20 @@ def _assemble_prompt(
         f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
         "",
     ]
+
+    # Standing directive — persistent human steering, re-injected on every run. Highest priority,
+    # so it reads before prior answers and sources.
+    if feedback_text and feedback_text.strip():
+        parts += [
+            "## Analysis feedback (standing directive)",
+            "",
+            "Human direction for this analysis. Honor it; it persists across runs.",
+            "",
+            "```markdown",
+            feedback_text.strip(),
+            "```",
+            "",
+        ]
 
     # Inject prior blocker answers if BLOCKERS.md exists (Commander has answered them)
     if blockers_text:
@@ -144,37 +195,18 @@ def _assemble_prompt(
             "",
         ]
 
-    # Inject prior PO answers if BUILD_CONFIGURATION.md exists
-    config_path = blueprint_dir / "BUILD_CONFIGURATION.md"
-    if config_path.is_file():
-        config_text = config_path.read_text(encoding="utf-8")
+    # Rigging catalog — filename list only (names, no content). These are the selectable
+    # options for spike-stack.json. analyze never opens the per-technology files.
+    catalog = _rigging_catalog_names()
+    if catalog:
         parts += [
-            "## Prior PO answers (BUILD_CONFIGURATION.md)",
+            "## Rigging catalog (filenames only)",
             "",
-            "Do not re-ask questions that are already answered here.",
+            "Selectable stack options for spike-stack.json. Names only — never open these files.",
             "",
-            "```markdown",
-            config_text,
-            "```",
+            *[f"- {name}" for name in catalog],
             "",
         ]
-
-    # Inject Rigging stack catalog reference
-    try:
-        stack_readme = get_rigging_root() / "stack" / "README.md"
-        if stack_readme.is_file():
-            parts += [
-                "## Rigging stack catalog",
-                "",
-                "Use these concrete technology names when populating spike-stack.json options.",
-                "",
-                "```markdown",
-                stack_readme.read_text(encoding="utf-8"),
-                "```",
-                "",
-            ]
-    except Exception:
-        pass
 
     parts += ["## Imported source files", ""]
     for path in files:
@@ -333,6 +365,13 @@ def analyze(
         blockers_md_path.read_text(encoding="utf-8") if blockers_md_path.is_file() else None
     )
 
+    # Standing-directive feedback file — created if absent, never overwritten, injected when the
+    # user has edited it beyond the default placeholder.
+    feedback_text = ensure_feedback_file(target_dir)
+    feedback_for_prompt = (
+        feedback_text if feedback_text.strip() != _FEEDBACK_DEFAULT.strip() else None
+    )
+
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
@@ -341,6 +380,7 @@ def analyze(
         blueprint_dir,
         today,
         compass_exists=compass_exists,
+        feedback_text=feedback_for_prompt,
         blockers_text=blockers_text,
     )
 

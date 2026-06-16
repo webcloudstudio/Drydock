@@ -59,6 +59,9 @@ into the smallest durable spec structure that preserves correctness and clear ow
 The job block injects the following. `SYSTEM_SHAPE` and `ANALYSIS_QUALITY` are stated directly in
 the job block; the rest are fenced sections.
 
+- **Manifest feedback (standing directive)** — `MANIFEST_FEEDBACK.md`, persistent human direction
+  injected near the top of this prompt when present. Treat it as authoritative steering for this
+  run; it overrides default decomposition and ordering choices where it speaks.
 - **`ANALYSIS.md`** — the reviewed plan: quality signal, the **story list (treat as the file
   map)**, open questions, tuning options, and notes. Each analyzed story names the durable file(s)
   it becomes; honor that mapping rather than re-deriving it from scratch.
@@ -68,12 +71,8 @@ the job block; the rest are fenced sections.
   analyze. Use these as planning context; do not overwrite their intent.
 - **Answered spikes** (`spike-*.json`) — settled human-owned decisions on stack, intent, and guardrails.
   Consume these as authoritative; do not re-raise a question that a spike has already answered.
-- **`BUILD_CONFIGURATION.md`** — durable commander decisions and stack choices, if present.
 - **`COMPASS.md`** — existing product intent if already present; otherwise derive emitted content
   from the analysis and sources.
-- **Existing `MANIFEST.md`** — injected on a re-run for context. Keep stable ids for blocks that
-  still apply; the calling module preserves prior block states by id, so you always emit
-  `state: pending`.
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field
   contracts for the outputs.
 - **Imported source files** — the original material under `blueprint/sources/`, injected below.
@@ -89,7 +88,7 @@ the required output block contract described below.
 Execute in order. Do not skip a step.
 
 **1. Review the planning basis.**
-- *Consumes:* imported sources, `ANALYSIS.md`, `BUILD_CONFIGURATION.md`, prior blocker answers.
+- *Consumes:* imported sources, `ANALYSIS.md`, `MANIFEST_FEEDBACK.md` direction, answered spikes.
 - *Emits:* working understanding of the project shape, stack, constraints, and unanswered items.
 
 **2. Confirm the decomposition shape.**

@@ -3,9 +3,9 @@
 `plan create` implements the reviewed analysis. In one LLM call it rewrites the imported source
 material into typed Blueprint specification files, emits the single ``BUILD_PLAN_COMPASS.md``
 build-ordering file, and the executable ``MANIFEST.md`` — all as delimited ``=== NAME ===`` blocks.
-The module parses the blocks, merges prior block states, runs a deterministic integrity gate, and
-writes the files. The model emits text; the module writes files. Tests inject a fake runner and
-never spend API credits.
+The module parses the blocks, runs a deterministic integrity gate, and writes the files. Each run is
+a single-directional clean regenerate: prior block states are not merged. The model emits text; the
+module writes files. Tests inject a fake runner and never spend API credits.
 """
 
 from __future__ import annotations
@@ -34,14 +34,22 @@ PROMPT_NAME = "plan_create"
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
-_ID_RE = re.compile(r"^id:\s*(.+?)\s*$", re.MULTILINE)
-_STATE_RE = re.compile(r"^state:\s*.+?\s*$", re.MULTILINE)
-_MANIFEST_SPLIT_RE = re.compile(r"(?m)(?=^## (?:feature|story|spike|ac)\s+\d+:)")
-
 # Block names the LLM emits that are not authored Blueprint spec files.
 _RESERVED_BLOCKS = frozenset({"MANIFEST.md", "BUILD_PLAN_COMPASS.md", "PLAN_CREATE_BLOCKED.txt"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
+
+# Hard cap on story count; plan create refuses to emit an over-decomposed plan.
+_STORY_CAP = 100
+
+_FEEDBACK_FILENAME = "MANIFEST_FEEDBACK.md"
+_FEEDBACK_DEFAULT = (
+    "# Manifest Feedback\n\n"
+    "These instructions are injected into every `drydock plan create` run for this target. "
+    "Edit this file to steer plan creation. It persists across runs and is never overwritten "
+    "by Drydock.\n\n"
+    "Enter Direction for the Manifest Run\n"
+)
 
 
 class CompletedRun(Protocol):
@@ -93,6 +101,18 @@ def _collect_spikes(target_dir: Path) -> list[Path]:
     return sorted(qd.glob("spike-*.json"))
 
 
+def ensure_feedback_file(target_dir: Path) -> str:
+    """Create MANIFEST_FEEDBACK.md with the default prompt if absent; never overwrite.
+
+    A persistent, human-owned standing directive re-injected into every ``drydock plan create``
+    run. Returns the file's current text.
+    """
+    path = target_dir / _FEEDBACK_FILENAME
+    if not path.is_file():
+        path.write_text(_FEEDBACK_DEFAULT, encoding="utf-8", newline="\n")
+    return path.read_text(encoding="utf-8")
+
+
 # ── Prompt assembly ────────────────────────────────────────────────────────────────
 
 
@@ -107,7 +127,7 @@ def _assemble_prompt(
     analysis_text: str,
     today: str,
     *,
-    old_manifest: str | None,
+    feedback_text: str | None = None,
 ) -> str:
     shape_match = _SHAPE_RE.search(analysis_text)
     quality_match = _QUALITY_RE.search(analysis_text)
@@ -124,6 +144,20 @@ def _assemble_prompt(
         "",
     ]
 
+    # Standing directive — persistent human steering, re-injected on every run. Highest priority,
+    # so it reads before the analysis and source context.
+    if feedback_text and feedback_text.strip():
+        parts += [
+            "## Manifest feedback (standing directive)",
+            "",
+            "Human direction for plan creation. Honor it; it persists across runs.",
+            "",
+            "```markdown",
+            feedback_text.strip(),
+            "```",
+            "",
+        ]
+
     parts += _fenced("ANALYSIS.md (the reviewed plan)", analysis_text)
 
     for name in ("SEA_TRIALS.md", "SOUNDINGS.md", "COMPASS.md"):
@@ -131,21 +165,18 @@ def _assemble_prompt(
         if text:
             parts += _fenced(name, text)
 
-    config_text = _read_if(blueprint_dir / "BUILD_CONFIGURATION.md")
-    if config_text:
-        parts += _fenced("BUILD_CONFIGURATION.md (settled commander decisions)", config_text)
-
     spikes = _collect_spikes(target_dir)
     if spikes:
         parts += ["## Answered spikes (consume these decisions)", ""]
         for spike in spikes:
-            parts += [f"### {spike.name}", "", "```json", spike.read_text(encoding="utf-8").rstrip(), "```", ""]
-
-    if old_manifest:
-        parts += _fenced(
-            "Existing MANIFEST.md (prior plan — block states are preserved by the module)",
-            old_manifest,
-        )
+            parts += [
+                f"### {spike.name}",
+                "",
+                "```json",
+                spike.read_text(encoding="utf-8").rstrip(),
+                "```",
+                "",
+            ]
 
     try:
         prompts_root = get_prompts_root()
@@ -158,33 +189,16 @@ def _assemble_prompt(
 
     parts += ["## Imported source files", ""]
     for path in _collect_sources(blueprint_dir):
-        parts += [f"### {path.relative_to(blueprint_dir).as_posix()}", "", "```markdown",
-                  path.read_text(encoding="utf-8").rstrip(), "```", ""]
+        parts += [
+            f"### {path.relative_to(blueprint_dir).as_posix()}",
+            "",
+            "```markdown",
+            path.read_text(encoding="utf-8").rstrip(),
+            "```",
+            "",
+        ]
 
     return "\n".join(parts)
-
-
-# ── State merge ─────────────────────────────────────────────────────────────────────
-
-
-def _merge_states(manifest_text: str, old_states: dict[str, str]) -> str:
-    """Preserve prior non-``pending`` block states by id when re-authoring the Manifest."""
-    if not old_states:
-        return manifest_text
-    chunks = _MANIFEST_SPLIT_RE.split(manifest_text)
-
-    def _patch(chunk: str) -> str:
-        id_match = _ID_RE.search(chunk)
-        if not id_match:
-            return chunk
-        prior = old_states.get(id_match.group(1).strip())
-        if not prior or prior == "pending":
-            return chunk
-        if _STATE_RE.search(chunk):
-            return _STATE_RE.sub(f"state: {prior}", chunk, count=1)
-        return chunk
-
-    return "".join(_patch(chunk) for chunk in chunks)
 
 
 # ── Integrity gate ──────────────────────────────────────────────────────────────────
@@ -223,22 +237,27 @@ def _integrity_check(plan: BuildPlan, blueprint_dir: Path) -> list[str]:
     if _has_cycle(edges):
         fatal.append("dependency graph contains a cycle")
 
+    story_count = 0
     for block in plan.blocks:
         if block.block_type != "story":
             continue
+        story_count += 1
         implements = block.fields.get("implements", ())
         targets = implements if isinstance(implements, tuple) else (implements,)
         for name in targets:
             if name and not (blueprint_dir / name).is_file():
                 fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
+        # Every story must carry at least one acceptance gate — hard emission gate.
         has_ac = any(b.block_type == "ac" and b.parent == block.block_id for b in plan.blocks)
         if not has_ac:
-            warnings.append(f"{block.block_id}: story has no acceptance check")
+            fatal.append(f"{block.block_id}: story has no acceptance check")
+
+    # Reject an over-decomposed plan.
+    if story_count > _STORY_CAP:
+        fatal.append(f"story count {story_count} exceeds the ~{_STORY_CAP}-story cap")
 
     if fatal:
-        raise SpecificationError(
-            "Plan integrity check failed:\n  " + "\n  ".join(fatal)
-        )
+        raise SpecificationError("Plan integrity check failed:\n  " + "\n  ".join(fatal))
     return warnings
 
 
@@ -352,15 +371,25 @@ def create_plan(
         )
 
     plan_path = target_dir / "MANIFEST.md"
-    old_manifest = _read_if(plan_path)
-    old = parse_build_plan(plan_path) if plan_path.is_file() else None
-    old_states = {block.block_id: block.state for block in old.blocks} if old else {}
+    prior_manifest = _read_if(plan_path)  # read only to report `changed`; not injected, not merged
+
+    # Standing-directive feedback file — created if absent, never overwritten, injected when the
+    # user has edited it beyond the default placeholder.
+    feedback_text = ensure_feedback_file(target_dir)
+    feedback_for_prompt = (
+        feedback_text if feedback_text.strip() != _FEEDBACK_DEFAULT.strip() else None
+    )
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
     assembled = _assemble_prompt(
-        prompt.body, target_dir, blueprint_dir, analysis_text, today, old_manifest=old_manifest
+        prompt.body,
+        target_dir,
+        blueprint_dir,
+        analysis_text,
+        today,
+        feedback_text=feedback_for_prompt,
     )
 
     result = run(
@@ -397,15 +426,15 @@ def create_plan(
     # 2. The single build-ordering inventory.
     _write_text(blueprint_dir / "BUILD_PLAN_COMPASS.md", blocks["BUILD_PLAN_COMPASS.md"])
 
-    # 3. The executable plan, with prior block states preserved.
-    manifest_text = _merge_states(blocks["MANIFEST.md"], old_states)
-    _write_text(plan_path, manifest_text)
+    # 3. The executable plan. Single-directional regenerate: prior states are not merged —
+    #    a new plan is authored fresh every run (LLM output is non-deterministic).
+    _write_text(plan_path, blocks["MANIFEST.md"])
 
     # 4. Structural validation + deterministic integrity gate.
     plan = parse_build_plan(plan_path)
     warnings = _integrity_check(plan, blueprint_dir)
 
-    changed = old_manifest != (plan_path.read_text(encoding="utf-8"))
+    changed = prior_manifest != (plan_path.read_text(encoding="utf-8"))
     quarterdeck = _write_quarterdeck(plan, target_dir)
     return PlanCreateResult(
         plan=plan,

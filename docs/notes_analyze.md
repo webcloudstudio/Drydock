@@ -2,11 +2,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V6 |
+| Version | 2026-06-16 V7 |
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
-| Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V6 adds FIX-10 (BLOCKERS.md writer hardening), moved in from notes_plan.md and implemented. |
-| Pending spec | 10 approved items |
+| Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V7 adds the standing-directive feedback loop (ANALYSIS_FEEDBACK.md), retires BUILD_CONFIGURATION.md, switches the Rigging catalog to a filename list, finalizes the analyze injection stack, and records the gaps/AC spike removal. |
+| Pending spec | 15 approved items |
 | Pending impl | 0 unimplemented sections |
 
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
@@ -190,10 +190,11 @@ Success Criteria, Acceptance Criteria, Guardrails, Open Questions.
 
 #### spike-*.json (QuarterDeck/questionnaires/)
 
-Four fixed questionnaires always emitted: `spike-intent.json`, `spike-stack.json`,
-`spike-gaps-ac.json`, `spike-guardrails.json`.
+Fixed questionnaires emitted: `spike-intent.json`, `spike-stack.json`, `spike-guardrails.json`.
+(`spike-gaps-ac.json` removed 2026-06-16 — see §Spike set: gaps/AC spike removed.)
 
-Variable spikes for genuine unknowns only (not generic catch-alls).
+Variable spikes for genuine unknowns only (not generic catch-alls), and only for human-owned
+decisions (the Ownership test).
 
 **Technology questionnaires** must offer concrete Rigging-derived options for the detected
 project type. Example — Python web server: `flask`, `django`, `fastapi`, `other`.
@@ -546,6 +547,79 @@ entry (e.g. a `## ` heading) and unlink otherwise (fail closed) — vs known-pla
 (blocklist empty / `(omitted…)` / template boilerplate). Lean: **structural / fail-closed**, so any
 non-conforming model output degrades to "no blockers" rather than a false halt. Add a unit test with
 a placeholder-body block asserting no file is written (and an existing file is removed).
+
+---
+
+## Feedback Loop & Injection Stack (2026-06-16)
+
+Session 2026-06-16 methodology: each generative step exports a persistent, human-editable
+*standing directive* file, re-injected into that step's prompt on **every** run. This is the
+going-forward pattern for iterating each LLM step.
+
+### Standing-Directive Feedback File (methodology)
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+Each generative step exports a persistent feedback file re-injected into its prompt on every run:
+
+- created by the command if absent, default body `Enter Direction for the <Step> Run`;
+- **never overwritten** by the command once it exists — the human owns it;
+- top-of-file note states the instructions are used every time `<command>` runs;
+- edited and submitted by the user through QuarterDeck (saved back to the same file);
+- injected as a standing directive near the **top** of the prompt (after the job block, before
+  prior-answer / source context) — highest-priority human steering reads first.
+
+`analyze` → `ANALYSIS_FEEDBACK.md`; `plan create` → `MANIFEST_FEEDBACK.md` (notes_plan.md).
+Supersedes `BUILD_CONFIGURATION.md` as the free-text PO-direction channel.
+
+### ANALYSIS_FEEDBACK.md
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+- Location: `<target>/ANALYSIS_FEEDBACK.md` (target root).
+- QuarterDeck: shown directly under ANALYSIS in the nav; editable; submit saves to the file.
+- Injected at analyze stack position 3 (after the job block, before `BLOCKERS.md`).
+
+### BUILD_CONFIGURATION.md retired
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+Dropped — not in `docs/Drydock_Specification.md`, originated as an offhand comment, has no defined
+format, writer, or value. Remove its injection from `analyze.py` and `planning_session.py`, and
+scrub references in `prompts/analyze.md`, `prompts/plan_create.md`, `prompts/BLUEPRINTS_CONTRACT.md`.
+Its two former roles are now carried by the feedback files (free-text direction) and answered
+`spike-*.json` (structured decisions). **Supersedes** the "Decisions = BUILD_CONFIGURATION.md"
+entry in §Source of Truth and the BUILD_CONFIGURATION.md references in §Process Flow.
+
+### Rigging catalog = filename list, not README content
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+Today analyze injects the full text of `Rigging/stack/README.md` (an LLM-authored file). Replace
+with a **filename list only** — names, no content, `README.md` excluded. The names are the
+selectable options for `spike-stack.json`. Refines FIX-5: the option source is the directory
+listing, not the README catalog.
+
+**Resolved (Ed, 2026-06-16):** the list includes **both** `Rigging/BRA*.md` (branding) and
+`Rigging/stack/*.md`, excluding `README.md`. Implemented in `analyze._rigging_catalog_names`.
+
+### Final analyze injection stack
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+1. `prompts/analyze.md` — prompt body
+2. job block (inline) — `BLUEPRINT_PATH`, `DATE`, `COMPASS_EXISTS`
+3. `<target>/ANALYSIS_FEEDBACK.md` — standing directive, if present
+4. `<target>/BLOCKERS.md` — prior blocker answers, if present
+5. Rigging catalog filename list — `BRA*.md` + `stack/*.md`, no `README.md`, names only
+6. `<target>/blueprint/sources/*.md` — imported sources
+
+COMPASS is **not** injected into analyze (only the `COMPASS_EXISTS` flag); analyze generates
+COMPASS. The feedback file is anchored top-of-stack rather than "after the compass."
+
+### Spike set: gaps/AC spike removed
+`2026-06-16` · `spec:applied` · `impl:implemented`
+
+`prompts/analyze.md` V6 (committed this session) drops the `spike-gaps-ac` questionnaire and adds
+the Ownership test: a spike asks only a human-owned decision; acceptance criteria, success
+evidence, smoke checks, build gates, and test sequences are synthesized outputs, not spikes. The
+"four fixed spikes" model (§Analyze Output Files; notes_quarterdeck §Analyze Output Contract /
+Spike Contract) is superseded — fixed set is now intent, stack, guardrails.
 
 ---
 

@@ -66,13 +66,16 @@ the sources have already decided, nor for anything you can derive yourself.
 ## Inputs
 
 - **Imported source files** — one or more documents from `blueprint/sources/`, injected below the job block.
-- **Prior answers** — earlier `BUILD_CONFIGURATION.md` answers and any prior `BLOCKERS.md`
-  responses, injected if present. Treat settled items as decided; never re-ask them.
+- **Analysis feedback (standing directive)** — `ANALYSIS_FEEDBACK.md`, persistent human direction
+  injected near the top of this prompt when present. Treat it as authoritative steering for this
+  run; it overrides default decomposition choices where it speaks.
+- **Prior blocker answers** — any prior `BLOCKERS.md` responses, injected if present. Treat settled
+  items as decided; never re-raise a resolved blocker.
 - **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root; omit the `=== COMPASS.md ===`
   block. `false`: write it.
-- **Rigging stack catalog** — a list of stack filenames (the `ls` of the Rigging stack directory),
-  injected below if available. These filenames are the selectable options for the stack
-  questionnaire. You never open the files themselves.
+- **Rigging catalog** — a filename list (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, excluding
+  `README.md`), injected below if available. These filenames are the selectable options for the
+  stack questionnaire. You never open the files themselves — list their names only.
 
 ---
 
@@ -101,8 +104,8 @@ questions distinguish the two but do not gate.
 
 ## Completeness Checklist
 
-Run this checklist over the **imported sources** (and prior `BUILD_CONFIGURATION.md` answers, if
-injected). There are no typed spec files at analyze time — judge each item solely against what the
+Run this checklist over the **imported sources** (and the `ANALYSIS_FEEDBACK.md` standing directive,
+if injected). There are no typed spec files at analyze time — judge each item solely against what the
 sources state. Each unmet item → one question (unless the team cannot proceed without it → blocker
 instead):
 
@@ -124,7 +127,7 @@ step's output and **emits** the named result. Do not re-derive an artifact indep
 prior step already produced its input.
 
 **1. Review the sources.**
-- *Consumes:* imported sources + prior `BUILD_CONFIGURATION.md` / `BLOCKERS.md` answers.
+- *Consumes:* imported sources + `ANALYSIS_FEEDBACK.md` direction + prior `BLOCKERS.md` answers.
 - *Emits:* working notes — what is clear, what is missing, what must be answered.
 
 **2. Detect project type.**
@@ -175,7 +178,7 @@ spike, mark the blocker answered, carry on.
 - *Emits:* `Blocked | Questions | Ready` per the Quality Signal table.
 
 **8. Build the questionnaires.**
-- *Consumes:* the project type + open questions + injected stack catalog.
+- *Consumes:* the project type + open questions + injected Rigging catalog filenames.
 - *Emits:* one `spike-<slug>.json` per open important question. Emit a stack questionnaire only
   when the stack is not already decided; its options are the injected catalog filenames filtered
   to the project type (see Hard Rules). Do not emit a questionnaire for a matter the sources or
@@ -339,9 +342,9 @@ Each questionnaire uses this shape:
 === END spike-{slug}.json ===
 ```
 
-**Stack questionnaire rule.** The stack `options` are the injected catalog filenames (the `ls` of
-the Rigging stack directory), filtered to the detected project type, always ending with `"other"`.
-Never open the per-technology files — list their names only.
+**Stack questionnaire rule.** The stack `options` are the injected Rigging catalog filenames
+(`Rigging/BRA*.md` plus `Rigging/stack/*.md`, no `README.md`), filtered to the detected project
+type, always ending with `"other"`. Never open the per-technology files — list their names only.
 
 - If a source names a technology **and** a matching catalog file exists, treat it as decided:
   record the technology and do **not** raise it as an open question.
@@ -363,7 +366,7 @@ Never open the per-technology files — list their names only.
   evidence, smoke checks, build gates, test sequences — these are synthesized outputs, not spikes).
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
-- Never re-ask a question already answered in `BUILD_CONFIGURATION.md` or a prior `BLOCKERS.md`.
+- Never re-ask a question already settled by `ANALYSIS_FEEDBACK.md` or a prior `BLOCKERS.md`.
 - Stack questionnaire options are the injected catalog filenames, filtered to the detected project
   type, plus `"other"`. Never open the per-technology stack files — list their names only.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with

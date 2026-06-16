@@ -28,7 +28,6 @@ project is, what it must do, and how it is built.
 | `UI-GENERAL.md` | Shared UI patterns across screens | If has UI |
 | `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
 | `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, AC, guardrails | As needed |
-| `BUILD_CONFIGURATION.md` | Durable product-owner planning decisions from User Review | Process-created |
 | `BUILD_PLAN_COMPASS.md` | Internal inventory of Blueprint inputs and planning groups | Process-created |
 | `ARCHITECTURE_FUNC_compact.md` | Compact architecture for Functionality phases — module summaries, config, no routes | Optional |
 | `ARCHITECTURE_UI_compact.md` | Compact architecture for UI phases — routes table, directory layout | Optional |

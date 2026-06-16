@@ -86,7 +86,9 @@ state: pending
 
 def _llm_output(manifest: str | None = None) -> str:
     arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
-    feature = _SPEC_HEADER.format(ftype="FEATURE", name="Status", ac="Status command exits successfully.")
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    )
     compass = "# Foundation\nARCHITECTURE.md\n#\nFEATURE-Status.md\n"
     return (
         f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
@@ -134,17 +136,18 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     assert (target_dir / "QuarterDeck" / "console.yaml").is_file()
 
 
-def test_state_merge_preserves_prior_block_states(tmp_path):
+def test_replan_does_not_preserve_prior_states(tmp_path):
     target_dir = _make_target(tmp_path)
-    # First run leaves story-status implemented.
+    # A prior plan left story-status implemented.
     (target_dir / "MANIFEST.md").write_text(_manifest(story_state="implemented"), encoding="utf-8")
 
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
     text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
     assert "id: story-status\n" in text
-    # The freshly authored manifest used state: pending; the module restored the prior state.
-    assert "state: implemented" in text
+    # Single-directional regenerate: the fresh plan is authored as-is (pending); no state merge.
+    assert "state: implemented" not in text
+    assert "state: pending" in text
 
 
 def test_blocked_quality_refuses_before_llm(tmp_path):
@@ -194,12 +197,12 @@ def test_integrity_unknown_dependency_is_fatal(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
 
 
-def test_story_without_acceptance_warns(tmp_path):
+def test_story_without_acceptance_is_fatal(tmp_path):
     _make_target(tmp_path)
-    # Drop the ac block.
+    # Drop the ac block — a story with no acceptance gate must not be emitted.
     manifest = _manifest().split("## ac 1:")[0].rstrip() + "\n"
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
-    assert any("no acceptance check" in w for w in result.warnings)
+    with pytest.raises(SpecificationError, match="no acceptance check"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
 
 
 def test_missing_manifest_block_refuses(tmp_path):
@@ -212,4 +215,6 @@ def test_missing_manifest_block_refuses(tmp_path):
 def test_failed_run_refuses(tmp_path):
     _make_target(tmp_path)
     with pytest.raises(SpecificationError, match="execution failed"):
-        create_plan("Example", "Example", tmp_path, runner=lambda *a, **k: FakeRun(ok=False, text=""))
+        create_plan(
+            "Example", "Example", tmp_path, runner=lambda *a, **k: FakeRun(ok=False, text="")
+        )

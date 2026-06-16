@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V4 |
+| Version | 2026-06-16 V5 |
 | Route | plan create |
 | Status | Working notes — not canonical specification |
-| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. V4 renames USE_COMPASS → MANUAL_BUILD_ORDER (the Compass is always written). Wired 2026-06-16 — see As-Built. |
-| Pending spec | 6 recommended items |
-| Pending impl | 2 unimplemented sections |
+| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. V5 adds the MANIFEST_FEEDBACK.md standing directive, retires BUILD_CONFIGURATION.md, makes plan create a single-directional clean regenerate (drops state merge), and finalizes the injection stack. |
+| Pending spec | 10 items (6 recommended, 4 approved) |
+| Pending impl | 2 unimplemented sections (story-too-big split; auto-batch — both blocked) |
 
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
@@ -29,9 +29,10 @@ map), emits the single `BUILD_PLAN_COMPASS.md`, and a draft `MANIFEST.md`. The m
 delimited blocks, merges prior block states by id, runs a deterministic integrity gate, and writes
 the QuarterDeck projection. Tests: `tests/test_planning_session.py` (fake runner).
 
-**Built:** spec authoring; single `BUILD_PLAN_COMPASS.md` definition; state-merge on re-run;
-integrity gate (depends resolve, acyclic, `implements` names real files — fatal); precondition
-gate (ANALYSIS.md exists, not Blocked, no `BLOCKERS.md`).
+**Built:** spec authoring; single `BUILD_PLAN_COMPASS.md` definition; single-directional clean
+regenerate (no state merge — superseded the earlier re-run merge on 2026-06-16); integrity gate
+(depends resolve, acyclic, `implements` names real files, ≥1 AC per story, ~100-story cap — all
+fatal); precondition gate (ANALYSIS.md exists, not Blocked, no `BLOCKERS.md`).
 
 **Diverged / not yet built (open items):**
 - **Precondition is `ANALYSIS.md` + not-Blocked, not an `approve`/ROOT-green gate.** No `drydock
@@ -85,13 +86,19 @@ the lever that makes the no-cross-stack guardrail enforceable: typed spec filena
 (`FEATURE-*` vs `SCREEN-*`) prevent cross-stack mixing within one story.
 
 ### Scrum Guardrails
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-16` · `spec:recommended` · `impl:unimplemented`
 
 - **Story too big → split.** A story exceeding the atomicity threshold must be split until atomic.
   Threshold configured in `.env`. Standard scrum guardrail.
 - **Stories are atomic.** One spec file; one bounded unit of work.
 - **Every story has ≥1 AC gate.** A story without a `depends-on` AC node is a defect; `plan create`
   must not emit it.
+
+**As-built (2026-06-16, item A):** the ≥1-AC gate is now a **fatal** `_integrity_check` finding
+(was a warning), and the ~100-story cap is enforced (`_STORY_CAP`, fatal). **Blocked / not built:**
+the story-too-big split has no defined atomicity threshold — the `.env` value has no agreed default
+(see Open Questions #1), so deterministic split enforcement is deferred. The prompt still instructs
+the LLM to keep stories atomic.
 
 ### Integrity / Validation Check
 `2026-06-13` · `spec:recommended` · `impl:implemented`
@@ -101,15 +108,23 @@ Runs in `_integrity_check` after the Manifest is parsed.
 - Acyclic: no dependency cycles. **(fatal — built)**
 - All `depends-on` values resolve to existing node IDs. **(fatal — built)**
 - Every story's `implements` names a real emitted spec file. **(fatal — built)**
-- Every story has ≥1 AC. **(warning — built; not yet a hard gate)**
+- Every story has ≥1 AC. **(fatal — built 2026-06-16; was a warning)**
 - Reachable / no orphans. **(warning — built)**
-- Story count ≤ ~100. **(not built — open item)**
+- Story count ≤ ~100. **(fatal — built 2026-06-16, `_STORY_CAP`)**
 
 Fatal findings raise `SpecificationError` (exit 1). Note: spec files are written before the gate
 runs, so a fatal failure currently leaves authored specs but no console update — make atomic later.
 
 ### Order and Batch
-`2026-06-13` · `spec:recommended` · `impl:unimplemented`
+`2026-06-16` · `spec:recommended` · `impl:unimplemented`
+
+**Blocked / not built (item B, 2026-06-16):** the automatic batching algorithm depends on the
+`MANUAL_BUILD_ORDER` flag, which lived in the now-retired `BUILD_CONFIGURATION.md`. With that file
+gone, the manual/auto toggle has no persistence home, so the auto-batcher cannot be wired as
+specified. Decide a new home for the flag (e.g. `MANIFEST_FEEDBACK.md` directive, `METADATA.md`
+field, or always-auto with no toggle) before building this. Until then `plan create` keeps the
+LLM-seeded Compass ordering.
+
 
 **Hard guardrail — no cross-stack batches.** Never put different stacks / component types in one
 batch. V1 evidence: batching a feature with a screen produced materially worse results than two
@@ -180,6 +195,61 @@ These belong to `build`; the graph must support them:
   runnables where possible; some non-executable AC is unavoidable.
 - **Drift oracle.** Graph node state tracks what is built and verified; green propagates along
   `depends-on` edges. Propagation model not yet fully elaborated.
+
+## Feedback Loop & Injection Stack (2026-06-16)
+
+Companion to notes_analyze.md §Feedback Loop & Injection Stack. Applies the standing-directive
+methodology to `plan create` and finalizes its prompt injection stack.
+
+### MANIFEST_FEEDBACK.md (standing directive)
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+`plan create` exports a persistent `<target>/MANIFEST_FEEDBACK.md`, re-injected into the
+plan-create prompt on every run. Same contract as ANALYSIS_FEEDBACK.md: created if absent with
+default body `Enter Direction for the Manifest Run`, never overwritten by the command, top-of-file
+note that it is used on every `plan create` run, edited/submitted via QuarterDeck, injected near
+the top (after the job block). See notes_analyze.md §Standing-Directive Feedback File.
+
+### BUILD_CONFIGURATION.md retired (plan create)
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+Drop `BUILD_CONFIGURATION.md` injection from `planning_session.py` and scrub `prompts/plan_create.md`.
+**Supersedes** the BUILD_CONFIGURATION.md inputs in §Plan Create CLI / Inputs / Outputs and the
+`MANUAL_BUILD_ORDER` persistence in §Order and Batch (if that feature is later built, its flag
+needs a new home; out of scope here). PO direction now comes from MANIFEST_FEEDBACK.md and answered
+spikes.
+
+### Single-directional regenerate — no state merge
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+`plan create` is a one-directional clean regenerate. Do **not** inject the existing `MANIFEST.md`,
+and **remove** the module-side `_merge_states`. Every run re-authors the plan fresh; prior block
+states are **not** preserved. Rationale (Ed): a new plan is a new plan; LLMs are non-deterministic,
+so attempting state/id consistency across re-plans is not worth it. **Supersedes** §As-Built
+"state-merge on re-run" and any AC/guardrail language implying preserved states across re-plans.
+
+### Contract files (clarification)
+`2026-06-16` · `spec:na` · `impl:implemented`
+
+The injected "contract files" are `prompts/MANIFEST_CONTRACT.md` (MANIFEST block format) and
+`prompts/BLUEPRINTS_CONTRACT.md` (typed-spec file format) — output-format authoring contracts.
+`docs/Drydock_Specification.md` (the product spec) is **not** injected into plan create.
+
+### Final plan create injection stack
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+1. `prompts/plan_create.md` — prompt body
+2. job block (inline) — `TARGET`, `BLUEPRINT_PATH`, `DATE`, `SYSTEM_SHAPE`, `ANALYSIS_QUALITY`
+3. `<target>/MANIFEST_FEEDBACK.md` — standing directive, if present
+4. `<target>/ANALYSIS.md`
+5. `<target>/SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` (if present)
+6. answered `QuarterDeck/questionnaires/spike-*.json`
+7. contract files — `MANIFEST_CONTRACT.md`, `BLUEPRINTS_CONTRACT.md`
+8. `<target>/blueprint/sources/*.md` — imported sources
+
+Removed vs current: `BUILD_CONFIGURATION.md` and the existing `MANIFEST.md` (prior plan).
+
+---
 
 ## Acceptance Criteria
 

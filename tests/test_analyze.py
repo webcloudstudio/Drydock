@@ -371,18 +371,31 @@ class TestAssemblePrompt:
         assert "### FEATURE-Auth.md" not in result
         assert "should not appear" not in result
 
-    def test_injects_build_configuration_if_present(self, tmp_path):
+    def test_injects_feedback_directive_when_provided(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt(
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=False,
+            feedback_text="Decompose by module, not by route.",
+        )
+        assert "Analysis feedback (standing directive)" in result
+        assert "Decompose by module, not by route." in result
+
+    def test_no_feedback_section_when_absent(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "Analysis feedback (standing directive)" not in result
+
+    def test_build_configuration_is_not_injected(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
         (bp / "BUILD_CONFIGURATION.md").write_text("stack: flask\n", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "Prior PO answers" in result
-        assert "stack: flask" in result
-
-    def test_no_build_configuration_section_when_absent(self, tmp_path):
-        bp = tmp_path / "blueprint"
-        bp.mkdir()
-        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "BUILD_CONFIGURATION" not in result
         assert "Prior PO answers" not in result
 
     def test_prompt_body_comes_first(self, tmp_path):
@@ -410,18 +423,20 @@ class TestAssemblePrompt:
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
         assert "Prior blocker answers" not in result
 
-    def test_blockers_injected_before_build_configuration(self, tmp_path):
+    def test_feedback_injected_before_blockers(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
-        (bp / "BUILD_CONFIGURATION.md").write_text("stack: flask\n", encoding="utf-8")
         result = _assemble_prompt(
             "body",
             bp,
             "2026-06-14",
             compass_exists=False,
+            feedback_text="Steer this way.",
             blockers_text="- No name.",
         )
-        assert result.index("Prior blocker answers") < result.index("Prior PO answers")
+        assert result.index("Analysis feedback (standing directive)") < result.index(
+            "Prior blocker answers"
+        )
 
 
 # ---------------------------------------------------------------------------
