@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import errno
-import json
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -107,11 +106,6 @@ def init_target(
 
         for path in ensure_standard_artifacts(target, target_dir):
             result.created.append(path)
-        _write_missing(
-            target_dir / "QuarterDeck" / "tickets.json",
-            json.dumps({"tickets": []}, indent=2) + "\n",
-            result,
-        )
         _write_missing(
             target_dir / "QuarterDeck" / "console.yaml",
             render_console(target),

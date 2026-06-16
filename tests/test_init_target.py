@@ -28,9 +28,7 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
     )
     assert not (result.target_dir / "SEA_TRIALS.md").is_file()
     assert not (result.target_dir / "SOUNDINGS.md").is_file()
-    assert (result.target_dir / "QuarterDeck" / "tickets.json").read_text(encoding="utf-8") == (
-        '{\n  "tickets": []\n}\n'
-    )
+    assert not (result.target_dir / "QuarterDeck" / "tickets.json").exists()
 
 
 def test_init_target_preserves_existing_baseline_files(tmp_target_root):
