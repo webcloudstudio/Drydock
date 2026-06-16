@@ -2,11 +2,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-15 V5 |
+| Version | 2026-06-16 V6 |
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
-| Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V5 adds a prompt-hardening + pipeline-correctness task cluster. |
-| Pending spec | 9 approved items |
+| Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V6 adds FIX-10 (BLOCKERS.md writer hardening), moved in from notes_plan.md and implemented. |
+| Pending spec | 10 approved items |
 | Pending impl | 0 unimplemented sections |
 
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
@@ -513,6 +513,39 @@ Fix — give each Tasks step an explicit "consumes / emits" line, and sequence s
 derived from the prior step's output (e.g. SOUNDINGS and SEA_TRIALS derive from the story list;
 quality derives from the blocker/question counts) rather than independently re-derived. No code
 change; this is prompt structure. Compatible with all FIX-1…FIX-8.
+
+### TASK FIX-10: BLOCKERS.md writer must reject empty/placeholder content
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+**Implemented 2026-06-16 (structural / fail-closed):** `analyze._validate_blockers` accepts the
+BLOCKERS block only when it carries ≥1 `## ` blocker entry; empty, whitespace, placeholder
+(`(omitted…)`), or title-only blocks return `None`, so the writer does not create the file and
+removes any stale one (`analyze.py` write block). Prompt nudged (`prompts/analyze.md`) as
+defense-in-depth. Tests: `TestValidateBlockers`, `test_placeholder_blockers_block_returns_none`,
+`test_titleonly_blockers_block_returns_none`, `test_placeholder_blockers_block_not_written`.
+
+**Contract:** the *existence* of `<Target>/BLOCKERS.md` is the sole flag meaning "blocked"; it
+halts `plan create` (`planning_session.py:343`). The file must therefore never exist with empty or
+placeholder content. Moved here from `notes_plan.md` — `analyze` is the writer and sole owner of
+this artifact; `plan create` only reads it.
+
+**Observed defect (2026-06-16):** the analyze LLM emitted a `BLOCKERS.md` block whose body was the
+placeholder `(omitted — no blockers)` instead of omitting the block. The writer trusted it —
+`analyze.py:235` `blocks.get("BLOCKERS.md") or None` filters only the empty string, not placeholder
+text — so a 26-byte junk file was written and falsely tripped the `plan create` precondition.
+
+**Fix — make the deterministic writer the enforcement point, not the prompt.** In
+`analyze.py:_parse_output` / the write block at `:406-413`, treat any non-genuine blocker content
+as "no blockers": when the parsed BLOCKERS body is empty, a known placeholder, or lacks a
+recognizable blocker structure, do not write — and `unlink` any existing file (the resolution path
+already at `:412`). The prompt instruction ("emit the block only when blockers exist") stays as
+advisory defense-in-depth, but correctness must not depend on model compliance.
+
+**Open (decide before implementing):** structural enforcement — require ≥1 recognizable blocker
+entry (e.g. a `## ` heading) and unlink otherwise (fail closed) — vs known-placeholder filtering
+(blocklist empty / `(omitted…)` / template boilerplate). Lean: **structural / fail-closed**, so any
+non-conforming model output degrades to "no blockers" rather than a false halt. Add a unit test with
+a placeholder-body block asserting no file is written (and an existing file is removed).
 
 ---
 

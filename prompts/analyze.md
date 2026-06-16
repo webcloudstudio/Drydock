@@ -241,7 +241,8 @@ Format: | ac-{feature-slug}-{n} | {Criterion text} | NOT STARTED | |}
 ```
 
 **BLOCKERS.md block (conditional):** Emit only when one or more blockers exist. When there are no
-blockers, do not emit this block — its absence is what lets the pipeline proceed.
+blockers, do not emit this block — its absence is what lets the pipeline proceed. Never emit the
+block with placeholder text (e.g. "none", "(omitted)") in place of real blockers; omit it entirely.
 
 ```
 === BLOCKERS.md ===

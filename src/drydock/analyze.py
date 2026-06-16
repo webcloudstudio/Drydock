@@ -31,6 +31,8 @@ _SOURCES_SUBDIR = "sources"
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
+# A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
+_BLOCKER_ENTRY_RE = re.compile(r"^## \S", re.MULTILINE)
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
     "Ready": ("ready", "✓", "All blockers resolved. Ready for plan create."),
@@ -191,6 +193,23 @@ def _parse_blocks(text: str) -> dict[str, str]:
     return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
 
 
+def _validate_blockers(raw: str | None) -> str | None:
+    """Return blocker content only when it is a genuine, structured blocker list.
+
+    The *existence* of ``BLOCKERS.md`` is the sole signal that halts ``plan create``; the
+    deterministic writer — not model compliance — must therefore guarantee the file is never
+    written empty or with placeholder text (e.g. the LLM emitting ``(omitted — no blockers)``
+    inside the block instead of omitting it). Fail closed: anything lacking at least one ``## ``
+    blocker entry is treated as "no blockers".
+    """
+    if not raw:
+        return None
+    stripped = raw.strip()
+    if not _BLOCKER_ENTRY_RE.search(stripped):
+        return None
+    return stripped
+
+
 def _parse_summary_fields(analysis_text: str) -> dict[str, str]:
     """Extract the indented sub-fields under '## Analysis Summary'."""
     fields: dict[str, str] = {}
@@ -232,7 +251,7 @@ def _parse_output(
 
     summary = _parse_summary_fields(analysis_text)
     compass_content = blocks.get("COMPASS.md") or None
-    blockers_content = blocks.get("BLOCKERS.md") or None
+    blockers_content = _validate_blockers(blocks.get("BLOCKERS.md"))
 
     return (
         analysis_text,
@@ -403,8 +422,9 @@ def analyze(
         spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         spike_paths.append(spike_path)
 
-    # BLOCKERS.md — the LLM emits a dedicated Q&A block only when blockers exist. Its presence is
-    # the flag that halts the pipeline; written when present, deleted when resolved.
+    # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
+    # Its presence is the flag that halts the pipeline; written when present, deleted otherwise
+    # (resolved, empty, or placeholder). Never trust block-presence alone — fail closed.
     written_blockers: Path | None = None
     if blockers_text_out:
         blockers_md_path.write_text(blockers_text_out + "\n", encoding="utf-8", newline="\n")

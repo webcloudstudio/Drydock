@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V9 |
+| Version | 2026-06-16 V10 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, and type/template design decisions. |
 | Pending spec | 0 approved items |
-| Pending impl | 0 unimplemented sections |
+| Pending impl | 1 unimplemented section (section-model reconciliation in standard_artifacts.py) |
 
 ## Goal
 
@@ -212,7 +212,7 @@ File content…
 - Section ID: `blockers`, label: "Blockers", position: first (above core, actions, docs, archive).
 - Visual treatment: full-width red callout on section heading and all items within it. "Plan not ready" is conveyed by the section's presence and appearance — no separate badge needed.
 - Item type in `console.yaml`: `editable_markdown`. Commander reads questions and types answers directly in the file via QuarterDeck editor.
-- Resolution flow: Commander fills in answers in `BLOCKERS.md`, re-runs `analyze`. `analyze` reads `BLOCKERS.md` if present and injects answers into the prompt. If all blockers resolved, new run does not emit a new `BLOCKERS.md`; old file is deleted or overwritten empty.
+- Resolution flow: Commander fills in answers in `BLOCKERS.md`, re-runs `analyze`. `analyze` reads `BLOCKERS.md` if present and injects answers into the prompt. If all blockers resolved, new run does not emit a new `BLOCKERS.md`; the old file is **deleted** — never overwritten empty. An empty/placeholder BLOCKERS.md would falsely signal Blocked and halt `plan create`. Code is correct (`analyze.py:412` `unlink`); see `notes_plan.md` §"BLOCKERS.md existence is the only signal" for the writer-enforcement hardening (model emitted a `(omitted — no blockers)` placeholder on 2026-06-16, which the writer trusted).
 - Blockers are a separate artifact class from spikes. Spikes = exploratory discovery (optional). Blockers = gate conditions (mandatory, urgent). Different lifecycle, different visual treatment.
 
 ### Section Flag Icons (Nautical Signal Flags)
@@ -258,8 +258,18 @@ post-processor, and no reliance on html > pdf > md precedence.
 - Standard page header (title + filename) wraps it like any item; the tab strip is the body.
 - Captain's Chair stays a pure scoreboard (quality + counts + next-step); no coupling.
 
-Note: ANALYSIS is not yet a console item, and `standard_artifacts.py` still reflects the
-pre-decision sections (`build_plan`, `project_pages`) — separate reconciliation gap.
+Update `2026-06-16`: the ANALYSIS console item is **wired and verified end-to-end** —
+`standard_artifacts.py` declares it (`type: markdown, tabs: true`, file-existence visibility,
+`order: 2`), the QuarterDeck runtime splits its five `## ` sections into tabs
+(`app.py:_render_markdown_tabbed`), and a target's ANALYSIS.md renders correctly. Note: the
+console config is read once at server start (`app.py:222`), so an already-running QuarterDeck must
+be restarted to pick up a newly-seeded item.
+
+**Remaining reconciliation gap (the one open impl item):** `standard_artifacts.py` still seeds the
+pre-decision sections `build_plan` and `project_pages` rather than the ratified
+`core`/`actions`/`docs`/`archive` model (see §"Sections (Configurable)"). The board belongs in
+`core` and `project_pages` should be `docs`. The section decision is captured but the seed template
+has not been reconciled to it.
 
 ### tickets.json No Longer Seeded at Init
 `2026-06-15` · `spec:na` · `impl:implemented`

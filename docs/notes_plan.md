@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V3 |
+| Version | 2026-06-16 V4 |
 | Route | plan create |
 | Status | Working notes — not canonical specification |
-| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. Wired 2026-06-16 — see As-Built. |
+| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. V4 renames USE_COMPASS → MANUAL_BUILD_ORDER (the Compass is always written). Wired 2026-06-16 — see As-Built. |
 | Pending spec | 6 recommended items |
 | Pending impl | 2 unimplemented sections |
 
@@ -39,7 +39,8 @@ gate (ANALYSIS.md exists, not Blocked, no `BLOCKERS.md`).
 - **Story-too-big split** and the **~100-story cap** are not enforced.
 - **≥1 AC per story** is a *warning*, not a hard emission gate.
 - **No-cross-stack batching** is instructed to the LLM in the prompt but not deterministically
-  enforced; the **`USE_COMPASS` automatic batching algorithm** is not built.
+  enforced; the **automatic batching algorithm** (the `MANUAL_BUILD_ORDER = false` auto-seed) is
+  not built.
 - The Compass is **LLM-seeded** in the same call (not a separate Python seeding step).
 
 ### Plan Create CLI / Inputs / Outputs
@@ -55,15 +56,16 @@ does not exist or is not green.
 
 **Inputs:**
 - `<Target>/blueprint/` Typed Specification (Intent: guardrails, AC, spec files)
-- `<Target>/blueprint/BUILD_CONFIGURATION.md` (Decisions: approved route, `USE_COMPASS`, PO answers)
+- `<Target>/blueprint/BUILD_CONFIGURATION.md` (Decisions: approved route, `MANUAL_BUILD_ORDER`, PO answers)
 - `<Target>/ANALYSIS.md` (approved top-level shape and recommendation)
-- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` *(if `USE_COMPASS` = true and file exists)* — PO manual
-  ordering; read-only input when present
+- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` *(on re-run, when `MANUAL_BUILD_ORDER = true` and the PO
+  has edited it)* — PO manual ordering; read-only input when present
 
 **Outputs (derived):**
-- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` — seeded ordering file (spec files in default order,
-  `#`-delimited into batches at no-cross-stack boundaries). Written on first run when `USE_COMPASS`
-  = true; the PO then edits it directly.
+- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` — the ordering file, **always written** and always the
+  input `build` consumes (spec files `#`-delimited into batches at no-cross-stack boundaries).
+  `MANUAL_BUILD_ORDER = false` (default): Drydock auto-computes the order and `build` uses it as-is.
+  `MANUAL_BUILD_ORDER = true`: written in a default order for the PO to reorder by hand.
 - `<Target>/MANIFEST.md` — the single executable build plan: work graph in header format
   (nodes + `depends-on` edges + state), ROOT seeded green.
 
@@ -113,18 +115,20 @@ runs, so a fatal failure currently leaves authored specs but no console update �
 batch. V1 evidence: batching a feature with a screen produced materially worse results than two
 batches. Applies to both grouping strategies.
 
-**Grouping strategy** is a PO Decision, set in console review, persisted in `BUILD_CONFIGURATION.md`
-via `USE_COMPASS`:
+**Order authorship** is a PO Decision, set in console review, persisted in `BUILD_CONFIGURATION.md`
+via `MANUAL_BUILD_ORDER`. *(Renamed 2026-06-16 from `USE_COMPASS`: the Compass is always written and
+always consumed by `build`, so "use compass" was a misnomer — the flag toggles who authors the order,
+not whether the Compass exists.)* The Compass is seeded either way; the flag only decides who orders it.
 
-**`USE_COMPASS = true` — manual (the Compass):**
-`plan create` seeds `BUILD_PLAN_COMPASS.md`; the PO edits it; `build` consumes it as the ordering
-input.
+**`MANUAL_BUILD_ORDER = true` — manual:**
+`plan create` seeds `BUILD_PLAN_COMPASS.md` in a default order; the PO reorders it by hand; `build`
+consumes the edited file.
 
-**`USE_COMPASS = false` — automatic:**
-Python batching algorithm: topological sort by `depends-on` order, then secondary sort by
-build-cost similarity — group nodes sharing stack / build rules to amortize fixed per-run token
-cost (UI changes batch together; feature builds batch separately). Not yet implemented; fully
-specified here so it can be built.
+**`MANUAL_BUILD_ORDER = false` (default) — automatic:**
+`plan create` seeds the Compass from a Python batching algorithm: topological sort by `depends-on`
+order, then secondary sort by build-cost similarity — group nodes sharing stack / build rules to
+amortize fixed per-run token cost (UI changes batch together; feature builds batch separately).
+`build` consumes it as-is. Not yet implemented; fully specified here so it can be built.
 
 Both strategies must respect the no-cross-stack guardrail.
 
@@ -133,12 +137,15 @@ Both strategies must respect the no-cross-stack guardrail.
 
 *This is now the single definition of `BUILD_PLAN_COMPASS.md` (ordered spec-file list, `#`-delimited
 into no-cross-stack batches, consumed by `build`). As-built it is **LLM-seeded** in the plan create
-call rather than Python-seeded; the `USE_COMPASS` gate and automatic alternative are not yet built.*
+call rather than Python-seeded; the `MANUAL_BUILD_ORDER` gate and automatic alternative are not yet
+built.*
 
-One file, seeded by `plan create`, then edited directly by the PO.
+One file, always seeded by `plan create`, then (when `MANUAL_BUILD_ORDER = true`) edited directly
+by the PO.
 
-- **Gate:** `USE_COMPASS` in `BUILD_CONFIGURATION.md`. When false: no Compass, no setup step,
-  ordering is automatic.
+- **Gate:** `MANUAL_BUILD_ORDER` in `BUILD_CONFIGURATION.md`. The Compass is always written and always
+  consumed by `build`. When `true`, the PO hand-authors the order; when `false` (default), the order
+  is auto-computed and used as-is.
 - **File:** `<Target>/blueprint/BUILD_PLAN_COMPASS.md`.
 - **Format:** ordered list of spec files (one per story via the story→spec mapping), `#`-delimited
   into build steps/batches. One file = one step + its related stack. Never cross-stack within a step.
@@ -181,7 +188,8 @@ These belong to `build`; the graph must support them:
    ≤ ~100 stories.
 3. Story-too-big guardrail applied; oversized stories split before emission.
 4. Integrity check passes before `MANIFEST.md` is written; failure surfaces actionable findings.
-5. Writes `BUILD_PLAN_COMPASS.md` (if `USE_COMPASS`) + `MANIFEST.md` with ROOT seeded green.
+5. Always writes `BUILD_PLAN_COMPASS.md` (auto-ordered, or default-ordered for PO edit when
+   `MANUAL_BUILD_ORDER = true`) + `MANIFEST.md` with ROOT seeded green.
 6. Deterministic given the same Intent + Decisions.
 7. All `depends-on` edges use the single direction (dependent node declares); no `gates` syntax.
 8. Multiple `parent` values allowed and parsed correctly.
@@ -189,7 +197,7 @@ These belong to `build`; the graph must support them:
 ## Guardrails
 
 - **Precondition: ROOT green.** Must not run unless `drydock approve <tgt>` has been called.
-- **No cross-stack batches.** Hard rule; applies to both `USE_COMPASS` and automatic ordering.
+- **No cross-stack batches.** Hard rule; applies to both manual and automatic ordering.
 - **One spec per story.** `spec:` field required; blank is a defect.
 - **Every story has ≥1 AC gate.** A story without a `depends-on` AC node must not be emitted.
 - **Story-too-big → split.** Must split before `MANIFEST.md` is written.
@@ -212,4 +220,5 @@ These belong to `build`; the graph must support them:
 
 Editing the canonical specification. Full `build`-time execution design. (The command itself is
 now built — see As-Built.) Remaining work: story-too-big split, ~100-story cap, hard AC gate,
-deterministic no-cross-stack enforcement, and the `USE_COMPASS` automatic batching algorithm.
+deterministic no-cross-stack enforcement, and the `MANUAL_BUILD_ORDER = false` automatic batching
+algorithm.

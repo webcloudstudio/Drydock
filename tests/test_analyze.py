@@ -15,6 +15,7 @@ from drydock.analyze import (
     _is_compass_unpopulated,
     _parse_blocks,
     _parse_output,
+    _validate_blockers,
     analyze,
 )
 from drydock.errors import SpecificationError
@@ -496,6 +497,19 @@ class TestParseOutput:
         assert blockers is not None
         assert "Missing project name" in blockers
 
+    def test_placeholder_blockers_block_returns_none(self):
+        # Regression (FIX-10): the LLM emitted the block with placeholder text instead of
+        # omitting it; the writer must treat it as "no blockers" so its existence stays a real flag.
+        output = _make_llm_output(blockers="(omitted — no blockers)")
+        _, _, _, _, blockers, _, _, _ = _parse_output(output)
+        assert blockers is None
+
+    def test_titleonly_blockers_block_returns_none(self):
+        # Heading prose but no "## " blocker entry → not a genuine blocker list.
+        output = _make_llm_output(blockers="# Blockers: TestProject\n\nNo blockers found.")
+        _, _, _, _, blockers, _, _, _ = _parse_output(output)
+        assert blockers is None
+
     def test_missing_analysis_block_raises(self):
         truncated = _VALID_LLM_OUTPUT.replace("=== ANALYSIS.md ===", "").replace(
             "=== END ANALYSIS.md ===", ""
@@ -537,6 +551,29 @@ class TestParseOutput:
         output = _make_llm_output(extra_spike=True)
         _, _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "spike-auth.json" in spikes
+
+
+# ---------------------------------------------------------------------------
+# _validate_blockers  (FIX-10: existence is the only signal)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateBlockers:
+    def test_genuine_blocker_list_accepted(self):
+        assert _validate_blockers(_BLOCKERS_CONTENT) == _BLOCKERS_CONTENT
+
+    def test_none_returns_none(self):
+        assert _validate_blockers(None) is None
+
+    def test_empty_returns_none(self):
+        assert _validate_blockers("") is None
+        assert _validate_blockers("   \n  ") is None
+
+    def test_placeholder_text_returns_none(self):
+        assert _validate_blockers("(omitted — no blockers)") is None
+
+    def test_heading_without_blocker_entry_returns_none(self):
+        assert _validate_blockers("# Blockers: P\n\nNone found.") is None
 
 
 # ---------------------------------------------------------------------------
@@ -734,6 +771,17 @@ class TestAnalyze:
         (target_dir / "BLOCKERS.md").write_text("# Blockers\n\n- Old blocker.\n", encoding="utf-8")
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.ok
+        assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_placeholder_blockers_block_not_written(self, tmp_path):
+        # FIX-10: a placeholder block must not create a file (its existence would falsely halt
+        # plan create) and must remove any stale file.
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "BLOCKERS.md").write_text("(omitted — no blockers)\n", encoding="utf-8")
+        output = _make_llm_output(blockers="(omitted — no blockers)")
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+        assert result.ok
+        assert result.blockers_path is None
         assert not (target_dir / "BLOCKERS.md").exists()
 
     def test_blockers_md_injected_in_prompt(self, tmp_path):
