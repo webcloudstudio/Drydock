@@ -203,6 +203,31 @@ File content…
 - Filename: small monospace, displayed if item has a backing path.
 - Divider: `<hr>` separates header from content.
 
+### Blocker Artifact and Section
+`2026-06-15` · `spec:na` · `impl:unimplemented`
+
+- `analyze` emits `BLOCKERS.md` at target root when blocking questions are found that prevent planning.
+- `BLOCKERS.md` does not exist in a healthy project. Its existence IS the signal.
+- File absence → `blockers` section hidden entirely. File existence → section appears first in sidebar.
+- Section ID: `blockers`, label: "Blockers", position: first (above core, actions, docs, archive).
+- Visual treatment: full-width red callout on section heading and all items within it. "Plan not ready" is conveyed by the section's presence and appearance — no separate badge needed.
+- Item type in `console.yaml`: `editable_markdown`. Commander reads questions and types answers directly in the file via QuarterDeck editor.
+- Resolution flow: Commander fills in answers in `BLOCKERS.md`, re-runs `analyze`. `analyze` reads `BLOCKERS.md` if present and injects answers into the prompt. If all blockers resolved, new run does not emit a new `BLOCKERS.md`; old file is deleted or overwritten empty.
+- Blockers are a separate artifact class from spikes. Spikes = exploratory discovery (optional). Blockers = gate conditions (mandatory, urgent). Different lifecycle, different visual treatment.
+
+### Section Flag Icons (Nautical Signal Flags)
+`2026-06-15` · `spec:na` · `impl:unimplemented`
+
+Each sidebar section heading carries a nautical ICS signal flag icon (public-domain SVG from Wikimedia Commons). Proposed mapping — pending confirmation:
+
+| Section | Flag | Letter | Rationale |
+|---|---|---|---|
+| `blockers` | Uniform (U) | U | "You are running into danger" — urgency signal |
+| `core` | Alpha (A) | A | Primary, first authority |
+| `actions` | Papa (P) | P | "About to proceed" — action signal |
+| `docs` | Delta (D) | D | D for documents |
+| `archive` | November (N) | N | Checkerboard — completed, put to rest |
+
 ### Document Single-Format Rendering
 `2026-06-15` · `spec:na` · `impl:implemented`
 
@@ -217,12 +242,16 @@ No tabs. Show the best available format.
 - Items with pending actions appear in Actions regardless of declared section.
 - Items move to home section with ✅ when approved / completed.
 - Page header shows title, filename, and context-appropriate action buttons.
+- `BLOCKERS.md` absent → no blockers section. Present → section appears first with full red treatment.
+- Re-running `analyze` after answering blockers clears `BLOCKERS.md` if all resolved.
 
 ## Guardrails
 
 - No console.yaml rewrites at runtime by any command.
 - `plan create` is the assembly step; it consumes analyze outputs + answered spikes.
 - No rejected state persisted. Rejection = item stays pending in Actions.
+- `BLOCKERS.md` is an analyze output only. No other command emits or deletes it.
+- Blockers are not spikes. Do not conflate. Different artifact, different lifecycle, different visual.
 
 ## Open Questions
 
