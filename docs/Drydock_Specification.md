@@ -216,36 +216,30 @@ flowchart LR
 `drydock import` is the intake step. It brings external material under Drydock control.
 
 `drydock import <Target> <Source> --format markdown` copies the source into
-`<Target>/blueprint/sources/`. `drydock analyze` reads from there.
+`<Target>/blueprint/sources/`. 
 
-`drydock import <Target> <Source> --format compass` copies the source into the Target-root
-`COMPASS.md`. Use it when the source is already your product brief or project intent.
+`drydock import <Target> <Source> --format compass` copies the source into the target
+`COMPASS.md`. 
 
 ### drydock analyze
 
-`drydock analyze` is Sprint Planning Part 1. It reads
-`<Target>/blueprint/sources/` and decomposes the imported material into buildable agile work.
-
-It writes the story list, acceptance milestones, blockers, open questions, and any required
-spikes. It does not create the Blueprint or `MANIFEST.md`. It prepares the material that the
-product owner reviews before planning continues.
-
-It writes these primary artifacts:
+`drydock analyze` is Sprint Planning Part is sprint planning. Using `<Target>/blueprint/sources/` the llm
+decomposes the imported material into buildable agile work. It prepares the following files for Commander review.
 
 | Artifact | Location | Purpose |
 |---|---|---|
+| `BLOCKER.md` | Target root | Questions on any blockers the LLM has found |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
 | `SEA_TRIALS.md` | Target root | Product-level objectives and success criteria |
 | `SOUNDINGS.md` | Target root | Acceptance milestones derived from the analyzed work |
 | `COMPASS.md` | Target root | Created or refreshed only when a usable project compass is missing |
-| `spike-*.json` | `QuarterDeck/questionnaires/` | Review questionnaires for unresolved decisions and genuine research spikes |
+| `-*.json` | `QuarterDeck/questionnaires/` | Review questionnaires for unresolved decisions and genuine research spikes |
 | `captains_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
-Questionnaires are not fixed. `drydock analyze` emits only the questions and spikes required by the
-actual source material. A spike exists only when a real unknown must be investigated before later
-planning is reliable.
+#### Build Readiness 
 
-After writing the artifacts, `drydock analyze` reports a quality signal:
+One of the decisions of the analyze step is the condition of the build.  If the system
+finds blockers, it will bring them to the Commanders attention and stop the build from proceeding.
 
 | Quality | Meaning |
 |---|---|
@@ -253,50 +247,42 @@ After writing the artifacts, `drydock analyze` reports a quality signal:
 | `Questions` | Planning may proceed, but open questions remain |
 | `Ready` | No blockers and no open questions remain |
 
-A blocker stops the pipeline. A question does not. Answers are stored in
-`<Target>/blueprint/BUILD_CONFIGURATION.md`. Re-running `drydock analyze` uses those answers and
-does not re-ask settled items.
+blockers stops the pipeline.  The BLOCKER.md file holds blocker question and answers.  
+`drydock analyze` uses those answers to compute the build readinss state
 
 ### drydock run quarterdeck
 
-`drydock run quarterdeck` starts a throwaway web console for the commander acting as product owner.
-It is the review surface for the analyzed work.
+`drydock run quarterdeck` starts the a throwaway web console for the Commander (product owner).
 
-After `drydock analyze`, QuarterDeck shows the artifacts, blockers, questions, questionnaires, and
-spikes that need review. Blockers are required decisions or guidance. They prevent `drydock plan
-create`. Questions and questionnaires capture decisions that guide planning but do not stop it.
+The QuarterDeck shows the artifacts, blockers, questions, questionnaires, and activity that need review. 
 
-Anything entered in QuarterDeck becomes future planning context. Durable decisions are written to
-`<Target>/blueprint/BUILD_CONFIGURATION.md` and become part of later prompts. If the review changes
-the understanding of the project, run `drydock analyze` again. When the review is acceptable, run
-`drydock plan create`.
+* BLOCKERS.md prevents `drydock plan create` from running. 
+* Questionnaires contain decisions that guide planning 
+
+BLOCKERS.md can be edited directly or modified in the quarterdeck to respond.  That response is used on the next run of `drydock analyze`.
+
+Commander Responses in QuarterDeck are preserved for the build. 
+
+The commander can adjust the `drydock analyze` output by importing with  `build import`.  All information is used. 
+
+The quarderdeck will require the Commander to approve core decisions.  
 
 ### drydock plan create
 
-`drydock plan create` is Sprint Planning Part 2. It reads the imported sources, the analysis
-artifacts, and the approved decisions in `BUILD_CONFIGURATION.md`, then turns them into the working
-Blueprint and executable plan.
+`drydock plan create` is Sprint is story creation.  Imported source files are read as are all information output 
+by the analysis steps.  The objective of this step is to create Typed Specification files under `<Target>/blueprint/`.
+Additionally, a file `BUILD_PLAN_COMPASS.md` and a `<Target>/MANIFEST.md` are created. 
 
-The command writes the conformed Typed Specification files under `<Target>/blueprint/`, generates
-`BUILD_PLAN_COMPASS.md`, and creates `<Target>/MANIFEST.md`. This is the point where the draft
-Blueprint structure, dependency ordering, build graph, and runnable frontier are established.
-
-`drydock plan create` follows review. It converts approved analysis into executable planning
-artifacts so SAIL Phase 3 can begin.
+The headers of the blueprints are structured as a dependency graph and the runnable frontier are established.
 
 ## SAIL Phase 3 — Implement: Working the Frontier
 
-### Explanation
+Implement executes the Blueprint using the Manifest 
 
-Implement executes the accepted Manifest, reports progress, measures delivery health, and produces
-the documentation delivered with the software.
-
-1. Inspect current plan state with `drydock build status`.
-2. Execute the next runnable frontier with `drydock build`.
-3. Measure delivery health with `drydock build score`.
-
-Every Target has one executable `MANIFEST.md` stored in its Target root beside execution evidence,
-logs, and the QuarterDeck projection.
+* The Manifest exposes the phases with `drydock build status`.
+* Run phases `drydock build`.
+* Measure delivery health with `drydock build score`.
+* Setup and Compact rigging to implement company standards
 
 ### Commands
 
@@ -317,9 +303,7 @@ drydock rigging verify <Target>
 changing it. `drydock build score` measures delivery health. The `drydock document` commands turn
 Blueprint material into delivered project documentation.
 
-### Workflow:
-
-### Build the Accepted Manifest
+### drydock build
 
 Build executes the accepted work blocks in `<Target>/MANIFEST.md`. The accepted plan may have
 been created from Typed Specifications, imported Markdown, or both. Each block runs as a separate
@@ -348,7 +332,7 @@ flowchart LR
    conformed Typed Specifications are included only where durable authority, dependencies, or safe
    incremental delivery require them.
 
-### Review the Build Evidence
+### drydock quarterdeck run
 
 The QuarterDeck shows the stakeholder the evidence, demos, and questions needed for a decision;
 the product owner approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
@@ -377,7 +361,7 @@ flowchart LR
    `MANIFEST.md`.
 3. Repeat until all objects and optional feature parents are accepted.
 
-### Check Build Status
+### drydock build status
 
 `drydock build status` reads `MANIFEST.md` and the target directory and reports the state of every
 plan object — how many blocks are pending, implemented, verified, or failed, and which are
@@ -390,7 +374,7 @@ drydock build status <Target>   # print per-block state and current runnable fro
 Use `drydock build status` to orient after a partial build, after a failed run, or before deciding
 whether to proceed or revise the plan.
 
-### Score your Build - How well did it go
+### drydock build score
 
 `drydock build score` measures delivery health across seven dimensions — Typed Specification
 completeness, implementation coverage, test coverage, documentation coverage, Blueprint drift,
@@ -429,8 +413,7 @@ drydock survey <Target> --run       # score (LLM-assisted) and append results
 drydock survey <Target> --import D   # re-read a Blueprint/sources directory and regenerate AC
 drydock survey <Target> --command status   # filter to one command
 ```
-
-### Survey The Build Process
+### drydock survey
 
 A Target carries one Surveyor workspace at `<Target>/survey/`: per-command acceptance-criteria
 files under `survey/ac/SURVEY-<command>.md`, an append-only `survey/scores.jsonl`, and the scoring
@@ -450,15 +433,13 @@ acceptance-criteria files from the specification so the process can iterate on i
    commands (e.g. `unresolved-uncertainty`) signals a *process* defect to fix in the prompt or
    command contract, not a one-off code fix.
 
-### Consistent Project Documentation
+### drydock document
 
-Run `drydock document generate <Target>` to produce Blueprint-derived `DOC-*.md` summaries, then
-`drydock document assemble <Target>` to render the maintained summaries into `docs/index.html`.
+`drydock document generate <Target>` reads your Blueprint and Manifest and creates project documentation in docs/`DOC-*.md`
+`drydock document assemble <Target>` combines into `docs/index.html`.
 `drydock document <Target>` runs both steps as one delivery pipeline.
 
 ## SAIL Phase 4 — Loop: The Refit
-
-### Explanation
 
 A Refit is the governed post-build change workflow. It updates the Blueprint, Target, or both, then
 returns affected work to Analyze and Implement. The Blueprint is never bypassed.
@@ -471,8 +452,6 @@ drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 
 `drydock refit` performs the Refit. It updates the Blueprint and Target together, or limits the
 change to the selected side, then returns affected work to the SAIL cycle.
-
-### Workflow:
 
 ### Ongoing Application Support - Refit a Working SDD Application
 
@@ -566,7 +545,6 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         │
         ├── blueprint/                    # the Blueprint — conformed Typed Specification
         │   ├── sources/                  # preserved unconformed import material
-        │   ├── BUILD_CONFIGURATION.md    # durable product-owner planning decisions
         │   ├── BUILD_PLAN_COMPASS.md      # internal inventory of inputs + planning groups
         │   ├── ARCHITECTURE.md
         │   ├── DATABASE.md
@@ -619,17 +597,14 @@ not authored as specification files.
 - **`COMPASS.md`** — Project constitution: intent, constraints, success criteria, guardrails, and
   open questions. Lives at the Target root (not inside `blueprint/`). Injected into every LLM run
   as ambient project context. Created by `drydock analyze` (generated from spec if absent) or
-  seeded via `drydock import --format compass`. Updated by the product owner via QuarterDeck.
-  - Created: `drydock analyze` (auto-generated); `drydock import --format compass` (user-supplied)
+  seeded via `drydock import --format compass`. 
+  - Auto Generate: `drydock analyze` (auto-generated)
+  - Created: `drydock import --format compass` (user-supplied)
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
   - Created and updated: `drydock import <Target> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
-
-- **`BUILD_CONFIGURATION.md`** — Durable product-owner decisions controlling conformance and planning
-  - Created and updated: QuarterDeck Planning Session User Review
-  - Used by: `drydock plan create <Target>`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
 updated by `drydock refit` as specification files and application code evolve.
@@ -681,7 +656,7 @@ updated by `drydock refit` as specification files and application code evolve.
 - **`<Target>/QuarterDeck/questionnaires/spike-*.json`** — Planning Session questionnaires; four
   fixed spikes (intent, stack, gaps-ac, guardrails) plus variable spikes for genuine unknowns
   - Created and updated: `drydock analyze <Target>`
-  - Answered through: QuarterDeck Planning Session or `BUILD_CONFIGURATION.md`
+  - Answered through: QuarterDeck Planning Session 
 
 - **`<Target>/QuarterDeck/captains_chair.html`** — Template-filled orientation dashboard; quality
   signal, story count, stack, and next recommended step

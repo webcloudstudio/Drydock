@@ -1044,3 +1044,36 @@
 {"command": "drydock analyze Drydock", "time": "2026-06-15 20:46", "target": "Drydock", "return_code": 0}
 {"command": "drydock run quarterdeck", "time": "2026-06-15 20:48", "return_code": 1}
 {"command": "drydock document assemble", "time": "2026-06-15 21:28", "return_code": 0}
+{"command": "drydock config set drydock_workspace /does/not/exist", "time": "2026-06-16 00:26", "return_code": 1}
+{"command": "drydock config set llm_provider codex", "time": "2026-06-16 00:26", "return_code": 0}
+{"command": "drydock config set prompt_warn_kb 75", "time": "2026-06-16 00:26", "return_code": 0}
+{"command": "drydock config set prompt_warn_kb fifty", "time": "2026-06-16 00:26", "return_code": 1}
+{"command": "drydock build status", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock document generate MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock document MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock rigging update MyTarget", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock rigging verify MyTarget", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock build MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock refit MyTarget BOTH SomeScope SomeChange", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock refit MyTarget SPEC SomeScope SomeChange", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock document generate MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock document MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock rigging update MyTarget", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock rigging verify MyTarget", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock build MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock refit MyTarget BOTH SomeScope SomeChange", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock refit MyTarget SPEC SomeScope SomeChange", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock document generate MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock document MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock rigging update MyTarget", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock rigging verify MyTarget", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock build MyTarget", "time": "2026-06-16 00:27", "return_code": 2}
+{"command": "drydock refit MyTarget BOTH SomeScope SomeChange", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock refit MyTarget SPEC SomeScope SomeChange", "time": "2026-06-16 00:27", "target": "MyTarget", "return_code": 2}
+{"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-227/test_document_assemble_builds_0/spec.md --output /tmp/pytest-of-barlo/pytest-227/test_document_assemble_builds_0/index.html", "time": "2026-06-16 00:27", "return_code": 0}
+{"command": "drydock document assemble", "time": "2026-06-16 00:27", "return_code": 0}
+{"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-227/test_document_assemble_is_not_0/spec.md --output /tmp/pytest-of-barlo/pytest-227/test_document_assemble_is_not_0/out.html", "time": "2026-06-16 00:27", "return_code": 0}
+{"command": "drydock run", "time": "2026-06-16 00:27", "return_code": 0}
