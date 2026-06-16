@@ -11,7 +11,6 @@ import pytest
 from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
-    _extract_blockers_section,
     _fill_captains_chair,
     _is_compass_unpopulated,
     _parse_blocks,
@@ -90,33 +89,68 @@ A test project compass.
 ## Success Criteria
 - System operational."""
 
-_SPIKE_INTENT = json.dumps({
-    "id": "spike-intent",
-    "title": "Spike: Product Intent",
-    "purpose": "Clarify intent.",
-    "questions": [{"id": "primary_goal", "label": "Primary Goal", "prompt": "What?", "input": "textarea"}],
-}, indent=2)
+_SPIKE_INTENT = json.dumps(
+    {
+        "id": "spike-intent",
+        "title": "Spike: Product Intent",
+        "purpose": "Clarify intent.",
+        "questions": [
+            {"id": "primary_goal", "label": "Primary Goal", "prompt": "What?", "input": "textarea"}
+        ],
+    },
+    indent=2,
+)
 
-_SPIKE_STACK = json.dumps({
-    "id": "spike-stack",
-    "title": "Spike: Technology Stack",
-    "purpose": "Confirm stack.",
-    "questions": [{"id": "stack_confirmed", "label": "Stack", "prompt": "What stack?", "input": "textarea"}],
-}, indent=2)
+_SPIKE_STACK = json.dumps(
+    {
+        "id": "spike-stack",
+        "title": "Spike: Technology Stack",
+        "purpose": "Confirm stack.",
+        "questions": [
+            {
+                "id": "stack_confirmed",
+                "label": "Stack",
+                "prompt": "What stack?",
+                "input": "textarea",
+            }
+        ],
+    },
+    indent=2,
+)
 
-_SPIKE_GAPS_AC = json.dumps({
-    "id": "spike-gaps-ac",
-    "title": "Spike: Gaps and Acceptance Criteria",
-    "purpose": "Identify gaps.",
-    "questions": [{"id": "missing_specs", "label": "Missing Specs", "prompt": "What is missing?", "input": "textarea"}],
-}, indent=2)
+_SPIKE_GAPS_AC = json.dumps(
+    {
+        "id": "spike-gaps-ac",
+        "title": "Spike: Gaps and Acceptance Criteria",
+        "purpose": "Identify gaps.",
+        "questions": [
+            {
+                "id": "missing_specs",
+                "label": "Missing Specs",
+                "prompt": "What is missing?",
+                "input": "textarea",
+            }
+        ],
+    },
+    indent=2,
+)
 
-_SPIKE_GUARDRAILS = json.dumps({
-    "id": "spike-guardrails",
-    "title": "Spike: Guardrails",
-    "purpose": "Surface constraints.",
-    "questions": [{"id": "security_requirements", "label": "Security", "prompt": "What security?", "input": "textarea"}],
-}, indent=2)
+_SPIKE_GUARDRAILS = json.dumps(
+    {
+        "id": "spike-guardrails",
+        "title": "Spike: Guardrails",
+        "purpose": "Surface constraints.",
+        "questions": [
+            {
+                "id": "security_requirements",
+                "label": "Security",
+                "prompt": "What security?",
+                "input": "textarea",
+            }
+        ],
+    },
+    indent=2,
+)
 
 
 _ANALYSIS_CONTENT_BLOCKED = """\
@@ -153,12 +187,23 @@ No stories can be derived until blockers are resolved.
 None."""
 
 
+_BLOCKERS_CONTENT = """\
+# Blockers: TestProject
+
+## blocker-001: Missing project name
+No project name is stated. The product cannot be built without a name.
+
+**Answer:**"""
+
+
 def _make_llm_output(
     *,
     include_compass: bool = True,
+    include_spikes: bool = True,
     extra_spike: bool = False,
     quality: str = "Ready",
     analysis_override: str | None = None,
+    blockers: str | None = None,
 ) -> str:
     if analysis_override is not None:
         analysis = analysis_override
@@ -168,15 +213,23 @@ def _make_llm_output(
         f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
         f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
         f"=== SOUNDINGS.md ===\n{_SOUNDINGS_CONTENT}\n=== END SOUNDINGS.md ===",
-        f"=== spike-intent.json ===\n{_SPIKE_INTENT}\n=== END spike-intent.json ===",
-        f"=== spike-stack.json ===\n{_SPIKE_STACK}\n=== END spike-stack.json ===",
-        f"=== spike-gaps-ac.json ===\n{_SPIKE_GAPS_AC}\n=== END spike-gaps-ac.json ===",
-        f"=== spike-guardrails.json ===\n{_SPIKE_GUARDRAILS}\n=== END spike-guardrails.json ===",
     ]
+    if include_spikes:
+        blocks += [
+            f"=== spike-intent.json ===\n{_SPIKE_INTENT}\n=== END spike-intent.json ===",
+            f"=== spike-stack.json ===\n{_SPIKE_STACK}\n=== END spike-stack.json ===",
+            f"=== spike-gaps-ac.json ===\n{_SPIKE_GAPS_AC}\n=== END spike-gaps-ac.json ===",
+            f"=== spike-guardrails.json ===\n{_SPIKE_GUARDRAILS}\n=== END spike-guardrails.json ===",
+        ]
     if include_compass:
         blocks.insert(3, f"=== COMPASS.md ===\n{_COMPASS_CONTENT}\n=== END COMPASS.md ===")
+    if blockers is not None:
+        blocks.append(f"=== BLOCKERS.md ===\n{blockers}\n=== END BLOCKERS.md ===")
     if extra_spike:
-        extra = json.dumps({"id": "spike-auth", "title": "Spike: Auth", "purpose": "Auth model.", "questions": []}, indent=2)
+        extra = json.dumps(
+            {"id": "spike-auth", "title": "Spike: Auth", "purpose": "Auth model.", "questions": []},
+            indent=2,
+        )
         blocks.append(f"=== spike-auth.json ===\n{extra}\n=== END spike-auth.json ===")
     return "\n\n".join(blocks)
 
@@ -217,7 +270,9 @@ class TestIsCompassUnpopulated:
 
     def test_all_none_sections_returns_true(self, tmp_path):
         p = tmp_path / "COMPASS.md"
-        p.write_text("# COMPASS\n\n## Compass\n- None.\n\n## Constraints\n- None.\n", encoding="utf-8")
+        p.write_text(
+            "# COMPASS\n\n## Compass\n- None.\n\n## Constraints\n- None.\n", encoding="utf-8"
+        )
         assert _is_compass_unpopulated(p)
 
     def test_populated_file_returns_false(self, tmp_path):
@@ -339,7 +394,10 @@ class TestAssemblePrompt:
         bp = tmp_path / "blueprint"
         bp.mkdir()
         result = _assemble_prompt(
-            "body", bp, "2026-06-14", compass_exists=False,
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=False,
             blockers_text="# Blockers\n\n- No name provided.",
         )
         assert "Prior blocker answers" in result
@@ -356,49 +414,13 @@ class TestAssemblePrompt:
         bp.mkdir()
         (bp / "BUILD_CONFIGURATION.md").write_text("stack: flask\n", encoding="utf-8")
         result = _assemble_prompt(
-            "body", bp, "2026-06-14", compass_exists=False,
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=False,
             blockers_text="- No name.",
         )
         assert result.index("Prior blocker answers") < result.index("Prior PO answers")
-
-
-# ---------------------------------------------------------------------------
-# _extract_blockers_section
-# ---------------------------------------------------------------------------
-
-
-class TestExtractBlockersSection:
-    def test_returns_none_when_no_section(self):
-        assert _extract_blockers_section("## Analysis Summary\n\nfoo\n") is None
-
-    def test_returns_none_for_none_content(self):
-        text = "## Blockers\n\n- None.\n\n## Notes\n\nfoo"
-        assert _extract_blockers_section(text) is None
-
-    def test_returns_none_for_bare_none(self):
-        text = "## Blockers\n\n- None\n\n## Notes\n\nfoo"
-        assert _extract_blockers_section(text) is None
-
-    def test_returns_content_when_blockers_present(self):
-        text = (
-            "## Blockers\n\n"
-            "- No project name is stated.\n"
-            "- Deployment target unknown.\n\n"
-            "## Notes\n\nNone."
-        )
-        result = _extract_blockers_section(text)
-        assert result is not None
-        assert "No project name" in result
-
-    def test_returns_content_up_to_next_heading(self):
-        text = "## Blockers\n\n- A blocker.\n\n## Notes\n\nshould not appear"
-        result = _extract_blockers_section(text)
-        assert "should not appear" not in (result or "")
-
-    def test_returns_content_at_end_of_string(self):
-        text = "## Blockers\n\n- A blocker at the end."
-        result = _extract_blockers_section(text)
-        assert result == "- A blocker at the end."
 
 
 # ---------------------------------------------------------------------------
@@ -431,12 +453,15 @@ class TestParseBlocks:
 
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
-        analysis, sea_trials, soundings, compass, spikes, quality, summary = _parse_output(_VALID_LLM_OUTPUT)
+        analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = (
+            _parse_output(_VALID_LLM_OUTPUT)
+        )
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
         assert "Soundings" in soundings
         assert compass is not None
         assert "COMPASS" in compass
+        assert blockers is None
         assert quality == "Ready"
         assert "spike-intent.json" in spikes
         assert "spike-stack.json" in spikes
@@ -444,7 +469,7 @@ class TestParseOutput:
         assert "spike-guardrails.json" in spikes
 
     def test_summary_fields_parsed(self):
-        _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT)
+        _, _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT)
         assert summary.get("stories") == "5"
         assert summary.get("blockers") == "0"
         assert summary.get("questions") == "0"
@@ -453,37 +478,50 @@ class TestParseOutput:
 
     def test_blocked_quality_parsed(self):
         output = _make_llm_output(quality="Blocked")
-        _, _, _, _, _, quality, _ = _parse_output(output)
+        _, _, _, _, _, _, quality, _ = _parse_output(output)
         assert quality == "Blocked"
 
     def test_questions_quality_parsed(self):
         output = _make_llm_output(quality="Questions")
-        _, _, _, _, _, quality, _ = _parse_output(output)
+        _, _, _, _, _, _, quality, _ = _parse_output(output)
         assert quality == "Questions"
 
     def test_no_compass_block_returns_none(self):
-        _, _, _, compass, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
+        _, _, _, compass, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
         assert compass is None
 
+    def test_blockers_block_returned_when_present(self):
+        output = _make_llm_output(blockers=_BLOCKERS_CONTENT)
+        _, _, _, _, blockers, _, _, _ = _parse_output(output)
+        assert blockers is not None
+        assert "Missing project name" in blockers
+
     def test_missing_analysis_block_raises(self):
-        truncated = _VALID_LLM_OUTPUT.replace("=== ANALYSIS.md ===", "").replace("=== END ANALYSIS.md ===", "")
+        truncated = _VALID_LLM_OUTPUT.replace("=== ANALYSIS.md ===", "").replace(
+            "=== END ANALYSIS.md ===", ""
+        )
         with pytest.raises(ValueError, match="ANALYSIS.md"):
             _parse_output(truncated)
 
     def test_missing_sea_trials_raises(self):
-        truncated = _VALID_LLM_OUTPUT.replace("=== SEA_TRIALS.md ===", "").replace("=== END SEA_TRIALS.md ===", "")
+        truncated = _VALID_LLM_OUTPUT.replace("=== SEA_TRIALS.md ===", "").replace(
+            "=== END SEA_TRIALS.md ===", ""
+        )
         with pytest.raises(ValueError, match="SEA_TRIALS.md"):
             _parse_output(truncated)
 
     def test_missing_soundings_raises(self):
-        truncated = _VALID_LLM_OUTPUT.replace("=== SOUNDINGS.md ===", "").replace("=== END SOUNDINGS.md ===", "")
+        truncated = _VALID_LLM_OUTPUT.replace("=== SOUNDINGS.md ===", "").replace(
+            "=== END SOUNDINGS.md ===", ""
+        )
         with pytest.raises(ValueError, match="SOUNDINGS.md"):
             _parse_output(truncated)
 
-    def test_missing_fixed_spike_raises(self):
-        truncated = _VALID_LLM_OUTPUT.replace("=== spike-intent.json ===", "").replace("=== END spike-intent.json ===", "")
-        with pytest.raises(ValueError, match="spike-intent.json"):
-            _parse_output(truncated)
+    def test_no_spikes_is_tolerated(self):
+        # Spikes are emitted dynamically; an analysis with nothing open is valid.
+        output = _make_llm_output(include_spikes=False)
+        _, _, _, _, _, spikes, _, _ = _parse_output(output)
+        assert spikes == {}
 
     def test_invalid_spike_json_raises(self):
         bad = _VALID_LLM_OUTPUT.replace(_SPIKE_INTENT, "{bad json")
@@ -492,12 +530,12 @@ class TestParseOutput:
 
     def test_unknown_quality_when_absent(self):
         no_quality = _VALID_LLM_OUTPUT.replace("Quality: Ready", "")
-        _, _, _, _, _, quality, _ = _parse_output(no_quality)
+        _, _, _, _, _, _, quality, _ = _parse_output(no_quality)
         assert quality == "unknown"
 
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
-        _, _, _, _, spikes, _, _ = _parse_output(output)
+        _, _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "spike-auth.json" in spikes
 
 
@@ -537,8 +575,14 @@ class TestFillCaptainsChair:
         result = _fill_captains_chair(
             "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
             quality="Blocked",
-            story_count=0, question_count=0, blocker_count=1, screen_count=0,
-            stack="", next_step="", project_name="X", generated_date="",
+            story_count=0,
+            question_count=0,
+            blocker_count=1,
+            screen_count=0,
+            stack="",
+            next_step="",
+            project_name="X",
+            generated_date="",
         )
         assert "blocked" in result
         assert "✗" in result
@@ -547,8 +591,14 @@ class TestFillCaptainsChair:
         result = _fill_captains_chair(
             "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
             quality="Questions",
-            story_count=0, question_count=2, blocker_count=0, screen_count=0,
-            stack="", next_step="", project_name="X", generated_date="",
+            story_count=0,
+            question_count=2,
+            blocker_count=0,
+            screen_count=0,
+            stack="",
+            next_step="",
+            project_name="X",
+            generated_date="",
         )
         assert "questions" in result
         assert "⚠" in result
@@ -614,18 +664,32 @@ class TestAnalyze:
 
     def test_compass_not_overwritten_when_present(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
-        (target_dir / "COMPASS.md").write_text("# COMPASS\n\n## Compass\nReal content.\n", encoding="utf-8")
+        (target_dir / "COMPASS.md").write_text(
+            "# COMPASS\n\n## Compass\nReal content.\n", encoding="utf-8"
+        )
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.ok
         assert result.compass_path is None
         assert (target_dir / "COMPASS.md").read_text(encoding="utf-8").startswith("# COMPASS")
 
-    def test_four_fixed_spikes_written(self, tmp_path):
+    def test_emitted_spikes_written(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
-        for name in ("spike-intent.json", "spike-stack.json", "spike-gaps-ac.json", "spike-guardrails.json"):
+        for name in (
+            "spike-intent.json",
+            "spike-stack.json",
+            "spike-gaps-ac.json",
+            "spike-guardrails.json",
+        ):
             assert (questionnaires / name).exists(), f"{name} not written"
+
+    def test_no_spikes_emitted_is_ok(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(include_spikes=False)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+        assert result.ok
+        assert result.spike_paths == ()
 
     def test_spike_paths_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -648,7 +712,9 @@ class TestAnalyze:
 
     def test_blockers_md_written_when_blocked(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        output = _make_llm_output(analysis_override=_ANALYSIS_CONTENT_BLOCKED)
+        output = _make_llm_output(
+            analysis_override=_ANALYSIS_CONTENT_BLOCKED, blockers=_BLOCKERS_CONTENT
+        )
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert result.ok
         blockers_path = target_dir / "BLOCKERS.md"
@@ -672,7 +738,9 @@ class TestAnalyze:
 
     def test_blockers_md_injected_in_prompt(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        (target_dir / "BLOCKERS.md").write_text("# Blockers\n\n- Name is missing.\n", encoding="utf-8")
+        (target_dir / "BLOCKERS.md").write_text(
+            "# Blockers\n\n- Name is missing.\n", encoding="utf-8"
+        )
         received_prompts = []
 
         def runner(prompt, *a, **k):
@@ -692,9 +760,7 @@ class TestAnalyze:
 
     def test_llm_failure_returns_not_ok(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        result = analyze(
-            "MyTarget", target_dir, runner=lambda *a, **k: FakeRun(ok=False, text="")
-        )
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(ok=False, text=""))
         assert not result.ok
         assert result.error == "LLM execution failed"
         assert not result.analysis_path.exists()
@@ -725,9 +791,7 @@ class TestAnalyze:
 
     def test_exit_code_one_on_failure(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        result = analyze(
-            "MyTarget", target_dir, runner=lambda *a, **k: FakeRun(ok=False, text="")
-        )
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(ok=False, text=""))
         assert result.exit_code() == 1
 
 

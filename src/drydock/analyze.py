@@ -4,8 +4,8 @@ Single LLM call producing all analyze outputs via delimited blocks. Writes deter
 tests inject a fake runner and never spend API credits.
 
 Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if absent or
-unpopulated), spike-intent.json, spike-stack.json, spike-gaps-ac.json, spike-guardrails.json,
-variable spikes, captains_chair.html (when lifecycle state advances to analyzed).
+unpopulated), BLOCKERS.md (only when blockers exist), spike-*.json questionnaires (one per open
+question), captains_chair.html (when lifecycle state advances to analyzed).
 """
 
 from __future__ import annotations
@@ -28,23 +28,14 @@ PROMPT_NAME = "analyze"
 
 _SOURCES_SUBDIR = "sources"
 
-_FIXED_SPIKES = (
-    "spike-intent.json",
-    "spike-stack.json",
-    "spike-gaps-ac.json",
-    "spike-guardrails.json",
-)
-
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
-_BLOCKERS_SECTION_RE = re.compile(r"^## Blockers\s*$(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
-_EMPTY_BLOCKERS = frozenset({"- None.", "- None"})
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
-    "Ready":     ("ready",     "✓", "All blockers resolved. Ready for plan create."),
+    "Ready": ("ready", "✓", "All blockers resolved. Ready for plan create."),
     "Questions": ("questions", "⚠", "Open questions remain. Plan create can proceed."),
-    "Blocked":   ("blocked",   "✗", "Unresolved blockers. Review before continuing."),
+    "Blocked": ("blocked", "✗", "Unresolved blockers. Review before continuing."),
 }
 
 
@@ -115,17 +106,6 @@ def _is_compass_unpopulated(path: Path) -> bool:
     if not content_lines:
         return True
     return all(line in _EMPTY_LINE for line in content_lines)
-
-
-def _extract_blockers_section(analysis_text: str) -> str | None:
-    """Return the ## Blockers section content, or None if absent/empty."""
-    m = _BLOCKERS_SECTION_RE.search(analysis_text)
-    if not m:
-        return None
-    content = m.group(1).strip()
-    if not content or content in _EMPTY_BLOCKERS:
-        return None
-    return content
 
 
 def _assemble_prompt(
@@ -223,10 +203,13 @@ def _parse_summary_fields(analysis_text: str) -> dict[str, str]:
 
 def _parse_output(
     text: str,
-) -> tuple[str, str, str, str | None, dict[str, dict], str, dict[str, str]]:
-    """Return (analysis, sea_trials, soundings, compass_or_none, spikes, quality, summary).
+) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
+    """Return (analysis, sea_trials, soundings, compass_or_none, blockers_or_none, spikes,
+    quality, summary).
 
     ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, screens.
+    Questionnaires (``spike-*.json``) and ``BLOCKERS.md`` are emitted dynamically — only when the
+    analysis surfaces an open question or a blocker — so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
     """
     blocks = _parse_blocks(text)
@@ -234,10 +217,6 @@ def _parse_output(
     for required in ("ANALYSIS.md", "SEA_TRIALS.md", "SOUNDINGS.md"):
         if required not in blocks:
             raise ValueError(f"LLM output missing === {required} === block")
-
-    for spike_name in _FIXED_SPIKES:
-        if spike_name not in blocks:
-            raise ValueError(f"LLM output missing === {spike_name} === block")
 
     spikes: dict[str, dict] = {}
     for name, content in blocks.items():
@@ -253,12 +232,14 @@ def _parse_output(
 
     summary = _parse_summary_fields(analysis_text)
     compass_content = blocks.get("COMPASS.md") or None
+    blockers_content = blocks.get("BLOCKERS.md") or None
 
     return (
         analysis_text,
         blocks["SEA_TRIALS.md"],
         blocks["SOUNDINGS.md"],
         compass_content,
+        blockers_content,
         spikes,
         quality,
         summary,
@@ -337,7 +318,11 @@ def analyze(
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
     assembled = _assemble_prompt(
-        prompt.body, blueprint_dir, today, compass_exists=compass_exists, blockers_text=blockers_text
+        prompt.body,
+        blueprint_dir,
+        today,
+        compass_exists=compass_exists,
+        blockers_text=blockers_text,
     )
 
     result = run(
@@ -376,9 +361,16 @@ def analyze(
         return _fail("LLM execution failed")
 
     try:
-        analysis_text, sea_trials_text, soundings_text, compass_text, spikes, quality, summary = (
-            _parse_output(result.text)
-        )
+        (
+            analysis_text,
+            sea_trials_text,
+            soundings_text,
+            compass_text,
+            blockers_text_out,
+            spikes,
+            quality,
+            summary,
+        ) = _parse_output(result.text)
     except ValueError as exc:
         return _fail(str(exc))
 
@@ -411,16 +403,11 @@ def analyze(
         spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         spike_paths.append(spike_path)
 
-    # BLOCKERS.md — written when blockers are present; deleted when resolved.
+    # BLOCKERS.md — the LLM emits a dedicated Q&A block only when blockers exist. Its presence is
+    # the flag that halts the pipeline; written when present, deleted when resolved.
     written_blockers: Path | None = None
-    blockers_content = _extract_blockers_section(analysis_text)
-    if blockers_content:
-        blockers_md_path.write_text(
-            f"# Blockers\n\n{blockers_content}\n\n---\n\n"
-            "*Answer these blocking questions below, then re-run `drydock analyze` to clear this file.*\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+    if blockers_text_out:
+        blockers_md_path.write_text(blockers_text_out + "\n", encoding="utf-8", newline="\n")
         written_blockers = blockers_md_path
     elif blockers_md_path.is_file():
         blockers_md_path.unlink()
