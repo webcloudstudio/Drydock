@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-15 V7 |
+| Version | 2026-06-16 V9 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
-| Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, and type/template design decisions. |
+| Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, and type/template design decisions. |
 | Pending spec | 0 approved items |
 | Pending impl | 0 unimplemented sections |
 
@@ -234,6 +234,41 @@ Each sidebar section heading carries a nautical ICS signal flag icon (public-dom
 For `type: document`, render one format with priority: html > pdf > md.
 No tabs. Show the best available format.
 
+### Generic Tabbed Markdown Render Type (QuarterDeck)
+`2026-06-16` · `spec:na` · `impl:implemented`
+
+A generic QuarterDeck rendering capability — not an `analyze` step. Supersedes the earlier
+"bake ANALYSIS.html via post-processor" framing: there is no `.html` artifact, no analyze-side
+post-processor, and no reliance on html > pdf > md precedence.
+
+- QuarterDeck renders the backing markdown as tabs at view time: split the `.md` on its `## `
+  headers; each section becomes a tab panel. Navigation is internal to the rendered body.
+- Opt-in is **config-driven**, declared per item in console.yaml — never hardcoded to a
+  filename in the QuarterDeck runtime. Applies to artifacts whose section structure Drydock
+  controls, so the `## `-split is reliable.
+- Concrete first step: add an **ANALYSIS console item** (in `standard_artifacts.py` →
+  console.yaml) with file-existence visibility (shown only when ANALYSIS.md exists) and the
+  tabbed render declared on it. Other artifacts opt in later by adding the same declaration —
+  no runtime code change.
+- ANALYSIS is the first consumer (five fixed sections from `prompts/analyze.md`: Analysis
+  Summary, Open Questions, Story List + Tuning Options, Blockers, Notes). Reusable for other
+  structured artifacts (SOUNDINGS, etc.).
+- `analyze` keeps emitting plain ANALYSIS.md; QuarterDeck decides tabbed presentation purely
+  from the console declaration.
+- Standard page header (title + filename) wraps it like any item; the tab strip is the body.
+- Captain's Chair stays a pure scoreboard (quality + counts + next-step); no coupling.
+
+Note: ANALYSIS is not yet a console item, and `standard_artifacts.py` still reflects the
+pre-decision sections (`build_plan`, `project_pages`) — separate reconciliation gap.
+
+### tickets.json No Longer Seeded at Init
+`2026-06-15` · `spec:na` · `impl:implemented`
+
+`init` no longer creates an empty `tickets.json`. `plan create` is the sole writer.
+Consequence: the kanban board obeys the file-existence visibility rule — it stays hidden
+through stages 1–3 and appears only once a plan exists (stage 4). The analyze stage drives
+action through spikes (→ Actions) and BLOCKERS, not an empty board.
+
 ## Acceptance Criteria
 
 - QuarterDeck hides items whose file is absent; shows them automatically once the file exists.
@@ -244,6 +279,8 @@ No tabs. Show the best available format.
 - Page header shows title, filename, and context-appropriate action buttons.
 - `BLOCKERS.md` absent → no blockers section. Present → section appears first with full red treatment.
 - Re-running `analyze` after answering blockers clears `BLOCKERS.md` if all resolved.
+- ANALYSIS console item shows only when ANALYSIS.md exists and renders its five `## ` sections
+  as tabs. Tabbed rendering is declared in console.yaml, not hardcoded to the filename.
 
 ## Guardrails
 
@@ -255,7 +292,9 @@ No tabs. Show the best available format.
 
 ## Open Questions
 
-- -
+- Resolved: tabbed rendering is `tabs: true` on a `type: markdown` item (already supported
+  by the QuarterDeck runtime, `app.py:render_markdown_item`). ANALYSIS declares it in the
+  init console template (`standard_artifacts.py`).
 
 ## Not in scope yet
 

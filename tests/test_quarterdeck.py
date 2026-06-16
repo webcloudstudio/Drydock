@@ -373,6 +373,44 @@ def test_document_renderer_missing_all_paths():
     assert "No files found" in rendered
 
 
+def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
+    """A markdown item with tabs: true renders each ## section as a switchable tab."""
+    quarterdeck = _load_quarterdeck()
+    md_file = tmp_path / "ANALYSIS.md"
+    md_file.write_text(
+        "# Blueprint Analysis\n\n"
+        "## Analysis Summary\nQuality: Ready\n\n"
+        "## Open Questions\n- None.\n\n"
+        "## Notes\nNone.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
+
+    rendered = quarterdeck.render_markdown_item(
+        {"id": "analysis", "label": "Analysis", "type": "markdown", "tabs": True, "path": "../ANALYSIS.md"}
+    )
+
+    assert "md-tabs" in rendered
+    # One tab button per ## section (plus an Overview tab for the pre-## title block).
+    assert rendered.count("md-tab-btn") >= 3
+    assert "Analysis Summary" in rendered
+    assert "Open Questions" in rendered
+    assert "Notes" in rendered
+
+
+def test_markdown_renderer_without_tabs_flag_renders_plain(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    md_file = tmp_path / "doc.md"
+    md_file.write_text("# Title\n\n## One\na\n\n## Two\nb\n", encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
+
+    rendered = quarterdeck.render_markdown_item(
+        {"id": "plain", "label": "Plain", "type": "markdown", "path": "../doc.md"}
+    )
+
+    assert "md-tabs" not in rendered
+
+
 # ── _item_file_exists ────────────────────────────────────────────────────────
 
 

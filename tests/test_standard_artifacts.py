@@ -23,6 +23,24 @@ def test_render_console_commanders_view_is_document_type():
     assert "pages/overview.md" not in config
 
 
+def test_render_console_declares_tabbed_analysis_item():
+    import yaml
+
+    config = render_console("Example")
+    parsed = yaml.safe_load(config)
+    items = {item["id"]: item for item in parsed["items"]}
+
+    assert "analysis" in items
+    analysis = items["analysis"]
+    assert analysis["section"] == "core"
+    assert analysis["type"] == "markdown"
+    assert analysis["tabs"] is True
+    assert analysis["path"] == "../ANALYSIS.md"
+    # Captain's Chair stays first; Analysis follows it.
+    assert items["commanders_view"]["order"] < analysis["order"]
+    assert analysis["order"] < items["sea_trials"]["order"]
+
+
 def test_render_console_includes_spike_questionnaire_source(tmp_path):
     config = render_console("Example")
 
