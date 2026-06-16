@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-15 V6 |
+| Version | 2026-06-15 V7 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
-| Description | QuarterDeck nav, section routing, icon model, page header, and type/template design decisions. |
+| Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, and type/template design decisions. |
 | Pending spec | 0 approved items |
-| Pending impl | 0 unimplemented sections |
+| Pending impl | 3 unimplemented sections |
 
 ## Goal
 
@@ -90,6 +90,7 @@ SOUNDINGS.md. `QuarterDeck/planning/` was an invented subfolder with no design b
 | ANALYSIS.md | `ANALYSIS.md` (target root) | Narrative gap and coverage report |
 | SEA_TRIALS.md | `SEA_TRIALS.md` | High-level strategic objectives |
 | SOUNDINGS.md | `SOUNDINGS.md` | AC blocks projected from the spec |
+| BLOCKERS.md | `BLOCKERS.md` (target root) | Urgent questions preventing planning — emitted only when blockers found; absent in healthy projects |
 | Intent spike | `QuarterDeck/questionnaires/spike-intent.json` | What is this product trying to do? |
 | Stack spike | `QuarterDeck/questionnaires/spike-stack.json` | What tech is implied? (Rigging options) |
 | Gaps + AC spike | `QuarterDeck/questionnaires/spike-gaps-ac.json` | Where is the spec incomplete; what AC is missing? |

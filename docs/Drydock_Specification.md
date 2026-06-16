@@ -24,8 +24,8 @@ ideas:
   - title: **A** — Agile Analyze 
     sub_list:
       - drydock import to ingest your specifications and notes for analysis
-      - drydock analyze converts your projects into Blueprints using Agile Decomposition
-      - drydock plan creates a Manifest based on the Blueprints
+      - drydock analyze analyzes projects using Agile Decomposition
+      - drydock plan converts your specificatons in to Blueprints
   - title: **I** — Implement
     sub_list:
       - drydock build - to implement your software plan in managed chunks using the Manifest
@@ -36,42 +36,17 @@ ideas:
       - drydock document create consistent documentation from your specification
 ---
 
-## Testimonials
-
-> Drydock is a superset of Spec Kit by design. Every Spec Kit concept maps to a Drydock
-> equivalent: research lives in spikes with evidence compiled into the QuarterDeck, task breakdown
-> and clarification are first-class plan objects reviewed interactively, and governance is enforced
-> by the Rigging across every project in the portfolio. Drydock then adds what Spec Kit does not
-> attempt: governed build execution with staleness-driven incremental rebuilds, evidence-gated
-> review through a generated throwaway console, an append-only decision ledger, the SAIL Loop,
-> and documentation generation. Two honest caveats: Spec Kit ships integrations for many coding
-> agents while Drydock targets two subscription CLI providers, and the superset claim is proven by
-> the concept mapping today and by working import adapters once they are delivered.
->
-> — Anthropic/Claude
-
-> Drydock is designed as a superset of GitHub Spec Kit: it preserves the core
-> specification-driven lifecycle, maps each major Spec Kit concept into a Drydock equivalent, and
-> extends the model with typed multi-file specifications, dependency-driven execution, governed rules
-> propagation, evidence-backed review through the QuarterDeck, brownfield decomposition, documentation
-> generation, and a specification-first iteration loop. The honest caveat is not conceptual weakness
-> but product maturity: Spec Kit is the more established and field-proven implementation today,
-> while Drydock is the broader architecture still being completed. The claim, therefore, is that
-> Drydock is not yet the more mature product, but it is the more comprehensive delivery model,
-> built to retain Spec Kit compatibility while carrying specification-driven development all the way
-> through execution, review, and governed lifecycle management.
->
-> — OpenAI/Codex
-
 ## What is Drydock
 
 Drydock is a governed Blueprint-driven software delivery system built around the **SAIL
 methodology: Set Up, Analyze, Implement, Loop**.
 
 **Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are
-composed of **Typed Specification Files** with prescribed roles. Drydock turns the
-Blueprint into an optimized build plan, executes the work, records evidence, and delivers reviewable
-increments through the QuarterDeck.
+composed of **Typed Specification Files** with prescribed roles. The Drydock Analyze phase turns your 
+specifications into Blueprints ready for execution.  The Manifest or optimized build plan is executed in 
+the Implement phase delivering working software.  The build is implemented using a context aware 
+specification chunking strategy that ensures that the work done well.  The loop phase iterates your
+application preserving the specification as source of truth.
 
 SAIL is one complete delivery loop: **Set Up** the workspace, **Analyze** the work, **Implement**
 the accepted plan, then **Loop** through evidence-driven revision. Every pass starts and ends at the
@@ -94,16 +69,8 @@ flowchart LR
   LOOP -.-> ANALYZE
 ```
 
-This specification reads in SAIL order. First the CLI orientation, then the four phases. Each phase
-presents its explanation, commands, and workflows before the specification moves to the contracts
-behind them: the Blueprint, the Manifest, the QuarterDeck, the Ship's Log, the Rigging,
-documentation generation, and Spec Kit compatibility.
-
-This file, `docs/Drydock_Specification.md`, is Drydock's sole authoritative product specification.
-It must always describe the intended current behavior. Any behavior change or new behavior requires
-product-owner approval before an agent edits this file, and the approved specification update must
-land with the implementation. Current implementation acceptance and evidence are tracked separately
-in `docs/SOUNDINGS.md`.
+This specification covers the drydock steps to implement SAIL and then explains the 
+Blueprint, Manifest, QuarterDeck, Ship's Log, Rigging, and documentation generation.
 
 ## The drydock CLI
 
@@ -111,16 +78,7 @@ in `docs/SOUNDINGS.md`.
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-The CLI uses `<Target>` for the project name under `$DRYDOCK_WORKSPACE/targets/`. 
-
-The public CLI is organized by SAIL phase:
-
-| SAIL phase | Purpose | Primary commands |
-|---|---|---|
-| **Set Up** | Establish the workspace, Target, governance, orientation, and QuarterDeck | `config`, `init`, `status`, `validate`, `rigging update`, `rigging verify`, `run quarterdeck` |
-| **Analyze** | Import, inspect, compact, organize, and approve the work | `import`, `analyze`, `rigging compact`, `plan create` |
-| **Implement** | Execute the accepted Manifest, inspect progress, score delivery, and produce documentation | `build`, `build status`, `build score`, `survey`, `document` |
-| **Loop** | Perform a governed Refit and return affected work to Analyze and Implement | `refit` |
+Each project has a <Target> uses a workspace located in `$DRYDOCK_WORKSPACE/targets/<Target>`. 
 
 `drydock --help` prints the installed command surface:
 
@@ -154,7 +112,7 @@ options:
 
 ## SAIL Phase 1 — Set Up: Laying the Keel
 
-### Explanation
+### Summary
 
 Install Drydock, configure its roots and runtime defaults, then initialize the Target.
 Process environment variables override values stored in Drydock's user-scoped `.env`.
@@ -191,9 +149,6 @@ drydock config show
 drydock config set <key> <value>
 drydock init <Target>
 drydock status [<Target>]
-drydock validate <Target> [--verbose]
-drydock rigging update <Target>
-drydock rigging verify <Target>
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
 
@@ -209,48 +164,25 @@ exposes the underlying focused Typed Specification validation command.
 runtime is not copied here; only console state is written, and `drydock run quarterdeck` serves the
 runtime from the installed package.
 
-### Workflow:
-
 `drydock run quarterdeck [<Target>]` starts the console on `QUARTERDECK_PORT` (override with
 `--host` and `--port`), serving the package runtime against this in-tree console state. The
 QuarterDeck is usable from this moment — planning, build, and review all surface through it.
 
 ## SAIL Phase 2 — Analyze: Charting the Build
 
-### Explanation
+The Analyze phase turns your source material into a reviewable, executable Manifest.
 
-Analyze turns source material into a reviewable, executable Manifest.
-
-1. Import source material into a Blueprint with `drydock import`.
-2. Analyze imported source material with `drydock analyze` to derive a story list, compute a quality signal, and surface open questions.
-3. Compact large specification and Rigging inputs when needed.
-4. Create the draft executable Manifest with `drydock plan create`.
-5. Review and approve the complete Manifest in the Target's QuarterDeck Planning Session.
-
-`drydock plan create` reads all available Blueprint inputs, writes
-`<Target>/blueprint/BUILD_PLAN_COMPASS.md` and `<Target>/MANIFEST.md`, and generates the Target Planning
-Session. A draft plan has no runnable frontier. QuarterDeck approval establishes the executable
-baseline and exposes the runnable frontier.
 
 ### Commands
 
 ```text
+# `drydock import` imports source material 
 drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>
+# `drydock analyze` generates agile stories 
 drydock analyze <Target>
-drydock rigging compact <Target> [--all] [--force]
+# `drydock plan create` creates the executable Manifest 
 drydock plan create <Target>
 ```
-
-`drydock import` brings source material under Blueprint control. `drydock analyze` advises without
-changing the Manifest. `drydock rigging compact` refreshes stale compact context. `drydock plan
-create` organizes the work and creates the draft Manifest and Planning Session.
-
-### Workflow:
-
-### Importing a specification into your Drydock
-
-Bring existing software or a Spec Kit project under Drydock Blueprint control. Stack detection
-scopes the relevant technology rules automatically.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -265,9 +197,17 @@ flowchart LR
   SRC1(["Existing Software"]):::dir --> IMPORT["import"]:::script
   SRC2(["Spec Kit"]):::dir --> IMPORT
   SRC3(["Specifications"]):::dir --> IMPORT
-  IMPORT --> SPEC(["Blueprint"]):::dir
-  SPEC --> PLAN["plan create"]:::script
+  IMPORT --> RAW(["Raw"]):::dir
+  RAW --> ANALYZE["analyze"]:::script
+  ANALYZE --> ANALYSIS["Analysis"]:::dir
+  ANALYSIS --> PLANCREATE["plan create"]:::script
+  PLANCREATE --> PLAN["Blueprint"]:::dir
+
 ```
+
+### drydock import
+
+Copy existing specifications under Drydock Blueprint control. 
 
 1. `drydock import <Target> <Source> --format intent` — copies the source file to
    `COMPASS.md` at the Target root. Use when the user has a written project brief or intent
@@ -277,24 +217,13 @@ flowchart LR
 2. `drydock import <Target> <Source> --format markdown` — preserves arbitrary Markdown under the
    Blueprint's `sources/` directory and creates the initial Blueprint records. Source-code and Spec
    Kit adapters use the same intake boundary when implemented.
-2. Continue through Analyze. Analyze identifies ambiguity and configuration choices without
-   silently turning them into requirements.
-3. Optionally conform the imported material after User Review establishes build configuration.
-4. Create, review, validate, and approve the plan before proceeding through its runnable frontier.
 
-### Analyze Your Specification
+### drydock analyze
 
-`drydock analyze` is Sprint Planning Part 1. It reads imported source material from
-`<Target>/blueprint/sources/` and acts as a Scrum Development Team to derive a story list at
-title + high-level AC level, compute a quality signal, and surface blockers and open questions.
-It does not write typed specification files into `blueprint/` and does not create or modify
-`MANIFEST.md`.
-
-**What analyze reads.** All Markdown files under `<Target>/blueprint/sources/` — the material
-deposited by `drydock import`. Top-level typed specification templates (`ARCHITECTURE.md`,
-`FEATURE-*.md`, etc.) are excluded; they are outputs of `plan create`, not inputs to `analyze`.
-Multiple imports are additive: each successive `drydock import` lands files in `sources/`
-alongside prior imports, and `analyze` reads all of them.
+`drydock analyze` reads imported source material from `<Target>/blueprint/sources/`.
+The agent acts as a Scrum Development Team and it will perform an agile decomposition
+to break the imported features into a list of features, stories, and spikes, it will derive project
+AC, and it will surface blockers and open questions.
 
 **Quality signal.** After analysis the command computes one of three values:
 
@@ -370,6 +299,10 @@ drydock build score <Target>
 drydock document <Target>
 drydock document generate <Target>
 drydock document assemble <Target>
+drydock validate <Target> [--verbose]
+drydock rigging compact <Target> [--all] [--force]
+drydock rigging update <Target>
+drydock rigging verify <Target>
 ```
 
 `drydock build` executes the runnable frontier. `drydock build status` inspects the Manifest without

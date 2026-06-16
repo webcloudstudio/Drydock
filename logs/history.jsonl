@@ -1043,3 +1043,4 @@
 {"command": "drydock init Drydock", "time": "2026-06-15 20:44", "target": "Drydock", "return_code": 0}
 {"command": "drydock analyze Drydock", "time": "2026-06-15 20:46", "target": "Drydock", "return_code": 0}
 {"command": "drydock run quarterdeck", "time": "2026-06-15 20:48", "return_code": 1}
+{"command": "drydock document assemble", "time": "2026-06-15 21:28", "return_code": 0}
