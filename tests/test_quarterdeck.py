@@ -533,3 +533,110 @@ def test_archive_blocked_for_pinned_section(monkeypatch):
 
     with pytest.raises(quarterdeck.HTTPException, match="pinned"):
         quarterdeck.api_archive_item("spec")
+
+
+# ── Spike questionnaire template ──────────────────────────────────────────────
+
+
+def _spike_json(**overrides) -> str:
+    data = {
+        "id": "spike-intent",
+        "title": "Spike: Intent",
+        "purpose": "What does this product do?",
+        "questions": [
+            {
+                "id": "primary_goal",
+                "label": "Primary Goal",
+                "prompt": "In one sentence, what must this product do?",
+                "input": "textarea",
+            }
+        ],
+    }
+    data.update(overrides)
+    return json.dumps(data, indent=2)
+
+
+def test_spike_questionnaire_renders_resolution_buttons(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    spike_file = tmp_path / "spike-intent.json"
+    spike_file.write_text(_spike_json(), encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: spike_file)
+
+    item = {
+        "id": "spike_intent",
+        "label": "Spike: Intent",
+        "section": "archive",
+        "type": "questionnaire",
+        "template": "spike",
+        "path": "questionnaires/spike-intent.json",
+    }
+    rendered = quarterdeck.render_questionnaire(item)
+
+    assert "Implement as Story" in rendered
+    assert "Commander Implements" in rendered
+    assert "Save Answers" not in rendered
+    assert "resolveSpike" in rendered
+
+
+def test_spike_questionnaire_done_shows_resolution_label(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    spike_file = tmp_path / "spike-intent.json"
+    spike_file.write_text(
+        _spike_json(state="promoted", resolution="promoted"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: spike_file)
+
+    item = {
+        "id": "spike_intent",
+        "label": "Spike: Intent",
+        "section": "archive",
+        "type": "questionnaire",
+        "template": "spike",
+        "path": "questionnaires/spike-intent.json",
+    }
+    rendered = quarterdeck.render_questionnaire(item)
+
+    assert "Implement as Story" in rendered
+    assert "resolveSpike" not in rendered  # no action buttons when done
+
+
+def test_non_spike_questionnaire_still_has_save_button(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    q_file = tmp_path / "q.json"
+    q_file.write_text(
+        json.dumps({"id": "q1", "title": "Q", "purpose": "p", "questions": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: q_file)
+
+    item = {"id": "q1", "label": "Q", "section": "actions", "type": "questionnaire", "path": "q.json"}
+    rendered = quarterdeck.render_questionnaire(item)
+
+    assert "Save Answers" in rendered
+    assert "resolveSpike" not in rendered
+
+
+def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    spike_file = tmp_path / "spike-intent.json"
+    spike_file.write_text(_spike_json(), encoding="utf-8")
+
+    item = {
+        "id": "spike_intent",
+        "type": "questionnaire",
+        "path": str(spike_file.relative_to(tmp_path)),
+    }
+    monkeypatch.setattr(quarterdeck, "items", lambda: [item])
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path)
+
+    quarterdeck._writeback_questionnaire(
+        "questionnaire.spike_intent",
+        "promoted",
+        {"primary_goal": "Build a ship.", "resolution": "promoted"},
+    )
+
+    written = json.loads(spike_file.read_text(encoding="utf-8"))
+    assert written["state"] == "promoted"
+    assert written["resolution"] == "promoted"
+    assert written["questions"][0]["answer"] == "Build a ship."

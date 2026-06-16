@@ -74,6 +74,57 @@ CONFIG_PATH = BASE_DIR / "console.yaml"
 _DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 _DEFAULT_DOT = "#94a3b8"
 
+# Nautical ICS signal flag SVGs — one per section ID (U/A/P/D/N mapping).
+_SECTION_FLAGS: dict[str, str] = {
+    "blockers": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect x="0" y="0" width="8" height="6" fill="#dc2626"/>'
+        '<rect x="8" y="0" width="8" height="6" fill="#eab308"/>'
+        '<rect x="0" y="6" width="8" height="6" fill="#eab308"/>'
+        '<rect x="8" y="6" width="8" height="6" fill="#dc2626"/>'
+        '</svg>'
+    ),
+    "core": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#1d4ed8"/>'
+        '<rect width="8" height="12" fill="#fff"/>'
+        '</svg>'
+    ),
+    "actions": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#1d4ed8"/>'
+        '<rect x="4" y="3" width="8" height="6" fill="#fff"/>'
+        '</svg>'
+    ),
+    "docs": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect y="0" width="16" height="4" fill="#eab308"/>'
+        '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
+        '<rect y="8" width="16" height="4" fill="#eab308"/>'
+        '</svg>'
+    ),
+    "project_pages": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect y="0" width="16" height="4" fill="#eab308"/>'
+        '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
+        '<rect y="8" width="16" height="4" fill="#eab308"/>'
+        '</svg>'
+    ),
+    "archive": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#eab308"/>'
+        '<rect x="0" y="0" width="4" height="3" fill="#111"/>'
+        '<rect x="8" y="0" width="4" height="3" fill="#111"/>'
+        '<rect x="4" y="3" width="4" height="3" fill="#111"/>'
+        '<rect x="12" y="3" width="4" height="3" fill="#111"/>'
+        '<rect x="0" y="6" width="4" height="3" fill="#111"/>'
+        '<rect x="8" y="6" width="4" height="3" fill="#111"/>'
+        '<rect x="4" y="9" width="4" height="3" fill="#111"/>'
+        '<rect x="12" y="9" width="4" height="3" fill="#111"/>'
+        '</svg>'
+    ),
+}
+
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
 STATUSES = [
     ("backlog", "Backlog"),
@@ -700,8 +751,7 @@ def render_jsonl_item(item: dict[str, Any]) -> str:
     return output
 
 
-def render_questionnaire(item: dict[str, Any]) -> str:
-    data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
+def _render_question_controls(data: dict[str, Any]) -> list[str]:
     rows = []
     for question in data.get("questions", []):
         qid = html.escape(question["id"])
@@ -738,15 +788,56 @@ def render_questionnaire(item: dict[str, Any]) -> str:
             f"<h3>{html.escape(question.get('label', question['id']))}{status}</h3>"
             f"<p>{html.escape(question.get('prompt', ''))}</p>{control}</section>"
         )
+    return rows
 
+
+_SPIKE_RESOLUTION_LABELS = {
+    "promoted": "Implement as Story",
+    "answered": "Commander Implements",
+}
+
+
+def render_questionnaire(item: dict[str, Any]) -> str:
+    data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    is_spike = item.get("template") == "spike"
     done = str(data.get("state", "open")) in _DONE_STATES
+    q_id = html.escape(data["id"])
+    iid = html.escape(item["id"])
+
     prefix = "<span class='q-done-mark'>✓</span> " if done else ""
-    return (
-        f"<h1>{prefix}{html.escape(data.get('title', data['id']))}</h1>"
-        f"<p class='subtle'>{html.escape(data.get('purpose', ''))}</p>"
-        f"<form data-questionnaire='{html.escape(data['id'])}'>{''.join(rows)}"
-        "<button type='submit'>Save Answers</button></form>"
-    )
+    title_html = f"<h1>{prefix}{html.escape(data.get('title', data['id']))}</h1>"
+    purpose_html = f"<p class='subtle'>{html.escape(data.get('purpose', ''))}</p>"
+
+    if done and is_spike:
+        resolution = data.get("resolution", "")
+        res_label = _SPIKE_RESOLUTION_LABELS.get(str(resolution), "Resolved")
+        body = (
+            title_html
+            + purpose_html
+            + f"<p class='spike-resolved'><strong>{html.escape(res_label)}</strong></p>"
+        )
+    elif is_spike:
+        rows = _render_question_controls(data)
+        body = (
+            title_html
+            + purpose_html
+            + f"<form data-questionnaire='{q_id}' data-template='spike'>{''.join(rows)}"
+            f"<div class='spike-actions'>"
+            f"<button type='button' class='spike-btn spike-promote'"
+            f" onclick=\"resolveSpike('{iid}','{q_id}','promoted',this.closest('form'))\">Implement as Story</button>"
+            f"<button type='button' class='spike-btn spike-answer'"
+            f" onclick=\"resolveSpike('{iid}','{q_id}','answered',this.closest('form'))\">Commander Implements</button>"
+            f"</div></form>"
+        )
+    else:
+        rows = _render_question_controls(data)
+        body = (
+            title_html
+            + purpose_html
+            + f"<form data-questionnaire='{q_id}'>{''.join(rows)}"
+            "<button type='submit'>Save Answers</button></form>"
+        )
+    return body
 
 
 # ── Kanban (tickets-backed, read-only) ──────────────────────────────────────────
@@ -1107,6 +1198,8 @@ def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> N
         return
     data["state"] = state
     data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
+    if "resolution" in payload:
+        data["resolution"] = payload["resolution"]
     for question in data.get("questions", []):
         if question["id"] in payload:
             ans = payload[question["id"]]
@@ -1412,6 +1505,20 @@ _STYLE = """
   .arc-btn { background:none; border:none; cursor:pointer; font-size:11px; color:#94a3b8;
              padding:2px 4px; opacity:.55; flex:none; border-radius:3px; }
   .arc-btn:hover { opacity:1; color:#475569; background:#eef2f7; }
+  .sec-flag { display:inline-flex; align-items:center; flex:none; margin-right:2px;
+              border:1px solid rgba(0,0,0,.15); border-radius:1px; }
+  .sec-blockers > .section-head { color:#dc2626; border-bottom-color:#fecaca; }
+  .sec-blockers .doc-btn { color:#dc2626; }
+  .sec-blockers .doc-btn:hover { background:#fef2f2; }
+  .sec-blockers .doc-btn.active { background:#dc2626; color:#fff; }
+  .spike-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .spike-btn { padding:9px 18px; border-radius:3px; cursor:pointer; font-size:13px;
+               font-weight:600; border:1px solid transparent; }
+  .spike-promote { background:#111827; color:#fff; border-color:#111827; }
+  .spike-promote:hover { opacity:.88; }
+  .spike-answer  { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
+  .spike-answer:hover  { background:#e2e8f0; }
+  .spike-resolved { font-size:14px; color:#16a34a; font-weight:600; margin-top:10px; }
 """
 
 
@@ -1464,9 +1571,12 @@ def index() -> str:
         else:
             btns = "<div class='section-empty'>— empty —</div>"
         collapsed_cls = " collapsed" if s.get("collapsed") else ""
+        blockers_cls = " sec-blockers" if s["id"] == "blockers" else ""
+        flag = _SECTION_FLAGS.get(s["id"], "")
         nav_parts.append(
-            f"<div class='nav-section{collapsed_cls}' data-sec='{html.escape(s['id'])}'>"
+            f"<div class='nav-section{collapsed_cls}{blockers_cls}' data-sec='{html.escape(s['id'])}'>"
             f"<div class='section-head' onclick='toggleSection(this.parentElement)'>"
+            f"{flag}"
             f"<span class='dot' style='background:{s['dot']}'></span>"
             f"{html.escape(s['label'])}"
             f"<span class='collapse-arrow'></span>"
@@ -1506,7 +1616,7 @@ def index() -> str:
       if (!res.ok) {{ contentEl.innerHTML = `<p style="color:#991b1b">${{data.detail || 'Error'}}</p>`; return; }}
       contentEl.innerHTML = data.html;
       const form = contentEl.querySelector('form[data-questionnaire]');
-      if (form) form.onsubmit = async e => {{
+      if (form && form.dataset.template !== 'spike') form.onsubmit = async e => {{
         e.preventDefault();
         const payload = {{}};
         for (const [k, v] of new FormData(form).entries()) {{
@@ -1583,6 +1693,25 @@ def index() -> str:
     }}
     function toggleSection(el) {{
       el.classList.toggle('collapsed');
+    }}
+    async function resolveSpike(itemId, questId, resolution, form) {{
+      const payload = {{}};
+      for (const [k, v] of new FormData(form).entries()) {{
+        if (payload[k] !== undefined)
+          payload[k] = Array.isArray(payload[k]) ? [...payload[k], v] : [payload[k], v];
+        else payload[k] = v;
+      }}
+      payload.resolution = resolution;
+      const r = await fetch(`/api/state/questionnaire.${{questId}}`, {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{document_id: questId, state: resolution, payload}})
+      }});
+      if (!r.ok) {{
+        const d = await r.json().catch(() => ({{}}));
+        contentEl.insertAdjacentHTML('afterbegin', `<div class='item-error'>Save failed: ${{d.detail || r.status}}</div>`);
+        return;
+      }}
+      loadDoc(itemId);
     }}
     async function archiveToggle(itemId, doArchive) {{
       const url = doArchive ? `/api/item/${{itemId}}/archive` : `/api/item/${{itemId}}/unarchive`;

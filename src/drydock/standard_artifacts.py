@@ -115,6 +115,7 @@ project:
   description: "Drydock target workspace."
 
 sections:
+  - {{ id: blockers, label: "Blockers", dot: "#dc2626" }}
   - {{ id: core, label: "Drydock Core", dot: "#0d9488", pinned: true }}
   - {{ id: build_plan, label: "Build Plan", dot: "#d97706" }}
   - {{ id: actions, label: "Action Items", dot: "#dc2626" }}
@@ -122,6 +123,7 @@ sections:
   - {{ id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }}
 
 items:
+  - {{ id: blockers_doc, label: "Blockers", section: blockers, type: editable_markdown, path: ../BLOCKERS.md }}
   - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1 }}
   - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 2 }}
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 3 }}
@@ -130,6 +132,7 @@ items:
 
 sources:
   - glob: "QuarterDeck/questionnaires/spike-*.json"
-    section: actions
+    section: archive
     type: questionnaire
+    template: spike
 """

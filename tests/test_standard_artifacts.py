@@ -28,6 +28,21 @@ def test_render_console_includes_spike_questionnaire_source(tmp_path):
 
     assert "spike-*.json" in config
     assert "questionnaire" in config
+    assert "section: archive" in config
+    assert "template: spike" in config
+
+
+def test_render_console_includes_blockers_section_first():
+    config = render_console("Example")
+    import yaml
+
+    parsed = yaml.safe_load(config)
+    section_ids = [s["id"] for s in parsed["sections"]]
+    assert section_ids[0] == "blockers"
+    items = {item["id"]: item for item in parsed["items"]}
+    assert "blockers_doc" in items
+    assert items["blockers_doc"]["section"] == "blockers"
+    assert items["blockers_doc"]["type"] == "editable_markdown"
 
 
 def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):

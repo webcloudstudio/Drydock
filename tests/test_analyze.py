@@ -11,6 +11,7 @@ import pytest
 from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
+    _extract_blockers_section,
     _fill_captains_chair,
     _is_compass_unpopulated,
     _parse_blocks,
@@ -118,8 +119,51 @@ _SPIKE_GUARDRAILS = json.dumps({
 }, indent=2)
 
 
-def _make_llm_output(*, include_compass: bool = True, extra_spike: bool = False, quality: str = "Ready") -> str:
-    analysis = _ANALYSIS_CONTENT.replace("Quality: Ready", f"Quality: {quality}")
+_ANALYSIS_CONTENT_BLOCKED = """\
+# Blueprint Analysis: TestProject
+generated: 2026-06-14
+blueprint: /some/path
+
+## Analysis Summary
+
+Quality: Blocked
+  blockers: 1
+  questions: 0
+  stories: 0
+  stack: not declared
+  screens: 0
+
+## Open Questions
+
+- None.
+
+## Story List
+
+No stories can be derived until blockers are resolved.
+
+### Tuning Options
+- N/A
+
+## Blockers
+
+- No project name is stated. The product cannot be built without a name.
+
+## Notes
+
+None."""
+
+
+def _make_llm_output(
+    *,
+    include_compass: bool = True,
+    extra_spike: bool = False,
+    quality: str = "Ready",
+    analysis_override: str | None = None,
+) -> str:
+    if analysis_override is not None:
+        analysis = analysis_override
+    else:
+        analysis = _ANALYSIS_CONTENT.replace("Quality: Ready", f"Quality: {quality}")
     blocks = [
         f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
         f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
@@ -290,6 +334,71 @@ class TestAssemblePrompt:
         bp.mkdir()
         result = _assemble_prompt("MY BODY", bp, "2026-06-14", compass_exists=False)
         assert result.startswith("MY BODY")
+
+    def test_injects_blockers_text_when_provided(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt(
+            "body", bp, "2026-06-14", compass_exists=False,
+            blockers_text="# Blockers\n\n- No name provided.",
+        )
+        assert "Prior blocker answers" in result
+        assert "No name provided" in result
+
+    def test_no_blockers_section_when_absent(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "Prior blocker answers" not in result
+
+    def test_blockers_injected_before_build_configuration(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        (bp / "BUILD_CONFIGURATION.md").write_text("stack: flask\n", encoding="utf-8")
+        result = _assemble_prompt(
+            "body", bp, "2026-06-14", compass_exists=False,
+            blockers_text="- No name.",
+        )
+        assert result.index("Prior blocker answers") < result.index("Prior PO answers")
+
+
+# ---------------------------------------------------------------------------
+# _extract_blockers_section
+# ---------------------------------------------------------------------------
+
+
+class TestExtractBlockersSection:
+    def test_returns_none_when_no_section(self):
+        assert _extract_blockers_section("## Analysis Summary\n\nfoo\n") is None
+
+    def test_returns_none_for_none_content(self):
+        text = "## Blockers\n\n- None.\n\n## Notes\n\nfoo"
+        assert _extract_blockers_section(text) is None
+
+    def test_returns_none_for_bare_none(self):
+        text = "## Blockers\n\n- None\n\n## Notes\n\nfoo"
+        assert _extract_blockers_section(text) is None
+
+    def test_returns_content_when_blockers_present(self):
+        text = (
+            "## Blockers\n\n"
+            "- No project name is stated.\n"
+            "- Deployment target unknown.\n\n"
+            "## Notes\n\nNone."
+        )
+        result = _extract_blockers_section(text)
+        assert result is not None
+        assert "No project name" in result
+
+    def test_returns_content_up_to_next_heading(self):
+        text = "## Blockers\n\n- A blocker.\n\n## Notes\n\nshould not appear"
+        result = _extract_blockers_section(text)
+        assert "should not appear" not in (result or "")
+
+    def test_returns_content_at_end_of_string(self):
+        text = "## Blockers\n\n- A blocker at the end."
+        result = _extract_blockers_section(text)
+        assert result == "- A blocker at the end."
 
 
 # ---------------------------------------------------------------------------
@@ -536,6 +645,44 @@ class TestAnalyze:
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         assert (questionnaires / "spike-auth.json").exists()
+
+    def test_blockers_md_written_when_blocked(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(analysis_override=_ANALYSIS_CONTENT_BLOCKED)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+        assert result.ok
+        blockers_path = target_dir / "BLOCKERS.md"
+        assert blockers_path.exists()
+        assert result.blockers_path == blockers_path
+        assert "No project name" in blockers_path.read_text(encoding="utf-8")
+
+    def test_blockers_md_not_written_when_no_blockers(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.ok
+        assert result.blockers_path is None
+        assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_blockers_md_deleted_when_resolved(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "BLOCKERS.md").write_text("# Blockers\n\n- Old blocker.\n", encoding="utf-8")
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.ok
+        assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_blockers_md_injected_in_prompt(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "BLOCKERS.md").write_text("# Blockers\n\n- Name is missing.\n", encoding="utf-8")
+        received_prompts = []
+
+        def runner(prompt, *a, **k):
+            received_prompts.append(prompt)
+            return FakeRun()
+
+        analyze("MyTarget", target_dir, runner=runner)
+        assert received_prompts
+        assert "Prior blocker answers" in received_prompts[0]
+        assert "Name is missing" in received_prompts[0]
 
     def test_missing_blueprint_raises(self, tmp_path):
         target_dir = tmp_path / "NoBlueprint"

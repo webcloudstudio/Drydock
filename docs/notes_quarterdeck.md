@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, and type/template design decisions. |
 | Pending spec | 0 approved items |
-| Pending impl | 3 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 
 ## Goal
 
@@ -100,7 +100,7 @@ SOUNDINGS.md. `QuarterDeck/planning/` was an invented subfolder with no design b
 Does NOT touch: `BUILD_PLAN.md`, `tickets.json`, `console.yaml`.
 
 ### Spike Contract
-`2026-06-14` · `spec:na` · `impl:unimplemented`
+`2026-06-14` · `spec:na` · `impl:implemented`
 
 - Each spike = one questionnaire file + one spike story in the plan structure.
 - Each has a specific LLM analytical goal, not a generic question dump.
@@ -204,7 +204,7 @@ File content…
 - Divider: `<hr>` separates header from content.
 
 ### Blocker Artifact and Section
-`2026-06-15` · `spec:na` · `impl:unimplemented`
+`2026-06-15` · `spec:na` · `impl:implemented`
 
 - `analyze` emits `BLOCKERS.md` at target root when blocking questions are found that prevent planning.
 - `BLOCKERS.md` does not exist in a healthy project. Its existence IS the signal.
@@ -216,7 +216,7 @@ File content…
 - Blockers are a separate artifact class from spikes. Spikes = exploratory discovery (optional). Blockers = gate conditions (mandatory, urgent). Different lifecycle, different visual treatment.
 
 ### Section Flag Icons (Nautical Signal Flags)
-`2026-06-15` · `spec:na` · `impl:unimplemented`
+`2026-06-15` · `spec:na` · `impl:implemented`
 
 Each sidebar section heading carries a nautical ICS signal flag icon (public-domain SVG from Wikimedia Commons). Proposed mapping — pending confirmation:
 

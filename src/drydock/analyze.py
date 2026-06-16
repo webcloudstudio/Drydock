@@ -38,6 +38,8 @@ _FIXED_SPIKES = (
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
+_BLOCKERS_SECTION_RE = re.compile(r"^## Blockers\s*$(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+_EMPTY_BLOCKERS = frozenset({"- None.", "- None"})
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
     "Ready":     ("ready",     "✓", "All blockers resolved. Ready for plan create."),
@@ -76,6 +78,7 @@ class AnalyzeResult:
     execution_id: str | None
     ok: bool
     error: str | None = None
+    blockers_path: Path | None = None
 
     def exit_code(self) -> int:
         return 0 if self.ok else 1
@@ -114,12 +117,24 @@ def _is_compass_unpopulated(path: Path) -> bool:
     return all(line in _EMPTY_LINE for line in content_lines)
 
 
+def _extract_blockers_section(analysis_text: str) -> str | None:
+    """Return the ## Blockers section content, or None if absent/empty."""
+    m = _BLOCKERS_SECTION_RE.search(analysis_text)
+    if not m:
+        return None
+    content = m.group(1).strip()
+    if not content or content in _EMPTY_BLOCKERS:
+        return None
+    return content
+
+
 def _assemble_prompt(
     body: str,
     blueprint_dir: Path,
     today: str,
     *,
     compass_exists: bool,
+    blockers_text: str | None = None,
 ) -> str:
     files = _collect_blueprint_files(blueprint_dir)
     parts = [
@@ -132,6 +147,20 @@ def _assemble_prompt(
         f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
         "",
     ]
+
+    # Inject prior blocker answers if BLOCKERS.md exists (Commander has answered them)
+    if blockers_text:
+        parts += [
+            "## Prior blocker answers (BLOCKERS.md)",
+            "",
+            "The Commander has answered the blocking questions from the prior analysis run.",
+            "If the answers resolve the blockers, do not re-raise the same blockers.",
+            "",
+            "```markdown",
+            blockers_text,
+            "```",
+            "",
+        ]
 
     # Inject prior PO answers if BUILD_CONFIGURATION.md exists
     config_path = blueprint_dir / "BUILD_CONFIGURATION.md"
@@ -298,10 +327,18 @@ def analyze(
     # COMPASS is (re)written when absent or when the existing file is an unpopulated template.
     compass_exists = compass_target.is_file() and not _is_compass_unpopulated(compass_target)
 
+    # Inject prior blocker answers if the Commander has filled in BLOCKERS.md.
+    blockers_md_path = target_dir / "BLOCKERS.md"
+    blockers_text = (
+        blockers_md_path.read_text(encoding="utf-8") if blockers_md_path.is_file() else None
+    )
+
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
-    assembled = _assemble_prompt(prompt.body, blueprint_dir, today, compass_exists=compass_exists)
+    assembled = _assemble_prompt(
+        prompt.body, blueprint_dir, today, compass_exists=compass_exists, blockers_text=blockers_text
+    )
 
     result = run(
         assembled,
@@ -332,6 +369,7 @@ def analyze(
             execution_id=exec_id,
             ok=False,
             error=msg,
+            blockers_path=None,
         )
 
     if not result.ok or not result.text.strip():
@@ -372,6 +410,20 @@ def analyze(
         spike_path = questionnaires_dir / name
         spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         spike_paths.append(spike_path)
+
+    # BLOCKERS.md — written when blockers are present; deleted when resolved.
+    written_blockers: Path | None = None
+    blockers_content = _extract_blockers_section(analysis_text)
+    if blockers_content:
+        blockers_md_path.write_text(
+            f"# Blockers\n\n{blockers_content}\n\n---\n\n"
+            "*Answer these blocking questions below, then re-run `drydock analyze` to clear this file.*\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        written_blockers = blockers_md_path
+    elif blockers_md_path.is_file():
+        blockers_md_path.unlink()
 
     # Lifecycle state and Captain's Chair — only when state advances to "analyzed".
     captains_chair_path: Path | None = None
@@ -416,4 +468,5 @@ def analyze(
         stack=stack,
         execution_id=exec_id,
         ok=True,
+        blockers_path=written_blockers,
     )
