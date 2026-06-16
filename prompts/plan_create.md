@@ -66,7 +66,7 @@ the job block; the rest are fenced sections.
   parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
   analyze. Use these as planning context; do not overwrite their intent.
-- **Answered spikes** (`spike-*.json`) — settled decisions on stack, gaps/AC, and guardrails.
+- **Answered spikes** (`spike-*.json`) — settled human-owned decisions on stack, intent, and guardrails.
   Consume these as authoritative; do not re-raise a question that a spike has already answered.
 - **`BUILD_CONFIGURATION.md`** — durable commander decisions and stack choices, if present.
 - **`COMPASS.md`** — existing product intent if already present; otherwise derive emitted content

@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, open questions, and all analyze artifacts.
-version: 20260615 V5
+version: 20260616 V6
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and open questions, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -45,7 +45,21 @@ Any major gap or critical missing information you cannot assume is a blocker.  A
 
 Finally - we use our COMPASS to guide the build.  
 
-Raise a spike for every important open question — something that is not mandatory to proceed but which should be determined.  A spike is delivered as a questionnaire for the human to answer.  Do not raise a spike for a matter the sources have already decided.  
+**Ownership test for spikes.** A spike is a question *only the human can answer* — a decision the
+team genuinely cannot make from the sources. Raise one only when the answer turns on something the
+sources do not contain: business priority, product taste, an external or regulatory constraint, an
+irreversible trade-off, or a genuinely absent fact (no stack named, no auth model stated for a
+product that clearly needs one).
+
+Anything you can derive from the sources, you **must derive** — into the story list, SOUNDINGS,
+SEA_TRIALS, or a tuning option. Never ask the human to supply work the team owns. In particular,
+acceptance criteria, success evidence, smoke checks, build gates, and test sequences are *outputs
+you synthesize*, not questions you ask. If you find yourself asking the human "what should the
+acceptance criteria be" or "which checks should the build run," you are outsourcing your own
+analysis — derive a proposal instead and offer it as a tuning option.
+
+A spike is delivered as a questionnaire for the human to answer. Do not raise a spike for a matter
+the sources have already decided, nor for anything you can derive yourself.
 
 ---
 
@@ -290,14 +304,20 @@ Derive from the sources and the story list.}
 ```
 
 **Questionnaires (`spike-*.json`) — emit one per open question, none for decided matters.**
-Use these topics as a checklist of what to probe to understand the author's intent, but emit a
-block only where the sources (and any prior answers) leave the matter open:
+Every block must pass the Ownership test: a decision only the human can make. Use these topics as a
+checklist of what to probe, but emit a block only where the sources (and any prior answers) leave a
+human-owned decision open:
 
-- **intent** — what the product is, who it serves, how success is measured
+- **intent** — what the product is, who it serves, how success is measured (only where the sources
+  genuinely leave the product's purpose or audience open)
 - **stack** — the technology stack (see the stack rule below)
-- **gaps / acceptance criteria** — underspecified areas and untestable criteria
-- **guardrails** — security, compliance, scale, and performance constraints
-- plus any genuine project-specific unknown
+- **guardrails** — security, compliance, scale, or performance constraints the sources do not state
+  but the human must set
+- plus any genuine project-specific decision only the human owns
+
+Do **not** emit a "gaps" or "acceptance criteria" questionnaire. Underspecified acceptance
+criteria, success evidence, smoke checks, build gates, and test sequences are outputs you
+synthesize (into SOUNDINGS, SEA_TRIALS, and story tuning options), never questions you ask.
 
 Each questionnaire uses this shape:
 
@@ -337,8 +357,10 @@ Never open the per-technology files — list their names only.
 - Emit **only** the `=== ... ===` blocks. No text outside them.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
-- Emit a `spike-*.json` questionnaire only for an open question. Never emit one for a matter the
-  sources or prior answers have already decided, and never as a generic catch-all.
+- Emit a `spike-*.json` questionnaire only for a decision only the human can make (the Ownership
+  test). Never emit one for a matter the sources or prior answers have already decided, never as a
+  generic catch-all, and never for work the team can derive itself (acceptance criteria, success
+  evidence, smoke checks, build gates, test sequences — these are synthesized outputs, not spikes).
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
 - Never re-ask a question already answered in `BUILD_CONFIGURATION.md` or a prior `BLOCKERS.md`.
