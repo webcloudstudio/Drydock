@@ -594,52 +594,51 @@ def _spike_json(**overrides) -> str:
     return json.dumps(data, indent=2)
 
 
-def test_spike_questionnaire_renders_resolution_buttons(tmp_path, monkeypatch):
+def _spike_item() -> dict:
+    return {
+        "id": "spike_intent",
+        "label": "Spike: Intent",
+        "section": "archive",
+        "type": "questionnaire",
+        "template": "spike",
+        "path": "questionnaires/spike-intent.json",
+    }
+
+
+def test_spike_questionnaire_is_buttonless_with_autosave(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     spike_file = tmp_path / "spike-intent.json"
     spike_file.write_text(_spike_json(), encoding="utf-8")
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: spike_file)
 
-    item = {
-        "id": "spike_intent",
-        "label": "Spike: Intent",
-        "section": "archive",
-        "type": "questionnaire",
-        "template": "spike",
-        "path": "questionnaires/spike-intent.json",
-    }
-    rendered = quarterdeck.render_questionnaire(item)
+    rendered = quarterdeck.render_questionnaire(_spike_item())
 
-    assert "Implement as Story" in rendered
-    assert "Commander Implements" in rendered
+    # The two nonsensical resolution buttons are gone.
+    assert "Implement as Story" not in rendered
+    assert "Commander Implements" not in rendered
     assert "Save Answers" not in rendered
-    assert "resolveSpike" in rendered
+    assert "<button" not in rendered
+    # A buttonless spike form that autosaves remains.
+    assert "data-template='spike'" in rendered
+    assert "save automatically" in rendered
+    assert "q-save-status" in rendered
 
 
-def test_spike_questionnaire_done_shows_resolution_label(tmp_path, monkeypatch):
+def test_spike_questionnaire_done_still_renders_editable_form(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     spike_file = tmp_path / "spike-intent.json"
-    spike_file.write_text(
-        _spike_json(state="promoted", resolution="promoted"),
-        encoding="utf-8",
-    )
+    spike_file.write_text(_spike_json(state="answered"), encoding="utf-8")
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: spike_file)
 
-    item = {
-        "id": "spike_intent",
-        "label": "Spike: Intent",
-        "section": "archive",
-        "type": "questionnaire",
-        "template": "spike",
-        "path": "questionnaires/spike-intent.json",
-    }
-    rendered = quarterdeck.render_questionnaire(item)
+    rendered = quarterdeck.render_questionnaire(_spike_item())
 
-    assert "Implement as Story" in rendered
-    assert "resolveSpike" not in rendered  # no action buttons when done
+    # No resolution label / buttons; a done spike stays editable and shows the done mark.
+    assert "Implement as Story" not in rendered
+    assert "<form data-questionnaire=" in rendered
+    assert "q-done-mark" in rendered
 
 
-def test_non_spike_questionnaire_still_has_save_button(tmp_path, monkeypatch):
+def test_non_spike_questionnaire_is_also_buttonless(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     q_file = tmp_path / "q.json"
     q_file.write_text(
@@ -651,8 +650,9 @@ def test_non_spike_questionnaire_still_has_save_button(tmp_path, monkeypatch):
     item = {"id": "q1", "label": "Q", "section": "actions", "type": "questionnaire", "path": "q.json"}
     rendered = quarterdeck.render_questionnaire(item)
 
-    assert "Save Answers" in rendered
-    assert "resolveSpike" not in rendered
+    assert "Save Answers" not in rendered
+    assert "<button" not in rendered
+    assert "q-save-status" in rendered
 
 
 def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):

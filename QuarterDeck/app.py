@@ -783,52 +783,27 @@ def _render_question_controls(data: dict[str, Any]) -> list[str]:
     return rows
 
 
-_SPIKE_RESOLUTION_LABELS = {
-    "promoted": "Implement as Story",
-    "answered": "Commander Implements",
-}
-
-
 def render_questionnaire(item: dict[str, Any]) -> str:
     data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
     is_spike = item.get("template") == "spike"
     done = str(data.get("state", "open")) in _DONE_STATES
     q_id = html.escape(data["id"])
-    iid = html.escape(item["id"])
 
     prefix = "<span class='q-done-mark'>✓</span> " if done else ""
     title_html = f"<h1>{prefix}{html.escape(data.get('title', data['id']))}</h1>"
     purpose_html = f"<p class='subtle'>{html.escape(data.get('purpose', ''))}</p>"
 
-    if done and is_spike:
-        resolution = data.get("resolution", "")
-        res_label = _SPIKE_RESOLUTION_LABELS.get(str(resolution), "Resolved")
-        body = (
-            title_html
-            + purpose_html
-            + f"<p class='spike-resolved'><strong>{html.escape(res_label)}</strong></p>"
-        )
-    elif is_spike:
-        rows = _render_question_controls(data)
-        body = (
-            title_html
-            + purpose_html
-            + f"<form data-questionnaire='{q_id}' data-template='spike'>{''.join(rows)}"
-            f"<div class='spike-actions'>"
-            f"<button type='button' class='spike-btn spike-promote'"
-            f" onclick=\"resolveSpike('{iid}','{q_id}','promoted',this.closest('form'))\">Implement as Story</button>"
-            f"<button type='button' class='spike-btn spike-answer'"
-            f" onclick=\"resolveSpike('{iid}','{q_id}','answered',this.closest('form'))\">Commander Implements</button>"
-            f"</div></form>"
-        )
-    else:
-        rows = _render_question_controls(data)
-        body = (
-            title_html
-            + purpose_html
-            + f"<form data-questionnaire='{q_id}'>{''.join(rows)}"
-            "<button type='submit'>Save Answers</button></form>"
-        )
+    rows = _render_question_controls(data)
+    template_attr = " data-template='spike'" if is_spike else ""
+    body = (
+        title_html
+        + purpose_html
+        + "<p class='q-autosave-hint'>Answers save automatically when you leave a field. "
+        "Leave a question blank to skip it — only answered questions feed later steps.</p>"
+        + f"<form data-questionnaire='{q_id}'{template_attr} autocomplete='off'>"
+        + "".join(rows)
+        + "<span class='q-save-status' aria-live='polite'></span></form>"
+    )
     return body
 
 
@@ -1503,14 +1478,10 @@ _STYLE = """
   .sec-blockers .doc-btn { color:#dc2626; }
   .sec-blockers .doc-btn:hover { background:#fef2f2; }
   .sec-blockers .doc-btn.active { background:#dc2626; color:#fff; }
-  .spike-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
-  .spike-btn { padding:9px 18px; border-radius:3px; cursor:pointer; font-size:13px;
-               font-weight:600; border:1px solid transparent; }
-  .spike-promote { background:#111827; color:#fff; border-color:#111827; }
-  .spike-promote:hover { opacity:.88; }
-  .spike-answer  { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
-  .spike-answer:hover  { background:#e2e8f0; }
-  .spike-resolved { font-size:14px; color:#16a34a; font-weight:600; margin-top:10px; }
+  .q-autosave-hint { font-size:12.5px; color:#64748b; margin:6px 0 16px; }
+  .q-save-status { display:inline-block; min-height:18px; margin-top:12px; font-size:13px;
+                   font-weight:600; color:#16a34a; }
+  .q-save-status.q-save-failed { color:#b91c1c; }
 """
 
 
@@ -1608,25 +1579,7 @@ def index() -> str:
       if (!res.ok) {{ contentEl.innerHTML = `<p style="color:#991b1b">${{data.detail || 'Error'}}</p>`; return; }}
       contentEl.innerHTML = data.html;
       const form = contentEl.querySelector('form[data-questionnaire]');
-      if (form && form.dataset.template !== 'spike') form.onsubmit = async e => {{
-        e.preventDefault();
-        const payload = {{}};
-        for (const [k, v] of new FormData(form).entries()) {{
-          if (payload[k] !== undefined)
-            payload[k] = Array.isArray(payload[k]) ? [...payload[k], v] : [payload[k], v];
-          else payload[k] = v;
-        }}
-        const r = await fetch(`/api/state/questionnaire.${{form.dataset.questionnaire}}`, {{
-          method: 'POST', headers: {{'Content-Type': 'application/json'}},
-          body: JSON.stringify({{document_id: form.dataset.questionnaire, state: 'done', payload}})
-        }});
-        if (!r.ok) {{
-          const d = await r.json().catch(() => ({{}}));
-          contentEl.insertAdjacentHTML('afterbegin', `<div class='item-error'>Save failed: ${{d.detail || r.status}}</div>`);
-          return;
-        }}
-        loadDoc(itemId);
-      }};
+      if (form) wireAutosave(form);
     }}
     async function loadTicket(itemId, ticketId) {{
       const res = await fetch(`/api/ticket/${{itemId}}/${{ticketId}}`);
@@ -1686,24 +1639,40 @@ def index() -> str:
     function toggleSection(el) {{
       el.classList.toggle('collapsed');
     }}
-    async function resolveSpike(itemId, questId, resolution, form) {{
+    function questionnairePayload(form) {{
       const payload = {{}};
       for (const [k, v] of new FormData(form).entries()) {{
         if (payload[k] !== undefined)
           payload[k] = Array.isArray(payload[k]) ? [...payload[k], v] : [payload[k], v];
         else payload[k] = v;
       }}
-      payload.resolution = resolution;
-      const r = await fetch(`/api/state/questionnaire.${{questId}}`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{document_id: questId, state: resolution, payload}})
+      return payload;
+    }}
+    function wireAutosave(form) {{
+      const status = form.querySelector('.q-save-status');
+      let hideTimer = null;
+      const save = async () => {{
+        if (status) {{ status.textContent = 'Saving…'; status.className = 'q-save-status'; }}
+        const r = await fetch(`/api/state/questionnaire.${{form.dataset.questionnaire}}`, {{
+          method: 'POST', headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{document_id: form.dataset.questionnaire, state: 'answered',
+                                 payload: questionnairePayload(form)}})
+        }});
+        if (!status) return;
+        clearTimeout(hideTimer);
+        if (r.ok) {{
+          status.textContent = 'Saved ✓';
+          hideTimer = setTimeout(() => {{ status.textContent = ''; }}, 1500);
+        }} else {{
+          const d = await r.json().catch(() => ({{}}));
+          status.textContent = 'Save failed: ' + (d.detail || r.status);
+          status.className = 'q-save-status q-save-failed';
+        }}
+      }};
+      form.querySelectorAll('input, select, textarea').forEach(el => {{
+        el.addEventListener('blur', save);
+        if (el.tagName === 'SELECT') el.addEventListener('change', save);
       }});
-      if (!r.ok) {{
-        const d = await r.json().catch(() => ({{}}));
-        contentEl.insertAdjacentHTML('afterbegin', `<div class='item-error'>Save failed: ${{d.detail || r.status}}</div>`);
-        return;
-      }}
-      loadDoc(itemId);
     }}
     async function archiveToggle(itemId, doArchive) {{
       const url = doArchive ? `/api/item/${{itemId}}/archive` : `/api/item/${{itemId}}/unarchive`;

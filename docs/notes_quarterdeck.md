@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-17 V12 |
+| Version | 2026-06-17 V13 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, the Artifact Feed Matrix, and the buttonless questionnaire model. |
 | Pending spec | 1 approved item (buttonless questionnaire model) |
-| Pending impl | 2 unimplemented items (buttonless-questionnaire UI + autosave, feed-routing config) |
+| Pending impl | 1 unimplemented item (feed-routing config) |
 
 ## Goal
 
@@ -316,7 +316,7 @@ command reads/writes) as a declarative resource a command resolves at runtime, s
 re-routing an artifact is a config edit, not a code change. Scope/location of the table is undecided.
 
 ### Buttonless Questionnaire Model
-`2026-06-17` · `spec:approved` · `impl:unimplemented`
+`2026-06-17` · `spec:approved` · `impl:implemented`
 
 Supersedes the two-path resolution in §"Spike Contract" (IMPLEMENT AS STORY / COMMANDER
 IMPLEMENTS) — those buttons are removed.
@@ -326,6 +326,17 @@ IMPLEMENTS) — those buttons are removed.
 - Partial questionnaires are valid. **Only answered fields feed downstream**; unanswered fields are
   excluded — the consumer ingests the answered subset, not the whole file.
 - A declined/"no answer" question simply stays empty and does not propagate.
+
+Implementation (`QuarterDeck/app.py`): `render_questionnaire` now emits one buttonless form for
+both spike and non-spike questionnaires — `_SPIKE_RESOLUTION_LABELS`, the two spike buttons, and
+the non-spike "Save Answers" submit are gone. Client `wireAutosave()` POSTs the full answer payload
+(`state: 'answered'`) on field `blur` (and `change` for selects), showing a transient "Saved ✓";
+no reload, so focus and tab state survive. Server writeback unchanged. Answered-subset ingestion was
+already enforced upstream by `_answered_spike` in `planning_session.py` (see §"Feed-Adherence
+Reconciliation"). Tests: `test_spike_questionnaire_is_buttonless_with_autosave`,
+`test_spike_questionnaire_done_still_renders_editable_form`,
+`test_non_spike_questionnaire_is_also_buttonless`. The two-path resolution language in §"Spike
+Contract" above is now historical; this section governs.
 
 ### Compass Routing + Page-Header Dedup
 `2026-06-17` · `spec:na` · `impl:implemented`
