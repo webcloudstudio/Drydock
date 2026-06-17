@@ -42,14 +42,19 @@ Drydock is a governed Blueprint-driven software delivery system built around the
 methodology: Set Up, Analyze, Implement, Loop**.
 
 **Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are
-composed of **Typed Specification Files** with prescribed roles. The Drydock Analyze phase turns your 
-specifications into Blueprints ready for execution.  `drydock plan` creates a Manifest or optimized build plan which 
+composed of **Typed Specification Files** with prescribed roles. The Drydock Analyze phase turns
+imported specifications into Blueprints ready for execution.  `drydock plan` creates a Manifest or optimized build plan which 
 is executed with `drydock build` to Implement and deliver working software.  Builds use a context-aware 
 specification chunking and stacking strategy that ensures the work is done accurately.  The loop phase lets
-you update and iterate your application preserving the specification as source of truth.
+the Commander update and iterate the application while preserving the specification as the source of truth.
 
 SAIL is one complete delivery loop: **Set Up** the workspace, **Analyze** the work, **Implement**
-the accepted plan, then **Loop** through your normal agile iterations.
+the accepted plan, then **Loop** through normal agile iterations.
+
+**The Commander.** Drydock addresses its operator as the Commander — the product owner who directs
+the build. The Commander owns intent, reviews evidence and decisions at the QuarterDeck, and
+approves, revises, or rejects work. Drydock and its LLM agents execute; the Commander decides. The
+specification uses "the Commander" wherever it names this role.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -236,9 +241,9 @@ markdown artifacts using agile. It prepares the following files for Commander re
 
 #### Build Readiness 
 
-The LLM also gives a verdict on the condition of the build.  The most important guard is BLOCKERS.md.  If BLOCKERS.md exists,
-edit it to answer the questions and rerun `drydock analyze`. Your input will guide the LLM on the next run. Iterate until
- blockers no longer exist. 
+The LLM also gives a verdict on the condition of the build.  The most important guard is `BLOCKERS.md`.  If
+`BLOCKERS.md` exists, the Commander edits it to answer the questions and reruns `drydock analyze`. The
+Commander's answers guide the LLM on the next run, and the cycle repeats until no blockers remain.
 
 | Quality | Meaning |
 |---|---|
@@ -254,7 +259,7 @@ analyze` re-injects it on every run. The command never overwrites or deletes the
 generative Drydock command supports a standing-directive feedback file under this convention.
 
 
-### drydock run quarterdeck
+### drydock run quarterdeck — Analysis Review
 
 `drydock run quarterdeck` starts a throwaway web console for the Commander (product owner).  Navigate to the listed
 host and port to review.  
@@ -264,14 +269,14 @@ The QuarterDeck shows the artifacts, blockers, questions, questionnaires, and ac
 * BLOCKERS.md prevents `drydock plan create` from running. 
 * Questionnaires contain decisions that guide planning 
 
-Questionnaires and BLOCKERS.md can be edited directly or modified in the quarterdeck to respond.  Responses are used on the next run of `drydock analyze`.
+Questionnaires and BLOCKERS.md can be edited directly or modified in the QuarterDeck to respond.  Responses are used on the next run of `drydock analyze`.
 
-Commander Responses in QuarterDeck are preserved for the build (by writing them to the appropriate markdown file). 
+Commander responses in the QuarterDeck are preserved for the build (by writing them to the appropriate markdown file). 
 
 The QuarterDeck calls out blockers and action items.  It also enables the Commander to review core decisions such as the process
-the LLM intends to use to decompose the imported material into Blueprints.  Review this output to get a sense of how well the
-application will build.  The Agile process is to continue this decomposition until you have a list of actionable stories which
-can be implemented. 
+the LLM intends to use to decompose the imported material into Blueprints.  This review indicates how well the
+application builds.  The Agile process continues this decomposition until the plan holds a list of actionable stories
+ready to implement. 
 
 ### drydock plan create
 
@@ -283,9 +288,9 @@ The headers of the blueprints are structured as a dependency graph and the runna
 The plan contains Acceptance Criteria, Spikes and build tickets for features, screens, and scaffolding.
 
 One major goal of the decomposition is for MANIFEST.md to contain a valid plan.  The configuration variable
-`PROMPT_WARN_KB` (default 50KB) sets a maximum total context size for your builds.  Each step involves stacking
-multiple files into a prompt for execution - including your COMPASS.md, appropriate subsets of your stack, and 
-your instructions for the task.  Similar tasks are grouped together to save context.  
+`PROMPT_WARN_KB` (default 50KB) sets a maximum total context size for each build.  Each step stacks
+multiple files into a prompt for execution — including `COMPASS.md`, the applicable subsets of the stack, and 
+the task instructions.  Similar tasks are grouped together to save context.  
 
 **Input files**
 
@@ -301,16 +306,16 @@ your instructions for the task.  Similar tasks are grouped together to save cont
 - `<Target>/MANIFEST.md` — the executable build plan
 - `<Target>/SOUNDINGS.md` — acceptance gates projected by stable ID
 
-### drydock run quarterdeck
+### drydock run quarterdeck — Plan Review
 
-Review the MANIFEST.md in the quarterdeck to understand the build process.
+Review `MANIFEST.md` in the QuarterDeck to understand the build process.
 
 ## SAIL Phase 3 — Implement: Working the Frontier
 
 Implement the Blueprint using the Manifest 
 
 * The Manifest exposes the phases with `drydock build status`.
-* Iterate through your build steps or phases with `drydock build`.
+* Iterate through the build steps or phases with `drydock build`.
 * Measure delivery health with `drydock build score`.
 * The rigging implements company standards and branding.
 
@@ -349,12 +354,12 @@ flowchart LR
   BUILD --> SOFTWARE(["Working Software"]):::output
 ```
 
-`drydock build <Target>` executes the approved frontier and builds your application in the target directory. 
+`drydock build <Target>` executes the approved frontier and builds the application in the target directory. 
 
-### drydock run quarterdeck
+### drydock run quarterdeck — Build Review
 
-The QuarterDeck shows the stakeholder the evidence, demos, and questions needed for a decision;
-the product owner approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
+The QuarterDeck shows the Commander the evidence, demos, and questions needed for a decision;
+the Commander approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
 `drydock build` runs the approved frontier and stops at review gates.
 
 ```mermaid
@@ -437,18 +442,18 @@ acceptance-criteria files from the specification so the process can iterate on i
 
 ### drydock document
 
-This command reads your specification and branding instructions and creates documentation in docs/index.html
+This command reads the specification and branding instructions and creates documentation in `docs/index.html`.
 
-`drydock document generate <Target>` reads your Blueprint and Manifest and creates project documentation in docs/`DOC-*.md`
+`drydock document generate <Target>` reads the Blueprint and Manifest and creates project documentation in `docs/DOC-*.md`.
 `drydock document assemble <Target>` combines into `docs/index.html`.
 `drydock document <Target>` runs both steps as one delivery pipeline.
 
 ## SAIL Phase 4 — Loop: The Refit
 
-A Refit lets you update your application.  The process updates the Blueprint and optionally the Target. Blueprints changes
+A Refit lets the Commander update the application.  The process updates the Blueprint and optionally the Target. Blueprints changes
 are kept in sync with the application with a `drydock build`.
 
-The post-build refit for an existing project keeps the code and Blueprints aligned.  We have two methods for this.  The first
+The post-build refit for an existing project keeps the code and Blueprints aligned.  Drydock provides two methods for this.  The first
 uses change tickets which have the same dependency graph as do the other Blueprints.  This enables it to be chunked with `drydock build` after
 a new plan is built.  The alternative tracks the git commit of the build and can use git to identify files which have been changed and which
 can rerun only those files. 
@@ -474,12 +479,12 @@ flowchart LR
   REFIT --> SOFTWARE(["Updated Software"]):::output
 ```
 
-### The Rigging - Portfolio Governance
+### Portfolio Governance Propagation
 
 Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
 changes back into an existing Target and proves continued conformance after the change.
 
-1. `drydock rigging compact <Target> --all` — compacts your architecture files from `x.md` to
+1. `drydock rigging compact <Target> --all` — compacts the architecture files from `x.md` to
    `x_compact.md`. Drydock agents use the Full or compact form as needed.
 2. `drydock rigging update <Target>` — injects `BUSINESS_RULES_compact.md` and standard templates
    into the target project.
@@ -722,7 +727,7 @@ A SCREEN file referencing a route not listed in any FEATURE `Provides` field is 
 
 ### Specification Decomposition Methodology
 
-Our optimized decomposition methodology is for web applications. Each service that provides a web
+Drydock's optimized decomposition methodology targets web applications. Each service that provides a web
 route is a feature specification file. Each screen is a screen specification file. This structure
 populates `Provides`, `Consumes`, and `Depends On`.
 
@@ -1161,9 +1166,9 @@ reports specification changes not covered by a Ship's Log entry.
 ## Drydock Rigging — Portfolio Governance
 
 Drydock Rigging is the enterprise conformance layer. It ships with Drydock out of the box —
-opinionated defaults, no configuration required to start. Customize it once for your organization
+opinionated defaults, no configuration required to start. An organization customizes it once
 and every project built by Drydock conforms automatically. Stack files are organized by product and
-are plug-and-play: add the technologies you use, remove the ones you do not.
+are plug-and-play: add the technologies in use, remove the others.
 
 Three layers govern what agents build and how they behave: agent behavior rules, technology stack
 rules, and branding.
