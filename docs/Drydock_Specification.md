@@ -213,6 +213,14 @@ flowchart LR
 `drydock analyze` is Sprint Feature Planning. The LLM decomposes `<Target>/blueprint/sources/` into a set of
 markdown artifacts using agile. It prepares the following files for Commander review.
 
+**Input files**
+
+- `<Target>/blueprint/sources/*` — imported source material; read-only planning context
+- `<Target>/COMPASS.md` — project intent, when present
+- `<Target>/BLOCKERS.md`, `<Target>/QuarterDeck/questionnaires/*.json` — prior Commander responses, consumed on re-run
+
+**Output files**
+
 | Artifact | Location | Purpose |
 |---|---|---|
 | `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existence implies blockers.  Edit to resolve them. |
@@ -268,6 +276,20 @@ One major goal of the decomposition is for MANIFEST.md to contain a valid plan. 
 `PROMPT_WARN_KB` (default 50KB) sets a maximum total context size for your builds.  Each step involves stacking
 multiple files into a prompt for execution - including your COMPASS.md, appropriate subsets of your stack, and 
 your instructions for the task.  Similar tasks are grouped together to save context.  
+
+**Input files**
+
+- `<Target>/blueprint/sources/*` — imported source files, re-read and reformatted into Typed Specifications
+- `<Target>/ANALYSIS.md` — the reviewed analysis that drives decomposition
+- `<Target>/COMPASS.md` — project intent
+- `<Target>/QuarterDeck/questionnaires/*.json` — resolved planning decisions
+
+**Output files**
+
+- `<Target>/blueprint/` Typed Specification files — `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-{Name}.md`, `SCREEN-{Name}.md`, `UI-GENERAL.md`
+- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` — internal inventory of inputs and planning groups
+- `<Target>/MANIFEST.md` — the executable build plan
+- `<Target>/SOUNDINGS.md` — acceptance gates projected by stable ID
 
 ### drydock run quarterdeck
 
