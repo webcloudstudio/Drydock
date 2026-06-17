@@ -217,6 +217,7 @@ markdown artifacts using agile. It prepares the following files for Commander re
 
 - `<Target>/blueprint/sources/*` — imported source material; read-only planning context
 - `<Target>/COMPASS.md` — project intent, when present
+- `<Target>/ANALYSIS_FEEDBACK.md` — persistent standing-directive feedback, re-injected every run
 - `<Target>/BLOCKERS.md`, `<Target>/QuarterDeck/questionnaires/*.json` — prior Commander responses, consumed on re-run
 
 **Output files**
@@ -242,6 +243,13 @@ edit it to answer the questions and rerun `drydock analyze`. Your input will gui
 | `Blocked` | One or more blockers prevent planning from proceeding |
 | `Questions` | Planning may proceed, but open questions remain |
 | `Ready` | No blockers remain |
+
+#### Standing-Directive Feedback
+
+`<Target>/ANALYSIS_FEEDBACK.md` is a persistent, human-editable standing directive. The Commander
+records durable guidance there — decomposition preferences, recurring corrections — and `drydock
+analyze` re-injects it on every run. The command never overwrites or deletes the file. Each
+generative Drydock command supports a standing-directive feedback file under this convention.
 
 
 ### drydock run quarterdeck
@@ -579,6 +587,12 @@ not authored as specification files.
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
   - Created and updated: `drydock import <Target> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
+
+- **`ANALYSIS_FEEDBACK.md`** — Persistent standing directive for `drydock analyze`: durable
+  Commander guidance re-injected on every run. Lives at the Target root.
+  - Created: `drydock analyze` (empty template on first run)
+  - Updated: Product owner
+  - Never overwritten or deleted by `drydock analyze`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
 updated by `drydock refit` as specification files and application code evolve.
