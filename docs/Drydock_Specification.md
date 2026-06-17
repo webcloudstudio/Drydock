@@ -200,13 +200,15 @@ flowchart LR
 
 ### drydock import
 
-`drydock import` is the intake step. It brings external material under Drydock control.
+`drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>` is the intake step. 
+It brings external material under Drydock control.  Drydock can import data from other specification systems or can import
+a compass file.  The data is copied as is into `<Target>/blueprint/sources/`. 
 
-`drydock import <Target> <Source> --format markdown` copies the source into
-`<Target>/blueprint/sources/`. 
+`drydock import <Target> <Source> --format markdown` imports general markdown specifications
 
-`drydock import <Target> <Source> --format compass` copies the source into the target
-`COMPASS.md`. 
+`drydock import <Target> <Source> --format <source|speckit>` imports specifications from other systems
+
+`drydock import <Target> <Source> --format compass` copies the source into the target `COMPASS.md`. 
 
 ### drydock analyze
 
@@ -542,7 +544,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         │       └── TICKET-NNN-{Name}.md
         │
         ├── evidence/                     # reviewable build evidence, named by build object
-        ├── logs/                         # target execution logs (e.g. executions.jsonl)
+        │
         └── QuarterDeck/                  # console state only; runtime served from the package
             ├── console.yaml
             ├── pages/
