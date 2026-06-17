@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V10 |
+| Version | 2026-06-17 V11 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
-| Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, and type/template design decisions. |
-| Pending spec | 0 approved items |
-| Pending impl | 1 unimplemented section (section-model reconciliation in standard_artifacts.py) |
+| Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, the Artifact Feed Matrix, and the buttonless questionnaire model. |
+| Pending spec | 1 approved item (buttonless questionnaire model) |
+| Pending impl | 3 unimplemented sections (questionnaire autosave/answered-only filter, feed-routing config, feed-adherence divergences) |
 
 ## Goal
 
@@ -278,6 +278,67 @@ has not been reconciled to it.
 Consequence: the kanban board obeys the file-existence visibility rule — it stays hidden
 through stages 1–3 and appears only once a plan exists (stage 4). The analyze stage drives
 action through spikes (→ Actions) and BLOCKERS, not an empty board.
+
+### Artifact Feed Matrix
+`2026-06-17` · `spec:applied` · `impl:partial`
+
+An artifact is only worth keeping if it feeds a command (forward or backward). The ratified matrix
+declares, per artifact, which command produces (`O`) and which consume (`I`) it. Applied to the
+specification at the top of the **Workspace Layout** section (after the first paragraph, before the
+directory tree) with the legend.
+
+| Artifact | analyze | plan create | build | build score | refit |
+|---|---|---|---|---|---|
+| COMPASS.md | O*/I | I | I | I | I |
+| ANALYSIS.md | O | I | · | · | · |
+| ANALYSIS_FEEDBACK.md | I | · | · | · | · |
+| SEA_TRIALS.md | O | · | · | · | · |
+| SOUNDINGS.md | O | · | O | I | · |
+| BLOCKERS.md | O/I | X | · | · | · |
+| Spikes (answered) | O | I | I | · | · |
+| Typed Spec files | I | I | I | I | I |
+| MANIFEST.md | · | O | I | I | I |
+| MANIFEST_FEEDBACK.md | · | I | · | · | · |
+| tickets.json | · | O | I | I | I |
+| SCORECARD.md | · | · | · | O | · |
+
+Legend: `O` produced · `I` consumed · `X` gating input (blocks until resolved) · `·` none · `O*`
+produced only when absent. SEA_TRIALS and SCORECARD are pure `O` — terminal displays, not feeds.
+Feed routing is **configuration**, not hardcoded.
+
+### Buttonless Questionnaire Model
+`2026-06-17` · `spec:approved` · `impl:unimplemented`
+
+Supersedes the two-path resolution in §"Spike Contract" (IMPLEMENT AS STORY / COMMANDER
+IMPLEMENTS) — those buttons are removed.
+
+- No resolution buttons. A question is **answered** iff its field holds text.
+- Autosave on blur (standard local-web-app behavior); a tab-switch never loses entered data.
+- Partial questionnaires are valid. **Only answered fields feed downstream**; unanswered fields are
+  excluded — the consumer ingests the answered subset, not the whole file.
+- A declined/"no answer" question simply stays empty and does not propagate.
+
+### Compass Routing + Page-Header Dedup
+`2026-06-17` · `spec:na` · `impl:implemented`
+
+- `compass_edit` moved `section: actions` → `core`, `order: 2`; core items renumbered 3–8. COMPASS
+  is a core artifact with no pending action, so it no longer appears under Action Items.
+- `render_editable_markdown` (`QuarterDeck/app.py`) no longer emits its own `<h1>` / Edit toolbar /
+  filename / `<hr>`; `_wrap_page` is the sole page header. Fixes the doubled Compass/Edit/filename
+  stack. (`_H1_RE` only stripped a leading `<h1>`, and the editable's `<h1>` was nested.)
+
+### Feed-Adherence Divergences (open — code does not yet match the matrix)
+`2026-06-17` · `spec:na` · `impl:unimplemented`
+
+`plan create` (`planning_session.py`) diverges from the ratified matrix; surfaced for Ed, not
+silently changed:
+- Injects `SEA_TRIALS.md` and `SOUNDINGS.md` into the prompt (`:163`) — matrix marks both `·` for
+  plan create (SEA_TRIALS is pure O; SOUNDINGS feeds only build/score).
+- Calls `sync_plan_soundings` (`:280`) — makes plan create an `O` for SOUNDINGS; matrix says `·`.
+- Injects each spike file whole (`:168–176`), no answered-only filter — violates "only answered
+  fields feed downstream".
+- Still produces `BUILD_PLAN_COMPASS.md` (`:38`, and spec tree line 544) — the BUILD_PLAN ghost Ed
+  has repeatedly removed; not in the feed matrix by design.
 
 ## Acceptance Criteria
 

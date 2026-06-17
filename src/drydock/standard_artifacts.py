@@ -124,13 +124,13 @@ sections:
 items:
   - {{ id: blockers_doc, label: "Blockers", section: blockers, type: editable_markdown, path: ../BLOCKERS.md }}
   - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1 }}
-  - {{ id: analysis, label: "Analysis", section: core, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 2 }}
-  - {{ id: analysis_feedback, label: "Analysis Feedback", section: core, type: editable_markdown, path: ../ANALYSIS_FEEDBACK.md, order: 3 }}
-  - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 4 }}
-  - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 5 }}
-{planning_item}  - {{ id: compass_edit, label: "Compass", section: actions, type: editable_markdown, path: ../COMPASS.md }}
-  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 6 }}
-  - {{ id: manifest_feedback, label: "Manifest Feedback", section: core, type: editable_markdown, path: ../MANIFEST_FEEDBACK.md, order: 7 }}
+  - {{ id: compass_edit, label: "Compass", section: core, type: editable_markdown, path: ../COMPASS.md, order: 2 }}
+  - {{ id: analysis, label: "Analysis", section: core, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 3 }}
+  - {{ id: analysis_feedback, label: "Analysis Feedback", section: core, type: editable_markdown, path: ../ANALYSIS_FEEDBACK.md, order: 4 }}
+  - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 5 }}
+  - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 6 }}
+{planning_item}  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 7 }}
+  - {{ id: manifest_feedback, label: "Manifest Feedback", section: core, type: editable_markdown, path: ../MANIFEST_FEEDBACK.md, order: 8 }}
 
 sources:
   - glob: "QuarterDeck/questionnaires/spike-*.json"

@@ -435,8 +435,6 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
     """Markdown that the human can edit in place. Renders the doc plus an Edit
     toggle; Save POSTs the raw source back to the file (creates the file if absent)."""
     item_id = html.escape(item["id"])
-    label = html.escape(item.get("label", ""))
-    filename = html.escape(Path(item["path"]).name)
     try:
         raw = resolve_path(item["path"]).read_text(encoding="utf-8")
         rendered = _md(raw)
@@ -445,12 +443,6 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
         rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
     return (
         f"<div class='editable' data-item='{item_id}'>"
-        f"<h1>{label}</h1>"
-        f"<div class='edit-toolbar'>"
-        f"<button class='edit-btn' onclick=\"editDoc('{item_id}')\">Edit</button>"
-        f"<span class='edit-filename'>Filename: {filename}</span>"
-        f"</div>"
-        f"<hr class='edit-divider'>"
         f"<div class='doc-view'>{rendered}</div>"
         f"<div class='doc-edit' style='display:none'>"
         f"<textarea class='doc-source' spellcheck='false'>{html.escape(raw)}</textarea>"

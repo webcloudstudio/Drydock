@@ -520,6 +520,31 @@ and build execution process it like any other Specification input.
 Drydock manages everything inside one workspace tree under targets/. The targets workspace is under `targets/<Target>/` and all work
 is done within this self-contained build environment. The QuarterDeck is configuration driven and uses files from within that tree.
 
+Each workspace artifact exists to feed commands. The Artifact Feed Matrix specifies, for every
+artifact, which command produces it and which commands consume it.
+
+| Artifact | analyze | plan create | build | build score | refit |
+|---|---|---|---|---|---|
+| COMPASS.md | O*/I | I | I | I | I |
+| ANALYSIS.md | O | I | · | · | · |
+| ANALYSIS_FEEDBACK.md | I | · | · | · | · |
+| SEA_TRIALS.md | O | · | · | · | · |
+| SOUNDINGS.md | O | · | O | I | · |
+| BLOCKERS.md | O/I | X | · | · | · |
+| Spikes (answered) | O | I | I | · | · |
+| Typed Spec files | I | I | I | I | I |
+| MANIFEST.md | · | O | I | I | I |
+| MANIFEST_FEEDBACK.md | · | I | · | · | · |
+| tickets.json | · | O | I | I | I |
+| SCORECARD.md | · | · | · | O | · |
+
+**Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
+`X` the artifact gates the command and blocks it until resolved · `·` no relation · `O*` the
+command produces the artifact only when it is absent. Human-authored feedback artifacts
+(`ANALYSIS_FEEDBACK.md`, `MANIFEST_FEEDBACK.md`, answered `BLOCKERS.md`) re-enter the command that
+produced their sibling artifact. Only answered questionnaire fields feed downstream; unanswered
+fields are excluded.
+
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
 ├── logs/
