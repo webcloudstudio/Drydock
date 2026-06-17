@@ -82,7 +82,8 @@ flowchart LR
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-Each project's `<Target>` uses a workspace located in `$DRYDOCK_WORKSPACE/targets/<Target>`. 
+Each project's `<Target>` uses Drydock state located in `$DRYDOCK_WORKSPACE/targets/<Target>` and
+build output located in `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 
 ```text
 usage: drydock [-h] [--version] [--debug] <command> ...
@@ -137,7 +138,8 @@ flowchart LR
 
 | Variable | Purpose |
 |---|---|
-| `DRYDOCK_WORKSPACE` | Workspace root containing `targets/`. Defaults to the Git top-level of the working directory, otherwise the working directory itself. |
+| `DRYDOCK_BUILD_DIRECTORY` | Required root where `drydock build` creates or updates each built project at `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
+| `DRYDOCK_WORKSPACE` | Workspace root containing `logs/` and `targets/`. `targets/<Target>` stores Drydock-managed Target state, Blueprint files, evidence, logs, and QuarterDeck state. Defaults to the Git top-level of the working directory, otherwise the working directory itself. |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
 | `QUARTERDECK_PORT` | Default QuarterDeck service port |
@@ -357,7 +359,8 @@ flowchart LR
   BUILD --> SOFTWARE(["Working Software"]):::output
 ```
 
-`drydock build <Target>` executes the approved frontier and builds the application in the target directory. 
+`drydock build <Target>` executes the approved frontier and builds the application in
+`$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 
 ### drydock run quarterdeck — Build Review
 
@@ -520,8 +523,9 @@ and build execution process it like any other Specification input.
 
 ## Workspace Layout
 
-Drydock manages everything inside one workspace tree under targets/. The targets workspace is under `targets/<Target>/` and all work
-is done within this self-contained build environment. The QuarterDeck is configuration driven and uses files from within that tree.
+Drydock stores its own state under `$DRYDOCK_WORKSPACE/targets/<Target>`. The built application
+lives under `$DRYDOCK_BUILD_DIRECTORY/<Target>`. The QuarterDeck is configuration driven and uses
+files from the Drydock-managed Target tree.
 
 Each workspace artifact exists to feed commands. The Artifact Feed Matrix specifies, for every
 artifact, which command produces it and which commands consume it.
@@ -590,10 +594,15 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
                 └── planning.json
 ```
 
+```text
+$DRYDOCK_BUILD_DIRECTORY/
+└── <Target>/                             # application source tree built by drydock build
+```
+
 Project-level files (`METADATA.md`, `README.md`, `COMPASS.md`, `SEA_TRIALS.md`,
 `SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
-the `MANIFEST.md` is the executable Manifest. Built and served code lives at `code_root`
-— the workspace root for self-hosting or brownfield projects, or a path set for greenfield builds.
+the `MANIFEST.md` is the executable Manifest. The build command writes built application code to
+`$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 
 `drydock init <Target>` writes the minimal scaffold to this tree.  
 
