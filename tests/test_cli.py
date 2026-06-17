@@ -68,6 +68,16 @@ class TestHelpAndVersion:
         assert rc == 0
         assert "drydock" in out.lower()
 
+    def test_invalid_top_level_command_shows_help(self):
+        rc, out, err = run_cli("configure")
+
+        assert rc == 2
+        assert out == ""
+        assert "usage: drydock" in err
+        assert "config" in err
+        assert "init" in err
+        assert "error: argument <command>: invalid choice: 'configure'" in err
+
     def test_command_prints_copyright_to_stderr(self, isolated_config):
         _, _, err = run_cli("config", "show")
         assert __copyright__ in err
@@ -448,6 +458,8 @@ class TestPlanningSession:
         rc, out, err = run_cli("plan", verb, "Example", "Target")
 
         assert rc == 2
+        assert "usage: drydock plan" in err
+        assert "create" in err
         assert "invalid choice" in err
 
 

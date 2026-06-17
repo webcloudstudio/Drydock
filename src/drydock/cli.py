@@ -14,6 +14,14 @@ from drydock.stubs import not_implemented
 
 logger = logging.getLogger(__name__)
 
+
+class DrydockArgumentParser(argparse.ArgumentParser):
+    """Argument parser that shows full help on syntax errors."""
+
+    def error(self, message: str) -> None:
+        self.print_help(sys.stderr)
+        self.exit(2, f"\nerror: {message}\n")
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -589,7 +597,7 @@ def _add_stub(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = DrydockArgumentParser(
         prog="drydock",
         description=(f"Drydock — governed Blueprint-driven software delivery.\n{__copyright__}"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -606,7 +614,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show full traceback on unexpected errors.",
     )
 
-    sub = parser.add_subparsers(dest="command", metavar="<command>")
+    sub = parser.add_subparsers(
+        dest="command",
+        metavar="<command>",
+        parser_class=DrydockArgumentParser,
+    )
 
     # ── config ──────────────────────────────────────────────────────────────
     p_config = sub.add_parser("config", help="Show or set Drydock configuration.")
