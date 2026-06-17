@@ -544,7 +544,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── evidence/                     # reviewable build evidence, named by build object
         ├── logs/                         # target execution logs (e.g. executions.jsonl)
         └── QuarterDeck/                  # console state only; runtime served from the package
-            ├── quarterdeck.yaml
+            ├── console.yaml
             ├── pages/
             │   └── overview.md
             ├── data/
@@ -664,9 +664,9 @@ build and review actions.
 - **`<Target>/evidence/*`** — Reviewable build evidence named by the producing build object
   - Created and updated: `drydock build`
 
-- **`<Target>/QuarterDeck/quarterdeck.yaml`** — QuarterDeck workflow index; defines project identity, the
-  default view, and all renderable navigation items
-  - Created and updated: `drydock build`
+- **`<Target>/QuarterDeck/console.yaml`** — console index; defines project identity, the
+  default view, the sidebar section taxonomy, and all renderable navigation items
+  - Created and updated: `drydock init`
 
 - **`<Target>/tickets.json`** — Target ticketing system projection; features, spikes, and stories
   projected as tickets with acceptance criteria folded under their parent
@@ -943,32 +943,37 @@ builder and owner, without the meeting.
 needs a decision on. You review, approve, revise, or reject — and those decisions write back into
 the build.
 
-The QuarterDeck is metadata-driven: it accepts evidence and manages a simple Agile board (kanban)
-designed to show project state, blockers, and decisions that require product-owner input.
+The QuarterDeck is configuration-driven: a console rendered from a single index file over Markdown
+and JSON inputs. It holds no logic of its own. It shows the artifacts a project produces and routes
+the few that require a decision to the product owner.
 
-### Console Index — quarterdeck.yaml
+### Console Index — console.yaml
 
-**`<Target>/QuarterDeck/quarterdeck.yaml`** is the QuarterDeck workflow index. It defines project
-identity, the default view, the sidebar section taxonomy (id / label / dot / collapsed / pinned),
-and all renderable navigation items: Blueprint snapshots, sprint boards, questionnaires, evidence
-pages, and review pages. Each item declares its section, renderer, source path, and optional review
-target. The five canonical sections are:
+**`<Target>/QuarterDeck/console.yaml`** is the console index. It defines project identity, the
+default view, the sidebar section taxonomy (id / label / dot / collapsed / pinned), and every
+renderable navigation item: source-of-truth documents, the kanban board, questionnaires, evidence
+pages, and review pages. Each item declares its renderer, source path, home section, and optional
+review target. Console state — archive overrides and questionnaire answers — is held in
+`<Target>/QuarterDeck/data/console_state.sqlite`. No command rewrites `console.yaml` at runtime.
+
+The section taxonomy:
 
 | Section id | Label | Behavior |
 |---|---|---|
-| `core` | Drydock Core | Fixed and pinned — source-of-truth docs always visible |
-| `manifest` | Manifest | Kanban board and work tracking |
-| `actions` | Action Items | Questionnaires and items requiring product-owner input |
-| `project_pages` | Project Pages | Generated or supporting documentation and derived views |
-| `archive` | Archive | Retired or done items; collapsed by default |
+| `blockers` | Blockers | Conditional, first in the sidebar; appears only when `BLOCKERS.md` exists; full red treatment. |
+| `core` | Drydock Core | Fixed source-of-truth artifacts, pinned; shown by file existence. |
+| `actions` | Action Items | Derived; receives any item carrying a pending action from its home section. |
+| `docs` | Docs | Glob-discovered from `docs/`; single-format rendering, priority html > pdf > md. |
+| `archive` | Archive | Collapsed; completed ephemeral items; no status icons. |
 
 The **Master Blueprint** is the standard label for the authoritative project specification file in
 the Drydock Core section.
 
 **`<Target>/tickets.json`** is the target ticketing-system artifact and a generated projection of
-the Agile `MANIFEST.md`.
-Spikes and stories appear as tickets; acceptance criteria are folded under their parent. Column
-assignment maps directly to object state.
+the Agile `MANIFEST.md`. Spikes and stories appear as tickets; acceptance criteria are folded under
+their parent. Column assignment maps directly to object state. `drydock init` does not create
+`tickets.json`; `drydock plan create` is its sole writer. The kanban board lives in Core and, like
+every item, stays hidden until its backing file exists — it appears once a plan exists.
 
 For Drydock's own repository, the QuarterDeck is also the primary viewer for project-owned
 artifacts under `docs/`: the authoritative specification, Sea Trials, Soundings acceptance ledger,
@@ -982,6 +987,7 @@ Each item declares exactly one renderer:
 | Type | Purpose |
 |---|---|
 | `markdown` | Renders a single `.md` file as HTML; `tabs: true` splits `##` headings into clickable tabs. |
+| `editable_markdown` | Renders a `.md` file as HTML and exposes an EDIT control that opens the backing file for in-place editing in the console. |
 | `document` | Collapses related `path_md` / `path_html` / `path_pdf` variants into a tab bar (Read / View HTML / PDF). Missing variants are silently omitted; a single present variant renders without tabs. |
 | `jsonl` | Read-only table from an append-only JSONL file; supports field selection, date truncation, and badge coloring. |
 | `kanban` | Renders `MANIFEST.md`-derived tickets as a four-column board. |
@@ -994,11 +1000,43 @@ The reusable `command_status` page type derives a read-only acceptance-status re
 configured Markdown Core Docs. It discovers the authoritative Soundings source by its single table
 with `ID`, `Acceptance Criterion`, `State`, and `Evidence` columns, calculates status totals, and
 reports deterministic structural inconsistencies. It does not inspect implementation files, tests,
-non-Core artifacts, or invoke an LLM.
+non-Core artifacts, or invoke an LLM. It is specific to Drydock's own repository and is not seeded
+in a target's console.
+
+### Section Routing and Status Icons
+
+Each item declares a `section` — its **home**, where it rests when complete. Actions is not declared
+on items; it is derived. The console computes each item's displayed section in order:
+
+1. Backing file absent — the item is hidden.
+2. Manually archived — Archive.
+3. Carries a pending action — Actions, regardless of declared home.
+4. Otherwise — its home section.
+
+An item carries a pending action when it is a `questionnaire` not yet in a done state, or a review
+item (`review: true`) not yet approved. All other items carry no pending action and appear in their
+home section immediately.
+
+The sidebar carries two status states only: a red ❌ box for an item with a pending action, a green
+✅ box for an item that is done or carries no pending action. Items in Archive and `link` items
+carry no status icon.
+
+### Page Header and Controls
+
+Each page renders a standard header: the item title, the backing filename in small monospace, and
+context-appropriate controls above a divider, then the file content.
+
+- **EDIT** appears for `editable_markdown` items; it opens the backing file for in-place editing.
+- **APPROVE** appears for review items not yet approved; once approved the header shows a
+  "✓ Approved" badge in its place.
+- Questionnaire submission is its approval; questionnaires carry no separate APPROVE control.
+
+No reject control exists. A review item that is not approved remains in Actions until the product
+owner revises its backing file and approves it.
 
 ### Auto-Discovery and Overrides
 
-The **`sources:`** key in `quarterdeck.yaml` accepts a list of glob rules
+The **`sources:`** key in `console.yaml` accepts a list of glob rules
 (`{glob, section, type, ...}`) that auto-discover files as items. Items in the explicit `items:`
 list (matched by ID or by resolved path) take priority — a file already referenced by an explicit
 item is never duplicated. The optional **`overrides:`** list (`{match: <path>, <fields>}`) adjusts
@@ -1010,6 +1048,16 @@ via `POST /api/item/{id}/archive`. The original section is not rewritten; the ov
 SQLite-backed and reversed by `POST /api/item/{id}/unarchive`. Pinned sections (e.g. Drydock Core)
 are immune. Items in the Archive section of the nav carry an unarchive `↑` button; items in
 non-pinned sections carry an archive `↓` button.
+
+### Blockers
+
+`drydock analyze` emits `<Target>/BLOCKERS.md` only when it finds questions that prevent planning. A
+healthy project has no `BLOCKERS.md`; the file's existence is the signal. When present, the Blockers
+section appears first in the sidebar with full red treatment and holds a single editable item. The
+product owner answers the questions in `BLOCKERS.md` and re-runs `drydock analyze`, which injects the
+answers; when all blockers are resolved the new run deletes `BLOCKERS.md` rather than writing an
+empty file. Blockers are mandatory gate conditions, distinct from spikes, which are optional
+exploratory questionnaires.
 
 ### Decisions Write Back
 
@@ -1035,8 +1083,10 @@ rather than by hand-editing plan files. Decisions of record are appended to the 
 Every Drydock QuarterDeck carries three standard product-owner artifacts. They are the
 methodology's fixed reference points; Drydock's own repository is their reference instance. Each is
 a source-of-truth document, filed in **Drydock Core** and pinned. When a Master Blueprint is
-available, Core presents the artifacts in this order: Captain's Chair, Master Blueprint, Sea
-Trials, Soundings, then Ship's Log.
+available, Core presents the artifacts in this order: Captain's Chair, Master Blueprint, Analysis,
+Sea Trials, Soundings, then Ship's Log. Each is shown by file existence. The Analysis artifact, when
+`ANALYSIS.md` is present, renders its `##` sections as tabs; `drydock analyze` emits plain Markdown
+and the tabbed presentation is declared on the item, not hardcoded to a filename.
 
 | Artifact | Purpose |
 |---|---|

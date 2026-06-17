@@ -117,9 +117,8 @@ project:
 sections:
   - {{ id: blockers, label: "Blockers", dot: "#dc2626" }}
   - {{ id: core, label: "Drydock Core", dot: "#0d9488", pinned: true }}
-  - {{ id: build_plan, label: "Build Plan", dot: "#d97706" }}
   - {{ id: actions, label: "Action Items", dot: "#dc2626" }}
-  - {{ id: project_pages, label: "Project Pages", dot: "#2563eb" }}
+  - {{ id: docs, label: "Docs", dot: "#2563eb" }}
   - {{ id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }}
 
 items:
@@ -130,8 +129,8 @@ items:
   - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 4 }}
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 5 }}
 {planning_item}  - {{ id: compass_edit, label: "Compass", section: actions, type: editable_markdown, path: ../COMPASS.md }}
-  - {{ id: manifest_feedback, label: "Manifest Feedback", section: build_plan, type: editable_markdown, path: ../MANIFEST_FEEDBACK.md }}
-  - {{ id: board, label: "Delivery Board", section: build_plan, type: kanban, path: tickets.json }}
+  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 6 }}
+  - {{ id: manifest_feedback, label: "Manifest Feedback", section: core, type: editable_markdown, path: ../MANIFEST_FEEDBACK.md, order: 7 }}
 
 sources:
   - glob: "QuarterDeck/questionnaires/spike-*.json"
