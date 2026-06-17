@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drydock.local/validation/case-contract.schema.json",
+  "title": "ValidationCaseContract",
+  "type": "object",
+  "required": [
+    "slug",
+    "goal",
+    "input_contract",
+    "build_steps",
+    "required_artifacts",
+    "assertions",
+    "minimum_score",
+    "gap_rules",
+    "notes"
+  ],
+  "properties": {
+    "slug": { "type": "string" },
+    "goal": { "type": "string" },
+    "input_contract": { "type": "string" },
+    "build_steps": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "required_artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "weight", "subject", "expectation", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "weight": { "type": "integer", "minimum": 1 },
+          "subject": { "type": "string" },
+          "expectation": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "minimum_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "gap_rules": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "notes": { "type": "string" }
+  }
+}

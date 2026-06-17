@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drydock.local/validation/case-result.schema.json",
+  "title": "ValidationCaseResult",
+  "type": "object",
+  "required": [
+    "schema",
+    "case",
+    "status",
+    "build_exit_code",
+    "verify_exit_code",
+    "artifacts_present",
+    "artifacts_missing",
+    "checks",
+    "raw_paths"
+  ],
+  "properties": {
+    "schema": { "type": "integer", "const": 1 },
+    "case": { "type": "string" },
+    "status": { "enum": ["pass", "partial", "fail"] },
+    "build_exit_code": { "type": "integer" },
+    "verify_exit_code": { "type": "integer" },
+    "artifacts_present": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts_missing": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["pass", "partial", "fail"] },
+          "evidence": { "type": "string" },
+          "detail": { "type": "string" },
+          "gaps": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "raw_paths": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
