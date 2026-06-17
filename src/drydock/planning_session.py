@@ -22,7 +22,7 @@ from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_prompts_root
-from drydock.prompts import load_prompt
+from drydock.prompts import load_prompt, render_inputs
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
@@ -137,6 +137,62 @@ def _fenced(label: str, body: str, *, lang: str = "markdown") -> list[str]:
     return [f"## {label}", "", f"```{lang}", body.rstrip("\n"), "```", ""]
 
 
+def _fenced_if(path: Path, label: str) -> list[str]:
+    text = _read_if(path)
+    return _fenced(label, text) if text else []
+
+
+def _render_feedback(feedback_text: str | None) -> list[str]:
+    # Standing directive — persistent human steering, re-injected on every run.
+    if not (feedback_text and feedback_text.strip()):
+        return []
+    return [
+        "## Manifest feedback (standing directive)",
+        "",
+        "Human direction for plan creation. Honor it; it persists across runs.",
+        "",
+        "```markdown",
+        feedback_text.strip(),
+        "```",
+        "",
+    ]
+
+
+def _render_answered_spikes(target_dir: Path) -> list[str]:
+    answered = [(p, _answered_spike(p)) for p in _collect_spikes(target_dir)]
+    answered = [(p, data) for p, data in answered if data is not None]
+    if not answered:
+        return []
+    parts = ["## Answered spikes (consume these decisions)", ""]
+    for path, data in answered:
+        parts += ["### " + path.name, "", "```json", json.dumps(data, indent=2), "```", ""]
+    return parts
+
+
+def _render_contract(name: str) -> list[str]:
+    try:
+        contract_path = get_prompts_root() / name
+    except Exception:
+        return []
+    if not contract_path.is_file():
+        return []
+    return _fenced(name, contract_path.read_text(encoding="utf-8"))
+
+
+def _render_sources(blueprint_dir: Path) -> list[str]:
+    parts = ["## Imported source files", ""]
+    for path in _collect_sources(blueprint_dir):
+        parts += [
+            f"### {path.relative_to(blueprint_dir).as_posix()}",
+            "",
+            "```markdown",
+            path.read_text(encoding="utf-8").rstrip(),
+            "```",
+            "",
+        ]
+    return parts
+
+
 def _assemble_prompt(
     body: str,
     target_dir: Path,
@@ -145,7 +201,10 @@ def _assemble_prompt(
     today: str,
     *,
     feedback_text: str | None = None,
+    input_tokens: tuple[str, ...] | None = None,
 ) -> str:
+    if input_tokens is None:
+        input_tokens = load_prompt(PROMPT_NAME).input_tokens
     shape_match = _SHAPE_RE.search(analysis_text)
     quality_match = _QUALITY_RE.search(analysis_text)
     parts: list[str] = [
@@ -160,62 +219,19 @@ def _assemble_prompt(
         f"- ANALYSIS_QUALITY: {quality_match.group(1) if quality_match else 'unknown'}",
         "",
     ]
-
-    # Standing directive — persistent human steering, re-injected on every run. Highest priority,
-    # so it reads before the analysis and source context.
-    if feedback_text and feedback_text.strip():
-        parts += [
-            "## Manifest feedback (standing directive)",
-            "",
-            "Human direction for plan creation. Honor it; it persists across runs.",
-            "",
-            "```markdown",
-            feedback_text.strip(),
-            "```",
-            "",
-        ]
-
-    parts += _fenced("ANALYSIS.md (the reviewed plan)", analysis_text)
-
-    for name in ("SOUNDINGS.md", "COMPASS.md"):
-        text = _read_if(target_dir / name)
-        if text:
-            parts += _fenced(name, text)
-
-    answered = [(p, _answered_spike(p)) for p in _collect_spikes(target_dir)]
-    answered = [(p, data) for p, data in answered if data is not None]
-    if answered:
-        parts += ["## Answered spikes (consume these decisions)", ""]
-        for path, data in answered:
-            parts += [
-                f"### {path.name}",
-                "",
-                "```json",
-                json.dumps(data, indent=2),
-                "```",
-                "",
-            ]
-
-    try:
-        prompts_root = get_prompts_root()
-        for contract in _CONTRACT_FILES:
-            contract_path = prompts_root / contract
-            if contract_path.is_file():
-                parts += _fenced(contract, contract_path.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-
-    parts += ["## Imported source files", ""]
-    for path in _collect_sources(blueprint_dir):
-        parts += [
-            f"### {path.relative_to(blueprint_dir).as_posix()}",
-            "",
-            "```markdown",
-            path.read_text(encoding="utf-8").rstrip(),
-            "```",
-            "",
-        ]
-
+    # Injection order is the prompt's inputs: row. BLOCKERS.md has no renderer: it is the
+    # refuse-if-present gate for plan create, so it never exists when assembly runs.
+    renderers: dict[str, Callable[[], list[str]]] = {
+        "COMPASS.md": lambda: _fenced_if(target_dir / "COMPASS.md", "COMPASS.md"),
+        "MANIFEST_FEEDBACK.md": lambda: _render_feedback(feedback_text),
+        "ANALYSIS.md": lambda: _fenced("ANALYSIS.md (the reviewed plan)", analysis_text),
+        "SOUNDINGS.md": lambda: _fenced_if(target_dir / "SOUNDINGS.md", "SOUNDINGS.md"),
+        "QUESTIONNAIRES": lambda: _render_answered_spikes(target_dir),
+        "TYPED_SPEC": lambda: _render_sources(blueprint_dir),
+    }
+    for contract in _CONTRACT_FILES:
+        renderers[contract] = lambda c=contract: _render_contract(c)
+    parts += render_inputs(input_tokens, renderers)
     return "\n".join(parts)
 
 
@@ -408,6 +424,7 @@ def create_plan(
         analysis_text,
         today,
         feedback_text=feedback_for_prompt,
+        input_tokens=prompt.input_tokens,
     )
 
     result = run(

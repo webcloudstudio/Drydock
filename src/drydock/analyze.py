@@ -22,7 +22,7 @@ from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import set_build_state
 from drydock.paths import get_rigging_root
-from drydock.prompts import load_prompt
+from drydock.prompts import load_prompt, render_inputs
 
 PROMPT_NAME = "analyze"
 
@@ -146,57 +146,43 @@ def _is_compass_unpopulated(path: Path) -> bool:
     return all(line in _EMPTY_LINE for line in content_lines)
 
 
-def _assemble_prompt(
-    body: str,
-    blueprint_dir: Path,
-    today: str,
-    *,
-    compass_exists: bool,
-    feedback_text: str | None = None,
-    blockers_text: str | None = None,
-) -> str:
-    files = _collect_blueprint_files(blueprint_dir)
-    parts = [
-        body,
+def _render_feedback(feedback_text: str | None) -> list[str]:
+    # Standing directive — persistent human steering, re-injected on every run.
+    if not (feedback_text and feedback_text.strip()):
+        return []
+    return [
+        "## Analysis feedback (standing directive)",
         "",
-        "## Analysis job",
+        "Human direction for this analysis. Honor it; it persists across runs.",
         "",
-        f"- BLUEPRINT_PATH: {blueprint_dir}",
-        f"- DATE: {today}",
-        f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
+        "```markdown",
+        feedback_text.strip(),
+        "```",
         "",
     ]
 
-    # Standing directive — persistent human steering, re-injected on every run. Highest priority,
-    # so it reads before prior answers and sources.
-    if feedback_text and feedback_text.strip():
-        parts += [
-            "## Analysis feedback (standing directive)",
-            "",
-            "Human direction for this analysis. Honor it; it persists across runs.",
-            "",
-            "```markdown",
-            feedback_text.strip(),
-            "```",
-            "",
-        ]
 
-    # Inject prior blocker answers if BLOCKERS.md exists (Commander has answered them)
-    if blockers_text:
-        parts += [
-            "## Prior blocker answers (BLOCKERS.md)",
-            "",
-            "The Commander has answered the blocking questions from the prior analysis run.",
-            "If the answers resolve the blockers, do not re-raise the same blockers.",
-            "",
-            "```markdown",
-            blockers_text,
-            "```",
-            "",
-        ]
+def _render_blockers(blockers_text: str | None) -> list[str]:
+    # Prior blocker answers, present only after the Commander has answered them.
+    if not blockers_text:
+        return []
+    return [
+        "## Prior blocker answers (BLOCKERS.md)",
+        "",
+        "The Commander has answered the blocking questions from the prior analysis run.",
+        "If the answers resolve the blockers, do not re-raise the same blockers.",
+        "",
+        "```markdown",
+        blockers_text,
+        "```",
+        "",
+    ]
 
-    # Rigging catalog — filename list only (names, no content). These are the selectable
-    # options for spike-stack.json. analyze never opens the per-technology files.
+
+def _render_typed_spec(blueprint_dir: Path) -> list[str]:
+    # The Rigging catalog (stack-option filenames, no content) is analyze scaffolding that
+    # reads immediately before the imported sources it contextualizes.
+    parts: list[str] = []
     catalog = _rigging_catalog_names()
     if catalog:
         parts += [
@@ -207,16 +193,49 @@ def _assemble_prompt(
             *[f"- {name}" for name in catalog],
             "",
         ]
-
     parts += ["## Imported source files", ""]
-    for path in files:
-        content = path.read_text(encoding="utf-8")
-        parts.append(f"### {path.name}")
-        parts.append("")
-        parts.append("```markdown")
-        parts.append(content)
-        parts.append("```")
-        parts.append("")
+    for path in _collect_blueprint_files(blueprint_dir):
+        parts += [
+            f"### {path.name}",
+            "",
+            "```markdown",
+            path.read_text(encoding="utf-8"),
+            "```",
+            "",
+        ]
+    return parts
+
+
+def _assemble_prompt(
+    body: str,
+    blueprint_dir: Path,
+    today: str,
+    *,
+    compass_exists: bool,
+    feedback_text: str | None = None,
+    blockers_text: str | None = None,
+    input_tokens: tuple[str, ...] | None = None,
+) -> str:
+    if input_tokens is None:
+        input_tokens = load_prompt(PROMPT_NAME).input_tokens
+    parts = [
+        body,
+        "",
+        "## Analysis job",
+        "",
+        f"- BLUEPRINT_PATH: {blueprint_dir}",
+        f"- DATE: {today}",
+        f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
+        "",
+    ]
+    # Injection order is the prompt's inputs: row. COMPASS.md is the COMPASS_EXISTS flag above
+    # (no content section); TYPED_SPEC carries the Rigging catalog plus the imported sources.
+    renderers: dict[str, Callable[[], list[str]]] = {
+        "ANALYSIS_FEEDBACK.md": lambda: _render_feedback(feedback_text),
+        "BLOCKERS.md": lambda: _render_blockers(blockers_text),
+        "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
+    }
+    parts += render_inputs(input_tokens, renderers)
     return "\n".join(parts)
 
 
@@ -382,6 +401,7 @@ def analyze(
         compass_exists=compass_exists,
         feedback_text=feedback_for_prompt,
         blockers_text=blockers_text,
+        input_tokens=prompt.input_tokens,
     )
 
     result = run(

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.planning_session import _answered_spike, create_plan
+from drydock.planning_session import _answered_spike, _assemble_prompt, create_plan
 
 _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16
@@ -246,3 +246,55 @@ def test_answered_spike_returns_none_when_unanswered(tmp_path):
         [{"id": "a", "prompt": "?"}, {"id": "b", "prompt": "?", "answer": ""}],
     )
     assert _answered_spike(spike) is None
+
+
+def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "COMPASS.md").write_text("# Compass\n\nDirection.\n", encoding="utf-8")
+    (target_dir / "SOUNDINGS.md").write_text("# Soundings\n\n- AC.\n", encoding="utf-8")
+    blueprint_dir = target_dir / "blueprint"
+
+    result = _assemble_prompt(
+        "PROMPT BODY",
+        target_dir,
+        blueprint_dir,
+        _ANALYSIS,
+        "2026-06-17",
+        feedback_text="Decompose by module.",
+        input_tokens=(
+            "COMPASS.md",
+            "MANIFEST_FEEDBACK.md",
+            "ANALYSIS.md",
+            "SOUNDINGS.md",
+            "BLOCKERS.md",
+            "TYPED_SPEC",
+        ),
+    )
+
+    # COMPASS leads the file sections; the standing directive reads next; sources land last.
+    order = [
+        result.index("## COMPASS.md"),
+        result.index("Manifest feedback (standing directive)"),
+        result.index("ANALYSIS.md (the reviewed plan)"),
+        result.index("## SOUNDINGS.md"),
+        result.index("Imported source files"),
+    ]
+    assert order == sorted(order)
+    # BLOCKERS.md is the plan-create gate: listed, but never injected as a content section.
+    assert "## BLOCKERS.md" not in result
+
+
+def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "COMPASS.md").write_text("# Compass\n\nDirection.\n", encoding="utf-8")
+    blueprint_dir = target_dir / "blueprint"
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        blueprint_dir,
+        _ANALYSIS,
+        "2026-06-17",
+        input_tokens=("ANALYSIS.md", "COMPASS.md"),
+    )
+    assert result.index("ANALYSIS.md (the reviewed plan)") < result.index("## COMPASS.md")

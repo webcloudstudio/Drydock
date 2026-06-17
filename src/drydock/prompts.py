@@ -16,11 +16,14 @@ named by filename; globbed groups use a suffix-less token (e.g. ``QUESTIONNAIRES
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.errors import DrydockError
 from drydock.paths import get_prompts_root
+
+SectionRenderer = Callable[[], list[str]]
 
 REQUIRED_FIELDS: tuple[str, ...] = ("name", "description", "version", "intent")
 
@@ -86,6 +89,25 @@ def _validate(meta: dict[str, str], path: Path) -> None:
         raise DrydockError(
             f"prompt {path.name} is missing required frontmatter field(s): {', '.join(missing)}"
         )
+
+
+def render_inputs(tokens: Iterable[str], renderers: Mapping[str, SectionRenderer]) -> list[str]:
+    """Emit prompt sections for ``tokens`` in order, driven by the ``inputs:`` row.
+
+    ``renderers`` maps an input token to a callable returning that section's lines
+    (or an empty list to inject nothing — e.g. an absent conditional input). Tokens
+    with no renderer are skipped: they are declared inputs whose meaning lives
+    elsewhere (``COMPASS.md`` is the COMPASS_EXISTS flag for ``analyze``; ``BLOCKERS.md``
+    is the refuse-if-present gate for ``plan create`` and never reaches assembly). This
+    makes the prompt's ``inputs:`` order the single source of truth for injection order.
+    """
+    parts: list[str] = []
+    for token in tokens:
+        render = renderers.get(token)
+        if render is None:
+            continue
+        parts.extend(render())
+    return parts
 
 
 def load_prompt(name: str) -> Prompt:

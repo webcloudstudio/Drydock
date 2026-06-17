@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from drydock.errors import DrydockError
-from drydock.prompts import REQUIRED_FIELDS, load_prompt, parse_frontmatter
+from drydock.prompts import REQUIRED_FIELDS, load_prompt, parse_frontmatter, render_inputs
 
 
 class TestParseFrontmatter:
@@ -62,16 +62,35 @@ class TestInputTokens:
             "TYPED_SPEC",
         )
 
+    def test_render_inputs_emits_in_token_order(self):
+        renderers = {
+            "A": lambda: ["a-section"],
+            "B": lambda: ["b-section"],
+            "C": lambda: ["c-section"],
+        }
+        assert render_inputs(["C", "A", "B"], renderers) == [
+            "c-section",
+            "a-section",
+            "b-section",
+        ]
+
+    def test_render_inputs_skips_unknown_and_empty(self):
+        renderers = {
+            "PRESENT": lambda: ["here"],
+            "ABSENT": lambda: [],  # conditional input that resolved to nothing
+        }
+        assert render_inputs(["UNKNOWN", "ABSENT", "PRESENT"], renderers) == ["here"]
+
     def test_plan_create_inputs_are_ordered_compass_first(self):
         tokens = load_prompt("plan_create").input_tokens
         assert tokens[0] == "COMPASS.md"
         assert tokens == (
             "COMPASS.md",
+            "MANIFEST_FEEDBACK.md",
             "ANALYSIS.md",
             "SOUNDINGS.md",
             "BLOCKERS.md",
             "QUESTIONNAIRES",
-            "MANIFEST_FEEDBACK.md",
             "MANIFEST_CONTRACT.md",
             "BLUEPRINTS_CONTRACT.md",
             "TYPED_SPEC",

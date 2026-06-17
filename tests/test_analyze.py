@@ -426,6 +426,34 @@ class TestAssemblePrompt:
             "Prior blocker answers"
         )
 
+    def test_injection_order_is_driven_by_input_tokens(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        sources = bp / "sources"
+        sources.mkdir(parents=True)
+        (sources / "spec.md").write_text("imported content", encoding="utf-8")
+        # Reverse the declared order: sources before the feedback directive.
+        result = _assemble_prompt(
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=False,
+            feedback_text="Steer this way.",
+            input_tokens=("TYPED_SPEC", "ANALYSIS_FEEDBACK.md"),
+        )
+        assert result.index("Imported source files") < result.index(
+            "Analysis feedback (standing directive)"
+        )
+
+    def test_compass_token_injects_no_content_section(self, tmp_path):
+        # COMPASS.md is the COMPASS_EXISTS flag for analyze, not a fenced content block.
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt(
+            "body", bp, "2026-06-14", compass_exists=True, input_tokens=("COMPASS.md",)
+        )
+        assert "COMPASS_EXISTS: true" in result
+        assert "## COMPASS.md" not in result
+
 
 # ---------------------------------------------------------------------------
 # _parse_blocks
