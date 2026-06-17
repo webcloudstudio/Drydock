@@ -101,6 +101,23 @@ def _collect_spikes(target_dir: Path) -> list[Path]:
     return sorted(qd.glob("spike-*.json"))
 
 
+def _answered_spike(path: Path) -> dict | None:
+    """Return the spike with only its answered questions, or ``None`` if none are answered.
+
+    A question is answered iff it carries non-empty ``answer`` text (written by QuarterDeck).
+    Only answered fields feed ``plan create``; unanswered questions are excluded, and a spike with
+    no answers is skipped entirely.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    answered = [q for q in data.get("questions", []) if str(q.get("answer", "")).strip()]
+    if not answered:
+        return None
+    return {**{k: v for k, v in data.items() if k != "questions"}, "questions": answered}
+
+
 def ensure_feedback_file(target_dir: Path) -> str:
     """Create MANIFEST_FEEDBACK.md with the default prompt if absent; never overwrite.
 
@@ -160,20 +177,21 @@ def _assemble_prompt(
 
     parts += _fenced("ANALYSIS.md (the reviewed plan)", analysis_text)
 
-    for name in ("SEA_TRIALS.md", "SOUNDINGS.md", "COMPASS.md"):
+    for name in ("SOUNDINGS.md", "COMPASS.md"):
         text = _read_if(target_dir / name)
         if text:
             parts += _fenced(name, text)
 
-    spikes = _collect_spikes(target_dir)
-    if spikes:
+    answered = [(p, _answered_spike(p)) for p in _collect_spikes(target_dir)]
+    answered = [(p, data) for p, data in answered if data is not None]
+    if answered:
         parts += ["## Answered spikes (consume these decisions)", ""]
-        for spike in spikes:
+        for path, data in answered:
             parts += [
-                f"### {spike.name}",
+                f"### {path.name}",
                 "",
                 "```json",
-                spike.read_text(encoding="utf-8").rstrip(),
+                json.dumps(data, indent=2),
                 "```",
                 "",
             ]

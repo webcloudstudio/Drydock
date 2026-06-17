@@ -5,13 +5,14 @@ A fake runner supplies canned delimited-block output; no API credits are spent.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.planning_session import create_plan
+from drydock.planning_session import _answered_spike, create_plan
 
 _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16
@@ -216,3 +217,32 @@ def test_failed_run_refuses(tmp_path):
         create_plan(
             "Example", "Example", tmp_path, runner=lambda *a, **k: FakeRun(ok=False, text="")
         )
+
+
+def _write_spike(path: Path, questions: list[dict]) -> Path:
+    path.write_text(
+        json.dumps({"id": path.stem, "title": "Spike", "questions": questions}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_answered_spike_keeps_only_answered_questions(tmp_path):
+    spike = _write_spike(
+        tmp_path / "spike-x.json",
+        [
+            {"id": "a", "prompt": "?", "answer": "yes"},
+            {"id": "b", "prompt": "?"},
+            {"id": "c", "prompt": "?", "answer": "   "},
+        ],
+    )
+    result = _answered_spike(spike)
+    assert [q["id"] for q in result["questions"]] == ["a"]
+
+
+def test_answered_spike_returns_none_when_unanswered(tmp_path):
+    spike = _write_spike(
+        tmp_path / "spike-y.json",
+        [{"id": "a", "prompt": "?"}, {"id": "b", "prompt": "?", "answer": ""}],
+    )
+    assert _answered_spike(spike) is None

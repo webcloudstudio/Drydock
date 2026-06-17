@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, the Artifact Feed Matrix, and the buttonless questionnaire model. |
 | Pending spec | 1 approved item (buttonless questionnaire model) |
-| Pending impl | 3 unimplemented sections (questionnaire autosave/answered-only filter, feed-routing config, feed-adherence divergences) |
+| Pending impl | 3 unimplemented items (buttonless-questionnaire UI + autosave, feed-routing config, SOUNDINGS divergence #2) |
 
 ## Goal
 
@@ -300,6 +300,7 @@ directory tree) with the legend.
 | MANIFEST.md | · | O | I | I | I |
 | MANIFEST_FEEDBACK.md | · | I | · | · | · |
 | tickets.json | · | O | I | I | I |
+| BUILD_PLAN_COMPASS.md | · | O | I | · | · |
 | SCORECARD.md | · | · | · | O | · |
 
 Legend: `O` produced · `I` consumed · `X` gating input (blocks until resolved) · `·` none · `O*`
@@ -327,18 +328,18 @@ IMPLEMENTS) — those buttons are removed.
   filename / `<hr>`; `_wrap_page` is the sole page header. Fixes the doubled Compass/Edit/filename
   stack. (`_H1_RE` only stripped a leading `<h1>`, and the editable's `<h1>` was nested.)
 
-### Feed-Adherence Divergences (open — code does not yet match the matrix)
-`2026-06-17` · `spec:na` · `impl:unimplemented`
+### Feed-Adherence Reconciliation
+`2026-06-17` · `spec:na` · `impl:partial`
 
-`plan create` (`planning_session.py`) diverges from the ratified matrix; surfaced for Ed, not
-silently changed:
-- Injects `SEA_TRIALS.md` and `SOUNDINGS.md` into the prompt (`:163`) — matrix marks both `·` for
-  plan create (SEA_TRIALS is pure O; SOUNDINGS feeds only build/score).
-- Calls `sync_plan_soundings` (`:280`) — makes plan create an `O` for SOUNDINGS; matrix says `·`.
-- Injects each spike file whole (`:168–176`), no answered-only filter — violates "only answered
-  fields feed downstream".
-- Still produces `BUILD_PLAN_COMPASS.md` (`:38`, and spec tree line 544) — the BUILD_PLAN ghost Ed
-  has repeatedly removed; not in the feed matrix by design.
+`plan create` (`planning_session.py`) reconciled to the ratified matrix:
+- **Fixed** — SEA_TRIALS no longer injected (injection loop now `SOUNDINGS.md`, `COMPASS.md` only).
+- **Fixed** — answered-only spike filter (`_answered_spike`): a question feeds plan create iff it
+  carries non-empty `answer`; spikes with no answers are skipped. Replaces whole-file injection.
+- **Resolved** — `BUILD_PLAN_COMPASS.md` is a legitimate artifact (plan create `O` → build `I`),
+  not a ghost. Matrix row added in spec and here; the file stays.
+- **Open (#2)** — plan create still injects `SOUNDINGS.md` (`:163`) and calls `sync_plan_soundings`
+  (`:280`), making it both `I` and `O` for SOUNDINGS while the matrix marks it `·`. Left untouched
+  pending Ed's call: change the code, or amend the matrix to record plan create's SOUNDINGS role.
 
 ## Acceptance Criteria
 

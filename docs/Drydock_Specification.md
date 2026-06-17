@@ -536,6 +536,7 @@ artifact, which command produces it and which commands consume it.
 | MANIFEST.md | · | O | I | I | I |
 | MANIFEST_FEEDBACK.md | · | I | · | · | · |
 | tickets.json | · | O | I | I | I |
+| BUILD_PLAN_COMPASS.md | · | O | I | · | · |
 | SCORECARD.md | · | · | · | O | · |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
