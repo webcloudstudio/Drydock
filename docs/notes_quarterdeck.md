@@ -2,11 +2,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-17 V13 |
+| Version | 2026-06-17 V14 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, the Artifact Feed Matrix, and the buttonless questionnaire model. |
-| Pending spec | 1 approved item (buttonless questionnaire model) |
+| Pending spec | 0 |
 | Pending impl | 1 unimplemented item (feed-routing config) |
 
 ## Goal
@@ -316,7 +316,11 @@ command reads/writes) as a declarative resource a command resolves at runtime, s
 re-routing an artifact is a config edit, not a code change. Scope/location of the table is undecided.
 
 ### Buttonless Questionnaire Model
-`2026-06-17` · `spec:approved` · `impl:implemented`
+`2026-06-17` · `spec:applied` · `impl:implemented`
+
+No spec edit required: the authoritative spec never described resolution buttons (they were a
+QuarterDeck-runtime detail only). `Drydock_Specification.md` line 815 — "`spike` answers a question;
+results feed future iterations" — already matches the buttonless model. Contract conforms as-is.
 
 Supersedes the two-path resolution in §"Spike Contract" (IMPLEMENT AS STORY / COMMANDER
 IMPLEMENTS) — those buttons are removed.
