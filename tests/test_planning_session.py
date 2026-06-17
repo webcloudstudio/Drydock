@@ -17,8 +17,6 @@ _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16
 blueprint: bp
 
-## Analysis Summary
-
 Quality: Questions
   stories: 2
   stack: python

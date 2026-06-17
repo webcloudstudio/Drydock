@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, open questions, and all analyze artifacts.
-version: 20260616 V6
+version: 20260616 V7
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and open questions, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -200,8 +200,6 @@ Emit exactly these blocks in order. COMPASS.md block is conditional.
 generated: {ISO date}
 blueprint: {BLUEPRINT_PATH from job block}
 
-## Analysis Summary
-
 Quality: {Ready | Questions | Blocked}
   blockers: {N}
   questions: {N}
@@ -211,7 +209,10 @@ Quality: {Ready | Questions | Blocked}
 
 ## Open Questions
 
-{Bullet list: `- [file or topic] question text`. "- None." if none.}
+{Bullet list. For each open question, cite the spike file that covers it:
+`- [file or topic] question text (→ spike-{slug}.json)`.
+Where a question has no questionnaire (e.g. resolved inline), omit the citation.
+"- None." if no open questions.}
 
 ## Story List
 
@@ -221,11 +222,6 @@ No prescribed format — use what best communicates the project shape.}
 ### Tuning Options
 
 {2–3 alternative decomposition approaches the PO can accept or override.}
-
-## Blockers
-
-{Bullet summary of each blocker with its reason; the full questions are written to BLOCKERS.md.
-"- None." if none.}
 
 ## Notes
 

@@ -29,8 +29,6 @@ _ANALYSIS_CONTENT = """\
 generated: 2026-06-14
 blueprint: /some/path
 
-## Analysis Summary
-
 Quality: Ready
   blockers: 0
   questions: 0
@@ -55,10 +53,6 @@ Quality: Ready
 ### Tuning Options
 - Option A: Decompose by feature (recommended)
 - Option B: Decompose by layer
-
-## Blockers
-
-- None.
 
 ## Notes
 
@@ -159,8 +153,6 @@ _ANALYSIS_CONTENT_BLOCKED = """\
 generated: 2026-06-14
 blueprint: /some/path
 
-## Analysis Summary
-
 Quality: Blocked
   blockers: 1
   questions: 0
@@ -178,10 +170,6 @@ No stories can be derived until blockers are resolved.
 
 ### Tuning Options
 - N/A
-
-## Blockers
-
-- No project name is stated. The product cannot be built without a name.
 
 ## Notes
 

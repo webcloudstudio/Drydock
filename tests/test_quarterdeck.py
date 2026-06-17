@@ -379,7 +379,7 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     md_file = tmp_path / "ANALYSIS.md"
     md_file.write_text(
         "# Blueprint Analysis\n\n"
-        "## Analysis Summary\nQuality: Ready\n\n"
+        "Quality: Ready\n\n"
         "## Open Questions\n- None.\n\n"
         "## Notes\nNone.\n",
         encoding="utf-8",
@@ -391,9 +391,9 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     )
 
     assert "md-tabs" in rendered
-    # One tab button per ## section (plus an Overview tab for the pre-## title block).
+    # Overview tab (pre-## block) + Open Questions + Notes = 3 tab buttons.
     assert rendered.count("md-tab-btn") >= 3
-    assert "Analysis Summary" in rendered
+    assert "Overview" in rendered
     assert "Open Questions" in rendered
     assert "Notes" in rendered
 

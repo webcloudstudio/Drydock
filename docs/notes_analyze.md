@@ -2,11 +2,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V7 |
+| Version | 2026-06-16 V8 |
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
-| Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V7 adds the standing-directive feedback loop (ANALYSIS_FEEDBACK.md), retires BUILD_CONFIGURATION.md, switches the Rigging catalog to a filename list, finalizes the analyze injection stack, and records the gaps/AC spike removal. |
-| Pending spec | 15 approved items |
+| Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V8 adds ANALYSIS.md tab-structure redesign: merge Overview+Summary, drop Blockers tab, wire Open Questions to spike files. |
+| Pending spec | 16 approved items |
 | Pending impl | 0 unimplemented sections |
 
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
@@ -611,6 +611,27 @@ listing, not the README catalog.
 
 COMPASS is **not** injected into analyze (only the `COMPASS_EXISTS` flag); analyze generates
 COMPASS. The feedback file is anchored top-of-stack rather than "after the compass."
+
+### ANALYSIS.md Tab-Structure Redesign
+`2026-06-16` · `spec:approved` · `impl:implemented`
+
+QuarterDeck tabs from `##` headings in ANALYSIS.md. Four decisions agreed in session:
+
+1. **Remove `## Analysis Summary` heading.** The content before the first `##` heading renders as
+   the implicit first tab (Overview). Adding `## Analysis Summary` creates a duplicate Overview/Summary
+   split. Dropping the heading merges them into one Overview tab.
+
+2. **Drop `## Blockers` section from ANALYSIS.md.** `BLOCKERS.md` is the artifact; its existence is
+   the pipeline signal. Blockers must not also appear as a tab inside ANALYSIS.md.
+
+3. **`## Open Questions` references spike files.** Each open-question item cites which
+   `spike-*.json` questionnaire covers it (e.g. "see `spike-stack.json`"), so the tab makes the
+   spike connection visible to the PO.
+
+4. **Final ANALYSIS.md tab structure:** `Overview / Story List / Open Questions / Notes` — driven
+   entirely by `##` headings. All changes are prompt-only edits to `prompts/analyze.md`.
+
+---
 
 ### Spike set: gaps/AC spike removed
 `2026-06-16` · `spec:applied` · `impl:implemented`

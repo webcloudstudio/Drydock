@@ -409,7 +409,7 @@ class TestPlanningSession:
 
         # plan create requires a reviewed analysis and a fake LLM runner.
         (tmp_target_root / "ExampleTarget" / "ANALYSIS.md").write_text(
-            "# Blueprint Analysis: ExampleTarget\n\n## Analysis Summary\n\nQuality: Questions\n\n"
+            "# Blueprint Analysis: ExampleTarget\n\nQuality: Questions\n\n"
             "## Story List\n\nProject type: `cli`\n",
             encoding="utf-8",
         )
