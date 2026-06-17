@@ -5,6 +5,7 @@ version: 20260616 V3
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
+inputs: COMPASS.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_FEEDBACK.md, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: Blueprint specification files, BUILD_PLAN_COMPASS.md, MANIFEST.md
 ---
 

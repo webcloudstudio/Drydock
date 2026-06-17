@@ -47,3 +47,32 @@ class TestLoadPrompt:
         monkeypatch.setattr("drydock.prompts.get_prompts_root", lambda: tmp_path)
         with pytest.raises(DrydockError, match="missing required frontmatter"):
             load_prompt("broken")
+
+
+class TestInputTokens:
+    def test_no_inputs_row_yields_empty_tuple(self):
+        assert load_prompt("rigging_compact").input_tokens == ()
+
+    def test_analyze_inputs_are_ordered_compass_first(self):
+        tokens = load_prompt("analyze").input_tokens
+        assert tokens == (
+            "COMPASS.md",
+            "ANALYSIS_FEEDBACK.md",
+            "BLOCKERS.md",
+            "TYPED_SPEC",
+        )
+
+    def test_plan_create_inputs_are_ordered_compass_first(self):
+        tokens = load_prompt("plan_create").input_tokens
+        assert tokens[0] == "COMPASS.md"
+        assert tokens == (
+            "COMPASS.md",
+            "ANALYSIS.md",
+            "SOUNDINGS.md",
+            "BLOCKERS.md",
+            "QUESTIONNAIRES",
+            "MANIFEST_FEEDBACK.md",
+            "MANIFEST_CONTRACT.md",
+            "BLUEPRINTS_CONTRACT.md",
+            "TYPED_SPEC",
+        )

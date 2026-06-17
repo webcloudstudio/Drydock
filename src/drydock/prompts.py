@@ -5,7 +5,12 @@ Every Drydock prompt is a Markdown file under ``prompts/`` named
 block carrying the prompt contract metadata.
 
 Required frontmatter fields: ``name``, ``description``, ``version``, ``intent``.
-Optional fields commonly used: ``command``, ``model``, ``output``.
+Optional fields commonly used: ``command``, ``model``, ``inputs``, ``output``.
+
+``inputs`` is an ordered, comma-delimited list of logical input tokens — the
+agent's declared injection (stack) order, COMPASS.md first. Single files are
+named by filename; globbed groups use a suffix-less token (e.g. ``QUESTIONNAIRES``,
+``TYPED_SPEC``). The assembler resolves each token to real paths.
 """
 
 from __future__ import annotations
@@ -34,6 +39,16 @@ class Prompt:
     @property
     def model(self) -> str | None:
         return self.meta.get("model")
+
+    @property
+    def input_tokens(self) -> tuple[str, ...]:
+        """Ordered logical input tokens from the ``inputs`` frontmatter row.
+
+        The declared injection order (COMPASS.md first). Empty when no ``inputs``
+        row is present. The assembler resolves each token to real paths/globs.
+        """
+        raw = self.meta.get("inputs", "")
+        return tuple(token.strip() for token in raw.split(",") if token.strip())
 
     @property
     def version(self) -> str:
