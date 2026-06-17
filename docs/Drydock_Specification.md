@@ -1,5 +1,5 @@
 ---
-title: Drydock
+title: The Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
 subtitle: Welcome Commander - Drydock is a full implementation of the SAIL Methodology to build programs from specifications.  
 author: Ed Barlow
@@ -11,10 +11,11 @@ copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of t
 ideas_title: The SAIL Method
 ideas_layout: sail
 sail_lead:
-  - You are the Commander - the product owner - and the LLM is your team.
+  - You are the Commander - the product owner - and the LLM is your team.  Your LLM Team follows agile best practices.
+  - The QuarterDeck is a web server to communicate with your team and keeps you in command at all times
   - Your Compass (constitution/intent) guides your build
-  - The QuarterDeck keeps you in command at all times
   - A Ship's Log preserves material decisions and milestones
+  - The Drydock build process attempts to be simple and obvious
 ideas:
   - title: **S** — Setup and Install Drydock
     sub_list:
@@ -23,13 +24,13 @@ ideas:
       - drydock init
   - title: **A** — Agile Analyze 
     sub_list:
-      - drydock import ingests your specifications and notes for analysis
-      - drydock analyze analyzes projects using Agile Decomposition
-      - drydock plan converts your specifications into Blueprints
+      - drydock import - ingest your specifications and notes for analysis
+      - drydock analyze - analyze projects using Agile Decomposition
+      - drydock plan - converts your specifications into Blueprints
   - title: **I** — Implement
     sub_list:
       - drydock build - implements your software plan in managed chunks using the Manifest
-      - drydock rigging is your enterprise branding and build rules
+      - drydock rigging - manages your enterprise branding and build rules
   - title: **L** — Loop
     sub_list:
       - drydock refit is our incremental build process - Blueprints and Code consistency
@@ -38,23 +39,25 @@ ideas:
 
 ## What is Drydock
 
-Drydock is a governed Blueprint-driven software delivery system built around the **SAIL
-methodology: Set Up, Analyze, Implement, Loop**.
+Drydock is a governed Blueprint-driven software delivery system built around the **SAIL methodology.
+
+**The Commander.** Drydock addresses its operator as the Commander.  Drydock uses agile best practices and
+the Commander is the product owner. The QuarterDeck enables the Commander to own intent, review evidence and decisions, and to provide feedback at each stage in english.  That feedback guides the work and command reruns will incorprate that user intent.  This document uses "Commander" as synonym for user. The Commander has the role of agile project owner. 
 
 **Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are
-composed of **Typed Specification Files** with prescribed roles. The Drydock Analyze phase turns
-imported specifications into Blueprints ready for execution.  `drydock plan` creates a Manifest or optimized build plan which 
-is executed with `drydock build` to Implement and deliver working software.  Builds use a context-aware 
-specification chunking and stacking strategy that ensures the work is done accurately.  The loop phase lets
-the Commander update and iterate the application while preserving the specification as the source of truth.
+composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns
+imported specifications into Blueprints ready for execution.  `drydock plan` creates a **Manifest** and defines
+your typed specification files into a simple graph database suited for **context optimized builds**.  
 
-SAIL is one complete delivery loop: **Set Up** the workspace, **Analyze** the work, **Implement**
-the accepted plan, then **Loop** through normal agile iterations.
+Context management is the KEY to reproducable specification driven builds.  `drydock build` uses a dependency graph
+deliver working software using a use context-size-aware chunking and stacking strategy that ensures the work is 
+done accurately.  `drydock build` compute the best path to build your software.
 
-**The Commander.** Drydock addresses its operator as the Commander — the product owner who directs
-the build. The Commander owns intent, reviews evidence and decisions at the QuarterDeck, and
-approves, revises, or rejects work. Drydock and its LLM agents execute; the Commander decides. The
-specification uses "the Commander" wherever it names this role.
+Enterprise rules are injected using the Rigging.  Enterprise branding and stack rules use the concept Builder / User.
+Feature builders need the whole specification to implement.  Feature users do not. drydock dupports markdown compaction
+so feature users recieve a compacted minimal markdown explaining how to use the feature but not what it does or why.  
+
+The loop phase lets the Commander update and iterate the application while preserving the specification as the source of truth.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%

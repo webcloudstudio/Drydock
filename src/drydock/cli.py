@@ -183,7 +183,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     target_dir = get_target_directory() / args.Target
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
-    result = analyze(args.Target, target_dir)
+    result = analyze(args.Target, target_dir, on_text=lambda t: print(t, end="", flush=True))
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
