@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-17 V11 |
+| Version | 2026-06-17 V12 |
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, the Artifact Feed Matrix, and the buttonless questionnaire model. |
 | Pending spec | 1 approved item (buttonless questionnaire model) |
-| Pending impl | 3 unimplemented items (buttonless-questionnaire UI + autosave, feed-routing config, SOUNDINGS divergence #2) |
+| Pending impl | 2 unimplemented items (buttonless-questionnaire UI + autosave, feed-routing config) |
 
 ## Goal
 
@@ -280,7 +280,7 @@ through stages 1–3 and appears only once a plan exists (stage 4). The analyze 
 action through spikes (→ Actions) and BLOCKERS, not an empty board.
 
 ### Artifact Feed Matrix
-`2026-06-17` · `spec:applied` · `impl:partial`
+`2026-06-17` · `spec:applied` · `impl:implemented`
 
 An artifact is only worth keeping if it feeds a command (forward or backward). The ratified matrix
 declares, per artifact, which command produces (`O`) and which consume (`I`) it. Applied to the
@@ -293,7 +293,7 @@ directory tree) with the legend.
 | ANALYSIS.md | O | I | · | · | · |
 | ANALYSIS_FEEDBACK.md | I | · | · | · | · |
 | SEA_TRIALS.md | O | · | · | · | · |
-| SOUNDINGS.md | O | · | O | I | · |
+| SOUNDINGS.md | O | O/I | O | I | · |
 | BLOCKERS.md | O/I | X | · | · | · |
 | Spikes (answered) | O | I | I | · | · |
 | Typed Spec files | I | I | I | I | I |
@@ -329,7 +329,7 @@ IMPLEMENTS) — those buttons are removed.
   stack. (`_H1_RE` only stripped a leading `<h1>`, and the editable's `<h1>` was nested.)
 
 ### Feed-Adherence Reconciliation
-`2026-06-17` · `spec:na` · `impl:partial`
+`2026-06-17` · `spec:na` · `impl:implemented`
 
 `plan create` (`planning_session.py`) reconciled to the ratified matrix:
 - **Fixed** — SEA_TRIALS no longer injected (injection loop now `SOUNDINGS.md`, `COMPASS.md` only).
@@ -337,9 +337,12 @@ IMPLEMENTS) — those buttons are removed.
   carries non-empty `answer`; spikes with no answers are skipped. Replaces whole-file injection.
 - **Resolved** — `BUILD_PLAN_COMPASS.md` is a legitimate artifact (plan create `O` → build `I`),
   not a ghost. Matrix row added in spec and here; the file stays.
-- **Open (#2)** — plan create still injects `SOUNDINGS.md` (`:163`) and calls `sync_plan_soundings`
-  (`:280`), making it both `I` and `O` for SOUNDINGS while the matrix marks it `·`. Left untouched
-  pending Ed's call: change the code, or amend the matrix to record plan create's SOUNDINGS role.
+- **Resolved (#2)** — plan create legitimately reads `SOUNDINGS.md` (`:163`) and rewrites it via
+  `sync_plan_soundings` (`:280`): it reads the existing file in order to reproject it. Matrix
+  amended to `O/I` for plan create (spec line 532, here). Code already conforms; no change.
+  SOUNDINGS lifecycle: analyze creates → plan create reprojects → build updates → build score
+  consumes. SOUNDINGS is markdown, not part of the ticket graph; authoritative AC lives in
+  `tickets.json`, scriptable rather than LLM-tested.
 
 ## Acceptance Criteria
 

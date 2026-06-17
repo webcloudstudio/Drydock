@@ -529,7 +529,7 @@ artifact, which command produces it and which commands consume it.
 | ANALYSIS.md | O | I | · | · | · |
 | ANALYSIS_FEEDBACK.md | I | · | · | · | · |
 | SEA_TRIALS.md | O | · | · | · | · |
-| SOUNDINGS.md | O | · | O | I | · |
+| SOUNDINGS.md | O | O/I | O | I | · |
 | BLOCKERS.md | O/I | X | · | · | · |
 | Spikes (answered) | O | I | I | · | · |
 | Typed Spec files | I | I | I | I | I |
