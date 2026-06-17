@@ -13,6 +13,7 @@ from dotenv import dotenv_values, set_key
 from drydock.errors import ConfigurationError
 
 _KEY_MAP = {
+    "drydock_build_directory": "DRYDOCK_BUILD_DIRECTORY",
     "drydock_workspace": "DRYDOCK_WORKSPACE",
     "llm_provider": "LLM_PROVIDER",
     "prompt_warn_kb": "PROMPT_WARN_KB",
@@ -73,6 +74,28 @@ def get_workspace() -> Path:
     return top if top is not None else Path.cwd()
 
 
+def get_build_directory() -> Path:
+    """Resolve the required root where ``drydock build`` writes built projects."""
+    val, _source = _get("DRYDOCK_BUILD_DIRECTORY")
+    if not val:
+        raise ConfigurationError(
+            "DRYDOCK_BUILD_DIRECTORY is required.\n"
+            "  Set it with: drydock config set drydock_build_directory <path>"
+        )
+    resolved = Path(val).expanduser().resolve()
+    if not resolved.is_dir():
+        raise ConfigurationError(
+            f"Directory does not exist: {resolved}\n"
+            "  Create the directory first, then re-run config set."
+        )
+    return resolved
+
+
+def build_dir_for(target: str) -> Path:
+    """The built application directory for a Target: ``$DRYDOCK_BUILD_DIRECTORY/<Target>``."""
+    return get_build_directory() / target
+
+
 def get_target_directory() -> Path:
     """Root holding all Targets: ``$DRYDOCK_WORKSPACE/targets``."""
     return get_workspace() / "targets"
@@ -119,6 +142,8 @@ def get_quarterdeck_port() -> int:
 
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
+    build_value, build_source = _get("DRYDOCK_BUILD_DIRECTORY")
+    rows.append(("drydock_build_directory", build_value or "(not set)", build_source))
     ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
     if not ws_value:
         ws_value, ws_source = str(get_workspace()), "default"

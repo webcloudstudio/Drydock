@@ -8,8 +8,10 @@ import pytest
 
 from drydock.config import (
     blueprint_dir_for,
+    build_dir_for,
     config_set,
     config_show,
+    get_build_directory,
     get_llm_provider,
     get_prompt_warn_kb,
     get_quarterdeck_port,
@@ -20,6 +22,15 @@ from drydock.errors import ConfigurationError
 
 
 class TestConfigSet:
+    def test_set_drydock_build_directory(self, tmp_path, isolated_config):
+        build_root = tmp_path / "builds"
+        build_root.mkdir()
+        cfg = config_set("drydock_build_directory", str(build_root))
+        assert cfg.exists()
+        content = cfg.read_text()
+        assert "DRYDOCK_BUILD_DIRECTORY" in content
+        assert str(build_root) in content
+
     def test_set_drydock_workspace(self, tmp_workspace, isolated_config):
         cfg = config_set("drydock_workspace", str(tmp_workspace))
         assert cfg.exists()
@@ -66,13 +77,14 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_four_rows(self, isolated_config):
+    def test_show_returns_five_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 4
+        assert len(rows) == 5
 
     def test_show_defaults_when_empty(self, isolated_config):
         rows = config_show()
         by_name = {name: (value, source) for name, value, source in rows}
+        assert by_name["drydock_build_directory"] == ("(not set)", "default")
         ws_value, ws_source = by_name["drydock_workspace"]
         assert ws_value != "(not set)"
         assert ws_source == "default"
@@ -89,6 +101,36 @@ class TestConfigShow:
 
 
 class TestWorkspaceResolution:
+    def test_build_directory_from_config_file(self, tmp_path, isolated_config):
+        build_root = tmp_path / "builds"
+        build_root.mkdir()
+        config_set("drydock_build_directory", str(build_root))
+        assert get_build_directory() == build_root.resolve()
+
+    def test_build_directory_env_overrides_file(self, tmp_path, isolated_config, monkeypatch):
+        configured = tmp_path / "configured"
+        configured.mkdir()
+        other = tmp_path / "other"
+        other.mkdir()
+        config_set("drydock_build_directory", str(configured))
+        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(other))
+        assert get_build_directory() == other.resolve()
+
+    def test_build_directory_required_when_unset(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="DRYDOCK_BUILD_DIRECTORY is required"):
+            get_build_directory()
+
+    def test_build_directory_env_must_exist(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", "/this/does/not/exist")
+        with pytest.raises(ConfigurationError, match="does not exist"):
+            get_build_directory()
+
+    def test_build_dir_for_target(self, tmp_path, isolated_config, monkeypatch):
+        build_root = tmp_path / "builds"
+        build_root.mkdir()
+        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
+        assert build_dir_for("Example") == build_root / "Example"
+
     def test_workspace_from_config_file(self, tmp_workspace, isolated_config):
         config_set("drydock_workspace", str(tmp_workspace))
         assert get_workspace() == tmp_workspace.resolve()

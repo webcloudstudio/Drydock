@@ -123,6 +123,7 @@ class TestConfigShow:
     def test_config_show_runs(self, isolated_config):
         rc, out, err = run_cli("config", "show")
         assert rc == 0
+        assert "drydock_build_directory" in out
         assert "drydock_workspace" in out
 
     def test_config_show_defaults_when_unset(self, isolated_config):
@@ -137,6 +138,13 @@ class TestConfigSet:
         rc, out, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
         assert rc == 0
         assert "drydock_workspace" in out
+
+    def test_config_set_drydock_build_directory(self, tmp_path, isolated_config):
+        build_root = tmp_path / "builds"
+        build_root.mkdir()
+        rc, out, err = run_cli("config", "set", "drydock_build_directory", str(build_root))
+        assert rc == 0
+        assert "drydock_build_directory" in out
 
     def test_config_set_persists(self, tmp_workspace, isolated_config):
         run_cli("config", "set", "drydock_workspace", str(tmp_workspace))

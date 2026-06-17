@@ -628,6 +628,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_set.add_argument(
         "key",
         choices=[
+            "drydock_build_directory",
             "drydock_workspace",
             "llm_provider",
             "prompt_warn_kb",
