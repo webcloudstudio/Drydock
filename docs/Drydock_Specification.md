@@ -518,7 +518,9 @@ is done within this self-contained build environment. The QuarterDeck is configu
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
 ├── logs/
-│   └── ships_log.jsonl                   # workspace product/design decision ledger
+│   ├── ships_log.jsonl                   # workspace product/design decision ledger
+│   ├── history.jsonl                     # append-only command-invocation log
+│   └── run.log, run.log.1 … run.log.5    # rotating per-command execution logs
 │
 └── targets/
     └── <Target>/                         # one self-contained project
@@ -659,6 +661,14 @@ updated by `drydock refit` as specification files and application code evolve.
   "The Ship's Log"
   - Created and updated: agents developing Drydock, according to `SHIPS_LOG_PROCESS.md`, through
     the repository-local validated persistence utility
+
+- **`logs/history.jsonl`** — append-only command-invocation log; one JSON record per command with
+  the command line, timestamp, target, and return code. Pure-report commands are excluded
+  - Created and updated: the CLI, on every recorded command
+
+- **`logs/run.log`** — rotating per-command execution log capturing diagnostic output for each run.
+  Drydock keeps the active `run.log` plus five rotated copies, `run.log.1` through `run.log.5`
+  - Created and updated: the CLI run logger, on every command
 
 **Console related documents** — generated per target project; read by the QuarterDeck and updated by
 build and review actions.
