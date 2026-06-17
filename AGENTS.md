@@ -7,26 +7,43 @@ expressed as Typed Specifications.
 The predecessor is Prototyper at `/mnt/c/Users/barlo/projects/Prototyper`. Read it for reference;
 never modify it.
 
-## Authority
+## Authority: `docs/Drydock_Specification.md`
 
-`docs/Drydock_Specification.md` is the sole authoritative product specification. It defines
-intended behavior, scope, and contracts. It is not a place for status notes or change history.
-Obtain Ed's approval before editing it; approved behavior and specification must always agree.
+`docs/Drydock_Specification.md` is the sole authoritative product specification and the
+target architecture. It defines intended behavior, scope, and contracts. Treat it as canonical.
 
-Ed's instructions supersede the specification. Flag any conflict between an instruction and the
-specification before proceeding.
+**Editing protocol**
+- Obtain Ed's approval before editing. One active writer at a time; unassigned agents propose
+exact replacement text and do not edit.
+- Re-read immediately before editing; never edit from a read taken earlier in the session.
+- Run `git diff -- docs/Drydock_Specification.md` first. If it is dirty with changes you did
+not make, stop and reconcile.
+- Edit surgically with the Edit tool. Never use Write or shell redirection to replace the file.
+- When reading, report any divergence, inconsistency, or hand-edit error detected; do not
+silently fix it. Surface the conflict and let Ed decide.
 
-Context precedence, highest first:
+**Content** — normative statements of intended behavior only. No rationale, reasoning, open
+questions, status, history, alternatives, or hedging ("we could / should probably / might /
+plan to"). Reasoning, questions, and options belong in `docs/notes_<command>.md`; the
+specification is the conclusion, never the deliberation. Never alter already-specified syntax
+or behavior. If the specification diverges from implemented behavior, surface the conflict and
+let Ed decide.
 
-1. `docs/Drydock_Specification.md` — intended product behavior and contract authority
-2. `docs/SOUNDINGS.md` — implementation acceptance and evidence checklist
-3. `src/drydock/` and `tests/` — implemented behavior and regression contract
-4. This document — development architecture and operating rules
-5. Prototyper at `/mnt/c/Users/barlo/projects/Prototyper` — read-only reference
+**Voice** — present-tense, declarative, third-person ("`drydock build` executes the
+Manifest."). No future, no conditional, no first person.
 
-When these conflict, implement the approved specification. If the specification is silent, preserve
-proven Prototyper behavior unless it conflicts with Drydock's package architecture or command
-contracts.
+**Command-entry template** — every command section uses this exact structure and order, with no
+added or reordered sections:
+1. CLI syntax (synopsis)
+2. Behavior description
+3. Input files
+4. Output files
+5. Exit codes
+
+One section per command; duplicate or overlapping command headings are violations to fix.
+
+**Workspace Layout** reflects the current on-disk file set. The Blueprint file inventory states
+each file's purpose and whether it is human-editable.
 
 ## Project Layout
 
@@ -85,8 +102,6 @@ repository.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
 - Add focused unit tests and CLI contract tests for every implemented command.
 - Update `docs/SOUNDINGS.md` when a capability's implementation or verification state changes.
-- `docs/Drydock_Specification.md` has one active writer at a time. Unless explicitly assigned,
-  agents may read it and propose exact replacement text but must not edit it.
 - Multiple agents and Ed may edit this directory concurrently. Before committing, inspect the
   current diff and preserve changes made by other writers. Never stage or commit changes outside
   the active task.
