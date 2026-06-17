@@ -307,6 +307,14 @@ Legend: `O` produced · `I` consumed · `X` gating input (blocks until resolved)
 produced only when absent. SEA_TRIALS and SCORECARD are pure `O` — terminal displays, not feeds.
 Feed routing is **configuration**, not hardcoded.
 
+### Feed-Routing Configuration
+`2026-06-17` · `spec:na` · `impl:unimplemented`
+
+The Artifact Feed Matrix is the *contract*; its enforcement must be **configuration, not
+hardcoded** producer/consumer logic. Outstanding: design the routing table (which artifacts each
+command reads/writes) as a declarative resource a command resolves at runtime, so adding or
+re-routing an artifact is a config edit, not a code change. Scope/location of the table is undecided.
+
 ### Buttonless Questionnaire Model
 `2026-06-17` · `spec:approved` · `impl:unimplemented`
 
