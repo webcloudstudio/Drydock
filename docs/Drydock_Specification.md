@@ -11,7 +11,7 @@ copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of t
 ideas_title: The SAIL Method
 ideas_layout: sail
 sail_lead:
-  - You are the Commander - the product owner - and the llm is your team.
+  - You are the Commander - the product owner - and the LLM is your team.
   - Your Compass (constitution/intent) guides your build
   - The QuarterDeck keeps you in command at all times
   - A Ship's Log preserves material decisions and milestones
@@ -44,12 +44,12 @@ methodology: Set Up, Analyze, Implement, Loop**.
 **Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are
 composed of **Typed Specification Files** with prescribed roles. The Drydock Analyze phase turns your 
 specifications into Blueprints ready for execution.  `drydock plan` creates a Manifest or optimized build plan which 
-is executed with `drydock build` to Implement and deliver working software.  Builds use a context aware 
+is executed with `drydock build` to Implement and deliver working software.  Builds use a context-aware 
 specification chunking and stacking strategy that ensures the work is done accurately.  The loop phase lets
 you update and iterate your application preserving the specification as source of truth.
 
 SAIL is one complete delivery loop: **Set Up** the workspace, **Analyze** the work, **Implement**
-the accepted plan, then **Loop** through through your normal agile iterations.
+the accepted plan, then **Loop** through your normal agile iterations.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -74,7 +74,7 @@ flowchart LR
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-Each project has a <Target> uses a workspace located in `$DRYDOCK_WORKSPACE/targets/<Target>`. 
+Each project's `<Target>` uses a workspace located in `$DRYDOCK_WORKSPACE/targets/<Target>`. 
 
 ```text
 usage: drydock [-h] [--version] [--debug] <command> ...
@@ -162,17 +162,17 @@ driven console.
 The Analyze phase turns imported source material into an Analysis for review, then into an
 executable Manifest for build. The sequence is:
 
-1. `drydock import` brings source material under Drydock control in
+1. `drydock import` brings source material under Drydock control.
 2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones,
    blockers, questions, and any needed spikes. It also optionally seeds `COMPASS.md`.
 3. `drydock run quarterdeck` lets the product owner review, approve, and resolve open action items.  
-   The system surfaces questionaires and analysis.
-4. `drydock plan create` converts the reviewed analysis into Blueprint files Manifest.
+   The system surfaces questionnaires and analysis.
+4. `drydock plan create` converts the reviewed analysis into Blueprint files and the Manifest.
 
 ### Commands
 
 ```text
-drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>
+drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>
 drydock analyze <Target>
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 drydock plan create <Target>
@@ -210,12 +210,12 @@ flowchart LR
 
 ### drydock analyze
 
-`drydock analyze` is Sprint Feature Planning. The llm decomposes `<Target>/blueprint/sources/` into a set of
+`drydock analyze` is Sprint Feature Planning. The LLM decomposes `<Target>/blueprint/sources/` into a set of
 markdown artifacts using agile. It prepares the following files for Commander review.
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existance implies blockers.  Edit to resolve them. |
+| `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existence implies blockers.  Edit to resolve them. |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
 | `SEA_TRIALS.md` | Target root | Product-level objectives and success criteria |
 | `SOUNDINGS.md` | Target root | Acceptance tests and milestones  |
@@ -225,8 +225,8 @@ markdown artifacts using agile. It prepares the following files for Commander re
 
 #### Build Readiness 
 
-The llm also gives a verdict on the condition of the build.  The most important guard is BLOCKERS.md.  If BLOCKERS.md exists,
-edit it to answer the questions and rerun `drydock analysis`. Your input will guide the LLM on the next run. Iterate until
+The LLM also gives a verdict on the condition of the build.  The most important guard is BLOCKERS.md.  If BLOCKERS.md exists,
+edit it to answer the questions and rerun `drydock analyze`. Your input will guide the LLM on the next run. Iterate until
  blockers no longer exist. 
 
 | Quality | Meaning |
@@ -246,14 +246,14 @@ The QuarterDeck shows the artifacts, blockers, questions, questionnaires, and ac
 * BLOCKERS.md prevents `drydock plan create` from running. 
 * Questionnaires contain decisions that guide planning 
 
-Questionaires and BLOCKERS.md can be edited directly or modified in the quarterdeck to respond.  Responses are used on the next run of `drydock analyze`.
+Questionnaires and BLOCKERS.md can be edited directly or modified in the quarterdeck to respond.  Responses are used on the next run of `drydock analyze`.
 
 Commander Responses in QuarterDeck are preserved for the build (by writing them to the appropriate markdown file). 
 
 The QuarterDeck calls out blockers and action items.  It also enables the Commander to review core decisions such as the process
-the llm intends to use to decompose the imported material into Blueprints.  Review this output to get a sense of how well the
-application will build.  The Agile process is to continue this decoposition until you have a list of actionable stories which
-can be implmented. 
+the LLM intends to use to decompose the imported material into Blueprints.  Review this output to get a sense of how well the
+application will build.  The Agile process is to continue this decomposition until you have a list of actionable stories which
+can be implemented. 
 
 ### drydock plan create
 
@@ -269,7 +269,7 @@ One major goal of the decomposition is for MANIFEST.md to contain a valid plan. 
 multiple files into a prompt for execution - including your COMPASS.md, appropriate subsets of your stack, and 
 your instructions for the task.  Similar tasks are grouped together to save context.  
 
-### drydock quarterdeck run
+### drydock run quarterdeck
 
 Review the MANIFEST.md in the quarterdeck to understand the build process.
 
@@ -299,8 +299,8 @@ drydock rigging verify <Target>
 
 ### drydock build
 
-Build executes the work blocks in `<Target>/MANIFEST.md` based on their dependency graph. The manifest
-will and Typed Specifications are executed in steps or phases which the plan has listed. 
+Build executes the work blocks in `<Target>/MANIFEST.md` based on their dependency graph. The Manifest
+and its Typed Specifications execute in the steps or phases the plan lists. 
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -319,7 +319,7 @@ flowchart LR
 
 `drydock build <Target>` executes the approved frontier and builds your application in the target directory. 
 
-### drydock quarterdeck run
+### drydock run quarterdeck
 
 The QuarterDeck shows the stakeholder the evidence, demos, and questions needed for a decision;
 the product owner approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
@@ -353,8 +353,8 @@ drydock build status <Target>   # print per-block state and current runnable fro
 
 `drydock build score` measures delivery health across seven dimensions — Typed Specification
 completeness, implementation coverage, test coverage, documentation coverage, Blueprint drift,
-build quality, and acceptance criteria coverage. Output is `SCORECARD.md` in the Blueprint
-directory.
+build quality, and acceptance criteria coverage. Output is `SCORECARD.md` at the Target root,
+alongside `ANALYSIS.md`, `MANIFEST.md`, and `METADATA.md`.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -418,13 +418,13 @@ are kept in sync with the application with a `drydock build`.
 
 The post-build refit for an existing project keeps the code and Blueprints aligned.  We have two methods for this.  The first
 uses change tickets which have the same dependency graph as do the other Blueprints.  This enables it to be chunked with `drydock build` after
-a new plan is build.  The alternative tracks the git commit of the build and can use git to identify files which have been changed and which
+a new plan is built.  The alternative tracks the git commit of the build and can use git to identify files which have been changed and which
 can rerun only those files. 
 
 ### Commands
 
 ```text
-drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
+drydock refit <Target> <blueprint|target|both> <Scope> <Change>
 ```
 
 ```mermaid
@@ -480,8 +480,8 @@ and build execution process it like any other Specification input.
 
 ## Workspace Layout
 
-Drydock manages everything inside one workspace tree under targets/.  The targets workspace is under `targets/<Target>/` and all work
-is done within this self-contained build environment.   The QuarterDeck is configuration driven and uses files from within that tree. 
+Drydock manages everything inside one workspace tree under targets/. The targets workspace is under `targets/<Target>/` and all work
+is done within this self-contained build environment. The QuarterDeck is configuration driven and uses files from within that tree.
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
@@ -497,7 +497,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
         ├── MANIFEST.md                   # the executable Manifest
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
-        ├── ANALYSIS.md                  
+        ├── ANALYSIS.md                   # Planning Session analysis: quality, stories, blockers, questions
         ├── tickets.json                  # target ticketing system / board projection
         │
         ├── blueprint/                    # the Blueprint — conformed Typed Specification
