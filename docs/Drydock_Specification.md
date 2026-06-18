@@ -1,7 +1,7 @@
 ---
 title: The Drydock
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle: Welcome Commander - Drydock is a full implementation of the SAIL Methodology to build programs from specifications.  
+subtitle: Drydock is an implementation of the SAIL Methodology to build programs from specifications.  
 author: Ed Barlow
 studio: Web Cloud Studio
 year: June 11 2026
@@ -11,8 +11,8 @@ copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of t
 ideas_title: The SAIL Method
 ideas_layout: sail
 sail_lead:
-  - You are the Commander - the product owner - and the LLM is your team.  Your LLM Team follows agile best practices.
-  - The QuarterDeck is a web server to communicate with your team and keeps you in command at all times
+  - You are the Commander (product owner) and the LLM is your agile best practices team.  
+  - The QuarterDeck web server enables communication with your team 
   - Your Compass (constitution/intent) guides your build
   - A Ship's Log preserves material decisions and milestones
   - The Drydock build process attempts to be simple and obvious
@@ -26,15 +26,15 @@ ideas:
     sub_list:
       - drydock import - ingest your specifications and notes for analysis
       - drydock analyze - analyze projects using Agile Decomposition
-      - drydock plan - converts your specifications into Blueprints
+      - drydock plan - convert your specifications into Blueprints
   - title: **I** — Implement
     sub_list:
-      - drydock build - implements your software plan in managed chunks using the Manifest
-      - drydock rigging - manages your enterprise branding and build rules
+      - drydock build - implement your software plan in managed chunks using the Manifest
+      - drydock rigging - manage your enterprise branding and build rules
   - title: **L** — Loop
     sub_list:
-      - drydock refit is our incremental build process - Blueprints and Code consistency
-      - drydock document will create consistent documentation from your specification
+      - drydock refit - our incremental build process - Blueprints and Code consistency
+      - drydock document - create consistent documentation from your specification
 ---
 
 ## What is Drydock
@@ -82,8 +82,7 @@ flowchart LR
 drydock <verb> [<sub-verb>] [arguments] [--options]
 ```
 
-Each project's `<Target>` uses Drydock state located in `$DRYDOCK_WORKSPACE/targets/<Target>` and
-build output located in `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
+Each project's `<Target>` uses a Workspace of `$DRYDOCK_WORKSPACE/targets/<Target>` and builds to `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 
 ```text
 usage: drydock [-h] [--version] [--debug] <command> ...
@@ -138,8 +137,8 @@ flowchart LR
 
 | Variable | Purpose |
 |---|---|
-| `DRYDOCK_BUILD_DIRECTORY` | Required root where `drydock build` creates or updates each built project at `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
-| `DRYDOCK_WORKSPACE` | Workspace root containing `logs/` and `targets/`. `targets/<Target>` stores Drydock-managed Target state, Blueprint files, evidence, logs, and QuarterDeck state. Defaults to the Git top-level of the working directory, otherwise the working directory itself. |
+| `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
+| `DRYDOCK_WORKSPACE` | Home directory for the drydock |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
 | `QUARTERDECK_PORT` | Default QuarterDeck service port |
@@ -260,8 +259,8 @@ Commander's answers guide the LLM on the next run, and the cycle repeats until n
 
 `<Target>/ANALYSIS_FEEDBACK.md` is a persistent, human-editable standing directive. The Commander
 records durable guidance there — decomposition preferences, recurring corrections — and `drydock
-analyze` re-injects it on every run. The command never overwrites or deletes the file. Each
-generative Drydock command supports a standing-directive feedback file under this convention.
+analyze` re-injects it on every run. Each Drydock command supports a standing-directive 
+feedback process using this convention.
 
 
 ### drydock run quarterdeck — Analysis Review
@@ -290,7 +289,7 @@ analysis.  This step creates Typed Specification files under `<Target>/blueprint
 
 The headers of the blueprints are structured as a dependency graph and the runnable frontier is established.
 
-The plan contains Acceptance Criteria, Spikes and build tickets for features, screens, and scaffolding.
+The plan contains Acceptance Criteria, Spikes and Specification Tickets for features, screens, and scaffolding.
 
 One major goal of the decomposition is for MANIFEST.md to contain a valid plan.  The configuration variable
 `PROMPT_WARN_KB` (default 50KB) sets a maximum total context size for each build.  Each step stacks
@@ -313,7 +312,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 
 ### drydock run quarterdeck — Plan Review
 
-Review `MANIFEST.md` in the QuarterDeck to understand the build process.
+Review `MANIFEST.md` in the QuarterDeck to understand the build process and update direction.
 
 ## SAIL Phase 3 — Implement: Working the Frontier
 
@@ -356,6 +355,7 @@ flowchart LR
 
   BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
   BUILD --> EV{{"Evidence"}}:::md
+  EV --> CONSOLE["QuarterDeck"]:::web
   BUILD --> SOFTWARE(["Working Software"]):::output
 ```
 
@@ -367,22 +367,6 @@ flowchart LR
 The QuarterDeck shows the Commander the evidence, demos, and questions needed for a decision;
 the Commander approves, revises, or rejects and the decision writes back to `MANIFEST.md`.
 `drydock build` runs the approved frontier and stops at review gates.
-
-```mermaid
-%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart LR
-  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
-  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
-  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
-  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
-
-  BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
-  BUILD --> EVIDENCE{{"Evidence"}}:::md
-  EVIDENCE --> CONSOLE["QuarterDeck"]:::web
-  CONSOLE -.-> BP
-```
 
 ### drydock build status
 
@@ -532,26 +516,25 @@ artifact, which command produces it and which commands consume it.
 
 | Artifact | analyze | plan create | build | build score | refit |
 |---|---|---|---|---|---|
-| COMPASS.md | O*/I | I | I | I | I |
 | ANALYSIS.md | O | I | · | · | · |
 | ANALYSIS_FEEDBACK.md | I | · | · | · | · |
-| SEA_TRIALS.md | O | · | · | · | · |
-| SOUNDINGS.md | O | O/I | O | I | · |
 | BLOCKERS.md | O/I | X | · | · | · |
-| Spikes (answered) | O | I | I | · | · |
-| Typed Spec files | I | I | I | I | I |
+| BUILD_PLAN_COMPASS.md | · | O | I | · | · |
+| COMPASS.md | O*/I | I | I | I | I |
 | MANIFEST.md | · | O | I | I | I |
 | MANIFEST_FEEDBACK.md | · | I | · | · | · |
-| tickets.json | · | O | I | I | I |
-| BUILD_PLAN_COMPASS.md | · | O | I | · | · |
 | SCORECARD.md | · | · | · | O | · |
+| SEA_TRIALS.md | O | · | · | · | · |
+| SOUNDINGS.md | O | O/I | O | I | · |
+| Spikes (answered) | O | I | I | · | · |
+| Typed Spec files | I | I | I | I | I |
+| tickets.json | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
-`X` the artifact gates the command and blocks it until resolved · `·` no relation · `O*` the
-command produces the artifact only when it is absent. Human-authored feedback artifacts
-(`ANALYSIS_FEEDBACK.md`, `MANIFEST_FEEDBACK.md`, answered `BLOCKERS.md`) re-enter the command that
-produced their sibling artifact. Only answered questionnaire fields feed downstream; unanswered
-fields are excluded.
+`X` gates/blocks the command · `·` no relation · `O*` the
+command produces the artifact only when it is absent. 
+
+Human-authored feedback artifacts (`ANALYSIS_FEEDBACK.md`, `MANIFEST_FEEDBACK.md`, answered `BLOCKERS.md`) are promptes that guide future runs of the commands.  
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
@@ -564,12 +547,16 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
     └── <Target>/                         # one self-contained project
         ├── METADATA.md                   # identity: Blueprint name, code_root, status, stack
         ├── README.md                     # short human introduction to the project
+        ├── ANALYSIS.md                   # Planning Session analysis: quality, stories, blockers, questions
+        ├── ANALYSIS_FEEDBACK.md
+        ├── BUILD_PLAN_COMPASS.md 
+        ├── BLOCKERS.md 
         ├── COMPASS.md                    # product intent, constraints, success, guardrails
+        ├── MANIFEST.md                   # the executable Manifest
+        ├── MANIFEST_FEEDBACK.md
+        ├── SCORECARD.md                  # seven-dimension quality + drift scores
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
-        ├── MANIFEST.md                   # the executable Manifest
-        ├── SCORECARD.md                  # seven-dimension quality + drift scores
-        ├── ANALYSIS.md                   # Planning Session analysis: quality, stories, blockers, questions
         ├── tickets.json                  # target ticketing system / board projection
         │
         ├── blueprint/                    # the Blueprint — conformed Typed Specification
@@ -598,13 +585,6 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
 $DRYDOCK_BUILD_DIRECTORY/
 └── <Target>/                             # application source tree built by drydock build
 ```
-
-Project-level files (`METADATA.md`, `README.md`, `COMPASS.md`, `SEA_TRIALS.md`,
-`SOUNDINGS.md`) sit at the Target root. `METADATA.md` carries the project identity and `code_root`;
-the `MANIFEST.md` is the executable Manifest. The build command writes built application code to
-`$DRYDOCK_BUILD_DIRECTORY/<Target>`.
-
-`drydock init <Target>` writes the minimal scaffold to this tree.  
 
 ## The Blueprint — Typed Specification Contract
 
@@ -765,9 +745,9 @@ A SCREEN file referencing a route not listed in any FEATURE `Provides` field is 
 
 ### Specification Decomposition Methodology
 
-Drydock's optimized decomposition methodology targets web applications. Each service that provides a web
-route is a feature specification file. Each screen is a screen specification file. This structure
-populates `Provides`, `Consumes`, and `Depends On`.
+Decomposing to features is done by project type - For example a web applications decomposes by routes 
+with UI screens having one file for the Page and another for the web route. 
+This structure populates `Provides`, `Consumes`, and `Depends On`.
 
 Other applications can use different decomposition methods.
 
