@@ -179,6 +179,36 @@ def _render_blockers(blockers_text: str | None) -> list[str]:
     ]
 
 
+def _render_existing_spikes(questionnaires_dir: Path) -> list[str]:
+    """Inject existing spike questionnaires into the analyze prompt.
+
+    The LLM must not re-emit a spike whose filename already exists, and must treat
+    questions with non-empty ``answer`` fields as settled decisions.
+    """
+    if not questionnaires_dir.is_dir():
+        return []
+    paths = sorted(questionnaires_dir.glob("spike-*.json"))
+    if not paths:
+        return []
+    parts = [
+        "## Existing spike questionnaires",
+        "",
+        "These were created by prior analyze runs and live in the target QuarterDeck.",
+        "Rules:",
+        "- Do not emit a spike block whose filename already appears here.",
+        "- Questions with a non-empty `answer` field are settled — do not re-raise them.",
+        "- Generate new spike-*.json blocks only for genuinely new open questions.",
+        "",
+    ]
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        parts += [f"### {path.name}", "", "```json", json.dumps(data, indent=2), "```", ""]
+    return parts
+
+
 def _render_typed_spec(blueprint_dir: Path) -> list[str]:
     # The Rigging catalog (stack-option filenames, no content) is analyze scaffolding that
     # reads immediately before the imported sources it contextualizes.
@@ -211,6 +241,7 @@ def _assemble_prompt(
     blueprint_dir: Path,
     today: str,
     *,
+    questionnaires_dir: Path | None = None,
     compass_exists: bool,
     feedback_text: str | None = None,
     blockers_text: str | None = None,
@@ -233,6 +264,7 @@ def _assemble_prompt(
     renderers: dict[str, Callable[[], list[str]]] = {
         "ANALYSIS_COMPASS.md": lambda: _render_feedback(feedback_text),
         "BLOCKERS.md": lambda: _render_blockers(blockers_text),
+        "EXISTING_SPIKES": lambda: _render_existing_spikes(questionnaires_dir) if questionnaires_dir else [],
         "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
     }
     parts += render_inputs(input_tokens, renderers)
@@ -398,6 +430,7 @@ def analyze(
         prompt.body,
         blueprint_dir,
         today,
+        questionnaires_dir=questionnaires_dir,
         compass_exists=compass_exists,
         feedback_text=feedback_for_prompt,
         blockers_text=blockers_text,
@@ -479,6 +512,8 @@ def analyze(
     spike_paths: list[Path] = []
     for name, data in spikes.items():
         spike_path = questionnaires_dir / name
+        if spike_path.exists():
+            continue  # never overwrite an existing questionnaire; answers must not be destroyed
         spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         spike_paths.append(spike_path)
 

@@ -5,7 +5,7 @@ version: 20260616 V7
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and open questions, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
-inputs: COMPASS.md, ANALYSIS_COMPASS.md, BLOCKERS.md, TYPED_SPEC
+inputs: COMPASS.md, ANALYSIS_COMPASS.md, BLOCKERS.md, EXISTING_SPIKES, TYPED_SPEC
 output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), spike-<slug>.json (variable — one per open question)
 ---
 

@@ -59,6 +59,7 @@ class TestInputTokens:
             "COMPASS.md",
             "ANALYSIS_COMPASS.md",
             "BLOCKERS.md",
+            "EXISTING_SPIKES",
             "TYPED_SPEC",
         )
 
