@@ -49,15 +49,11 @@ composed of **Typed Specification Files** with prescribed roles. `drydock plan` 
 imported specifications into Blueprints ready for execution.  `drydock plan` creates a **Manifest** and defines
 your typed specification files into a simple graph database suited for **context optimized builds**.  
 
-Context management is the KEY to reproducable specification driven builds.  `drydock build` uses a dependency graph
-deliver working software using a use context-size-aware chunking and stacking strategy that ensures the work is 
-done accurately.  `drydock build` compute the best path to build your software.
+Context management is the KEY to reproducable specification driven builds.  `drydock build` uses a **dependency graph** to deliver working software using a use context-size-aware chunking and stacking strategy that ensures the work is done accurately.  `drydock build` compute the best path to build your software.
 
-Enterprise rules are injected using the Rigging.  Enterprise branding and stack rules use the concept Builder / User.
-Feature builders need the whole specification to implement.  Feature users do not. drydock dupports markdown compaction
-so feature users recieve a compacted minimal markdown explaining how to use the feature but not what it does or why.  
+Enterprise rules are injected using the Rigging.  **Enterprise branding and stack rules** use the concept Builder / User.  Feature builders need the whole specification to implement.  Feature users use markdown compaction to recieve only how to use the feature.  They do not need to know what it does or why.  
 
-The loop phase lets the Commander update and iterate the application while preserving the specification as the source of truth.
+The loop phase lets the Commander **update and iterate** the application while preserving the specification as the source of truth.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
