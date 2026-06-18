@@ -520,9 +520,8 @@ def test_expand_sources_skips_files_covered_by_explicit_items(tmp_path):
 
 def test_archive_and_unarchive_item(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
-    db_file = tmp_path / "state.sqlite"
 
-    monkeypatch.setattr(quarterdeck, "db_path", lambda: db_file)
+    monkeypatch.setattr(quarterdeck, "_SESSION_ARCHIVED", set())
     monkeypatch.setattr(
         quarterdeck,
         "CONFIG",
@@ -546,15 +545,11 @@ def test_archive_and_unarchive_item(tmp_path, monkeypatch):
 
     result = quarterdeck.api_archive_item("my_doc")
     assert result["ok"] is True
-
-    archived = quarterdeck._archived_item_ids()
-    assert "my_doc" in archived
+    assert "my_doc" in quarterdeck._SESSION_ARCHIVED
 
     result = quarterdeck.api_unarchive_item("my_doc")
     assert result["ok"] is True
-
-    archived = quarterdeck._archived_item_ids()
-    assert "my_doc" not in archived
+    assert "my_doc" not in quarterdeck._SESSION_ARCHIVED
 
 
 def test_archive_blocked_for_pinned_section(monkeypatch):

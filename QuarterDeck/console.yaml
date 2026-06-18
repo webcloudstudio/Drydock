@@ -1,7 +1,6 @@
 console:
   name: Drydock QuarterDeck
   default_item: commanders_view
-  state_db: data/console_state.sqlite
 
 project:
   id: drydock

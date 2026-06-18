@@ -28,8 +28,9 @@ console.yaml also accepts:
   overrides: list of {match: <path-relative-to-project-root>, <field overrides>} applied
              to source-generated items before they are added.
 
-Archive/unarchive (POST /api/item/{id}/archive|unarchive): SQLite-backed toggle that
-moves items to the Archive section. Items in pinned sections cannot be archived.
+Archive/unarchive (POST /api/item/{id}/archive|unarchive): for questionnaire items the
+archive flag is written directly into the questionnaire JSON file; for all other item types
+the flag is session-scoped (resets on restart). Items in pinned sections cannot be archived.
 
 Tickets (the kanban's work items) live in a separate JSON file the framework writes;
 the QuarterDeck renders them read-only. Contract: QuarterDeck/README.md
@@ -41,7 +42,6 @@ import html
 import json
 import os
 import re
-import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -297,7 +297,6 @@ def nav_model() -> list[dict[str, Any]]:
     Archived items (from non-pinned sections) are transparently moved to the
     archive section; pinned-section items are immune to archiving.
     """
-    archived_ids = _archived_item_ids()
     config_sections = CONFIG.get("sections", [])
     config_map = {s["id"]: s for s in config_sections}
     pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
@@ -308,8 +307,7 @@ def nav_model() -> list[dict[str, Any]]:
         if not _item_file_exists(item):
             continue
         home_sid = item.get("section", "project_pages")
-        iid = item.get("id")
-        if iid in archived_ids and home_sid not in pinned_sids:
+        if _is_item_archived(item) and home_sid not in pinned_sids:
             sid = "archive"
         elif item_pending(item):
             sid = "actions"
@@ -835,11 +833,10 @@ def _ticket_card(item_id: str, t: dict[str, Any]) -> str:
     chip = f"<span class='parent-chip'>↳ {html.escape(parent)}</span>" if parent else ""
     blocked_cls = " blocked" if t.get("blocked") else ""
     badges = _ticket_badges(t)
-    ac_chip = _ac_progress(item_id, t)
     return (
         f"<div class='ticket-card{blocked_cls}' onclick=\"loadTicket('{html.escape(item_id)}','{tid}')\">"
         f"<strong>{html.escape(t['title'])}</strong>"
-        f"<div class='ticket-meta'><code>{tid}</code>{chip}{ac_chip}</div>"
+        f"<div class='ticket-meta'><code>{tid}</code>{chip}</div>"
         f"{f'<div class=ticket-badges>{badges}</div>' if badges else ''}</div>"
     )
 
@@ -919,10 +916,6 @@ def render_ticket_detail(item: dict[str, Any], ticket_id: str) -> str:
                 lis += f"<li class='subtle'>{html.escape(lid)} (missing)</li>"
         parts.append(f"<div><strong>Related</strong><ul class='link-list'>{lis}</ul></div>")
 
-    ac_html = _render_ac(item["id"], t)
-    if ac_html:
-        parts.append(ac_html)
-
     if t.get("body"):
         parts.append("<hr>" + _md(t["body"]))
     return f"<div class='ticket-detail-inner'>{''.join(parts)}</div>"
@@ -976,42 +969,43 @@ def render_item(item: dict[str, Any]) -> str:
 # ── State store (questionnaire answers) ─────────────────────────────────────────
 
 
-def db_path() -> Path:
-    path = (
-        BASE_DIR / require_config()["console"].get("state_db", "data/console_state.sqlite")
-    ).resolve()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+_SESSION_ARCHIVED: set[str] = set()  # session-scoped archive state for non-questionnaire items
 
 
-def connect_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path())
-    conn.execute(
-        """create table if not exists document_state (
-             key text primary key,
-             document_id text not null,
-             state text not null,
-             payload_json text not null,
-             updated_at text not null
-           )"""
+def _q_path_for(item_id: str) -> Path | None:
+    """Return the resolved path of a questionnaire JSON file, or None."""
+    item = next(
+        (i for i in items() if i.get("id") == item_id and i.get("type") == "questionnaire"), None
     )
-    conn.execute(
-        """create table if not exists archived_items (
-             item_id text primary key,
-             archived_at text not null
-           )"""
-    )
-    return conn
+    if not item or "path" not in item:
+        return None
+    p = (BASE_DIR / item["path"]).resolve()
+    return p if p.exists() else None
 
 
-def _archived_item_ids() -> set[str]:
-    """Return item IDs that have been moved to the archive via the UI."""
+def _is_item_archived(item: dict[str, Any]) -> bool:
+    """Return True when this item has been archived via the UI."""
+    if item.get("type") == "questionnaire" and "path" in item:
+        try:
+            p = (BASE_DIR / item["path"]).resolve()
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return bool(data.get("archived", False))
+        except Exception:
+            return False
+    return item.get("id", "") in _SESSION_ARCHIVED
+
+
+def _set_q_archived(item_id: str, archived: bool) -> None:
+    """Write the ``archived`` flag into a questionnaire JSON file."""
+    p = _q_path_for(item_id)
+    if not p:
+        return
     try:
-        with connect_db() as conn:
-            rows = conn.execute("select item_id from archived_items").fetchall()
-        return {row[0] for row in rows}
-    except Exception:
-        return set()
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    data["archived"] = archived
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def item_pending(item: dict[str, Any]) -> bool:
@@ -1031,23 +1025,7 @@ def item_pending(item: dict[str, Any]) -> bool:
             return str(data.get("state", "open")) not in _DONE_STATES
         except Exception:
             return True
-    if item.get("review"):
-        try:
-            st = read_state(f"decision.{item['id']}")
-            return st.get("state", "open") != "approved"
-        except Exception:
-            return True
     return False
-
-
-def read_state(key: str) -> dict[str, Any]:
-    with connect_db() as conn:
-        row = conn.execute(
-            "select state, payload_json from document_state where key = ?", (key,)
-        ).fetchone()
-    if not row:
-        return {"state": "open", "payload": {}}
-    return {"state": row[0], "payload": json.loads(row[1])}
 
 
 # ── Page header (title row + action buttons + divider) ──────────────────────────
@@ -1076,18 +1054,6 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
         btns.append(
             f"<button class='ph-btn ph-edit' onclick=\"editDoc('{iid}')\">Edit</button>"
         )
-    if item.get("review") and t != "questionnaire":
-        try:
-            cur = read_state(f"decision.{item['id']}").get("state", "open")
-        except Exception:
-            cur = "open"
-        if cur == "approved":
-            btns.append("<span class='ph-approved'>✓ Approved</span>")
-        else:
-            btns.append(
-                f"<button class='ph-btn ph-approve'"
-                f" onclick=\"submitDecision('{iid}','approved')\">Approve</button>"
-            )
 
     acts_html = f"<div class='ph-actions'>{''.join(btns)}</div>" if btns else ""
     body = _H1_RE.sub("", body, count=1)
@@ -1100,50 +1066,6 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
         + body
     )
 
-
-# ── Acceptance criteria (per-ticket checklist; verification state in SQLite) ─────
-
-_AC_ICON = {"verified": "✓", "failed": "✗"}
-_AC_CLASS = {"verified": "ac-verified", "failed": "ac-failed"}
-
-
-def _ac_state(item_id: str, ticket_id: str) -> dict[str, str]:
-    return read_state(f"ac.{item_id}.{ticket_id}")["payload"]
-
-
-def _ac_progress(item_id: str, t: dict[str, Any]) -> str:
-    acs = t.get("ac") or []
-    if not acs:
-        return ""
-    st = _ac_state(item_id, t["id"])
-    verified = sum(1 for i in range(len(acs)) if st.get(str(i)) == "verified")
-    failed = any(st.get(str(i)) == "failed" for i in range(len(acs)))
-    cls = "ac-chip-fail" if failed else ("ac-chip-ok" if verified == len(acs) else "")
-    return f"<span class='ac-chip {cls}'>AC {verified}/{len(acs)}</span>"
-
-
-def _render_ac(item_id: str, t: dict[str, Any]) -> str:
-    acs = t.get("ac") or []
-    if not acs:
-        return ""
-    st = _ac_state(item_id, t["id"])
-    iid, tid = html.escape(item_id), html.escape(t["id"])
-    rows = []
-    for i, text in enumerate(acs):
-        s = st.get(str(i), "open")
-        icon = _AC_ICON.get(s, "○")
-        rows.append(
-            f"<li class='ac-row {_AC_CLASS.get(s, 'ac-open')}'>"
-            f"<span class='ac-icon'>{icon}</span><span class='ac-text'>{html.escape(str(text))}</span>"
-            f"<span class='ac-actions'>"
-            f"<button onclick=\"setAc('{iid}','{tid}',{i},'verified')\">Verify</button>"
-            f"<button onclick=\"setAc('{iid}','{tid}',{i},'failed')\">Fail</button>"
-            f"<button onclick=\"setAc('{iid}','{tid}',{i},'open')\">Reset</button>"
-            f"</span></li>"
-        )
-    return (
-        f"<div><strong>Acceptance criteria</strong><ul class='ac-list'>{''.join(rows)}</ul></div>"
-    )
 
 
 def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> None:
@@ -1279,62 +1201,41 @@ def api_archive_item(item_id: str) -> dict[str, Any]:
     pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
     if item.get("section") in pinned_sids:
         raise HTTPException(status_code=400, detail="Items in pinned sections cannot be archived.")
-    with connect_db() as conn:
-        conn.execute(
-            "insert or ignore into archived_items (item_id, archived_at) values (?, ?)",
-            (item_id, datetime.now(timezone.utc).isoformat()),  # noqa: UP017
-        )
+    if item.get("type") == "questionnaire":
+        _set_q_archived(item_id, True)
+    else:
+        _SESSION_ARCHIVED.add(item_id)
     return {"ok": True, "item_id": item_id}
 
 
 @app.post("/api/item/{item_id}/unarchive")
 def api_unarchive_item(item_id: str) -> dict[str, Any]:
-    find_item(item_id)
-    with connect_db() as conn:
-        conn.execute("delete from archived_items where item_id = ?", (item_id,))
+    item = find_item(item_id)
+    if item.get("type") == "questionnaire":
+        _set_q_archived(item_id, False)
+    else:
+        _SESSION_ARCHIVED.discard(item_id)
     return {"ok": True, "item_id": item_id}
-
-
-@app.get("/api/state/{key}")
-def api_get_state(key: str) -> dict[str, Any]:
-    with connect_db() as conn:
-        row = conn.execute(
-            "select key, document_id, state, payload_json, updated_at from document_state where key = ?",
-            (key,),
-        ).fetchone()
-    if not row:
-        return {"key": key, "state": "open", "payload": {}, "updated_at": None}
-    return {
-        "key": row[0],
-        "document_id": row[1],
-        "state": row[2],
-        "payload": json.loads(row[3]),
-        "updated_at": row[4],
-    }
 
 
 @app.post("/api/state/{key}")
 def api_set_state(key: str, update: StateUpdate) -> dict[str, Any]:
-    now = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
-    with connect_db() as conn:
-        conn.execute(
-            """insert into document_state (key, document_id, state, payload_json, updated_at)
-               values (?, ?, ?, ?, ?)
-               on conflict(key) do update set
-                 document_id = excluded.document_id,
-                 state = excluded.state,
-                 payload_json = excluded.payload_json,
-                 updated_at = excluded.updated_at""",
-            (
-                key,
-                update.document_id,
-                update.state,
-                json.dumps(update.payload, sort_keys=True),
-                now,
-            ),
-        )
+    if not key.startswith("questionnaire."):
+        raise HTTPException(status_code=400, detail=f"Unsupported state key: {key!r}")
     _writeback_questionnaire(key, update.state, update.payload)
-    return api_get_state(key)
+    q_id = key[len("questionnaire."):]
+    item = next(
+        (i for i in items() if i.get("id") == q_id and i.get("type") == "questionnaire"), None
+    )
+    state, answered_at = update.state, None
+    if item and "path" in item:
+        try:
+            data = json.loads((BASE_DIR / item["path"]).resolve().read_text(encoding="utf-8"))
+            state = data.get("state", update.state)
+            answered_at = data.get("answered_at")
+        except Exception:
+            pass
+    return {"key": key, "state": state, "updated_at": answered_at}
 
 
 @app.get("/health")
@@ -1457,19 +1358,7 @@ _STYLE = """
   .ph-btn { padding:5px 14px; border-radius:3px; cursor:pointer; font-size:13px; font-weight:600; border:1px solid transparent; }
   .ph-edit { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
   .ph-edit:hover { background:#e2e8f0; }
-  .ph-approve { background:#16a34a; color:#fff; border-color:#15803d; }
-  .ph-approve:hover { opacity:.9; }
-  .ph-approved { font-size:13px; font-weight:600; color:#16a34a; }
   .ph-divider { border:none; border-top:1px solid #e2e8f0; margin:0 0 20px; }
-  .ac-list { list-style:none; padding:0; margin:6px 0; }
-  .ac-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
-  .ac-icon { font-weight:700; width:16px; text-align:center; }
-  .ac-verified .ac-icon { color:#16a34a; } .ac-failed .ac-icon { color:#dc2626; } .ac-open .ac-icon { color:#94a3b8; }
-  .ac-text { flex:1; } .ac-failed .ac-text { color:#991b1b; }
-  .ac-actions button { font-size:11px; padding:3px 8px; margin-left:4px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; }
-  .ac-actions button:hover { background:#eef2f7; }
-  .ac-chip { font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; background:#e2e8f0; color:#475569; }
-  .ac-chip-ok { background:#dcfce7; color:#166534; } .ac-chip-fail { background:#fee2e2; color:#991b1b; }
   .nav-status { display:inline-flex; width:18px; height:18px; border-radius:3px; align-items:center;
                justify-content:center; font-weight:900; font-size:11px; flex:none; margin-right:6px; }
   .ns-pending { background:#fee2e2; color:#dc2626; border:1.5px solid #fca5a5; }
@@ -1621,14 +1510,6 @@ def index() -> str:
       e.querySelector('.doc-edit').style.display = 'block';
     }}
     function cancelDoc(itemId) {{ loadDoc(itemId); }}
-    async function submitDecision(itemId, state) {{
-      const fb = document.getElementById('fb-' + itemId);
-      const r = await fetch(`/api/state/decision.${{itemId}}`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{document_id: itemId, state, payload: {{feedback: fb ? fb.value : ''}}}})
-      }});
-      if (r.ok) loadDoc(itemId); else alert('Could not record decision.');
-    }}
     async function submitPlanDecision(itemId, decision) {{
       const r = await fetch(`/api/plan/${{itemId}}/decision`, {{
         method: 'POST', headers: {{'Content-Type': 'application/json'}},
@@ -1639,18 +1520,6 @@ def index() -> str:
         const d = await r.json().catch(() => ({{}}));
         alert('Could not decide plan: ' + (d.detail || r.status));
       }}
-    }}
-    async function setAc(itemId, ticketId, index, status) {{
-      const key = `ac.${{itemId}}.${{ticketId}}`;
-      const cur = await (await fetch(`/api/state/${{key}}`)).json();
-      const payload = cur.payload || {{}};
-      payload[index] = status;
-      await fetch(`/api/state/${{key}}`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{document_id: ticketId, state: 'tracked', payload}})
-      }});
-      await loadDoc(itemId);        // refresh the board (AC chip on the card)
-      loadTicket(itemId, ticketId); // reopen the detail with updated checks
     }}
     async function saveDoc(itemId) {{
       const e = _editable(itemId); if (!e) return;
