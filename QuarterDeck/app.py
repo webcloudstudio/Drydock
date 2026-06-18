@@ -1417,9 +1417,6 @@ _STYLE = """
                   border-radius:4px; margin:8px 0; font-size:13px; }
   .link-list { margin:4px 0 0; padding-left:18px; }
   .link-btn { background:none; border:none; color:#2563eb; cursor:pointer; padding:0; font-size:13px; text-decoration:underline; }
-  .edit-toolbar { display:flex; align-items:center; gap:16px; margin-bottom:6px; }
-  .edit-filename { font-size:13px; color:#64748b; }
-  .edit-divider { border:none; border-top:1px solid #d7dde5; margin:0 0 14px; }
   .edit-btn, .save-btn, .cancel-btn { padding:6px 12px; border-radius:3px; cursor:pointer; font-size:13px; border:1px solid #cbd5e1; }
   .edit-btn { background:#fff; color:#111827; }
   .edit-btn:hover { background:#eef2f7; }
@@ -1591,7 +1588,6 @@ def index() -> str:
     function editDoc(itemId) {{
       const e = _editable(itemId); if (!e) return;
       e.querySelector('.doc-view').style.display = 'none';
-      e.querySelector('.edit-toolbar').style.display = 'none';
       e.querySelector('.doc-edit').style.display = 'block';
     }}
     function cancelDoc(itemId) {{ loadDoc(itemId); }}
