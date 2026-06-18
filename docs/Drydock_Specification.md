@@ -226,10 +226,12 @@ markdown artifacts using agile. It prepares the following files for Commander re
 
 **Input files**
 
-- `<Target>/blueprint/sources/*` — imported source material; read-only planning context
-- `<Target>/COMPASS.md` — project intent, when present
-- `<Target>/ANALYSIS_FEEDBACK.md` — persistent standing-directive feedback, re-injected every run
-- `<Target>/BLOCKERS.md`, `<Target>/QuarterDeck/questionnaires/*.json` — prior Commander responses, consumed on re-run
+| Artifact | Location | Purpose |
+|---|---|---|
+| `sources/*` | `<Target>/blueprint/` | Imported source material; read-only planning context |
+| `COMPASS.md` | Target root | Project intent, when present |
+| `ANALYSIS_FEEDBACK.md` | Target root | Persistent standing-directive feedback, re-injected every run |
+| `BLOCKERS.md`, `questionnaires/*.json` | Target root; `<Target>/QuarterDeck/` | Prior Commander responses, consumed on re-run |
 
 **Output files**
 
@@ -298,17 +300,21 @@ the task instructions.  Similar tasks are grouped together to save context.
 
 **Input files**
 
-- `<Target>/blueprint/sources/*` — imported source files, re-read and reformatted into Typed Specifications
-- `<Target>/ANALYSIS.md` — the reviewed analysis that drives decomposition
-- `<Target>/COMPASS.md` — project intent
-- `<Target>/QuarterDeck/questionnaires/*.json` — resolved planning decisions
+| Artifact | Location | Purpose |
+|---|---|---|
+| `sources/*` | `<Target>/blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
+| `ANALYSIS.md` | Target root | The reviewed analysis that drives decomposition |
+| `COMPASS.md` | Target root | Project intent |
+| `questionnaires/*.json` | `<Target>/QuarterDeck/` | Resolved planning decisions |
 
 **Output files**
 
-- `<Target>/blueprint/` Typed Specification files — `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-{Name}.md`, `SCREEN-{Name}.md`, `UI-GENERAL.md`
-- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` — internal inventory of inputs and planning groups
-- `<Target>/MANIFEST.md` — the executable build plan
-- `<Target>/SOUNDINGS.md` — acceptance gates projected by stable ID
+| Artifact | Location | Purpose |
+|---|---|---|
+| `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-{Name}.md`, `SCREEN-{Name}.md`, `UI-GENERAL.md` | `<Target>/blueprint/` | Typed Specification files |
+| `BUILD_PLAN_COMPASS.md` | `<Target>/blueprint/` | Internal inventory of inputs and planning groups |
+| `MANIFEST.md` | Target root | The executable build plan |
+| `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
 
 ### drydock run quarterdeck — Plan Review
 
