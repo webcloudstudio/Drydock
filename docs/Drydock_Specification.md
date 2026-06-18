@@ -17,21 +17,21 @@ sail_lead:
   - A Ship's Log preserves material decisions and milestones
   - The Drydock build process attempts to be simple and obvious
 ideas:
-  - title: **S** — Setup and Install Drydock
+  - title: "**S** — Setup and Install Drydock"
     sub_list:
       - pip install
       - drydock config
       - drydock init
-  - title: **A** — Agile Analyze 
+  - title: "**A** — Agile Analyze"
     sub_list:
       - drydock import - ingest your specifications and notes for analysis
       - drydock analyze - analyze projects using Agile Decomposition
       - drydock plan - convert your specifications into Blueprints
-  - title: **I** — Implement
+  - title: "**I** — Implement"
     sub_list:
       - drydock build - implement your software plan in managed chunks using the Manifest
       - drydock rigging - manage your enterprise branding and build rules
-  - title: **L** — Loop
+  - title: "**L** — Loop"
     sub_list:
       - drydock refit - our incremental build process - Blueprints and Code consistency
       - drydock document - create consistent documentation from your specification
