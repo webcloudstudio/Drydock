@@ -5,7 +5,7 @@ version: 20260616 V7
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and open questions, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
-inputs: COMPASS.md, ANALYSIS_FEEDBACK.md, BLOCKERS.md, TYPED_SPEC
+inputs: COMPASS.md, ANALYSIS_COMPASS.md, BLOCKERS.md, TYPED_SPEC
 output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), spike-<slug>.json (variable — one per open question)
 ---
 
@@ -67,7 +67,7 @@ the sources have already decided, nor for anything you can derive yourself.
 ## Inputs
 
 - **Imported source files** — one or more documents from `blueprint/sources/`, injected below the job block.
-- **Analysis feedback (standing directive)** — `ANALYSIS_FEEDBACK.md`, persistent human direction
+- **Analysis feedback (standing directive)** — `ANALYSIS_COMPASS.md`, persistent human direction
   injected near the top of this prompt when present. Treat it as authoritative steering for this
   run; it overrides default decomposition choices where it speaks.
 - **Prior blocker answers** — any prior `BLOCKERS.md` responses, injected if present. Treat settled
@@ -105,7 +105,7 @@ questions distinguish the two but do not gate.
 
 ## Completeness Checklist
 
-Run this checklist over the **imported sources** (and the `ANALYSIS_FEEDBACK.md` standing directive,
+Run this checklist over the **imported sources** (and the `ANALYSIS_COMPASS.md` standing directive,
 if injected). There are no typed spec files at analyze time — judge each item solely against what the
 sources state. Each unmet item → one question (unless the team cannot proceed without it → blocker
 instead):
@@ -128,7 +128,7 @@ step's output and **emits** the named result. Do not re-derive an artifact indep
 prior step already produced its input.
 
 **1. Review the sources.**
-- *Consumes:* imported sources + `ANALYSIS_FEEDBACK.md` direction + prior `BLOCKERS.md` answers.
+- *Consumes:* imported sources + `ANALYSIS_COMPASS.md` direction + prior `BLOCKERS.md` answers.
 - *Emits:* working notes — what is clear, what is missing, what must be answered.
 
 **2. Detect project type.**
@@ -363,7 +363,7 @@ type, always ending with `"other"`. Never open the per-technology files — list
   evidence, smoke checks, build gates, test sequences — these are synthesized outputs, not spikes).
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
-- Never re-ask a question already settled by `ANALYSIS_FEEDBACK.md` or a prior `BLOCKERS.md`.
+- Never re-ask a question already settled by `ANALYSIS_COMPASS.md` or a prior `BLOCKERS.md`.
 - Stack questionnaire options are the injected catalog filenames, filtered to the detected project
   type, plus `"other"`. Never open the per-technology stack files — list their names only.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with

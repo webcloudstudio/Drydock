@@ -5,7 +5,7 @@ version: 20260616 V3
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, MANIFEST_FEEDBACK.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+inputs: COMPASS.md, MANIFEST_COMPASS.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: Blueprint specification files, BUILD_PLAN_COMPASS.md, MANIFEST.md
 ---
 
@@ -60,7 +60,7 @@ into the smallest durable spec structure that preserves correctness and clear ow
 The job block injects the following. `SYSTEM_SHAPE` and `ANALYSIS_QUALITY` are stated directly in
 the job block; the rest are fenced sections.
 
-- **Manifest feedback (standing directive)** — `MANIFEST_FEEDBACK.md`, persistent human direction
+- **Manifest feedback (standing directive)** — `MANIFEST_COMPASS.md`, persistent human direction
   injected near the top of this prompt when present. Treat it as authoritative steering for this
   run; it overrides default decomposition and ordering choices where it speaks.
 - **`ANALYSIS.md`** — the reviewed plan: quality signal, the **story list (treat as the file
@@ -89,7 +89,7 @@ the required output block contract described below.
 Execute in order. Do not skip a step.
 
 **1. Review the planning basis.**
-- *Consumes:* imported sources, `ANALYSIS.md`, `MANIFEST_FEEDBACK.md` direction, answered spikes.
+- *Consumes:* imported sources, `ANALYSIS.md`, `MANIFEST_COMPASS.md` direction, answered spikes.
 - *Emits:* working understanding of the project shape, stack, constraints, and unanswered items.
 
 **2. Confirm the decomposition shape.**

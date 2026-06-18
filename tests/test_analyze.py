@@ -438,7 +438,7 @@ class TestAssemblePrompt:
             "2026-06-14",
             compass_exists=False,
             feedback_text="Steer this way.",
-            input_tokens=("TYPED_SPEC", "ANALYSIS_FEEDBACK.md"),
+            input_tokens=("TYPED_SPEC", "ANALYSIS_COMPASS.md"),
         )
         assert result.index("Imported source files") < result.index(
             "Analysis feedback (standing directive)"

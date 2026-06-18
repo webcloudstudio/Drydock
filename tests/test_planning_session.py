@@ -263,7 +263,7 @@ def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
         feedback_text="Decompose by module.",
         input_tokens=(
             "COMPASS.md",
-            "MANIFEST_FEEDBACK.md",
+            "MANIFEST_COMPASS.md",
             "ANALYSIS.md",
             "SOUNDINGS.md",
             "BLOCKERS.md",

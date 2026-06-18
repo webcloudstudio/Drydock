@@ -5,7 +5,7 @@
 | Version | 2026-06-16 V5 |
 | Route | plan create |
 | Status | Working notes — not canonical specification |
-| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. V5 adds the MANIFEST_FEEDBACK.md standing directive, retires BUILD_CONFIGURATION.md, makes plan create a single-directional clean regenerate (drops state merge), and finalizes the injection stack. |
+| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. V5 adds the MANIFEST_COMPASS.md standing directive, retires BUILD_CONFIGURATION.md, makes plan create a single-directional clean regenerate (drops state merge), and finalizes the injection stack. |
 | Pending spec | 10 items (6 recommended, 4 approved) | 10 items || Pending impl | 2 unimplemented sections (story-too-big split; auto-batch — both blocked) | 3 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
@@ -94,7 +94,7 @@ runs, so a fatal failure currently leaves authored specs but no console update �
 **Blocked / not built (item B, 2026-06-16):** the automatic batching algorithm depends on the
 `MANUAL_BUILD_ORDER` flag, which lived in the now-retired `BUILD_CONFIGURATION.md`. With that file
 gone, the manual/auto toggle has no persistence home, so the auto-batcher cannot be wired as
-specified. Decide a new home for the flag (e.g. `MANIFEST_FEEDBACK.md` directive, `METADATA.md`
+specified. Decide a new home for the flag (e.g. `MANIFEST_COMPASS.md` directive, `METADATA.md`
 field, or always-auto with no toggle) before building this. Until then `plan create` keeps the
 LLM-seeded Compass ordering.
 
@@ -174,11 +174,11 @@ These belong to `build`; the graph must support them:
 Companion to notes_analyze.md §Feedback Loop & Injection Stack. Applies the standing-directive
 methodology to `plan create` and finalizes its prompt injection stack.
 
-### MANIFEST_FEEDBACK.md (standing directive)
+### MANIFEST_COMPASS.md (standing directive)
 `2026-06-16` · `spec:approved` · `impl:implemented`
 
-`plan create` exports a persistent `<target>/MANIFEST_FEEDBACK.md`, re-injected into the
-plan-create prompt on every run. Same contract as ANALYSIS_FEEDBACK.md: created if absent with
+`plan create` exports a persistent `<target>/MANIFEST_COMPASS.md`, re-injected into the
+plan-create prompt on every run. Same contract as ANALYSIS_COMPASS.md: created if absent with
 default body `Enter Direction for the Manifest Run`, never overwritten by the command, top-of-file
 note that it is used on every `plan create` run, edited/submitted via QuarterDeck, injected near
 the top (after the job block). See notes_analyze.md §Standing-Directive Feedback File.
@@ -189,7 +189,7 @@ the top (after the job block). See notes_analyze.md §Standing-Directive Feedbac
 Drop `BUILD_CONFIGURATION.md` injection from `planning_session.py` and scrub `prompts/plan_create.md`.
 **Supersedes** the BUILD_CONFIGURATION.md inputs in §Plan Create CLI / Inputs / Outputs and the
 `MANUAL_BUILD_ORDER` persistence in §Order and Batch (if that feature is later built, its flag
-needs a new home; out of scope here). PO direction now comes from MANIFEST_FEEDBACK.md and answered
+needs a new home; out of scope here). PO direction now comes from MANIFEST_COMPASS.md and answered
 spikes.
 
 ### Single-directional regenerate — no state merge
@@ -206,7 +206,7 @@ so attempting state/id consistency across re-plans is not worth it. **Supersedes
 
 1. `prompts/plan_create.md` — prompt body
 2. job block (inline) — `TARGET`, `BLUEPRINT_PATH`, `DATE`, `SYSTEM_SHAPE`, `ANALYSIS_QUALITY`
-3. `<target>/MANIFEST_FEEDBACK.md` — standing directive, if present
+3. `<target>/MANIFEST_COMPASS.md` — standing directive, if present
 4. `<target>/ANALYSIS.md`
 5. `<target>/SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` (if present)
 6. answered `QuarterDeck/questionnaires/spike-*.json`

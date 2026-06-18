@@ -28,7 +28,7 @@ PROMPT_NAME = "analyze"
 
 _SOURCES_SUBDIR = "sources"
 
-_FEEDBACK_FILENAME = "ANALYSIS_FEEDBACK.md"
+_FEEDBACK_FILENAME = "ANALYSIS_COMPASS.md"
 _FEEDBACK_DEFAULT = (
     "# Analysis Feedback\n\n"
     "These instructions are injected into every `drydock analyze` run for this target. "
@@ -95,7 +95,7 @@ def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
 
 
 def ensure_feedback_file(target_dir: Path) -> str:
-    """Create ANALYSIS_FEEDBACK.md with the default prompt if absent; never overwrite.
+    """Create ANALYSIS_COMPASS.md with the default prompt if absent; never overwrite.
 
     The feedback file is a persistent, human-owned standing directive re-injected into every
     ``drydock analyze`` run. Returns the file's current text.
@@ -231,7 +231,7 @@ def _assemble_prompt(
     # Injection order is the prompt's inputs: row. COMPASS.md is the COMPASS_EXISTS flag above
     # (no content section); TYPED_SPEC carries the Rigging catalog plus the imported sources.
     renderers: dict[str, Callable[[], list[str]]] = {
-        "ANALYSIS_FEEDBACK.md": lambda: _render_feedback(feedback_text),
+        "ANALYSIS_COMPASS.md": lambda: _render_feedback(feedback_text),
         "BLOCKERS.md": lambda: _render_blockers(blockers_text),
         "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
     }

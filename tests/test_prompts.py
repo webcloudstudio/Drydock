@@ -57,7 +57,7 @@ class TestInputTokens:
         tokens = load_prompt("analyze").input_tokens
         assert tokens == (
             "COMPASS.md",
-            "ANALYSIS_FEEDBACK.md",
+            "ANALYSIS_COMPASS.md",
             "BLOCKERS.md",
             "TYPED_SPEC",
         )
@@ -86,7 +86,7 @@ class TestInputTokens:
         assert tokens[0] == "COMPASS.md"
         assert tokens == (
             "COMPASS.md",
-            "MANIFEST_FEEDBACK.md",
+            "MANIFEST_COMPASS.md",
             "ANALYSIS.md",
             "SOUNDINGS.md",
             "BLOCKERS.md",

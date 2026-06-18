@@ -42,7 +42,7 @@ _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 # Hard cap on story count; plan create refuses to emit an over-decomposed plan.
 _STORY_CAP = 100
 
-_FEEDBACK_FILENAME = "MANIFEST_FEEDBACK.md"
+_FEEDBACK_FILENAME = "MANIFEST_COMPASS.md"
 _FEEDBACK_DEFAULT = (
     "# Manifest Feedback\n\n"
     "These instructions are injected into every `drydock plan create` run for this target. "
@@ -119,7 +119,7 @@ def _answered_spike(path: Path) -> dict | None:
 
 
 def ensure_feedback_file(target_dir: Path) -> str:
-    """Create MANIFEST_FEEDBACK.md with the default prompt if absent; never overwrite.
+    """Create MANIFEST_COMPASS.md with the default prompt if absent; never overwrite.
 
     A persistent, human-owned standing directive re-injected into every ``drydock plan create``
     run. Returns the file's current text.
@@ -223,7 +223,7 @@ def _assemble_prompt(
     # refuse-if-present gate for plan create, so it never exists when assembly runs.
     renderers: dict[str, Callable[[], list[str]]] = {
         "COMPASS.md": lambda: _fenced_if(target_dir / "COMPASS.md", "COMPASS.md"),
-        "MANIFEST_FEEDBACK.md": lambda: _render_feedback(feedback_text),
+        "MANIFEST_COMPASS.md": lambda: _render_feedback(feedback_text),
         "ANALYSIS.md": lambda: _fenced("ANALYSIS.md (the reviewed plan)", analysis_text),
         "SOUNDINGS.md": lambda: _fenced_if(target_dir / "SOUNDINGS.md", "SOUNDINGS.md"),
         "QUESTIONNAIRES": lambda: _render_answered_spikes(target_dir),

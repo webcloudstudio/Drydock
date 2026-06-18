@@ -226,7 +226,7 @@ markdown artifacts using agile. It prepares the following files for Commander re
 |---|---|---|
 | `sources/*` | `<Target>/blueprint/` | Imported source material; read-only planning context |
 | `COMPASS.md` | Target root | Project intent, when present |
-| `ANALYSIS_FEEDBACK.md` | Target root | Persistent standing-directive feedback, re-injected every run |
+| `ANALYSIS_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
 | `BLOCKERS.md`, `questionnaires/*.json` | Target root; `<Target>/QuarterDeck/` | Prior Commander responses, consumed on re-run |
 
 **Output files**
@@ -255,7 +255,7 @@ Commander's answers guide the LLM on the next run, and the cycle repeats until n
 
 #### Standing-Directive Feedback
 
-`<Target>/ANALYSIS_FEEDBACK.md` is a persistent, human-editable standing directive. The Commander
+`<Target>/ANALYSIS_COMPASS.md` is a persistent, human-editable standing directive. The Commander
 records durable guidance there — decomposition preferences, recurring corrections — and `drydock
 analyze` re-injects it on every run. Each Drydock command supports a standing-directive 
 feedback process using this convention.
@@ -519,12 +519,12 @@ artifact, which command produces it and which commands consume it.
 | Artifact | analyze | plan create | build | build score | refit |
 |---|---|---|---|---|---|
 | ANALYSIS.md | O | I | · | · | · |
-| ANALYSIS_FEEDBACK.md | I | · | · | · | · |
+| ANALYSIS_COMPASS.md | I | · | · | · | · |
 | BLOCKERS.md | O/I | X | · | · | · |
 | BUILD_PLAN_COMPASS.md | · | O | I | · | · |
 | COMPASS.md | O*/I | I | I | I | I |
 | MANIFEST.md | · | O | I | I | I |
-| MANIFEST_FEEDBACK.md | · | I | · | · | · |
+| MANIFEST_COMPASS.md | · | I | · | · | · |
 | SCORECARD.md | · | · | · | O | · |
 | SEA_TRIALS.md | O | · | · | · | · |
 | SOUNDINGS.md | O | O/I | O | I | · |
@@ -536,7 +536,7 @@ artifact, which command produces it and which commands consume it.
 `X` gates/blocks the command · `·` no relation · `O*` the
 command produces the artifact only when it is absent. 
 
-Human-authored feedback artifacts (`ANALYSIS_FEEDBACK.md`, `MANIFEST_FEEDBACK.md`, answered `BLOCKERS.md`) are promptes that guide future runs of the commands.  
+Human-authored feedback artifacts (`ANALYSIS_COMPASS.md`, `MANIFEST_COMPASS.md`, answered `BLOCKERS.md`) are promptes that guide future runs of the commands.  
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
@@ -550,12 +550,12 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── METADATA.md                   # identity: Blueprint name, code_root, status, stack
         ├── README.md                     # short human introduction to the project
         ├── ANALYSIS.md                   # Planning Session analysis: quality, stories, blockers, questions
-        ├── ANALYSIS_FEEDBACK.md
+        ├── ANALYSIS_COMPASS.md
         ├── BUILD_PLAN_COMPASS.md 
         ├── BLOCKERS.md 
         ├── COMPASS.md                    # product intent, constraints, success, guardrails
         ├── MANIFEST.md                   # the executable Manifest
-        ├── MANIFEST_FEEDBACK.md
+        ├── MANIFEST_COMPASS.md
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
@@ -617,7 +617,7 @@ not authored as specification files.
   - Created and updated: `drydock import <Target> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
 
-- **`ANALYSIS_FEEDBACK.md`** — Persistent standing directive for `drydock analyze`: durable
+- **`ANALYSIS_COMPASS.md`** — Persistent standing directive for `drydock analyze`: durable
   Commander guidance re-injected on every run. Lives at the Target root.
   - Created: `drydock analyze` (empty template on first run)
   - Updated: Product owner
