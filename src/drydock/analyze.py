@@ -30,7 +30,7 @@ _SOURCES_SUBDIR = "sources"
 
 _FEEDBACK_FILENAME = "ANALYSIS_COMPASS.md"
 _FEEDBACK_DEFAULT = (
-    "# Analysis Feedback\n\n"
+    "# Analysis Compass\n\n"
     "These instructions are injected into every `drydock analyze` run for this target. "
     "Edit this file to steer the analysis. It persists across runs and is never overwritten "
     "by Drydock.\n\n"

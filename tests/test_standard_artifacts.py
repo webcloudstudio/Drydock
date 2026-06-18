@@ -41,6 +41,19 @@ def test_render_console_declares_tabbed_analysis_item():
     assert analysis["order"] < items["sea_trials"]["order"]
 
 
+def test_render_console_labels_compass_feedback_files():
+    import yaml
+
+    config = render_console("Example")
+    parsed = yaml.safe_load(config)
+    items = {item["id"]: item for item in parsed["items"]}
+
+    assert items["analysis_feedback"]["label"] == "Analysis Compass"
+    assert items["analysis_feedback"]["path"] == "../ANALYSIS_COMPASS.md"
+    assert items["manifest_feedback"]["label"] == "Manifest Compass"
+    assert items["manifest_feedback"]["path"] == "../MANIFEST_COMPASS.md"
+
+
 def test_render_console_includes_spike_questionnaire_source(tmp_path):
     config = render_console("Example")
 

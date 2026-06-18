@@ -12,7 +12,16 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.planning_session import _answered_spike, _assemble_prompt, create_plan
+from drydock.planning_session import (
+    _answered_spike,
+    _assemble_prompt,
+    create_plan,
+    ensure_feedback_file,
+)
+
+
+def test_default_feedback_heading_is_manifest_compass(tmp_path):
+    assert ensure_feedback_file(tmp_path).startswith("# Manifest Compass\n\n")
 
 _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16

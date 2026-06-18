@@ -44,7 +44,7 @@ _STORY_CAP = 100
 
 _FEEDBACK_FILENAME = "MANIFEST_COMPASS.md"
 _FEEDBACK_DEFAULT = (
-    "# Manifest Feedback\n\n"
+    "# Manifest Compass\n\n"
     "These instructions are injected into every `drydock plan create` run for this target. "
     "Edit this file to steer plan creation. It persists across runs and is never overwritten "
     "by Drydock.\n\n"

@@ -17,12 +17,18 @@ from drydock.analyze import (
     _parse_output,
     _validate_blockers,
     analyze,
+    ensure_feedback_file,
 )
 from drydock.errors import SpecificationError
 
 # ---------------------------------------------------------------------------
 # Minimal valid LLM output helpers
 # ---------------------------------------------------------------------------
+
+
+def test_default_feedback_heading_is_analysis_compass(tmp_path):
+    assert ensure_feedback_file(tmp_path).startswith("# Analysis Compass\n\n")
+
 
 _ANALYSIS_CONTENT = """\
 # Blueprint Analysis: TestProject
