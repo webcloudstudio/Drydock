@@ -20,7 +20,7 @@ project is, what it must do, and how it is built.
 | File | Purpose | Required |
 |------|---------|----------|
 | `METADATA.md` | Project identity: name, display_name, short_description, status, stack, code_root | Yes |
-| `COMPASS.md` | Product intent, constraints, success criteria, guardrails, open questions | Yes |
+| `COMPASS.md` | Project guidance: intent, constraints, and guardrails | Yes |
 | `ARCHITECTURE.md` | Modules, routes, boundaries, interfaces, technical decisions | Yes |
 | `README.md` | One-line description and `## Intent` section | Yes |
 | `AGENTS.md` | Callable surface: `## Endpoints`, `## Capabilities` (JSON), `## Links` | If exposes services |
@@ -114,8 +114,9 @@ Every authored Specification file ends with these sections, using `- None.` when
 - None.
 ```
 
-`COMPASS.md` uses `## Compass`, `## Constraints`, and `## Success Criteria` as its body sections.
-Do not use `## Goals`; measurable product outcomes belong in `## Success Criteria`.
+`COMPASS.md` uses `## Compass`, `## Constraints`, and `## Guardrails` as its body sections.
+Success criteria belong in `SEA_TRIALS.md`; acceptance criteria in `SOUNDINGS.md`;
+open questions in spike questionnaires. Do not add those sections to `COMPASS.md`.
 
 ---
 

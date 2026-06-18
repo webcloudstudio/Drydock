@@ -557,7 +557,7 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── ANALYSIS_COMPASS.md
         ├── BUILD_PLAN_COMPASS.md 
         ├── BLOCKERS.md 
-        ├── COMPASS.md                    # product intent, constraints, success, guardrails
+        ├── COMPASS.md                    # project guidance: intent, constraints, guardrails
         ├── MANIFEST.md                   # the executable Manifest
         ├── MANIFEST_COMPASS.md
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
@@ -609,10 +609,10 @@ not authored as specification files.
 
 **Human-authored** — the product intent explicitly owned by the product owner.
 
-- **`COMPASS.md`** — Project constitution: intent, constraints, success criteria, guardrails, and
-  open questions. Lives at the Target root (not inside `blueprint/`). Injected into every LLM run
-  as ambient project context. Created by `drydock analyze` (generated from spec if absent) or
-  seeded via `drydock import --format compass`. 
+- **`COMPASS.md`** — Project guidance: intent, constraints, and guardrails. Lives at the Target
+  root (not inside `blueprint/`). Injected into every LLM run as ambient project context.
+  Created by `drydock analyze` (generated from spec if absent) or seeded via
+  `drydock import --format compass`. 
   - Auto Generate: `drydock analyze` (auto-generated)
   - Created: `drydock import --format compass` (user-supplied)
   - Updated: Product owner

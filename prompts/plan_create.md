@@ -244,7 +244,7 @@ Use `- None.` only when that section is truly empty.
 
 Additional body guidance:
 
-- `COMPASS.md` body uses `## Compass`, `## Constraints`, and `## Success Criteria`.
+- `COMPASS.md` body uses `## Compass`, `## Constraints`, and `## Guardrails`.
 - `ARCHITECTURE.md` captures modules, boundaries, route groupings, interfaces, and technical
   decisions.
 - `DATABASE.md` defines stores plus typed access classes; no raw-storage access outside the

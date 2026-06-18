@@ -287,19 +287,9 @@ Written for a developer joining the project for the first time. Be specific.}
 {Bullet list: technical, regulatory, scale, and operating constraints derived from the sources.
 "- None stated." if the sources are silent.}
 
-## Success Criteria
-{Bullet list: measurable conditions under which this project is considered complete.
-Derive from the sources and the story list.}
-
-## Acceptance Criteria
-{Bullet list: testable conditions that verify the product. Derive from the sources and story list.}
-
 ## Guardrails
-{Bullet list: security, compliance, scale, and performance constraints.
+{Bullet list: security, compliance, scale, and performance rules that constrain the build.
 "- None stated." if the sources are silent.}
-
-## Open Questions
-{Bullet list of unresolved decisions carried as questionnaires. "- None." if none.}
 === END COMPASS.md ===
 ```
 
