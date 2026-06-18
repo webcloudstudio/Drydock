@@ -70,6 +70,7 @@ PROJECT_ROOT = (
     else BASE_DIR.parent  # the project that contains QuarterDeck/
 )
 CONFIG_PATH = BASE_DIR / "console.yaml"
+WORKSPACE_ROOT = PROJECT_ROOT.parent.parent  # $DRYDOCK_WORKSPACE/targets/<Target> → workspace root
 
 _DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 _DEFAULT_DOT = "#94a3b8"
@@ -1342,6 +1343,20 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/help", response_class=HTMLResponse)
+def help_page() -> HTMLResponse:
+    cfg, err = load_config()
+    if err:
+        raise HTTPException(status_code=503, detail=err)
+    rel = cfg.get("console", {}).get("app_help_file_location", "")
+    if not rel:
+        raise HTTPException(status_code=404, detail="No app_help_file_location configured in console.yaml.")
+    path = (WORKSPACE_ROOT / rel).resolve()
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"Help file not found: {rel}")
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
 # ── Nav item status ──────────────────────────────────────────────────────────────
 
 _NAV_STATUS_HTML: dict[str, str] = {
@@ -1364,8 +1379,12 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
 
 _STYLE = """
   body { margin:0; font-family:'Segoe UI',Arial,sans-serif; color:#1b2430; background:#f6f7f9; }
-  header { padding:12px 22px; background:#111827; color:#fff; display:flex; align-items:baseline; gap:14px; }
+  header { padding:12px 22px; background:#111827; color:#fff; display:flex; align-items:center; gap:14px; }
   header strong { font-size:15px; } header .sub { font-size:12px; opacity:.65; }
+  header .help-btn { margin-left:auto; width:24px; height:24px; border-radius:50%; border:1.5px solid rgba(255,255,255,.4);
+    background:transparent; color:#fff; font-size:13px; font-weight:700; cursor:pointer; display:flex;
+    align-items:center; justify-content:center; text-decoration:none; opacity:.7; flex-shrink:0; }
+  header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.1); }
   main { display:grid; grid-template-columns:220px 1fr; min-height:calc(100vh - 46px); }
   nav { padding:14px 8px; border-right:1px solid #d7dde5; background:#fff; }
   .nav-section { margin-bottom:16px; }
@@ -1460,9 +1479,9 @@ _STYLE = """
   .j-badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; color:#fff; }
   .md-tabs { margin-top:4px; }
   .md-tab-bar { display:flex; flex-wrap:wrap; gap:3px; border-bottom:2px solid #d7dde5; margin-bottom:14px; }
-  .md-tab-btn { padding:5px 14px; border:1px solid #d7dde5; background:#f8fafc; border-radius:4px 4px 0 0;
-                cursor:pointer; font-size:12px; color:#475569; border-bottom:none; }
-  .md-tab-btn.active { background:#fff; color:#111827; font-weight:600; margin-bottom:-2px; border-bottom:2px solid #fff; }
+  .md-tab-btn { padding:8px 20px; border:1px solid #d7dde5; background:#f8fafc; border-radius:4px 4px 0 0;
+                cursor:pointer; font-size:14px; font-weight:700; color:#475569; border-bottom:none; }
+  .md-tab-btn.active { background:#fff; color:#111827; font-weight:700; margin-bottom:-2px; border-bottom:2px solid #fff; }
   .md-tab-btn:hover:not(.active) { background:#eef2f7; }
   .md-tab-pane { display:none; } .md-tab-pane.active { display:block; }
   .doc-frame { width:100%; height:80vh; border:1px solid #d7dde5; border-radius:4px; }
@@ -1557,12 +1576,18 @@ def index() -> str:
     )
     init_js = f'loadDoc("{init["id"]}");' if init else ""
 
+    help_btn = (
+        '<a class="help-btn" href="/help" target="_blank" title="Help">?</a>'
+        if console.get("app_help_file_location")
+        else ""
+    )
+
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(console.get("name", "Console"))}</title><style>{_STYLE}</style></head>
 <body>
   <header><strong>{html.escape(console.get("name", "Console"))}</strong>
-    <span class="sub">{html.escape(cfg.get("project", {}).get("description", ""))}</span></header>
+    <span class="sub">{html.escape(cfg.get("project", {}).get("description", ""))}</span>{help_btn}</header>
   <main>
     <nav>{nav}</nav>
     <article id="content">Loading…</article>

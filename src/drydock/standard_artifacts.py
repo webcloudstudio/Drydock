@@ -106,6 +106,7 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
   name: {target} QuarterDeck
   default_item: compass_edit
   state_db: data/console_state.sqlite
+  app_help_file_location: docs/index.html
 
 project:
   id: {slug}

@@ -401,9 +401,60 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 def cmd_document_assemble(argv: list[str]) -> int:
-    from drydock.build_documentation import main as _build_doc_main
+    import argparse as _ap
+    import re as _re
 
-    return _build_doc_main(argv)
+    from drydock.build_documentation import DEFAULT_OUTPUT, main as _build_doc_main
+    from drydock.config import get_target_directory
+
+    rc = _build_doc_main(argv)
+    if rc != 0:
+        return rc
+
+    # Derive the output path from argv to store in console.yaml.
+    _p = _ap.ArgumentParser(add_help=False)
+    _p.add_argument("--output", type=Path, default=None)
+    _known, _ = _p.parse_known_args(argv)
+    raw_output = _known.output or DEFAULT_OUTPUT
+
+    targets_root = get_target_directory()
+    if not targets_root.is_dir():
+        return rc
+
+    # Compute the output path relative to the workspace root so it can be stored
+    # portably in console.yaml.  Skip if the path falls outside the workspace
+    # (e.g. an absolute temp path used in tests).
+    workspace_root = targets_root.parent
+    abs_output = (workspace_root / raw_output).resolve() if not Path(raw_output).is_absolute() else Path(raw_output).resolve()
+    try:
+        rel_output = str(abs_output.relative_to(workspace_root))
+    except ValueError:
+        return rc  # output outside workspace — nothing to record
+
+    for target_dir in sorted(targets_root.iterdir()):
+        console_yaml = target_dir / "QuarterDeck" / "console.yaml"
+        if not console_yaml.is_file():
+            continue
+        text = console_yaml.read_text(encoding="utf-8")
+        new_line = f"  app_help_file_location: {rel_output}"
+        if _re.search(r"^  app_help_file_location:", text, _re.MULTILINE):
+            text = _re.sub(
+                r"^  app_help_file_location:.*$",
+                new_line,
+                text,
+                flags=_re.MULTILINE,
+            )
+        else:
+            text = _re.sub(
+                r"^(  state_db:.*)",
+                r"\1\n" + new_line,
+                text,
+                count=1,
+                flags=_re.MULTILINE,
+            )
+        console_yaml.write_text(text, encoding="utf-8", newline="\n")
+
+    return rc
 
 
 def _is_target_dir(path: Path) -> bool:
