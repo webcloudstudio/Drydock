@@ -96,9 +96,7 @@ def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:  # n
 def render_console(target: str, *, plan_path: Path | None = None) -> str:
     """Return the target QuarterDeck config with standard artifacts in canonical order."""
     planning_item = ""
-    default_item = "commanders_view"
     if plan_path is not None:
-        default_item = "planning_session"
         planning_item = (
             '\n  - { id: planning_session, label: "Planning Session", section: actions, '
             f"type: plan_decision, plan_path: {json.dumps(str(plan_path))} }}\n"
@@ -106,7 +104,7 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-") or "target"
     return f"""console:
   name: {target} QuarterDeck
-  default_item: {default_item}
+  default_item: compass_edit
   state_db: data/console_state.sqlite
 
 project:
