@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import drydock.config as config
 from drydock.config import (
     blueprint_dir_for,
     build_dir_for,
@@ -81,10 +82,13 @@ class TestConfigShow:
         rows = config_show()
         assert len(rows) == 5
 
-    def test_show_defaults_when_empty(self, isolated_config):
+    def test_show_defaults_when_empty(self, isolated_config, tmp_path, monkeypatch):
+        default_build_root = tmp_path / "projects"
+        default_build_root.mkdir()
+        monkeypatch.setattr(config, "_default_build_directory", lambda: default_build_root)
         rows = config_show()
         by_name = {name: (value, source) for name, value, source in rows}
-        assert by_name["drydock_build_directory"] == ("(not set)", "default")
+        assert by_name["drydock_build_directory"] == (str(default_build_root), "default")
         ws_value, ws_source = by_name["drydock_workspace"]
         assert ws_value != "(not set)"
         assert ws_source == "default"
@@ -116,9 +120,14 @@ class TestWorkspaceResolution:
         monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(other))
         assert get_build_directory() == other.resolve()
 
-    def test_build_directory_required_when_unset(self, isolated_config):
-        with pytest.raises(ConfigurationError, match="DRYDOCK_BUILD_DIRECTORY is required"):
-            get_build_directory()
+    def test_build_directory_defaults_to_parent_of_drydock_root(
+        self, tmp_path, isolated_config, monkeypatch
+    ):
+        projects_root = tmp_path / "projects"
+        drydock_root = projects_root / "Drydock"
+        drydock_root.mkdir(parents=True)
+        monkeypatch.setattr(config, "_default_build_directory", lambda: drydock_root.parent)
+        assert get_build_directory() == projects_root
 
     def test_build_directory_env_must_exist(self, isolated_config, monkeypatch):
         monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", "/this/does/not/exist")

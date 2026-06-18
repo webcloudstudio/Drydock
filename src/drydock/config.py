@@ -74,15 +74,21 @@ def get_workspace() -> Path:
     return top if top is not None else Path.cwd()
 
 
+def _default_build_directory() -> Path:
+    """Default builds beside the Drydock source/install directory."""
+    try:
+        from drydock.paths import get_repo_root
+
+        return get_repo_root().parent
+    except FileNotFoundError:
+        # Installed package fallback: one level above the package directory.
+        return Path(__file__).resolve().parent.parent
+
+
 def get_build_directory() -> Path:
-    """Resolve the required root where ``drydock build`` writes built projects."""
+    """Resolve the root where ``drydock build`` writes built projects."""
     val, _source = _get("DRYDOCK_BUILD_DIRECTORY")
-    if not val:
-        raise ConfigurationError(
-            "DRYDOCK_BUILD_DIRECTORY is required.\n"
-            "  Set it with: drydock config set drydock_build_directory <path>"
-        )
-    resolved = Path(val).expanduser().resolve()
+    resolved = Path(val).expanduser().resolve() if val else _default_build_directory()
     if not resolved.is_dir():
         raise ConfigurationError(
             f"Directory does not exist: {resolved}\n"
@@ -143,6 +149,8 @@ def get_quarterdeck_port() -> int:
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
     build_value, build_source = _get("DRYDOCK_BUILD_DIRECTORY")
+    if not build_value:
+        build_value, build_source = str(get_build_directory()), "default"
     rows.append(("drydock_build_directory", build_value or "(not set)", build_source))
     ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
     if not ws_value:
