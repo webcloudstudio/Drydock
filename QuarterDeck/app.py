@@ -83,33 +83,33 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect x="8" y="0" width="8" height="6" fill="#eab308"/>'
         '<rect x="0" y="6" width="8" height="6" fill="#eab308"/>'
         '<rect x="8" y="6" width="8" height="6" fill="#dc2626"/>'
-        '</svg>'
+        "</svg>"
     ),
     "core": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
         '<rect width="16" height="12" fill="#1d4ed8"/>'
         '<rect width="8" height="12" fill="#fff"/>'
-        '</svg>'
+        "</svg>"
     ),
     "actions": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
         '<rect width="16" height="12" fill="#1d4ed8"/>'
         '<rect x="4" y="3" width="8" height="6" fill="#fff"/>'
-        '</svg>'
+        "</svg>"
     ),
     "docs": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
         '<rect y="0" width="16" height="4" fill="#eab308"/>'
         '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
         '<rect y="8" width="16" height="4" fill="#eab308"/>'
-        '</svg>'
+        "</svg>"
     ),
     "project_pages": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
         '<rect y="0" width="16" height="4" fill="#eab308"/>'
         '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
         '<rect y="8" width="16" height="4" fill="#eab308"/>'
-        '</svg>'
+        "</svg>"
     ),
     "archive": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
@@ -122,7 +122,7 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect x="8" y="6" width="4" height="3" fill="#111"/>'
         '<rect x="4" y="9" width="4" height="3" fill="#111"/>'
         '<rect x="12" y="9" width="4" height="3" fill="#111"/>'
-        '</svg>'
+        "</svg>"
     ),
 }
 
@@ -471,7 +471,10 @@ def render_document_item(item: dict[str, Any]) -> str:
         try:
             resolve_path(item["path_html"])
             url = f"/raw/{iid}?variant=html"
-            return title + f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
+            return (
+                title
+                + f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
+            )
         except HTTPException:
             pass
 
@@ -1045,15 +1048,11 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
         if v:
             fname = Path(v).name
             break
-    fname_html = (
-        f"<span class='ph-filename'>{html.escape(fname)}</span>" if fname else ""
-    )
+    fname_html = f"<span class='ph-filename'>{html.escape(fname)}</span>" if fname else ""
 
     btns: list[str] = []
     if t == "editable_markdown":
-        btns.append(
-            f"<button class='ph-btn ph-edit' onclick=\"editDoc('{iid}')\">Edit</button>"
-        )
+        btns.append(f"<button class='ph-btn ph-edit' onclick=\"editDoc('{iid}')\">Edit</button>")
 
     acts_html = f"<div class='ph-actions'>{''.join(btns)}</div>" if btns else ""
     body = _H1_RE.sub("", body, count=1)
@@ -1062,10 +1061,8 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
         f"<div class='ph-title-row'><h1 class='ph-title'>{label}</h1>{fname_html}</div>"
         f"{acts_html}"
         f"<hr class='ph-divider'>"
-        f"</div>"
-        + body
+        f"</div>" + body
     )
-
 
 
 def _find_q_path_by_id(q_id: str) -> Path | None:
@@ -1143,6 +1140,11 @@ def api_config() -> dict[str, Any]:
 @app.get("/api/items")
 def api_items() -> list[dict[str, Any]]:
     return items()
+
+
+@app.get("/api/nav")
+def api_nav() -> dict[str, str]:
+    return {"html": render_nav()}
 
 
 @app.get("/api/document/{item_id}")
@@ -1239,7 +1241,7 @@ def api_set_state(key: str, update: StateUpdate) -> dict[str, Any]:
     if not key.startswith("questionnaire."):
         raise HTTPException(status_code=400, detail=f"Unsupported state key: {key!r}")
     _writeback_questionnaire(key, update.state, update.payload)
-    q_id = key[len("questionnaire."):]
+    q_id = key[len("questionnaire.") :]
     q_path = _find_q_path_by_id(q_id)
     state, answered_at = update.state, None
     if q_path:
@@ -1265,7 +1267,9 @@ def help_page() -> HTMLResponse:
         raise HTTPException(status_code=503, detail=err)
     rel = cfg.get("console", {}).get("app_help_file_location", "")
     if not rel:
-        raise HTTPException(status_code=404, detail="No app_help_file_location configured in console.yaml.")
+        raise HTTPException(
+            status_code=404, detail="No app_help_file_location configured in console.yaml."
+        )
     path = (WORKSPACE_ROOT / rel).resolve()
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Help file not found: {rel}")
@@ -1288,6 +1292,59 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
     if item_pending(item):
         return "pending"
     return "done"
+
+
+def render_nav() -> str:
+    """Render the sidebar from the current on-disk item state."""
+    nav_parts = []
+    for section in nav_model():
+        if section["items"]:
+            item_htmls = []
+            for item in section["items"]:
+                lbl = html.escape(item.get("label", item["id"]))
+                iid = html.escape(item["id"])
+                icon = _NAV_STATUS_HTML.get(item_nav_status(item) or "", "")
+                if section["id"] == "archive":
+                    arc = (
+                        f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" "
+                        "title='Unarchive'>↑</button>"
+                    )
+                elif not section.get("pinned"):
+                    arc = (
+                        f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',true)\" "
+                        "title='Archive'>↓</button>"
+                    )
+                else:
+                    arc = ""
+                if item.get("type") == "link":
+                    href = item.get("href", "")
+                    url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
+                    btn = (
+                        f"<a class='doc-btn' href='{html.escape(url)}' "
+                        f"target='_blank' rel='noopener'>{icon}{lbl}"
+                        "<span class='ext-arrow'>↗</span></a>"
+                    )
+                else:
+                    btn = f"<button class='doc-btn' data-item='{iid}'>{icon}{lbl}</button>"
+                item_htmls.append(f"<div class='nav-item-row'>{btn}{arc}</div>")
+            btns = "".join(item_htmls)
+        else:
+            btns = "<div class='section-empty'>— empty —</div>"
+        collapsed_cls = " collapsed" if section.get("collapsed") else ""
+        blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
+        flag = _SECTION_FLAGS.get(section["id"], "")
+        nav_parts.append(
+            f"<div class='nav-section{collapsed_cls}{blockers_cls}' "
+            f"data-sec='{html.escape(section['id'])}'>"
+            "<div class='section-head' onclick='toggleSection(this.parentElement)'>"
+            f"{flag}"
+            f"<span class='dot' style='background:{section['dot']}'></span>"
+            f"{html.escape(section['label'])}"
+            "<span class='collapse-arrow'></span>"
+            "</div>"
+            f"{btns}</div>"
+        )
+    return "".join(nav_parts)
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────────
@@ -1427,50 +1484,7 @@ def index() -> str:
         return _config_missing_page()
     cfg = require_config()
     console = cfg.get("console", {})
-    sections = nav_model()
-
-    nav_parts = []
-    for s in sections:
-        if s["items"]:
-            item_htmls = []
-            for d in s["items"]:
-                lbl = html.escape(d.get("label", d["id"]))
-                iid = html.escape(d["id"])
-                icon = _NAV_STATUS_HTML.get(item_nav_status(d) or "", "")
-                # Archive/unarchive toggle — not shown for pinned sections
-                if s["id"] == "archive":
-                    arc = f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" title='Unarchive'>↑</button>"
-                elif not s.get("pinned"):
-                    arc = f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',true)\" title='Archive'>↓</button>"
-                else:
-                    arc = ""
-                if d.get("type") == "link":
-                    href = d.get("href", "")
-                    url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
-                    btn = (
-                        f"<a class='doc-btn' href='{html.escape(url)}' target='_blank' rel='noopener'>"
-                        f"{icon}{lbl}<span class='ext-arrow'>↗</span></a>"
-                    )
-                else:
-                    btn = f"<button class='doc-btn' data-item='{iid}'>{icon}{lbl}</button>"
-                item_htmls.append(f"<div class='nav-item-row'>{btn}{arc}</div>")
-            btns = "".join(item_htmls)
-        else:
-            btns = "<div class='section-empty'>— empty —</div>"
-        collapsed_cls = " collapsed" if s.get("collapsed") else ""
-        blockers_cls = " sec-blockers" if s["id"] == "blockers" else ""
-        flag = _SECTION_FLAGS.get(s["id"], "")
-        nav_parts.append(
-            f"<div class='nav-section{collapsed_cls}{blockers_cls}' data-sec='{html.escape(s['id'])}'>"
-            f"<div class='section-head' onclick='toggleSection(this.parentElement)'>"
-            f"{flag}"
-            f"<span class='dot' style='background:{s['dot']}'></span>"
-            f"{html.escape(s['label'])}"
-            f"<span class='collapse-arrow'></span>"
-            f"</div>"
-            f"{btns}</div>"
-        )
-    nav = "".join(nav_parts)
+    nav = render_nav()
 
     all_items = items()
     default_id = console.get("default_item") or (all_items[0]["id"] if all_items else "")
@@ -1497,10 +1511,24 @@ def index() -> str:
   </main>
   <script>
     const contentEl = document.getElementById('content');
+    const navEl = document.querySelector('nav');
 
     function setActive(itemId) {{
       document.querySelectorAll('.doc-btn').forEach(b =>
         b.classList.toggle('active', b.dataset.item === itemId));
+    }}
+    function bindNavButtons() {{
+      document.querySelectorAll('button.doc-btn[data-item]').forEach(btn => {{
+        btn.onclick = () => loadDoc(btn.dataset.item);
+      }});
+    }}
+    async function refreshNav(activeItemId) {{
+      const res = await fetch('/api/nav');
+      const data = await res.json();
+      if (!res.ok) return;
+      navEl.innerHTML = data.html;
+      bindNavButtons();
+      if (activeItemId) setActive(activeItemId);
     }}
     async function loadDoc(itemId) {{
       setActive(itemId);
@@ -1579,14 +1607,8 @@ def index() -> str:
           const allDone = _qAllAnswered(form);
           status.textContent = allDone ? 'Complete ✓' : 'Saved ✓';
           hideTimer = setTimeout(() => {{ status.textContent = ''; }}, 1500);
-          const qid = form.dataset.questionnaire;
-          document.querySelectorAll(`.doc-btn[data-item="${{qid}}"]`).forEach(btn => {{
-            const old = btn.querySelector('.nav-status');
-            if (old) old.remove();
-            btn.insertAdjacentHTML('afterbegin', allDone
-              ? "<span class='nav-status ns-done'>✓</span>"
-              : "<span class='nav-status ns-pending'>✗</span>");
-          }});
+          const active = document.querySelector('.doc-btn.active');
+          await refreshNav(active ? active.dataset.item : null);
         }} else {{
           const d = await r.json().catch(() => ({{}}));
           status.textContent = 'Save failed: ' + (d.detail || r.status);
@@ -1609,9 +1631,7 @@ def index() -> str:
       t.querySelectorAll('.md-tab-btn').forEach((b, i) => b.classList.toggle('active', i === index));
       t.querySelectorAll('.md-tab-pane').forEach((p, i) => p.classList.toggle('active', i === index));
     }}
-    document.querySelectorAll('button.doc-btn[data-item]').forEach(btn => {{
-      btn.onclick = () => loadDoc(btn.dataset.item);
-    }});
+    bindNavButtons();
     {init_js}
   </script>
 </body></html>"""

@@ -378,16 +378,19 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     md_file = tmp_path / "ANALYSIS.md"
     md_file.write_text(
-        "# Blueprint Analysis\n\n"
-        "Quality: Ready\n\n"
-        "## Open Questions\n- None.\n\n"
-        "## Notes\nNone.\n",
+        "# Blueprint Analysis\n\nQuality: Ready\n\n## Open Questions\n- None.\n\n## Notes\nNone.\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
     rendered = quarterdeck.render_markdown_item(
-        {"id": "analysis", "label": "Analysis", "type": "markdown", "tabs": True, "path": "../ANALYSIS.md"}
+        {
+            "id": "analysis",
+            "label": "Analysis",
+            "type": "markdown",
+            "tabs": True,
+            "path": "../ANALYSIS.md",
+        }
     )
 
     assert "md-tabs" in rendered
@@ -642,7 +645,13 @@ def test_non_spike_questionnaire_is_also_buttonless(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: q_file)
 
-    item = {"id": "q1", "label": "Q", "section": "actions", "type": "questionnaire", "path": "q.json"}
+    item = {
+        "id": "q1",
+        "label": "Q",
+        "section": "actions",
+        "type": "questionnaire",
+        "path": "q.json",
+    }
     rendered = quarterdeck.render_questionnaire(item)
 
     assert "Save Answers" not in rendered
@@ -673,3 +682,51 @@ def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):
     assert written["state"] == "promoted"
     assert written["resolution"] == "promoted"
     assert written["questions"][0]["answer"] == "Build a ship."
+
+
+def test_autosaved_completed_spike_rerenders_nav_into_archive(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    q_dir = tmp_path / "QuarterDeck" / "questionnaires"
+    q_dir.mkdir(parents=True)
+    spike_file = q_dir / "spike-guardrails.json"
+    spike_file.write_text(
+        _spike_json(id="spike-guardrails", title="Spike: Guardrails"), encoding="utf-8"
+    )
+    item = {
+        "id": "spike_guardrails",
+        "label": "Spike: Guardrails",
+        "section": "archive",
+        "type": "questionnaire",
+        "template": "spike",
+        "path": "questionnaires/spike-guardrails.json",
+    }
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [
+                {"id": "actions", "label": "Actions", "dot": "#dc2626"},
+                {"id": "archive", "label": "Archive", "dot": "#94a3b8", "collapsed": True},
+            ],
+            "items": [item],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+
+    assert [section["id"] for section in quarterdeck.nav_model()] == ["actions"]
+
+    quarterdeck.api_set_state(
+        "questionnaire.spike-guardrails",
+        quarterdeck.StateUpdate(
+            document_id="spike-guardrails",
+            state="answered",
+            payload={"primary_goal": "Keep generated work inside the guardrails."},
+        ),
+    )
+
+    assert [section["id"] for section in quarterdeck.nav_model()] == ["archive"]
+    rendered = quarterdeck.render_nav()
+    assert "data-sec='archive'" in rendered
+    assert "data-item='spike_guardrails'" in rendered
+    assert "ns-done" in rendered
