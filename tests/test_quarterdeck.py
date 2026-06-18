@@ -664,7 +664,7 @@ def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):
     monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path)
 
     quarterdeck._writeback_questionnaire(
-        "questionnaire.spike_intent",
+        "questionnaire.spike-intent",
         "promoted",
         {"primary_goal": "Build a ship.", "resolution": "promoted"},
     )

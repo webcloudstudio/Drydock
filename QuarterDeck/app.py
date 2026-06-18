@@ -1068,19 +1068,35 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
 
 
 
+def _find_q_path_by_id(q_id: str) -> Path | None:
+    """Return the resolved path of the questionnaire JSON whose 'id' field matches q_id.
+
+    Config item IDs are auto-generated from filenames (hyphens → underscores), so they
+    differ from the questionnaire's own 'id' field. Scan by file content instead.
+    """
+    for item in items():
+        if item.get("type") != "questionnaire" or "path" not in item:
+            continue
+        p = (BASE_DIR / item["path"]).resolve()
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if data.get("id") == q_id:
+                return p
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
+
+
 def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> None:
     """Write answers back into the questionnaire JSON so questions and answers
     live together as a plain input file the next build step can read."""
     if not key.startswith("questionnaire."):
         return
     q_id = key[len("questionnaire.") :]
-    item = next(
-        (i for i in items() if i.get("id") == q_id and i.get("type") == "questionnaire"), None
-    )
-    if not item or "path" not in item:
-        return
-    q_path = (BASE_DIR / item["path"]).resolve()
-    if not q_path.exists():
+    q_path = _find_q_path_by_id(q_id)
+    if not q_path:
         return
     try:
         data = json.loads(q_path.read_text(encoding="utf-8"))
@@ -1224,13 +1240,11 @@ def api_set_state(key: str, update: StateUpdate) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Unsupported state key: {key!r}")
     _writeback_questionnaire(key, update.state, update.payload)
     q_id = key[len("questionnaire."):]
-    item = next(
-        (i for i in items() if i.get("id") == q_id and i.get("type") == "questionnaire"), None
-    )
+    q_path = _find_q_path_by_id(q_id)
     state, answered_at = update.state, None
-    if item and "path" in item:
+    if q_path:
         try:
-            data = json.loads((BASE_DIR / item["path"]).resolve().read_text(encoding="utf-8"))
+            data = json.loads(q_path.read_text(encoding="utf-8"))
             state = data.get("state", update.state)
             answered_at = data.get("answered_at")
         except Exception:
