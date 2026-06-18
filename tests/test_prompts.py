@@ -63,6 +63,15 @@ class TestInputTokens:
             "TYPED_SPEC",
         )
 
+    def test_analyze_prompt_keeps_questions_out_of_analysis_markdown(self):
+        prompt = load_prompt("analyze")
+        analysis_contract = prompt.body.split("=== ANALYSIS.md ===", 1)[1].split(
+            "=== END ANALYSIS.md ===", 1
+        )[0]
+
+        assert "## Open Questions" not in analysis_contract
+        assert "questions live only in `spike-*.json`" in prompt.body
+
     def test_render_inputs_emits_in_token_order(self):
         renderers = {
             "A": lambda: ["a-section"],

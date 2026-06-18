@@ -1,8 +1,8 @@
 ---
 name: analyze
-description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, open questions, and all analyze artifacts.
-version: 20260616 V7
-intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and open questions, and emit all analyze artifacts in a single response.
+description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
+version: 20260618 V8
+intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
 inputs: COMPASS.md, ANALYSIS_COMPASS.md, BLOCKERS.md, EXISTING_SPIKES, TYPED_SPEC
@@ -60,7 +60,8 @@ acceptance criteria be" or "which checks should the build run," you are outsourc
 analysis — derive a proposal instead and offer it as a tuning option.
 
 A spike is delivered as a questionnaire for the human to answer. Do not raise a spike for a matter
-the sources have already decided, nor for anything you can derive yourself.
+the sources, `ANALYSIS_COMPASS.md`, prior `BLOCKERS.md` answers, or existing answered
+questionnaires have already decided, nor for anything you can derive yourself.
 
 ---
 
@@ -71,7 +72,11 @@ the sources have already decided, nor for anything you can derive yourself.
   injected near the top of this prompt when present. Treat it as authoritative steering for this
   run; it overrides default decomposition choices where it speaks.
 - **Prior blocker answers** — any prior `BLOCKERS.md` responses, injected if present. Treat settled
-  items as decided; never re-raise a resolved blocker.
+  items as decided; never re-raise a resolved blocker or duplicate it as a questionnaire.
+- **Existing spike questionnaires** — prior `spike-*.json` action items, injected when present.
+  Treat questions with non-empty `answer` fields as settled decisions. Do not re-emit an existing
+  spike file, do not ask duplicate or reworded versions of existing unanswered questions, and do
+  not move questionnaire questions into `ANALYSIS.md`.
 - **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root; omit the `=== COMPASS.md ===`
   block. `false`: write it.
 - **Rigging catalog** — a filename list (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, excluding
@@ -95,11 +100,11 @@ understanding of what the product does, fundamental contradictions in the source
 blockers means you write `BLOCKERS.md`; its existence is the flag that halts the pipeline. Quality
 stays `Blocked` until the human clears it.
 
-**Question** — an open item that does not stop decomposition. Delivered as a questionnaire and
-carried forward as an open item.
+**Question** — an open item that does not stop decomposition. Delivered only as a questionnaire
+action item and carried forward there.
 
-Only blockers halt the pipeline. Both `Questions` and `Ready` permit `plan create`; open
-questions distinguish the two but do not gate.
+Only blockers halt the pipeline. Both `Questions` and `Ready` permit `plan create`; questionnaire
+action items distinguish the two but do not gate.
 
 ---
 
@@ -151,11 +156,12 @@ Mixed signals → `ambiguous`.
 
 **3. Identify blockers vs questions.**
 - *Consumes:* the review notes + completeness checklist.
-- *Emits:* the blocker list and the open-questions list.
+- *Emits:* the blocker list and the questionnaire action-item list.
 
 Blockers halt the pipeline; you write `BLOCKERS.md` only when one or more exist. Questions are
-carried forward as questionnaires. A spike is a valid resolution for a blocker — schedule the
-spike, mark the blocker answered, carry on.
+carried forward only as questionnaires. A spike is a valid resolution for a blocker — schedule the
+spike, mark the blocker answered, carry on. Do not duplicate a questionnaire question in
+`ANALYSIS.md`.
 
 **4. Derive the story list.**
 - *Consumes:* the sources + role notes + project type.
@@ -179,11 +185,12 @@ spike, mark the blocker answered, carry on.
 - *Emits:* `Blocked | Questions | Ready` per the Quality Signal table.
 
 **8. Build the questionnaires.**
-- *Consumes:* the project type + open questions + injected Rigging catalog filenames.
+- *Consumes:* the project type + questionnaire action-item list + injected Rigging catalog filenames.
 - *Emits:* one `spike-<slug>.json` per open important question. Emit a stack questionnaire only
   when the stack is not already decided; its options are the injected catalog filenames filtered
   to the project type (see Hard Rules). Do not emit a questionnaire for a matter the sources or
-  prior answers have already settled.
+  prior answers have already settled. Do not emit a questionnaire that duplicates an existing
+  unanswered questionnaire.
 
 **9. Emit all output blocks.** See Output Format below. Emit the `BLOCKERS.md` block only when
 blockers exist; emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
@@ -207,13 +214,6 @@ Quality: {Ready | Questions | Blocked}
   stories: {N}
   stack: {declared stack value or "not declared"}
   screens: {N}
-
-## Open Questions
-
-{Bullet list. For each open question, cite the spike file that covers it:
-`- [file or topic] question text (→ spike-{slug}.json)`.
-Where a question has no questionnaire (e.g. resolved inline), omit the citation.
-"- None." if no open questions.}
 
 ## Story List
 
@@ -347,13 +347,17 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Emit **only** the `=== ... ===` blocks. No text outside them.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
+- Do not include `## Open Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
+  questions live only in `spike-*.json` questionnaire action items.
 - Emit a `spike-*.json` questionnaire only for a decision only the human can make (the Ownership
   test). Never emit one for a matter the sources or prior answers have already decided, never as a
   generic catch-all, and never for work the team can derive itself (acceptance criteria, success
   evidence, smoke checks, build gates, test sequences — these are synthesized outputs, not spikes).
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
-- Never re-ask a question already settled by `ANALYSIS_COMPASS.md` or a prior `BLOCKERS.md`.
+- Never re-ask a question already settled by `ANALYSIS_COMPASS.md`, a prior `BLOCKERS.md`, or an
+  existing questionnaire answer. Never emit a duplicate or reworded version of an existing
+  unanswered questionnaire.
 - Stack questionnaire options are the injected catalog filenames, filtered to the detected project
   type, plus `"other"`. Never open the per-technology stack files — list their names only.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with

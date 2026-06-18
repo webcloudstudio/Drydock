@@ -15,6 +15,7 @@ from drydock.analyze import (
     _is_compass_unpopulated,
     _parse_blocks,
     _parse_output,
+    _remove_open_questions_section,
     _validate_blockers,
     analyze,
     ensure_feedback_file,
@@ -28,6 +29,14 @@ from drydock.errors import SpecificationError
 
 def test_default_feedback_heading_is_analysis_compass(tmp_path):
     assert ensure_feedback_file(tmp_path).startswith("# Analysis Compass\n\n")
+
+
+def test_open_questions_section_is_removed_from_analysis_output():
+    result = _remove_open_questions_section(_ANALYSIS_CONTENT)
+
+    assert "## Open Questions" not in result
+    assert "## Story List" in result
+    assert "## Notes" in result
 
 
 _ANALYSIS_CONTENT = """\
@@ -691,6 +700,7 @@ class TestAnalyze:
         assert result.analysis_path.exists()
         assert result.sea_trials_path.exists()
         assert result.soundings_path.exists()
+        assert "## Open Questions" not in result.analysis_path.read_text(encoding="utf-8")
 
     def test_analysis_path_is_at_target_root(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

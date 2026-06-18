@@ -42,6 +42,9 @@ _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
 # A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
 _BLOCKER_ENTRY_RE = re.compile(r"^## \S", re.MULTILINE)
+_OPEN_QUESTIONS_SECTION_RE = re.compile(
+    r"^## Open Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
+)
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
     "Ready": ("ready", "✓", "All blockers resolved. Ready for plan create."),
@@ -303,6 +306,16 @@ def _parse_summary_fields(analysis_text: str) -> dict[str, str]:
     return fields
 
 
+def _remove_open_questions_section(analysis_text: str) -> str:
+    """Remove duplicated question content from ANALYSIS.md.
+
+    Open questions are rendered as QuarterDeck questionnaire action items. Keeping the same list
+    in ANALYSIS.md creates duplicate review tabs, so analysis output is normalized here before
+    being persisted.
+    """
+    return _OPEN_QUESTIONS_SECTION_RE.sub("", analysis_text).strip()
+
+
 def _parse_output(
     text: str,
 ) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
@@ -328,7 +341,7 @@ def _parse_output(
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
 
-    analysis_text = blocks["ANALYSIS.md"]
+    analysis_text = _remove_open_questions_section(blocks["ANALYSIS.md"])
     quality_match = _QUALITY_RE.search(analysis_text)
     quality = quality_match.group(1) if quality_match else "unknown"
 
@@ -385,7 +398,7 @@ def _next_step_hint(quality: str, target: str) -> str:
     if quality == "Blocked":
         return f"Resolve blockers, then re-run: drydock analyze {target}"
     if quality == "Questions":
-        return f"Review open questions, then run: drydock plan create {target}"
+        return f"Review QuarterDeck action items, then run: drydock plan create {target}"
     return f"drydock plan create {target}"
 
 

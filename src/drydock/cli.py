@@ -211,10 +211,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     if result.quality == "Ready":
         print(f"Next step: drydock plan create {args.Target}")
     elif result.quality == "Questions":
-        print("Review open questions in ANALYSIS.md, then run:")
+        print("Review QuarterDeck action items, then run:")
         print(f"  drydock plan create {args.Target}")
     else:
-        print("Resolve blockers listed in ANALYSIS.md, then re-run:")
+        print("Resolve blockers, then re-run:")
         print(f"  drydock analyze {args.Target}")
     return 0
 
@@ -404,7 +404,8 @@ def cmd_document_assemble(argv: list[str]) -> int:
     import argparse as _ap
     import re as _re
 
-    from drydock.build_documentation import DEFAULT_OUTPUT, main as _build_doc_main
+    from drydock.build_documentation import DEFAULT_OUTPUT
+    from drydock.build_documentation import main as _build_doc_main
     from drydock.config import get_target_directory
 
     rc = _build_doc_main(argv)
