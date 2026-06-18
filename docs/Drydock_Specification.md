@@ -469,6 +469,8 @@ flowchart LR
   CHANGE(["Change Request"]):::dir --> REFIT["refit"]:::script
   REFIT --> SPECOUT(["Updated Blueprint"]):::dir
   REFIT --> SOFTWARE(["Updated Software"]):::output
+  SPECOUT --> MERGE["merge"]:::script
+  SOFTWARE --> MERGE
 ```
 
 ### Portfolio Governance Propagation
