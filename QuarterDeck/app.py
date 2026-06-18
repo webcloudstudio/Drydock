@@ -1163,14 +1163,19 @@ def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> N
         data = json.loads(q_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return
-    data["state"] = state
-    data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
     if "resolution" in payload:
         data["resolution"] = payload["resolution"]
     for question in data.get("questions", []):
         if question["id"] in payload:
             ans = payload[question["id"]]
             question["answer"] = ", ".join(ans) if isinstance(ans, list) else ans
+    if state in ("answered", "open"):
+        questions = data.get("questions", [])
+        all_answered = bool(questions) and all(str(q.get("answer", "")).strip() for q in questions)
+        data["state"] = "answered" if all_answered else "open"
+    else:
+        data["state"] = state
+    data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
     q_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
@@ -1644,6 +1649,12 @@ def index() -> str:
       }}
       return payload;
     }}
+    function _qAllAnswered(form) {{
+      for (const el of form.querySelectorAll('[name]')) {{
+        if (!el.value || !el.value.trim()) return false;
+      }}
+      return true;
+    }}
     function wireAutosave(form) {{
       const status = form.querySelector('.q-save-status');
       let hideTimer = null;
@@ -1657,8 +1668,17 @@ def index() -> str:
         if (!status) return;
         clearTimeout(hideTimer);
         if (r.ok) {{
-          status.textContent = 'Saved ✓';
+          const allDone = _qAllAnswered(form);
+          status.textContent = allDone ? 'Complete ✓' : 'Saved ✓';
           hideTimer = setTimeout(() => {{ status.textContent = ''; }}, 1500);
+          const qid = form.dataset.questionnaire;
+          document.querySelectorAll(`.doc-btn[data-item="${{qid}}"]`).forEach(btn => {{
+            const old = btn.querySelector('.nav-status');
+            if (old) old.remove();
+            btn.insertAdjacentHTML('afterbegin', allDone
+              ? "<span class='nav-status ns-done'>✓</span>"
+              : "<span class='nav-status ns-pending'>✗</span>");
+          }});
         }} else {{
           const d = await r.json().catch(() => ({{}}));
           status.textContent = 'Save failed: ' + (d.detail || r.status);
