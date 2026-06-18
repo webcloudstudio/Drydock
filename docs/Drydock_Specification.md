@@ -473,6 +473,8 @@ flowchart LR
   SOFTWARE --> MERGE
 ```
 
+The `refit` command delegates final integration to a separate merge step. Each output file produced by the refit is compared against its prior state; files whose content has changed are marked dirty and reapplied to the working tree.
+
 ### Portfolio Governance Propagation
 
 Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
