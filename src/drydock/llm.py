@@ -76,6 +76,11 @@ def _command(
             "--output-format",
             "stream-json",
             "--include-partial-messages",
+            # LLM-assisted Drydock commands consume model text and write their own
+            # artifacts.  Giving Claude Code tools lets it bypass that contract by
+            # editing the target and returning a narrative summary instead.
+            "--tools",
+            "",
         ]
         if model:
             command.extend(("--model", model))
@@ -358,6 +363,20 @@ def _run_streaming_process(
                     provider_event = None
                 if not isinstance(provider_event, dict):
                     continue
+                # Claude emits a content-block boundary for each assistant turn,
+                # but its text deltas carry no terminating newline.  Preserve the
+                # boundary for live console consumers so progress updates cannot
+                # be concatenated into one line.
+                event = provider_event.get("event")
+                if (
+                    llm == "claude"
+                    and isinstance(event, Mapping)
+                    and event.get("type") == "content_block_start"
+                    and on_text is not None
+                ):
+                    content_block = event.get("content_block")
+                    if isinstance(content_block, Mapping) and content_block.get("type") == "text":
+                        on_text("\n")
                 _emit_event(
                     artifacts,
                     _structured_event(

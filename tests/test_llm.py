@@ -115,6 +115,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
 
     process = captured["process"]
     assert process.command[:2] == ("claude", "-p")
+    assert process.command[process.command.index("--tools") + 1] == ""
     assert process.stdin.getvalue() == "Reply READY"
     assert process.kwargs["cwd"] == tmp_path
     assert "ANTHROPIC_API_KEY" not in process.kwargs["env"]
@@ -148,6 +149,60 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
         "execution.completed",
     ]
     assert _events(tmp_path)[1]["provider_event_type"] == "stream_event"
+
+
+def test_claude_content_block_boundaries_are_forwarded_to_live_output(tmp_path, monkeypatch):
+    raw = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_start",
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "delta": {"type": "text_delta", "text": "First step."},
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_start",
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "delta": {"type": "text_delta", "text": "Second step."},
+                    },
+                }
+            ),
+            json.dumps({"type": "result", "result": "Second step."}),
+        ]
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(command, stdout_text=raw + "\n", **kwargs),
+    )
+    chunks = []
+
+    run_prompt("Work", tmp_path, llm="claude", on_text=chunks.append)
+
+    assert chunks == ["\n", "First step.", "\n", "Second step."]
 
 
 def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, monkeypatch):

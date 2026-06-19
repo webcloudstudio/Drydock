@@ -23,6 +23,7 @@ from drydock.planning_session import (
 def test_default_feedback_heading_is_manifest_compass(tmp_path):
     assert ensure_feedback_file(tmp_path).startswith("# Manifest Compass\n\n")
 
+
 _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16
 blueprint: bp
@@ -217,6 +218,14 @@ def test_missing_manifest_block_refuses(tmp_path):
     _make_target(tmp_path)
     out = "=== ARCHITECTURE.md ===\n# ARCHITECTURE: X\n=== END ARCHITECTURE.md ===\n"
     with pytest.raises(SpecificationError, match="missing === MANIFEST.md"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+
+def test_missing_required_block_explains_required_response_contract(tmp_path):
+    _make_target(tmp_path)
+    out = "=== ARCHITECTURE.md ===\n# ARCHITECTURE: X\n=== END ARCHITECTURE.md ===\n"
+
+    with pytest.raises(SpecificationError, match="only delimited artifact blocks"):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
 

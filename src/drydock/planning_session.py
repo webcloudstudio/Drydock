@@ -447,7 +447,14 @@ def create_plan(
         )
     for required in ("MANIFEST.md", "BUILD_PLAN_COMPASS.md"):
         if required not in blocks:
-            raise SpecificationError(f"plan create output missing === {required} === block")
+            artifacts = getattr(result, "artifacts", None)
+            output_file = getattr(artifacts, "output_file", None)
+            evidence = f"\n  Execution output: {output_file}" if output_file else ""
+            raise SpecificationError(
+                f"plan create output missing === {required} === block. "
+                "The LLM response must contain only delimited artifact blocks."
+                f"{evidence}"
+            )
 
     # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
     authored: list[Path] = []
