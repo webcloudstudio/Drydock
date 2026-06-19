@@ -299,6 +299,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 |---|---|---|
 | `sources/*` | `<Target>/blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
 | `ANALYSIS.md` | Target root | The reviewed analysis that drives decomposition |
+| `MANIFEST_COMPASS.md` | Target root | Your feedback of prior runs |
 | `COMPASS.md` | Target root | Project intent |
 | `questionnaires/*.json` | `<Target>/QuarterDeck/` | Resolved planning decisions |
 
@@ -310,6 +311,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 | `BUILD_PLAN_COMPASS.md` | `<Target>/blueprint/` | Internal inventory of inputs and planning groups |
 | `MANIFEST.md` | Target root | The executable build plan |
 | `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
+| `tickets.json` | Target root | Target ticketing system projection |
 
 ### drydock run quarterdeck — Plan Review
 
@@ -519,27 +521,33 @@ files from the Drydock-managed Target tree.
 Each workspace artifact exists to feed commands. The Artifact Feed Matrix specifies, for every
 artifact, which command produces it and which commands consume it.
 
-| Artifact | analyze | plan create | build | build score | refit |
-|---|---|---|---|---|---|
-| ANALYSIS.md | O | I | · | · | · |
-| ANALYSIS_COMPASS.md | I | · | · | · | · |
-| BLOCKERS.md | O/I | X | · | · | · |
-| BUILD_PLAN_COMPASS.md | · | O | I | · | · |
-| COMPASS.md | O*/I | I | I | I | I |
-| MANIFEST.md | · | O | I | I | I |
-| MANIFEST_COMPASS.md | · | I | · | · | · |
-| SCORECARD.md | · | · | · | O | · |
-| SEA_TRIALS.md | O | · | · | · | · |
-| SOUNDINGS.md | O | O/I | O | I | · |
-| Spikes (answered) | O | I | I | · | · |
-| Typed Spec files | I | I | I | I | I |
-| tickets.json | · | O | I | I | I |
+| Artifact | Location | analyze | plan create | build | build score | refit |
+|---|---|---|---|---|---|---|
+| ANALYSIS.md | Target root | O | I | · | · | · |
+| ANALYSIS_COMPASS.md | Target root | I | · | · | · | · |
+| ARCHITECTURE.md | blueprint/ | · | O | I | I | I |
+| BLOCKERS.md | Target root | O/I | X | · | · | · |
+| BUILD_PLAN_COMPASS.md | blueprint/ | · | O | I | · | · |
+| captains_chair.html | QuarterDeck/ | O | · | · | · | · |
+| COMPASS.md | Target root | O*/I | I | I | I | I |
+| DATABASE.md | blueprint/ | · | O | I | I | I |
+| FEATURE-{Name}.md | blueprint/ | · | O | I | I | I |
+| MANIFEST.md | Target root | · | O | I | I | I |
+| MANIFEST_COMPASS.md | Target root | · | I | · | · | · |
+| questionnaires/*.json | QuarterDeck/questionnaires/ | O/I | I | I | · | · |
+| SCORECARD.md | Target root | · | · | · | O | · |
+| SCREEN-{Name}.md | blueprint/ | · | O | I | I | I |
+| SEA_TRIALS.md | Target root | O | · | · | · | · |
+| SOUNDINGS.md | Target root | O | O/I | O | I | · |
+| sources/* | blueprint/sources/ | I | I | · | · | · |
+| tickets.json | Target root | · | O | I | I | I |
+| UI-GENERAL.md | blueprint/ | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
 `X` gates/blocks the command · `·` no relation · `O*` the
-command produces the artifact only when it is absent. 
+command produces the artifact only when it is absent.
 
-Human-authored feedback artifacts (`ANALYSIS_COMPASS.md`, `MANIFEST_COMPASS.md`, answered `BLOCKERS.md`) are promptes that guide future runs of the commands.  
+Human-authored feedback artifacts (`ANALYSIS_COMPASS.md`, `MANIFEST_COMPASS.md`, answered `BLOCKERS.md`) are prompts that guide future runs of the commands.
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
@@ -554,7 +562,6 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── README.md                     # short human introduction to the project
         ├── ANALYSIS.md                   # Planning Session analysis: quality, stories, blockers, questions
         ├── ANALYSIS_COMPASS.md
-        ├── BUILD_PLAN_COMPASS.md 
         ├── BLOCKERS.md 
         ├── COMPASS.md                    # project guidance: intent, constraints, guardrails
         ├── MANIFEST.md                   # the executable Manifest
