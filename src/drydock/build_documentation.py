@@ -12,6 +12,14 @@ DEFAULT_SPECIFICATION = Path("docs/Drydock_Specification.md")
 DEFAULT_OUTPUT = Path("docs/index.html")
 
 
+def _unquote_yaml(value: str) -> str:
+    """Strip a single layer of YAML double- or single-quote wrapping."""
+    s = value.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        return s[1:-1]
+    return s
+
+
 def parse_source(text: str) -> tuple[dict[str, object], str]:
     """Split conformed Markdown into frontmatter metadata and body."""
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.DOTALL)
@@ -53,7 +61,7 @@ def parse_frontmatter(frontmatter: str) -> dict[str, object]:
 
         idea = re.match(r"^\s*-\s*title:\s*(.*)$", line)
         if in_ideas and idea:
-            current_idea = {"title": idea.group(1).strip()}
+            current_idea = {"title": _unquote_yaml(idea.group(1))}
             ideas.append(current_idea)
             in_sub_list = False
             continue
@@ -76,7 +84,7 @@ def parse_frontmatter(frontmatter: str) -> dict[str, object]:
             in_sail_lead = False
             in_sub_list = False
             if not in_ideas:
-                metadata[name] = value
+                metadata[name] = _unquote_yaml(value)
 
     return metadata
 
