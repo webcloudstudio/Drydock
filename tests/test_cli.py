@@ -437,6 +437,8 @@ class TestPlanningSession:
         assert rc == 0, err
         assert "Plan state: draft" in out
         assert "Authored 2 Blueprint spec file(s)" in out
+        assert "=== ARCHITECTURE.md ===" not in out
+        assert "Status command exits successfully." not in out
         assert (bp / "BUILD_PLAN_COMPASS.md").is_file()
         assert "Status command exits successfully." in (bp / "FEATURE-Status.md").read_text(
             encoding="utf-8"

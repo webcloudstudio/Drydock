@@ -252,7 +252,6 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
         args.Target,
         args.Target,
         get_target_directory(),
-        on_text=lambda text: print(text, end="", flush=True),
     )
     print()
     print(f"Blueprint: {result.plan.project}")
