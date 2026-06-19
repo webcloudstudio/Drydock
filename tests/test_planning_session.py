@@ -15,6 +15,7 @@ from drydock.errors import SpecificationError
 from drydock.planning_session import (
     _answered_spike,
     _assemble_prompt,
+    _parse_blocks,
     create_plan,
     ensure_feedback_file,
 )
@@ -227,6 +228,28 @@ def test_missing_required_block_explains_required_response_contract(tmp_path):
 
     with pytest.raises(SpecificationError, match="only delimited artifact blocks"):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+
+def test_simulated_write_calls_recover_plan_artifacts(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    output = _llm_output()
+    calls = []
+    for name, content in _parse_blocks(output).items():
+        path = target_dir / name if name == "MANIFEST.md" else blueprint_dir / name
+        calls.append(
+            '<invoke name="Write">\n'
+            f'<parameter name="file_path">{path}</parameter>\n'
+            f'<parameter name="content">{content}</parameter>\n'
+            "</invoke>"
+        )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
+
+    assert result.plan.state == "draft"
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert (blueprint_dir / "BUILD_PLAN_COMPASS.md").is_file()
+    assert (blueprint_dir / "FEATURE-Status.md").is_file()
 
 
 def test_failed_run_refuses(tmp_path):

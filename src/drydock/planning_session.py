@@ -32,6 +32,13 @@ from drydock.standard_artifacts import (
 PROMPT_NAME = "plan_create"
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+_WRITE_CALL_RE = re.compile(
+    r'<invoke name="Write">\s*'
+    r'<parameter name="file_path">(?P<path>.*?)</parameter>\s*'
+    r'<parameter name="content">(?P<content>.*?)</parameter>\s*'
+    r"</invoke>",
+    re.DOTALL,
+)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
@@ -81,6 +88,34 @@ class PlanCreateResult:
 def _parse_blocks(text: str) -> dict[str, str]:
     """Return block-name → stripped content from ``=== NAME ===`` delimiters."""
     return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
+
+
+def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -> dict[str, str]:
+    """Recover artifacts from Claude's non-executed ``Write`` call transcript.
+
+    Claude occasionally returns tool-call XML despite being invoked without tools.  The calls are
+    not executed, but their content is a complete artifact set.  Accept only paths within the
+    active Blueprint plus the target's two plan artifacts; ignore every other simulated write.
+    """
+    target_root = target_dir.resolve()
+    blueprint_root = blueprint_dir.resolve()
+    blocks: dict[str, str] = {}
+    for match in _WRITE_CALL_RE.finditer(text):
+        try:
+            path = Path(match.group("path").strip()).expanduser().resolve()
+        except OSError:
+            continue
+        content = match.group("content").strip()
+        if path == target_root / "MANIFEST.md":
+            name = "MANIFEST.md"
+        elif path.is_relative_to(blueprint_root):
+            name = path.relative_to(blueprint_root).as_posix()
+        else:
+            continue
+        if name in blocks:
+            raise SpecificationError(f"Duplicate simulated Write artifact: {name}")
+        blocks[name] = content
+    return blocks
 
 
 def _read_if(path: Path) -> str | None:
@@ -440,6 +475,8 @@ def create_plan(
         raise SpecificationError("plan create LLM execution failed")
 
     blocks = _parse_blocks(result.text)
+    if not blocks:
+        blocks = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
     if "PLAN_CREATE_BLOCKED.txt" in blocks:
         raise SpecificationError(
             "Planning cannot proceed — analysis is Blocked. "
