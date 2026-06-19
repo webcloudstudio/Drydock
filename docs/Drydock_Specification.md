@@ -299,7 +299,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 |---|---|---|
 | `sources/*` | `<Target>/blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
 | `ANALYSIS.md` | Target root | The reviewed analysis that drives decomposition |
-| `MANIFEST_COMPASS.md` | Target root | Your feedback of prior runs |
+| `MANIFEST_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
 | `COMPASS.md` | Target root | Project intent |
 | `questionnaires/*.json` | `<Target>/QuarterDeck/` | Resolved planning decisions |
 
@@ -312,6 +312,12 @@ the task instructions.  Similar tasks are grouped together to save context.
 | `MANIFEST.md` | Target root | The executable build plan |
 | `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
 | `tickets.json` | Target root | Target ticketing system projection |
+
+#### Standing-Directive Feedback
+
+`<Target>/MANIFEST_COMPASS.md` is a persistent, human-editable standing directive. The Commander
+records durable guidance there — decomposition preferences, recurring corrections — and `drydock
+plan create` re-injects it on every run.
 
 ### drydock run quarterdeck — Plan Review
 
@@ -632,6 +638,12 @@ not authored as specification files.
   - Created: `drydock analyze` (empty template on first run)
   - Updated: Product owner
   - Never overwritten or deleted by `drydock analyze`
+
+- **`MANIFEST_COMPASS.md`** — Persistent standing directive for `drydock plan create`: durable
+  Commander guidance re-injected on every run. Lives at the Target root.
+  - Created: `drydock plan create` (empty template on first run)
+  - Updated: Product owner
+  - Never overwritten or deleted by `drydock plan create`
 
 **Core Application Specification Files** — created and maintained by Drydock commands;
 updated by `drydock refit` as specification files and application code evolve.
