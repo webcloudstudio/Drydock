@@ -524,7 +524,7 @@ artifact, which command produces it and which commands consume it.
 | Artifact | Location | analyze | plan create | build | build score | refit |
 |---|---|---|---|---|---|---|
 | ANALYSIS.md | Target root | O | I | · | · | · |
-| ANALYSIS_COMPASS.md | Target root | I | · | · | · | · |
+| ANALYSIS_COMPASS.md | Target root | C/I | · | · | · | · |
 | ARCHITECTURE.md | blueprint/ | · | O | I | I | I |
 | BLOCKERS.md | Target root | O/I | X | · | · | · |
 | BUILD_PLAN_COMPASS.md | blueprint/ | · | O | I | · | · |
@@ -533,7 +533,7 @@ artifact, which command produces it and which commands consume it.
 | DATABASE.md | blueprint/ | · | O | I | I | I |
 | FEATURE-{Name}.md | blueprint/ | · | O | I | I | I |
 | MANIFEST.md | Target root | · | O | I | I | I |
-| MANIFEST_COMPASS.md | Target root | · | I | · | · | · |
+| MANIFEST_COMPASS.md | Target root | · | C/I | · | · | · |
 | questionnaires/*.json | QuarterDeck/questionnaires/ | O/I | I | I | · | · |
 | SCORECARD.md | Target root | · | · | · | O | · |
 | SCREEN-{Name}.md | blueprint/ | · | O | I | I | I |
@@ -544,8 +544,8 @@ artifact, which command produces it and which commands consume it.
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
-`X` gates/blocks the command · `·` no relation · `O*` the
-command produces the artifact only when it is absent.
+`C` the command creates the artifact if absent (never overwrites) · `X` gates/blocks the command ·
+`·` no relation · `O*` the command produces the artifact only when it is absent.
 
 Human-authored feedback artifacts (`ANALYSIS_COMPASS.md`, `MANIFEST_COMPASS.md`, answered `BLOCKERS.md`) are prompts that guide future runs of the commands.
 
