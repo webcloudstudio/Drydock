@@ -15,7 +15,7 @@ sail_lead:
   - The QuarterDeck web server enables communication with your team 
   - Your Compass (constitution/intent) guides your build
   - A Ship's Log preserves material decisions and milestones
-  - The Drydock build process attempts to be simple and obvious
+  - The Drydock build process is simple and obvious
 ideas:
   - title: "**S** — Setup and Install Drydock"
     sub_list:
@@ -39,10 +39,10 @@ ideas:
 
 ## What is Drydock
 
-Drydock is a governed Blueprint-driven software delivery system built around the **SAIL methodology.
+Drydock is a governed Blueprint-driven software delivery system built around the **SAIL methodology**.
 
 **The Commander.** Drydock addresses its operator as the Commander.  Drydock uses agile best practices and
-the Commander is the product owner. The QuarterDeck enables the Commander to own intent, review evidence and decisions, and to provide feedback at each stage in english.  That feedback guides the work and command reruns will incorprate that user intent.  This document uses "Commander" as synonym for user. The Commander has the role of agile project owner. 
+the Commander is the product owner. The QuarterDeck enables the Commander to own intent, review evidence and decisions, and to provide feedback at each stage.  That feedback guides the work and command reruns will incorprate that user intent.  This document uses "Commander" as synonym for user. The Commander has the role of agile project owner. 
 
 **Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are
 composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns
@@ -51,7 +51,7 @@ your typed specification files into a simple graph database suited for **context
 
 Context management is the KEY to reproducable specification driven builds.  `drydock build` uses a **dependency graph** to deliver working software using a use context-size-aware chunking and stacking strategy that ensures the work is done accurately.  `drydock build` compute the best path to build your software.
 
-Enterprise rules are injected using the Rigging.  **Enterprise branding and stack rules** use the concept Builder / User.  Feature builders need the whole specification to implement.  Feature users use markdown compaction to recieve only how to use the feature.  They do not need to know what it does or why.  
+**Enterprise branding and stack rules** are injected using Rigging.  Rigging is applied using the concept Builder / User.  Feature builders need the whole specification to implement.  Feature users use markdown compaction to recieve only how to use the feature.  They do not need to know what it does or why.  
 
 The loop phase lets the Commander **update and iterate** the application while preserving the specification as the source of truth.
 
@@ -168,10 +168,8 @@ The Analyze phase turns imported source material into an Analysis for review, th
 executable Manifest for build. The sequence is:
 
 1. `drydock import` brings source material under Drydock control.
-2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones,
-   blockers, questions, and any needed spikes. It also optionally seeds `COMPASS.md`.
-3. `drydock run quarterdeck` lets the product owner review, approve, and resolve open action items.  
-   The system surfaces questionnaires and analysis.
+2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions, and any needed spikes. It also optionally seeds `COMPASS.md`.
+3. `drydock run quarterdeck` lets the product owner review, approve, and resolve open action items.  The system surfaces questionnaires and analysis.
 4. `drydock plan create` converts the reviewed analysis into Blueprint files and the Manifest.
 
 ### Commands
@@ -225,9 +223,10 @@ markdown artifacts using agile. It prepares the following files for Commander re
 | Artifact | Location | Purpose |
 |---|---|---|
 | `sources/*` | `<Target>/blueprint/` | Imported source material; read-only planning context |
-| `COMPASS.md` | Target root | Project intent, when present |
+| `COMPASS.md` | Target root | Project intent |
 | `ANALYSIS_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
-| `BLOCKERS.md`, `questionnaires/*.json` | Target root; `<Target>/QuarterDeck/` | Prior Commander responses, consumed on re-run |
+| `BLOCKERS.md` | Target root | Blockers - edit file to address - consumed on re-run |
+| `questionnaires/*.json` | `<Target>/QuarterDeck/` | Persistent answers consumed on re-run |
 
 **Output files**
 
