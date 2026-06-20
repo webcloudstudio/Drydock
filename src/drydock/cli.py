@@ -178,12 +178,13 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
-    from drydock.config import get_target_directory
+    from drydock.config import get_model, get_target_directory
 
     target_dir = get_target_directory() / args.Target
+    model = get_model(getattr(args, "model", None))
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
-    result = analyze(args.Target, target_dir)
+    result = analyze(args.Target, target_dir, model=model)
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
@@ -681,6 +682,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[
             "drydock_build_directory",
             "drydock_workspace",
+            "drydock_model",
             "llm_provider",
             "prompt_warn_kb",
             "quarterdeck_port",
@@ -802,6 +804,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser("analyze", help="Decompose imported sources into stories, blockers, and acceptance milestones.")
     p_analyze.add_argument("Target", metavar="<Target>")
+    p_analyze.add_argument(
+        "--model",
+        default=None,
+        metavar="<model>",
+        help="Override LLM model (default: DRYDOCK_MODEL env or sonnet).",
+    )
 
     # ── survey ────────────────────────────────────────────────────────────────
     p_survey = sub.add_parser(
@@ -910,6 +918,29 @@ def _dispatch_document(args: argparse.Namespace) -> int:
     return 2  # unreachable; not_implemented exits
 
 
+def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
+    """Parse Target and optional flags for ``drydock build <Target>``."""
+    import argparse as _ap
+
+    p = _ap.ArgumentParser(prog="drydock build", add_help=False)
+    p.add_argument("Target", metavar="<Target>")
+    p.add_argument(
+        "--build-dir",
+        dest="build_dir",
+        default=None,
+        metavar="<path>",
+        help="Directory where built code is written (overrides METADATA.md and config).",
+    )
+    p.add_argument(
+        "--model",
+        default=None,
+        metavar="<model>",
+        help="Override LLM model (default: DRYDOCK_MODEL env or sonnet).",
+    )
+    parsed, _ = p.parse_known_args(tokens)
+    return parsed
+
+
 def _dispatch_build(args: argparse.Namespace) -> int:
     tokens = args.args
     if not tokens:
@@ -927,6 +958,7 @@ def _dispatch_build(args: argparse.Namespace) -> int:
     elif first == "score":
         not_implemented("build score")
     else:
+        _parse_build_args(tokens)  # validates args; build itself is not yet implemented
         not_implemented("build")
     return 2
 

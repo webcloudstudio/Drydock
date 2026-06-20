@@ -401,11 +401,12 @@ class TestAssemblePrompt:
         assert "BUILD_CONFIGURATION" not in result
         assert "Prior PO answers" not in result
 
-    def test_prompt_body_comes_first(self, tmp_path):
+    def test_prompt_body_comes_last(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
         result = _assemble_prompt("MY BODY", bp, "2026-06-14", compass_exists=False)
-        assert result.startswith("MY BODY")
+        assert result.endswith("MY BODY")
+        assert result.index("## Analysis job") < result.index("MY BODY")
 
     def test_injects_blockers_text_when_provided(self, tmp_path):
         bp = tmp_path / "blueprint"

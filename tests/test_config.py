@@ -8,12 +8,14 @@ import pytest
 
 import drydock.config as config
 from drydock.config import (
+    DEFAULT_MODEL,
     blueprint_dir_for,
     build_dir_for,
     config_set,
     config_show,
     get_build_directory,
     get_llm_provider,
+    get_model,
     get_prompt_warn_kb,
     get_quarterdeck_port,
     get_target_directory,
@@ -78,9 +80,9 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_five_rows(self, isolated_config):
+    def test_show_returns_six_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 5
+        assert len(rows) == 6
 
     def test_show_defaults_when_empty(self, isolated_config, tmp_path, monkeypatch):
         default_build_root = tmp_path / "projects"
@@ -92,6 +94,7 @@ class TestConfigShow:
         ws_value, ws_source = by_name["drydock_workspace"]
         assert ws_value != "(not set)"
         assert ws_source == "default"
+        assert by_name["drydock_model"][0] == "sonnet"
         assert by_name["llm_provider"][0] == "claude"
         assert by_name["prompt_warn_kb"][0] == "50"
         assert by_name["quarterdeck_port"][0] == "8080"
@@ -167,6 +170,33 @@ class TestWorkspaceResolution:
         # No DRYDOCK_WORKSPACE: falls back to the Git top-level of cwd, else cwd.
         monkeypatch.chdir(tmp_path)
         assert isinstance(get_workspace(), Path)
+
+
+class TestGetModel:
+    def test_default_is_sonnet(self, isolated_config):
+        assert get_model() == DEFAULT_MODEL
+        assert get_model() == "sonnet"
+
+    def test_cli_override_wins(self, isolated_config):
+        assert get_model("opus") == "opus"
+
+    def test_env_var_overrides_default(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_MODEL", "haiku")
+        assert get_model() == "haiku"
+
+    def test_cli_override_wins_over_env(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_MODEL", "haiku")
+        assert get_model("opus") == "opus"
+
+    def test_config_set_persists(self, isolated_config):
+        config_set("drydock_model", "opus")
+        assert get_model() == "opus"
+
+    def test_config_set_empty_raises(self, isolated_config):
+        from drydock.errors import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="must not be empty"):
+            config_set("drydock_model", "")
 
 
 class TestGetters:

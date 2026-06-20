@@ -1,9 +1,11 @@
-"""METADATA.md field parser and Target manifest.
+"""METADATA.md field parser and build-directory resolution.
 
-``METADATA.md`` records project identity plus a small manifest: the Blueprint
-name and ``code_root`` (where the built/served code lives). Fields are simple
-``key: value`` lines above the first ``## `` section, read with a tolerant
-scalar parser so hand edits do not break resolution. There is no YAML dependency.
+``METADATA.md`` records project identity (name, display_name, short_description,
+stack, version) and optional fields (brand, git_repo, release_tag, build_dir).
+Fields are simple ``key: value`` lines; a tolerant scalar parser handles hand
+edits without a YAML dependency.
+
+``drydock_build_state`` is the lifecycle state field written by Drydock commands.
 """
 
 from __future__ import annotations
@@ -12,17 +14,14 @@ import re
 from pathlib import Path
 
 METADATA_NAME = "METADATA.md"
-DEFAULT_CODE_ROOT = "../.."
 
 BUILD_STATE_LADDER: tuple[str, ...] = ("init", "analyzed", "planned", "building", "built")
 
 
 def parse_metadata(path: Path) -> dict[str, str]:
-    """
-    Parse a METADATA.md file and return a dict of field -> value.
+    """Parse a METADATA.md file and return a dict of field -> value.
 
-    Handles both 'key: value' frontmatter-style lines and the
-    '## Agent Instructions' section boundary (stops there).
+    Reads ``key: value`` lines. Stops at the first ``## `` section header.
     """
     fields: dict[str, str] = {}
     if not path.exists():
@@ -30,7 +29,6 @@ def parse_metadata(path: Path) -> dict[str, str]:
 
     text = path.read_text(encoding="utf-8")
     for line in text.splitlines():
-        # Stop at section headers — metadata fields are above them
         if line.startswith("## "):
             break
         m = re.match(r"^([a-z_]+):\s*(.*)$", line.rstrip())
@@ -45,29 +43,29 @@ def get_field(metadata: dict[str, str], key: str) -> str | None:
     return val if val else None
 
 
+def load_metadata_vars(target_dir: Path) -> dict[str, str]:
+    """Return all METADATA.md fields as a variable dict for prompt assembly."""
+    return parse_metadata(target_dir / METADATA_NAME)
+
+
 def render_metadata(
     target: str,
     *,
-    blueprint: str | None = None,
-    code_root: str = DEFAULT_CODE_ROOT,
     display_name: str = "",
     short_description: str = "",
+    stack: str = "",
+    version: str = "",
 ) -> str:
-    """Render a minimal project METADATA.md carrying the manifest fields."""
+    """Render a METADATA.md scaffold for a new target."""
     dn = display_name.strip() or target
     sd = short_description.strip()
     return (
-        f"# {target}\n\n"
-        f"display_name: {dn}\n"
-        f"short_description: {sd}\n\n"
+        "# AUTHORITATIVE PROJECT METADATA — FIELDS SHOULD BE CURRENT\n\n"
         f"name: {target}\n"
-        f"blueprint: {blueprint or target}\n"
-        f"code_root: {code_root}\n"
-        "status: IDEA\n"
-        "type: oneshot\n\n"
-        "## Agent Instructions\n\n"
-        "Record unresolved questions in the `## Open Questions` section of the "
-        "relevant blueprint file.\n"
+        f"display_name: {dn}\n"
+        f"short_description: {sd}\n"
+        f"stack: {stack}\n"
+        f"version: {version}\n"
     )
 
 
@@ -107,15 +105,20 @@ def set_build_state(target_dir: Path, state: str) -> bool:
     return True
 
 
-def get_code_root(target_dir: Path) -> Path:
-    """Resolve the Target's ``code_root`` to an absolute path.
+def get_build_dir(target: str, target_dir: Path, cli_override: str | None = None) -> Path:
+    """Resolve where build output for this target should be written.
 
-    Relative roots resolve against the Target directory; an absent or empty value
-    falls back to the default (``$DRYDOCK_WORKSPACE``).
+    Resolution order:
+    1. ``cli_override`` (from ``--build-dir`` argument)
+    2. ``build_dir`` field in METADATA.md
+    3. ``$DRYDOCK_BUILD_DIRECTORY/<target>`` (config default)
     """
+    if cli_override:
+        return Path(cli_override).expanduser().resolve()
     fields = parse_metadata(target_dir / METADATA_NAME)
-    value = fields.get("code_root") or DEFAULT_CODE_ROOT
-    candidate = Path(value)
-    if candidate.is_absolute():
-        return candidate
-    return (target_dir / candidate).resolve()
+    stored = fields.get("build_dir", "").strip()
+    if stored:
+        return Path(stored).expanduser().resolve()
+    from drydock.config import build_dir_for
+
+    return build_dir_for(target)

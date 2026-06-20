@@ -20,8 +20,8 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
     assert not (result.target_dir / "target.yaml").exists()
     assert not (result.target_dir / "docs").exists()
     metadata = (result.target_dir / "METADATA.md").read_text(encoding="utf-8")
-    assert "code_root: ../.." in metadata
-    assert "blueprint: Example" in metadata
+    assert "name: Example" in metadata
+    assert "display_name: Example" in metadata
     assert (result.target_dir / "blueprint" / "sources").is_dir()
     assert "Captain's Chair" in (result.target_dir / "QuarterDeck" / "console.yaml").read_text(
         encoding="utf-8"

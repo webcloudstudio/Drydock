@@ -253,8 +253,6 @@ def _assemble_prompt(
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
     parts = [
-        body,
-        "",
         "## Analysis job",
         "",
         f"- BLUEPRINT_PATH: {blueprint_dir}",
@@ -271,6 +269,7 @@ def _assemble_prompt(
         "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
     }
     parts += render_inputs(input_tokens, renderers)
+    parts += ["", body]
     return "\n".join(parts)
 
 
@@ -408,6 +407,7 @@ def analyze(
     *,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
+    model: str | None = None,
 ) -> AnalyzeResult:
     """Analyze a Blueprint and write all analyze artifacts to the Target."""
     blueprint_dir = target_dir / "blueprint"
@@ -453,7 +453,7 @@ def analyze(
     result = run(
         assembled,
         target_dir,
-        model=prompt.model,
+        model=model,
         command_name="analyze",
         parameters={"target": target, "blueprint": str(blueprint_dir)},
         on_text=on_text,

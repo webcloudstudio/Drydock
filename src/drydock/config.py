@@ -15,11 +15,13 @@ from drydock.errors import ConfigurationError
 _KEY_MAP = {
     "drydock_build_directory": "DRYDOCK_BUILD_DIRECTORY",
     "drydock_workspace": "DRYDOCK_WORKSPACE",
+    "drydock_model": "DRYDOCK_MODEL",
     "llm_provider": "LLM_PROVIDER",
     "prompt_warn_kb": "PROMPT_WARN_KB",
     "quarterdeck_port": "QUARTERDECK_PORT",
 }
 
+DEFAULT_MODEL = "sonnet"
 DEFAULT_PROMPT_WARN_KB = 50
 DEFAULT_QUARTERDECK_PORT = 8080
 
@@ -112,6 +114,18 @@ def blueprint_dir_for(target_dir: Path) -> Path:
     return target_dir / "blueprint"
 
 
+def get_model(cli_override: str | None = None) -> str:
+    """Resolve the LLM model for this invocation.
+
+    Resolution order: cli_override → DRYDOCK_MODEL (env or config file) → ``sonnet``.
+    Prompt frontmatter ``model:`` values are hints only and are ignored here.
+    """
+    if cli_override:
+        return cli_override.strip()
+    value, _source = _get("DRYDOCK_MODEL", DEFAULT_MODEL)
+    return (value or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+
+
 def get_llm_provider() -> str:
     value, _source = _get("LLM_PROVIDER", "claude")
     provider = (value or "").lower()
@@ -157,6 +171,7 @@ def config_show() -> list[tuple[str, str, str]]:
         ws_value, ws_source = str(get_workspace()), "default"
     rows.append(("drydock_workspace", ws_value, ws_source))
     for display_key, key_upper, default in (
+        ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("prompt_warn_kb", "PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
@@ -196,7 +211,11 @@ def config_set(key: str, value: str) -> Path:
     if upper is None:
         raise ConfigurationError(f"Unknown key: {key!r}\n  Valid keys: {', '.join(_KEY_MAP)}")
 
-    if upper == "LLM_PROVIDER":
+    if upper == "DRYDOCK_MODEL":
+        stored_value = value.strip()
+        if not stored_value:
+            raise ConfigurationError("drydock_model must not be empty.")
+    elif upper == "LLM_PROVIDER":
         stored_value = value.lower()
         if stored_value not in {"claude", "codex"}:
             raise ConfigurationError(
