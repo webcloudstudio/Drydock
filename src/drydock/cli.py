@@ -638,18 +638,19 @@ def _render_workspace_status(ws) -> None:
 
     print("Drydock status — workspace")
     print()
+    label_width = 10
     for info in ws.targets:
         print(f"Target: {info.name}")
-        print(f"   Phase:     {info.phase}")
-        print(f"   State:     {info.phase_detail}")
+        print(f"   {'Phase:':<{label_width}} {info.phase}")
+        print(f"   {'State:':<{label_width}} {info.phase_detail}")
         print(
-            f"   Detail:    {info.imported_sources} imported"
+            f"   {'Detail:':<{label_width}} {info.imported_sources} imported"
             f" · {info.authored_blueprints} authored"
             f" · metadata {info.metadata_state or 'init'}"
         )
         if info.analysis is not None:
             print(
-                "   Analysis:  "
+                f"   {'Analysis:':<{label_width}} "
                 f"{info.analysis.quality or 'unknown'}"
                 f" · {info.analysis.story_count} stories"
                 f" · {info.analysis.question_count} questions"
@@ -657,23 +658,26 @@ def _render_workspace_status(ws) -> None:
             )
         if info.plan_summary is not None:
             print(
-                "   Plan:      "
+                f"   {'Plan:':<{label_width}} "
                 f"{info.plan_summary.state}"
                 f" · {info.plan_summary.verified}/{info.plan_summary.total} verified"
                 f" · {info.plan_summary.pending} pending"
             )
         if info.blockers_present or info.questionnaire_count:
             print(
-                "   Review:    "
+                f"   {'Review:':<{label_width}} "
                 f"BLOCKERS.md {'present' if info.blockers_present else 'none'}"
                 f" · {info.questionnaire_count} questionnaires"
             )
-        print(f"   Next Step: {info.next_operation}")
-        for rec in reversed(info.history):
+        print(f"   {'Next Step:':<{label_width}} {info.next_operation}")
+        for index, rec in enumerate(reversed(info.history)):
             cmd = rec.get("command", "")
+            stamp = str(rec.get("time", "")).strip()
+            month_day = stamp[5:10] if len(stamp) >= 10 else "-- --"
             rc = rec.get("return_code")
             icon = "·" if rc is None else ("✓" if rc == 0 else "✗")
-            print(f"   {icon} {cmd}")
+            label = "Run:" if index == 0 else ""
+            print(f"   {label:<{label_width}} {icon} {month_day} {cmd}")
         print()
 
 

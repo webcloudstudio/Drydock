@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from drydock import __copyright__, __version__
@@ -908,6 +910,26 @@ class TestStatus:
         assert "MyProject" in out
         assert "Phase:" in out
         assert "Next Step:" in out
+
+    def test_status_no_args_formats_run_history_with_month_day(
+        self, tmp_path, isolated_config, monkeypatch
+    ):
+        from drydock.config import append_command_history
+        from drydock.init_target import init_target
+
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(workspace))
+        init_target("MyProject", workspace / "targets")
+        append_command_history(workspace, "drydock analyze MyProject", target="MyProject", return_code=0)
+
+        rc, out, err = run_cli("status")
+
+        assert rc == 0, err
+        assert "Run:" in out
+        assert "✓" in out
+        assert re.search(r"Run:\s+✓\s+\d{2}-\d{2}\s+drydock analyze MyProject", out)
+        assert "drydock analyze MyProject" in out
 
     def test_activity_recorded_after_status_command(
         self, tmp_target_root, isolated_config, monkeypatch
