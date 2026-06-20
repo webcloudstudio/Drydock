@@ -102,6 +102,13 @@ def _split_list(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+def _split_depends(value: str) -> tuple[str, ...]:
+    """Accept comma-separated or whitespace-separated manifest dependencies."""
+    if "," in value:
+        return _split_list(value)
+    return tuple(item for item in value.split() if item)
+
+
 def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
     fields = raw["fields"]
     assert isinstance(fields, dict)
@@ -184,7 +191,12 @@ def parse_build_plan(path: Path) -> BuildPlan:
         else:
             fields = current["fields"]
             assert isinstance(fields, dict)
-            fields[key] = _split_list(value) if key in _LIST_FIELDS else value
+            if key == "depends":
+                fields[key] = _split_depends(value)
+            elif key in _LIST_FIELDS:
+                fields[key] = _split_list(value)
+            else:
+                fields[key] = value
 
     if not project:
         raise SpecificationError(f"Missing '# MANIFEST: <ProjectName>' header in {path}")

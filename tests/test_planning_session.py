@@ -229,6 +229,38 @@ def test_integrity_unknown_dependency_is_fatal(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
 
 
+def test_integrity_accepts_whitespace_separated_dependencies(tmp_path):
+    _make_target(tmp_path)
+    manifest = (
+        _manifest()
+        + """
+## story 2: Follow-up
+id: story-follow-up
+parent: feature-status
+summary: Extend the status command.
+implements: FEATURE-Status.md
+scope: both
+depends: story-status story-spike
+state: pending
+
+## spike 2: Research
+id: story-spike
+summary: Investigate a dependency.
+state: closed/verified
+
+## ac 2: Follow-up exits successfully
+id: ac-follow-up-exits
+parent: story-follow-up
+kind: assertion
+state: pending
+"""
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert result.plan.by_id()["story-follow-up"].depends == ("story-status", "story-spike")
+
+
 def test_story_without_acceptance_is_fatal(tmp_path):
     _make_target(tmp_path)
     # Drop the ac block — a story with no acceptance gate must not be emitted.

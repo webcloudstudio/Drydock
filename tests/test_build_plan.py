@@ -65,6 +65,37 @@ def test_parse_build_plan(plan_path: Path):
     assert plan.blocks[1].depends == ("foundation",)
 
 
+def test_parse_build_plan_accepts_whitespace_separated_depends(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: draft
+
+## story 1: First
+id: first
+state: closed/verified
+
+## story 2: Second
+id: second
+depends: first third
+state: pending
+
+## story 3: Third
+id: third
+state: closed/verified
+
+## ac 1: Second accepted
+id: second-accepted
+parent: second
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    assert plan.by_id()["second"].depends == ("first", "third")
+
+
 def test_runnable_frontier_applies_dependency_and_ac_parent_rules(plan_path: Path):
     plan = parse_build_plan(plan_path)
 
