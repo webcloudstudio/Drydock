@@ -574,10 +574,10 @@ def test_archive_blocked_for_pinned_section(monkeypatch):
 # ── Spike questionnaire template ──────────────────────────────────────────────
 
 
-def _spike_json(**overrides) -> str:
+def _discovery_json(**overrides) -> str:
     data = {
-        "id": "spike-intent",
-        "title": "Spike: Intent",
+        "id": "discovery-intent",
+        "title": "Discovery: Intent",
         "purpose": "What does this product do?",
         "questions": [
             {
@@ -592,45 +592,45 @@ def _spike_json(**overrides) -> str:
     return json.dumps(data, indent=2)
 
 
-def _spike_item() -> dict:
+def _discovery_item() -> dict:
     return {
-        "id": "spike_intent",
-        "label": "Spike: Intent",
-        "section": "archive",
+        "id": "discovery_intent",
+        "label": "Discovery: Intent",
+        "section": "actions",
         "type": "questionnaire",
-        "template": "spike",
-        "path": "questionnaires/spike-intent.json",
+        "template": "discovery",
+        "path": "questionnaires/discovery-intent.json",
     }
 
 
 def test_spike_questionnaire_is_buttonless_with_autosave(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
-    spike_file = tmp_path / "spike-intent.json"
-    spike_file.write_text(_spike_json(), encoding="utf-8")
-    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: spike_file)
+    discovery_file = tmp_path / "discovery-intent.json"
+    discovery_file.write_text(_discovery_json(), encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: discovery_file)
 
-    rendered = quarterdeck.render_questionnaire(_spike_item())
+    rendered = quarterdeck.render_questionnaire(_discovery_item())
 
     # The two nonsensical resolution buttons are gone.
     assert "Implement as Story" not in rendered
     assert "Commander Implements" not in rendered
     assert "Save Answers" not in rendered
     assert "<button" not in rendered
-    # A buttonless spike form that autosaves remains.
-    assert "data-template='spike'" in rendered
+    # A buttonless discovery form that autosaves remains.
+    assert "data-template='discovery'" in rendered
     assert "save automatically" in rendered
     assert "q-save-status" in rendered
 
 
 def test_spike_questionnaire_done_still_renders_editable_form(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
-    spike_file = tmp_path / "spike-intent.json"
-    spike_file.write_text(_spike_json(state="answered"), encoding="utf-8")
-    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: spike_file)
+    discovery_file = tmp_path / "discovery-intent.json"
+    discovery_file.write_text(_discovery_json(state="answered"), encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: discovery_file)
 
-    rendered = quarterdeck.render_questionnaire(_spike_item())
+    rendered = quarterdeck.render_questionnaire(_discovery_item())
 
-    # No resolution label / buttons; a done spike stays editable and shows the done mark.
+    # No resolution label / buttons; a done discovery stays editable and shows the done mark.
     assert "Implement as Story" not in rendered
     assert "<form data-questionnaire=" in rendered
     assert "q-done-mark" in rendered
@@ -661,44 +661,44 @@ def test_non_spike_questionnaire_is_also_buttonless(tmp_path, monkeypatch):
 
 def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
-    spike_file = tmp_path / "spike-intent.json"
-    spike_file.write_text(_spike_json(), encoding="utf-8")
+    discovery_file = tmp_path / "discovery-intent.json"
+    discovery_file.write_text(_discovery_json(), encoding="utf-8")
 
     item = {
-        "id": "spike_intent",
+        "id": "discovery_intent",
         "type": "questionnaire",
-        "path": str(spike_file.relative_to(tmp_path)),
+        "path": str(discovery_file.relative_to(tmp_path)),
     }
     monkeypatch.setattr(quarterdeck, "items", lambda: [item])
     monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path)
 
     quarterdeck._writeback_questionnaire(
-        "questionnaire.spike-intent",
+        "questionnaire.discovery-intent",
         "promoted",
         {"primary_goal": "Build a ship.", "resolution": "promoted"},
     )
 
-    written = json.loads(spike_file.read_text(encoding="utf-8"))
+    written = json.loads(discovery_file.read_text(encoding="utf-8"))
     assert written["state"] == "promoted"
     assert written["resolution"] == "promoted"
     assert written["questions"][0]["answer"] == "Build a ship."
 
 
-def test_autosaved_completed_spike_rerenders_nav_into_archive(tmp_path, monkeypatch):
+def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     q_dir = tmp_path / "QuarterDeck" / "questionnaires"
     q_dir.mkdir(parents=True)
-    spike_file = q_dir / "spike-guardrails.json"
-    spike_file.write_text(
-        _spike_json(id="spike-guardrails", title="Spike: Guardrails"), encoding="utf-8"
+    discovery_file = q_dir / "discovery-guardrails.json"
+    discovery_file.write_text(
+        _discovery_json(id="discovery-guardrails", title="Discovery: Guardrails"), encoding="utf-8"
     )
     item = {
-        "id": "spike_guardrails",
-        "label": "Spike: Guardrails",
-        "section": "archive",
+        "id": "discovery_guardrails",
+        "label": "Discovery: Guardrails",
+        "section": "actions",
         "type": "questionnaire",
-        "template": "spike",
-        "path": "questionnaires/spike-guardrails.json",
+        "template": "discovery",
+        "path": "questionnaires/discovery-guardrails.json",
     }
     monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
     monkeypatch.setattr(
@@ -717,16 +717,17 @@ def test_autosaved_completed_spike_rerenders_nav_into_archive(tmp_path, monkeypa
     assert [section["id"] for section in quarterdeck.nav_model()] == ["actions"]
 
     quarterdeck.api_set_state(
-        "questionnaire.spike-guardrails",
+        "questionnaire.discovery-guardrails",
         quarterdeck.StateUpdate(
-            document_id="spike-guardrails",
+            document_id="discovery-guardrails",
             state="answered",
             payload={"primary_goal": "Keep generated work inside the guardrails."},
         ),
     )
 
-    assert [section["id"] for section in quarterdeck.nav_model()] == ["archive"]
+    # Answering does not archive — item stays in actions, shows as done.
+    assert [section["id"] for section in quarterdeck.nav_model()] == ["actions"]
     rendered = quarterdeck.render_nav()
-    assert "data-sec='archive'" in rendered
-    assert "data-item='spike_guardrails'" in rendered
+    assert "data-sec='actions'" in rendered
+    assert "data-item='discovery_guardrails'" in rendered
     assert "ns-done" in rendered

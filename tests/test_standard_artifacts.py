@@ -54,13 +54,13 @@ def test_render_console_labels_compass_feedback_files():
     assert items["manifest_feedback"]["path"] == "../MANIFEST_COMPASS.md"
 
 
-def test_render_console_includes_spike_questionnaire_source(tmp_path):
+def test_render_console_includes_discovery_questionnaire_source(tmp_path):
     config = render_console("Example")
 
-    assert "spike-*.json" in config
+    assert "discovery-*.json" in config
     assert "questionnaire" in config
-    assert "section: archive" in config
-    assert "template: spike" in config
+    assert "section: actions" in config
+    assert "template: discovery" in config
 
 
 def test_render_console_includes_blockers_section_first():

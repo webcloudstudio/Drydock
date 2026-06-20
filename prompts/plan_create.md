@@ -70,8 +70,8 @@ the job block; the rest are fenced sections.
   parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
   analyze. Use these as planning context; do not overwrite their intent.
-- **Answered spikes** (`spike-*.json`) — settled human-owned decisions on stack, intent, and guardrails.
-  Consume these as authoritative; do not re-raise a question that a spike has already answered.
+- **Answered questionnaires** (`discovery-*.json`) — settled human-owned decisions on stack, intent, and guardrails.
+  Consume these as authoritative; do not re-raise a question that a questionnaire has already answered.
 - **`COMPASS.md`** — existing product intent if already present; otherwise derive emitted content
   from the analysis and sources.
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field
@@ -89,7 +89,7 @@ the required output block contract described below.
 Execute in order. Do not skip a step.
 
 **1. Review the planning basis.**
-- *Consumes:* imported sources, `ANALYSIS.md`, `MANIFEST_COMPASS.md` direction, answered spikes.
+- *Consumes:* imported sources, `ANALYSIS.md`, `MANIFEST_COMPASS.md` direction, answered questionnaires.
 - *Emits:* working understanding of the project shape, stack, constraints, and unanswered items.
 
 **2. Confirm the decomposition shape.**

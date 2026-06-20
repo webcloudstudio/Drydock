@@ -99,10 +99,10 @@ A test project compass.
 ## Success Criteria
 - System operational."""
 
-_SPIKE_INTENT = json.dumps(
+_DISCOVERY_INTENT = json.dumps(
     {
-        "id": "spike-intent",
-        "title": "Spike: Product Intent",
+        "id": "discovery-intent",
+        "title": "Discovery: Product Intent",
         "purpose": "Clarify intent.",
         "questions": [
             {"id": "primary_goal", "label": "Primary Goal", "prompt": "What?", "input": "textarea"}
@@ -111,10 +111,10 @@ _SPIKE_INTENT = json.dumps(
     indent=2,
 )
 
-_SPIKE_STACK = json.dumps(
+_DISCOVERY_STACK = json.dumps(
     {
-        "id": "spike-stack",
-        "title": "Spike: Technology Stack",
+        "id": "discovery-stack",
+        "title": "Discovery: Technology Stack",
         "purpose": "Confirm stack.",
         "questions": [
             {
@@ -128,10 +128,10 @@ _SPIKE_STACK = json.dumps(
     indent=2,
 )
 
-_SPIKE_GAPS_AC = json.dumps(
+_DISCOVERY_GAPS_AC = json.dumps(
     {
-        "id": "spike-gaps-ac",
-        "title": "Spike: Gaps and Acceptance Criteria",
+        "id": "discovery-gaps-ac",
+        "title": "Discovery: Gaps and Acceptance Criteria",
         "purpose": "Identify gaps.",
         "questions": [
             {
@@ -145,10 +145,10 @@ _SPIKE_GAPS_AC = json.dumps(
     indent=2,
 )
 
-_SPIKE_GUARDRAILS = json.dumps(
+_DISCOVERY_GUARDRAILS = json.dumps(
     {
-        "id": "spike-guardrails",
-        "title": "Spike: Guardrails",
+        "id": "discovery-guardrails",
+        "title": "Discovery: Guardrails",
         "purpose": "Surface constraints.",
         "questions": [
             {
@@ -220,10 +220,10 @@ def _make_llm_output(
     ]
     if include_spikes:
         blocks += [
-            f"=== spike-intent.json ===\n{_SPIKE_INTENT}\n=== END spike-intent.json ===",
-            f"=== spike-stack.json ===\n{_SPIKE_STACK}\n=== END spike-stack.json ===",
-            f"=== spike-gaps-ac.json ===\n{_SPIKE_GAPS_AC}\n=== END spike-gaps-ac.json ===",
-            f"=== spike-guardrails.json ===\n{_SPIKE_GUARDRAILS}\n=== END spike-guardrails.json ===",
+            f"=== discovery-intent.json ===\n{_DISCOVERY_INTENT}\n=== END discovery-intent.json ===",
+            f"=== discovery-stack.json ===\n{_DISCOVERY_STACK}\n=== END discovery-stack.json ===",
+            f"=== discovery-gaps-ac.json ===\n{_DISCOVERY_GAPS_AC}\n=== END discovery-gaps-ac.json ===",
+            f"=== discovery-guardrails.json ===\n{_DISCOVERY_GUARDRAILS}\n=== END discovery-guardrails.json ===",
         ]
     if include_compass:
         blocks.insert(3, f"=== COMPASS.md ===\n{_COMPASS_CONTENT}\n=== END COMPASS.md ===")
@@ -231,10 +231,10 @@ def _make_llm_output(
         blocks.append(f"=== BLOCKERS.md ===\n{blockers}\n=== END BLOCKERS.md ===")
     if extra_spike:
         extra = json.dumps(
-            {"id": "spike-auth", "title": "Spike: Auth", "purpose": "Auth model.", "questions": []},
+            {"id": "discovery-auth", "title": "Discovery: Auth", "purpose": "Auth model.", "questions": []},
             indent=2,
         )
-        blocks.append(f"=== spike-auth.json ===\n{extra}\n=== END spike-auth.json ===")
+        blocks.append(f"=== discovery-auth.json ===\n{extra}\n=== END discovery-auth.json ===")
     return "\n\n".join(blocks)
 
 
@@ -511,10 +511,10 @@ class TestParseOutput:
         assert "COMPASS" in compass
         assert blockers is None
         assert quality == "Ready"
-        assert "spike-intent.json" in spikes
-        assert "spike-stack.json" in spikes
-        assert "spike-gaps-ac.json" in spikes
-        assert "spike-guardrails.json" in spikes
+        assert "discovery-intent.json" in spikes
+        assert "discovery-stack.json" in spikes
+        assert "discovery-gaps-ac.json" in spikes
+        assert "discovery-guardrails.json" in spikes
 
     def test_summary_fields_parsed(self):
         _, _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT)
@@ -585,7 +585,7 @@ class TestParseOutput:
         assert spikes == {}
 
     def test_invalid_spike_json_raises(self):
-        bad = _VALID_LLM_OUTPUT.replace(_SPIKE_INTENT, "{bad json")
+        bad = _VALID_LLM_OUTPUT.replace(_DISCOVERY_INTENT, "{bad json")
         with pytest.raises(ValueError, match="not valid JSON"):
             _parse_output(bad)
 
@@ -597,7 +597,7 @@ class TestParseOutput:
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
         _, _, _, _, _, spikes, _, _ = _parse_output(output)
-        assert "spike-auth.json" in spikes
+        assert "discovery-auth.json" in spikes
 
 
 # ---------------------------------------------------------------------------
@@ -762,10 +762,10 @@ class TestAnalyze:
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         for name in (
-            "spike-intent.json",
-            "spike-stack.json",
-            "spike-gaps-ac.json",
-            "spike-guardrails.json",
+            "discovery-intent.json",
+            "discovery-stack.json",
+            "discovery-gaps-ac.json",
+            "discovery-guardrails.json",
         ):
             assert (questionnaires / name).exists(), f"{name} not written"
 
@@ -774,17 +774,17 @@ class TestAnalyze:
         output = _make_llm_output(include_spikes=False)
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert result.ok
-        assert result.spike_paths == ()
+        assert result.discovery_paths == ()
 
     def test_spike_paths_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert len(result.spike_paths) >= 4
+        assert len(result.discovery_paths) >= 4
 
     def test_spike_files_are_valid_json(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        for path in result.spike_paths:
+        for path in result.discovery_paths:
             data = json.loads(path.read_text(encoding="utf-8"))
             assert "questions" in data
 
@@ -793,7 +793,7 @@ class TestAnalyze:
         output = _make_llm_output(extra_spike=True)
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
-        assert (questionnaires / "spike-auth.json").exists()
+        assert (questionnaires / "discovery-auth.json").exists()
 
     def test_blockers_md_written_when_blocked(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

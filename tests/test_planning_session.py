@@ -13,7 +13,7 @@ import pytest
 
 from drydock.errors import SpecificationError
 from drydock.planning_session import (
-    _answered_spike,
+    _answered_discovery,
     _assemble_prompt,
     _parse_blocks,
     create_plan,
@@ -260,33 +260,33 @@ def test_failed_run_refuses(tmp_path):
         )
 
 
-def _write_spike(path: Path, questions: list[dict]) -> Path:
+def _write_discovery(path: Path, questions: list[dict]) -> Path:
     path.write_text(
-        json.dumps({"id": path.stem, "title": "Spike", "questions": questions}),
+        json.dumps({"id": path.stem, "title": "Discovery", "questions": questions}),
         encoding="utf-8",
     )
     return path
 
 
-def test_answered_spike_keeps_only_answered_questions(tmp_path):
-    spike = _write_spike(
-        tmp_path / "spike-x.json",
+def test_answered_discovery_keeps_only_answered_questions(tmp_path):
+    discovery = _write_discovery(
+        tmp_path / "discovery-x.json",
         [
             {"id": "a", "prompt": "?", "answer": "yes"},
             {"id": "b", "prompt": "?"},
             {"id": "c", "prompt": "?", "answer": "   "},
         ],
     )
-    result = _answered_spike(spike)
+    result = _answered_discovery(discovery)
     assert [q["id"] for q in result["questions"]] == ["a"]
 
 
-def test_answered_spike_returns_none_when_unanswered(tmp_path):
-    spike = _write_spike(
-        tmp_path / "spike-y.json",
+def test_answered_discovery_returns_none_when_unanswered(tmp_path):
+    discovery = _write_discovery(
+        tmp_path / "discovery-y.json",
         [{"id": "a", "prompt": "?"}, {"id": "b", "prompt": "?", "answer": ""}],
     )
-    assert _answered_spike(spike) is None
+    assert _answered_discovery(discovery) is None
 
 
 def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):

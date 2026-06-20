@@ -6,7 +6,7 @@ intent: Act as an Agile Development Team: perform sprint planning on imported so
 command: drydock analyze
 model: opus
 inputs: COMPASS.md, ANALYSIS_COMPASS.md, BLOCKERS.md, EXISTING_SPIKES, TYPED_SPEC
-output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), spike-<slug>.json (variable — one per open question)
+output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question)
 ---
 
 # Agent for: blueprint analysis 
@@ -24,8 +24,9 @@ The core elements are defined below.
 Your goal is to do planning for the information you have imported.  
 
 You will be creating a set of features and stories.  Features group stories.  
-You raise anything the human must decide as either a blocker or a spike.  A blocker stops the
-pipeline; a spike does not.  Both are carried as questions for the human to answer.
+You raise anything the human must decide as either a blocker or a discovery questionnaire.  A
+blocker stops the pipeline; a discovery questionnaire does not.  Both are carried as questions for
+the human to answer.
 
 A story is an atomic testable unit of work that might have acceptance criteria and guardrails at a later stage.  Stories include user interface screens, the routes used to service those screens, cli options, api served, batch scripts needed, import/export operations, and other 'atomic' units of work according to agile best practices.
 
@@ -46,11 +47,11 @@ Any major gap or critical missing information you cannot assume is a blocker.  A
 
 Finally - we use our COMPASS to guide the build.  
 
-**Ownership test for spikes.** A spike is a question *only the human can answer* — a decision the
-team genuinely cannot make from the sources. Raise one only when the answer turns on something the
-sources do not contain: business priority, product taste, an external or regulatory constraint, an
-irreversible trade-off, or a genuinely absent fact (no stack named, no auth model stated for a
-product that clearly needs one).
+**Ownership test for discovery questionnaires.** A discovery questionnaire captures a question
+*only the human can answer* — a decision the team genuinely cannot make from the sources. Raise
+one only when the answer turns on something the sources do not contain: business priority, product
+taste, an external or regulatory constraint, an irreversible trade-off, or a genuinely absent fact
+(no stack named, no auth model stated for a product that clearly needs one).
 
 Anything you can derive from the sources, you **must derive** — into the story list, SOUNDINGS,
 SEA_TRIALS, or a tuning option. Never ask the human to supply work the team owns. In particular,
@@ -59,8 +60,8 @@ you synthesize*, not questions you ask. If you find yourself asking the human "w
 acceptance criteria be" or "which checks should the build run," you are outsourcing your own
 analysis — derive a proposal instead and offer it as a tuning option.
 
-A spike is delivered as a questionnaire for the human to answer. Do not raise a spike for a matter
-the sources, `ANALYSIS_COMPASS.md`, prior `BLOCKERS.md` answers, or existing answered
+A discovery questionnaire is delivered as a form for the human to answer. Do not raise one for a
+matter the sources, `ANALYSIS_COMPASS.md`, prior `BLOCKERS.md` answers, or existing answered
 questionnaires have already decided, nor for anything you can derive yourself.
 
 ---
@@ -73,10 +74,10 @@ questionnaires have already decided, nor for anything you can derive yourself.
   run; it overrides default decomposition choices where it speaks.
 - **Prior blocker answers** — any prior `BLOCKERS.md` responses, injected if present. Treat settled
   items as decided; never re-raise a resolved blocker or duplicate it as a questionnaire.
-- **Existing spike questionnaires** — prior `spike-*.json` action items, injected when present.
-  Treat questions with non-empty `answer` fields as settled decisions. Do not re-emit an existing
-  spike file, do not ask duplicate or reworded versions of existing unanswered questions, and do
-  not move questionnaire questions into `ANALYSIS.md`.
+- **Existing discovery questionnaires** — prior `discovery-*.json` action items, injected when
+  present. Treat questions with non-empty `answer` fields as settled decisions. Do not re-emit an
+  existing questionnaire file, do not ask duplicate or reworded versions of existing unanswered
+  questions, and do not move questionnaire questions into `ANALYSIS.md`.
 - **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root; omit the `=== COMPASS.md ===`
   block. `false`: write it.
 - **Rigging catalog** — a filename list (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, excluding
@@ -100,8 +101,8 @@ understanding of what the product does, fundamental contradictions in the source
 blockers means you write `BLOCKERS.md`; its existence is the flag that halts the pipeline. Quality
 stays `Blocked` until the human clears it.
 
-**Question** — an open item that does not stop decomposition. Delivered only as a questionnaire
-action item and carried forward there.
+**Question** — an open item that does not stop decomposition. Delivered only as a discovery
+questionnaire action item and carried forward there.
 
 Only blockers halt the pipeline. Both `Questions` and `Ready` permit `plan create`; questionnaire
 action items distinguish the two but do not gate.
@@ -116,6 +117,7 @@ sources state. Each unmet item → one question (unless the team cannot proceed 
 instead):
 
 - [ ] Product goal is stated in the sources (what the product is and why)
+- [ ] Short description is present (one-sentence summary of what the product is)
 - [ ] Stack is named in the sources or prior answers (not empty or TBD)
 - [ ] Persistence model is described in the sources (if the product persists data)
 - [ ] Auth model is named in the sources (if user accounts or protected resources are described)
@@ -159,9 +161,9 @@ Mixed signals → `ambiguous`.
 - *Emits:* the blocker list and the questionnaire action-item list.
 
 Blockers halt the pipeline; you write `BLOCKERS.md` only when one or more exist. Questions are
-carried forward only as questionnaires. A spike is a valid resolution for a blocker — schedule the
-spike, mark the blocker answered, carry on. Do not duplicate a questionnaire question in
-`ANALYSIS.md`.
+carried forward only as discovery questionnaires. A discovery questionnaire is a valid resolution
+for a blocker — schedule it, mark the blocker answered, carry on. Do not duplicate a questionnaire
+question in `ANALYSIS.md`.
 
 **4. Derive the story list.**
 - *Consumes:* the sources + role notes + project type.
@@ -184,9 +186,9 @@ spike, mark the blocker answered, carry on. Do not duplicate a questionnaire que
 - *Consumes:* the blocker and question counts from step 3.
 - *Emits:* `Blocked | Questions | Ready` per the Quality Signal table.
 
-**8. Build the questionnaires.**
+**8. Build the discovery questionnaires.**
 - *Consumes:* the project type + questionnaire action-item list + injected Rigging catalog filenames.
-- *Emits:* one `spike-<slug>.json` per open important question. Emit a stack questionnaire only
+- *Emits:* one `discovery-<slug>.json` per open important question. Emit a stack questionnaire only
   when the stack is not already decided; its options are the injected catalog filenames filtered
   to the project type (see Hard Rules). Do not emit a questionnaire for a matter the sources or
   prior answers have already settled. Do not emit a questionnaire that duplicates an existing
@@ -293,7 +295,7 @@ Written for a developer joining the project for the first time. Be specific.}
 === END COMPASS.md ===
 ```
 
-**Questionnaires (`spike-*.json`) — emit one per open question, none for decided matters.**
+**Discovery questionnaires (`discovery-*.json`) — emit one per open question, none for decided matters.**
 Every block must pass the Ownership test: a decision only the human can make. Use these topics as a
 checklist of what to probe, but emit a block only where the sources (and any prior answers) leave a
 human-owned decision open:
@@ -312,11 +314,11 @@ synthesize (into SOUNDINGS, SEA_TRIALS, and story tuning options), never questio
 Each questionnaire uses this shape:
 
 ```
-=== spike-{slug}.json ===
+=== discovery-{slug}.json ===
 {
-  "id": "spike-{slug}",
-  "title": "Spike: {Short Title}",
-  "purpose": "{One sentence: what question this spike resolves.}",
+  "id": "discovery-{slug}",
+  "title": "Discovery: {Short Title}",
+  "purpose": "{One sentence: what decision this questionnaire resolves.}",
   "questions": [
     {
       "id": "{question_slug}",
@@ -326,7 +328,7 @@ Each questionnaire uses this shape:
     }
   ]
 }
-=== END spike-{slug}.json ===
+=== END discovery-{slug}.json ===
 ```
 
 **Stack questionnaire rule.** The stack `options` are the injected Rigging catalog filenames
@@ -335,10 +337,10 @@ type, always ending with `"other"`. Never open the per-technology files — list
 
 - If a source names a technology **and** a matching catalog file exists, treat it as decided:
   record the technology and do **not** raise it as an open question.
-- If a source names a technology with **no** matching catalog file, raise it as a **spike** (a
-  gap: no stack guidance exists for it).
-- If the sources are silent on the stack, emit a `spike-stack.json` whose `select` options are the
-  filtered filename list plus `"other"`, for the Product Owner to choose.
+- If a source names a technology with **no** matching catalog file, raise it as a discovery
+  questionnaire (a gap: no stack guidance exists for it).
+- If the sources are silent on the stack, emit a `discovery-stack.json` whose `select` options are
+  the filtered filename list plus `"other"`, for the Product Owner to choose.
 
 ---
 
@@ -348,11 +350,11 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
 - Do not include `## Open Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
-  questions live only in `spike-*.json` questionnaire action items.
-- Emit a `spike-*.json` questionnaire only for a decision only the human can make (the Ownership
-  test). Never emit one for a matter the sources or prior answers have already decided, never as a
-  generic catch-all, and never for work the team can derive itself (acceptance criteria, success
-  evidence, smoke checks, build gates, test sequences — these are synthesized outputs, not spikes).
+  questions live only in `discovery-*.json` questionnaire action items.
+- Emit a `discovery-*.json` questionnaire only for a decision only the human can make (the
+  Ownership test). Never emit one for a matter the sources or prior answers have already decided,
+  never as a generic catch-all, and never for work the team can derive itself (acceptance criteria,
+  success evidence, smoke checks, build gates, test sequences — these are synthesized outputs).
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
 - Never re-ask a question already settled by `ANALYSIS_COMPASS.md`, a prior `BLOCKERS.md`, or an
@@ -361,7 +363,7 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Stack questionnaire options are the injected catalog filenames, filtered to the detected project
   type, plus `"other"`. Never open the per-technology stack files — list their names only.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with
-  no matching file is a spike.
+  no matching file is a discovery questionnaire.
 - SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise
   synthesize one milestone per feature area / screen / persistence area.
 - SEA_TRIALS.md objectives are strategic — one per major product capability or outcome.
@@ -369,7 +371,7 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources only — there are no
   typed spec files at analyze time, so do not inspect or invent them.
 - Do not fabricate requirements or problems the sources do not imply. A genuinely absent decision
-  (e.g. no auth model stated) is a real gap — surface it as a question, not an invented requirement.
+  (e.g. no auth model stated) is a real gap — surface it as a questionnaire, not an invented requirement.
 
 ---
 

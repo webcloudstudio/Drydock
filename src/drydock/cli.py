@@ -196,8 +196,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print(f"  SOUNDINGS.md  →  {result.soundings_path.relative_to(tdir)}")
     if result.compass_path:
         print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}  (created)")
-    for spike_path in result.spike_paths:
-        print(f"  {spike_path.name:<20} →  {spike_path.relative_to(tdir)}")
+    for discovery_path in result.discovery_paths:
+        print(f"  {discovery_path.name:<20} →  {discovery_path.relative_to(tdir)}")
     if result.captains_chair_path:
         print(
             f"  captains_chair  →  {result.captains_chair_path.relative_to(tdir)}  (lifecycle: analyzed)"

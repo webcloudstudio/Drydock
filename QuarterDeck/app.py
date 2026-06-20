@@ -787,7 +787,7 @@ def _render_question_controls(data: dict[str, Any]) -> list[str]:
 
 def render_questionnaire(item: dict[str, Any]) -> str:
     data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
-    is_spike = item.get("template") == "spike"
+    is_discovery = item.get("template") == "discovery"
     done = str(data.get("state", "open")) in _DONE_STATES
     q_id = html.escape(data["id"])
 
@@ -796,7 +796,7 @@ def render_questionnaire(item: dict[str, Any]) -> str:
     purpose_html = f"<p class='subtle'>{html.escape(data.get('purpose', ''))}</p>"
 
     rows = _render_question_controls(data)
-    template_attr = " data-template='spike'" if is_spike else ""
+    template_attr = " data-template='discovery'" if is_discovery else ""
     body = (
         title_html
         + purpose_html
@@ -1309,7 +1309,7 @@ def render_nav() -> str:
                         f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" "
                         "title='Unarchive'>↑</button>"
                     )
-                elif not section.get("pinned"):
+                elif not section.get("pinned") and item.get("type") != "questionnaire":
                     arc = (
                         f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',true)\" "
                         "title='Archive'>↓</button>"

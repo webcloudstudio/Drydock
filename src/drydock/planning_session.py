@@ -130,19 +130,19 @@ def _collect_sources(blueprint_dir: Path) -> list[Path]:
     return sorted(p for p in sources_dir.rglob("*.md") if p.is_file())
 
 
-def _collect_spikes(target_dir: Path) -> list[Path]:
+def _collect_discoveries(target_dir: Path) -> list[Path]:
     qd = target_dir / "QuarterDeck" / "questionnaires"
     if not qd.is_dir():
         return []
-    return sorted(qd.glob("spike-*.json"))
+    return sorted(qd.glob("discovery-*.json"))
 
 
-def _answered_spike(path: Path) -> dict | None:
-    """Return the spike with only its answered questions, or ``None`` if none are answered.
+def _answered_discovery(path: Path) -> dict | None:
+    """Return the questionnaire with only its answered questions, or ``None`` if none are answered.
 
     A question is answered iff it carries non-empty ``answer`` text (written by QuarterDeck).
-    Only answered fields feed ``plan create``; unanswered questions are excluded, and a spike with
-    no answers is skipped entirely.
+    Only answered fields feed ``plan create``; unanswered questions are excluded, and a
+    questionnaire with no answers is skipped entirely.
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -194,12 +194,12 @@ def _render_feedback(feedback_text: str | None) -> list[str]:
     ]
 
 
-def _render_answered_spikes(target_dir: Path) -> list[str]:
-    answered = [(p, _answered_spike(p)) for p in _collect_spikes(target_dir)]
+def _render_answered_discoveries(target_dir: Path) -> list[str]:
+    answered = [(p, _answered_discovery(p)) for p in _collect_discoveries(target_dir)]
     answered = [(p, data) for p, data in answered if data is not None]
     if not answered:
         return []
-    parts = ["## Answered spikes (consume these decisions)", ""]
+    parts = ["## Answered questionnaires (consume these decisions)", ""]
     for path, data in answered:
         parts += ["### " + path.name, "", "```json", json.dumps(data, indent=2), "```", ""]
     return parts
@@ -262,7 +262,7 @@ def _assemble_prompt(
         "MANIFEST_COMPASS.md": lambda: _render_feedback(feedback_text),
         "ANALYSIS.md": lambda: _fenced("ANALYSIS.md (the reviewed plan)", analysis_text),
         "SOUNDINGS.md": lambda: _fenced_if(target_dir / "SOUNDINGS.md", "SOUNDINGS.md"),
-        "QUESTIONNAIRES": lambda: _render_answered_spikes(target_dir),
+        "QUESTIONNAIRES": lambda: _render_answered_discoveries(target_dir),
         "TYPED_SPEC": lambda: _render_sources(blueprint_dir),
     }
     for contract in _CONTRACT_FILES:

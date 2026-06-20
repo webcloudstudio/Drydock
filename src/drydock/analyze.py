@@ -4,8 +4,8 @@ Single LLM call producing all analyze outputs via delimited blocks. Writes deter
 tests inject a fake runner and never spend API credits.
 
 Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if absent or
-unpopulated), BLOCKERS.md (only when blockers exist), spike-*.json questionnaires (one per open
-question), captains_chair.html (when lifecycle state advances to analyzed).
+unpopulated), BLOCKERS.md (only when blockers exist), discovery-*.json questionnaires (one per
+open question), captains_chair.html (when lifecycle state advances to analyzed).
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ class AnalyzeResult:
     soundings_path: Path
     compass_path: Path | None
     captains_chair_path: Path | None
-    spike_paths: tuple[Path, ...]
+    discovery_paths: tuple[Path, ...]
     quality: str
     story_count: int
     question_count: int
@@ -191,25 +191,25 @@ def _render_blockers(blockers_text: str | None) -> list[str]:
     ]
 
 
-def _render_existing_spikes(questionnaires_dir: Path) -> list[str]:
-    """Inject existing spike questionnaires into the analyze prompt.
+def _render_existing_discoveries(questionnaires_dir: Path) -> list[str]:
+    """Inject existing discovery questionnaires into the analyze prompt.
 
-    The LLM must not re-emit a spike whose filename already exists, and must treat
+    The LLM must not re-emit a questionnaire whose filename already exists, and must treat
     questions with non-empty ``answer`` fields as settled decisions.
     """
     if not questionnaires_dir.is_dir():
         return []
-    paths = sorted(questionnaires_dir.glob("spike-*.json"))
+    paths = sorted(questionnaires_dir.glob("discovery-*.json"))
     if not paths:
         return []
     parts = [
-        "## Existing spike questionnaires",
+        "## Existing discovery questionnaires",
         "",
         "These were created by prior analyze runs and live in the target QuarterDeck.",
         "Rules:",
-        "- Do not emit a spike block whose filename already appears here.",
+        "- Do not emit a discovery block whose filename already appears here.",
         "- Questions with a non-empty `answer` field are settled — do not re-raise them.",
-        "- Generate new spike-*.json blocks only for genuinely new open questions.",
+        "- Generate new discovery-*.json blocks only for genuinely new open questions.",
         "",
     ]
     for path in paths:
@@ -230,7 +230,7 @@ def _render_typed_spec(blueprint_dir: Path) -> list[str]:
         parts += [
             "## Rigging catalog (filenames only)",
             "",
-            "Selectable stack options for spike-stack.json. Names only — never open these files.",
+            "Selectable stack options for discovery-stack.json. Names only — never open these files.",
             "",
             *[f"- {name}" for name in catalog],
             "",
@@ -275,7 +275,7 @@ def _assemble_prompt(
         "ANALYSIS_COMPASS.md": lambda: _render_feedback(feedback_text),
         "BLOCKERS.md": lambda: _render_blockers(blockers_text),
         "EXISTING_SPIKES": lambda: (
-            _render_existing_spikes(questionnaires_dir) if questionnaires_dir else []
+            _render_existing_discoveries(questionnaires_dir) if questionnaires_dir else []
         ),
         "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
     }
@@ -329,12 +329,12 @@ def _remove_open_questions_section(analysis_text: str) -> str:
 def _parse_output(
     text: str,
 ) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
-    """Return (analysis, sea_trials, soundings, compass_or_none, blockers_or_none, spikes,
+    """Return (analysis, sea_trials, soundings, compass_or_none, blockers_or_none, discoveries,
     quality, summary).
 
     ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, screens.
-    Questionnaires (``spike-*.json``) and ``BLOCKERS.md`` are emitted dynamically — only when the
-    analysis surfaces an open question or a blocker — so none of them are required.
+    Questionnaires (``discovery-*.json``) and ``BLOCKERS.md`` are emitted dynamically — only when
+    the analysis surfaces an open question or a blocker — so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
     """
     blocks = _parse_blocks(text)
@@ -343,11 +343,11 @@ def _parse_output(
         if required not in blocks:
             raise ValueError(f"LLM output missing === {required} === block")
 
-    spikes: dict[str, dict] = {}
+    discoveries: dict[str, dict] = {}
     for name, content in blocks.items():
-        if name.startswith("spike-") and name.endswith(".json"):
+        if name.startswith("discovery-") and name.endswith(".json"):
             try:
-                spikes[name] = json.loads(content)
+                discoveries[name] = json.loads(content)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
 
@@ -365,7 +365,7 @@ def _parse_output(
         blocks["SOUNDINGS.md"],
         compass_content,
         blockers_content,
-        spikes,
+        discoveries,
         quality,
         summary,
     )
@@ -531,7 +531,7 @@ def analyze(
             soundings_path=soundings_path,
             compass_path=None,
             captains_chair_path=None,
-            spike_paths=(),
+            discovery_paths=(),
             quality="unknown",
             story_count=0,
             question_count=0,
@@ -554,7 +554,7 @@ def analyze(
             soundings_text,
             compass_text,
             blockers_text_out,
-            spikes,
+            discoveries,
             quality,
             summary,
         ) = _parse_output(result.text)
@@ -588,13 +588,13 @@ def analyze(
         compass_target.write_text(compass_text + "\n", encoding="utf-8", newline="\n")
         written_compass = compass_target
 
-    spike_paths: list[Path] = []
-    for name, data in spikes.items():
-        spike_path = questionnaires_dir / name
-        if spike_path.exists():
+    discovery_paths: list[Path] = []
+    for name, data in discoveries.items():
+        discovery_path = questionnaires_dir / name
+        if discovery_path.exists():
             continue  # never overwrite an existing questionnaire; answers must not be destroyed
-        spike_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
-        spike_paths.append(spike_path)
+        discovery_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
+        discovery_paths.append(discovery_path)
 
     # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
     # Its presence is the flag that halts the pipeline; written when present, deleted otherwise
@@ -644,7 +644,7 @@ def analyze(
         soundings_path=soundings_path,
         compass_path=written_compass,
         captains_chair_path=captains_chair_path,
-        spike_paths=tuple(sorted(spike_paths)),
+        discovery_paths=tuple(sorted(discovery_paths)),
         quality=quality,
         story_count=story_count,
         question_count=question_count,

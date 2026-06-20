@@ -131,8 +131,8 @@ items:
   - {{ id: manifest_feedback, label: "Manifest Compass", section: core, type: editable_markdown, path: ../MANIFEST_COMPASS.md, order: 8 }}
 
 sources:
-  - glob: "QuarterDeck/questionnaires/spike-*.json"
-    section: archive
+  - glob: "QuarterDeck/questionnaires/discovery-*.json"
+    section: actions
     type: questionnaire
-    template: spike
+    template: discovery
 """
