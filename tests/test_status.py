@@ -6,6 +6,14 @@ import pytest
 
 from drydock.status import StatusResult, status_blueprint, status_blueprint_target, status_current
 
+ANALYSIS_READY = """\
+Quality: Ready
+  Stories: 3
+  Questions: 1
+  Blockers: 0
+  Screens: 1
+"""
+
 APPROVED_PLAN = """\
 # MANIFEST: TestProject
 state: approved
@@ -39,6 +47,8 @@ class TestStatusBlueprintTarget:
         assert result.target == "TestTarget"
         assert result.plan is not None
         assert result.target_path == tmp_target_root / "TestTarget"
+        assert result.target_info is not None
+        assert result.target_info.phase == "Implement"
 
     def test_frontier_contains_pending_blocks(self, tmp_target_root):
         tgt = self._setup(tmp_target_root)
@@ -56,10 +66,37 @@ class TestStatusBlueprintTarget:
         assert isinstance(result, StatusResult)
         assert result.plan is None
         assert result.frontier == ()
+        assert result.target_info is not None
+        assert result.target_info.phase == "Set Up"
 
     def test_missing_target_raises(self, tmp_target_root):
         with pytest.raises(Exception):
             status_blueprint_target("X", "NoTarget", tmp_target_root / "NoTarget" / "blueprint", tmp_target_root)
+
+    def test_imported_sources_without_analysis_show_arrange(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        (tgt / "blueprint" / "sources").mkdir(parents=True)
+        (tgt / "blueprint" / "sources" / "request.md").write_text("# Request\n", encoding="utf-8")
+
+        result = status_blueprint_target("TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root)
+
+        assert result.target_info is not None
+        assert result.target_info.phase == "Arrange"
+        assert result.target_info.imported_sources == 1
+        assert result.target_info.next_operation == "drydock analyze TestTarget"
+
+    def test_analysis_ready_without_plan_suggests_plan_create(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        tgt.mkdir()
+        (tgt / "ANALYSIS.md").write_text(ANALYSIS_READY, encoding="utf-8")
+
+        result = status_blueprint_target("TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root)
+
+        assert result.target_info is not None
+        assert result.target_info.phase == "Arrange"
+        assert result.target_info.analysis is not None
+        assert result.target_info.analysis.quality == "Ready"
+        assert result.target_info.next_operation == "drydock plan create TestTarget"
 
 
 class TestStatusBlueprint:

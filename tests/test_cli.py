@@ -841,6 +841,8 @@ class TestStatus:
         rc, out, err = run_cli("status", "TestTarget")
         assert rc == 0, err
         assert "TestTarget" in out
+        assert "Phase" in out
+        assert "Implement" in out
         assert "core-feature" in out
 
     def test_status_blueprint_reports_validation_summary(
@@ -852,6 +854,7 @@ class TestStatus:
         assert "TestTarget" in out
         assert "Blueprint" in out
         assert "0 errors" in out
+        assert "Next step" in out
 
     def test_status_target_without_manifest_reports_preplan_state(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -865,6 +868,7 @@ class TestStatus:
         rc, out, err = run_cli("status", "TestTarget")
 
         assert rc == 0, err
+        assert "Arrange" in out
         assert "Plan" in out
         assert "not created" in out
         assert "drydock plan create TestTarget" in out
@@ -902,6 +906,7 @@ class TestStatus:
         rc, out, err = run_cli("status")
         assert rc == 0, err
         assert "MyProject" in out
+        assert "Phase:" in out
         assert "Next Step:" in out
 
     def test_activity_recorded_after_status_command(

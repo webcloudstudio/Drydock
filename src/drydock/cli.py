@@ -520,6 +520,41 @@ def _render_status(result) -> None:
 
     col = 14
 
+    if result.target_path is not None:
+        print(f"  {'Target':<{col}}  {result.target_path}")
+
+    if result.target_info is not None:
+        info = result.target_info
+        print(f"  {'Phase':<{col}}  {info.phase}")
+        print(f"  {'State':<{col}}  {info.phase_detail}")
+        if info.display_name and info.display_name != info.name:
+            print(f"  {'Display name':<{col}}  {info.display_name}")
+        metadata_detail = info.metadata_state or "init"
+        if info.metadata_sub_state:
+            metadata_detail += f" · {info.metadata_sub_state}"
+        print(f"  {'Metadata':<{col}}  {metadata_detail}")
+        print(
+            f"  {'Sources':<{col}}  {info.imported_sources} imported"
+            f" · {info.authored_blueprints} authored blueprint files"
+        )
+        if info.analysis is not None:
+            analysis = info.analysis
+            quality = analysis.quality or "unknown"
+            analysis_detail = (
+                f"{analysis.story_count} stories"
+                f" · {analysis.question_count} questions"
+                f" · {analysis.blocker_count} blockers"
+            )
+            if analysis.screen_count:
+                analysis_detail += f" · {analysis.screen_count} screens"
+            print(f"  {'Analysis':<{col}}  {quality:<22}  {analysis_detail}")
+        if info.questionnaire_count or info.blockers_present:
+            blockers = "present" if info.blockers_present else "none"
+            print(
+                f"  {'Review':<{col}}  BLOCKERS.md {blockers}"
+                f" · {info.questionnaire_count} questionnaires"
+            )
+
     if result.last_command:
         print(f"  {'Last command':<{col}}  {result.last_command:<22}  {result.last_time}")
 
@@ -545,7 +580,7 @@ def _render_status(result) -> None:
         pending = counts.get("pending", 0)
         impl = counts.get("implemented", 0)
         failed = counts.get("closed/failed", 0)
-        progress = f"{verified}/{total} verified"
+        progress = f"{result.plan.state} · {verified}/{total} verified"
         detail = f"pending {pending} · implemented {impl} · failed {failed}"
         print(f"  {'Plan':<{col}}  {progress:<22}  {detail}")
 
@@ -557,6 +592,10 @@ def _render_status(result) -> None:
             print(f"  {'Frontier':<{col}}  (none)")
     elif result.target:
         print(f"  {'Plan':<{col}}  not created")
+
+    if result.target_info is not None and result.target_info.next_operation:
+        print(f"  {'Next step':<{col}}  {result.target_info.next_operation}")
+    elif result.target:
         print(f"  {'Next step':<{col}}  drydock plan create {result.target}")
 
 
@@ -597,9 +636,38 @@ def _render_workspace_status(ws) -> None:
         print("  Next Step: drydock init <Target>")
         return
 
+    print("Drydock status — workspace")
+    print()
     for info in ws.targets:
         print(f"Target: {info.name}")
-        print(f"   Status:    {info.phase_detail}")
+        print(f"   Phase:     {info.phase}")
+        print(f"   State:     {info.phase_detail}")
+        print(
+            f"   Detail:    {info.imported_sources} imported"
+            f" · {info.authored_blueprints} authored"
+            f" · metadata {info.metadata_state or 'init'}"
+        )
+        if info.analysis is not None:
+            print(
+                "   Analysis:  "
+                f"{info.analysis.quality or 'unknown'}"
+                f" · {info.analysis.story_count} stories"
+                f" · {info.analysis.question_count} questions"
+                f" · {info.analysis.blocker_count} blockers"
+            )
+        if info.plan_summary is not None:
+            print(
+                "   Plan:      "
+                f"{info.plan_summary.state}"
+                f" · {info.plan_summary.verified}/{info.plan_summary.total} verified"
+                f" · {info.plan_summary.pending} pending"
+            )
+        if info.blockers_present or info.questionnaire_count:
+            print(
+                "   Review:    "
+                f"BLOCKERS.md {'present' if info.blockers_present else 'none'}"
+                f" · {info.questionnaire_count} questionnaires"
+            )
         print(f"   Next Step: {info.next_operation}")
         for rec in reversed(info.history):
             cmd = rec.get("command", "")
