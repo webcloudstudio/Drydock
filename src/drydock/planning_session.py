@@ -21,6 +21,7 @@ from typing import Protocol
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
+from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
 from drydock.prompts import load_prompt, render_inputs
 from drydock.standard_artifacts import (
@@ -515,6 +516,12 @@ def create_plan(
 
     changed = prior_manifest != (plan_path.read_text(encoding="utf-8"))
     quarterdeck = _write_quarterdeck(plan, target_dir)
+
+    increment_version(target_dir)
+    set_build_state(target_dir, "planned")
+    set_sub_state(target_dir, "approved")
+    stamp_last(target_dir, "planned")
+
     return PlanCreateResult(
         plan=plan,
         target_dir=target_dir,

@@ -20,7 +20,15 @@ from typing import Protocol
 
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
-from drydock.metadata import set_build_state
+from drydock.metadata import (
+    METADATA_NAME,
+    get_field,
+    parse_metadata,
+    set_build_state,
+    set_field,
+    set_sub_state,
+    stamp_last,
+)
 from drydock.paths import get_rigging_root
 from drydock.prompts import load_prompt, render_inputs
 
@@ -63,6 +71,7 @@ class CompletedRun(Protocol):
 
 RunnerFn = Callable[..., CompletedRun]
 TextCallback = Callable[[str], None]
+PromptFn = Callable[[str], str]
 
 
 @dataclass(frozen=True)
@@ -265,7 +274,9 @@ def _assemble_prompt(
     renderers: dict[str, Callable[[], list[str]]] = {
         "ANALYSIS_COMPASS.md": lambda: _render_feedback(feedback_text),
         "BLOCKERS.md": lambda: _render_blockers(blockers_text),
-        "EXISTING_SPIKES": lambda: _render_existing_spikes(questionnaires_dir) if questionnaires_dir else [],
+        "EXISTING_SPIKES": lambda: (
+            _render_existing_spikes(questionnaires_dir) if questionnaires_dir else []
+        ),
         "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
     }
     parts += render_inputs(input_tokens, renderers)
@@ -401,6 +412,50 @@ def _next_step_hint(quality: str, target: str) -> str:
     return f"drydock plan create {target}"
 
 
+def _prompt_missing_metadata(
+    target_dir: Path,
+    sources_dir: Path | None = None,
+    prompter: PromptFn | None = None,
+) -> None:
+    """Interactively fill blank identity fields in METADATA.md before analysis runs.
+
+    Asks for ``short_description`` and ``stack`` when either is empty.  For
+    ``stack``, runs heuristic detection on ``sources_dir`` and offers the result
+    as the default answer.  The ``prompter`` parameter defaults to ``input`` and
+    is injectable so tests can supply answers without touching stdin.
+    Silently skips when stdin is not a TTY and no prompter is provided.
+    """
+    import sys
+
+    if prompter is None and not sys.stdin.isatty():
+        return
+
+    ask = prompter if prompter is not None else input
+    path = target_dir / METADATA_NAME
+    fields = parse_metadata(path)
+
+    if not get_field(fields, "short_description"):
+        val = ask("short_description (one-line project description): ").strip()
+        if val:
+            set_field(path, "short_description", val, overwrite=True)
+
+    if not get_field(fields, "stack"):
+        hint = ""
+        if sources_dir and sources_dir.is_dir():
+            from drydock.import_source import detect_stack
+
+            detected = detect_stack(sources_dir)
+            hint = "/".join(detected) if detected else ""
+        prompt_str = (
+            f"stack (e.g. Python/FastAPI) [detected: {hint}]: "
+            if hint
+            else "stack (e.g. Python/FastAPI): "
+        )
+        val = ask(prompt_str).strip() or hint
+        if val:
+            set_field(path, "stack", val, overwrite=True)
+
+
 def analyze(
     target: str,
     target_dir: Path,
@@ -408,11 +463,18 @@ def analyze(
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     model: str | None = None,
+    prompter: PromptFn | None = None,
 ) -> AnalyzeResult:
     """Analyze a Blueprint and write all analyze artifacts to the Target."""
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
+
+    _prompt_missing_metadata(
+        target_dir,
+        sources_dir=blueprint_dir / _SOURCES_SUBDIR,
+        prompter=prompter,
+    )
 
     questionnaires_dir = target_dir / "QuarterDeck" / "questionnaires"
     analysis_path = target_dir / "ANALYSIS.md"
@@ -511,6 +573,10 @@ def analyze(
     screen_count = _safe_int("screens")
     stack = summary.get("stack", "not declared")
 
+    # Backfill stack into METADATA.md if the LLM identified it and the field is still blank.
+    if stack and stack != "not declared":
+        set_field(target_dir / METADATA_NAME, "stack", stack, overwrite=False)
+
     questionnaires_dir.mkdir(parents=True, exist_ok=True)
 
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
@@ -540,7 +606,11 @@ def analyze(
     elif blockers_md_path.is_file():
         blockers_md_path.unlink()
 
-    # Lifecycle state and Captain's Chair — only when state advances to "analyzed".
+    # Lifecycle state, sub-state, and date stamp — always written on success.
+    stamp_last(target_dir, "analyzed")
+    set_sub_state(target_dir, "complete")
+
+    # Captain's Chair — only when build_state advances to "analyzed".
     captains_chair_path: Path | None = None
     state_advanced = set_build_state(target_dir, "analyzed")
     if state_advanced:

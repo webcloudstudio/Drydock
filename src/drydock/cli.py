@@ -22,6 +22,7 @@ class DrydockArgumentParser(argparse.ArgumentParser):
         self.print_help(sys.stderr)
         self.exit(2, f"\nerror: {message}\n")
 
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -426,7 +427,11 @@ def cmd_document_assemble(argv: list[str]) -> int:
     # portably in console.yaml.  Skip if the path falls outside the workspace
     # (e.g. an absolute temp path used in tests).
     workspace_root = targets_root.parent
-    abs_output = (workspace_root / raw_output).resolve() if not Path(raw_output).is_absolute() else Path(raw_output).resolve()
+    abs_output = (
+        (workspace_root / raw_output).resolve()
+        if not Path(raw_output).is_absolute()
+        else Path(raw_output).resolve()
+    )
     try:
         rel_output = str(abs_output.relative_to(workspace_root))
     except ValueError:
@@ -802,7 +807,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_iter.add_argument("Change", metavar="<Change>")
 
     # ── analyze ───────────────────────────────────────────────────────────────
-    p_analyze = sub.add_parser("analyze", help="Decompose imported sources into stories, blockers, and acceptance milestones.")
+    p_analyze = sub.add_parser(
+        "analyze",
+        help="Decompose imported sources into stories, blockers, and acceptance milestones.",
+    )
     p_analyze.add_argument("Target", metavar="<Target>")
     p_analyze.add_argument(
         "--model",
@@ -959,6 +967,9 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         not_implemented("build score")
     else:
         _parse_build_args(tokens)  # validates args; build itself is not yet implemented
+        # When build is implemented: call increment_version, set_build_state("building"),
+        # set_sub_state per group, stamp_last("built") on clean exit, and
+        # copy_metadata_to_build_dir(target_dir, build_dir) to propagate identity to the output.
         not_implemented("build")
     return 2
 

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from drydock.errors import SpecificationError
 from drydock.init_specification import init_specification
+from drydock.metadata import METADATA_NAME, set_field
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {"venv", ".venv", "env", "__pycache__", "node_modules", ".git", "dist", "build", ".eggs"}
@@ -143,6 +144,15 @@ def import_source(
             imported.append(destination)
     except OSError as exc:
         raise SpecificationError(f"Cannot copy source files: {exc}") from exc
+
+    detected = detect_stack(source)
+    if detected:
+        set_field(
+            target_dir / METADATA_NAME,
+            "stack",
+            "/".join(detected),
+            overwrite=False,
+        )
 
     return ImportSourceResult(
         blueprint=blueprint,
