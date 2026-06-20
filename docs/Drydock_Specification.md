@@ -247,7 +247,7 @@ markdown artifacts using agile. It prepares the following files for Commander re
 | `SEA_TRIALS.md` | Target root | Product-level objectives and success criteria |
 | `SOUNDINGS.md` | Target root | Acceptance tests and milestones  |
 | `COMPASS.md` | Target root | The master project intent file.   Always imported.  Review it if one was automatically created. |
-| `-*.json` | `QuarterDeck/questionnaires/` | Review questionnaires for unresolved decisions and genuine research spikes |
+| `questionnaires/*.json` | `QuarterDeck/` | Review questionnaires for unresolved decisions and genuine research spikes |
 | `captains_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
 #### Build Readiness 
@@ -386,6 +386,7 @@ flowchart LR
   SPEC(["Blueprint"]):::dir --> BUILD["build"]:::script
   BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
   BCOMPASS{{"BUILD_COMPASS.md"}}:::md --> BUILD
+  TICKETS{{"tickets.json"}}:::md --> BUILD
   BUILD --> EV{{"Evidence"}}:::md
   BUILD --> TARGET(["Target Working Directory"]):::dir
 ```
@@ -396,6 +397,7 @@ flowchart LR
 |---|---|---|
 | `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input |
 | `MANIFEST.md` | Target root | Executable build plan and dependency graph |
+| `tickets.json` | Target root | Target ticketing system projection consumed during build execution |
 | `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
 
 **Output files**
@@ -403,7 +405,7 @@ flowchart LR
 | Artifact | Location | Purpose |
 |---|---|---|
 | `evidence/` | Target root | Reviewable build evidence written for completed work |
-| Built application files | `$DRYDOCK_BUILD_DIRECTORY/<Target>` | Target working directory updated by the build |
+| Built application files | `$DRYDOCK_BUILD_DIRECTORY/<Target>` | Target working directory updated by the build; override with `METADATA.md` `build_dir:` |
 
 `drydock build <Target>` executes the approved frontier and builds the application in the target working directory
 `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
