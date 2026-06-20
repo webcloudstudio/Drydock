@@ -853,6 +853,22 @@ class TestStatus:
         assert "Blueprint" in out
         assert "0 errors" in out
 
+    def test_status_target_without_manifest_reports_preplan_state(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from drydock.init_specification import init_specification
+
+        target_dir = tmp_target_root / "TestTarget"
+        init_specification("TestTarget", target_dir)
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli("status", "TestTarget")
+
+        assert rc == 0, err
+        assert "Plan" in out
+        assert "not created" in out
+        assert "drydock plan create TestTarget" in out
+
     def test_status_no_args_no_activity_exits_zero(
         self, tmp_target_root, isolated_config, monkeypatch
     ):

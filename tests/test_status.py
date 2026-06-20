@@ -52,8 +52,14 @@ class TestStatusBlueprintTarget:
     def test_missing_plan_raises(self, tmp_target_root):
         tgt = tmp_target_root / "NoTarget"
         tgt.mkdir()
+        result = status_blueprint_target("X", "NoTarget", tgt / "blueprint", tmp_target_root)
+        assert isinstance(result, StatusResult)
+        assert result.plan is None
+        assert result.frontier == ()
+
+    def test_missing_target_raises(self, tmp_target_root):
         with pytest.raises(Exception):
-            status_blueprint_target("X", "NoTarget", tgt / "blueprint", tmp_target_root)
+            status_blueprint_target("X", "NoTarget", tmp_target_root / "NoTarget" / "blueprint", tmp_target_root)
 
 
 class TestStatusBlueprint:

@@ -193,13 +193,24 @@ def status_blueprint_target(
     target_dir: Path,
 ) -> StatusResult:
     from drydock.build_plan import load_target_plan
+    from drydock.errors import SpecificationError
 
-    plan = load_target_plan(target, target_dir)
-    frontier = plan.runnable_frontier()
+    target_path = target_dir / target
+    if not target_path.is_dir():
+        raise SpecificationError(f"Target not found: {target_path}")
+
+    manifest_path = target_path / "MANIFEST.md"
+    if manifest_path.exists():
+        plan = load_target_plan(target, target_dir)
+        frontier = plan.runnable_frontier()
+    else:
+        plan = None
+        frontier = ()
+
     return StatusResult(
         blueprint=blueprint,
         target=target,
-        target_path=target_dir / target,
+        target_path=target_path,
         plan=plan,
         frontier=frontier,
     )

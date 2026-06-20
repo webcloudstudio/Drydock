@@ -555,6 +555,9 @@ def _render_status(result) -> None:
                 print(f"  {label:<{col}}  {block.block_id}: {block.name}")
         else:
             print(f"  {'Frontier':<{col}}  (none)")
+    elif result.target:
+        print(f"  {'Plan':<{col}}  not created")
+        print(f"  {'Next step':<{col}}  drydock plan create {result.target}")
 
 
 def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
