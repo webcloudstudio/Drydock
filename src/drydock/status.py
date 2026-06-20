@@ -99,7 +99,7 @@ def _count_authored_blueprints(blueprint_dir: Path) -> int:
         return 0
     count = 0
     for path in blueprint_dir.rglob("*.md"):
-        if "sources" in path.parts or path.name == "BUILD_PLAN_COMPASS.md":
+        if "sources" in path.parts or path.name == "BUILD_COMPASS.md":
             continue
         count += 1
     return count

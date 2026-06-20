@@ -35,7 +35,7 @@ import → analyze → [re-analyze loop] → plan create → build
 | `drydock analyze <tgt>` | Imported material + prior `BUILD_CONFIGURATION.md` | `ANALYSIS.md`, `SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` (conditional), `spike-*.json`, Captain's Chair template fill |
 | PO review (CLI or QuarterDeck) | `ANALYSIS.md`, questionnaires | `BUILD_CONFIGURATION.md` (answers + feedback) |
 | Re-analyze *(loop until Ready)* | Same material + updated `BUILD_CONFIGURATION.md` | Refreshed set of all analyze outputs |
-| `drydock plan create <tgt>` | Story list from `ANALYSIS.md` + spec + `BUILD_CONFIGURATION.md` | Typed spec files in `blueprint/`, `BUILD_PLAN_COMPASS.md`, `MANIFEST.md` |
+| `drydock plan create <tgt>` | Story list from `ANALYSIS.md` + spec + `BUILD_CONFIGURATION.md` | Typed spec files in `blueprint/`, `BUILD_COMPASS.md`, `MANIFEST.md` |
 | `build` | `MANIFEST.md` frontier + story spec + Rigging | Execution artifacts, built code, `MANIFEST.md` state, `SCORECARD.md` |
 
 **Re-analyze mechanics:** answering questions enables a re-run but does not trigger one.
@@ -170,7 +170,7 @@ Fields: `type` (story|spike|ac|feature|root), `spec` (story only), `parent` (mul
 | **Decisions** | PO answers, route choice, options | `blueprint/BUILD_CONFIGURATION.md` |
 | **State** | built / green / verified | `MANIFEST.md` node states / `SCORECARD.md` |
 
-Derived artifacts (ANALYSIS.md, BUILD_PLAN_COMPASS.md, MANIFEST.md) are regenerable from
+Derived artifacts (ANALYSIS.md, BUILD_COMPASS.md, MANIFEST.md) are regenerable from
 Intent + Decisions. A derived artifact holding a fact not recoverable from those is drift.
 
 **Canonical file set:**
@@ -181,7 +181,7 @@ Intent + Decisions. A derived artifact holding a fact not recoverable from those
 | Decisions (`blueprint/`) | `BUILD_CONFIGURATION.md` | PO via review |
 | Planning artifacts (target root) | `ANALYSIS.md`, `SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` | `analyze` (derived) |
 | Questionnaires | `QuarterDeck/questionnaires/spike-*.json` | `analyze` (derived) |
-| Plan | `BUILD_PLAN_COMPASS.md`, `MANIFEST.md` | `plan create` (derived) |
+| Plan | `BUILD_COMPASS.md`, `MANIFEST.md` | `plan create` (derived) |
 | Execution | `logs/` execution artifacts | `build` (derived, transient) |
 | Score | `SCORECARD.md` | `build score` |
 | Lifecycle state | `METADATA.md` (`drydock build state:`) | each command |

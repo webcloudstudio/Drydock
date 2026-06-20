@@ -225,7 +225,7 @@ decision writer used by the CLI.
 ## Relationship to Blueprint
 
 The Manifest is generated from the Blueprint; it is not a second product definition. `drydock plan
-create` reads all Blueprint inputs, writes `blueprint/BUILD_PLAN_COMPASS.md` (internal planning
+create` reads all Blueprint inputs, writes `BUILD_COMPASS.md` (Target-root planning
 inventory), and writes `MANIFEST.md`. Both files regenerate after each planning cycle.
 
 The Blueprint remains the source of truth for what the project is and must do. The Manifest is

@@ -88,8 +88,8 @@ paths must work; see `src/drydock/paths.py`.
 |---|---|
 | Drydock authoritative product specification | `docs/Drydock_Specification.md` |
 | Drydock implementation acceptance checklist | `docs/SOUNDINGS.md` |
-| Target Blueprint files, `BUILD_PLAN_COMPASS.md` | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
-| `METADATA.md`, `MANIFEST.md`, `SCORECARD.md`, Sea Trials, Soundings, evidence, logs, QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
+| Target Blueprint files | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
+| `METADATA.md`, `MANIFEST.md`, `BUILD_COMPASS.md`, `SCORECARD.md`, Sea Trials, Soundings, evidence, logs, QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
 | Drydock distributable rules and templates | `Rigging/` and the packaged resource copy |
 | User configuration | User-scoped configuration managed by `drydock config` |
 
