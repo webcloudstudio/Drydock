@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-20 V2 |
+| Version | 2026-06-20 V3 |
 | Route | build |
 | Status | Working notes — not canonical specification |
 | Description | Design decisions for `drydock build` — the plan/group/cost layer upstream of build, prompt assembly, variable injection, model config, and output contract. |
 | Pending spec | 10 approved items |
-| Pending impl | 6 unimplemented sections |
+| Pending impl | 3 unimplemented sections |
 
 ## Goal
 
@@ -34,7 +34,7 @@ specs → group (foundational first, no mixed screen/feature files) → cost eac
 Key consequence: this entire layer is **upstream of `drydock build`** and does not touch the build
 command. Grouping, ordering, story-point costing, and interactive optimization all live in Python +
 QuarterDeck. By the time `drydock build` runs, it walks an already-ordered, already-costed,
-already-clean MANIFEST_COMPASS and makes one oneshot call per story. Build stays dumb — which is why
+already-clean BUILD_COMPASS and makes one oneshot call per story. Build stays dumb — which is why
 it can still be designed cleanly, since it is not yet built.
 
 ### Story as unit of work — file = feature/screen = story
@@ -53,43 +53,55 @@ mixed screen/feature files. Each story is still its own oneshot call; grouping p
 the shared context ("stack tokens" — type specs, conventions, surrounding interfaces) is sent once
 instead of re-sent per file.
 
-### Story points — bytes / 4, computed at plan time
-`2026-06-20` · `spec:approved` · `impl:unimplemented`
+### Story points — bytes / 4, derived on demand
+`2026-06-20` · `spec:approved` · `impl:implemented`
 
-Story points = the estimated token cost of a unit of work, defined as **byte count / 4**. Each file
-carries its own story-point value; a group's story points are the sum of its files'. Because every
-input is known before the first LLM call, this is deterministic Python arithmetic computed at
-`drydock plan` time — a pre-flight cost estimate, not a runtime guess.
+Story points = the estimated token cost of a unit of work, defined as **byte count / 4** (rounded
+up). The token estimate and the story-point count are the **same number** — a token is ~4 bytes, so
+there is one derived unit, not two. Each file carries its own story-point value; a group's story
+points are the sum of its files'; the total is the sum of groups. This is deterministic Python
+arithmetic, but it is a **render concern, not a plan-command step**: costs are recomputed live in the
+QuarterDeck every time the grouping changes, never stamped into a file. Implemented in
+`src/drydock/build_compass.py` (`recompute_token_costs`, `story_points_for`).
 
-### MANIFEST_COMPASS — clean authored file, derived costs
-`2026-06-20` · `spec:approved` · `impl:unimplemented`
+### BUILD_COMPASS — clean authored file, derived costs
+`2026-06-20` · `spec:approved` · `impl:implemented`
 
-MANIFEST_COMPASS is the grouping artifact **and** the ordering artifact — the same role as
-Prototyper's `BUILD_PLAN_INTENT`. It separates two kinds of content:
+`BUILD_COMPASS.md` is the grouping artifact **and** the ordering artifact — the same role as
+Prototyper's `BUILD_PLAN_INTENT`. It is distinct from `PLAN_COMPASS.md` (human steering prose for
+`plan create`) and from the generated `BUILD_PLAN_COMPASS.md` (plan-create narrative). It separates
+two kinds of content:
 
-- **Authored (persisted):** group names, file membership, order.
-- **Derived (never persisted):** token count per file, story-point rollup per group, totals.
+- **Authored (persisted):** group names (`# ` headers), file membership, order.
+- **Derived (never persisted):** story points per file, rollup per group, total.
 
 The file stays clean — authored content only, no numbers stamped in. Costs are always computed on
-demand, so they are never stale and never touch disk. Conceptual readout shape:
+demand, so they are never stale and never touch disk. Authored on-disk form:
 
 ```
-# Named Group    Story Points = xxx
-FileName.md    Token Count = xxx   Story Points = xxx
+# Foundational
+FEATURE-Schema.md
+FEATURE-Auth.md
+
+# Screens
+SCREEN-Dashboard.md
 ```
 
-That readout is a rendered view, not the file's on-disk form.
+Parser/writer in `src/drydock/build_compass.py` round-trips the authored content; `seed_from_specs`
+produces a flat one-group seed from the Manifest's spec files.
 
-### QuarterDeck — render, cost, and regroup engine
-`2026-06-20` · `spec:approved` · `impl:unimplemented`
+### QuarterDeck compass type — render, cost, and regroup engine
+`2026-06-20` · `spec:approved` · `impl:implemented`
 
-The interactive optimization happens in a UI, not in a command. QuarterDeck reads MANIFEST_COMPASS,
-computes token counts and story-point rollups live (bytes / 4), and renders the costed dashboard.
-The user drags files between groups and reorders them; rollups recompute instantly because they were
-never persisted. This is interactive optimization — watch the rollups rebalance, then save.
+The interactive optimization happens in a UI, not in a command. The QuarterDeck `compass` type
+(`QuarterDeck/app.py`) reads `BUILD_COMPASS.md` and renders one navigable pane: each group with its
+story-point rollup, each file with its story points, and a total — all from `recompute_token_costs`,
+never persisted. An absent file offers a one-click **seed from the Manifest**.
 
-Round-trip contract: **on save, QuarterDeck writes back only the authored part** (regrouped /
-reordered list). Computed columns never touch disk. The file round-trips clean.
+Navigation is deliberately dumb: move a group up/down, combine a group into the previous one, split a
+file into a new group, rename a group. **Each mutation persists immediately** — it writes back only
+the authored part (clean, no numbers) and re-renders so the rollups recompute live. The console holds
+no working state; there is no Save button. The file round-trips clean.
 
 ### METADATA.md format
 `2026-06-19` · `spec:approved` · `impl:implemented`
