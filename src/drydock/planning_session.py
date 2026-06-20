@@ -413,6 +413,8 @@ def create_plan(
     *,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
 ) -> PlanCreateResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
@@ -466,7 +468,8 @@ def create_plan(
     result = run(
         assembled,
         target_dir,
-        model=prompt.model,
+        llm=llm_provider,
+        model=model or prompt.model,
         command_name="plan create",
         parameters={"target": target, "blueprint": str(blueprint_dir)},
         on_text=on_text,

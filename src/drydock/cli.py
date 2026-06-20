@@ -71,6 +71,22 @@ def _print_findings(result, verbose: bool) -> None:
         print("✓ PASS")
 
 
+def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--model",
+        default=None,
+        metavar="<model>",
+        help="Override LLM model (default: command prompt model or DRYDOCK_MODEL env/config).",
+    )
+    parser.add_argument(
+        "--llm-provider",
+        default=None,
+        choices=["claude", "codex"],
+        metavar="<provider>",
+        help="Override LLM provider (default: LLM_PROVIDER env or claude).",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Command implementations
 # ---------------------------------------------------------------------------
@@ -142,10 +158,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_rigging_compact(args: argparse.Namespace) -> int:
-    from drydock.config import blueprint_dir_for, get_target_directory
+    from drydock.config import blueprint_dir_for, get_llm_provider, get_model, get_target_directory
     from drydock.rigging_compact import CompactItem, compact
 
     blueprint_dir = blueprint_dir_for(get_target_directory() / args.Target)
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
     def report(item: CompactItem) -> None:
         src = item.source.name
@@ -165,6 +183,8 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         include_rigging=args.include_rigging,
         force=args.force,
         on_item=report,
+        model=model,
+        llm_provider=llm_provider,
     )
 
     if not result.items:
@@ -248,13 +268,17 @@ def _print_plan_summary(plan) -> None:
 
 
 def cmd_plan_create(args: argparse.Namespace) -> int:
-    from drydock.config import get_target_directory
+    from drydock.config import get_llm_provider, get_model, get_target_directory
     from drydock.planning_session import create_plan
 
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     result = create_plan(
         args.Target,
         args.Target,
         get_target_directory(),
+        model=model,
+        llm_provider=llm_provider,
     )
     print()
     print(f"Blueprint: {result.plan.project}")
@@ -281,7 +305,7 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
 def cmd_survey(args: argparse.Namespace) -> int:
     from pathlib import Path as _Path
 
-    from drydock.config import get_target_directory
+    from drydock.config import get_llm_provider, get_model, get_target_directory
     from drydock.errors import UsageError
     from drydock.survey import (
         import_specs,
@@ -292,11 +316,19 @@ def cmd_survey(args: argparse.Namespace) -> int:
     )
 
     target_dir = get_target_directory() / args.Target
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     if not target_dir.is_dir():
         raise UsageError(f"Target not found: {args.Target}")
 
     if args.import_path:
-        written = import_specs(args.Target, target_dir, _Path(args.import_path))
+        written = import_specs(
+            args.Target,
+            target_dir,
+            _Path(args.import_path),
+            model=model,
+            llm_provider=llm_provider,
+        )
         print(f"Regenerated {len(written)} acceptance-criteria file(s):")
         for path in written:
             print(f"  {path.name}")
@@ -304,7 +336,13 @@ def cmd_survey(args: argparse.Namespace) -> int:
 
     if args.run:
         print(f"Surveying: {args.Target}")
-        records = run_survey(args.Target, target_dir, command=args.command_filter)
+        records = run_survey(
+            args.Target,
+            target_dir,
+            command=args.command_filter,
+            model=model,
+            llm_provider=llm_provider,
+        )
         print(f"  scored {len(records)} command(s)")
 
     records = load_records(survey_dir_for(target_dir))
@@ -320,11 +358,14 @@ def cmd_survey(args: argparse.Namespace) -> int:
 
 
 def cmd_prompt_review(args: argparse.Namespace) -> int:
+    from drydock.config import get_llm_provider, get_model
     from drydock.paths import get_repo_root
     from drydock.prompt_review import review_prompt
 
     print(f"Reviewing prompt: {args.Component}")
-    result = review_prompt(args.Component)
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    result = review_prompt(args.Component, model=model, llm_provider=llm_provider)
     repo_root = get_repo_root()
     print(f"  review      →  {result.review_path.relative_to(repo_root)}")
     if result.archive_path:
@@ -849,6 +890,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rig_c.add_argument(
         "--force", action="store_true", help="Ignore the freshness gate and recompact everything."
     )
+    _add_llm_override_flags(p_rig_c)
     p_rig_u = rig_sub.add_parser("update", help="Propagate rigging to a target project.")
     p_rig_u.add_argument("Target", metavar="<Target>")
     p_rig_v = rig_sub.add_parser("verify", help="Verify target project rigging compliance.")
@@ -861,6 +903,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "create", help="Create a draft executable plan and target Planning Session."
     )
     p_plan_create.add_argument("Target", metavar="<Target>")
+    _add_llm_override_flags(p_plan_create)
 
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Target>
@@ -896,19 +939,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Decompose imported sources into stories, blockers, and acceptance milestones.",
     )
     p_analyze.add_argument("Target", metavar="<Target>")
-    p_analyze.add_argument(
-        "--model",
-        default=None,
-        metavar="<model>",
-        help="Override LLM model (default: DRYDOCK_MODEL env or sonnet).",
-    )
-    p_analyze.add_argument(
-        "--llm-provider",
-        default=None,
-        choices=["claude", "codex"],
-        metavar="<provider>",
-        help="Override LLM provider (default: LLM_PROVIDER env or claude).",
-    )
+    _add_llm_override_flags(p_analyze)
 
     # ── survey ────────────────────────────────────────────────────────────────
     p_survey = sub.add_parser(
@@ -943,6 +974,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Perform a fresh survey (LLM-assisted) and append scores.",
     )
     p_survey.add_argument("--raw", action="store_true", help="Print raw score records as JSON.")
+    _add_llm_override_flags(p_survey)
 
     # ── prompt ────────────────────────────────────────────────────────────────
     p_prompt = sub.add_parser("prompt", help="Review Drydock prompt contracts.")
@@ -952,6 +984,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Evaluate one prompt against the spec, matching notes, and consumer contracts.",
     )
     p_prompt_review.add_argument("Component", metavar="<component>")
+    _add_llm_override_flags(p_prompt_review)
 
     # ── run ───────────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Start a Drydock service.")

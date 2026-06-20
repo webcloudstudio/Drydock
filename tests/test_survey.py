@@ -160,6 +160,18 @@ class TestRunSurvey:
         with pytest.raises(SpecificationError):
             run_survey(target, target_dir, runner=runner)
 
+    def test_cli_overrides_are_passed_to_runner(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        calls = []
+
+        def runner(prompt, working_directory, **kwargs):
+            calls.append(kwargs)
+            return FakeRun(text='{"surveys":[]}')
+
+        run_survey(target, target_dir, runner=runner, model="gpt-5.4", llm_provider="codex")
+        assert calls[0]["model"] == "gpt-5.4"
+        assert calls[0]["llm"] == "codex"
+
 
 class TestRender:
     def test_scoreboard_contains_command_and_band(self, tmp_path):
@@ -198,3 +210,27 @@ class TestImport:
         assert len(written) == 1
         assert written[0].name == "SURVEY-login.md"
         assert "drydock login" in written[0].read_text(encoding="utf-8")
+
+    def test_import_cli_overrides_are_passed_to_runner(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+        calls = []
+
+        def runner(prompt, working_directory, **kwargs):
+            calls.append(kwargs)
+            return FakeRun(
+                text="=== SURVEY-login.md ===\n# SURVEY-SPEC: drydock login\n=== END SURVEY-login.md ===\n"
+            )
+
+        import_specs(
+            target,
+            target_dir,
+            source,
+            runner=runner,
+            model="gpt-5.4-mini",
+            llm_provider="codex",
+        )
+        assert calls[0]["model"] == "gpt-5.4-mini"
+        assert calls[0]["llm"] == "codex"

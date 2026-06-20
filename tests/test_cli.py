@@ -112,7 +112,9 @@ class TestPromptReview:
         result.review_path.write_text("review\n", encoding="utf-8")
         monkeypatch.setattr(drydock.config, "get_workspace", lambda: tmp_path)
         monkeypatch.setattr("drydock.paths.get_repo_root", lambda: repo_root)
-        monkeypatch.setattr("drydock.prompt_review.review_prompt", lambda component: result)
+        monkeypatch.setattr(
+            "drydock.prompt_review.review_prompt", lambda component, **kwargs: result
+        )
 
         rc, out, err = run_cli("prompt", "review", "analyze")
 
@@ -367,6 +369,81 @@ class TestAnalyzeCommand:
         assert seen["target_dir"] == target_dir
         assert seen["kwargs"]["llm_provider"] == "codex"
 
+
+class TestLlmOverrideFlags:
+    def test_plan_create_help_lists_llm_flags(self):
+        rc, out, _ = run_cli("plan", "create", "--help")
+        assert rc == 0
+        assert "--llm-provider" in out
+        assert "--model" in out
+
+    def test_survey_help_lists_llm_flags(self):
+        rc, out, _ = run_cli("survey", "--help")
+        assert rc == 0
+        assert "--llm-provider" in out
+        assert "--model" in out
+
+    def test_prompt_review_help_lists_llm_flags(self):
+        rc, out, _ = run_cli("prompt", "review", "--help")
+        assert rc == 0
+        assert "--llm-provider" in out
+        assert "--model" in out
+
+    def test_rigging_compact_help_lists_llm_flags(self):
+        rc, out, _ = run_cli("rigging", "compact", "--help")
+        assert rc == 0
+        assert "--llm-provider" in out
+        assert "--model" in out
+
+    def test_plan_create_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target_dir = tmp_target_root / "Proj"
+        (target_dir / "blueprint" / "sources").mkdir(parents=True)
+        (target_dir / "ANALYSIS.md").write_text(
+            "# Blueprint Analysis: Proj\n\nQuality: Questions\n\n## Story List\n\nProject type: `cli`\n",
+            encoding="utf-8",
+        )
+
+        seen = {}
+
+        def fake_create_plan(blueprint, target, target_directory, **kwargs):
+            seen["kwargs"] = kwargs
+            return SimpleNamespace(
+                plan=SimpleNamespace(
+                    project="Proj",
+                    path=target_dir / "MANIFEST.md",
+                    state="draft",
+                    blocks=[],
+                    state_counts=lambda: {
+                        "pending": 0,
+                        "implemented": 0,
+                        "closed/verified": 0,
+                        "closed/failed": 0,
+                    },
+                ),
+                quarterdeck_dir=target_dir / "QuarterDeck",
+                authored_files=(),
+                target_dir=target_dir,
+                warnings=(),
+            )
+
+        monkeypatch.setattr("drydock.planning_session.create_plan", fake_create_plan)
+
+        rc, out, err = run_cli(
+            "plan",
+            "create",
+            "Proj",
+            "--llm-provider",
+            "codex",
+            "--model",
+            "gpt-5.4",
+        )
+
+        assert rc == 0, err
+        assert seen["kwargs"]["llm_provider"] == "codex"
+        assert seen["kwargs"]["model"] == "gpt-5.4"
 
 class TestPlanInspection:
     PLAN = """# MANIFEST: Example

@@ -202,3 +202,20 @@ class TestReviewPrompt:
 
         with pytest.raises(SpecificationError, match="notes file not found"):
             review_prompt("analyze", runner=lambda *a, **k: FakeRun(text=_VALID_PAYLOAD))
+
+    def test_cli_overrides_are_passed_to_runner(self, tmp_path, monkeypatch):
+        repo = _make_repo(tmp_path)
+        monkeypatch.setattr("drydock.prompt_review.get_repo_root", lambda: repo)
+        monkeypatch.setattr(
+            "drydock.prompt_review.load_prompt",
+            lambda name: type("Prompt", (), {"body": "REVIEW BODY", "model": "opus"})(),
+        )
+        calls = []
+
+        def runner(*a, **k):
+            calls.append(k)
+            return FakeRun(text=_VALID_PAYLOAD)
+
+        review_prompt("analyze", runner=runner, model="gpt-5.4", llm_provider="codex")
+        assert calls[0]["model"] == "gpt-5.4"
+        assert calls[0]["llm"] == "codex"

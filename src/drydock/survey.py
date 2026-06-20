@@ -364,6 +364,8 @@ def run_survey(
     command: str | None = None,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
 ) -> list[dict]:
     """Score each in-scope command and append one record per command to scores.jsonl."""
     run = runner if runner is not None else run_prompt
@@ -381,7 +383,8 @@ def run_survey(
     result = run(
         assembled,
         target_dir,
-        model=prompt.model,
+        llm=llm_provider,
+        model=model or prompt.model,
         command_name="survey",
         parameters={"target": target},
         on_text=on_text,
@@ -441,6 +444,8 @@ def import_specs(
     *,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
 ) -> list[Path]:
     """Re-read a Blueprint/sources directory and (re)generate per-command AC files.
 
@@ -465,7 +470,8 @@ def import_specs(
     result = run(
         assembled,
         target_dir,
-        model=prompt.model,
+        llm=llm_provider,
+        model=model or prompt.model,
         command_name="survey import",
         parameters={"target": target, "source": str(source_path)},
         on_text=on_text,

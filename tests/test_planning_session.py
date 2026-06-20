@@ -146,6 +146,28 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     assert (target_dir / "QuarterDeck" / "console.yaml").is_file()
 
 
+def test_cli_overrides_are_passed_to_runner(tmp_path):
+    _make_target(tmp_path)
+    calls = []
+
+    def runner(*a, **k):
+        calls.append(k)
+        return FakeRun(text=_llm_output())
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        model="gpt-5.4",
+        llm_provider="codex",
+    )
+
+    assert result.plan.state == "draft"
+    assert calls[0]["model"] == "gpt-5.4"
+    assert calls[0]["llm"] == "codex"
+
+
 def test_replan_does_not_preserve_prior_states(tmp_path):
     target_dir = _make_target(tmp_path)
     # A prior plan left story-status implemented.

@@ -380,6 +380,8 @@ def review_prompt(
     component_name: str,
     *,
     runner: RunnerFn | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
 ) -> PromptReviewResult:
     component = resolve_component(component_name)
     repo_root = get_repo_root()
@@ -389,7 +391,8 @@ def review_prompt(
     result = run(
         assembled,
         repo_root,
-        model=prompt.model,
+        llm=llm_provider,
+        model=model or prompt.model,
         command_name="prompt-review",
         parameters={"component": component.name, "command": component.command},
     )

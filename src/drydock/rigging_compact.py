@@ -197,6 +197,8 @@ def compact(
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     on_item: Callable[[CompactItem], None] | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
 ) -> CompactResult:
     """Compact every stale derivative in ``blueprint`` (and Rigging when requested)."""
     # Resolved at call time so tests can monkeypatch ``run_prompt`` through the CLI path.
@@ -243,7 +245,8 @@ def compact(
         result = run(
             assembled,
             spec_dir,
-            model=prompt.model,
+            llm=llm_provider,
+            model=model or prompt.model,
             command_name="rigging compact",
             parameters={"source": str(source), "compact": str(compact_path)},
             on_text=on_text,
