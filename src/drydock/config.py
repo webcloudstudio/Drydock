@@ -126,9 +126,16 @@ def get_model(cli_override: str | None = None) -> str:
     return (value or DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
 
-def get_llm_provider() -> str:
-    value, _source = _get("LLM_PROVIDER", "claude")
-    provider = (value or "").lower()
+def get_llm_provider(cli_override: str | None = None) -> str:
+    """Resolve the LLM provider for this invocation.
+
+    Resolution order: cli_override → LLM_PROVIDER (env or config file) → ``claude``.
+    """
+    if cli_override is not None:
+        value = cli_override
+    else:
+        value, _source = _get("LLM_PROVIDER", "claude")
+    provider = (value or "").lower().strip()
     if provider not in {"claude", "codex"}:
         raise ConfigurationError(f"Invalid LLM_PROVIDER: {value!r}\n  Valid values: claude, codex")
     return provider

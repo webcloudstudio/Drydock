@@ -880,6 +880,19 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=runner)
         assert result.ok
 
+    def test_cli_provider_override_is_passed_to_runner(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        calls = []
+
+        def runner(*a, **k):
+            calls.append(k)
+            return FakeRun()
+
+        result = analyze("MyTarget", target_dir, runner=runner, llm_provider="codex")
+
+        assert result.ok
+        assert calls[0]["llm"] == "codex"
+
     def test_exit_code_zero_on_success(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())

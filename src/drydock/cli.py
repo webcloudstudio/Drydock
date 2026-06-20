@@ -179,13 +179,14 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
-    from drydock.config import get_model, get_target_directory
+    from drydock.config import get_llm_provider, get_model, get_target_directory
 
     target_dir = get_target_directory() / args.Target
     model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
-    result = analyze(args.Target, target_dir, model=model)
+    result = analyze(args.Target, target_dir, model=model, llm_provider=llm_provider)
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
@@ -901,6 +902,13 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="<model>",
         help="Override LLM model (default: DRYDOCK_MODEL env or sonnet).",
     )
+    p_analyze.add_argument(
+        "--llm-provider",
+        default=None,
+        choices=["claude", "codex"],
+        metavar="<provider>",
+        help="Override LLM provider (default: LLM_PROVIDER env or claude).",
+    )
 
     # ── survey ────────────────────────────────────────────────────────────────
     p_survey = sub.add_parser(
@@ -1029,6 +1037,14 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         default=None,
         metavar="<model>",
         help="Override LLM model (default: DRYDOCK_MODEL env or sonnet).",
+    )
+    p.add_argument(
+        "--llm-provider",
+        dest="llm_provider",
+        default=None,
+        choices=["claude", "codex"],
+        metavar="<provider>",
+        help="Override LLM provider (default: LLM_PROVIDER env or claude).",
     )
     parsed, _ = p.parse_known_args(tokens)
     return parsed

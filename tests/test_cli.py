@@ -320,6 +320,54 @@ class TestRiggingCompact:
         assert "Nothing to compact" in out
 
 
+class TestAnalyzeCommand:
+    def test_help_lists_llm_provider_flag(self):
+        rc, out, _ = run_cli("analyze", "--help")
+        assert rc == 0
+        assert "--llm-provider" in out
+
+    def test_analyze_passes_cli_provider_override(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target_dir = tmp_target_root / "Proj"
+        (target_dir / "blueprint").mkdir(parents=True)
+
+        seen = {}
+
+        def fake_analyze(target, passed_target_dir, **kwargs):
+            seen["target"] = target
+            seen["target_dir"] = passed_target_dir
+            seen["kwargs"] = kwargs
+            return SimpleNamespace(
+                ok=True,
+                target_dir=passed_target_dir,
+                analysis_path=passed_target_dir / "ANALYSIS.md",
+                sea_trials_path=passed_target_dir / "SEA_TRIALS.md",
+                soundings_path=passed_target_dir / "SOUNDINGS.md",
+                compass_path=None,
+                discovery_paths=(),
+                captains_chair_path=None,
+                quality="Ready",
+                story_count=0,
+                question_count=0,
+                blocker_count=0,
+                screen_count=0,
+                stack="python",
+            )
+
+        monkeypatch.setattr("drydock.analyze.analyze", fake_analyze)
+
+        rc, out, err = run_cli("analyze", "Proj", "--llm-provider", "codex")
+
+        assert rc == 0, err
+        assert seen["target"] == "Proj"
+        assert seen["target_dir"] == target_dir
+        assert seen["kwargs"]["llm_provider"] == "codex"
+
+
 class TestPlanInspection:
     PLAN = """# MANIFEST: Example
 updated: 2026-06-11T12:00:00

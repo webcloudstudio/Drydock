@@ -203,10 +203,17 @@ class TestGetters:
     def test_llm_provider_defaults_to_claude(self, isolated_config):
         assert get_llm_provider() == "claude"
 
+    def test_llm_provider_cli_override_wins(self, isolated_config):
+        assert get_llm_provider("codex") == "codex"
+
     def test_llm_provider_environment_overrides_file(self, isolated_config, monkeypatch):
         config_set("llm_provider", "claude")
         monkeypatch.setenv("LLM_PROVIDER", "codex")
         assert get_llm_provider() == "codex"
+
+    def test_llm_provider_cli_override_wins_over_environment(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("LLM_PROVIDER", "claude")
+        assert get_llm_provider("codex") == "codex"
 
     def test_prompt_warn_kb_defaults_to_50(self, isolated_config):
         assert get_prompt_warn_kb() == 50
