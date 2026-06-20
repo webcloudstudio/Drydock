@@ -1083,7 +1083,7 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
     command = getattr(args, "command", None)
     if command is None:
         return  # bare `drydock` / help text
-    if command == "status":
+    if command in {"status", "validate"}:
         return  # pure report
     if command == "config" and getattr(args, "config_command", None) == "show":
         return  # pure report
