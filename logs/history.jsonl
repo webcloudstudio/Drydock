@@ -2734,3 +2734,8 @@
 {"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-89/test_document_assemble_is_not_0/spec.md --output /tmp/pytest-of-barlo/pytest-89/test_document_assemble_is_not_0/out.html", "time": "2026-06-20 18:41", "return_code": 0}
 {"command": "drydock run", "time": "2026-06-20 18:41", "return_code": 0}
 {"command": "drydock plan create Marina2 --llm-provider codex --model gpt-5.4", "time": "2026-06-20 18:50", "target": "Marina2", "return_code": 1}
+{"command": "drydock document assemble", "time": "2026-06-20 19:01", "return_code": 0}
+{"command": "drydock document assemble", "time": "2026-06-20 19:10", "return_code": 0}
+{"command": "drydock document assemble", "time": "2026-06-20 19:18", "return_code": 0}
+{"command": "drydock document assemble", "time": "2026-06-20 19:33", "return_code": 0}
+{"command": "drydock document assemble", "time": "2026-06-20 19:45", "return_code": 0}

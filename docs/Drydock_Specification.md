@@ -69,7 +69,7 @@ flowchart LR
 
   SETUP["Set Up"]:::script --> ANALYZE["Analyze"]:::script
   ANALYZE --> IMPLEMENT["Implement"]:::script
-  IMPLEMENT --> TARGET(["Target Working Directory"]):::dir
+  IMPLEMENT --> TARGET(["Working Software"]):::dir
   IMPLEMENT --> LOOP["Loop"]:::script
   LOOP -.-> ANALYZE
 ```
@@ -388,7 +388,7 @@ flowchart LR
   BCOMPASS{{"BUILD_COMPASS.md"}}:::md --> BUILD
   TICKETS{{"tickets.json"}}:::md --> BUILD
   BUILD --> EV{{"Evidence"}}:::md
-  BUILD --> TARGET(["Target Working Directory"]):::dir
+  BUILD --> TARGET(["Working Software"]):::dir
 ```
 
 **Input files**
@@ -398,14 +398,14 @@ flowchart LR
 | `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input |
 | `MANIFEST.md` | Target root | Executable build plan and dependency graph |
 | `tickets.json` | Target root | Target ticketing system projection consumed during build execution |
-| `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
+| `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, <br>`SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
 
 **Output files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
 | `evidence/` | Target root | Reviewable build evidence written for completed work |
-| Built application files | `$DRYDOCK_BUILD_DIRECTORY/<Target>` | Target working directory updated by the build; override with `METADATA.md` `build_dir:` |
+| Built application files | `$DRYDOCK_BUILD_DIRECTORY/<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
 `drydock build <Target>` executes the approved frontier and builds the application in the target working directory
 `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
@@ -513,15 +513,16 @@ flowchart LR
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
   CHANGE(["Change Request"]):::dir --> REFIT["refit"]:::script
+  Ticket(["Change Ticket"]):::dir --> REFIT
   REFIT --> SPECOUT(["Updated Blueprint"]):::dir
-  REFIT --> SOFTWARE(["Updated Software"]):::output
-  SPECOUT --> MERGE["merge"]:::script
-  SOFTWARE --> MERGE
+  REFIT --> SOFTWARE(["Working Software"]):::output
 ```
+
+TODO: update to Eds latest notes_refit.md
 
 The `refit` command delegates final integration to a separate merge step. Each output file produced by the refit is compared against its prior state; files whose content has changed are marked dirty and reapplied to the working tree.
 
-### Portfolio Governance Propagation
+#### Portfolio Governance Propagation
 
 Portfolio-governance propagation is part of Refit because it applies maintained Drydock Rigging
 changes back into an existing Target and proves continued conformance after the change.
@@ -541,7 +542,7 @@ keyed to the compact derivative's hash, so an edit that does not change the comp
 rationale, examples, internal detail — dirties no consumers. A change to a file's `Provides` or
 `Consumes` set additionally marks every dependent block stale.
 
-### Refits with Change Tickets
+#### Refits with Change Tickets
 
 Change tickets are incremental work items, not `refit` sessions. A new ticket is just a new
 Specification file under `changes/` with the correct typed header and dependency fields. Planning
