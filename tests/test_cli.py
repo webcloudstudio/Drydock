@@ -612,7 +612,7 @@ class TestImport:
         rc, out, err = run_cli("import", "Tgt", str(source), "--format", "compass")
 
         assert rc == 1
-        assert "Intent source not found" in err
+        assert "Compass import requires a file" in err
         assert not (tmp_target_root / "Tgt").exists()
 
     def test_import_help_shows_arguments(self):

@@ -107,8 +107,10 @@ def import_intent(target: str, source: Path, target_directory: Path) -> ImportRe
     the COMPASS.md format before running drydock analyze.
     """
     source = source.expanduser().resolve()
-    if not source.is_file():
+    if not source.exists():
         raise SpecificationError(f"Intent source not found: {source}")
+    if not source.is_file():
+        raise SpecificationError(f"Compass import requires a file: {source}")
 
     target_dir = target_directory / target
     target_dir.mkdir(parents=True, exist_ok=True)

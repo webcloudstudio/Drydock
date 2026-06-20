@@ -66,7 +66,7 @@ class TestImportIntent:
         source = tmp_path / "compass"
         source.mkdir()
 
-        with pytest.raises(SpecificationError, match="Intent source not found"):
+        with pytest.raises(SpecificationError, match="Compass import requires a file"):
             import_intent("MyTarget", source, target_dir)
 
     def test_accepts_txt_source(self, tmp_path):
