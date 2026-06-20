@@ -46,27 +46,26 @@ def detect_import_format(source: Path) -> str:
     )
 
 
-def _markdown_files(source: Path) -> list[tuple[Path, Path]]:
+def _import_files(source: Path) -> list[tuple[Path, Path]]:
     if source.is_file():
-        if source.suffix.lower() != ".md":
-            raise SpecificationError(f"Markdown import requires a .md file: {source}")
         return [(source, Path(source.name))]
     if not source.is_dir():
         raise SpecificationError(f"Import source not found: {source}")
     files = [
-        (path, path.relative_to(source))
-        for path in sorted(source.rglob("*"))
-        if path.is_file() and path.suffix.lower() == ".md"
+        (path, path.relative_to(source)) for path in sorted(source.rglob("*")) if path.is_file()
     ]
     if not files:
-        raise SpecificationError(f"No Markdown files found under: {source}")
+        raise SpecificationError(f"No files found under: {source}")
     return files
 
 
 def import_markdown(
     blueprint: str, target: str, source: Path, target_directory: Path
 ) -> ImportResult:
-    """Preserve Markdown under ``targets/<Target>/blueprint/sources/``.
+    """Preserve a Markdown import file or directory under ``blueprint/sources/``.
+
+    A directory is copied recursively without filtering by extension so referenced
+    assets and companion files remain available to downstream analysis.
 
     Seeds only root identity files (METADATA.md, README.md). Typed spec files are
     ``plan create`` outputs; COMPASS.md is an ``analyze`` output. After import,
@@ -84,7 +83,7 @@ def import_markdown(
         f"source: {source}\nformat: markdown\n", encoding="utf-8"
     )
     imported: list[Path] = []
-    for source_path, relative in _markdown_files(source):
+    for source_path, relative in _import_files(source):
         destination = sources_dir / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_path, destination)

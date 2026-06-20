@@ -61,6 +61,14 @@ class TestImportIntent:
         with pytest.raises(SpecificationError, match="not found"):
             import_intent("MyTarget", tmp_path / "nonexistent.md", target_dir)
 
+    def test_directory_source_raises(self, tmp_path):
+        target_dir = tmp_path / "targets"
+        source = tmp_path / "compass"
+        source.mkdir()
+
+        with pytest.raises(SpecificationError, match="Intent source not found"):
+            import_intent("MyTarget", source, target_dir)
+
     def test_accepts_txt_source(self, tmp_path):
         source = tmp_path / "brief.txt"
         source.write_text("plain text brief", encoding="utf-8")
@@ -77,8 +85,10 @@ class TestImportIntentCli:
         source.write_text("# COMPASS: Test\n\n## Compass\nTest project.", encoding="utf-8")
 
         import os
+
         env = os.environ.copy()
         env["DRYDOCK_WORKSPACE"] = str(tmp_path / "ws")
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "config")
 
         r = subprocess.run(
             [
@@ -90,6 +100,34 @@ class TestImportIntentCli:
                 str(source),
                 "--format",
                 "intent",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert r.returncode == 0
+        assert "COMPASS.md" in r.stdout
+
+    def test_compass_format_accepted(self, tmp_path):
+        source = tmp_path / "brief.md"
+        source.write_text("# COMPASS\n", encoding="utf-8")
+
+        import os
+
+        env = os.environ.copy()
+        env["DRYDOCK_WORKSPACE"] = str(tmp_path / "ws")
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "config")
+
+        r = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "drydock",
+                "import",
+                "MyTarget",
+                str(source),
+                "--format",
+                "compass",
             ],
             capture_output=True,
             text=True,

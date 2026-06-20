@@ -39,14 +39,15 @@ class TestImportMarkdownFile:
         assert "format: markdown" in text
         assert str(source) in text
 
-    def test_non_md_file_raises(self, tmp_path):
+    def test_single_non_md_file_is_copied(self, tmp_path):
         source = tmp_path / "spec.txt"
         source.write_text("not markdown", encoding="utf-8")
         td = tmp_path / "targets"
         td.mkdir()
 
-        with pytest.raises(SpecificationError, match="Markdown import requires a .md file"):
-            import_markdown("Proj", "Tgt", source, td)
+        import_markdown("Proj", "Tgt", source, td)
+
+        assert (td / "Tgt" / "blueprint" / "sources" / "spec.txt").is_file()
 
     def test_missing_source_raises(self, tmp_path):
         td = tmp_path / "targets"
@@ -57,13 +58,14 @@ class TestImportMarkdownFile:
 
 
 class TestImportMarkdownDirectory:
-    def test_directory_recursion_copies_all_md_files(self, tmp_path):
+    def test_directory_recursion_copies_all_files(self, tmp_path):
         src = tmp_path / "docs"
         src.mkdir()
         (src / "a.md").write_text("# A\n", encoding="utf-8")
         subdir = src / "sub"
         subdir.mkdir()
         (subdir / "b.md").write_text("# B\n", encoding="utf-8")
+        (subdir / "diagram.svg").write_text("<svg />\n", encoding="utf-8")
         td = tmp_path / "targets"
         td.mkdir()
 
@@ -72,9 +74,10 @@ class TestImportMarkdownDirectory:
         bp = result.blueprint_dir / "sources"
         assert (bp / "a.md").is_file()
         assert (bp / "sub" / "b.md").is_file()
-        assert len(result.imported) == 2
+        assert (bp / "sub" / "diagram.svg").is_file()
+        assert len(result.imported) == 3
 
-    def test_non_md_files_in_directory_skipped(self, tmp_path):
+    def test_non_md_files_in_directory_are_copied(self, tmp_path):
         src = tmp_path / "docs"
         src.mkdir()
         (src / "spec.md").write_text("# S\n", encoding="utf-8")
@@ -84,7 +87,8 @@ class TestImportMarkdownDirectory:
 
         result = import_markdown("Proj", "Tgt", src, td)
 
-        assert len(result.imported) == 1
+        assert len(result.imported) == 2
+        assert (result.blueprint_dir / "sources" / "ignore.txt").is_file()
 
     def test_empty_directory_raises(self, tmp_path):
         src = tmp_path / "empty"
@@ -92,7 +96,7 @@ class TestImportMarkdownDirectory:
         td = tmp_path / "targets"
         td.mkdir()
 
-        with pytest.raises(SpecificationError, match="No Markdown files found"):
+        with pytest.raises(SpecificationError, match="No files found"):
             import_markdown("Proj", "Tgt", src, td)
 
 

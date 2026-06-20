@@ -514,7 +514,7 @@ class TestImport:
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "spec.md").is_file()
 
-    def test_import_markdown_auto_detects_markdown_directory(
+    def test_import_auto_rejects_directory(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         self._configure(tmp_target_root, monkeypatch)
@@ -524,8 +524,9 @@ class TestImport:
 
         rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "auto")
 
-        assert rc == 0, err
-        assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "spec.md").is_file()
+        assert rc == 2
+        assert "--format auto requires a file" in err
+        assert not (tmp_target_root / "Tgt").exists()
 
     def test_import_missing_source_returns_1(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -552,7 +553,7 @@ class TestImport:
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
         assert "IMPORTED" in out
 
-    def test_import_source_auto_detects_code_directory(
+    def test_import_auto_rejects_source_directory(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         self._configure(tmp_target_root, monkeypatch)
@@ -562,8 +563,9 @@ class TestImport:
 
         rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "auto")
 
-        assert rc == 0, err
-        assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
+        assert rc == 2
+        assert "--format auto requires a file" in err
+        assert not (tmp_target_root / "Tgt").exists()
 
     def test_import_speckit_copies_specify_structure(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -597,16 +599,21 @@ class TestImport:
 
         rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "auto")
 
-        assert rc == 0, err
-        assert (
-            tmp_target_root
-            / "Tgt"
-            / "blueprint"
-            / "sources"
-            / ".specify"
-            / "memory"
-            / "constitution.md"
-        ).is_file()
+        assert rc == 2
+        assert "--format auto requires a file" in err
+
+    def test_import_compass_rejects_directory(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        source = tmp_path / "compass"
+        source.mkdir()
+
+        rc, out, err = run_cli("import", "Tgt", str(source), "--format", "compass")
+
+        assert rc == 1
+        assert "Intent source not found" in err
+        assert not (tmp_target_root / "Tgt").exists()
 
     def test_import_help_shows_arguments(self):
         rc, out, err = run_cli("import", "--help")

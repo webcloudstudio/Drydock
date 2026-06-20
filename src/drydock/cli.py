@@ -343,6 +343,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     source = Path(args.Source)
     fmt = args.format
     if fmt == "auto":
+        if source.expanduser().is_dir():
+            raise UsageError(
+                "--format auto requires a file; specify --format markdown, source, or speckit for a directory"
+            )
         fmt = detect_import_format(source)
 
     td = get_target_directory()
@@ -384,7 +388,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         _print_next_step("import", args.Target)
         return 0
 
-    if fmt == "intent":
+    if fmt in {"compass", "intent"}:
         from drydock.import_markdown import import_intent
 
         result = import_intent(args.Target, source, td)
@@ -891,7 +895,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("Source", metavar="<Source>")
     p_import.add_argument(
-        "--format", choices=["auto", "markdown", "source", "speckit", "intent"], default="auto"
+        "--format",
+        choices=["auto", "markdown", "source", "speckit", "compass", "intent"],
+        default="auto",
     )
 
     return parser
