@@ -105,3 +105,12 @@ class TestInputTokens:
             "BLUEPRINTS_CONTRACT.md",
             "TYPED_SPEC",
         )
+
+    def test_plan_create_compass_requires_ordered_token_budgeted_build_steps(self):
+        body = load_prompt("plan_create").body
+
+        assert "## 1: Foundation" in body
+        assert "stories: scaffold, persistence" in body
+        assert "# Estimated prompt: ~42KB (~11k tokens)" in body
+        assert "Each story appears in exactly one step." in body
+        assert "Keep every estimated prompt at or below `PROMPT_WARN_KB`." in body
