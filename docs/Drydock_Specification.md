@@ -4,7 +4,7 @@ eyebrow: The SAIL Methodology for Governed Software Delivery
 subtitle: Drydock is an implementation of the SAIL Methodology to build programs from specifications.  
 author: Ed Barlow
 studio: Web Cloud Studio
-year: June 11 2026
+year: June 20 2026
 nav_active: drydock.html
 header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.
@@ -205,7 +205,7 @@ flowchart LR
 
 `drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>` is the intake step. 
 It brings external material under Drydock control.  Drydock can import data from other specification systems or can import
-a compass file.  The data is copied as is into `<Target>/blueprint/sources/`. 
+a compass file.  The data is copied as is into `blueprint/sources/`. 
 
 `drydock import <Target> <Source> --format markdown` imports general markdown specifications
 
@@ -215,18 +215,18 @@ a compass file.  The data is copied as is into `<Target>/blueprint/sources/`.
 
 ### drydock analyze
 
-`drydock analyze` is Sprint Feature Planning. The LLM decomposes `<Target>/blueprint/sources/` into a set of
+`drydock analyze` is Sprint Feature Planning. The LLM decomposes `blueprint/sources/` into a set of
 markdown artifacts using agile. It prepares the following files for Commander review.
 
 **Input files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `sources/*` | `<Target>/blueprint/` | Imported source material; read-only planning context |
+| `sources/*` | `blueprint/` | Imported source material; read-only planning context |
 | `COMPASS.md` | Target root | Project intent |
 | `ANALYSIS_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
 | `BLOCKERS.md` | Target root | Blockers - edit file to address - consumed on re-run |
-| `questionnaires/*.json` | `<Target>/QuarterDeck/` | Persistent answers consumed on re-run |
+| `questionnaires/*.json` | `QuarterDeck/` | Persistent answers consumed on re-run |
 
 **Output files**
 
@@ -254,7 +254,7 @@ Commander's answers guide the LLM on the next run, and the cycle repeats until n
 
 #### Standing-Directive Feedback
 
-`<Target>/ANALYSIS_COMPASS.md` is a persistent, human-editable standing directive. The Commander
+`ANALYSIS_COMPASS.md` is a persistent, human-editable standing directive. The Commander
 records durable guidance there — decomposition preferences, recurring corrections — and `drydock
 analyze` re-injects it on every run. Each Drydock command supports a standing-directive 
 feedback process using this convention.
@@ -282,7 +282,7 @@ ready to implement.
 ### drydock plan create
 
 `drydock plan create` is Sprint Story planning.  Imported source files are re-read and reformatted according to the 
-analysis.  This step creates Typed Specification files under `<Target>/blueprint/` and `<Target>/MANIFEST.md`.
+analysis.  This step creates Typed Specification files under `blueprint/` and `MANIFEST.md`.
 
 The headers of the blueprints are structured as a dependency graph and the runnable frontier is established.
 
@@ -297,25 +297,25 @@ the task instructions.  Similar tasks are grouped together to save context.
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `sources/*` | `<Target>/blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
+| `sources/*` | `blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
 | `ANALYSIS.md` | Target root | The reviewed analysis that drives decomposition |
 | `MANIFEST_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
 | `COMPASS.md` | Target root | Project intent |
-| `questionnaires/*.json` | `<Target>/QuarterDeck/` | Resolved planning decisions |
+| `questionnaires/*.json` | `QuarterDeck/` | Resolved planning decisions |
 
 **Output files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-{Name}.md`, `SCREEN-{Name}.md`, `UI-GENERAL.md` | `<Target>/blueprint/` | Typed Specification files |
-| `BUILD_PLAN_COMPASS.md` | `<Target>/blueprint/` | Internal inventory of inputs and planning groups |
+| `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-{Name}.md`, `SCREEN-{Name}.md`, `UI-GENERAL.md` | `blueprint/` | Typed Specification files |
+| `BUILD_PLAN_COMPASS.md` | `blueprint/` | Internal inventory of inputs and planning groups |
 | `MANIFEST.md` | Target root | The executable build plan |
 | `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
 | `tickets.json` | Target root | Target ticketing system projection |
 
 #### Standing-Directive Feedback
 
-`<Target>/MANIFEST_COMPASS.md` is a persistent, human-editable standing directive. The Commander
+`MANIFEST_COMPASS.md` is a persistent, human-editable standing directive. The Commander
 records durable guidance there — decomposition preferences, recurring corrections — and `drydock
 plan create` re-injects it on every run.
 
@@ -349,7 +349,7 @@ drydock rigging verify <Target>
 
 ### drydock build
 
-Build executes the work blocks in `<Target>/MANIFEST.md` based on their dependency graph. The Manifest
+Build executes the work blocks in `MANIFEST.md` based on their dependency graph. The Manifest
 and its Typed Specifications execute in the steps or phases the plan lists. 
 
 ```mermaid
@@ -421,7 +421,7 @@ drydock survey <Target> --import D   # re-read a Blueprint/sources directory and
 drydock survey <Target> --command status   # filter to one command
 ```
 
-A Target carries one Surveyor workspace at `<Target>/survey/`: per-command acceptance-criteria
+A Target carries one Surveyor workspace at `survey/`: per-command acceptance-criteria
 files under `survey/ac/SURVEY-<command>.md`, an append-only `survey/scores.jsonl`, and the scoring
 `survey/RUBRIC.md`. Each command is scored on five weighted dimensions — behavioral correctness,
 specification quality, process integrity, evidence/reproducibility, and contract conformance — to a
@@ -866,7 +866,7 @@ instructions: |
   Build persistence and the catalog service.
 depends:      select-parser
 state:        pending
-evidence:     <Target>/evidence/<id>.md
+evidence:     evidence/<id>.md
 scope:        blueprint | target | both
 ```
 
@@ -893,7 +893,7 @@ parent:       feature-import
 finding:      ← text answer written here by the agent
 depends:      foundation
 state:        pending
-evidence:     <Target>/evidence/<id>.md
+evidence:     evidence/<id>.md
 ```
 
 ### Acceptance Check Blocks
@@ -907,7 +907,7 @@ kind:         smoke | assertion
 check:        test -f bin/start.sh && curl -sf http://localhost:${PORT}/health
 depends:
 state:        pending
-evidence:     <Target>/evidence/<id>.md
+evidence:     evidence/<id>.md
 ```
 
 `kind: smoke` runs a command. `kind: assertion` checks a behavior from evidence or review.
@@ -1008,12 +1008,12 @@ the few that require a decision to the product owner.
 
 ### Console Index — console.yaml
 
-**`<Target>/QuarterDeck/console.yaml`** is the console index. It defines project identity, the
+**`QuarterDeck/console.yaml`** is the console index. It defines project identity, the
 default view, the sidebar section taxonomy (id / label / dot / collapsed / pinned), and every
 renderable navigation item: source-of-truth documents, the kanban board, questionnaires, evidence
 pages, and review pages. Each item declares its renderer, source path, home section, and optional
 review target. Console state — archive overrides and questionnaire answers — is held in
-`<Target>/QuarterDeck/data/console_state.sqlite`. No command rewrites `console.yaml` at runtime.
+`QuarterDeck/data/console_state.sqlite`. No command rewrites `console.yaml` at runtime.
 
 The section taxonomy:
 
@@ -1028,7 +1028,7 @@ The section taxonomy:
 The **Master Blueprint** is the standard label for the authoritative project specification file in
 the Drydock Core section.
 
-**`<Target>/tickets.json`** is the target ticketing-system artifact and a generated projection of
+**`tickets.json`** is the target ticketing-system artifact and a generated projection of
 the Agile `MANIFEST.md`. Spikes and stories appear as tickets; acceptance criteria are folded under
 their parent. Column assignment maps directly to object state. `drydock init` does not create
 `tickets.json`; `drydock plan create` is its sole writer. The kanban board lives in Core and, like
@@ -1110,7 +1110,7 @@ non-pinned sections carry an archive `↓` button.
 
 ### Blockers
 
-`drydock analyze` emits `<Target>/BLOCKERS.md` only when it finds questions that prevent planning. A
+`drydock analyze` emits `BLOCKERS.md` only when it finds questions that prevent planning. A
 healthy project has no `BLOCKERS.md`; the file's existence is the signal. When present, the Blockers
 section appears first in the sidebar with full red treatment and holds a single editable item. The
 product owner answers the questions in `BLOCKERS.md` and re-runs `drydock analyze`, which injects the
@@ -1355,64 +1355,6 @@ flowchart LR
 Edit `DOC-*.md` files directly to refine documentation without re-running the AI pass; then
 run `drydock document assemble` to regenerate the HTML.
 
-## Spec Kit Compatibility
-
-Drydock is a Spec-Kit-compatible SDD runtime and typed specification system. It preserves the
-familiar Spec Kit lifecycle, adds dependency-driven execution and review control, and can import or
-export Spec Kit artifacts. Drydock's Typed Specification remains authoritative. Spec Kit-compatible
-artifacts are generated compatibility views and integration surfaces, not the source of truth.
-
-### Concept Mapping
-
-Every Spec Kit concept has a Drydock equivalent. Drydock adds capabilities beyond the Spec Kit
-surface that have no Spec Kit counterpart.
-
-| Spec Kit concept | Drydock equivalent | Compatibility level | Status | Lossiness |
-|---|---|---|---|---|
-| `constitution.md` — governing principles | `COMPASS.md` for product-specific intent plus Drydock Rigging for reusable governance | Enriched | Native | Partial split: one Spec Kit artifact maps to two Drydock layers |
-| `specs/<feature>/spec.md` — functional requirements | Owning `FEATURE-{Name}.md` plus `SCREEN-{Name}.md` when UI behavior is first-class | Enriched | Native plus generated compatibility view | Low: behavior is preserved, but typed ownership may split one source into multiple Drydock files |
-| Generated `spec.md` view | QuarterDeck-rendered or exported compatibility view assembled from the owning typed Specification files | Approximate | Planned compatibility view | Moderate: generated for interchange and review; not a native authoring artifact |
-| `plan.md` — technical architecture and implementation plan | `ARCHITECTURE.md`, `DATABASE.md`, and `MANIFEST.md` together, plus a generated `plan.md` compatibility view | Enriched | Native plus generated compatibility view | Low: planning detail is preserved but distributed across Drydock artifacts |
-| `data-model.md` — persistence schema | `DATABASE.md` with schema, stores, migrations, and typed access classes | Exact or enriched | Native | Low: exact for most systems; enriched when Drydock carries additional persistence detail |
-| `research.md` — technology research and decisions | Agile spikes, findings, evidence files, and reviewed outcomes surfaced through the QuarterDeck | Enriched | Native | Moderate: chronology and evidence are preserved, but the artifact is not a single native markdown file |
-| `tasks.md` — ordered task breakdown | `MANIFEST.md` execution objects, QuarterDeck tickets, and a generated `tasks.md` compatibility view | Enriched | Native plus generated compatibility view | Low: order and state are preserved; Drydock carries richer execution state than plain tasks |
-| `contracts/` — API contracts | Routes and interfaces in `FEATURE-*.md` and `ARCHITECTURE.md` | Enriched | Native | Low: contracts remain intact but live inside typed ownership files |
-| `quickstart.md` — setup and validation | `README.md`, `AGENTS.md`, and generated QuarterDeck guidance where useful | Enriched | Native plus generated guidance | Low: operational guidance is preserved, but may be redistributed |
-| `/clarify` — ambiguity resolution | `Open Questions`, `drydock analyze`, and review decisions recorded through the QuarterDeck | Enriched | Native workflow | Low: same intent, broader system scope |
-| `/checklist` — focused validation checklist | Acceptance criteria, review checklists, and QuarterDeck review surfaces scoped to feature, screen, or ticket | Enriched | Planned compatibility behavior | Low: intent is preserved; presentation differs |
-| `/plan` | `drydock plan create` with typed dependency resolution, context sizing, and build-graph generation | Enriched | Native | Low: same planning purpose with stronger execution semantics |
-| `/analyze` | `drydock analyze` over the full Typed Specification and target application | Enriched | Native workflow | Low: Drydock analyzes a broader system than a single feature workflow |
-| `/implement` | `drydock build` with evidence and review gates | Enriched | Native | Low: same purpose with added staleness, evidence, and review semantics |
-
-### Compatibility Views
-
-Where a Spec Kit artifact is useful for interchange, review, or agent integration, Drydock
-generates it as a compatibility view over the authoritative Typed Specification and build state.
-
-- `spec.md` is a generated feature-level compatibility view assembled from the owning typed
-  Specification files. It is presented through the QuarterDeck or exported on demand.
-- `plan.md` is a generated compatibility view over `ARCHITECTURE.md`, `DATABASE.md`, and the
-  relevant planning state in `MANIFEST.md`.
-- `tasks.md` is a generated compatibility view over execution objects, evidence, and review state
-  already present in `MANIFEST.md` and the QuarterDeck.
-
-These views improve compatibility without collapsing Drydock back into a single-file specification
-model.
-
-Drydock adds capabilities with no Spec Kit equivalent:
-
-| Drydock capability | Description |
-|---|---|
-| `SCREEN-*.md` | Dedicated specification file type for UI screens |
-| `drydock refit` | Governed Refit of the Blueprint and working software |
-| QuarterDeck | Generated, throwaway review console; decisions write back into the build through the single decision writer |
-| Agile plan mode | Spike-and-story delivery with per-object state and review gates |
-| Ship's Log | Drydock-only JSONL append-only event ledger written automatically by development agents |
-| Drydock Rigging | Technology governance propagated to all target projects |
-| Ordered build planning | `BUILD_PLAN_COMPASS.md`-driven work ordering with context optimization |
-| Brownfield import | Translate Spec Kit projects or source code into a Drydock Blueprint |
-| Documentation generation | Blueprint-to-HTML documentation pipeline |
-
 ### Spec Kit Import Contract
 
 ```text
@@ -1449,26 +1391,3 @@ Translation performs these steps:
 
 The conversion report is review evidence, not a permanent Specification file. The translator must
 not silently discard ambiguous or conflicting source content.
-
-### Integration Behaviors
-
-Initial useful behaviors:
-
-| Behavior | Drydock use |
-|---|---|
-| `clarify` | Resolve blocking open questions in the owning Specification files |
-| `checklist` | Generate focused checks for a feature, screen, or ticket |
-| `analyze` | Assist build-plan optimization and clarify uncertain implementation order |
-| Agent integrations | Expose Drydock workflows to supported coding agents |
-
-Rules:
-
-1. Spec Kit output must resolve back into the Drydock Blueprint.
-2. Imported Spec Kit artifacts are inputs, not a second source of truth.
-3. Spec Kit directories generated by an adapter are disposable.
-4. Drydock remains usable without Spec Kit.
-
-## Sources
-
-- [GitHub Spec Kit](https://github.com/github/spec-kit)
-- [Spec Kit documentation](https://github.github.com/spec-kit/)
