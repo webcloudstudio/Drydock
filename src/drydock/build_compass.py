@@ -107,8 +107,8 @@ def seed_from_specs(spec_names: Iterable[str], *, group_name: str = _DEFAULT_GRO
 @dataclass(frozen=True)
 class FileCost:
     name: str
-    token_count: int  # measured size in bytes
-    story_points: int  # ceil(token_count / 4)
+    byte_count: int  # raw measured size; internal, not displayed
+    story_points: int  # ceil(byte_count / 4) — the token estimate IS the story points
     missing: bool = False
 
 
@@ -116,68 +116,71 @@ class FileCost:
 class GroupCost:
     name: str
     files: tuple[FileCost, ...]
-    token_count: int
+    byte_count: int
     story_points: int
 
 
 @dataclass(frozen=True)
 class CompassCost:
     groups: tuple[GroupCost, ...]
-    total_token_count: int
+    total_byte_count: int
     total_story_points: int
 
 
-def story_points_for(token_count: int) -> int:
-    """Story points = estimated token cost = ``byte count / 4`` (rounded up)."""
-    return math.ceil(token_count / 4)
+def story_points_for(byte_count: int) -> int:
+    """Story points = estimated token cost = ``byte count / 4`` (rounded up).
+
+    The token estimate and the story-point count are the same number (a token is
+    ~4 bytes); there is one derived unit, not two.
+    """
+    return math.ceil(byte_count / 4)
 
 
 def recompute_token_costs(compass: BuildCompass, *, file_root: Path) -> CompassCost:
-    """Derive per-file, per-group, and total costs from the authored grouping.
+    """Derive per-file, per-group, and total story points from the authored grouping.
 
-    For each file, ``token_count`` is its byte size under ``file_root`` and
-    ``story_points`` is ``ceil(token_count / 4)``. A file whose path is absent
-    contributes zero and is flagged ``missing``. Pure: reads files, writes
-    nothing.
+    For each file, ``story_points`` is ``ceil(byte_count / 4)`` of its content
+    under ``file_root``. A file whose path is absent contributes zero and is
+    flagged ``missing``. Pure: reads files, writes nothing.
     """
     group_costs: list[GroupCost] = []
-    total_tokens = 0
+    total_bytes = 0
     total_points = 0
     for group in compass.groups:
         file_costs: list[FileCost] = []
-        group_tokens = 0
+        group_bytes = 0
         group_points = 0
         for name in group.files:
             path = file_root / name
             try:
-                token_count = len(path.read_bytes())
+                byte_count = len(path.read_bytes())
                 missing = False
             except OSError:
-                token_count = 0
+                byte_count = 0
                 missing = True
-            points = story_points_for(token_count)
+            points = story_points_for(byte_count)
             file_costs.append(
                 FileCost(
                     name=name,
-                    token_count=token_count,
+                    byte_count=byte_count,
                     story_points=points,
                     missing=missing,
                 )
             )
-            group_tokens += token_count
+            group_bytes += byte_count
             group_points += points
         group_costs.append(
             GroupCost(
                 name=group.name,
                 files=tuple(file_costs),
-                token_count=group_tokens,
+                byte_count=group_bytes,
                 story_points=group_points,
             )
         )
-        total_tokens += group_tokens
+        total_bytes += group_bytes
         total_points += group_points
     return CompassCost(
         groups=tuple(group_costs),
-        total_token_count=total_tokens,
+        total_byte_count=total_bytes,
         total_story_points=total_points,
     )

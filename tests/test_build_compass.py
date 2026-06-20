@@ -98,11 +98,11 @@ class TestRecompute:
         cost = recompute_token_costs(compass, file_root=tmp_path)
 
         foundational = cost.groups[0]
-        assert foundational.files[0].token_count == 4000
+        assert foundational.files[0].byte_count == 4000
         assert foundational.files[0].story_points == 1000
         assert foundational.story_points == 1000 + 200  # 4000/4 + 800/4
         assert cost.groups[1].story_points == 100  # 400/4
-        assert cost.total_token_count == 5200
+        assert cost.total_byte_count == 5200
         assert cost.total_story_points == 1300
 
     def test_missing_file_is_zero_and_flagged(self, tmp_path):
@@ -110,7 +110,7 @@ class TestRecompute:
         cost = recompute_token_costs(compass, file_root=tmp_path)
         fc = cost.groups[0].files[0]
         assert fc.missing is True
-        assert fc.token_count == 0
+        assert fc.byte_count == 0
         assert fc.story_points == 0
         assert cost.total_story_points == 0
 
