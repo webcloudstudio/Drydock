@@ -71,7 +71,6 @@ class CompletedRun(Protocol):
 
 RunnerFn = Callable[..., CompletedRun]
 TextCallback = Callable[[str], None]
-PromptFn = Callable[[str], str]
 
 
 @dataclass(frozen=True)
@@ -412,50 +411,6 @@ def _next_step_hint(quality: str, target: str) -> str:
     return f"drydock plan create {target}"
 
 
-def _prompt_missing_metadata(
-    target_dir: Path,
-    sources_dir: Path | None = None,
-    prompter: PromptFn | None = None,
-) -> None:
-    """Interactively fill blank identity fields in METADATA.md before analysis runs.
-
-    Asks for ``short_description`` and ``stack`` when either is empty.  For
-    ``stack``, runs heuristic detection on ``sources_dir`` and offers the result
-    as the default answer.  The ``prompter`` parameter defaults to ``input`` and
-    is injectable so tests can supply answers without touching stdin.
-    Silently skips when stdin is not a TTY and no prompter is provided.
-    """
-    import sys
-
-    if prompter is None and not sys.stdin.isatty():
-        return
-
-    ask = prompter if prompter is not None else input
-    path = target_dir / METADATA_NAME
-    fields = parse_metadata(path)
-
-    if not get_field(fields, "short_description"):
-        val = ask("short_description (one-line project description): ").strip()
-        if val:
-            set_field(path, "short_description", val, overwrite=True)
-
-    if not get_field(fields, "stack"):
-        hint = ""
-        if sources_dir and sources_dir.is_dir():
-            from drydock.import_source import detect_stack
-
-            detected = detect_stack(sources_dir)
-            hint = "/".join(detected) if detected else ""
-        prompt_str = (
-            f"stack (e.g. Python/FastAPI) [detected: {hint}]: "
-            if hint
-            else "stack (e.g. Python/FastAPI): "
-        )
-        val = ask(prompt_str).strip() or hint
-        if val:
-            set_field(path, "stack", val, overwrite=True)
-
-
 def analyze(
     target: str,
     target_dir: Path,
@@ -463,18 +418,11 @@ def analyze(
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     model: str | None = None,
-    prompter: PromptFn | None = None,
 ) -> AnalyzeResult:
     """Analyze a Blueprint and write all analyze artifacts to the Target."""
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
-
-    _prompt_missing_metadata(
-        target_dir,
-        sources_dir=blueprint_dir / _SOURCES_SUBDIR,
-        prompter=prompter,
-    )
 
     questionnaires_dir = target_dir / "QuarterDeck" / "questionnaires"
     analysis_path = target_dir / "ANALYSIS.md"
