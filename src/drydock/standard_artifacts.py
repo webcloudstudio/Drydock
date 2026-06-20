@@ -124,11 +124,12 @@ items:
   - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1 }}
   - {{ id: compass_edit, label: "Compass", section: core, type: editable_markdown, path: ../COMPASS.md, order: 2 }}
   - {{ id: analysis, label: "Analysis", section: core, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 3 }}
-  - {{ id: analysis_feedback, label: "Analysis Compass", section: core, type: editable_markdown, path: ../ANALYSIS_COMPASS.md, order: 4 }}
+  - {{ id: analyze_compass, label: "Analyze Compass", section: core, type: editable_markdown, path: ../ANALYZE_COMPASS.md, order: 4 }}
   - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 5 }}
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 6 }}
 {planning_item}  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 7 }}
-  - {{ id: manifest_feedback, label: "Manifest Compass", section: core, type: editable_markdown, path: ../MANIFEST_COMPASS.md, order: 8 }}
+  - {{ id: plan_compass, label: "Plan Compass", section: core, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 8 }}
+  - {{ id: build_compass, label: "Build Compass", section: core, type: compass, path: ../BUILD_COMPASS.md, order: 9 }}
 
 sources:
   - glob: "QuarterDeck/questionnaires/discovery-*.json"

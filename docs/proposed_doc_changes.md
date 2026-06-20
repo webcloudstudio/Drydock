@@ -16,8 +16,8 @@ Pending reconciliation of `spec:approved` items from `docs/notes_analyze.md` int
 | I | FIX-9 | Analyze prompt structured as ordered steps with per-step consumes/emits contracts — sequential pipeline: sources→roles→blockers/questions→story list→SOUNDINGS→SEA_TRIALS→quality→questionnaires. |
 | J | FIX-10 | BLOCKERS.md writer rejects empty/placeholder content — structural enforcement: ≥1 `##` heading required; absence of real blockers must not write/retain the file. |
 | K | Feedback | Standing-directive methodology — each generative step exports a persistent feedback file (never overwritten by the command) re-injected at top of its prompt every run. |
-| L | Feedback | ANALYSIS_COMPASS.md — target root, injection stack position 3 (after job block, before BLOCKERS.md); QuarterDeck shows it under ANALYSIS, editable, submit saves to file. |
+| L | Feedback | ANALYZE_COMPASS.md — target root, injection stack position 3 (after job block, before BLOCKERS.md); QuarterDeck shows it under ANALYSIS, editable, submit saves to file. |
 | M | Feedback | BUILD_CONFIGURATION.md retired — no defined format, writer, or value; its two roles now split between feedback files (free-text) and answered `spike-*.json` (structured decisions). |
 | N | Feedback | Rigging catalog = filename list only — inject `BRA*.md` + `stack/*.md` names, exclude `README.md`; no file content injected; names are the spike-stack options source. |
-| O | Feedback | Final injection stack — (1) prompt body (2) job block (3) `ANALYSIS_COMPASS.md` (4) `BLOCKERS.md` (5) Rigging catalog filenames (6) `blueprint/sources/*.md`; COMPASS not injected. |
+| O | Feedback | Final injection stack — (1) prompt body (2) job block (3) `ANALYZE_COMPASS.md` (4) `BLOCKERS.md` (5) Rigging catalog filenames (6) `blueprint/sources/*.md`; COMPASS not injected. |
 | P | Session | ANALYSIS.md tab structure — Overview/Story List/Open Questions/Notes; no `## Analysis Summary` heading; no `## Blockers` section; Open Questions items cite their `spike-*.json` file. |

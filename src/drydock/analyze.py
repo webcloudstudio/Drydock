@@ -22,8 +22,6 @@ from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import (
     METADATA_NAME,
-    get_field,
-    parse_metadata,
     set_build_state,
     set_field,
     set_sub_state,
@@ -36,13 +34,13 @@ PROMPT_NAME = "analyze"
 
 _SOURCES_SUBDIR = "sources"
 
-_FEEDBACK_FILENAME = "ANALYSIS_COMPASS.md"
+_FEEDBACK_FILENAME = "ANALYZE_COMPASS.md"
 _FEEDBACK_DEFAULT = (
-    "# Analysis Compass\n\n"
+    "# Analyze Compass\n\n"
     "These instructions are injected into every `drydock analyze` run for this target. "
     "Edit this file to steer the analysis. It persists across runs and is never overwritten "
     "by Drydock.\n\n"
-    "Enter Direction for the Analysis Run\n"
+    "Enter Direction for the Analyze Run\n"
 )
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
@@ -106,7 +104,7 @@ def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
 
 
 def ensure_feedback_file(target_dir: Path) -> str:
-    """Create ANALYSIS_COMPASS.md with the default prompt if absent; never overwrite.
+    """Create ANALYZE_COMPASS.md with the default prompt if absent; never overwrite.
 
     The feedback file is a persistent, human-owned standing directive re-injected into every
     ``drydock analyze`` run. Returns the file's current text.
@@ -162,7 +160,7 @@ def _render_feedback(feedback_text: str | None) -> list[str]:
     if not (feedback_text and feedback_text.strip()):
         return []
     return [
-        "## Analysis feedback (standing directive)",
+        "## Analyze feedback (standing directive)",
         "",
         "Human direction for this analysis. Honor it; it persists across runs.",
         "",
@@ -271,7 +269,7 @@ def _assemble_prompt(
     # Injection order is the prompt's inputs: row. COMPASS.md is the COMPASS_EXISTS flag above
     # (no content section); TYPED_SPEC carries the Rigging catalog plus the imported sources.
     renderers: dict[str, Callable[[], list[str]]] = {
-        "ANALYSIS_COMPASS.md": lambda: _render_feedback(feedback_text),
+        "ANALYZE_COMPASS.md": lambda: _render_feedback(feedback_text),
         "BLOCKERS.md": lambda: _render_blockers(blockers_text),
         "EXISTING_SPIKES": lambda: (
             _render_existing_discoveries(questionnaires_dir) if questionnaires_dir else []

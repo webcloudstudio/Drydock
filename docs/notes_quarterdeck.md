@@ -36,8 +36,8 @@ Per-command `inputs:` (matrix-derived):
 
 | Command | `inputs:` (ordered, COMPASS first) |
 |---|---|
-| analyze | `COMPASS.md, ANALYSIS_COMPASS.md, BLOCKERS.md, TYPED_SPEC` |
-| plan create | `COMPASS.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_COMPASS.md, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC` |
+| analyze | `COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, TYPED_SPEC` |
+| plan create | `COMPASS.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, PLAN_COMPASS.md, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC` |
 | build | `COMPASS.md, QUESTIONNAIRES, TYPED_SPEC, MANIFEST.md, tickets.json, BUILD_PLAN_COMPASS.md` |
 | build score | `COMPASS.md, SOUNDINGS.md, TYPED_SPEC, MANIFEST.md, tickets.json` |
 | refit | `COMPASS.md, TYPED_SPEC, MANIFEST.md, tickets.json` |

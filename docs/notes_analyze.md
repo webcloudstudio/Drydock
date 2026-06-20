@@ -392,13 +392,13 @@ Each generative step exports a persistent feedback file re-injected into its pro
 - injected as a standing directive near the **top** of the prompt (after the job block, before
   prior-answer / source context) — highest-priority human steering reads first.
 
-`analyze` → `ANALYSIS_COMPASS.md`; `plan create` → `MANIFEST_COMPASS.md` (notes_plan.md).
+`analyze` → `ANALYZE_COMPASS.md`; `plan create` → `PLAN_COMPASS.md` (notes_plan.md).
 Supersedes `BUILD_CONFIGURATION.md` as the free-text PO-direction channel.
 
-### ANALYSIS_COMPASS.md
+### ANALYZE_COMPASS.md
 `2026-06-16` · `spec:approved` · `impl:implemented`
 
-- Location: `<target>/ANALYSIS_COMPASS.md` (target root).
+- Location: `<target>/ANALYZE_COMPASS.md` (target root).
 - QuarterDeck: shown directly under ANALYSIS in the nav; editable; submit saves to the file.
 - Injected at analyze stack position 3 (after the job block, before `BLOCKERS.md`).
 
@@ -428,7 +428,7 @@ listing, not the README catalog.
 
 1. `prompts/analyze.md` — prompt body
 2. job block (inline) — `BLUEPRINT_PATH`, `DATE`, `COMPASS_EXISTS`
-3. `<target>/ANALYSIS_COMPASS.md` — standing directive, if present
+3. `<target>/ANALYZE_COMPASS.md` — standing directive, if present
 4. `<target>/BLOCKERS.md` — prior blocker answers, if present
 5. Rigging catalog filename list — `BRA*.md` + `stack/*.md`, no `README.md`, names only
 6. `<target>/blueprint/sources/*.md` — imported sources

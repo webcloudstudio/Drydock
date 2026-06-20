@@ -21,8 +21,8 @@ from drydock.planning_session import (
 )
 
 
-def test_default_feedback_heading_is_manifest_compass(tmp_path):
-    assert ensure_feedback_file(tmp_path).startswith("# Manifest Compass\n\n")
+def test_default_feedback_heading_is_plan_compass(tmp_path):
+    assert ensure_feedback_file(tmp_path).startswith("# Plan Compass\n\n")
 
 
 _ANALYSIS = """# Blueprint Analysis: Example
@@ -304,7 +304,7 @@ def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
         feedback_text="Decompose by module.",
         input_tokens=(
             "COMPASS.md",
-            "MANIFEST_COMPASS.md",
+            "PLAN_COMPASS.md",
             "ANALYSIS.md",
             "SOUNDINGS.md",
             "BLOCKERS.md",
@@ -315,7 +315,7 @@ def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
     # COMPASS leads the file sections; the standing directive reads next; sources land last.
     order = [
         result.index("## COMPASS.md"),
-        result.index("Manifest feedback (standing directive)"),
+        result.index("Plan feedback (standing directive)"),
         result.index("ANALYSIS.md (the reviewed plan)"),
         result.index("## SOUNDINGS.md"),
         result.index("Imported source files"),

@@ -27,8 +27,8 @@ from drydock.errors import SpecificationError
 # ---------------------------------------------------------------------------
 
 
-def test_default_feedback_heading_is_analysis_compass(tmp_path):
-    assert ensure_feedback_file(tmp_path).startswith("# Analysis Compass\n\n")
+def test_default_feedback_heading_is_analyze_compass(tmp_path):
+    assert ensure_feedback_file(tmp_path).startswith("# Analyze Compass\n\n")
 
 
 def test_open_questions_section_is_removed_from_analysis_output():
@@ -384,14 +384,14 @@ class TestAssemblePrompt:
             compass_exists=False,
             feedback_text="Decompose by module, not by route.",
         )
-        assert "Analysis feedback (standing directive)" in result
+        assert "Analyze feedback (standing directive)" in result
         assert "Decompose by module, not by route." in result
 
     def test_no_feedback_section_when_absent(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "Analysis feedback (standing directive)" not in result
+        assert "Analyze feedback (standing directive)" not in result
 
     def test_build_configuration_is_not_injected(self, tmp_path):
         bp = tmp_path / "blueprint"
@@ -438,7 +438,7 @@ class TestAssemblePrompt:
             feedback_text="Steer this way.",
             blockers_text="- No name.",
         )
-        assert result.index("Analysis feedback (standing directive)") < result.index(
+        assert result.index("Analyze feedback (standing directive)") < result.index(
             "Prior blocker answers"
         )
 
@@ -454,10 +454,10 @@ class TestAssemblePrompt:
             "2026-06-14",
             compass_exists=False,
             feedback_text="Steer this way.",
-            input_tokens=("TYPED_SPEC", "ANALYSIS_COMPASS.md"),
+            input_tokens=("TYPED_SPEC", "ANALYZE_COMPASS.md"),
         )
         assert result.index("Imported source files") < result.index(
-            "Analysis feedback (standing directive)"
+            "Analyze feedback (standing directive)"
         )
 
     def test_compass_token_injects_no_content_section(self, tmp_path):

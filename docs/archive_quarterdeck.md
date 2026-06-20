@@ -276,14 +276,14 @@ directory tree) with the legend.
 |---|---|---|---|---|---|
 | COMPASS.md | O*/I | I | I | I | I |
 | ANALYSIS.md | O | I | · | · | · |
-| ANALYSIS_COMPASS.md | I | · | · | · | · |
+| ANALYZE_COMPASS.md | I | · | · | · | · |
 | SEA_TRIALS.md | O | · | · | · | · |
 | SOUNDINGS.md | O | O/I | O | I | · |
 | BLOCKERS.md | O/I | X | · | · | · |
 | Spikes (answered) | O | I | I | · | · |
 | Typed Spec files | I | I | I | I | I |
 | MANIFEST.md | · | O | I | I | I |
-| MANIFEST_COMPASS.md | · | I | · | · | · |
+| PLAN_COMPASS.md | · | I | · | · | · |
 | tickets.json | · | O | I | I | I |
 | BUILD_PLAN_COMPASS.md | · | O | I | · | · |
 | SCORECARD.md | · | · | · | O | · |

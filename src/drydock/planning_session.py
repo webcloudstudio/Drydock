@@ -50,13 +50,13 @@ _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 # Hard cap on story count; plan create refuses to emit an over-decomposed plan.
 _STORY_CAP = 100
 
-_FEEDBACK_FILENAME = "MANIFEST_COMPASS.md"
+_FEEDBACK_FILENAME = "PLAN_COMPASS.md"
 _FEEDBACK_DEFAULT = (
-    "# Manifest Compass\n\n"
+    "# Plan Compass\n\n"
     "These instructions are injected into every `drydock plan create` run for this target. "
     "Edit this file to steer plan creation. It persists across runs and is never overwritten "
     "by Drydock.\n\n"
-    "Enter Direction for the Manifest Run\n"
+    "Enter Direction for the Plan Run\n"
 )
 
 
@@ -155,7 +155,7 @@ def _answered_discovery(path: Path) -> dict | None:
 
 
 def ensure_feedback_file(target_dir: Path) -> str:
-    """Create MANIFEST_COMPASS.md with the default prompt if absent; never overwrite.
+    """Create PLAN_COMPASS.md with the default prompt if absent; never overwrite.
 
     A persistent, human-owned standing directive re-injected into every ``drydock plan create``
     run. Returns the file's current text.
@@ -183,7 +183,7 @@ def _render_feedback(feedback_text: str | None) -> list[str]:
     if not (feedback_text and feedback_text.strip()):
         return []
     return [
-        "## Manifest feedback (standing directive)",
+        "## Plan feedback (standing directive)",
         "",
         "Human direction for plan creation. Honor it; it persists across runs.",
         "",
@@ -259,7 +259,7 @@ def _assemble_prompt(
     # refuse-if-present gate for plan create, so it never exists when assembly runs.
     renderers: dict[str, Callable[[], list[str]]] = {
         "COMPASS.md": lambda: _fenced_if(target_dir / "COMPASS.md", "COMPASS.md"),
-        "MANIFEST_COMPASS.md": lambda: _render_feedback(feedback_text),
+        "PLAN_COMPASS.md": lambda: _render_feedback(feedback_text),
         "ANALYSIS.md": lambda: _fenced("ANALYSIS.md (the reviewed plan)", analysis_text),
         "SOUNDINGS.md": lambda: _fenced_if(target_dir / "SOUNDINGS.md", "SOUNDINGS.md"),
         "QUESTIONNAIRES": lambda: _render_answered_discoveries(target_dir),

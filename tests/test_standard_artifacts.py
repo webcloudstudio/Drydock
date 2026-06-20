@@ -48,10 +48,10 @@ def test_render_console_labels_compass_feedback_files():
     parsed = yaml.safe_load(config)
     items = {item["id"]: item for item in parsed["items"]}
 
-    assert items["analysis_feedback"]["label"] == "Analysis Compass"
-    assert items["analysis_feedback"]["path"] == "../ANALYSIS_COMPASS.md"
-    assert items["manifest_feedback"]["label"] == "Manifest Compass"
-    assert items["manifest_feedback"]["path"] == "../MANIFEST_COMPASS.md"
+    assert items["analyze_compass"]["label"] == "Analyze Compass"
+    assert items["analyze_compass"]["path"] == "../ANALYZE_COMPASS.md"
+    assert items["plan_compass"]["label"] == "Plan Compass"
+    assert items["plan_compass"]["path"] == "../PLAN_COMPASS.md"
 
 
 def test_render_console_includes_discovery_questionnaire_source(tmp_path):
