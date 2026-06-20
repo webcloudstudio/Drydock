@@ -670,14 +670,18 @@ def _render_workspace_status(ws) -> None:
                 f" · {info.questionnaire_count} questionnaires"
             )
         print(f"   {'Next Step:':<{label_width}} {info.next_operation}")
-        for index, rec in enumerate(reversed(info.history)):
+        for rec in reversed(info.history):
             cmd = rec.get("command", "")
             stamp = str(rec.get("time", "")).strip()
-            month_day = stamp[5:10] if len(stamp) >= 10 else "-- --"
             rc = rec.get("return_code")
-            icon = "·" if rc is None else ("✓" if rc == 0 else "✗")
-            label = "Run:" if index == 0 else ""
-            print(f"   {label:<{label_width}} {icon} {month_day} {cmd}")
+            action = "Run" if rc is None else ("Check" if rc == 0 else "Fail")
+            if len(stamp) >= 10:
+                month = str(int(stamp[5:7]))
+                day = str(int(stamp[8:10]))
+                label = f"{month}-{day}:"
+            else:
+                label = "Date:"
+            print(f"   {label:<{label_width}} {action} {cmd}")
         print()
 
 
