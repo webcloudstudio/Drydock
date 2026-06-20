@@ -69,7 +69,7 @@ flowchart LR
 
   SETUP["Set Up"]:::script --> ANALYZE["Analyze"]:::script
   ANALYZE --> IMPLEMENT["Implement"]:::script
-  IMPLEMENT --> SOFTWARE(["Working Software"]):::output
+  IMPLEMENT --> TARGET(["Target Working Directory"]):::dir
   IMPLEMENT --> LOOP["Loop"]:::script
   LOOP -.-> ANALYZE
 ```
@@ -171,9 +171,9 @@ The Analyze phase turns imported source material into an Analysis for review, th
 executable Manifest for build. The sequence is:
 
 1. `drydock import` brings source material under Drydock control.
-2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions, and any needed spikes. It also optionally seeds `COMPASS.md`.
+2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions, and any needed spikes. It also re-injects `ANALYZE_COMPASS.md` and may seed `COMPASS.md`.
 3. `drydock run quarterdeck` lets the product owner review, approve, and resolve open action items.  The system surfaces questionnaires and analysis.
-4. `drydock plan create` converts the reviewed analysis into Blueprint files and the Manifest.
+4. `drydock plan create` consumes the reviewed analysis plus `PLAN_COMPASS.md`, creates Blueprint files, writes `BUILD_COMPASS.md`, and drafts the Manifest.
 
 ### Commands
 
@@ -197,10 +197,15 @@ flowchart LR
   SRC["Source Material"]:::dir --> IMPORT["import"]:::script
   IMPORT --> SOURCES("Imported Sources"):::dir
   SOURCES --> ANALYZE["analyze"]:::script
-  ANALYZE --> ANALYSIS("Analysis"):::dir
+  ANALYZE --> ANALYSIS{{"ANALYSIS.md"}}:::md
+  ANALYZE --> ACOMPASS{{"ANALYZE_COMPASS.md"}}:::md
   ANALYSIS --> QUARTERDECK["run quarterdeck"]:::web
+  ACOMPASS --> QUARTERDECK
+  QUARTERDECK --> PCOMPASS{{"PLAN_COMPASS.md"}}:::md
   QUARTERDECK --> PLANCREATE["plan create"]:::script
+  PCOMPASS --> PLANCREATE
   PLANCREATE --> BLUEPRINT("Blueprint"):::dir
+  PLANCREATE --> BCOMPASS{{"BUILD_COMPASS.md"}}:::md
   PLANCREATE --> MANIFEST{{"MANIFEST.md"}}:::md
 ```
 
@@ -229,7 +234,7 @@ markdown artifacts using agile. It prepares the following files for Commander re
 |---|---|---|
 | `sources/*` | `blueprint/` | Imported source material; read-only planning context |
 | `COMPASS.md` | Target root | Project intent |
-| `ANALYSIS_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
+| `ANALYZE_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
 | `BLOCKERS.md` | Target root | Blockers - edit file to address - consumed on re-run |
 | `questionnaires/*.json` | `QuarterDeck/` | Persistent answers consumed on re-run |
 
@@ -259,7 +264,7 @@ Commander's answers guide the LLM on the next run, and the cycle repeats until n
 
 #### Standing-Directive Feedback
 
-`ANALYSIS_COMPASS.md` is a persistent, human-editable standing directive. The Commander
+`ANALYZE_COMPASS.md` is a persistent, human-editable standing directive. The Commander
 records durable guidance there — decomposition preferences, recurring corrections — and `drydock
 analyze` re-injects it on every run. Each Drydock command supports a standing-directive 
 feedback process using this convention.
@@ -287,7 +292,7 @@ ready to implement.
 ### drydock plan create
 
 `drydock plan create` is Sprint Story planning.  Imported source files are re-read and reformatted according to the 
-analysis.  This step creates Typed Specification files under `blueprint/` and `MANIFEST.md`.
+analysis.  This step creates Typed Specification files under `blueprint/`, writes `BUILD_COMPASS.md`, and drafts `MANIFEST.md`.
 
 The headers of the blueprints are structured as a dependency graph and the runnable frontier is established.
 
@@ -304,7 +309,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 |---|---|---|
 | `sources/*` | `blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
 | `ANALYSIS.md` | Target root | The reviewed analysis that drives decomposition |
-| `MANIFEST_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
+| `PLAN_COMPASS.md` | Target root | Persistent standing-directive feedback, re-injected every run |
 | `COMPASS.md` | Target root | Project intent |
 | `questionnaires/*.json` | `QuarterDeck/` | Resolved planning decisions |
 
@@ -313,14 +318,14 @@ the task instructions.  Similar tasks are grouped together to save context.
 | Artifact | Location | Purpose |
 |---|---|---|
 | `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files |
-| `BUILD_PLAN_COMPASS.md` | `blueprint/` | Internal inventory of inputs and planning groups |
+| `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input for `drydock build` |
 | `MANIFEST.md` | Target root | The executable build plan |
 | `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
 | `tickets.json` | Target root | Target ticketing system projection |
 
 #### Standing-Directive Feedback
 
-`MANIFEST_COMPASS.md` is a persistent, human-editable standing directive. The Commander
+`PLAN_COMPASS.md` is a persistent, human-editable standing directive. The Commander
 records durable guidance there — decomposition preferences, recurring corrections — and `drydock
 plan create` re-injects it on every run.
 
@@ -354,18 +359,19 @@ drydock rigging verify <Target>
 
 ### Story Planning
 
-Story Planning is the agile step where your work is prioritized and assigned to a developer.  Run `drydock run quarterdeck` and navigate to "Story Planning". 
+Story Planning is the agile step where your work is prioritized and assigned to a developer. It lives in QuarterDeck before build execution and produces `BUILD_COMPASS.md`.
 
 In story planning, your Agile LLM team provides the token costs to build each story and you:
 * reorder stories so important/testable steps are done first
 * group stories so they can be run by a single agent
 
-If you do not story plan, you accept the LLMS default order of stories and they will build one by one. 
+If you do not story plan, you accept the LLM's default order of stories and they will build one by one.
 
 ### drydock build
 
-Build executes the work blocks in `MANIFEST.md` based on their dependency graph. The Manifest
-and its Typed Specifications execute in the steps or phases the plan lists. 
+Build executes the work blocks in `MANIFEST.md` based on their dependency graph. `BUILD_COMPASS.md`
+is the story-planning input that defines the authored grouping and build order. The Manifest and
+its Typed Specifications execute in the steps or phases the plan lists.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -378,12 +384,12 @@ flowchart LR
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
   BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
+  BCOMPASS{{"BUILD_COMPASS.md"}}:::md --> BUILD
   BUILD --> EV{{"Evidence"}}:::md
-  EV --> CONSOLE["QuarterDeck"]:::web
-  BUILD --> SOFTWARE(["Working Software"]):::output
+  BUILD --> TARGET(["Target Working Directory"]):::dir
 ```
 
-`drydock build <Target>` executes the approved frontier and builds the application in
+`drydock build <Target>` executes the approved frontier and builds the application in the target working directory
 `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 
 ### drydock run quarterdeck — Build Review
@@ -418,7 +424,7 @@ flowchart LR
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
   SPEC(["Blueprint"]):::dir --> SCORE["build score"]:::script
-  TGT(["Target Project"]):::dir --> SCORE
+  TGT(["Target Working Directory"]):::dir --> SCORE
   SCORE --> SC{{"SCORECARD.md"}}:::md
 ```
 
@@ -545,16 +551,16 @@ artifact, which command produces it and which commands consume it.
 | Artifact | Location | analyze | plan create | build | build score | refit |
 |---|---|---|---|---|---|---|
 | ANALYSIS.md | Target root | O | I | · | · | · |
-| ANALYSIS_COMPASS.md | Target root | C/I | · | · | · | · |
+| ANALYZE_COMPASS.md | Target root | C/I | · | · | · | · |
 | ARCHITECTURE.md | blueprint/ | · | O | I | I | I |
 | BLOCKERS.md | Target root | O/I | X | · | · | · |
-| BUILD_PLAN_COMPASS.md | blueprint/ | · | O | I | · | · |
+| BUILD_COMPASS.md | Target root | · | O | I | · | · |
 | captains_chair.html | QuarterDeck/ | O | · | · | · | · |
 | COMPASS.md | Target root | O*/I | I | I | I | I |
 | DATABASE.md | blueprint/ | · | O | I | I | I |
 | FEATURE-{Name}.md | blueprint/ | · | O | I | I | I |
 | MANIFEST.md | Target root | · | O | I | I | I |
-| MANIFEST_COMPASS.md | Target root | · | C/I | · | · | · |
+| PLAN_COMPASS.md | Target root | · | C/I | · | · | · |
 | questionnaires/*.json | QuarterDeck/questionnaires/ | O/I | I | I | · | · |
 | SCORECARD.md | Target root | · | · | · | O | · |
 | SCREEN-{Name}.md | blueprint/ | · | O | I | I | I |
@@ -568,7 +574,7 @@ artifact, which command produces it and which commands consume it.
 `C` the command creates the artifact if absent (never overwrites) · `X` gates/blocks the command ·
 `·` no relation · `O*` the command produces the artifact only when it is absent.
 
-Human-authored feedback artifacts (`ANALYSIS_COMPASS.md`, `MANIFEST_COMPASS.md`, answered `BLOCKERS.md`) are prompts that guide future runs of the commands.
+Human-authored feedback artifacts (`ANALYZE_COMPASS.md`, `PLAN_COMPASS.md`, answered `BLOCKERS.md`) are prompts that guide future runs of the commands.
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
@@ -582,19 +588,20 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── METADATA.md                   # identity: Blueprint name, code_root, status, stack
         ├── README.md                     # short human introduction to the project
         ├── ANALYSIS.md                   # Planning Session analysis: quality, stories, blockers, questions
-        ├── ANALYSIS_COMPASS.md
+        ├── ANALYZE_COMPASS.md
         ├── BLOCKERS.md 
         ├── COMPASS.md                    # project guidance: intent, constraints, guardrails
         ├── MANIFEST.md                   # the executable Manifest
-        ├── MANIFEST_COMPASS.md
+        ├── PLAN_COMPASS.md
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
         ├── tickets.json                  # target ticketing system / board projection
         │
+        ├── BUILD_COMPASS.md              # story-planning grouping and build-order input
+        │
         ├── blueprint/                    # the Blueprint — conformed Typed Specification
         │   ├── sources/                  # preserved unconformed import material
-        │   ├── BUILD_PLAN_COMPASS.md     # internal inventory of inputs + planning groups
         │   ├── ARCHITECTURE.md
         │   ├── DATABASE.md
         │   ├── FEATURE-{Name}.md
@@ -648,13 +655,13 @@ not authored as specification files.
   - Created and updated: `drydock import <Target> <Source> --format markdown`
   - Used as read-only planning context; never treated as conformed Typed Specification files
 
-- **`ANALYSIS_COMPASS.md`** — Persistent standing directive for `drydock analyze`: durable
+- **`ANALYZE_COMPASS.md`** — Persistent standing directive for `drydock analyze`: durable
   Commander guidance re-injected on every run. Lives at the Target root.
   - Created: `drydock analyze` (empty template on first run)
   - Updated: Product owner
   - Never overwritten or deleted by `drydock analyze`
 
-- **`MANIFEST_COMPASS.md`** — Persistent standing directive for `drydock plan create`: durable
+- **`PLAN_COMPASS.md`** — Persistent standing directive for `drydock plan create`: durable
   Commander guidance re-injected on every run. Lives at the Target root.
   - Created: `drydock plan create` (empty template on first run)
   - Updated: Product owner
@@ -687,12 +694,12 @@ updated by `drydock refit` as specification files and application code evolve.
   - Created: Product owner or change intake workflow
   - Updated: Clarification, planning, build execution, evidence, review, and reconciliation
   - Processing: Additional specification files are detected by `drydock plan create`, placed in
-    `BUILD_PLAN_COMPASS.md` for ordering, and processed by `drydock build`. Required context is added
+    `BUILD_COMPASS.md` for ordering, and processed by `drydock build`. Required context is added
     automatically.
 
 **Process Created Artifacts** — generated by Drydock commands; not authored directly.
 
-- **`BUILD_PLAN_COMPASS.md`** — Internal inventory of Blueprint inputs and planning groups
+- **`BUILD_COMPASS.md`** — Story-planning grouping and build-order input for `drydock build`
   - Created and updated: `drydock plan create <Target>`
 
 - **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack) and
