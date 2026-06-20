@@ -383,11 +383,27 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
+  SPEC(["Blueprint"]):::dir --> BUILD["build"]:::script
   BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
   BCOMPASS{{"BUILD_COMPASS.md"}}:::md --> BUILD
   BUILD --> EV{{"Evidence"}}:::md
   BUILD --> TARGET(["Target Working Directory"]):::dir
 ```
+
+**Input files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input |
+| `MANIFEST.md` | Target root | Executable build plan and dependency graph |
+| `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
+
+**Output files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `evidence/` | Target root | Reviewable build evidence written for completed work |
+| Built application files | `$DRYDOCK_BUILD_DIRECTORY/<Target>` | Target working directory updated by the build |
 
 `drydock build <Target>` executes the approved frontier and builds the application in the target working directory
 `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
