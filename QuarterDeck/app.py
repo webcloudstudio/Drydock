@@ -571,13 +571,28 @@ def _render_step_files(step) -> str:
     )
 
 
-def render_compass(item: dict[str, Any]) -> str:  # noqa: ARG001
-    """Render MANIFEST.md as the build compass: grouped, costed build steps.
+def _feature_options(plan, selected: str | None) -> str:
+    """Build the regroup <option> list: every feature plus an Ungrouped choice."""
+    opts = ['<option value="">Ungrouped</option>']
+    for block in plan.blocks:
+        if block.block_type != "feature":
+            continue
+        sel = " selected" if block.block_id == selected else ""
+        opts.append(
+            f'<option value="{html.escape(block.block_id)}"{sel}>'
+            f"{html.escape(block.name)}</option>"
+        )
+    return "".join(opts)
 
-    Read-only view. Feature groups carry a story-point rollup; each story/spike
-    step shows its assembled prompt cost with a collapsible per-file breakdown and
-    its acceptance checks folded beneath as post-actions. Steps whose stack
-    exceeds the context warn ceiling are flagged.
+
+def render_compass(item: dict[str, Any]) -> str:
+    """Render MANIFEST.md as the build compass: grouped, costed, editable steps.
+
+    Feature groups carry a story-point rollup; each story/spike step shows its
+    assembled prompt cost with a collapsible per-file breakdown and its acceptance
+    checks folded beneath as post-actions. Steps whose stack exceeds the context
+    warn ceiling are flagged. Constrained reorder/regroup controls move steps and
+    features; a move that would break the build topology is rejected.
     """
     from drydock.build import assemble_steps, group_steps
     from drydock.build_plan import parse_build_plan
@@ -593,11 +608,42 @@ def render_compass(item: dict[str, Any]) -> str:  # noqa: ARG001
         return _render_compass_empty()
     groups = group_steps(plan, steps)
 
+    item_id = html.escape(item.get("id", ""))
+    editable = plan.state == "draft"
     by_id = plan.by_id()
     acs_by_parent: dict[str, list] = {}
     for block in plan.blocks:
         if block.block_type == "ac" and block.parent:
             acs_by_parent.setdefault(block.parent, []).append(block)
+
+    def step_controls(step) -> str:
+        if not editable:
+            return ""
+        bid = html.escape(step.block_id)
+        return (
+            "<span class='cmp-move'>"
+            f"<button class='cmp-mbtn' title='Move up' "
+            f"onclick=\"compassMove('{item_id}','move_step','{bid}','up')\">▲</button>"
+            f"<button class='cmp-mbtn' title='Move down' "
+            f"onclick=\"compassMove('{item_id}','move_step','{bid}','down')\">▼</button>"
+            f"<select class='cmp-regroup' title='Move to feature' "
+            f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
+            f"{_feature_options(plan, step.parent)}</select>"
+            "</span>"
+        )
+
+    def feature_controls(feature_id: str | None) -> str:
+        if not editable or not feature_id:
+            return ""
+        fid = html.escape(feature_id)
+        return (
+            "<span class='cmp-move'>"
+            f"<button class='cmp-mbtn' title='Move feature up' "
+            f"onclick=\"compassMove('{item_id}','move_feature','{fid}','up')\">▲</button>"
+            f"<button class='cmp-mbtn' title='Move feature down' "
+            f"onclick=\"compassMove('{item_id}','move_feature','{fid}','down')\">▼</button>"
+            "</span>"
+        )
 
     total_sp = sum(s.total_story_points for s in steps)
     warn_n = sum(1 for s in steps if s.over_warn)
@@ -606,9 +652,14 @@ def render_compass(item: dict[str, Any]) -> str:  # noqa: ARG001
         if warn_n
         else ""
     )
+    state_note = (
+        ""
+        if editable
+        else " <span class='subtle'>· plan approved; reorder is locked</span>"
+    )
     parts = [
         f"<div class='cmp-total'>Total Story Points = <strong>{total_sp}</strong>"
-        f" · {len(steps)} steps{warn_html}</div>"
+        f" · {len(steps)} steps{warn_html}{state_note}</div>"
     ]
 
     n = 0
@@ -632,6 +683,7 @@ def render_compass(item: dict[str, Any]) -> str:  # noqa: ARG001
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
                 f"<span class='cmp-gsp'>Story Points = {step.total_story_points}</span>{warn}"
+                f"{step_controls(step)}"
                 "</div>"
                 f"{_render_step_files(step)}"
                 f"{ac_html}"
@@ -645,6 +697,7 @@ def render_compass(item: dict[str, Any]) -> str:  # noqa: ARG001
             "<div class='cmp-ghead'>"
             f"<span class='cmp-gname'># {html.escape(gname)}</span>"
             f"<span class='cmp-gsp'>Story Points = {group.total_story_points}</span>"
+            f"{feature_controls(group.feature_id)}"
             "</div>"
             f"{''.join(step_cards)}"
             "</div>"
@@ -1269,6 +1322,13 @@ class PlanDecision(BaseModel):
     decision: str
 
 
+class CompassMove(BaseModel):
+    kind: str
+    block_id: str
+    direction: str = ""
+    feature: str = ""
+
+
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -1330,6 +1390,27 @@ def api_plan_decision(item_id: str, update: PlanDecision) -> dict[str, Any]:
         decision=update.decision,
     )
     return {"ok": True, "decision": update.decision, "state": plan.state}
+
+
+@app.post("/api/compass/{item_id}/move")
+def api_compass_move(item_id: str, move: CompassMove) -> dict[str, Any]:
+    from drydock.errors import SpecificationError
+    from drydock.manifest_edit import apply_move
+
+    item = find_item(item_id)
+    if item.get("type") != "compass":
+        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
+    try:
+        apply_move(
+            PROJECT_ROOT / "MANIFEST.md",
+            move.kind,
+            move.block_id,
+            direction=move.direction,
+            feature=move.feature,
+        )
+    except SpecificationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @app.get("/raw/{item_id}")
@@ -1627,6 +1708,10 @@ _STYLE = """
   .cmp-acs { list-style:none; margin:6px 0 0; padding:0 0 0 18px; }
   .cmp-ac { font-size:12px; color:#475569; padding:2px 0; }
   .cmp-ackind { font-size:10px; color:#64748b; background:#f1f5f9; padding:0 5px; border-radius:3px; }
+  .cmp-move { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
+  .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
+  .cmp-mbtn:hover { background:#eef2f7; }
+  .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
 """
 
 
@@ -1726,6 +1811,22 @@ def index() -> str:
         const d = await r.json().catch(() => ({{}}));
         alert('Could not decide plan: ' + (d.detail || r.status));
       }}
+    }}
+    async function compassMove(itemId, kind, blockId, direction) {{
+      const r = await fetch(`/api/compass/${{itemId}}/move`, {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{kind, block_id: blockId, direction}})
+      }});
+      if (r.ok) loadDoc(itemId);
+      else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Move failed'); }}
+    }}
+    async function compassRegroup(itemId, blockId, feature) {{
+      const r = await fetch(`/api/compass/${{itemId}}/move`, {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{kind: 'regroup_step', block_id: blockId, feature}})
+      }});
+      if (r.ok) loadDoc(itemId);
+      else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Move failed'); loadDoc(itemId); }}
     }}
     async function saveDoc(itemId) {{
       const e = _editable(itemId); if (!e) return;

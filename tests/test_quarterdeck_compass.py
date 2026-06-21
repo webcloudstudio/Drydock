@@ -131,3 +131,23 @@ class TestRender:
         monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path / "empty")
         out = quarterdeck.render_compass(_ITEM)
         assert "drydock plan create" in out
+
+    def test_approved_plan_locks_reorder(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "reorder is locked" in out
+        assert "compassMove(" not in out
+
+    def test_draft_plan_shows_move_controls(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(
+            quarterdeck,
+            tmp_path,
+            monkeypatch,
+            manifest=_MANIFEST.replace("state: approved", "state: draft", 1),
+        )
+        out = quarterdeck.render_compass(_ITEM)
+        assert "compassMove(" in out
+        assert "compassRegroup(" in out
+        assert "move_feature" in out
