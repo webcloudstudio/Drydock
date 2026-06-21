@@ -45,8 +45,8 @@ _FEEDBACK_DEFAULT = (
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _WRITE_INVOKE_RE = re.compile(
-    r'<invoke name="Write">\s*'
-    r'<parameter name="path">(.*?)</parameter>\s*'
+    r'<invoke name="(?:Write|mcp__claude-code__write_file)">\s*'
+    r'<parameter name="(?:path|file_path)">(.*?)</parameter>\s*'
     r'<parameter name="content">(.*?)</parameter>\s*'
     r"</invoke>",
     re.DOTALL,

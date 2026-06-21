@@ -79,8 +79,11 @@ def _command(
             # LLM-assisted Drydock commands consume model text and write their own
             # artifacts.  Giving Claude Code tools lets it bypass that contract by
             # editing the target and returning a narrative summary instead.
+            # --strict-mcp-config with no --mcp-config suppresses MCP tool descriptions
+            # from the system prompt; without it, Claude emits tool-call XML as text.
             "--tools",
             "",
+            "--strict-mcp-config",
         ]
         if model:
             command.extend(("--model", model))
