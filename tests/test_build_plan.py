@@ -96,6 +96,33 @@ state: pending
     assert plan.by_id()["second"].depends == ("first", "third")
 
 
+def test_parse_build_plan_captures_block_scalar_instructions(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: draft
+
+## story 1: First
+id: first
+implements: A.md
+instructions: |
+  Build the first thing.
+  Keep it small.
+depends:
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    block = plan.by_id()["first"]
+    assert block.fields["instructions"] == "Build the first thing.\nKeep it small."
+    # Fields after a block scalar are still parsed.
+    assert block.depends == ()
+    assert block.state == "pending"
+    assert block.fields["implements"] == ("A.md",)
+
+
 def test_runnable_frontier_applies_dependency_and_ac_parent_rules(plan_path: Path):
     plan = parse_build_plan(plan_path)
 

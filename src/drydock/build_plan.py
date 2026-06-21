@@ -102,6 +102,29 @@ def _split_list(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+def _collect_block_scalar(lines: list[str], start: int) -> tuple[str, int]:
+    """Collect an indented YAML block-scalar body starting at ``start``.
+
+    Continuation lines are blank lines or lines indented past column zero, up to
+    the next field, header, or dedented line. Returns the dedented body text and
+    the index of the first line that is not part of the block.
+    """
+    body: list[str] = []
+    index = start
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() and not line[:1].isspace():
+            break
+        body.append(line)
+        index += 1
+    while body and not body[-1].strip():
+        body.pop()
+    indents = [len(ln) - len(ln.lstrip()) for ln in body if ln.strip()]
+    trim = min(indents) if indents else 0
+    text = "\n".join(ln[trim:] if ln.strip() else "" for ln in body)
+    return text, index
+
+
 def _split_depends(value: str) -> tuple[str, ...]:
     """Accept comma-separated or whitespace-separated manifest dependencies."""
     if "," in value:
@@ -165,7 +188,11 @@ def parse_build_plan(path: Path) -> BuildPlan:
     raw_blocks: list[dict[str, object]] = []
     current: dict[str, object] | None = None
 
-    for line in lines:
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+
         header = _PLAN_HEADER_RE.match(line)
         if header and not project:
             project = header.group(1)
@@ -186,6 +213,11 @@ def parse_build_plan(path: Path) -> BuildPlan:
         if not field_match:
             continue
         key, value = field_match.group(1).lower(), field_match.group(2).strip()
+
+        if value in ("|", "|-", "|+", ">", ">-", ">+"):
+            block_lines, index = _collect_block_scalar(lines, index)
+            value = block_lines
+
         if current is None:
             metadata[key] = value
         else:
