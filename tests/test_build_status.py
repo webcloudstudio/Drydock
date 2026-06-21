@@ -1,0 +1,100 @@
+"""Tests for the build-status report (drydock.build_status)."""
+
+from __future__ import annotations
+
+from drydock.build_plan import parse_build_plan
+from drydock.build_status import build_status
+
+_PLAN = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Core
+id: core
+
+## story 2: Foundation
+id: foundation
+parent: core
+state: closed/verified
+
+## story 3: Service
+id: service
+parent: core
+depends: foundation
+state: pending
+
+## ac 4: Service responds
+id: ac-svc
+parent: service
+state: pending
+
+## feature 5: Extras
+id: extras
+
+## story 6: Reports
+id: reports
+parent: extras
+depends: service
+state: pending
+
+## spike 7: Loose end
+id: loose
+state: pending
+"""
+
+
+def _report(tmp_path, manifest=_PLAN):
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    return build_status(parse_build_plan(path))
+
+
+def test_groups_steps_under_their_feature_in_order(tmp_path):
+    report = _report(tmp_path)
+    names = [g.name for g in report.groups]
+    assert names == ["Core", "Extras", "Ungrouped"]
+    core = report.groups[0]
+    assert [s.block.block_id for s in core.steps] == ["foundation", "service"]
+
+
+def test_acs_fold_under_their_parent_step(tmp_path):
+    report = _report(tmp_path)
+    service = report.groups[0].steps[1]
+    assert service.block.block_id == "service"
+    assert [a.block_id for a in service.acs] == ["ac-svc"]
+
+
+def test_ungrouped_holds_steps_without_a_feature_parent(tmp_path):
+    report = _report(tmp_path)
+    ungrouped = report.groups[-1]
+    assert ungrouped.feature is None
+    assert [s.block.block_id for s in ungrouped.steps] == ["loose"]
+
+
+def test_buildable_marks_pending_steps_with_verified_depends(tmp_path):
+    report = _report(tmp_path)
+    # service depends on a verified foundation -> buildable; loose has no
+    # depends -> buildable; reports depends on unbuilt service -> not yet.
+    assert set(report.buildable_ids) == {"service", "loose"}
+    service = report.groups[0].steps[1]
+    assert service.buildable is True
+
+
+def test_rollup_counts_and_percent(tmp_path):
+    report = _report(tmp_path)
+    assert report.steps_total == 4
+    assert report.steps_verified == 1
+    assert report.steps_pending == 3
+    assert report.steps_failed == 0
+    assert report.percent_complete() == 25
+
+
+def test_feature_rollup_counts_verified_over_total(tmp_path):
+    report = _report(tmp_path)
+    core = report.groups[0]
+    assert (core.verified, core.total) == (1, 2)
+
+
+def test_empty_plan_has_no_groups_and_zero_percent(tmp_path):
+    report = _report(tmp_path, manifest="# MANIFEST: Empty\nstate: draft\n")
+    assert report.groups == ()
+    assert report.percent_complete() == 0

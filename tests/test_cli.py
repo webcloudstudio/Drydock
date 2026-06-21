@@ -475,7 +475,7 @@ state: pending
         (target / "MANIFEST.md").write_text(self.PLAN, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
-    def test_build_status_reports_runnable_frontier(
+    def test_build_status_reports_grouped_progress_and_frontier(
         self, tmp_target_root, isolated_config, monkeypatch
     ):
         self._setup(tmp_target_root, monkeypatch)
@@ -484,9 +484,11 @@ state: pending
 
         assert rc == 0, err
         assert f"Target: {tmp_target_root / 'ExampleTarget'}" in out
-        assert "RUNNABLE        story import-documents" in out
-        assert "RUNNABLE        ac    system-starts" in out
-        assert "Runnable frontier: import-documents, system-starts" in out
+        assert "[done]" in out  # foundation is closed/verified
+        assert "import-documents" in out
+        assert "<- next" in out  # import-documents is buildable
+        assert "Steps: 3 total" in out
+        assert "Buildable now: import-documents" in out
 
     def test_build_status_usage_error(self):
         rc, out, err = run_cli("build", "status")
@@ -605,16 +607,11 @@ class TestPlanningSession:
         config = (quarterdeck / "console.yaml").read_text(encoding="utf-8")
         assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
 
+        # Build readiness is not gated by plan state — running is the approval.
+        # A pending story with no unmet dependencies is buildable immediately.
         rc, out, err = run_cli("build", "status", "ExampleTarget")
         assert rc == 0, err
-        assert "Runnable frontier: (none)" in out
-
-        from drydock.build_plan import set_plan_state
-
-        set_plan_state(plan_path, "approved", decision="approve")
-        rc, out, err = run_cli("build", "status", "ExampleTarget")
-        assert rc == 0, err
-        assert "Runnable frontier: story-status" in out
+        assert "Buildable now: story-status" in out
 
     @pytest.mark.parametrize("verb", ["init", "show", "approve", "revise", "reject"])
     def test_only_plan_create_is_public(self, verb):

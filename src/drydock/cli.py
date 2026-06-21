@@ -775,22 +775,55 @@ def cmd_build(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+_BUILD_STATE_MARK = {
+    "closed/verified": "[done]",
+    "implemented": "[review]",
+    "pending": "[pending]",
+    "closed/failed": "[FAILED]",
+}
+
+
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
+    from drydock.build_status import build_status
     from drydock.config import get_target_directory
 
     plan = load_target_plan(target, get_target_directory())
     target_path = get_target_directory() / target
-    frontier = plan.runnable_frontier()
-    frontier_ids = {block.block_id for block in frontier}
+    report = build_status(plan)
 
-    print(f"Blueprint: {plan.project}")
+    print(f"Blueprint: {report.project}")
     print(f"Target: {target_path}")
-    print(f"Plan state: {plan.state}")
+    print(f"Plan state: {report.plan_state}")
     print()
-    _print_plan_blocks(plan, frontier_ids=frontier_ids)
-    _print_plan_summary(plan)
-    print("Runnable frontier: " + (", ".join(block.block_id for block in frontier) or "(none)"))
+
+    if not report.groups:
+        print("  No build steps in the plan.")
+    for group in report.groups:
+        print(f"Feature: {group.name}  [{group.verified}/{group.total} done]")
+        for ac in group.feature_acs:
+            mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
+            print(f"    {mark:<9} ac    {ac.block_id}  {ac.name}")
+        for step in group.steps:
+            mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
+            arrow = " <- next" if step.buildable else ""
+            print(
+                f"  {mark:<9} {step.block.block_type:<5} {step.block.block_id}  {step.block.name}{arrow}"
+            )
+            for ac in step.acs:
+                ac_mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
+                print(f"      {ac_mark:<9} ac    {ac.block_id}  {ac.name}")
+        print()
+
+    print(
+        f"Steps: {report.steps_total} total — "
+        f"{report.steps_verified} done, "
+        f"{report.steps_implemented} in review, "
+        f"{report.steps_pending} pending, "
+        f"{report.steps_failed} failed "
+        f"({report.percent_complete()}% complete)"
+    )
+    print("Buildable now: " + (", ".join(report.buildable_ids) or "(none)"))
     return 0
 
 
