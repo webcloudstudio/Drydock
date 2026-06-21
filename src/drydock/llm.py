@@ -7,6 +7,7 @@ import os
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -140,11 +141,37 @@ def _isolate_claude_env(process_env: dict[str, str]) -> None:
         return
 
     build_home = (Path.home() / ".drydock" / "claude-home").expanduser()
-    build_home.mkdir(parents=True, exist_ok=True, mode=0o700)
-    shutil.copy2(source_credentials, build_home / ".credentials.json")
+    try:
+        build_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+        shutil.copy2(source_credentials, build_home / ".credentials.json")
+    except OSError:
+        return
 
     process_env["HOME"] = str(build_home)
     process_env["CLAUDE_CONFIG_DIR"] = str(build_home)
+
+
+def _isolate_codex_env(process_env: dict[str, str]) -> Path:
+    """Point the ``codex`` subprocess at a dedicated temporary CODEX_HOME.
+
+    The subprocess reads a clean runtime directory instead of the user's real
+    ``$CODEX_HOME`` / ``~/.codex``, so it inherits none of the user's config,
+    rules, hooks, AGENTS, memories, history, or session state. Only ``auth.json``
+    is copied in when present so subscription/API login continues to work.
+
+    Mutates ``process_env`` in place and returns the temporary directory so the
+    caller can remove it after the subprocess exits.
+    """
+    source_home = Path(
+        process_env.get("CODEX_HOME") or Path.home() / ".codex"
+    ).expanduser()
+    build_home = Path(tempfile.mkdtemp(prefix="drydock-codex-home-"))
+    build_home.chmod(0o700)
+    source_auth = source_home / "auth.json"
+    if source_auth.is_file():
+        shutil.copy2(source_auth, build_home / "auth.json")
+    process_env["CODEX_HOME"] = str(build_home)
+    return build_home
 
 
 def _events(raw: str) -> list[dict[str, Any]]:
@@ -521,8 +548,11 @@ def run_prompt(
     process_env.pop("ANTHROPIC_API_KEY", None)
     process_env.pop("OPENAI_API_KEY", None)
     process_env.pop("OPENAI_BASE_URL", None)
+    cleanup_dir: Path | None = None
     if selected == "claude":
         _isolate_claude_env(process_env)
+    elif selected == "codex":
+        cleanup_dir = _isolate_codex_env(process_env)
 
     try:
         returncode, raw_output, stderr, timed_out = _run_streaming_process(
@@ -664,4 +694,6 @@ def run_prompt(
         )
         raise
     finally:
+        if cleanup_dir is not None:
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
         close_execution_logger(logger)

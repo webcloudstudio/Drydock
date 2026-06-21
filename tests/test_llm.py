@@ -291,14 +291,16 @@ def test_claude_isolation_skipped_without_credentials(tmp_path, monkeypatch):
     assert not (fake_home / ".drydock").exists()
 
 
-def test_codex_does_not_isolate_home(tmp_path, monkeypatch):
+def test_codex_isolates_codex_home_and_seeds_auth_only(tmp_path, monkeypatch):
     fake_home = tmp_path / "home"
-    real_config = fake_home / ".claude"
-    real_config.mkdir(parents=True)
-    (real_config / ".credentials.json").write_text('{"token": "subscription"}')
+    real_codex = fake_home / ".codex"
+    real_codex.mkdir(parents=True)
+    (real_codex / "auth.json").write_text('{"token": "subscription"}')
+    (real_codex / "AGENTS.md").write_text("# ambient instructions\n")
+    (real_codex / "config.toml").write_text('model = "gpt-5"\n')
 
     monkeypatch.setattr(Path, "home", lambda: fake_home)
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.setenv("HOME", "/original/home")
     raw = json.dumps(
         {
@@ -311,6 +313,11 @@ def test_codex_does_not_isolate_home(tmp_path, monkeypatch):
     def fake_popen(command, **kwargs):
         Path(command[command.index("--output-last-message") + 1]).write_text("OK")
         captured["env"] = kwargs["env"]
+        isolated_home = Path(kwargs["env"]["CODEX_HOME"])
+        captured["isolated_home"] = isolated_home
+        captured["auth_text"] = (isolated_home / "auth.json").read_text()
+        captured["has_agents"] = (isolated_home / "AGENTS.md").exists()
+        captured["has_config"] = (isolated_home / "config.toml").exists()
         return FakePopen(command, stdout_text=raw + "\n", **kwargs)
 
     captured = {}
@@ -318,8 +325,46 @@ def test_codex_does_not_isolate_home(tmp_path, monkeypatch):
 
     run_prompt("Work", tmp_path, llm="codex", command_name="build")
 
+    isolated_home = captured["isolated_home"]
+    assert isolated_home.name.startswith("drydock-codex-home-")
     assert captured["env"]["HOME"] == "/original/home"
-    assert "CLAUDE_CONFIG_DIR" not in captured["env"]
+    assert captured["auth_text"] == '{"token": "subscription"}'
+    assert captured["has_agents"] is False
+    assert captured["has_config"] is False
+    assert not isolated_home.exists()
+
+
+def test_codex_isolation_still_creates_clean_home_without_auth(tmp_path, monkeypatch):
+    fake_home = tmp_path / "home"
+    (fake_home / ".codex").mkdir(parents=True)
+
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    raw = json.dumps(
+        {
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": "OK"},
+            "model": "codex-test",
+        }
+    )
+
+    captured = {}
+
+    def fake_popen(command, **kwargs):
+        Path(command[command.index("--output-last-message") + 1]).write_text("OK")
+        captured["env"] = kwargs["env"]
+        captured["isolated_home"] = Path(kwargs["env"]["CODEX_HOME"])
+        captured["has_auth"] = (captured["isolated_home"] / "auth.json").exists()
+        return FakePopen(command, stdout_text=raw + "\n", **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    run_prompt("Work", tmp_path, llm="codex", command_name="build")
+
+    isolated_home = captured["isolated_home"]
+    assert isolated_home.name.startswith("drydock-codex-home-")
+    assert captured["has_auth"] is False
+    assert not isolated_home.exists()
 
 
 def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
