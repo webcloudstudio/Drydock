@@ -132,22 +132,12 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         assert "drydock plan create" in out
 
-    def test_approved_plan_locks_reorder(self, tmp_path, monkeypatch):
+    def test_move_controls_always_available(self, tmp_path, monkeypatch):
+        # Reorder is not gated by plan state; running the next step is the approval.
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
-        out = quarterdeck.render_compass(_ITEM)
-        assert "reorder is locked" in out
-        assert "compassMove(" not in out
-
-    def test_draft_plan_shows_move_controls(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        _setup(
-            quarterdeck,
-            tmp_path,
-            monkeypatch,
-            manifest=_MANIFEST.replace("state: approved", "state: draft", 1),
-        )
         out = quarterdeck.render_compass(_ITEM)
         assert "compassMove(" in out
         assert "compassRegroup(" in out
         assert "move_feature" in out
+        assert "reorder is locked" not in out

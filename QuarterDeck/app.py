@@ -609,7 +609,6 @@ def render_compass(item: dict[str, Any]) -> str:
     groups = group_steps(plan, steps)
 
     item_id = html.escape(item.get("id", ""))
-    editable = plan.state == "draft"
     by_id = plan.by_id()
     acs_by_parent: dict[str, list] = {}
     for block in plan.blocks:
@@ -617,8 +616,6 @@ def render_compass(item: dict[str, Any]) -> str:
             acs_by_parent.setdefault(block.parent, []).append(block)
 
     def step_controls(step) -> str:
-        if not editable:
-            return ""
         bid = html.escape(step.block_id)
         return (
             "<span class='cmp-move'>"
@@ -633,7 +630,7 @@ def render_compass(item: dict[str, Any]) -> str:
         )
 
     def feature_controls(feature_id: str | None) -> str:
-        if not editable or not feature_id:
+        if not feature_id:
             return ""
         fid = html.escape(feature_id)
         return (
@@ -652,14 +649,9 @@ def render_compass(item: dict[str, Any]) -> str:
         if warn_n
         else ""
     )
-    state_note = (
-        ""
-        if editable
-        else " <span class='subtle'>· plan approved; reorder is locked</span>"
-    )
     parts = [
         f"<div class='cmp-total'>Total Story Points = <strong>{total_sp}</strong>"
-        f" · {len(steps)} steps{warn_html}{state_note}</div>"
+        f" · {len(steps)} steps{warn_html}</div>"
     ]
 
     n = 0
