@@ -191,7 +191,9 @@ def validate_order(blocks: list[RawBlock]) -> list[str]:
                 errors.append(f"{block.block_id} is ordered before its dependency {dep}")
         if block.block_type == "ac" and block.parent and block.parent in ids:
             if block.parent not in seen:
-                errors.append(f"acceptance {block.block_id} is ordered before its parent {block.parent}")
+                errors.append(
+                    f"acceptance {block.block_id} is ordered before its parent {block.parent}"
+                )
         seen.add(block.block_id)
     return errors
 
@@ -324,7 +326,46 @@ def write_manifest(doc: ManifestDoc) -> None:
     temp_path.replace(doc.path)
 
 
-def apply_move(path: Path, kind: str, block_id: str, *, direction: str = "", feature: str = "") -> None:
+def _set_field_line(block: RawBlock, key: str, value: str) -> None:
+    """Rewrite (or insert after ``id:``) a scalar field line on a block."""
+    kept: list[str] = []
+    replaced = False
+    for line in block.lines:
+        match = _FIELD_LINE_RE.match(line)
+        if match and match.group(1).lower() == key:
+            kept.append(f"{key}: {value}")
+            replaced = True
+            continue
+        kept.append(line)
+    if not replaced:
+        insert_at = 1
+        for i, line in enumerate(kept):
+            match = _FIELD_LINE_RE.match(line)
+            if match and match.group(1).lower() == "id":
+                insert_at = i + 1
+                break
+        kept.insert(insert_at, f"{key}: {value}")
+    block.lines = kept
+
+
+def set_block_fields(path: Path, block_id: str, **fields: str) -> None:
+    """Decision writer: set scalar fields on one block and rewrite MANIFEST.md.
+
+    The single mutator for per-block state transitions (``state``, ``evidence``,
+    ``finding``). Block ordering and all other content are preserved verbatim.
+    """
+    doc = split_manifest(path)
+    block = doc.by_id().get(block_id)
+    if block is None:
+        raise SpecificationError(f"Block {block_id!r} not found in {path}")
+    for key, value in fields.items():
+        _set_field_line(block, key.lower(), value)
+    write_manifest(doc)
+
+
+def apply_move(
+    path: Path, kind: str, block_id: str, *, direction: str = "", feature: str = ""
+) -> None:
     """Load, apply one constrained move, validate, and write MANIFEST.md.
 
     ``kind`` is ``move_step``, ``move_feature``, or ``regroup_step``. Raises

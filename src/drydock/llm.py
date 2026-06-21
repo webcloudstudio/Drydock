@@ -67,6 +67,7 @@ def _command(
     working_directory: Path,
     artifacts: ExecutionArtifacts,
     model: str | None,
+    allow_tools: bool = False,
 ) -> tuple[str, ...]:
     if llm == "claude":
         command = [
@@ -76,15 +77,18 @@ def _command(
             "--output-format",
             "stream-json",
             "--include-partial-messages",
-            # LLM-assisted Drydock commands consume model text and write their own
+        ]
+        if allow_tools:
+            # drydock build runs an agent that writes the application into the build
+            # working directory, so it needs file tools and unattended permission.
+            command.append("--dangerously-skip-permissions")
+        else:
+            # Text-only LLM-assisted commands consume model text and write their own
             # artifacts.  Giving Claude Code tools lets it bypass that contract by
             # editing the target and returning a narrative summary instead.
             # --strict-mcp-config with no --mcp-config suppresses MCP tool descriptions
             # from the system prompt; without it, Claude emits tool-call XML as text.
-            "--tools",
-            "",
-            "--strict-mcp-config",
-        ]
+            command.extend(("--tools", "", "--strict-mcp-config"))
         if model:
             command.extend(("--model", model))
         return tuple(command)
@@ -98,6 +102,8 @@ def _command(
             "--output-last-message",
             str(artifacts.output_file),
         ]
+        if allow_tools:
+            command.append("--dangerously-bypass-approvals-and-sandbox")
         if model:
             command.extend(("--model", model))
         command.append("-")
@@ -419,10 +425,16 @@ def run_prompt(
     parameters: Mapping[str, Any] | None = None,
     debug: bool = False,
     timeout_seconds: float | None = None,
+    allow_tools: bool = False,
     on_text: TextCallback | None = None,
     on_event: EventCallback | None = None,
 ) -> LlmResult:
-    """Run a fully assembled prompt and persist reproducible execution evidence."""
+    """Run a fully assembled prompt and persist reproducible execution evidence.
+
+    ``allow_tools`` lets the provider edit files in ``working_directory`` (used by
+    ``drydock build``); it is off by default so text-only commands keep their
+    deterministic-write contract.
+    """
     selected = (llm or get_llm_provider()).lower()
     if selected not in {"claude", "codex"}:
         raise LlmConfigurationError(f"Unsupported LLM: {selected!r}")
@@ -434,7 +446,7 @@ def run_prompt(
     artifacts = ExecutionArtifacts.create(working_directory, command_name, selected)
     prompt_bytes = prompt.encode("utf-8")
     artifacts.prompt_file.write_bytes(prompt_bytes)
-    command = _command(selected, working_directory, artifacts, model)
+    command = _command(selected, working_directory, artifacts, model, allow_tools)
     job_parameters = dict(parameters or {})
     logger = create_execution_logger(artifacts.execution_id, artifacts.log_file, debug=debug)
     started_at = utc_now()

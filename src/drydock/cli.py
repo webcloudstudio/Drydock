@@ -739,6 +739,42 @@ def cmd_status_current() -> int:
     return 0
 
 
+def cmd_build(args: argparse.Namespace) -> int:
+    from drydock.build_run import BuildStepResult, build_target
+    from drydock.config import get_llm_provider, get_model, get_target_directory
+
+    target_dir = get_target_directory() / args.Target
+    if not target_dir.is_dir():
+        print(f"Error: Target not found: {target_dir}", file=sys.stderr)
+        return 1
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
+
+    _marks = {"built": "[built]", "implemented": "[review]", "failed": "[failed]"}
+
+    def report(step: BuildStepResult) -> None:
+        mark = _marks.get(step.status, f"[{step.status}]")
+        extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
+        print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
+
+    print(f"Building Target: {args.Target}")
+    result = build_target(
+        args.Target,
+        target_dir,
+        build_dir=build_dir,
+        model=model,
+        llm_provider=llm_provider,
+        on_step=report,
+    )
+    print()
+    if not result.steps:
+        print("  Nothing buildable — no pending step has all dependencies verified.")
+    print(f"Build directory: {result.build_dir}")
+    print(f"RESULT: {len(result.built())} built, {len(result.failed())} failed")
+    return result.exit_code()
+
+
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
     from drydock.config import get_target_directory
@@ -1100,12 +1136,13 @@ def _dispatch_build(args: argparse.Namespace) -> int:
     elif first == "score":
         not_implemented("build score")
     else:
-        _parse_build_args(tokens)  # validates args; build itself is not yet implemented
-        # When build is implemented: call increment_version, set_build_state("building"),
-        # set_sub_state per group, stamp_last("built") on clean exit, and
-        # copy_metadata_to_build_dir(target_dir, build_dir) to propagate identity to the output.
-        not_implemented("build")
-    return 2
+        build_args = _parse_build_args(tokens)
+        rc = cmd_build(build_args)
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("build", build_args.Target, build_args.Target)
+        return rc
 
 
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

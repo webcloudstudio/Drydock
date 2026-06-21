@@ -84,6 +84,26 @@ class BuildPlan:
             runnable.append(block)
         return tuple(runnable)
 
+    def buildable_steps(self) -> tuple[PlanBlock, ...]:
+        """Story/spike blocks ready to build now: pending with verified depends.
+
+        Running ``drydock build`` is the approval, so this is not gated by plan
+        state; ``depends:`` and block state alone determine readiness.
+        """
+        by_id = self.by_id()
+
+        def verified(block_id: str) -> bool:
+            dependency = by_id.get(block_id)
+            return dependency is not None and dependency.state == "closed/verified"
+
+        return tuple(
+            block
+            for block in self.blocks
+            if block.block_type in ("story", "spike")
+            and block.state == "pending"
+            and all(verified(dep) for dep in block.depends)
+        )
+
     def children(self, parent_id: str) -> tuple[PlanBlock, ...]:
         return tuple(block for block in self.blocks if block.parent == parent_id)
 

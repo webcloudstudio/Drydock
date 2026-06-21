@@ -20,6 +20,7 @@ never written back. A step whose total exceeds ``PROMPT_WARN_KB`` is flagged
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def story_points_for(byte_count: int) -> int:
     ~4 bytes, so there is a single derived unit, not two.
     """
     return math.ceil(byte_count / 4)
+
 
 # Maximum total context size for one build step before it is flagged. The
 # stacking strategy groups similar work to stay under this ceiling.
@@ -185,6 +187,59 @@ def assemble_steps(
         for block in plan.blocks
         if block.block_type in STEP_TYPES
     )
+
+
+def _fence_for(text: str) -> str:
+    """Pick a backtick fence longer than any run of backticks in the content."""
+    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    return "`" * max(3, longest + 1)
+
+
+def render_build_prompt(
+    body: str,
+    assembly: StepAssembly,
+    *,
+    target: str,
+    build_dir: Path,
+    today: str,
+) -> str:
+    """Compose the full executable build prompt for one step.
+
+    The same assembly the compass costs is rendered into the agent prompt: the
+    prompt-contract body, a build-job block, every resolved file fenced under its
+    role, and the step's instructions. Missing files are listed, not fenced.
+    """
+    parts = [
+        body.rstrip(),
+        "",
+        "## Build job",
+        f"- TARGET: {target}",
+        f"- BUILD_DIRECTORY: {build_dir}",
+        f"- STEP: {assembly.name} ({assembly.block_id}) [{assembly.block_type}]",
+        f"- DATE: {today}",
+        "",
+    ]
+    missing = assembly.missing_files()
+    if missing:
+        parts.append("Missing context files (named by the plan but not found):")
+        parts.extend(f"- {f.role}: {f.name}" for f in missing)
+        parts.append("")
+    for step_file in assembly.files:
+        if step_file.missing or step_file.source is None:
+            continue
+        try:
+            content = step_file.source.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fence = _fence_for(content)
+        parts.append(f"### {step_file.role}: {step_file.name}")
+        parts.append(f"{fence}\n{content.rstrip()}\n{fence}")
+        parts.append("")
+    if assembly.instructions.strip():
+        parts.append("### Build instructions for this step")
+        parts.append(assembly.instructions.strip())
+        parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
 
 
 @dataclass(frozen=True)

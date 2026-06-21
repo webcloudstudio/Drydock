@@ -494,6 +494,34 @@ state: pending
         assert rc == 2
         assert "Usage: drydock build status" in err
 
+    def test_build_executes_buildable_frontier(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _run(*a, **k):
+            return SimpleNamespace(ok=True, text="Built foundation.", execution_id="exec-fake")
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+
+        rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
+
+        assert rc == 0, err
+        assert "[built]" in out
+        assert "foundation" in out
+        assert (target / "evidence" / "foundation.md").is_file()
+
 
 class TestPlanningSession:
     def _configure(self, tmp_target_root, monkeypatch):
@@ -757,7 +785,6 @@ class TestStubs:
         (["rigging", "update", "MyTarget"], "rigging update"),
         (["rigging", "verify", "MyTarget"], "rigging verify"),
         (["build", "score", "MyTarget"], "build score"),
-        (["build", "MyTarget"], "build"),
         (["refit", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
         (["refit", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
     ]

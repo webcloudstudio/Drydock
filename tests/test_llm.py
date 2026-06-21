@@ -247,7 +247,7 @@ def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model: (sys.executable, "-u", "-c", code),
+        lambda llm, working_directory, artifacts, model, allow_tools=False: (sys.executable, "-u", "-c", code),
     )
     callback_times = []
     started = time.monotonic()
@@ -271,7 +271,7 @@ def test_timeout_terminates_process_and_writes_failed_record(tmp_path, monkeypat
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model: (sys.executable, "-u", "-c", code),
+        lambda llm, working_directory, artifacts, model, allow_tools=False: (sys.executable, "-u", "-c", code),
     )
 
     result = run_prompt("ignored", tmp_path, llm="claude", timeout_seconds=0.1)
