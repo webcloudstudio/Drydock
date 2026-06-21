@@ -106,11 +106,10 @@ class TestInputTokens:
             "TYPED_SPEC",
         )
 
-    def test_plan_create_compass_requires_ordered_token_budgeted_build_steps(self):
+    def test_plan_create_compass_requires_clean_grouped_build_order(self):
         body = load_prompt("plan_create").body
 
-        assert "## 1: Foundation" in body
-        assert "stories: scaffold, persistence" in body
-        assert "# Estimated prompt: ~42KB (~11k tokens)" in body
-        assert "Each story appears in exactly one step." in body
-        assert "Keep every estimated prompt at or below `PROMPT_WARN_KB`." in body
+        assert "# Foundation" in body
+        assert "Each file appears in\n  exactly one group." in body
+        assert "Groups are topologically ordered by Manifest `depends:`." in body
+        assert "Emit no header comment, sizes, instructions, or smoke commands." in body
