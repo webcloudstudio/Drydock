@@ -75,7 +75,8 @@ class TestRender:
         quarterdeck = _load_quarterdeck()
         monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
         (tmp_path / "MANIFEST.md").write_text(
-            "## STORY-A: Build A\n- type: story\n- spec: FEATURE-A.md\n- state: not-started\n",
+            "# MANIFEST: Demo\nstate: draft\n\n"
+            "## story 1: Build A\nid: build-a\nimplements: FEATURE-A.md\nstate: pending\n",
             encoding="utf-8",
         )
 
@@ -174,8 +175,9 @@ class TestSeed:
         monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _ITEM)
         monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _p: compass_file)
         (tmp_path / "MANIFEST.md").write_text(
-            "## STORY-A: Build A\n- type: story\n- spec: FEATURE-A.md\n- state: not-started\n\n"
-            "## STORY-B: Build B\n- type: story\n- spec: FEATURE-B.md\n- state: not-started\n",
+            "# MANIFEST: Demo\nstate: draft\n\n"
+            "## story 1: Build A\nid: build-a\nimplements: FEATURE-A.md\nstate: pending\n\n"
+            "## story 2: Build B\nid: build-b\nimplements: FEATURE-B.md\nstate: pending\n",
             encoding="utf-8",
         )
 

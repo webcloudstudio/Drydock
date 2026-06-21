@@ -523,18 +523,21 @@ _BLUEPRINT_DIR = PROJECT_ROOT / "blueprint"
 
 
 def _compass_seed_specs() -> list[str]:
-    """Spec files named by MANIFEST.md stories, de-duped in order — the seed set."""
+    """Spec files named by MANIFEST.md steps, de-duped in build order — the seed set."""
+    from drydock.build_plan import parse_build_plan
+    from drydock.errors import SpecificationError
+
     manifest_path = PROJECT_ROOT / "MANIFEST.md"
     try:
-        text = manifest_path.read_text(encoding="utf-8")
-    except OSError:
+        plan = parse_build_plan(manifest_path)
+    except SpecificationError:
         return []
-    from drydock.manifest import parse_manifest
 
     specs: list[str] = []
-    for node in parse_manifest(text).stories():
-        if node.spec and node.spec not in specs:
-            specs.append(node.spec)
+    for block in plan.blocks:
+        for spec in block.fields.get("implements", ()):
+            if spec not in specs:
+                specs.append(spec)
     return specs
 
 
