@@ -240,6 +240,88 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
     assert chunks == ["CODEX READY"]
 
 
+def _claude_result_raw(text: str = "READY") -> str:
+    return (
+        json.dumps({"type": "result", "result": text, "model": "claude-test"}) + "\n"
+    )
+
+
+def _capture_env_popen(captured: dict, raw: str):
+    def fake_popen(command, **kwargs):
+        captured["env"] = kwargs["env"]
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    return fake_popen
+
+
+def test_claude_isolates_config_home_and_seeds_credentials(tmp_path, monkeypatch):
+    fake_home = tmp_path / "home"
+    real_config = fake_home / ".claude"
+    real_config.mkdir(parents=True)
+    (real_config / ".credentials.json").write_text('{"token": "subscription"}')
+
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    captured = {}
+    monkeypatch.setattr(subprocess, "Popen", _capture_env_popen(captured, _claude_result_raw()))
+
+    run_prompt("Work", tmp_path, llm="claude", command_name="build")
+
+    build_home = fake_home / ".drydock" / "claude-home"
+    assert captured["env"]["HOME"] == str(build_home)
+    assert captured["env"]["CLAUDE_CONFIG_DIR"] == str(build_home)
+    seeded = build_home / ".credentials.json"
+    assert seeded.read_text() == '{"token": "subscription"}'
+
+
+def test_claude_isolation_skipped_without_credentials(tmp_path, monkeypatch):
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)  # no .credentials.json
+
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("HOME", "/original/home")
+    captured = {}
+    monkeypatch.setattr(subprocess, "Popen", _capture_env_popen(captured, _claude_result_raw()))
+
+    run_prompt("Work", tmp_path, llm="claude", command_name="build")
+
+    assert captured["env"]["HOME"] == "/original/home"
+    assert "CLAUDE_CONFIG_DIR" not in captured["env"]
+    assert not (fake_home / ".drydock").exists()
+
+
+def test_codex_does_not_isolate_home(tmp_path, monkeypatch):
+    fake_home = tmp_path / "home"
+    real_config = fake_home / ".claude"
+    real_config.mkdir(parents=True)
+    (real_config / ".credentials.json").write_text('{"token": "subscription"}')
+
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("HOME", "/original/home")
+    raw = json.dumps(
+        {
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": "OK"},
+            "model": "codex-test",
+        }
+    )
+
+    def fake_popen(command, **kwargs):
+        Path(command[command.index("--output-last-message") + 1]).write_text("OK")
+        captured["env"] = kwargs["env"]
+        return FakePopen(command, stdout_text=raw + "\n", **kwargs)
+
+    captured = {}
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    run_prompt("Work", tmp_path, llm="codex", command_name="build")
+
+    assert captured["env"]["HOME"] == "/original/home"
+    assert "CLAUDE_CONFIG_DIR" not in captured["env"]
+
+
 def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
     code = (
         "import json,time;"

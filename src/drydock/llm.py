@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shutil
 import subprocess
 import threading
 import time
@@ -117,6 +118,33 @@ def _command(
         command.append("-")
         return tuple(command)
     raise LlmConfigurationError(f"Unsupported LLM: {llm!r}")
+
+
+def _isolate_claude_env(process_env: dict[str, str]) -> None:
+    """Point the ``claude`` subprocess at a dedicated config home.
+
+    The subprocess reads a clean ``~/.drydock/claude-home`` instead of the user's
+    real ``~/.claude``, so it inherits none of the user's settings, plugins, MCP
+    servers, history, or state.  The subscription OAuth token is copied in on every
+    run so authentication continues to use the user's subscription.
+
+    Mutates ``process_env`` in place.  When no plaintext credentials file exists
+    (e.g. keychain or API-key auth), the overrides are skipped and behavior is
+    unchanged.
+    """
+    source_config = Path(
+        process_env.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude"
+    ).expanduser()
+    source_credentials = source_config / ".credentials.json"
+    if not source_credentials.is_file():
+        return
+
+    build_home = (Path.home() / ".drydock" / "claude-home").expanduser()
+    build_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    shutil.copy2(source_credentials, build_home / ".credentials.json")
+
+    process_env["HOME"] = str(build_home)
+    process_env["CLAUDE_CONFIG_DIR"] = str(build_home)
 
 
 def _events(raw: str) -> list[dict[str, Any]]:
@@ -493,6 +521,8 @@ def run_prompt(
     process_env.pop("ANTHROPIC_API_KEY", None)
     process_env.pop("OPENAI_API_KEY", None)
     process_env.pop("OPENAI_BASE_URL", None)
+    if selected == "claude":
+        _isolate_claude_env(process_env)
 
     try:
         returncode, raw_output, stderr, timed_out = _run_streaming_process(
