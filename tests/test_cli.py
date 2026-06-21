@@ -514,8 +514,6 @@ class TestPlanningSession:
         "## Acceptance Criteria\n\n- Status command exits successfully.\n\n"
         "## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
         "=== END FEATURE-Status.md ===\n"
-        "=== BUILD_COMPASS.md ===\n# Foundation\nARCHITECTURE.md\n#\nFEATURE-Status.md\n"
-        "=== END BUILD_COMPASS.md ===\n"
         "=== MANIFEST.md ===\n"
         "# MANIFEST: ExampleTarget\nupdated: 2026-06-16\nplan_hash: test\nstate: draft\n\n"
         "## feature 1: Status\nid: feature-status\nsummary: Status workflow.\nstate: pending\n\n"
@@ -566,7 +564,7 @@ class TestPlanningSession:
         assert "Authored 2 Blueprint spec file(s)" in out
         assert "=== ARCHITECTURE.md ===" not in out
         assert "Status command exits successfully." not in out
-        assert (bp.parent / "BUILD_COMPASS.md").is_file()
+        assert not (bp.parent / "BUILD_COMPASS.md").exists()
         assert "Status command exits successfully." in (bp / "FEATURE-Status.md").read_text(
             encoding="utf-8"
         )

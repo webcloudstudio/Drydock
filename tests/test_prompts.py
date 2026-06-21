@@ -106,10 +106,12 @@ class TestInputTokens:
             "TYPED_SPEC",
         )
 
-    def test_plan_create_compass_requires_clean_grouped_build_order(self):
+    def test_plan_create_manifest_carries_build_order_and_grouping(self):
         body = load_prompt("plan_create").body
 
-        assert "# Foundation" in body
-        assert "Each file appears in\n  exactly one group." in body
-        assert "Groups are topologically ordered by Manifest `depends:`." in body
-        assert "Emit no header comment, sizes, instructions, or smoke commands." in body
+        # The Manifest is the single work graph; no separate ordering file is emitted.
+        assert "BUILD_COMPASS" not in body
+        assert "Order blocks foundational-first." in body
+        assert "implemented by exactly one story." in body
+        assert "Build shared providers before their consumers" in body
+        assert "topologically consistent" in body

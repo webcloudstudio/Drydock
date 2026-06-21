@@ -1,8 +1,9 @@
 """``drydock plan create`` — LLM-driven authoring of the Blueprint and executable Manifest.
 
 `plan create` implements the reviewed analysis. In one LLM call it rewrites the imported source
-material into typed Blueprint specification files, emits the single ``BUILD_COMPASS.md``
-build-ordering file, and the executable ``MANIFEST.md`` — all as delimited ``=== NAME ===`` blocks.
+material into typed Blueprint specification files and the executable ``MANIFEST.md`` — all as
+delimited ``=== NAME ===`` blocks. The Manifest is the single work graph: it carries build order,
+grouping, and per-step prompt-assembly fields, so no separate build-ordering file is emitted.
 The module parses the blocks, runs a deterministic integrity gate, and writes the files. Each run is
 a single-directional clean regenerate: prior block states are not merged. The model emits text; the
 module writes files. Tests inject a fake runner and never spend API credits.
@@ -43,7 +44,7 @@ _WRITE_CALL_RE = re.compile(
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
-_RESERVED_BLOCKS = frozenset({"MANIFEST.md", "BUILD_COMPASS.md", "PLAN_CREATE_BLOCKED.txt"})
+_RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
@@ -109,8 +110,6 @@ def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -
         content = match.group("content").strip()
         if path == target_root / "MANIFEST.md":
             name = "MANIFEST.md"
-        elif path == target_root / "BUILD_COMPASS.md":
-            name = "BUILD_COMPASS.md"
         elif path.is_relative_to(blueprint_root):
             name = path.relative_to(blueprint_root).as_posix()
         else:
@@ -488,16 +487,15 @@ def create_plan(
             "Planning cannot proceed — analysis is Blocked. "
             "The existing Blueprint is preserved.\n  " + blocks["PLAN_CREATE_BLOCKED.txt"].strip()
         )
-    for required in ("MANIFEST.md", "BUILD_COMPASS.md"):
-        if required not in blocks:
-            artifacts = getattr(result, "artifacts", None)
-            output_file = getattr(artifacts, "output_file", None)
-            evidence = f"\n  Execution output: {output_file}" if output_file else ""
-            raise SpecificationError(
-                f"plan create output missing === {required} === block. "
-                "The LLM response must contain only delimited artifact blocks."
-                f"{evidence}"
-            )
+    if "MANIFEST.md" not in blocks:
+        artifacts = getattr(result, "artifacts", None)
+        output_file = getattr(artifacts, "output_file", None)
+        evidence = f"\n  Execution output: {output_file}" if output_file else ""
+        raise SpecificationError(
+            "plan create output missing === MANIFEST.md === block. "
+            "The LLM response must contain only delimited artifact blocks."
+            f"{evidence}"
+        )
 
     # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
     authored: list[Path] = []
@@ -508,10 +506,7 @@ def create_plan(
         _write_text(dest, content)
         authored.append(dest)
 
-    # 2. The single build-ordering inventory, written at the Target root.
-    _write_text(target_dir / "BUILD_COMPASS.md", blocks["BUILD_COMPASS.md"])
-
-    # 3. The executable plan. Single-directional regenerate: prior states are not merged —
+    # 2. The executable plan. Single-directional regenerate: prior states are not merged —
     #    a new plan is authored fresh every run (LLM output is non-deterministic).
     _write_text(plan_path, blocks["MANIFEST.md"])
 

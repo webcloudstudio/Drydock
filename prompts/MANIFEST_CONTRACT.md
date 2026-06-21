@@ -225,8 +225,8 @@ decision writer used by the CLI.
 ## Relationship to Blueprint
 
 The Manifest is generated from the Blueprint; it is not a second product definition. `drydock plan
-create` reads all Blueprint inputs, writes `BUILD_COMPASS.md` (Target-root planning
-inventory), and writes `MANIFEST.md`. Both files regenerate after each planning cycle.
+create` reads all Blueprint inputs and writes `MANIFEST.md` — the single work graph carrying build
+order, grouping, and per-step prompt-assembly fields. It regenerates after each planning cycle.
 
 The Blueprint remains the source of truth for what the project is and must do. The Manifest is
 the source of truth for build state. The QuarterDeck renders Manifest state and records decisions

@@ -61,7 +61,6 @@ _ALLOWED_ROOT_NAMES = {
     "IDEAS.md",
     "REFERENCE_GAPS.md",
     "SCORECARD.md",
-    "BUILD_COMPASS.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
     "SPEC_PATCHES.md",
@@ -89,7 +88,6 @@ _NO_TERMINAL_NEEDED = {
     "IDEAS.md",
     "REFERENCE_GAPS.md",
     "SCORECARD.md",
-    "BUILD_COMPASS.md",
     "SPEC_SCORECARD.md",
     "SPEC_ITERATION.md",
 }

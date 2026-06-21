@@ -28,7 +28,6 @@ project is, what it must do, and how it is built.
 | `UI-GENERAL.md` | Shared UI patterns across screens | If has UI |
 | `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
 | `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, AC, guardrails | As needed |
-| `BUILD_COMPASS.md` | Target-root story-planning grouping and build-order input (not a Blueprint file) | Process-created |
 | `ARCHITECTURE_FUNC_compact.md` | Compact architecture for Functionality phases — module summaries, config, no routes | Optional |
 | `ARCHITECTURE_UI_compact.md` | Compact architecture for UI phases — routes table, directory layout | Optional |
 | `HOMEPAGE.md` | Portfolio homepage: branding, contact, bio | If publishes a portfolio |
@@ -319,7 +318,7 @@ scanner to group related repositories under a named service.
 ## Authoring Conventions
 
 **Authoring phase:** all unresolved questions go in `## Open Questions` sections. Do not create
-`BUILD_COMPASS.md` or numbered ticket files while authoring.
+`MANIFEST.md` or numbered ticket files while authoring.
 
 **Build phase:** run `drydock plan create` once the specification is ready. Use `drydock status`
 to check for spec errors and staleness before building. After a build, fold changes back by editing

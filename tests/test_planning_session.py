@@ -99,11 +99,9 @@ def _llm_output(manifest: str | None = None) -> str:
     feature = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."
     )
-    compass = "# Foundation\nARCHITECTURE.md\n#\nFEATURE-Status.md\n"
     return (
         f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
         f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
-        f"=== BUILD_COMPASS.md ===\n{compass}\n=== END BUILD_COMPASS.md ===\n"
         f"=== MANIFEST.md ===\n{manifest or _manifest()}\n=== END MANIFEST.md ===\n"
     )
 
@@ -136,7 +134,7 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     bp = target_dir / "blueprint"
     assert (bp / "ARCHITECTURE.md").is_file()
     assert (bp / "FEATURE-Status.md").is_file()
-    assert (target_dir / "BUILD_COMPASS.md").is_file()
+    assert not (target_dir / "BUILD_COMPASS.md").exists()
     assert (target_dir / "MANIFEST.md").is_file()
     assert result.plan.state == "draft"
     assert {p.name for p in result.authored_files} == {"ARCHITECTURE.md", "FEATURE-Status.md"}
@@ -290,11 +288,7 @@ def test_simulated_write_calls_recover_plan_artifacts(tmp_path):
     output = _llm_output()
     calls = []
     for name, content in _parse_blocks(output).items():
-        path = (
-            target_dir / name
-            if name in ("MANIFEST.md", "BUILD_COMPASS.md")
-            else blueprint_dir / name
-        )
+        path = target_dir / name if name == "MANIFEST.md" else blueprint_dir / name
         calls.append(
             '<invoke name="Write">\n'
             f'<parameter name="file_path">{path}</parameter>\n'
@@ -306,7 +300,6 @@ def test_simulated_write_calls_recover_plan_artifacts(tmp_path):
 
     assert result.plan.state == "draft"
     assert (target_dir / "MANIFEST.md").is_file()
-    assert (target_dir / "BUILD_COMPASS.md").is_file()
     assert (blueprint_dir / "FEATURE-Status.md").is_file()
 
 
