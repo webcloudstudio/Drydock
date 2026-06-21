@@ -87,6 +87,49 @@ def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _extract_global_llm_overrides(argv: list[str] | None) -> tuple[list[str] | None, dict[str, str | None]]:
+    """Strip invocation-wide LLM override flags from argv so every command accepts them.
+
+    The remaining argv is parsed by the normal command parser. This allows flags like
+    ``drydock status Target --llm-provider codex --model gpt-5.4`` even for commands that
+    otherwise use ``argparse.REMAINDER`` or do not consume the overrides.
+    """
+
+    if argv is None:
+        return None, {"model": None, "llm_provider": None}
+
+    cleaned: list[str] = []
+    overrides: dict[str, str | None] = {"model": None, "llm_provider": None}
+    index = 0
+
+    while index < len(argv):
+        token = argv[index]
+        if token == "--":
+            cleaned.extend(argv[index:])
+            break
+        if token == "--model":
+            if index + 1 >= len(argv):
+                raise UsageError("argument --model: expected one argument")
+            overrides["model"] = argv[index + 1]
+            index += 2
+            continue
+        if token == "--llm-provider":
+            if index + 1 >= len(argv):
+                raise UsageError("argument --llm-provider: expected one argument")
+            provider = argv[index + 1]
+            if provider not in {"claude", "codex"}:
+                raise UsageError(
+                    f"argument --llm-provider: invalid choice: {provider!r} (choose from 'claude', 'codex')"
+                )
+            overrides["llm_provider"] = provider
+            index += 2
+            continue
+        cleaned.append(token)
+        index += 1
+
+    return cleaned, overrides
+
+
 # ---------------------------------------------------------------------------
 # Command implementations
 # ---------------------------------------------------------------------------
@@ -873,6 +916,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── config ──────────────────────────────────────────────────────────────
     p_config = sub.add_parser("config", help="Show or set Drydock configuration.")
+    _add_llm_override_flags(p_config)
     cfg_sub = p_config.add_subparsers(dest="config_command", metavar="<subcommand>")
     cfg_sub.add_parser("show", help="Display current configuration values and sources.")
     p_set = cfg_sub.add_parser("set", help="Set a configuration value.")
@@ -891,6 +935,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── init ─────────────────────────────────────────────────────────────────
     p_init = sub.add_parser("init", help="Initialize a target workspace.")
+    _add_llm_override_flags(p_init)
     p_init.add_argument("Target", metavar="<Target>")
     p_init.add_argument(
         "--display-name",
@@ -919,10 +964,12 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    _add_llm_override_flags(p_status)
     p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Target>]")
 
     # ── validate ─────────────────────────────────────────────────────────────
     p_val = sub.add_parser("validate", help="Validate a Blueprint's Typed Specification.")
+    _add_llm_override_flags(p_val)
     p_val.add_argument("Target", metavar="<Target>")
     p_val.add_argument("--verbose", action="store_true", help="Also show passing checks.")
 
@@ -941,10 +988,12 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    _add_llm_override_flags(p_doc)
     p_doc.add_argument("args", nargs=argparse.REMAINDER, metavar="[generate|assemble] <Target>")
 
     # ── rigging ──────────────────────────────────────────────────────────────
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
+    _add_llm_override_flags(p_rig)
     rig_sub = p_rig.add_subparsers(dest="rigging_command", metavar="<subcommand>")
     p_rig_c = rig_sub.add_parser(
         "compact", help="Compact stale rules/data/spec files to _compact.md siblings."
@@ -967,6 +1016,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── plan ─────────────────────────────────────────────────────────────────
     p_plan = sub.add_parser("plan", help="Manage the build plan.")
+    _add_llm_override_flags(p_plan)
     plan_sub = p_plan.add_subparsers(dest="plan_command", metavar="<subcommand>")
     p_plan_create = plan_sub.add_parser(
         "create", help="Create a draft executable plan and target Planning Session."
@@ -988,10 +1038,12 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    _add_llm_override_flags(p_build)
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── refit ─────────────────────────────────────────────────────────────────
     p_iter = sub.add_parser("refit", help="Update Blueprint and target software together.")
+    _add_llm_override_flags(p_iter)
     p_iter.add_argument("Target", metavar="<Target>")
     p_iter.add_argument(
         "Mode",
@@ -1022,6 +1074,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    _add_llm_override_flags(p_survey)
     p_survey.add_argument("Target", metavar="<Target>")
     p_survey.add_argument(
         "--command",
@@ -1043,10 +1096,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Perform a fresh survey (LLM-assisted) and append scores.",
     )
     p_survey.add_argument("--raw", action="store_true", help="Print raw score records as JSON.")
-    _add_llm_override_flags(p_survey)
 
     # ── prompt ────────────────────────────────────────────────────────────────
     p_prompt = sub.add_parser("prompt", help="Review Drydock prompt contracts.")
+    _add_llm_override_flags(p_prompt)
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", metavar="<subcommand>")
     p_prompt_review = prompt_sub.add_parser(
         "review",
@@ -1057,6 +1110,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── run ───────────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Start a Drydock service.")
+    _add_llm_override_flags(p_run)
     run_sub = p_run.add_subparsers(dest="run_command", metavar="<subcommand>")
     p_run_qd = run_sub.add_parser("quarterdeck", help="Start the QuarterDeck for a target project.")
     p_run_qd.add_argument(
@@ -1081,6 +1135,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
+    _add_llm_override_flags(p_import)
     p_import.add_argument("Target", metavar="<Target>")
     p_import.add_argument("Source", metavar="<Source>")
     p_import.add_argument(
@@ -1313,7 +1368,11 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
 
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    normalized_argv, global_overrides = _extract_global_llm_overrides(argv)
+    args = parser.parse_args(normalized_argv)
+    for key, value in global_overrides.items():
+        if getattr(args, key, None) is None:
+            setattr(args, key, value)
     print(f"Drydock {__version__}  {__copyright__}", file=sys.stderr)
     debug = getattr(args, "debug", False)
 

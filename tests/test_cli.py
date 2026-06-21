@@ -371,6 +371,12 @@ class TestAnalyzeCommand:
 
 
 class TestLlmOverrideFlags:
+    def test_status_help_lists_llm_flags(self):
+        rc, out, _ = run_cli("status", "--help")
+        assert rc == 0
+        assert "--llm-provider" in out
+        assert "--model" in out
+
     def test_plan_create_help_lists_llm_flags(self):
         rc, out, _ = run_cli("plan", "create", "--help")
         assert rc == 0
@@ -394,6 +400,42 @@ class TestLlmOverrideFlags:
         assert rc == 0
         assert "--llm-provider" in out
         assert "--model" in out
+
+    def test_status_accepts_global_llm_overrides(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        target = tmp_target_root / "Drydock"
+        (target / "blueprint").mkdir(parents=True)
+
+        rc, out, err = run_cli("status", "Drydock", "--llm-provider", "codex", "--model", "gpt-5.4")
+
+        assert rc == 0, err
+        assert "Drydock status" in out
+
+    def test_build_status_accepts_global_llm_overrides(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        target.mkdir()
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nupdated: 2026-06-11T12:00:00\nplan_hash: abc123\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli(
+            "build",
+            "status",
+            "ExampleTarget",
+            "--llm-provider",
+            "codex",
+            "--model",
+            "gpt-5.4",
+        )
+
+        assert rc == 0, err
+        assert "Blueprint: ExampleTarget" in out
 
     def test_plan_create_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
