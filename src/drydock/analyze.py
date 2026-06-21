@@ -44,6 +44,13 @@ _FEEDBACK_DEFAULT = (
 )
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+_WRITE_INVOKE_RE = re.compile(
+    r'<invoke name="Write">\s*'
+    r'<parameter name="path">(.*?)</parameter>\s*'
+    r'<parameter name="content">(.*?)</parameter>\s*'
+    r"</invoke>",
+    re.DOTALL,
+)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
 # A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
@@ -282,8 +289,24 @@ def _assemble_prompt(
 
 
 def _parse_blocks(text: str) -> dict[str, str]:
-    """Return a dict of block-name → stripped content from === NAME === delimiters."""
-    return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
+    """Return a dict of block-name → stripped content from model output.
+
+    Preferred format is the documented ``=== NAME ===`` block contract. As a recovery path for
+    Claude responses that ignore the contract and instead emit a ``Write`` tool transcript, accept
+    ``<invoke name="Write">`` records and map them by basename only. Drydock still performs the
+    actual file writes deterministically.
+    """
+    blocks = {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
+    if blocks:
+        return blocks
+
+    recovered: dict[str, str] = {}
+    for match in _WRITE_INVOKE_RE.finditer(text):
+        name = Path(match.group(1).strip()).name
+        content = match.group(2).strip()
+        if name:
+            recovered[name] = content
+    return recovered
 
 
 def _validate_blockers(raw: str | None) -> str | None:

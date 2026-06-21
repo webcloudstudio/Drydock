@@ -493,6 +493,22 @@ class TestParseBlocks:
         blocks = _parse_blocks(text)
         assert blocks["x.md"] == "content"
 
+    def test_recovers_write_tool_transcript_by_basename(self):
+        text = """\
+<function_calls>
+<invoke name="Write">
+<parameter name="path">/tmp/target/blueprint/ANALYSIS.md</parameter>
+<parameter name="content">analysis body</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/target/COMPASS.md</parameter>
+<parameter name="content">compass body</parameter>
+</invoke>
+</function_calls>"""
+        blocks = _parse_blocks(text)
+        assert blocks["ANALYSIS.md"] == "analysis body"
+        assert blocks["COMPASS.md"] == "compass body"
+
 
 # ---------------------------------------------------------------------------
 # _parse_output
@@ -598,6 +614,76 @@ class TestParseOutput:
         output = _make_llm_output(extra_spike=True)
         _, _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "discovery-auth.json" in spikes
+
+    def test_write_tool_transcript_is_recovered(self):
+        text = """\
+<function_calls>
+<invoke name="Write">
+<parameter name="path">/tmp/target/blueprint/ANALYSIS.md</parameter>
+<parameter name="content"># Blueprint Analysis: TestProject
+generated: 2026-06-14
+blueprint: /tmp/target/blueprint
+
+Quality: Ready
+  blockers: 0
+  questions: 0
+  stories: 5
+  stack: python/flask
+  screens: 2
+
+## Story List
+
+- Story
+
+### Tuning Options
+
+- Option A
+
+## Notes
+
+None.</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/target/blueprint/SEA_TRIALS.md</parameter>
+<parameter name="content"># Sea Trials: TestProject
+
+| ID | Objective / Success Criterion | State | Evidence |
+|---|---|---|---|
+| st-001 | Objective | NOT STARTED | |</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/target/blueprint/SOUNDINGS.md</parameter>
+<parameter name="content"># Soundings
+
+| ID | Acceptance Criterion | State | Evidence |
+|---|---|---|---|
+| ac-001 | Criterion | NOT STARTED | |</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/target/COMPASS.md</parameter>
+<parameter name="content"># COMPASS: TestProject
+
+## Compass
+Compass text.
+
+## Constraints
+- None stated.
+
+## Guardrails
+- None stated.</parameter>
+</invoke>
+</function_calls>"""
+        analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = _parse_output(
+            text
+        )
+        assert "Blueprint Analysis" in analysis
+        assert "Sea Trials" in sea_trials
+        assert "Soundings" in soundings
+        assert "COMPASS" in compass
+        assert blockers is None
+        assert spikes == {}
+        assert quality == "Ready"
+        assert summary["stories"] == "5"
 
 
 # ---------------------------------------------------------------------------
