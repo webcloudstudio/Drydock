@@ -70,7 +70,7 @@ flowchart LR
   SETUP["Set Up"]:::script --> ANALYZE["Analyze"]:::script
   ANALYZE --> IMPLEMENT["Implement"]:::script
   IMPLEMENT --> TARGET(["Working Software"]):::dir
-  IMPLEMENT --> LOOP["Loop"]:::script
+  TARGET --> LOOP["Loop"]:::script
   LOOP -.-> ANALYZE
 ```
 
@@ -131,16 +131,9 @@ flowchart LR
   CONFIG --> INIT["init"]:::script
 ```
 
-#### Configuration Keys (.env)
+### Requirements
 
-| Variable | Purpose |
-|---|---|
-| `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
-| `DRYDOCK_WORKSPACE` | Home directory for the drydock |
-| `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
-| `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
-| `MODEL` | LLM model - gpt-5.4, gpt-5.5, sonnet, opus  |
-| `QUARTERDECK_PORT` | Default QuarterDeck service port |
+Drydock requires a working codex or claude cli. 
 
 ### Commands
 
@@ -154,26 +147,44 @@ drydock status [<Target>]
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
 
+### drydock status
+
 `drydock status` is the primary orientation command. With no arguments it shows the workspace
 dashboard across all initialized Targets. With a `<Target>` argument it filters to that Target,
 showing its validation state, plan progress, and current runnable frontier. 
 
+### drydock config
+
 `drydock config` establishes user-scoped defaults. 
 
+
+| Variable | Purpose |
+|---|---|
+| `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
+| `DRYDOCK_WORKSPACE` | Home directory for the drydock |
+| `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
+| `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
+| `MODEL` | LLM model - gpt-6.4, gpt-5.5, sonnet, opus  |
+| `QUARTERDECK_PORT` | Default QuarterDeck service port |
+
+
+### drydock init
+
 `drydock init <Target>` creates the minimal scaffold described in Workspace Layout. 
+
+### drydock run quarterdeck <Target>
 
 `drydock run quarterdeck` opens the product-owner review surface, a simple configuration file
 driven console.
 
 ## SAIL Phase 2 — Analyze: Charting the Build
 
-The Analyze phase turns imported source material into an Analysis for review, then into an
-executable Manifest for build. The sequence is:
+The Analyze phase turns imported source material into an Analysis for review, then into an executable Manifest for build. 
 
 1. `drydock import` brings source material under Drydock control.
-2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions, and any needed spikes. It also re-injects `ANALYZE_COMPASS.md` and may seed `COMPASS.md`.
-3. `drydock run quarterdeck` lets the product owner review, approve, and resolve open action items.  The system surfaces questionnaires and analysis.
-4. `drydock plan create` consumes the reviewed analysis plus `PLAN_COMPASS.md`, creates Blueprint files, writes `BUILD_COMPASS.md`, and drafts the Manifest.
+2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions
+3. `drydock run quarterdeck` lets the product owner review, approve, and answer questions
+4. `drydock plan create` consumes the reviewed analysis and creates Blueprint files, the Manifest, and tickets.json.
 
 ### Commands
 
@@ -195,17 +206,14 @@ flowchart LR
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
   SRC["Source Material"]:::dir --> IMPORT["import"]:::script
-  IMPORT --> SOURCES("Imported Sources"):::dir
-  SOURCES --> ANALYZE["analyze"]:::script
+  IMPORT --> ANALYZE["analyze"]:::script
   ANALYZE --> ANALYSIS{{"ANALYSIS.md"}}:::md
-  ANALYZE --> ACOMPASS{{"ANALYZE_COMPASS.md"}}:::md
   ANALYSIS --> QUARTERDECK["run quarterdeck"]:::web
-  ACOMPASS --> QUARTERDECK
-  QUARTERDECK --> PCOMPASS{{"PLAN_COMPASS.md"}}:::md
+  ACOMPASS{{"ANALYZE_COMPASS.md"}}:::md --> QUARTERDECK
   QUARTERDECK --> PLANCREATE["plan create"]:::script
-  PCOMPASS --> PLANCREATE
+  PCOMPASS{{"PLAN_COMPASS.md"}}:::md --> PLANCREATE
   PLANCREATE --> BLUEPRINT("Blueprint"):::dir
-  PLANCREATE --> BCOMPASS{{"BUILD_COMPASS.md"}}:::md
+  PLANCREATE --> BCOMPASS{{"tickets.json"}}:::md
   PLANCREATE --> MANIFEST{{"MANIFEST.md"}}:::md
 ```
 
@@ -442,7 +450,7 @@ flowchart LR
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
   SPEC(["Blueprint"]):::dir --> SCORE["build score"]:::script
-  TGT(["Target Working Directory"]):::dir --> SCORE
+  TGT(["Working Software"]):::dir --> SCORE
   SCORE --> SC{{"SCORECARD.md"}}:::md
 ```
 
@@ -518,7 +526,9 @@ flowchart LR
   REFIT --> SOFTWARE(["Working Software"]):::output
 ```
 
-TODO: update to Eds latest notes_refit.md
+TODO: Section not as intended - /thinkthrough with ed - i am confused since a refit is a build... so whats the separate command... There needs be a better ingest process for tickets/requests (formatted or not) into
+the depencency graph and that is an llm call... then it can build.  The other option which also
+works is for the user to just edit the spec files.  Since we track the build commits for each file it just works.  That was my main working process and ... its not here... 
 
 The `refit` command delegates final integration to a separate merge step. Each output file produced by the refit is compared against its prior state; files whose content has changed are marked dirty and reapplied to the working tree.
 
