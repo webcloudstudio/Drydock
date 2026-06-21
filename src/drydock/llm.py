@@ -74,6 +74,11 @@ def _command(
             "claude",
             "-p",
             "--verbose",
+            # Suppress auto-discovery of CLAUDE.md/AGENTS.md, auto-memory, hooks,
+            # plugins, and MCP servers from the caller's environment so the build
+            # agent receives only Drydock's deterministically assembled prompt.
+            # --safe-mode (unlike --bare) preserves subscription/OAuth auth.
+            "--safe-mode",
             "--output-format",
             "stream-json",
             "--include-partial-messages",
