@@ -19,11 +19,20 @@ never written back. A step whose total exceeds ``PROMPT_WARN_KB`` is flagged
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from drydock.build_compass import story_points_for
 from drydock.build_plan import BuildPlan, PlanBlock
+
+
+def story_points_for(byte_count: int) -> int:
+    """Story points = estimated token cost = ``ceil(byte_count / 4)``.
+
+    The token estimate and the story-point count are one number: a token is
+    ~4 bytes, so there is a single derived unit, not two.
+    """
+    return math.ceil(byte_count / 4)
 
 # Maximum total context size for one build step before it is flagged. The
 # stacking strategy groups similar work to stay under this ceiling.

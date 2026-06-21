@@ -1,13 +1,12 @@
-"""Tests for the QuarterDeck ``compass`` type — render, live recompute, and the
-persist-on-mutation navigation ops (move / combine / split / rename / seed)."""
+"""Tests for the QuarterDeck ``compass`` type — the read-only MANIFEST.md build
+view: feature groups, assembled per-step prompt cost, folded acceptance checks,
+and the context warn flag."""
 
 from __future__ import annotations
 
 import importlib.util
 import sys
 from pathlib import Path
-
-import pytest
 
 
 def _load_quarterdeck():
@@ -20,177 +19,115 @@ def _load_quarterdeck():
     return module
 
 
-_COMPASS = "# Foundational\nFEATURE-Schema.md\n\n# Screens\nSCREEN-Dashboard.md\n"
+_MANIFEST = """# MANIFEST: Demo
+state: approved
 
+## feature 1: Foundation
+id: feat-foundation
+summary: Group.
+state: pending
 
-def _blueprint(tmp_path: Path) -> Path:
-    bp = tmp_path / "blueprint"
-    bp.mkdir()
-    (bp / "FEATURE-Schema.md").write_bytes(b"x" * 4000)  # 1000 SP
-    (bp / "SCREEN-Dashboard.md").write_bytes(b"x" * 400)  # 100 SP
-    return bp
+## story 2: Core
+id: core
+parent: feat-foundation
+implements: ARCHITECTURE.md, DATABASE.md
+context: missing-ctx.md
+stack: common.md
+instructions: |
+  Build the core.
+state: pending
 
+## ac 3: Core Works
+id: ac-core
+parent: core
+kind: smoke
+check: true
+state: pending
+"""
 
 _ITEM = {
     "id": "build_compass",
     "type": "compass",
-    "path": "../BUILD_COMPASS.md",
+    "path": "../MANIFEST.md",
     "label": "Build Compass",
 }
 
 
-def _setup_render(quarterdeck, tmp_path, monkeypatch, *, compass_text=_COMPASS):
-    bp = _blueprint(tmp_path)
-    compass_file = tmp_path / "BUILD_COMPASS.md"
-    compass_file.write_text(compass_text, encoding="utf-8")
-    monkeypatch.setattr(quarterdeck, "_BLUEPRINT_DIR", bp)
-    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _p: compass_file)
-    return compass_file
+def _setup(quarterdeck, tmp_path, monkeypatch, *, manifest=_MANIFEST):
+    target = tmp_path / "target"
+    blueprint = target / "blueprint"
+    stack = tmp_path / "rigging" / "stack"
+    rigging = tmp_path / "rigging"
+    for d in (blueprint, stack, rigging):
+        d.mkdir(parents=True, exist_ok=True)
+    (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
+    (target / "COMPASS.md").write_bytes(b"c" * 200)
+    (blueprint / "ARCHITECTURE.md").write_bytes(b"a" * 4000)  # 1000 SP
+    (blueprint / "DATABASE.md").write_bytes(b"b" * 400)  # 100 SP
+    (stack / "common.md").write_bytes(b"e" * 40)
+
+    from drydock.build import StepRoots
+
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target)
+    monkeypatch.setattr(
+        quarterdeck,
+        "_step_roots",
+        lambda: StepRoots(
+            target_dir=target, blueprint_dir=blueprint, stack_dir=stack, rigging_dir=rigging
+        ),
+    )
+    return target
 
 
 class TestRender:
-    def test_shows_groups_story_points_and_total(self, tmp_path, monkeypatch):
+    def test_shows_feature_group_and_step(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
-        _setup_render(quarterdeck, tmp_path, monkeypatch)
-
+        _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
+        assert "# Foundation" in out
+        assert "STEP 1" in out
+        assert "Core" in out
+        assert "story" in out
 
-        assert "# Foundational" in out
-        assert "# Screens" in out
-        assert "Story Points = 1000" in out  # FEATURE-Schema.md
-        assert "Story Points = 100" in out  # SCREEN-Dashboard.md
-        assert "Total Story Points = <strong>1100</strong>" in out
-        # Navigation affordances present.
-        assert "compassSplit('build_compass',0,0)" in out
-        assert "compassOp('build_compass','combine',1)" in out
-
-    def test_missing_spec_file_flagged(self, tmp_path, monkeypatch):
+    def test_step_cost_includes_full_stack(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
-        _setup_render(quarterdeck, tmp_path, monkeypatch, compass_text="# G\nGHOST.md\n")
+        _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
+        # compass 200 + arch 4000 + db 400 + common 40 = 4640 bytes -> 1160 SP,
+        # plus instructions text. Cost must exceed the bare spec-file total (1100).
+        assert "Total Story Points = <strong>" in out
+        import re
+
+        total = int(re.search(r"Total Story Points = <strong>(\d+)</strong>", out).group(1))
+        assert total > 1100
+
+    def test_missing_context_file_flagged(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "missing-ctx.md" in out
         assert "missing" in out
-        assert "Total Story Points = <strong>0</strong>" in out
 
-    def test_absent_file_offers_seed_when_manifest_has_specs(self, tmp_path, monkeypatch):
+    def test_acceptance_folded_as_post_action(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
-        monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
-        (tmp_path / "MANIFEST.md").write_text(
-            "# MANIFEST: Demo\nstate: draft\n\n"
-            "## story 1: Build A\nid: build-a\nimplements: FEATURE-A.md\nstate: pending\n",
-            encoding="utf-8",
-        )
-
-        def _missing(_p):
-            raise quarterdeck.HTTPException(status_code=404, detail="missing")
-
-        monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+        _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
-        assert "Seed from Manifest" in out
-        assert "compassSeed('build_compass')" in out
+        assert "post: Core Works" in out
+        # The ac is folded, not rendered as its own step.
+        assert "STEP 2" not in out
 
-
-def _setup_op(quarterdeck, tmp_path, monkeypatch, *, compass_text=_COMPASS):
-    compass_file = tmp_path / "BUILD_COMPASS.md"
-    compass_file.write_text(compass_text, encoding="utf-8")
-    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _ITEM)
-    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _p: compass_file)
-    return compass_file
-
-
-def _parse(quarterdeck, compass_file):
-    from drydock.build_compass import parse_build_compass
-
-    return parse_build_compass(compass_file.read_text(encoding="utf-8"))
-
-
-class TestOps:
-    def test_move_down_persists_clean_file(self, tmp_path, monkeypatch):
+    def test_over_warn_flagged(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
-        compass_file = _setup_op(quarterdeck, tmp_path, monkeypatch)
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        from drydock.build import PROMPT_WARN_KB
 
-        result = quarterdeck.api_compass_op(
-            "build_compass", quarterdeck.CompassOp(op="move_down", group=0)
-        )
+        big = quarterdeck._step_roots().blueprint_dir / "ARCHITECTURE.md"
+        big.write_bytes(b"x" * (PROMPT_WARN_KB * 1024 + 10))
+        out = quarterdeck.render_compass(_ITEM)
+        assert "over" in out and "KB" in out
 
-        assert result["ok"] is True
-        compass = _parse(quarterdeck, compass_file)
-        assert [g.name for g in compass.groups] == ["Screens", "Foundational"]
-        # Authored file carries no numbers.
-        assert "Story Points" not in compass_file.read_text(encoding="utf-8")
-
-    def test_combine_merges_into_previous(self, tmp_path, monkeypatch):
+    def test_no_manifest_prompts_plan_create(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
-        compass_file = _setup_op(quarterdeck, tmp_path, monkeypatch)
-
-        quarterdeck.api_compass_op("build_compass", quarterdeck.CompassOp(op="combine", group=1))
-
-        compass = _parse(quarterdeck, compass_file)
-        assert len(compass.groups) == 1
-        assert compass.groups[0].files == ["FEATURE-Schema.md", "SCREEN-Dashboard.md"]
-
-    def test_split_moves_file_into_new_group(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        compass_file = _setup_op(quarterdeck, tmp_path, monkeypatch)
-
-        quarterdeck.api_compass_op(
-            "build_compass", quarterdeck.CompassOp(op="split", group=0, file=0)
-        )
-
-        compass = _parse(quarterdeck, compass_file)
-        assert [g.name for g in compass.groups] == ["Foundational", "New Group", "Screens"]
-        assert compass.groups[1].files == ["FEATURE-Schema.md"]
-        assert compass.groups[0].files == []
-
-    def test_rename_sets_group_name(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        compass_file = _setup_op(quarterdeck, tmp_path, monkeypatch)
-
-        quarterdeck.api_compass_op(
-            "build_compass", quarterdeck.CompassOp(op="rename", group=0, name="Core")
-        )
-
-        compass = _parse(quarterdeck, compass_file)
-        assert compass.groups[0].name == "Core"
-
-    def test_out_of_range_group_rejected(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        _setup_op(quarterdeck, tmp_path, monkeypatch)
-        with pytest.raises(quarterdeck.HTTPException, match="out of range"):
-            quarterdeck.api_compass_op(
-                "build_compass", quarterdeck.CompassOp(op="move_up", group=9)
-            )
-
-    def test_unknown_op_rejected(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        _setup_op(quarterdeck, tmp_path, monkeypatch)
-        with pytest.raises(quarterdeck.HTTPException, match="Unknown compass op"):
-            quarterdeck.api_compass_op("build_compass", quarterdeck.CompassOp(op="bogus", group=0))
-
-
-class TestSeed:
-    def test_seed_writes_flat_group_from_manifest(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        compass_file = tmp_path / "BUILD_COMPASS.md"
-        monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
-        monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _ITEM)
-        monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _p: compass_file)
-        (tmp_path / "MANIFEST.md").write_text(
-            "# MANIFEST: Demo\nstate: draft\n\n"
-            "## story 1: Build A\nid: build-a\nimplements: FEATURE-A.md\nstate: pending\n\n"
-            "## story 2: Build B\nid: build-b\nimplements: FEATURE-B.md\nstate: pending\n",
-            encoding="utf-8",
-        )
-
-        result = quarterdeck.api_compass_seed("build_compass")
-
-        assert result == {"ok": True, "count": 2}
-        compass = _parse(quarterdeck, compass_file)
-        assert len(compass.groups) == 1
-        assert compass.groups[0].files == ["FEATURE-A.md", "FEATURE-B.md"]
-
-    def test_seed_without_manifest_specs_rejected(self, tmp_path, monkeypatch):
-        quarterdeck = _load_quarterdeck()
-        monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
-        monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _ITEM)
-        with pytest.raises(quarterdeck.HTTPException, match="No MANIFEST.md stories"):
-            quarterdeck.api_compass_seed("build_compass")
+        monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path / "empty")
+        out = quarterdeck.render_compass(_ITEM)
+        assert "drydock plan create" in out

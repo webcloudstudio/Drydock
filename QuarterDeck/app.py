@@ -516,114 +516,137 @@ def render_plan_decision(item: dict[str, Any]) -> str:
     )
 
 
-# ── Compass (BUILD_COMPASS.md grouping + live story-point recompute) ──────────────
+# ── Compass (MANIFEST.md step order/grouping + live prompt-stack cost) ────────────
 
-# Spec files the compass groups live under the Target's Blueprint.
-_BLUEPRINT_DIR = PROJECT_ROOT / "blueprint"
-
-
-def _compass_seed_specs() -> list[str]:
-    """Spec files named by MANIFEST.md steps, de-duped in build order — the seed set."""
-    from drydock.build_plan import parse_build_plan
-    from drydock.errors import SpecificationError
-
-    manifest_path = PROJECT_ROOT / "MANIFEST.md"
-    try:
-        plan = parse_build_plan(manifest_path)
-    except SpecificationError:
-        return []
-
-    specs: list[str] = []
-    for block in plan.blocks:
-        for spec in block.fields.get("implements", ()):
-            if spec not in specs:
-                specs.append(spec)
-    return specs
+# The compass is a live, read-only view of the Manifest work graph: feature
+# groups → executable steps (story/spike) → folded acceptance post-actions. Each
+# step's story-point cost is its full assembled build prompt (COMPASS.md +
+# implements/context specs + stack + rules + instructions), derived on demand by
+# build.assemble_step and never written back.
 
 
-def _render_compass_seed(item: dict[str, Any]) -> str:
-    """Empty/absent compass — offer to seed a flat grouping from the Manifest."""
-    iid = html.escape(item["id"])
-    specs = _compass_seed_specs()
-    if not specs:
-        return (
-            "<p class='subtle'>No build grouping yet, and MANIFEST.md has no stories to seed "
-            "from. Run <code>drydock plan create</code> first.</p>"
-        )
-    return (
-        f"<p class='subtle'>No build grouping yet. Seed one flat group from the "
-        f"{len(specs)} Manifest spec file(s), then regroup below.</p>"
-        f"<button class='cmp-seed' onclick=\"compassSeed('{iid}')\">Seed from Manifest</button>"
+def _step_roots():
+    """Resolve the per-role file roots the assembler reads, for this Target."""
+    from drydock.build import StepRoots
+    from drydock.paths import get_rigging_root, get_stack_dir
+
+    return StepRoots(
+        target_dir=PROJECT_ROOT,
+        blueprint_dir=PROJECT_ROOT / "blueprint",
+        stack_dir=get_stack_dir(),
+        rigging_dir=get_rigging_root(),
     )
 
 
-def render_compass(item: dict[str, Any]) -> str:
-    """Render BUILD_COMPASS.md as one navigable, live-costed pane.
+def _render_compass_empty() -> str:
+    return (
+        "<p class='subtle'>No build steps yet. Run <code>drydock plan create</code> to "
+        "generate <code>MANIFEST.md</code>.</p>"
+    )
 
-    Shows each group with its story-point rollup and each file's story points
-    (``bytes / 4``), plus a total — all derived on the fly by
-    ``recompute_token_costs`` and never persisted. Move / combine / split / rename
-    controls mutate the clean authored file in place.
+
+def _render_step_files(step) -> str:
+    """Collapsible per-file cost breakdown for one step, grouped by role."""
+    rows = []
+    for fc in step.files:
+        miss = " <span class='cmp-miss'>missing</span>" if fc.missing else ""
+        rows.append(
+            "<li class='cmp-file'>"
+            f"<span class='cmp-role'>{html.escape(fc.role)}</span>"
+            f"<span class='cmp-fname'>{html.escape(fc.name)}</span>"
+            f"<span class='cmp-fsp'>SP {fc.story_points}</span>{miss}"
+            "</li>"
+        )
+    if step.instructions_story_points:
+        rows.append(
+            "<li class='cmp-file'>"
+            "<span class='cmp-role'>instructions</span>"
+            "<span class='cmp-fname'>(task text)</span>"
+            f"<span class='cmp-fsp'>SP {step.instructions_story_points}</span>"
+            "</li>"
+        )
+    return (
+        "<details class='cmp-detail'><summary>stack breakdown</summary>"
+        f"<ul class='cmp-files'>{''.join(rows)}</ul></details>"
+    )
+
+
+def render_compass(item: dict[str, Any]) -> str:  # noqa: ARG001
+    """Render MANIFEST.md as the build compass: grouped, costed build steps.
+
+    Read-only view. Feature groups carry a story-point rollup; each story/spike
+    step shows its assembled prompt cost with a collapsible per-file breakdown and
+    its acceptance checks folded beneath as post-actions. Steps whose stack
+    exceeds the context warn ceiling are flagged.
     """
-    from drydock.build_compass import parse_build_compass, recompute_token_costs
+    from drydock.build import assemble_steps, group_steps
+    from drydock.build_plan import parse_build_plan
+    from drydock.errors import SpecificationError
 
-    iid = html.escape(item["id"])
     try:
-        text = resolve_path(item["path"]).read_text(encoding="utf-8")
-    except HTTPException:
-        return _render_compass_seed(item)
+        plan = parse_build_plan(PROJECT_ROOT / "MANIFEST.md")
+    except SpecificationError:
+        return _render_compass_empty()
 
-    compass = parse_build_compass(text)
-    if not compass.groups:
-        return _render_compass_seed(item)
+    steps = assemble_steps(plan, _step_roots())
+    if not steps:
+        return _render_compass_empty()
+    groups = group_steps(plan, steps)
 
-    cost = recompute_token_costs(compass, file_root=_BLUEPRINT_DIR)
+    by_id = plan.by_id()
+    acs_by_parent: dict[str, list] = {}
+    for block in plan.blocks:
+        if block.block_type == "ac" and block.parent:
+            acs_by_parent.setdefault(block.parent, []).append(block)
+
+    total_sp = sum(s.total_story_points for s in steps)
+    warn_n = sum(1 for s in steps if s.over_warn)
+    warn_html = (
+        f" <span class='cmp-warn'>{warn_n} step(s) over {steps[0].warn_kb}KB</span>"
+        if warn_n
+        else ""
+    )
     parts = [
-        f"<div class='cmp-total'>Total Story Points = <strong>{cost.total_story_points}</strong></div>"
+        f"<div class='cmp-total'>Total Story Points = <strong>{total_sp}</strong>"
+        f" · {len(steps)} steps{warn_html}</div>"
     ]
-    last = len(cost.groups) - 1
-    for gi, group in enumerate(cost.groups):
-        up = (
-            ""
-            if gi == 0
-            else (
-                f"<button class='cmp-op' title='Move up' onclick=\"compassOp('{iid}','move_up',{gi})\">↑</button>"
+
+    n = 0
+    for group in groups:
+        step_cards = []
+        for step in group.steps:
+            n += 1
+            warn = (
+                f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
             )
-        )
-        down = (
-            ""
-            if gi == last
-            else (
-                f"<button class='cmp-op' title='Move down' onclick=\"compassOp('{iid}','move_down',{gi})\">↓</button>"
+            ac_lines = "".join(
+                f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
+                f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"
+                for ac in acs_by_parent.get(step.block_id, [])
             )
-        )
-        combine = (
-            ""
-            if gi == 0
-            else (
-                f"<button class='cmp-op' title='Combine into previous' onclick=\"compassOp('{iid}','combine',{gi})\">⊕ combine up</button>"
+            ac_html = f"<ul class='cmp-acs'>{ac_lines}</ul>" if ac_lines else ""
+            step_cards.append(
+                "<div class='cmp-step'>"
+                "<div class='cmp-shead'>"
+                f"<span class='cmp-snum'>STEP {n}</span>"
+                f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
+                f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
+                f"<span class='cmp-gsp'>Story Points = {step.total_story_points}</span>{warn}"
+                "</div>"
+                f"{_render_step_files(step)}"
+                f"{ac_html}"
+                "</div>"
             )
-        )
-        rename = f"<button class='cmp-op' title='Rename group' onclick=\"compassRename('{iid}',{gi})\">rename</button>"
-        rows = []
-        for fi, fc in enumerate(group.files):
-            miss = " <span class='cmp-miss'>missing</span>" if fc.missing else ""
-            rows.append(
-                "<li class='cmp-file'>"
-                f"<span class='cmp-fname'>{html.escape(fc.name)}</span>"
-                f"<span class='cmp-fsp'>Story Points = {fc.story_points}</span>{miss}"
-                f"<button class='cmp-op' title='Split into a new group' "
-                f"onclick=\"compassSplit('{iid}',{gi},{fi})\">split</button>"
-                "</li>"
-            )
+        gname = group.name
+        if group.feature_id and group.feature_id in by_id:
+            gname = by_id[group.feature_id].name
         parts.append(
             "<div class='cmp-group'>"
             "<div class='cmp-ghead'>"
-            f"<span class='cmp-gname'># {html.escape(group.name)}</span>"
-            f"<span class='cmp-gsp'>Story Points = {group.story_points}</span>"
-            f"<span class='cmp-ops'>{up}{down}{combine}{rename}</span>"
+            f"<span class='cmp-gname'># {html.escape(gname)}</span>"
+            f"<span class='cmp-gsp'>Story Points = {group.total_story_points}</span>"
             "</div>"
-            f"<ul class='cmp-files'>{''.join(rows)}</ul>"
+            f"{''.join(step_cards)}"
             "</div>"
         )
     return "".join(parts)
@@ -1246,13 +1269,6 @@ class PlanDecision(BaseModel):
     decision: str
 
 
-class CompassOp(BaseModel):
-    op: str
-    group: int
-    file: int | None = None
-    name: str | None = None
-
-
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -1314,71 +1330,6 @@ def api_plan_decision(item_id: str, update: PlanDecision) -> dict[str, Any]:
         decision=update.decision,
     )
     return {"ok": True, "decision": update.decision, "state": plan.state}
-
-
-@app.post("/api/compass/{item_id}/op")
-def api_compass_op(item_id: str, update: CompassOp) -> dict[str, Any]:
-    """Apply one navigation mutation and persist the clean authored file.
-
-    Each move / combine / split / rename writes BUILD_COMPASS.md immediately
-    (authored content only); the client re-renders to recompute costs live.
-    """
-    from drydock.build_compass import CompassGroup, parse_build_compass, render_build_compass
-
-    item = find_item(item_id)
-    if item.get("type") != "compass":
-        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
-
-    path = resolve_write_path(item["path"])
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    compass = parse_build_compass(text)
-    groups = compass.groups
-    gi = update.group
-    if gi < 0 or gi >= len(groups):
-        raise HTTPException(status_code=400, detail=f"Group index {gi} out of range")
-
-    op = update.op
-    if op == "move_up":
-        if gi > 0:
-            groups[gi - 1], groups[gi] = groups[gi], groups[gi - 1]
-    elif op == "move_down":
-        if gi < len(groups) - 1:
-            groups[gi + 1], groups[gi] = groups[gi], groups[gi + 1]
-    elif op == "combine":
-        if gi > 0:
-            groups[gi - 1].files.extend(groups[gi].files)
-            del groups[gi]
-    elif op == "rename":
-        if not (update.name and update.name.strip()):
-            raise HTTPException(status_code=400, detail="A non-empty name is required to rename")
-        groups[gi].name = update.name.strip()
-    elif op == "split":
-        fi = update.file
-        if fi is None or fi < 0 or fi >= len(groups[gi].files):
-            raise HTTPException(status_code=400, detail=f"File index {update.file} out of range")
-        moved = groups[gi].files.pop(fi)
-        groups.insert(gi + 1, CompassGroup(name="New Group", files=[moved]))
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown compass op {op!r}")
-
-    path.write_text(render_build_compass(compass), encoding="utf-8")
-    return {"ok": True, "op": op}
-
-
-@app.post("/api/compass/{item_id}/seed")
-def api_compass_seed(item_id: str) -> dict[str, Any]:
-    """Seed a flat one-group BUILD_COMPASS.md from the Manifest's spec files."""
-    from drydock.build_compass import render_build_compass, seed_from_specs
-
-    item = find_item(item_id)
-    if item.get("type") != "compass":
-        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
-    specs = _compass_seed_specs()
-    if not specs:
-        raise HTTPException(status_code=400, detail="No MANIFEST.md stories to seed from")
-    path = resolve_write_path(item["path"])
-    path.write_text(render_build_compass(seed_from_specs(specs)), encoding="utf-8")
-    return {"ok": True, "count": len(specs)}
 
 
 @app.get("/raw/{item_id}")
@@ -1657,16 +1608,25 @@ _STYLE = """
   .cmp-ghead { display:flex; align-items:center; gap:12px; padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
   .cmp-gname { font-weight:700; font-family:ui-monospace,Consolas,monospace; }
   .cmp-gsp { font-size:12px; color:#475569; font-weight:600; }
-  .cmp-ops { margin-left:auto; display:flex; gap:4px; }
   .cmp-files { list-style:none; margin:0; padding:4px 12px 8px; }
-  .cmp-file { display:flex; align-items:center; gap:12px; padding:5px 0; border-bottom:1px solid #f1f5f9; }
+  .cmp-file { display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid #f1f5f9; }
   .cmp-file:last-child { border-bottom:none; }
   .cmp-fname { font-family:ui-monospace,Consolas,monospace; font-size:13px; }
-  .cmp-fsp { font-size:12px; color:#64748b; margin-left:auto; }
+  .cmp-fsp { font-size:12px; color:#64748b; margin-left:auto; white-space:nowrap; }
   .cmp-miss { font-size:11px; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 6px; border-radius:10px; }
-  .cmp-op { font-size:11px; padding:2px 8px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#334155; }
-  .cmp-op:hover { background:#eef2f7; }
-  .cmp-seed { padding:8px 16px; background:#111827; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:13px; }
+  .cmp-role { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#64748b; background:#eef2f7; padding:1px 6px; border-radius:3px; min-width:74px; text-align:center; }
+  .cmp-step { padding:8px 12px; border-bottom:1px solid #eef2f7; }
+  .cmp-step:last-child { border-bottom:none; }
+  .cmp-shead { display:flex; align-items:center; gap:10px; }
+  .cmp-snum { font-size:11px; font-weight:700; color:#1e3a8a; background:#dbeafe; padding:1px 7px; border-radius:3px; }
+  .cmp-stype { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
+  .cmp-sname { font-weight:600; font-size:13px; }
+  .cmp-warn { font-size:11px; font-weight:700; color:#92400e; background:#fef3c7; padding:1px 7px; border-radius:10px; }
+  .cmp-detail { margin:6px 0 0; }
+  .cmp-detail summary { cursor:pointer; font-size:11px; color:#64748b; }
+  .cmp-acs { list-style:none; margin:6px 0 0; padding:0 0 0 18px; }
+  .cmp-ac { font-size:12px; color:#475569; padding:2px 0; }
+  .cmp-ackind { font-size:10px; color:#64748b; background:#f1f5f9; padding:0 5px; border-radius:3px; }
 """
 
 
@@ -1776,32 +1736,6 @@ def index() -> str:
       }});
       if (!r.ok) {{ const d = await r.json().catch(() => ({{}})); alert('Save failed: ' + (d.detail || r.status)); return; }}
       loadDoc(itemId);
-    }}
-    async function compassOp(itemId, op, group, file) {{
-      const body = {{op, group}};
-      if (file !== undefined) body.file = file;
-      const r = await fetch(`/api/compass/${{itemId}}/op`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify(body)
-      }});
-      if (r.ok) loadDoc(itemId);
-      else {{ const d = await r.json().catch(() => ({{}})); alert('Compass op failed: ' + (d.detail || r.status)); }}
-    }}
-    function compassSplit(itemId, group, file) {{ compassOp(itemId, 'split', group, file); }}
-    async function compassRename(itemId, group) {{
-      const name = prompt('New group name:');
-      if (name === null) return;
-      const r = await fetch(`/api/compass/${{itemId}}/op`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{op: 'rename', group, name}})
-      }});
-      if (r.ok) loadDoc(itemId);
-      else {{ const d = await r.json().catch(() => ({{}})); alert('Rename failed: ' + (d.detail || r.status)); }}
-    }}
-    async function compassSeed(itemId) {{
-      const r = await fetch(`/api/compass/${{itemId}}/seed`, {{method: 'POST'}});
-      if (r.ok) loadDoc(itemId);
-      else {{ const d = await r.json().catch(() => ({{}})); alert('Seed failed: ' + (d.detail || r.status)); }}
     }}
     function toggleSection(el) {{
       el.classList.toggle('collapsed');
