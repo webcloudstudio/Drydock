@@ -232,6 +232,10 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
     assert result.ok
     assert result.text == "CODEX READY"
     assert result.command[:2] == ("codex", "exec")
+    assert "--ignore-user-config" in result.command
+    assert "--ignore-rules" in result.command
+    assert "--ephemeral" in result.command
+    assert result.command[result.command.index("--sandbox") + 1] == "workspace-write"
     assert result.stats.model == "codex-test"
     assert chunks == ["CODEX READY"]
 

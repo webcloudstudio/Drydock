@@ -101,14 +101,17 @@ def _command(
         command = [
             "codex",
             "exec",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--ephemeral",
+            "--sandbox",
+            "workspace-write",
             "--cd",
             str(working_directory),
             "--json",
             "--output-last-message",
             str(artifacts.output_file),
         ]
-        if allow_tools:
-            command.append("--dangerously-bypass-approvals-and-sandbox")
         if model:
             command.extend(("--model", model))
         command.append("-")
