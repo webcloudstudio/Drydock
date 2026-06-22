@@ -204,13 +204,24 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     from drydock.config import blueprint_dir_for, get_llm_provider, get_model, get_target_directory
     from drydock.rigging_compact import CompactItem, compact
 
-    blueprint_dir = blueprint_dir_for(get_target_directory() / args.Target)
-    model = get_model(getattr(args, "model", None))
-    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
-
     include_files = [Path(f) for f in (args.include_file or [])]
     exclude_files = [Path(f) for f in (args.exclude_file or [])]
     include_dirs = [Path(d) for d in (args.include_dir or [])]
+
+    explicit_only = bool(include_files or include_dirs) and args.Target is None
+    if explicit_only:
+        # No Target: use cwd as the anchor; auto-discovery finds nothing there, explicit paths drive all work.
+        spec_dir = Path.cwd()
+        label = str(spec_dir)
+    else:
+        if args.Target is None:
+            print("error: <Target> is required unless --include-file or --include-dir is provided.", file=sys.stderr)
+            return 2
+        spec_dir = blueprint_dir_for(get_target_directory() / args.Target)
+        label = args.Target
+
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
     def report(item: CompactItem) -> None:
         src = item.source.name
@@ -225,10 +236,10 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         else:
             print(f"  [failed]     {src}: {item.error}  see logs/ ({item.execution_id})")
 
-    print(f"Compacting Blueprint: {args.Target}")
+    print(f"Compacting: {label}")
     result = compact(
-        args.Target,
-        blueprint_dir,
+        label,
+        spec_dir,
         include_rigging=args.include_rigging,
         force=args.force,
         include_files=include_files or None,
@@ -1009,7 +1020,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rig_c = rig_sub.add_parser(
         "compact", help="Compact stale rules/data/spec files to _compact.md siblings."
     )
-    p_rig_c.add_argument("Target", metavar="<Target>")
+    p_rig_c.add_argument(
+        "Target",
+        nargs="?",
+        default=None,
+        metavar="<Target>",
+        help="Blueprint target name. Optional when --include-file or --include-dir is provided.",
+    )
     p_rig_c.add_argument(
         "--all",
         dest="include_rigging",
