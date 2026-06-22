@@ -182,7 +182,7 @@ def discover(
     if include_dirs:
         for d in include_dirs:
             for md in sorted(d.rglob("*.md")):
-                if md.is_file():
+                if md.is_file() and "logs" not in md.parts:
                     add(md)
 
     if include_files:
