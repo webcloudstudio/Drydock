@@ -1742,7 +1742,13 @@ def render_target_switcher(location: str) -> str:
             f"<a class='target-btn{active_cls}' href='/switch-target/{html.escape(target.target)}' "
             f"style='--target-accent:{html.escape(target.accent)};--target-accent-soft:{html.escape(target.accent_soft)}'"
             f"{active_attr}>"
+            "<span class='target-btn-main'>"
+            "<span class='target-btn-flags'>"
+            "<span class='target-flag flag-a'></span>"
+            "<span class='target-flag flag-b'></span>"
+            "</span>"
             f"<span class='target-btn-name'>{html.escape(target.label)}</span>"
+            "</span>"
             f"<span class='target-btn-id'>{html.escape(target.target)}</span>"
             "</a>"
         )
@@ -1768,6 +1774,7 @@ def render_target_switcher(location: str) -> str:
         "<div class='target-dock-head'>Targets</div>"
         "<div class='target-dock-break'></div>"
         f"<div class='target-btn-stack'>{buttons_html}</div>"
+        "<div class='target-dock-tail'></div>"
     )
 
 
@@ -1842,6 +1849,7 @@ _STYLE = """
   .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-top:0; }
   .target-dock { padding:0 8px 12px; }
   .target-dock-break { border-top:1px solid #eef2f7; margin:6px 0 10px; }
+  .target-dock-tail { border-top:1px solid #eef2f7; margin:10px 0 0; }
   .target-dock-head { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0; padding:0; }
   .target-btn-stack, .target-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
   .target-btn-stack { flex-direction:column; }
@@ -1851,6 +1859,15 @@ _STYLE = """
     color:#102033; box-shadow:0 10px 20px rgba(15,23,42,.06); transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
   .target-btn:hover { transform:translateY(-1px); box-shadow:0 12px 22px rgba(15,23,42,.12); border-color:var(--target-accent); }
   .target-btn.active { background:linear-gradient(135deg, var(--target-accent) 0%, color-mix(in srgb, var(--target-accent) 78%, black) 100%); color:#fff; border-color:transparent; box-shadow:0 14px 26px rgba(15,23,42,.18); }
+  .target-btn-main { display:flex; align-items:center; gap:10px; min-width:0; }
+  .target-btn-flags { display:flex; gap:4px; flex:none; }
+  .target-flag { display:inline-block; width:14px; height:10px; border-radius:2px; border:1px solid rgba(15,23,42,.16); box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
+  .target-btn.active .target-flag { border-color:rgba(255,255,255,.35); }
+  .flag-a { background:linear-gradient(180deg, #fff 0 33%, var(--target-accent-soft) 33% 66%, var(--target-accent) 66% 100%); }
+  .flag-b { background:
+    linear-gradient(90deg, transparent 0 50%, rgba(255,255,255,.88) 50% 54%, transparent 54% 100%),
+    linear-gradient(180deg, rgba(255,255,255,.9) 0 48%, transparent 48% 52%, rgba(255,255,255,.9) 52% 100%),
+    linear-gradient(135deg, color-mix(in srgb, var(--target-accent) 88%, black) 0%, var(--target-accent) 100%); }
   .target-btn-name { font-weight:800; font-size:13px; line-height:1.15; }
   .target-btn-id { font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.78; }
   .nav-section { margin-bottom:16px; }
