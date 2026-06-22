@@ -839,6 +839,36 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
     assert "data-item='old'" in rendered
 
 
+def test_render_nav_includes_build_compass_item_flag(monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [
+                {"id": "core", "label": "Core", "dot": "#0d9488", "pinned": True},
+            ],
+            "items": [
+                {
+                    "id": "build_compass",
+                    "label": "Build Steps",
+                    "section": "core",
+                    "type": "compass",
+                    "path": "../MANIFEST.md",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
+    monkeypatch.setattr(quarterdeck, "_is_item_archived", lambda _item: False)
+
+    rendered = quarterdeck.render_nav()
+
+    assert "Build Steps" in rendered
+    assert "class=\"item-flag\"" in rendered or "class='item-flag'" in rendered
+
+
 def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)

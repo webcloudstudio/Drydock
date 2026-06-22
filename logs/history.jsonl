@@ -3645,3 +3645,6 @@
 {"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-160/test_document_assemble_is_not_0/spec.md --output /tmp/pytest-of-barlo/pytest-160/test_document_assemble_is_not_0/out.html", "time": "2026-06-22 19:38", "return_code": 0}
 {"command": "drydock run", "time": "2026-06-22 19:38", "return_code": 0}
 {"command": "drydock import Drydock_Prod --format compass QuarterDeck/README.md", "time": "2026-06-22 19:53", "target": "Drydock_Prod", "return_code": 0}
+{"command": "drydock init Marina2", "time": "2026-06-22 21:15", "target": "Marina2", "return_code": 0}
+{"command": "drydock import Marina2 /mnt/c/Users/barlo/projects/Specifications/Marina --format markdown", "time": "2026-06-22 21:16", "target": "Marina2", "return_code": 0}
+{"command": "drydock analyze Marina2", "time": "2026-06-22 21:26", "target": "Marina2", "return_code": 0}

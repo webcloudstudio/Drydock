@@ -6,20 +6,18 @@ SOURCE=/mnt/c/Users/barlo/projects/Specifications/Marina
 # On WSL/DrvFs, a directory can enter a zombie state where stat returns ENOENT
 # but mkdir returns EEXIST.  cmd.exe rmdir resolves it when plain rm cannot.
 rm -rf targets/$PROJECT 2>/dev/null || cmd.exe /c "rmdir /s /q targets" 2>/dev/null || true
-drydock status $OPTS
 read
 drydock init $PROJECT $OPTS
 read
-drydock status $OPTS
+drydock status $PROJECT $OPTS
 read
 drydock import $PROJECT $SOURCE --format markdown $OPTS
 read
-drydock status $OPTS
+drydock status $PROJECT $OPTS
 read
 drydock analyze $PROJECT $OPTS
 read
-drydock status $OPTS
+drydock status $PROJECT $OPTS
 read
-drydock plan create $PROJECT $OPTS
+drydock plan $PROJECT $OPTS
 read
-

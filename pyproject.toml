@@ -103,6 +103,7 @@ no_implicit_optional = true
 line-length = 100
 exclude = ["Rigging/", "dist/"]
 target-version = "py311"
+preview = true
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]

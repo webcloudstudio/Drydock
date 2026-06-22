@@ -149,6 +149,17 @@ _SECTION_FLAGS: dict[str, str] = {
     ),
 }
 
+_ITEM_FLAGS: dict[str, str] = {
+    "build_compass": (
+        '<svg class="item-flag" width="14" height="10" viewBox="0 0 16 12" '
+        "aria-hidden='true'>"
+        '<rect width="16" height="12" fill="#ffffff"/>'
+        '<rect x="0" y="0" width="8" height="6" fill="#1d4ed8"/>'
+        '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
+        "</svg>"
+    ),
+}
+
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
 STATUSES = [
     ("backlog", "Backlog"),
@@ -1793,6 +1804,7 @@ def render_nav() -> str:
                 lbl = html.escape(item.get("label", item["id"]))
                 iid = html.escape(item["id"])
                 icon = _NAV_STATUS_HTML.get(item_nav_status(item) or "", "")
+                item_flag = _ITEM_FLAGS.get(item["id"], "")
                 if section["id"] == "archive":
                     arc = (
                         f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" "
@@ -1810,11 +1822,14 @@ def render_nav() -> str:
                     url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
                     btn = (
                         f"<a class='doc-btn' href='{html.escape(url)}' "
-                        f"target='_blank' rel='noopener'>{icon}{lbl}"
+                        f"target='_blank' rel='noopener'>{icon}{item_flag}{lbl}"
                         "<span class='ext-arrow'>↗</span></a>"
                     )
                 else:
-                    btn = f"<button class='doc-btn' data-item='{iid}'>{icon}{lbl}</button>"
+                    btn = (
+                        f"<button class='doc-btn' data-item='{iid}'>"
+                        f"{icon}{item_flag}{lbl}</button>"
+                    )
                 item_htmls.append(f"<div class='nav-item-row'>{btn}{arc}</div>")
             btns = "".join(item_htmls)
         else:
@@ -1968,6 +1983,8 @@ _STYLE = """
   .arc-btn:hover { opacity:1; color:#475569; background:#eef2f7; }
   .sec-flag { display:inline-flex; align-items:center; flex:none; margin-right:2px;
               border:1px solid rgba(0,0,0,.15); border-radius:1px; }
+  .item-flag { display:inline-flex; align-items:center; flex:none; margin-right:6px;
+               border:1px solid rgba(0,0,0,.15); border-radius:1px; }
   .sec-blockers > .section-head { color:#dc2626; border-bottom-color:#fecaca; }
   .sec-blockers .doc-btn { color:#dc2626; }
   .sec-blockers .doc-btn:hover { background:#fef2f2; }
