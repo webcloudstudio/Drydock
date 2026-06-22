@@ -1765,8 +1765,8 @@ def render_target_switcher(location: str) -> str:
         )
 
     return (
-        "<div class='target-dock-break'></div>"
         "<div class='target-dock-head'>Targets</div>"
+        "<div class='target-dock-break'></div>"
         f"<div class='target-btn-stack'>{buttons_html}</div>"
     )
 
@@ -1822,8 +1822,8 @@ def render_nav() -> str:
             f"{btns}</div>"
         )
     return (
-        f"<div class='nav-scroll'>{''.join(nav_parts)}</div>"
         f"<div class='target-dock'>{render_target_switcher('nav')}</div>"
+        f"<div class='nav-scroll'>{''.join(nav_parts)}</div>"
     )
 
 
@@ -1839,10 +1839,10 @@ _STYLE = """
   header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.1); }
   main { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 46px); }
   nav { padding:14px 8px 10px; border-right:1px solid #d7dde5; background:#fff; display:flex; flex-direction:column; min-height:0; }
-  .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-bottom:14px; }
-  .target-dock { margin-top:auto; padding:10px 8px 2px; background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 24%); }
-  .target-dock-break { border-top:1px solid #d7dde5; margin:2px 0 12px; }
-  .target-dock-head { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0 0 10px; }
+  .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-top:0; }
+  .target-dock { padding:0 8px 12px; }
+  .target-dock-break { border-top:1px solid #eef2f7; margin:6px 0 10px; }
+  .target-dock-head { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0; padding:0; }
   .target-btn-stack, .target-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
   .target-btn-stack { flex-direction:column; }
   .target-btn { --target-accent:#1d4ed8; --target-accent-soft:#93c5fd; display:flex; align-items:center; justify-content:space-between; gap:10px;
