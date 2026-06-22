@@ -548,11 +548,11 @@ def test_archive_and_unarchive_item(tmp_path, monkeypatch):
 
     result = quarterdeck.api_archive_item("my_doc")
     assert result["ok"] is True
-    assert "my_doc" in quarterdeck._SESSION_ARCHIVED
+    assert quarterdeck._archive_key("my_doc") in quarterdeck._SESSION_ARCHIVED
 
     result = quarterdeck.api_unarchive_item("my_doc")
     assert result["ok"] is True
-    assert "my_doc" not in quarterdeck._SESSION_ARCHIVED
+    assert quarterdeck._archive_key("my_doc") not in quarterdeck._SESSION_ARCHIVED
 
 
 def test_archive_blocked_for_pinned_section(monkeypatch):
@@ -731,3 +731,91 @@ def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
     assert "data-sec='actions'" in rendered
     assert "data-item='discovery_guardrails'" in rendered
     assert "ns-done" in rendered
+
+
+def _write_target_console(target_dir: Path, name: str) -> None:
+    quarterdeck_dir = target_dir / "QuarterDeck"
+    (quarterdeck_dir / "pages").mkdir(parents=True, exist_ok=True)
+    (quarterdeck_dir / "pages" / "overview.md").write_text(
+        f"# {name} Captain's Chair\n\nStatus.\n",
+        encoding="utf-8",
+    )
+    (quarterdeck_dir / "console.yaml").write_text(
+        "\n".join(
+            [
+                "console:",
+                f"  name: {name} QuarterDeck",
+                "  default_item: commanders_view",
+                "project:",
+                f"  id: {name.lower()}",
+                f"  name: {name}",
+                "  description: \"Workspace target\"",
+                "sections:",
+                "  - { id: core, label: \"Core\", dot: \"#0d9488\", pinned: true }",
+                "items:",
+                "  - { id: commanders_view, label: \"Captain's Chair\", section: core, type: markdown, path: pages/overview.md }",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path: Path) -> Path:
+    workspace = tmp_path / "workspace"
+    alpha = workspace / "targets" / "Alpha"
+    beta = workspace / "targets" / "Beta"
+    _write_target_console(alpha, "Alpha")
+    _write_target_console(beta, "Beta")
+
+    monkeypatch.setattr(quarterdeck, "WORKSPACE_ROOT", workspace)
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", alpha)
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", alpha / "QuarterDeck")
+    monkeypatch.setattr(quarterdeck, "CONFIG_PATH", alpha / "QuarterDeck" / "console.yaml")
+    quarterdeck.CONFIG, quarterdeck.CONFIG_ERROR = quarterdeck.load_config(
+        base_dir=quarterdeck.BASE_DIR,
+        project_root=quarterdeck.PROJECT_ROOT,
+        config_path=quarterdeck.CONFIG_PATH,
+    )
+    return workspace
+
+
+class _RequestStub:
+    def __init__(self, cookies=None):
+        self.cookies = cookies or {}
+
+
+def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    rendered = quarterdeck.api_nav(_RequestStub())["html"]
+    assert "target-dock" in rendered
+    assert "/switch-target/Alpha" in rendered
+    assert "/switch-target/Beta" in rendered
+    assert "target-btn active" in rendered
+
+
+def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    response = quarterdeck.switch_target("Beta", _RequestStub())
+
+    assert response.status_code == 303
+    assert "quarterdeck_target=Beta" in response.headers["set-cookie"]
+
+    config = quarterdeck.api_config(_RequestStub({"quarterdeck_target": "Beta"}))
+    assert config["project"]["name"] == "Beta"
+
+
+def test_captains_chair_includes_target_switcher_panel(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    response = quarterdeck.api_document("commanders_view", _RequestStub({"quarterdeck_target": "Beta"}))
+    html = response["html"]
+    assert "Viewing Target" in html
+    assert "/switch-target/Alpha" in html
+    assert "/switch-target/Beta" in html
+    assert "Beta" in html

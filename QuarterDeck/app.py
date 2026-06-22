@@ -42,6 +42,8 @@ import html
 import json
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -50,8 +52,8 @@ from typing import Any
 
 import markdown
 import yaml
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 # The console runtime may live in the package while its state lives in a Target
@@ -71,6 +73,15 @@ PROJECT_ROOT = (
 )
 CONFIG_PATH = BASE_DIR / "console.yaml"
 WORKSPACE_ROOT = PROJECT_ROOT.parent.parent  # $DRYDOCK_WORKSPACE/targets/<Target> → workspace root
+ACTIVE_TARGET_COOKIE = "quarterdeck_target"
+TARGET_BUTTON_PALETTE = (
+    ("#0f766e", "#5eead4"),
+    ("#b45309", "#fbbf24"),
+    ("#1d4ed8", "#93c5fd"),
+    ("#be123c", "#fda4af"),
+    ("#4c1d95", "#c4b5fd"),
+    ("#166534", "#86efac"),
+)
 
 _DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 _DEFAULT_DOT = "#94a3b8"
@@ -140,22 +151,99 @@ class ConsoleConfigError(RuntimeError):
     """Raised when the Console configuration is missing or invalid."""
 
 
-def load_config() -> tuple[dict[str, Any], str | None]:
-    if not CONFIG_PATH.exists():
+@dataclass(frozen=True)
+class ConsoleTarget:
+    target: str
+    label: str
+    project_root: Path
+    base_dir: Path
+    config_path: Path
+    accent: str
+    accent_soft: str
+
+
+@dataclass(frozen=True)
+class ConsoleContext:
+    active_target: str
+    base_dir: Path
+    project_root: Path
+    config_path: Path
+    workspace_root: Path
+    config: dict[str, Any]
+    config_error: str | None
+    switchable_targets: tuple[ConsoleTarget, ...]
+
+
+_REQUEST_CONTEXT: ContextVar[ConsoleContext | None] = ContextVar(
+    "quarterdeck_request_context", default=None
+)
+
+
+def _active_context() -> ConsoleContext | None:
+    return _REQUEST_CONTEXT.get()
+
+
+def _current_base_dir() -> Path:
+    ctx = _active_context()
+    return ctx.base_dir if ctx else BASE_DIR
+
+
+def _current_project_root() -> Path:
+    ctx = _active_context()
+    return ctx.project_root if ctx else PROJECT_ROOT
+
+
+def _current_config_path() -> Path:
+    ctx = _active_context()
+    return ctx.config_path if ctx else CONFIG_PATH
+
+
+def _current_workspace_root() -> Path:
+    ctx = _active_context()
+    return ctx.workspace_root if ctx else WORKSPACE_ROOT
+
+
+def _current_active_target() -> str:
+    ctx = _active_context()
+    return ctx.active_target if ctx else PROJECT_ROOT.name
+
+
+def _current_switchable_targets() -> tuple[ConsoleTarget, ...]:
+    ctx = _active_context()
+    return ctx.switchable_targets if ctx else ()
+
+
+def load_config(
+    *,
+    base_dir: Path | None = None,
+    project_root: Path | None = None,
+    config_path: Path | None = None,
+) -> tuple[dict[str, Any], str | None]:
+    base_dir = base_dir or BASE_DIR
+    project_root = project_root or PROJECT_ROOT
+    config_path = config_path or (base_dir / "console.yaml")
+    if not config_path.exists():
         return {}, (
-            f"QuarterDeck config not found at {CONFIG_PATH}. "
+            f"QuarterDeck config not found at {config_path}. "
             "Create QuarterDeck/console.yaml for this project before starting the QuarterDeck."
         )
     try:
-        config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
-        _expand_sources(config)
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        _expand_sources(config, base_dir=base_dir, project_root=project_root)
         return config, None
     except yaml.YAMLError as exc:
-        return {}, f"QuarterDeck config at {CONFIG_PATH} is invalid YAML: {exc}"
+        return {}, f"QuarterDeck config at {config_path} is invalid YAML: {exc}"
 
 
-def _expand_sources(config: dict[str, Any]) -> None:
+def _expand_sources(
+    config: dict[str, Any],
+    *,
+    base_dir: Path | None = None,
+    project_root: Path | None = None,
+) -> None:
     """Expand sources: rules into items. Explicit items (by ID or by path) take priority."""
+    base_dir = base_dir or BASE_DIR
+    project_root = project_root or PROJECT_ROOT
     sources = config.get("sources", [])
     if not sources:
         return
@@ -169,7 +257,7 @@ def _expand_sources(config: dict[str, Any]) -> None:
             val = item.get(key)
             if val:
                 try:
-                    explicit_paths.add(str((BASE_DIR / val).resolve()))
+                    explicit_paths.add(str((base_dir / val).resolve()))
                 except Exception:
                     pass
 
@@ -188,12 +276,12 @@ def _expand_sources(config: dict[str, Any]) -> None:
         rule_defaults.setdefault("section", "project_pages")
         rule_defaults.setdefault("type", "markdown")
 
-        for path in sorted(PROJECT_ROOT.glob(glob_pattern)):
+        for path in sorted(project_root.glob(glob_pattern)):
             if not path.is_file():
                 continue
             if str(path.resolve()) in explicit_paths:
                 continue
-            rel_from_root = path.relative_to(PROJECT_ROOT)
+            rel_from_root = path.relative_to(project_root)
             rel_from_base = f"../{rel_from_root}"
             stem = path.stem
             auto_id = re.sub(r"[^a-z0-9]+", "_", stem.lower()).strip("_")
@@ -224,19 +312,107 @@ CONFIG, CONFIG_ERROR = load_config()
 app = FastAPI(title=CONFIG.get("console", {}).get("name", "Project Console"))
 
 
+def _target_palette(index: int) -> tuple[str, str]:
+    return TARGET_BUTTON_PALETTE[index % len(TARGET_BUTTON_PALETTE)]
+
+
+def _discover_switchable_targets(workspace_root: Path) -> tuple[ConsoleTarget, ...]:
+    targets_root = workspace_root / "targets"
+    if not targets_root.is_dir():
+        return ()
+
+    discovered: list[ConsoleTarget] = []
+    for index, target_dir in enumerate(sorted(p for p in targets_root.iterdir() if p.is_dir())):
+        base_dir = target_dir / "QuarterDeck"
+        config_path = base_dir / "console.yaml"
+        if not config_path.is_file():
+            continue
+        label = target_dir.name
+        try:
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            project = config.get("project", {})
+            label = str(project.get("name") or label)
+        except yaml.YAMLError:
+            pass
+        accent, accent_soft = _target_palette(index)
+        discovered.append(
+            ConsoleTarget(
+                target=target_dir.name,
+                label=label,
+                project_root=target_dir,
+                base_dir=base_dir,
+                config_path=config_path,
+                accent=accent,
+                accent_soft=accent_soft,
+            )
+        )
+    return tuple(discovered)
+
+
+def _resolve_request_context(request: Request | None = None) -> ConsoleContext:
+    switchable_targets = _discover_switchable_targets(WORKSPACE_ROOT)
+    target_map = {target.target: target for target in switchable_targets}
+    selected_target = request.cookies.get(ACTIVE_TARGET_COOKIE) if request else None
+    selected = target_map.get(selected_target or "")
+    if selected is None and PROJECT_ROOT.parent.name == "targets":
+        selected = target_map.get(PROJECT_ROOT.name)
+
+    if selected is None:
+        base_dir = BASE_DIR
+        project_root = PROJECT_ROOT
+        config_path = CONFIG_PATH
+        active_target = PROJECT_ROOT.name
+    else:
+        base_dir = selected.base_dir
+        project_root = selected.project_root
+        config_path = selected.config_path
+        active_target = selected.target
+
+    config, config_error = load_config(
+        base_dir=base_dir, project_root=project_root, config_path=config_path
+    )
+    return ConsoleContext(
+        active_target=active_target,
+        base_dir=base_dir,
+        project_root=project_root,
+        config_path=config_path,
+        workspace_root=WORKSPACE_ROOT,
+        config=config,
+        config_error=config_error,
+        switchable_targets=switchable_targets,
+    )
+
+
+@contextmanager
+def _request_context(request: Request | None):
+    token = _REQUEST_CONTEXT.set(_resolve_request_context(request) if request else None)
+    try:
+        yield
+    finally:
+        _REQUEST_CONTEXT.reset(token)
+
+
 # ── Config access ──────────────────────────────────────────────────────────────
 
 
 def require_config() -> dict[str, Any]:
+    ctx = _active_context()
+    if ctx:
+        if ctx.config_error:
+            raise ConsoleConfigError(ctx.config_error)
+        return ctx.config
     if CONFIG_ERROR:
         raise ConsoleConfigError(CONFIG_ERROR)
     return CONFIG
 
 
 def config_error_payload() -> dict[str, Any]:
+    ctx = _active_context()
+    detail = ctx.config_error if ctx else CONFIG_ERROR
+    config_path = ctx.config_path if ctx else CONFIG_PATH
     return {
-        "detail": CONFIG_ERROR,
-        "config_path": str(CONFIG_PATH),
+        "detail": detail,
+        "config_path": str(config_path),
         "next_step": "Add QuarterDeck/console.yaml, then restart the QuarterDeck.",
     }
 
@@ -251,6 +427,7 @@ _UNTRACKED_TYPES = frozenset({"link"})
 
 def _item_file_exists(item: dict[str, Any]) -> bool:
     """Return False when the item has a backing file path that does not exist."""
+    base_dir = _current_base_dir()
     item_type = item.get("type", "")
     if item_type in _UNTRACKED_TYPES:
         return True
@@ -262,7 +439,7 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
         if not path_val:
             return True
         try:
-            return (BASE_DIR / path_val).resolve().exists()
+            return (base_dir / path_val).resolve().exists()
         except Exception:
             return True
     if item_type == "document":
@@ -270,7 +447,7 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
             path_val = item.get(key)
             if path_val:
                 try:
-                    if (BASE_DIR / path_val).resolve().exists():
+                    if (base_dir / path_val).resolve().exists():
                         return True
                 except Exception:
                     pass
@@ -279,7 +456,7 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
     if not path_val:
         return True
     try:
-        return (BASE_DIR / path_val).resolve().exists()
+        return (base_dir / path_val).resolve().exists()
     except Exception:
         return True
 
@@ -300,7 +477,7 @@ def nav_model() -> list[dict[str, Any]]:
     Archived items (from non-pinned sections) are transparently moved to the
     archive section; pinned-section items are immune to archiving.
     """
-    config_sections = CONFIG.get("sections", [])
+    config_sections = require_config().get("sections", [])
     config_map = {s["id"]: s for s in config_sections}
     pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
 
@@ -348,8 +525,10 @@ def nav_model() -> list[dict[str, Any]]:
 def resolve_path(path_value: str) -> Path:
     """Resolve a config path relative to Console/, confined to the project root
     (the directory containing Console/) so siblings like ../evidence are reachable."""
-    path = (BASE_DIR / path_value).resolve()
-    if PROJECT_ROOT not in path.parents and path != PROJECT_ROOT:
+    base_dir = _current_base_dir()
+    project_root = _current_project_root()
+    path = (base_dir / path_value).resolve()
+    if project_root not in path.parents and path != project_root:
         raise HTTPException(status_code=400, detail=f"Path escapes the project: {path_value}")
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Missing file: {path_value}")
@@ -358,8 +537,10 @@ def resolve_path(path_value: str) -> Path:
 
 def resolve_write_path(path_value: str) -> Path:
     """Resolve for write: confined within the project root; creates parent dirs; file need not exist."""
-    path = (BASE_DIR / path_value).resolve()
-    if PROJECT_ROOT not in path.parents and path != PROJECT_ROOT:
+    base_dir = _current_base_dir()
+    project_root = _current_project_root()
+    path = (base_dir / path_value).resolve()
+    if project_root not in path.parents and path != project_root:
         raise HTTPException(status_code=400, detail=f"Path escapes the project: {path_value}")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
@@ -529,10 +710,11 @@ def _step_roots():
     """Resolve the per-role file roots the assembler reads, for this Target."""
     from drydock.build import StepRoots
     from drydock.paths import get_rigging_root, get_stack_dir
+    project_root = _current_project_root()
 
     return StepRoots(
-        target_dir=PROJECT_ROOT,
-        blueprint_dir=PROJECT_ROOT / "blueprint",
+        target_dir=project_root,
+        blueprint_dir=project_root / "blueprint",
         stack_dir=get_stack_dir(),
         rigging_dir=get_rigging_root(),
     )
@@ -597,9 +779,10 @@ def render_compass(item: dict[str, Any]) -> str:
     from drydock.build import assemble_steps, group_steps
     from drydock.build_plan import parse_build_plan
     from drydock.errors import SpecificationError
+    project_root = _current_project_root()
 
     try:
-        plan = parse_build_plan(PROJECT_ROOT / "MANIFEST.md")
+        plan = parse_build_plan(project_root / "MANIFEST.md")
     except SpecificationError:
         return _render_compass_empty()
 
@@ -1160,6 +1343,10 @@ def render_item(item: dict[str, Any]) -> str:
 _SESSION_ARCHIVED: set[str] = set()  # session-scoped archive state for non-questionnaire items
 
 
+def _archive_key(item_id: str) -> str:
+    return f"{_current_active_target()}::{item_id}"
+
+
 def _q_path_for(item_id: str) -> Path | None:
     """Return the resolved path of a questionnaire JSON file, or None."""
     item = next(
@@ -1167,7 +1354,7 @@ def _q_path_for(item_id: str) -> Path | None:
     )
     if not item or "path" not in item:
         return None
-    p = (BASE_DIR / item["path"]).resolve()
+    p = (_current_base_dir() / item["path"]).resolve()
     return p if p.exists() else None
 
 
@@ -1175,12 +1362,12 @@ def _is_item_archived(item: dict[str, Any]) -> bool:
     """Return True when this item has been archived via the UI."""
     if item.get("type") == "questionnaire" and "path" in item:
         try:
-            p = (BASE_DIR / item["path"]).resolve()
+            p = (_current_base_dir() / item["path"]).resolve()
             data = json.loads(p.read_text(encoding="utf-8"))
             return bool(data.get("archived", False))
         except Exception:
             return False
-    return item.get("id", "") in _SESSION_ARCHIVED
+    return _archive_key(item.get("id", "")) in _SESSION_ARCHIVED
 
 
 def _set_q_archived(item_id: str, archived: bool) -> None:
@@ -1206,7 +1393,7 @@ def item_pending(item: dict[str, Any]) -> bool:
         if not path:
             return False
         try:
-            p = (BASE_DIR / path).resolve()
+            p = (_current_base_dir() / path).resolve()
             if not p.exists():
                 return True
             data = json.loads(p.read_text(encoding="utf-8"))
@@ -1241,6 +1428,8 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
 
     acts_html = f"<div class='ph-actions'>{''.join(btns)}</div>" if btns else ""
     body = _H1_RE.sub("", body, count=1)
+    if item.get("id") == "commanders_view":
+        body = render_target_switcher("captains-chair") + body
     return (
         f"<div class='page-header'>"
         f"<div class='ph-title-row'><h1 class='ph-title'>{label}</h1>{fname_html}</div>"
@@ -1259,7 +1448,7 @@ def _find_q_path_by_id(q_id: str) -> Path | None:
     for item in items():
         if item.get("type") != "questionnaire" or "path" not in item:
             continue
-        p = (BASE_DIR / item["path"]).resolve()
+        p = (_current_base_dir() / item["path"]).resolve()
         if not p.exists():
             continue
         try:
@@ -1325,168 +1514,200 @@ class CompassMove(BaseModel):
 
 
 @app.get("/api/config")
-def api_config() -> dict[str, Any]:
-    return require_config()
+def api_config(request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        return require_config()
 
 
 @app.get("/api/items")
-def api_items() -> list[dict[str, Any]]:
-    return items()
+def api_items(request: Request = None) -> list[dict[str, Any]]:
+    with _request_context(request):
+        return items()
 
 
 @app.get("/api/nav")
-def api_nav() -> dict[str, str]:
-    return {"html": render_nav()}
+def api_nav(request: Request = None) -> dict[str, str]:
+    with _request_context(request):
+        return {"html": render_nav()}
 
 
 @app.get("/api/document/{item_id}")
-def api_document(item_id: str) -> dict[str, Any]:
-    item = find_item(item_id)
-    return {"item": item, "type": item.get("type"), "html": render_item(item)}
+def api_document(item_id: str, request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        item = find_item(item_id)
+        return {"item": item, "type": item.get("type"), "html": render_item(item)}
 
 
 @app.get("/api/ticket/{item_id}/{ticket_id}")
-def api_ticket(item_id: str, ticket_id: str) -> dict[str, Any]:
-    item = find_item(item_id)
-    if item.get("type") != "kanban":
-        raise HTTPException(status_code=404, detail=f"Item {item_id!r} is not a kanban")
-    try:
-        rendered = render_ticket_detail(item, ticket_id)
-    except HTTPException as exc:
-        rendered = f"<div class='item-error'>{html.escape(str(exc.detail))}</div>"
-    return {"item_id": item_id, "ticket_id": ticket_id, "html": rendered}
+def api_ticket(item_id: str, ticket_id: str, request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") != "kanban":
+            raise HTTPException(status_code=404, detail=f"Item {item_id!r} is not a kanban")
+        try:
+            rendered = render_ticket_detail(item, ticket_id)
+        except HTTPException as exc:
+            rendered = f"<div class='item-error'>{html.escape(str(exc.detail))}</div>"
+        return {"item_id": item_id, "ticket_id": ticket_id, "html": rendered}
 
 
 @app.post("/api/document/{item_id}/source")
-def api_set_source(item_id: str, update: SourceUpdate) -> dict[str, Any]:
-    item = find_item(item_id)
-    if item.get("type") != "editable_markdown":
-        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not editable")
-    path = resolve_write_path(item["path"])
-    path.write_text(update.content, encoding="utf-8")
-    return {"ok": True, "item_id": item_id}
+def api_set_source(item_id: str, update: SourceUpdate, request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") != "editable_markdown":
+            raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not editable")
+        path = resolve_write_path(item["path"])
+        path.write_text(update.content, encoding="utf-8")
+        return {"ok": True, "item_id": item_id}
 
 
 @app.post("/api/plan/{item_id}/decision")
-def api_plan_decision(item_id: str, update: PlanDecision) -> dict[str, Any]:
+def api_plan_decision(
+    item_id: str, update: PlanDecision, request: Request = None
+) -> dict[str, Any]:
     from drydock.build_plan import set_plan_state
 
-    item = find_item(item_id)
-    if item.get("type") != "plan_decision":
-        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a plan decision")
-    if update.decision != "approve":
-        raise HTTPException(status_code=400, detail="The Planning Session supports plan approval.")
-    plan = set_plan_state(
-        Path(item["plan_path"]),
-        "approved",
-        decision=update.decision,
-    )
-    return {"ok": True, "decision": update.decision, "state": plan.state}
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") != "plan_decision":
+            raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a plan decision")
+        if update.decision != "approve":
+            raise HTTPException(
+                status_code=400, detail="The Planning Session supports plan approval."
+            )
+        plan = set_plan_state(
+            Path(item["plan_path"]),
+            "approved",
+            decision=update.decision,
+        )
+        return {"ok": True, "decision": update.decision, "state": plan.state}
 
 
 @app.post("/api/compass/{item_id}/move")
-def api_compass_move(item_id: str, move: CompassMove) -> dict[str, Any]:
+def api_compass_move(item_id: str, move: CompassMove, request: Request = None) -> dict[str, Any]:
     from drydock.errors import SpecificationError
     from drydock.manifest_edit import apply_move
 
-    item = find_item(item_id)
-    if item.get("type") != "compass":
-        raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
-    try:
-        apply_move(
-            PROJECT_ROOT / "MANIFEST.md",
-            move.kind,
-            move.block_id,
-            direction=move.direction,
-            feature=move.feature,
-        )
-    except SpecificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True}
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") != "compass":
+            raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
+        try:
+            apply_move(
+                _current_project_root() / "MANIFEST.md",
+                move.kind,
+                move.block_id,
+                direction=move.direction,
+                feature=move.feature,
+            )
+        except SpecificationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
 
 
 @app.get("/raw/{item_id}")
-def raw_document(item_id: str, variant: str | None = Query(None)):
-    item = find_item(item_id)
-    t = item.get("type")
-    if t == "document":
-        if variant == "html":
-            path_value = item.get("path_html")
-        elif variant == "pdf":
-            path_value = item.get("path_pdf")
+def raw_document(item_id: str, variant: str | None = Query(None), request: Request = None):
+    with _request_context(request):
+        item = find_item(item_id)
+        t = item.get("type")
+        if t == "document":
+            if variant == "html":
+                path_value = item.get("path_html")
+            elif variant == "pdf":
+                path_value = item.get("path_pdf")
+            else:
+                path_value = item.get("path_md")
+        elif t == "link":
+            path_value = item.get("href")
         else:
-            path_value = item.get("path_md")
-    elif t == "link":
-        path_value = item.get("href")
-    else:
-        path_value = item.get("path")
-    if not path_value:
-        raise HTTPException(status_code=404, detail="Item has no file path")
-    return FileResponse(resolve_path(path_value))
+            path_value = item.get("path")
+        if not path_value:
+            raise HTTPException(status_code=404, detail="Item has no file path")
+        return FileResponse(resolve_path(path_value))
+
+
+@app.get("/switch-target/{target}")
+def switch_target(target: str, request: Request = None):
+    with _request_context(request):
+        valid_targets = {item.target for item in _current_switchable_targets()}
+        if target not in valid_targets:
+            raise HTTPException(status_code=404, detail=f"Unknown target: {target}")
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(ACTIVE_TARGET_COOKIE, target, path="/", samesite="lax")
+        return response
 
 
 @app.post("/api/item/{item_id}/archive")
-def api_archive_item(item_id: str) -> dict[str, Any]:
-    item = find_item(item_id)
-    config_sections = CONFIG.get("sections", [])
-    pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
-    if item.get("section") in pinned_sids:
-        raise HTTPException(status_code=400, detail="Items in pinned sections cannot be archived.")
-    if item.get("type") == "questionnaire":
-        _set_q_archived(item_id, True)
-    else:
-        _SESSION_ARCHIVED.add(item_id)
-    return {"ok": True, "item_id": item_id}
+def api_archive_item(item_id: str, request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        item = find_item(item_id)
+        config_sections = require_config().get("sections", [])
+        pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
+        if item.get("section") in pinned_sids:
+            raise HTTPException(
+                status_code=400, detail="Items in pinned sections cannot be archived."
+            )
+        if item.get("type") == "questionnaire":
+            _set_q_archived(item_id, True)
+        else:
+            _SESSION_ARCHIVED.add(_archive_key(item_id))
+        return {"ok": True, "item_id": item_id}
 
 
 @app.post("/api/item/{item_id}/unarchive")
-def api_unarchive_item(item_id: str) -> dict[str, Any]:
-    item = find_item(item_id)
-    if item.get("type") == "questionnaire":
-        _set_q_archived(item_id, False)
-    else:
-        _SESSION_ARCHIVED.discard(item_id)
-    return {"ok": True, "item_id": item_id}
+def api_unarchive_item(item_id: str, request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") == "questionnaire":
+            _set_q_archived(item_id, False)
+        else:
+            _SESSION_ARCHIVED.discard(_archive_key(item_id))
+        return {"ok": True, "item_id": item_id}
 
 
 @app.post("/api/state/{key}")
-def api_set_state(key: str, update: StateUpdate) -> dict[str, Any]:
-    if not key.startswith("questionnaire."):
-        raise HTTPException(status_code=400, detail=f"Unsupported state key: {key!r}")
-    _writeback_questionnaire(key, update.state, update.payload)
-    q_id = key[len("questionnaire.") :]
-    q_path = _find_q_path_by_id(q_id)
-    state, answered_at = update.state, None
-    if q_path:
-        try:
-            data = json.loads(q_path.read_text(encoding="utf-8"))
-            state = data.get("state", update.state)
-            answered_at = data.get("answered_at")
-        except Exception:
-            pass
-    return {"key": key, "state": state, "updated_at": answered_at}
+def api_set_state(key: str, update: StateUpdate, request: Request = None) -> dict[str, Any]:
+    with _request_context(request):
+        if not key.startswith("questionnaire."):
+            raise HTTPException(status_code=400, detail=f"Unsupported state key: {key!r}")
+        _writeback_questionnaire(key, update.state, update.payload)
+        q_id = key[len("questionnaire.") :]
+        q_path = _find_q_path_by_id(q_id)
+        state, answered_at = update.state, None
+        if q_path:
+            try:
+                data = json.loads(q_path.read_text(encoding="utf-8"))
+                state = data.get("state", update.state)
+                answered_at = data.get("answered_at")
+            except Exception:
+                pass
+        return {"key": key, "state": state, "updated_at": answered_at}
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    require_config()
-    return {"status": "ok"}
+def health(request: Request = None) -> dict[str, str]:
+    with _request_context(request):
+        require_config()
+        return {"status": "ok"}
 
 
 @app.get("/help", response_class=HTMLResponse)
-def help_page() -> HTMLResponse:
-    cfg, err = load_config()
-    if err:
-        raise HTTPException(status_code=503, detail=err)
-    rel = cfg.get("console", {}).get("app_help_file_location", "")
-    if not rel:
-        raise HTTPException(
-            status_code=404, detail="No app_help_file_location configured in console.yaml."
-        )
-    path = (WORKSPACE_ROOT / rel).resolve()
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail=f"Help file not found: {rel}")
-    return HTMLResponse(path.read_text(encoding="utf-8"))
+def help_page(request: Request = None) -> HTMLResponse:
+    with _request_context(request):
+        ctx = _active_context()
+        if ctx and ctx.config_error:
+            raise HTTPException(status_code=503, detail=ctx.config_error)
+        cfg = require_config()
+        rel = cfg.get("console", {}).get("app_help_file_location", "")
+        if not rel:
+            raise HTTPException(
+                status_code=404, detail="No app_help_file_location configured in console.yaml."
+            )
+        path = (_current_workspace_root() / rel).resolve()
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"Help file not found: {rel}")
+        return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
 # ── Nav item status ──────────────────────────────────────────────────────────────
@@ -1505,6 +1726,49 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
     if item_pending(item):
         return "pending"
     return "done"
+
+
+def render_target_switcher(location: str) -> str:
+    targets = _current_switchable_targets()
+    if not targets:
+        return ""
+    active_target = _current_active_target()
+
+    buttons = []
+    for target in targets:
+        active_cls = " active" if target.target == active_target else ""
+        active_attr = " aria-current='page'" if target.target == active_target else ""
+        buttons.append(
+            f"<a class='target-btn{active_cls}' href='/switch-target/{html.escape(target.target)}' "
+            f"style='--target-accent:{html.escape(target.accent)};--target-accent-soft:{html.escape(target.accent_soft)}'"
+            f"{active_attr}>"
+            f"<span class='target-btn-name'>{html.escape(target.label)}</span>"
+            f"<span class='target-btn-id'>{html.escape(target.target)}</span>"
+            "</a>"
+        )
+    buttons_html = "".join(buttons)
+
+    if location == "captains-chair":
+        active_label = next(
+            (target.label for target in targets if target.target == active_target),
+            active_target,
+        )
+        return (
+            "<section class='target-panel'>"
+            "<div class='target-panel-copy'>"
+            "<span class='target-panel-kicker'>Viewing Target</span>"
+            f"<strong>{html.escape(active_label)}</strong>"
+            "<p>Switch QuarterDeck to another target workspace.</p>"
+            "</div>"
+            f"<div class='target-btn-row'>{buttons_html}</div>"
+            "</section>"
+        )
+
+    return (
+        "<div class='target-dock-break'></div>"
+        "<div class='target-dock-head'>Targets</div>"
+        f"<div class='target-btn-stack'>{buttons_html}</div>"
+    )
 
 
 def render_nav() -> str:
@@ -1557,7 +1821,10 @@ def render_nav() -> str:
             "</div>"
             f"{btns}</div>"
         )
-    return "".join(nav_parts)
+    return (
+        f"<div class='nav-scroll'>{''.join(nav_parts)}</div>"
+        f"<div class='target-dock'>{render_target_switcher('nav')}</div>"
+    )
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────────
@@ -1570,8 +1837,22 @@ _STYLE = """
     background:transparent; color:#fff; font-size:13px; font-weight:700; cursor:pointer; display:flex;
     align-items:center; justify-content:center; text-decoration:none; opacity:.7; flex-shrink:0; }
   header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.1); }
-  main { display:grid; grid-template-columns:220px 1fr; min-height:calc(100vh - 46px); }
-  nav { padding:14px 8px; border-right:1px solid #d7dde5; background:#fff; }
+  main { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 46px); }
+  nav { padding:14px 8px 10px; border-right:1px solid #d7dde5; background:#fff; display:flex; flex-direction:column; min-height:0; }
+  .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-bottom:14px; }
+  .target-dock { margin-top:auto; padding:10px 8px 2px; background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 24%); }
+  .target-dock-break { border-top:1px solid #d7dde5; margin:2px 0 12px; }
+  .target-dock-head { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0 0 10px; }
+  .target-btn-stack, .target-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .target-btn-stack { flex-direction:column; }
+  .target-btn { --target-accent:#1d4ed8; --target-accent-soft:#93c5fd; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    width:100%; box-sizing:border-box; padding:10px 12px; border-radius:12px; text-decoration:none; border:1px solid color-mix(in srgb, var(--target-accent) 30%, white);
+    background:linear-gradient(135deg, color-mix(in srgb, var(--target-accent) 16%, white) 0%, color-mix(in srgb, var(--target-accent-soft) 32%, white) 100%);
+    color:#102033; box-shadow:0 10px 20px rgba(15,23,42,.06); transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+  .target-btn:hover { transform:translateY(-1px); box-shadow:0 12px 22px rgba(15,23,42,.12); border-color:var(--target-accent); }
+  .target-btn.active { background:linear-gradient(135deg, var(--target-accent) 0%, color-mix(in srgb, var(--target-accent) 78%, black) 100%); color:#fff; border-color:transparent; box-shadow:0 14px 26px rgba(15,23,42,.18); }
+  .target-btn-name { font-weight:800; font-size:13px; line-height:1.15; }
+  .target-btn-id { font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.78; }
   .nav-section { margin-bottom:16px; }
   .section-head { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;
                   text-transform:uppercase; letter-spacing:.06em; color:#475569; padding:0 8px 5px;
@@ -1704,43 +1985,60 @@ _STYLE = """
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
   .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
+  .target-panel { margin:0 0 18px; padding:16px 18px; border:1px solid #d7dde5; border-radius:16px;
+    background:linear-gradient(135deg, #fff8e7 0%, #eef7ff 100%); box-shadow:0 10px 24px rgba(15,23,42,.05); }
+  .target-panel-copy { margin-bottom:12px; }
+  .target-panel-kicker { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#9a3412; margin-bottom:6px; }
+  .target-panel-copy strong { display:block; font-size:18px; color:#0f172a; margin-bottom:4px; }
+  .target-panel-copy p { margin:0; color:#475569; font-size:13px; }
+  @media (max-width: 900px) {
+    main { grid-template-columns:1fr; }
+    nav { border-right:none; border-bottom:1px solid #d7dde5; }
+    article { padding:20px 18px; }
+    .target-btn-stack { flex-direction:row; }
+  }
 """
 
 
 def _config_missing_page() -> str:
+    detail = config_error_payload()
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>QuarterDeck</title>
 <style>body{{font-family:'Segoe UI',Arial,sans-serif;background:#f6f7f9;color:#1b2430;}}
 main{{max-width:760px;margin:48px auto;background:#fff;border:1px solid #d7dde5;padding:28px 32px;border-radius:6px;}}
 code{{background:#eef2f7;padding:2px 6px;border-radius:4px;}}</style></head>
-<body><main><h1>QuarterDeck Config Missing</h1><p>{html.escape(CONFIG_ERROR or "")}</p>
+<body><main><h1>QuarterDeck Config Missing</h1><p>{html.escape(detail['detail'] or "")}</p>
 <p>The QuarterDeck runtime is installed, but this project has no <code>QuarterDeck/console.yaml</code>.
 See <code>console.yaml.sample</code> for the contract.</p>
-<pre>{html.escape(str(CONFIG_PATH))}</pre></main></body></html>"""
+<pre>{html.escape(detail['config_path'])}</pre></main></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    if CONFIG_ERROR:
-        return _config_missing_page()
-    cfg = require_config()
-    console = cfg.get("console", {})
-    nav = render_nav()
+def index(request: Request = None) -> str:
+    with _request_context(request):
+        ctx = _active_context()
+        if ctx and ctx.config_error:
+            return _config_missing_page()
+        if not ctx and CONFIG_ERROR:
+            return _config_missing_page()
+        cfg = require_config()
+        console = cfg.get("console", {})
+        nav = render_nav()
 
-    all_items = items()
-    default_id = console.get("default_item") or (all_items[0]["id"] if all_items else "")
-    init = next(
-        (i for i in all_items if i["id"] == default_id), all_items[0] if all_items else None
-    )
-    init_js = f'loadDoc("{init["id"]}");' if init else ""
+        all_items = items()
+        default_id = console.get("default_item") or (all_items[0]["id"] if all_items else "")
+        init = next(
+            (i for i in all_items if i["id"] == default_id), all_items[0] if all_items else None
+        )
+        init_js = f'loadDoc("{init["id"]}");' if init else ""
 
-    help_btn = (
-        '<a class="help-btn" href="/help" target="_blank" title="Help">?</a>'
-        if console.get("app_help_file_location")
-        else ""
-    )
+        help_btn = (
+            '<a class="help-btn" href="/help" target="_blank" title="Help">?</a>'
+            if console.get("app_help_file_location")
+            else ""
+        )
 
-    return f"""<!doctype html><html><head><meta charset="utf-8">
+        return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(console.get("name", "Console"))}</title><style>{_STYLE}</style></head>
 <body>
