@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260622 V9
+version: 20260622 V10
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -221,9 +221,10 @@ Quality: {Ready | Questions | Blocked}
 {Tables or grouped lists of story titles with high-level AC. Organize by feature area.
 No prescribed format — use what best communicates the project shape.}
 
-## Notes
+## Analysis notes
 
-{Non-conformant headers, ambiguous signals, observations. "None." if clean.}
+{Non-conformant headers, ambiguous signals, observations. "None." if clean.
+Do not add an ## Overview section or any other sections not listed here.}
 === END ANALYSIS.md ===
 
 === SEA_TRIALS.md ===
