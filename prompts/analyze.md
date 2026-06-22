@@ -277,20 +277,30 @@ each item; the next `drydock analyze` run reads the answers.
 **COMPASS.md block (conditional):** Emit only when `COMPASS_EXISTS: false` in the job block.
 If `COMPASS_EXISTS: true`, omit this block entirely.
 
+The COMPASS.md is injected into **every build step** as orientation for the building agent. It must
+be short (30–40 lines maximum), synthesized, and written for an agent about to write code — not for
+a human reader, and not as project documentation. Do **not** reproduce source files verbatim. Do not
+write API references, usage guides, feature lists, or architecture narrations. Extract only: what the
+product is and who it serves (one paragraph); hard technical/regulatory/operating constraints (bullets);
+behavioral guardrails the build agent must never violate (bullets).
+
 ```
 === COMPASS.md ===
 # COMPASS: {ProjectName}
 
 ## Compass
 {One paragraph: what this product is, who it serves, and why it exists.
-Written for a developer joining the project for the first time. Be specific.}
+Written for a developer joining the project for the first time. Be specific and concise.
+Do NOT reproduce source file content. Synthesize.}
 
 ## Constraints
-{Bullet list: technical, regulatory, scale, and operating constraints derived from the sources.
+{Bullet list: hard technical, regulatory, scale, and operating constraints derived from the sources.
+These bound what the agent may build — stack, runtime, compatibility, environment.
 "- None stated." if the sources are silent.}
 
 ## Guardrails
-{Bullet list: security, compliance, scale, and performance rules that constrain the build.
+{Bullet list: behavioral rules the building agent must never violate — security, compliance, scale,
+performance, irreversible trade-offs, or explicit prohibitions from the Commander.
 "- None stated." if the sources are silent.}
 === END COMPASS.md ===
 ```
@@ -349,6 +359,10 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Emit **only** the `=== ... ===` blocks. No text outside them.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
+- COMPASS.md must be ≤40 lines. It is injected into every build step — brevity is a hard requirement.
+- COMPASS.md is orientation for a build agent, not project documentation. Never reproduce source
+  file content verbatim, never write API references or usage guides, never narrate architecture.
+  Synthesize intent, constraints, and guardrails only.
 - Do not include `## Open Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
   questions live only in `discovery-*.json` questionnaire action items.
 - Emit a `discovery-*.json` questionnaire only for a decision only the human can make (the
