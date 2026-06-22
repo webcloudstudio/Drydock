@@ -1,4 +1,4 @@
-"""Render the one-page VS Code reference as a print-ready landscape PDF."""
+"""Render the one-page VS Code workflow reference as a print-ready landscape PDF."""
 
 from pathlib import Path
 
@@ -83,7 +83,7 @@ def main():
     ax.add_patch(FancyBboxPatch((0.56, 0.885), 0.41, 0.083,
                                 boxstyle="round,pad=0.004,rounding_size=0.016",
                                 linewidth=0, facecolor=TEAL, alpha=0.82))
-    ax.text(0.055, 0.938, "VS Code: Drydock Workflow", fontsize=20, color="white",
+    ax.text(0.055, 0.938, "VS Code Workflow", fontsize=20, color="white",
             fontweight="bold", va="center")
     ax.text(0.056, 0.907, "A practical, Vim-friendly reference for navigating, testing, and staying oriented.",
             fontsize=8.0, color="#DBEAFE", va="center")
@@ -150,14 +150,16 @@ def main():
         ("1. Find, do not browse", "Ctrl+P"),
         ("2. Jump, do not hunt", "Alt+Left / Right"),
         ("3. Focus the project", "Multi-root workspace"),
-    ], note=("#F2F7FA", "For a focused workspace, add docs, QuarterDeck, and targets as separate top-level folders.", MUTED))
-    card(ax, x3, 0.452, width, 0.136, "Useful defaults: no custom binding required", [
-        ("Source Control", "Ctrl+Shift+G"),
-        ("Reference search results", "F12 / Shift+F12"),
-        ("Quickly close current editor", "Ctrl+W"),
+    ], note=("#F2F7FA", "For a focused workspace, add only the folders you need as separate top-level folders.", MUTED))
+    card(ax, x3, 0.452, width, 0.190, "Learn next: everyday defaults", [
+        ("Open Settings", "Ctrl+,"),
+        ("Open Keyboard Shortcuts", "Ctrl+K Ctrl+S"),
+        ("Go to a line", "Ctrl+G"),
+        ("Find all references", "Shift+F12"),
+        ("Open the Problems panel", "Ctrl+Shift+M"),
     ])
 
-    ax.text(0.03, 0.020, "Drydock personal reference", fontsize=7.1, color=MUTED, va="center")
+    ax.text(0.03, 0.020, "Personal reference", fontsize=7.1, color=MUTED, va="center")
     ax.text(0.97, 0.020, "Print at 100% • US Letter landscape", fontsize=7.1, color=MUTED, va="center", ha="right")
     fig.savefig(PDF, format="pdf", bbox_inches="tight", pad_inches=0)
     fig.savefig(PNG, format="png", dpi=220, bbox_inches="tight", pad_inches=0)

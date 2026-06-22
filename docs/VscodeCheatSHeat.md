@@ -1,4 +1,4 @@
-# VS Code Quick Commands for a Vim-Centric Workflow
+# VS Code Workflow
 
 ## Core window toggles
 - Toggle Primary Side Bar: `Ctrl+B`
@@ -23,8 +23,10 @@
 
 ## Fast navigation
 - Quick Open file: `Ctrl+P`
+- Go to line: `Ctrl+G`
 - Go to symbol in current file: `Ctrl+Shift+O`
 - Go to symbol in workspace: `Ctrl+T`
+- Find all references: `Shift+F12`
 - Navigate back: `Alt+Left`
 - Navigate forward: `Alt+Right`
 
@@ -50,6 +52,12 @@
 - Use `Alt+Left` / `Alt+Right` as your jump list
 - Keep `explorer.autoReveal = false` so the tree stops jumping around
 - Use a multi-root workspace for the 3 directories you visit constantly
+
+## Learn next
+- Open Settings: `Ctrl+,`
+- Open Keyboard Shortcuts: `Ctrl+K Ctrl+S`
+- Open Problems: `Ctrl+Shift+M`
+- Use `F12` for a definition and `Shift+F12` for every reference to it
 
 ## Codex chat composer
 - Send: `Enter` or `Ctrl+Enter`
