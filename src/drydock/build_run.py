@@ -251,11 +251,15 @@ def build_target(
             evidence=_rel(evidence_path, target_dir),
         )
         if status != "failed" and stack_head is not None:
-            stack_fields = block.fields.get("stack", ())
-            if isinstance(stack_fields, tuple) and stack_fields:
-                updated_registry = dict(plan.applied_registry)
-                for name in stack_fields:
-                    updated_registry[name] = stack_head
+            updated_registry = dict(plan.applied_registry)
+            changed = False
+            for field_key in ("stack", "rules", "context", "implements"):
+                field_val = block.fields.get(field_key, ())
+                if isinstance(field_val, tuple):
+                    for name in field_val:
+                        updated_registry[name] = stack_head
+                        changed = True
+            if changed:
                 set_applied_registry(manifest_path, updated_registry)
 
         step_result = BuildStepResult(

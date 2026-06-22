@@ -138,30 +138,29 @@ def _compact_sibling(name: str) -> str:
     return name
 
 
-def _measure_stack(canonical: str, roots: tuple[Path, ...], *, prefer_compact: bool) -> StepFile:
-    """Resolve a stack file, preferring the compact sibling when requested.
+def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> StepFile:
+    """Resolve a file, preferring the ``*_compact.md`` sibling when it exists on disk.
 
-    Falls through to the full file when no compact sibling exists on disk.
+    Falls through to the full file when no compact sibling is found.
     """
-    if prefer_compact:
-        compact = _compact_sibling(canonical)
-        if compact != canonical:
-            for root in roots:
-                candidate = root / compact
-                try:
-                    byte_count = len(candidate.read_bytes())
-                except OSError:
-                    continue
-                return StepFile(
-                    name=compact,
-                    role="stack",
-                    byte_count=byte_count,
-                    story_points=story_points_for(byte_count),
-                    missing=False,
-                    source=candidate,
-                    compact_substituted=True,
-                )
-    return _measure(canonical, "stack", roots)
+    compact = _compact_sibling(canonical)
+    if compact != canonical:
+        for root in roots:
+            candidate = root / compact
+            try:
+                byte_count = len(candidate.read_bytes())
+            except OSError:
+                continue
+            return StepFile(
+                name=compact,
+                role=role,
+                byte_count=byte_count,
+                story_points=story_points_for(byte_count),
+                missing=False,
+                source=candidate,
+                compact_substituted=True,
+            )
+    return _measure(canonical, role, roots)
 
 
 def _role_names(block: PlanBlock, role: str) -> tuple[str, ...]:
@@ -186,10 +185,11 @@ def assemble_step(
     Reads files only; writes nothing. Files named by a block but not found are
     reported ``missing`` and contribute zero cost.
 
-    ``compact_stack`` is the set of canonical stack file names (as written in the
-    manifest) that should use their compact sibling for this step. When ``None``,
-    no compact substitution is applied. The caller — either ``assemble_steps``
-    (forward-scan) or ``build_run`` (applied registry) — supplies the set.
+    ``compact_stack`` is the set of canonical file names (as written in the
+    manifest, any role) that should use their ``*_compact.md`` sibling for this
+    step. When ``None``, no compact substitution is applied. The caller —
+    either ``assemble_steps`` (forward-scan) or ``build_run`` (applied registry)
+    — supplies the set.
     """
     files: list[StepFile] = []
     for role in _ROLE_ORDER:
@@ -198,8 +198,8 @@ def assemble_step(
             if name not in names:
                 names.append(name)
         for name in names:
-            if role == "stack" and compact_stack is not None and name in compact_stack:
-                files.append(_measure_stack(name, roots.roots_for(role), prefer_compact=True))
+            if compact_stack is not None and name in compact_stack:
+                files.append(_measure_compact(name, role, roots.roots_for(role)))
             else:
                 files.append(_measure(name, role, roots.roots_for(role)))
 
@@ -233,21 +233,23 @@ def assemble_steps(
 ) -> tuple[StepAssembly, ...]:
     """Assemble every executable step in the plan, in manifest order.
 
-    Performs a forward scan for compact substitution: the first step that names a
-    stack file receives the full version; every subsequent step receives the compact
-    sibling (``*_compact.md``) when one exists on disk. Steps show the resolved
-    name so the QuarterDeck displays honest token costs before the build runs.
+    Performs a forward scan for compact substitution across all roles: the first
+    step that names any file receives the full version; every subsequent step
+    receives the compact sibling (``*_compact.md``) when one exists on disk.
+    Steps show the resolved name so the QuarterDeck displays honest token costs
+    before the build runs.
     """
-    stack_seen: set[str] = set()
+    files_seen: set[str] = set()
     result: list[StepAssembly] = []
     for block in plan.blocks:
         if block.block_type not in STEP_TYPES:
             continue
         step = assemble_step(
-            block, roots, warn_kb=warn_kb, compact_stack=frozenset(stack_seen)
+            block, roots, warn_kb=warn_kb, compact_stack=frozenset(files_seen)
         )
-        for name in _role_names(block, "stack"):
-            stack_seen.add(name)
+        for role in _ROLE_ORDER:
+            for name in _role_names(block, role):
+                files_seen.add(name)
         result.append(step)
     return tuple(result)
 

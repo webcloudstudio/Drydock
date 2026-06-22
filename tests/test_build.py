@@ -258,3 +258,36 @@ class TestCompactSubstitution:
         s2_python = next(f for f in steps[1].files if "python" in f.name)
         assert s2_python.name == "python.md"
         assert s2_python.compact_substituted is False
+
+    def test_compact_applies_to_rules_role(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        # Add a rules file with a compact sibling to the rigging dir
+        (roots.rigging_dir / "CLAUDE_RULES.md").write_text("rules" * 100, encoding="utf-8")
+        (roots.rigging_dir / "CLAUDE_RULES_compact.md").write_text("rules_compact" * 10, encoding="utf-8")
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## story 1: Foundation
+id: s1
+implements: ARCHITECTURE.md
+rules: CLAUDE_RULES.md
+state: pending
+
+## story 2: Feature
+id: s2
+implements: ARCHITECTURE.md
+rules: CLAUDE_RULES.md
+state: pending
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+        steps = assemble_steps(plan, roots)
+        # first step: full rules file
+        s1_rules = next(f for f in steps[0].files if "CLAUDE_RULES" in f.name)
+        assert s1_rules.name == "CLAUDE_RULES.md"
+        assert s1_rules.compact_substituted is False
+        # second step: compact sibling
+        s2_rules = next(f for f in steps[1].files if "CLAUDE_RULES" in f.name)
+        assert s2_rules.name == "CLAUDE_RULES_compact.md"
+        assert s2_rules.compact_substituted is True
