@@ -759,7 +759,7 @@ def _render_workspace_status(ws) -> None:
             cmd = rec.get("command", "")
             stamp = str(rec.get("time", "")).strip()
             rc = rec.get("return_code")
-            action = "Run" if rc is None else ("Check" if rc == 0 else "Fail")
+            action = "Run" if rc is None else ("✅" if rc == 0 else "❌")
             if len(stamp) >= 10:
                 month = str(int(stamp[5:7]))
                 day = str(int(stamp[8:10]))
