@@ -747,7 +747,7 @@ def _step_roots():
 
 def _render_compass_empty() -> str:
     return (
-        "<p class='subtle'>No build steps yet. Run <code>drydock plan create</code> to "
+        "<p class='subtle'>No build steps yet. Run <code>drydock plan</code> to "
         "generate <code>MANIFEST.md</code>.</p>"
     )
 

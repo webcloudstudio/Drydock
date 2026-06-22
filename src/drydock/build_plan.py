@@ -196,7 +196,7 @@ def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
 def parse_build_plan(path: Path) -> BuildPlan:
     """Parse one MANIFEST.md and validate its structural execution contract."""
     if not path.is_file():
-        raise SpecificationError(f"MANIFEST.md not found: {path}\n  Run: drydock plan create")
+        raise SpecificationError(f"MANIFEST.md not found: {path}\n  Run: drydock plan")
 
     try:
         lines = path.read_text(encoding="utf-8").splitlines()

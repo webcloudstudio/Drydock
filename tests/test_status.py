@@ -85,7 +85,7 @@ class TestStatusBlueprintTarget:
         assert result.target_info.imported_sources == 1
         assert result.target_info.next_operation == "drydock analyze TestTarget"
 
-    def test_analysis_ready_without_plan_suggests_plan_create(self, tmp_target_root):
+    def test_analysis_ready_without_plan_suggests_plan(self, tmp_target_root):
         tgt = tmp_target_root / "TestTarget"
         tgt.mkdir()
         (tgt / "ANALYSIS.md").write_text(ANALYSIS_READY, encoding="utf-8")
@@ -96,7 +96,7 @@ class TestStatusBlueprintTarget:
         assert result.target_info.phase == "Arrange"
         assert result.target_info.analysis is not None
         assert result.target_info.analysis.quality == "Ready"
-        assert result.target_info.next_operation == "drydock plan create TestTarget"
+        assert result.target_info.next_operation == "drydock plan TestTarget"
 
 
 class TestStatusBlueprint:
@@ -149,10 +149,10 @@ class TestStatusCurrent:
 
         from drydock.config import record_activity
 
-        record_activity("plan create", "TestProject", "TestTarget")
+        record_activity("plan", "TestProject", "TestTarget")
 
         result = status_current(tmp_target_root)
         assert result is not None
         assert result.blueprint == "TestProject"
         assert result.target == "TestTarget"
-        assert result.last_command == "plan create"
+        assert result.last_command == "plan"

@@ -730,7 +730,7 @@ class TestFillCaptainsChair:
             blocker_count=0,
             screen_count=3,
             stack="python/flask",
-            next_step="drydock plan create Foo",
+            next_step="drydock plan Foo",
             project_name="Foo",
             generated_date="2026-06-14",
         )

@@ -126,11 +126,11 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         assert "over" in out and "KB" in out
 
-    def test_no_manifest_prompts_plan_create(self, tmp_path, monkeypatch):
+    def test_no_manifest_prompts_plan(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path / "empty")
         out = quarterdeck.render_compass(_ITEM)
-        assert "drydock plan create" in out
+        assert "drydock plan" in out
 
     def test_move_controls_always_available(self, tmp_path, monkeypatch):
         # Reorder is not gated by plan state; running the next step is the approval.

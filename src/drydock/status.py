@@ -207,7 +207,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         except Exception:
             phase = "Arrange"
             detail = "MANIFEST.md could not be parsed — check its format"
-            next_op = f"drydock plan create {name}"
+            next_op = f"drydock plan {name}"
             return TargetInfo(
                 name=name,
                 target_dir=target_dir,
@@ -272,11 +272,11 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         elif analysis and analysis.quality == "Ready":
             phase = "Arrange"
             detail = "Analysis ready — plan not yet created"
-            next_op = f"drydock plan create {name}"
+            next_op = f"drydock plan {name}"
         else:
             phase = "Arrange"
             detail = "Blueprint artifacts present — plan not yet created"
-            next_op = f"drydock plan create {name}"
+            next_op = f"drydock plan {name}"
     return TargetInfo(
         name=name,
         target_dir=target_dir,

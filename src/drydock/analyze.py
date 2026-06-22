@@ -60,8 +60,8 @@ _OPEN_QUESTIONS_SECTION_RE = re.compile(
 )
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
-    "Ready": ("ready", "✓", "All blockers resolved. Ready for plan create."),
-    "Questions": ("questions", "⚠", "Open questions remain. Plan create can proceed."),
+    "Ready": ("ready", "✓", "All blockers resolved. Ready for planning."),
+    "Questions": ("questions", "⚠", "Open questions remain. Planning can proceed."),
     "Blocked": ("blocked", "✗", "Unresolved blockers. Review before continuing."),
 }
 
@@ -428,8 +428,8 @@ def _next_step_hint(quality: str, target: str) -> str:
     if quality == "Blocked":
         return f"Resolve blockers, then re-run: drydock analyze {target}"
     if quality == "Questions":
-        return f"Review QuarterDeck action items, then run: drydock plan create {target}"
-    return f"drydock plan create {target}"
+        return f"Review QuarterDeck action items, then run: drydock plan {target}"
+    return f"drydock plan {target}"
 
 
 def analyze(

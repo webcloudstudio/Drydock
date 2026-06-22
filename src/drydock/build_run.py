@@ -126,7 +126,7 @@ def build_target(
     manifest_path = target_dir / "MANIFEST.md"
     if not manifest_path.is_file():
         raise SpecificationError(
-            f"MANIFEST.md not found: {manifest_path}\n  Run: drydock plan create {target}"
+            f"MANIFEST.md not found: {manifest_path}\n  Run: drydock plan {target}"
         )
 
     resolved_build_dir = build_dir or build_dir_for(target)

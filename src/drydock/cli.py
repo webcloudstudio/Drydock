@@ -183,7 +183,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("Next steps:")
     print(f"  1. Import source material:  drydock import {t} <source> --format markdown")
     print(f"  2. Analyze the spec:        drydock analyze {t}")
-    print(f"  3. Create a plan:           drydock plan create {t}")
+    print(f"  3. Create a plan:           drydock plan {t}")
     print(f"  4. Review and approve:      drydock run quarterdeck {t}")
     return 0
 
@@ -311,10 +311,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     print()
     if result.quality == "Ready":
-        print(f"Next step: drydock plan create {args.Target}")
+        print(f"Next step: drydock plan {args.Target}")
     elif result.quality == "Questions":
         print("Review QuarterDeck action items, then run:")
-        print(f"  drydock plan create {args.Target}")
+        print(f"  drydock plan {args.Target}")
     else:
         print("Resolve blockers, then re-run:")
         print(f"  drydock analyze {args.Target}")
@@ -346,7 +346,7 @@ def _print_plan_summary(plan) -> None:
     print(f"Plan state: {plan.state}")
 
 
-def cmd_plan_create(args: argparse.Namespace) -> int:
+def cmd_plan(args: argparse.Namespace) -> int:
     from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
     from drydock.planning_session import create_plan
 
@@ -725,7 +725,7 @@ def _render_status(result) -> None:
     if result.target_info is not None and result.target_info.next_operation:
         print(f"  {'Next step':<{col}}  {result.target_info.next_operation}")
     elif result.target:
-        print(f"  {'Next step':<{col}}  drydock plan create {result.target}")
+        print(f"  {'Next step':<{col}}  drydock plan {result.target}")
 
 
 def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
@@ -1088,14 +1088,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rig_v.add_argument("Target", metavar="<Target>")
 
     # ── plan ─────────────────────────────────────────────────────────────────
-    p_plan = sub.add_parser("plan", help="Manage the build plan.")
-    _add_llm_override_flags(p_plan)
-    plan_sub = p_plan.add_subparsers(dest="plan_command", metavar="<subcommand>")
-    p_plan_create = plan_sub.add_parser(
-        "create", help="Create a draft executable plan and target Planning Session."
+    p_plan = sub.add_parser(
+        "plan",
+        help="Create a draft executable plan and target Planning Session.",
     )
-    p_plan_create.add_argument("Target", metavar="<Target>")
-    _add_llm_override_flags(p_plan_create)
+    _add_llm_override_flags(p_plan)
+    p_plan.add_argument("Target", metavar="<Target>")
 
     # ── build ─────────────────────────────────────────────────────────────────
     # Handles: build <Target>
@@ -1355,16 +1353,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             not_implemented("rigging")
 
     if command == "plan":
-        sub = getattr(args, "plan_command", None)
-        if sub == "create":
-            rc = cmd_plan_create(args)
-            if rc == 0:
-                from drydock.config import record_activity
+        rc = cmd_plan(args)
+        if rc == 0:
+            from drydock.config import record_activity
 
-                record_activity("plan create", args.Target, args.Target)
-            return rc
-        else:
-            not_implemented("plan")
+            record_activity("plan", args.Target, args.Target)
+        return rc
 
     if command == "build":
         return _dispatch_build(args)

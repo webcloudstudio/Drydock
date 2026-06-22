@@ -377,8 +377,8 @@ class TestLlmOverrideFlags:
         assert "--llm-provider" in out
         assert "--model" in out
 
-    def test_plan_create_help_lists_llm_flags(self):
-        rc, out, _ = run_cli("plan", "create", "--help")
+    def test_plan_help_lists_llm_flags(self):
+        rc, out, _ = run_cli("plan", "--help")
         assert rc == 0
         assert "--llm-provider" in out
         assert "--model" in out
@@ -437,7 +437,7 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert "Blueprint: ExampleTarget" in out
 
-    def test_plan_create_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
+    def test_plan_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 
         run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
@@ -475,7 +475,6 @@ class TestLlmOverrideFlags:
 
         rc, out, err = run_cli(
             "plan",
-            "create",
             "Proj",
             "--llm-provider",
             "codex",
@@ -622,7 +621,7 @@ class TestPlanningSession:
         bp = tmp_target_root / "ExampleTarget" / "blueprint"
         assert (bp / "sources" / "request.md").is_file()
 
-        # plan create requires a reviewed analysis and a fake LLM runner.
+        # plan requires a reviewed analysis and a fake LLM runner.
         (tmp_target_root / "ExampleTarget" / "ANALYSIS.md").write_text(
             "# Blueprint Analysis: ExampleTarget\n\nQuality: Questions\n\n"
             "## Story List\n\nProject type: `cli`\n",
@@ -630,7 +629,7 @@ class TestPlanningSession:
         )
         self._patch_runner(monkeypatch)
 
-        rc, out, err = run_cli("plan", "create", "ExampleTarget")
+        rc, out, err = run_cli("plan", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state: draft" in out
         assert "Authored 2 Blueprint spec file(s)" in out
@@ -655,14 +654,13 @@ class TestPlanningSession:
         assert rc == 0, err
         assert "Buildable now: story-status" in out
 
-    @pytest.mark.parametrize("verb", ["init", "show", "approve", "revise", "reject"])
-    def test_only_plan_create_is_public(self, verb):
+    @pytest.mark.parametrize("verb", ["create", "init", "show", "approve", "revise", "reject"])
+    def test_plan_has_no_public_subcommands(self, verb):
         rc, out, err = run_cli("plan", verb, "Example", "Target")
 
         assert rc == 2
-        assert "usage: drydock plan" in err
-        assert "create" in err
-        assert "invalid choice" in err
+        assert "usage: drydock" in err
+        assert "unrecognized arguments: Example Target" in err
 
 
 class TestImport:
@@ -1062,7 +1060,7 @@ class TestStatus:
         assert "Arrange" in out
         assert "Plan" in out
         assert "not created" in out
-        assert "drydock plan create TestTarget" in out
+        assert "drydock plan TestTarget" in out
 
     def test_status_no_args_no_activity_exits_zero(
         self, tmp_target_root, isolated_config, monkeypatch

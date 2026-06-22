@@ -55,7 +55,7 @@ _COMPONENTS: dict[str, PromptReviewComponent] = {
     ),
     "plan": PromptReviewComponent(
         name="plan",
-        command="drydock plan create",
+        command="drydock plan",
         prompt_file="prompts/plan_create.md",
         notes_file="docs/notes_plan.md",
         spec_heading="### Building and Reviewing the Build Plan / Manifest",

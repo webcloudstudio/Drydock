@@ -436,7 +436,7 @@ def create_plan(
     if (target_dir / "BLOCKERS.md").is_file():
         raise SpecificationError(
             "BLOCKERS.md is present — planning is blocked. Answer the blockers and re-run "
-            f"`drydock analyze {target}` before `drydock plan create {target}`."
+            f"`drydock analyze {target}` before `drydock plan {target}`."
         )
     quality_match = _QUALITY_RE.search(analysis_text)
     if quality_match and quality_match.group(1).lower() == "blocked":
@@ -472,7 +472,7 @@ def create_plan(
         target_dir,
         llm=llm_provider,
         model=model or prompt.model,
-        command_name="plan create",
+        command_name="plan",
         parameters={"target": target, "blueprint": str(blueprint_dir)},
         log_dir=log_dir,
         target=target,
@@ -480,7 +480,7 @@ def create_plan(
     )
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():
-        raise SpecificationError("plan create LLM execution failed")
+        raise SpecificationError("plan LLM execution failed")
 
     blocks = _parse_blocks(result.text)
     if not blocks:
@@ -495,7 +495,7 @@ def create_plan(
         output_file = getattr(artifacts, "output_file", None)
         evidence = f"\n  Execution output: {output_file}" if output_file else ""
         raise SpecificationError(
-            "plan create output missing === MANIFEST.md === block. "
+            "plan output missing === MANIFEST.md === block. "
             "The LLM response must contain only delimited artifact blocks."
             f"{evidence}"
         )
