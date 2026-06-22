@@ -798,6 +798,7 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
 
     rendered = quarterdeck.api_nav(_RequestStub())["html"]
     assert "target-dock" in rendered
+    assert "Targets" not in rendered
     assert "/switch-target/Alpha" in rendered
     assert "/switch-target/Beta" in rendered
     assert "target-btn active" in rendered
@@ -806,6 +807,36 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
     assert ">Beta</span>" in rendered
     assert "Workspace target" not in rendered
     assert "<span class='section-label'>Alpha</span>" in rendered
+    assert "collapse-arrow" not in rendered
+
+
+def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [
+                {"id": "build_plan", "label": "Build Steps", "dot": "#d97706"},
+                {"id": "archive", "label": "Archive", "dot": "#94a3b8", "collapsed": True},
+            ],
+            "items": [
+                {"id": "plan", "label": "Plan", "section": "build_plan", "type": "markdown", "path": "plan.md"},
+                {"id": "old", "label": "Old", "section": "archive", "type": "markdown", "path": "old.md"},
+            ],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
+    monkeypatch.setattr(quarterdeck, "_is_item_archived", lambda _item: False)
+
+    rendered = quarterdeck.render_nav()
+
+    assert "Build Steps" in rendered
+    assert "sec-flag" in rendered
+    assert "onclick='toggleSection" not in rendered
+    assert "collapse-arrow" not in rendered
+    assert "data-item='old'" in rendered
 
 
 def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypatch):
@@ -841,7 +872,7 @@ def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatc
     html = quarterdeck.index(_RequestStub({"quarterdeck_target": "Beta"}))
 
     assert "<title>Beta</title>" in html
-    assert "<header><strong>The Drydock</strong>" in html
+    assert '<header><strong>The Drydock</strong><div class="header-actions">' in html
     assert "Workspace target" not in html
     assert "Copyright (c) 2026 Beta Studio. All rights reserved." in html
     assert 'Drydock <span class="flyout">↗</span>' in html

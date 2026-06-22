@@ -113,6 +113,13 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect x="4" y="3" width="8" height="6" fill="#fff"/>'
         "</svg>"
     ),
+    "build_plan": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#ffffff"/>'
+        '<rect x="0" y="0" width="8" height="6" fill="#1d4ed8"/>'
+        '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
+        "</svg>"
+    ),
     "docs": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
         '<rect y="0" width="16" height="4" fill="#eab308"/>'
@@ -1770,7 +1777,6 @@ def render_target_switcher() -> str:
     buttons_html = "".join(buttons)
 
     return (
-        "<div class='target-dock-head'>Targets</div>"
         "<div class='target-dock-break'></div>"
         f"<div class='target-btn-stack'>{buttons_html}</div>"
         "<div class='target-dock-tail'></div>"
@@ -1813,18 +1819,16 @@ def render_nav() -> str:
             btns = "".join(item_htmls)
         else:
             btns = "<div class='section-empty'>— empty —</div>"
-        collapsed_cls = " collapsed" if section.get("collapsed") else ""
         blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
         target_cls = " section-head-target" if section["id"] == "core" else ""
         flag = _SECTION_FLAGS.get(section["id"], "")
         nav_parts.append(
-            f"<div class='nav-section{collapsed_cls}{blockers_cls}' "
+            f"<div class='nav-section{blockers_cls}' "
             f"data-sec='{html.escape(section['id'])}'>"
-            f"<div class='section-head{target_cls}' onclick='toggleSection(this.parentElement)'>"
+            f"<div class='section-head{target_cls}'>"
             f"{flag}"
             f"<span class='dot' style='background:{section['dot']}'></span>"
             f"<span class='section-label'>{html.escape(section['label'])}</span>"
-            "<span class='collapse-arrow'></span>"
             "</div>"
             f"{btns}</div>"
         )
@@ -1840,7 +1844,8 @@ _STYLE = """
   body { margin:0; font-family:'Segoe UI',Arial,sans-serif; color:#1b2430; background:#f6f7f9; }
   header { padding:12px 22px; background:#111827; color:#fff; display:flex; align-items:center; gap:14px; }
   header strong { font-size:15px; }
-  header .help-btn { margin-left:auto; padding:7px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.34);
+  header .header-actions { margin-left:auto; display:flex; align-items:center; gap:10px; }
+  header .help-btn { padding:7px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.34);
     background:rgba(255,255,255,.08); color:#fff; font-size:12px; font-weight:800; letter-spacing:.04em; cursor:pointer; display:inline-flex;
     align-items:center; justify-content:center; text-decoration:none; gap:6px; opacity:.9; flex-shrink:0; text-transform:uppercase; }
   header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.14); }
@@ -1852,7 +1857,6 @@ _STYLE = """
   .target-dock { padding:0 8px 12px; }
   .target-dock-break { border-top:1px solid #eef2f7; margin:6px 0 10px; }
   .target-dock-tail { border-top:1px solid #eef2f7; margin:10px 0 0; }
-  .target-dock-head { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0; padding:0; }
   .target-btn-stack { display:flex; gap:8px; flex-wrap:wrap; flex-direction:column; }
   .target-btn { --target-accent:#1d4ed8; --target-accent-soft:#93c5fd; display:flex; align-items:center; justify-content:space-between; gap:10px;
     width:100%; box-sizing:border-box; padding:10px 12px; border-radius:12px; text-decoration:none; border:1px solid color-mix(in srgb, var(--target-accent) 30%, white);
@@ -1873,13 +1877,10 @@ _STYLE = """
   .nav-section { margin-bottom:16px; }
   .section-head { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;
                   text-transform:uppercase; letter-spacing:.06em; color:#475569; padding:0 8px 5px;
-                  border-bottom:1px solid #eef2f7; margin-bottom:5px; cursor:pointer; user-select:none; }
+                  border-bottom:1px solid #eef2f7; margin-bottom:5px; user-select:none; }
   .section-head-target { font-size:13px; font-weight:800; letter-spacing:.03em; color:#0f172a; }
   .section-head-target .section-label { line-height:1.15; }
   .section-head .dot { width:8px; height:8px; border-radius:50%; flex:none; }
-  .section-head .collapse-arrow { margin-left:auto; font-size:9px; color:#94a3b8; }
-  .nav-section.collapsed .collapse-arrow::after { content:"▶"; }
-  .nav-section:not(.collapsed) .collapse-arrow::after { content:"▼"; }
   .doc-btn { width:100%; margin:0 0 3px; padding:7px 10px 7px 8px; border:1px solid transparent;
              background:#fff; text-align:left; cursor:pointer; font-size:13px; color:#1b2430; border-radius:3px;
              display:flex; align-items:center; }
@@ -1887,7 +1888,6 @@ _STYLE = """
   .doc-btn.active { background:#111827; color:#fff; }
   .nav-section[data-sec="archive"] .doc-btn { color:#94a3b8; }
   .nav-section[data-sec="archive"] .doc-btn.active { color:#fff; }
-  .nav-section.collapsed .doc-btn, .nav-section.collapsed .section-empty { display:none; }
   .section-empty { padding:4px 24px; font-size:12px; color:#cbd5e1; }
   article { padding:24px 32px; max-width:1100px; overflow-x:auto; }
   article h1 { line-height:1.2; margin-top:0; }
@@ -2064,7 +2064,7 @@ def index(request: Request = None) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
-  <header><strong>The Drydock</strong>{home_btn}{help_btn}</header>
+  <header><strong>The Drydock</strong><div class="header-actions">{home_btn}{help_btn}</div></header>
   <div class="copyright-bar">{html.escape(copyright_notice)}</div>
   <main>
     <nav>{nav}</nav>
@@ -2149,9 +2149,6 @@ def index(request: Request = None) -> str:
       }});
       if (!r.ok) {{ const d = await r.json().catch(() => ({{}})); alert('Save failed: ' + (d.detail || r.status)); return; }}
       loadDoc(itemId);
-    }}
-    function toggleSection(el) {{
-      el.classList.toggle('collapsed');
     }}
     function questionnairePayload(form) {{
       const payload = {{}};
