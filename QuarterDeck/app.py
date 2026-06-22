@@ -56,6 +56,11 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
+try:
+    from drydock import __copyright__ as DRYDOCK_COPYRIGHT
+except Exception:  # pragma: no cover - QuarterDeck can run outside the package tree.
+    DRYDOCK_COPYRIGHT = "Copyright (c) 2026 Web Cloud Studio. All rights reserved."
+
 # The console runtime may live in the package while its state lives in a Target
 # tree. ``QUARTERDECK_DIR`` overrides the state directory (holding console.yaml,
 # data/, and item paths); ``QUARTERDECK_PROJECT_ROOT`` overrides the project root
@@ -421,6 +426,16 @@ def items() -> list[dict[str, Any]]:
     return require_config().get("items", [])
 
 
+def _current_project_name() -> str:
+    project = require_config().get("project", {})
+    return str(project.get("name") or _current_active_target() or "Project")
+
+
+def _current_copyright() -> str:
+    project = require_config().get("project", {})
+    return str(project.get("copyright") or DRYDOCK_COPYRIGHT)
+
+
 # Item types that have no backing file — always visible regardless of file existence.
 _UNTRACKED_TYPES = frozenset({"link"})
 
@@ -506,10 +521,13 @@ def nav_model() -> list[dict[str, Any]]:
     for sid in ordered_ids:
         docs = sorted(by_section[sid], key=lambda d: d.get("order", 0))
         sec_cfg = config_map.get(sid, {})
+        label = sec_cfg.get("label", sid.replace("_", " ").title())
+        if sid == "core":
+            label = _current_project_name()
         sections.append(
             {
                 "id": sid,
-                "label": sec_cfg.get("label", sid.replace("_", " ").title()),
+                "label": label,
                 "dot": sec_cfg.get("dot", _DEFAULT_DOT),
                 "collapsed": sec_cfg.get("collapsed", False),
                 "pinned": sec_cfg.get("pinned", False),
@@ -1428,8 +1446,6 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
 
     acts_html = f"<div class='ph-actions'>{''.join(btns)}</div>" if btns else ""
     body = _H1_RE.sub("", body, count=1)
-    if item.get("id") == "commanders_view":
-        body = render_target_switcher("captains-chair") + body
     return (
         f"<div class='page-header'>"
         f"<div class='ph-title-row'><h1 class='ph-title'>{label}</h1>{fname_html}</div>"
@@ -1633,7 +1649,7 @@ def switch_target(target: str, request: Request = None):
         valid_targets = {item.target for item in _current_switchable_targets()}
         if target not in valid_targets:
             raise HTTPException(status_code=404, detail=f"Unknown target: {target}")
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse("/?item=commanders_view", status_code=303)
         response.set_cookie(ACTIVE_TARGET_COOKIE, target, path="/", samesite="lax")
         return response
 
@@ -1728,7 +1744,7 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
     return "done"
 
 
-def render_target_switcher(location: str) -> str:
+def render_target_switcher() -> str:
     targets = _current_switchable_targets()
     if not targets:
         return ""
@@ -1749,26 +1765,9 @@ def render_target_switcher(location: str) -> str:
             "</span>"
             f"<span class='target-btn-name'>{html.escape(target.label)}</span>"
             "</span>"
-            f"<span class='target-btn-id'>{html.escape(target.target)}</span>"
             "</a>"
         )
     buttons_html = "".join(buttons)
-
-    if location == "captains-chair":
-        active_label = next(
-            (target.label for target in targets if target.target == active_target),
-            active_target,
-        )
-        return (
-            "<section class='target-panel'>"
-            "<div class='target-panel-copy'>"
-            "<span class='target-panel-kicker'>Viewing Target</span>"
-            f"<strong>{html.escape(active_label)}</strong>"
-            "<p>Switch QuarterDeck to another target workspace.</p>"
-            "</div>"
-            f"<div class='target-btn-row'>{buttons_html}</div>"
-            "</section>"
-        )
 
     return (
         "<div class='target-dock-head'>Targets</div>"
@@ -1816,20 +1815,21 @@ def render_nav() -> str:
             btns = "<div class='section-empty'>— empty —</div>"
         collapsed_cls = " collapsed" if section.get("collapsed") else ""
         blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
+        target_cls = " section-head-target" if section["id"] == "core" else ""
         flag = _SECTION_FLAGS.get(section["id"], "")
         nav_parts.append(
             f"<div class='nav-section{collapsed_cls}{blockers_cls}' "
             f"data-sec='{html.escape(section['id'])}'>"
-            "<div class='section-head' onclick='toggleSection(this.parentElement)'>"
+            f"<div class='section-head{target_cls}' onclick='toggleSection(this.parentElement)'>"
             f"{flag}"
             f"<span class='dot' style='background:{section['dot']}'></span>"
-            f"{html.escape(section['label'])}"
+            f"<span class='section-label'>{html.escape(section['label'])}</span>"
             "<span class='collapse-arrow'></span>"
             "</div>"
             f"{btns}</div>"
         )
     return (
-        f"<div class='target-dock'>{render_target_switcher('nav')}</div>"
+        f"<div class='target-dock'>{render_target_switcher()}</div>"
         f"<div class='nav-scroll'>{''.join(nav_parts)}</div>"
     )
 
@@ -1839,20 +1839,21 @@ def render_nav() -> str:
 _STYLE = """
   body { margin:0; font-family:'Segoe UI',Arial,sans-serif; color:#1b2430; background:#f6f7f9; }
   header { padding:12px 22px; background:#111827; color:#fff; display:flex; align-items:center; gap:14px; }
-  header strong { font-size:15px; } header .sub { font-size:12px; opacity:.65; }
-  header .help-btn { margin-left:auto; width:24px; height:24px; border-radius:50%; border:1.5px solid rgba(255,255,255,.4);
-    background:transparent; color:#fff; font-size:13px; font-weight:700; cursor:pointer; display:flex;
-    align-items:center; justify-content:center; text-decoration:none; opacity:.7; flex-shrink:0; }
-  header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.1); }
-  main { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 46px); }
+  header strong { font-size:15px; }
+  header .help-btn { margin-left:auto; padding:7px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.34);
+    background:rgba(255,255,255,.08); color:#fff; font-size:12px; font-weight:800; letter-spacing:.04em; cursor:pointer; display:inline-flex;
+    align-items:center; justify-content:center; text-decoration:none; gap:6px; opacity:.9; flex-shrink:0; text-transform:uppercase; }
+  header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.14); }
+  header .help-btn .flyout { font-size:11px; opacity:.88; }
+  .copyright-bar { padding:8px 22px; background:#e2e8f0; color:#334155; font-size:11px; font-weight:600; border-bottom:1px solid #cbd5e1; }
+  main { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 82px); }
   nav { padding:14px 8px 10px; border-right:1px solid #d7dde5; background:#fff; display:flex; flex-direction:column; min-height:0; }
   .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-top:0; }
   .target-dock { padding:0 8px 12px; }
   .target-dock-break { border-top:1px solid #eef2f7; margin:6px 0 10px; }
   .target-dock-tail { border-top:1px solid #eef2f7; margin:10px 0 0; }
   .target-dock-head { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0; padding:0; }
-  .target-btn-stack, .target-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
-  .target-btn-stack { flex-direction:column; }
+  .target-btn-stack { display:flex; gap:8px; flex-wrap:wrap; flex-direction:column; }
   .target-btn { --target-accent:#1d4ed8; --target-accent-soft:#93c5fd; display:flex; align-items:center; justify-content:space-between; gap:10px;
     width:100%; box-sizing:border-box; padding:10px 12px; border-radius:12px; text-decoration:none; border:1px solid color-mix(in srgb, var(--target-accent) 30%, white);
     background:linear-gradient(135deg, color-mix(in srgb, var(--target-accent) 16%, white) 0%, color-mix(in srgb, var(--target-accent-soft) 32%, white) 100%);
@@ -1869,11 +1870,12 @@ _STYLE = """
     linear-gradient(180deg, rgba(255,255,255,.9) 0 48%, transparent 48% 52%, rgba(255,255,255,.9) 52% 100%),
     linear-gradient(135deg, color-mix(in srgb, var(--target-accent) 88%, black) 0%, var(--target-accent) 100%); }
   .target-btn-name { font-weight:800; font-size:13px; line-height:1.15; }
-  .target-btn-id { font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.78; }
   .nav-section { margin-bottom:16px; }
   .section-head { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;
                   text-transform:uppercase; letter-spacing:.06em; color:#475569; padding:0 8px 5px;
                   border-bottom:1px solid #eef2f7; margin-bottom:5px; cursor:pointer; user-select:none; }
+  .section-head-target { font-size:13px; font-weight:800; letter-spacing:.03em; color:#0f172a; }
+  .section-head-target .section-label { line-height:1.15; }
   .section-head .dot { width:8px; height:8px; border-radius:50%; flex:none; }
   .section-head .collapse-arrow { margin-left:auto; font-size:9px; color:#94a3b8; }
   .nav-section.collapsed .collapse-arrow::after { content:"▶"; }
@@ -2002,12 +2004,6 @@ _STYLE = """
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
   .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
-  .target-panel { margin:0 0 18px; padding:16px 18px; border:1px solid #d7dde5; border-radius:16px;
-    background:linear-gradient(135deg, #fff8e7 0%, #eef7ff 100%); box-shadow:0 10px 24px rgba(15,23,42,.05); }
-  .target-panel-copy { margin-bottom:12px; }
-  .target-panel-kicker { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#9a3412; margin-bottom:6px; }
-  .target-panel-copy strong { display:block; font-size:18px; color:#0f172a; margin-bottom:4px; }
-  .target-panel-copy p { margin:0; color:#475569; font-size:13px; }
   @media (max-width: 900px) {
     main { grid-template-columns:1fr; }
     nav { border-right:none; border-bottom:1px solid #d7dde5; }
@@ -2041,26 +2037,31 @@ def index(request: Request = None) -> str:
         cfg = require_config()
         console = cfg.get("console", {})
         nav = render_nav()
+        project_name = _current_project_name()
+        copyright_notice = _current_copyright()
 
         all_items = items()
         default_id = console.get("default_item") or (all_items[0]["id"] if all_items else "")
-        init = next(
+        requested_id = request.query_params.get("item") if request else None
+        requested = next((i for i in all_items if i["id"] == requested_id), None)
+        init = requested or next(
             (i for i in all_items if i["id"] == default_id), all_items[0] if all_items else None
         )
         init_js = f'loadDoc("{init["id"]}");' if init else ""
 
         help_btn = (
-            '<a class="help-btn" href="/help" target="_blank" title="Help">?</a>'
+            '<a class="help-btn" href="/help" target="_blank" rel="noopener" title="Open Help">'
+            'Help <span class="flyout">↗</span></a>'
             if console.get("app_help_file_location")
             else ""
         )
 
         return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(console.get("name", "Console"))}</title><style>{_STYLE}</style></head>
+<title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
-  <header><strong>{html.escape(console.get("name", "Console"))}</strong>
-    <span class="sub">{html.escape(cfg.get("project", {}).get("description", ""))}</span>{help_btn}</header>
+  <header><strong>{html.escape(project_name)}</strong>{help_btn}</header>
+  <div class="copyright-bar">{html.escape(copyright_notice)}</div>
   <main>
     <nav>{nav}</nav>
     <article id="content">Loading…</article>

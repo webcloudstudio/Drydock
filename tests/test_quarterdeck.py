@@ -736,6 +736,10 @@ def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
 def _write_target_console(target_dir: Path, name: str) -> None:
     quarterdeck_dir = target_dir / "QuarterDeck"
     (quarterdeck_dir / "pages").mkdir(parents=True, exist_ok=True)
+    (quarterdeck_dir / "pages" / "help.html").write_text(
+        f"<p>{name} help</p>",
+        encoding="utf-8",
+    )
     (quarterdeck_dir / "pages" / "overview.md").write_text(
         f"# {name} Captain's Chair\n\nStatus.\n",
         encoding="utf-8",
@@ -746,10 +750,12 @@ def _write_target_console(target_dir: Path, name: str) -> None:
                 "console:",
                 f"  name: {name} QuarterDeck",
                 "  default_item: commanders_view",
+                "  app_help_file_location: pages/help.html",
                 "project:",
                 f"  id: {name.lower()}",
                 f"  name: {name}",
                 "  description: \"Workspace target\"",
+                f"  copyright: Copyright (c) 2026 {name} Studio. All rights reserved.",
                 "sections:",
                 "  - { id: core, label: \"Core\", dot: \"#0d9488\", pinned: true }",
                 "items:",
@@ -781,8 +787,9 @@ def _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path: Path) -
 
 
 class _RequestStub:
-    def __init__(self, cookies=None):
+    def __init__(self, cookies=None, query_params=None):
         self.cookies = cookies or {}
+        self.query_params = query_params or {}
 
 
 def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
@@ -794,6 +801,11 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
     assert "/switch-target/Alpha" in rendered
     assert "/switch-target/Beta" in rendered
     assert "target-btn active" in rendered
+    assert "target-btn-id" not in rendered
+    assert ">Alpha</span>" in rendered
+    assert ">Beta</span>" in rendered
+    assert "Workspace target" not in rendered
+    assert "<span class='section-label'>Alpha</span>" in rendered
 
 
 def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypatch):
@@ -803,19 +815,45 @@ def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypa
     response = quarterdeck.switch_target("Beta", _RequestStub())
 
     assert response.status_code == 303
+    assert response.headers["location"] == "/?item=commanders_view"
     assert "quarterdeck_target=Beta" in response.headers["set-cookie"]
 
     config = quarterdeck.api_config(_RequestStub({"quarterdeck_target": "Beta"}))
     assert config["project"]["name"] == "Beta"
 
 
-def test_captains_chair_includes_target_switcher_panel(tmp_path, monkeypatch):
+def test_captains_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
 
     response = quarterdeck.api_document("commanders_view", _RequestStub({"quarterdeck_target": "Beta"}))
     html = response["html"]
-    assert "Viewing Target" in html
-    assert "/switch-target/Alpha" in html
-    assert "/switch-target/Beta" in html
-    assert "Beta" in html
+    assert "Captain&#x27;s Chair" in html
+    assert "Viewing Target" not in html
+    assert "target-panel" not in html
+    assert "/switch-target/Beta" not in html
+
+
+def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    html = quarterdeck.index(_RequestStub({"quarterdeck_target": "Beta"}))
+
+    assert "<title>Beta</title>" in html
+    assert "<header><strong>Beta</strong>" in html
+    assert "Workspace target" not in html
+    assert "Copyright (c) 2026 Beta Studio. All rights reserved." in html
+    assert 'Help <span class="flyout">↗</span>' in html
+
+
+def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    request = _RequestStub({"quarterdeck_target": "Beta"})
+    request.query_params = {"item": "commanders_view"}
+
+    html = quarterdeck.index(request)
+
+    assert 'loadDoc("commanders_view");' in html
