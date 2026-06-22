@@ -201,7 +201,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_rigging_compact(args: argparse.Namespace) -> int:
-    from drydock.config import blueprint_dir_for, get_llm_provider, get_model, get_target_directory
+    from drydock.config import blueprint_dir_for, get_llm_provider, get_model, get_target_directory, get_workspace
     from drydock.rigging_compact import CompactItem, compact
 
     include_files = [Path(f) for f in (args.include_file or [])]
@@ -213,12 +213,15 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         # No Target: use cwd as the anchor; auto-discovery finds nothing there, explicit paths drive all work.
         spec_dir = Path.cwd()
         label = str(spec_dir)
+        log_work_dir = get_workspace()
     else:
         if args.Target is None:
             print("error: <Target> is required unless --include-file or --include-dir is provided.", file=sys.stderr)
             return 2
-        spec_dir = blueprint_dir_for(get_target_directory() / args.Target)
+        target_dir = get_target_directory() / args.Target
+        spec_dir = blueprint_dir_for(target_dir)
         label = args.Target
+        log_work_dir = target_dir
 
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
@@ -246,6 +249,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         exclude_files=exclude_files or None,
         include_dirs=include_dirs or None,
         skip_autodiscovery=explicit_only,
+        log_work_dir=log_work_dir,
         on_item=report,
         model=model,
         llm_provider=llm_provider,
