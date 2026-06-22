@@ -18,8 +18,8 @@ opens application files directly, or imports a cloud SDK (`boto3`). The typed cl
 
 **Why**: A storage or service change is absorbed at the class. Downstream code depends on the
 interface, so a schema change that does not change the interface changes nothing else. This is
-the same swap-layer discipline the `marina` library already enforces for AWS (`import boto3`
-outside `marina` fails review), generalized to every store.
+the same swap-layer discipline a cloud client library enforces for AWS (`import boto3`
+outside the wrapper fails review), generalized to every store.
 
 A code review that finds raw SQL, `os.environ`, `open()` on application data, or a cloud SDK
 import outside its encapsulation class fails.
@@ -160,8 +160,9 @@ class ServiceClient:
             raise
 ```
 
-Wrappers subclass it. AWS uses the `marina` library (`mar.queue`, `mar.share`, `mar.catalog`);
-any new service follows the same shape — e.g. a `MessageBus` over SQS, even when it maps 1:1:
+Wrappers subclass it. AWS commonly uses a project-owned cloud client library
+(`client.queue`, `client.share`, `client.catalog`); any new service follows the same shape — e.g.
+a `MessageBus` over SQS, even when it maps 1:1:
 
 ```python
 # messagebus.py — the wrapper hides the transport
@@ -173,7 +174,7 @@ class MessageBus(ServiceClient):
 
 **Why**: the base class makes logging and error handling uniform across services; the wrapper
 is the seam. Swapping the transport, or stubbing it in tests, changes one class. See
-`stack/marina-library.md`, `stack/aws-sqs.md`, `stack/aws-s3.md`, `stack/aws-dynamodb.md`.
+`stack/cloud-client-library.md`, `stack/aws-sqs.md`, `stack/aws-s3.md`, `stack/aws-dynamodb.md`.
 
 ---
 

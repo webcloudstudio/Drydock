@@ -7,9 +7,9 @@ Technology reference for AWS Lambda functions in Python. This file does not chan
 
 Prerequisites: `stack/python.md`, `stack/terraform.md`
 
-In Marina, Lambdas are thin: they sit behind an IAM-authorized API Gateway, validate the event, call
-one storage operation (DynamoDB/SQS/S3), and return. They hold no business logic that belongs in the
-`marina` library, and they are provisioned by Terraform, never the console.
+Lambdas are thin: they sit behind an IAM-authorized API Gateway, validate the event, call one storage
+operation (DynamoDB/SQS/S3), and return. They hold no business logic that belongs in the cloud client
+library, and they are provisioned by Terraform, never the console.
 
 ---
 
@@ -83,7 +83,7 @@ ARNs and actions it uses — never `"Resource": "*"`, never `dynamodb:*`. A read
 data "aws_iam_policy_document" "catalog_read" {
   statement {
     actions   = ["dynamodb:GetItem", "dynamodb:Query"]
-    resources = [aws_dynamodb_table.marina.arn]
+    resources = [aws_dynamodb_table.catalog.arn]
   }
 }
 ```
@@ -97,7 +97,7 @@ what each function touches.
 
 **Rule**: Use the `logging` module (never `print`); emit one structured JSON line per request so
 CloudWatch Logs Insights can query it. Set the log group retention in Terraform (e.g. 30 days) — never
-leave it at "never expire". Log groups are how Marina features are observed without a UI.
+leave it at "never expire". Log groups are how these features are observed without a UI.
 
 ```python
 log.info(json.dumps({"event": "catalog_read", "org": org, "project": project, "items": n}))
@@ -105,13 +105,13 @@ log.info(json.dumps({"event": "catalog_read", "org": org, "project": project, "i
 
 ```hcl
 resource "aws_cloudwatch_log_group" "fn" {
-  name              = "/aws/lambda/marina-${var.project}-catalog-read"
+  name              = "/aws/lambda/${var.project}-catalog-read"
   retention_in_days = 30
-  tags              = local.marina_tags
+  tags              = local.common_tags
 }
 ```
 
-**Why**: Structured logs are queryable; bounded retention controls cost. Because Marina ships no screens
+**Why**: Structured logs are queryable; bounded retention controls cost. When the system ships no screens
 in Phase 1/2, these log groups and metric filters are the primary verification surface.
 
 ---
@@ -142,7 +142,7 @@ data "archive_file" "fn" {
 }
 
 resource "aws_lambda_function" "catalog_read" {
-  function_name    = "marina-${var.project}-catalog-read"
+  function_name    = "${var.project}-catalog-read"
   runtime          = "python3.12"
   handler          = "handler.handler"
   filename         = data.archive_file.fn.output_path
@@ -150,8 +150,8 @@ resource "aws_lambda_function" "catalog_read" {
   timeout          = 10
   memory_size      = 256
   role             = aws_iam_role.catalog_read.arn
-  environment { variables = { TABLE_NAME = aws_dynamodb_table.marina.name, LOG_LEVEL = "INFO" } }
-  tags             = local.marina_tags
+  environment { variables = { TABLE_NAME = aws_dynamodb_table.catalog.name, LOG_LEVEL = "INFO" } }
+  tags             = local.common_tags
 }
 ```
 
@@ -164,11 +164,11 @@ when code changes. Console edits create drift that Terraform will silently rever
 
 | Resource | Convention | Example |
 |---|---|---|
-| Function | `marina-{project}-{purpose}` | `marina-market-catalog-read` |
-| Execution role | `marina-{project}-{purpose}-role` | `marina-market-catalog-read-role` |
-| Log group | `/aws/lambda/marina-{project}-{purpose}` | `/aws/lambda/marina-market-catalog-read` |
+| Function | `{project}-{purpose}` | `market-catalog-read` |
+| Execution role | `{project}-{purpose}-role` | `market-catalog-read-role` |
+| Log group | `/aws/lambda/{project}-{purpose}` | `/aws/lambda/market-catalog-read` |
 
-Apply the standard Marina tag set (`Project`, `Owner`, `ManagedBy=terraform`, `Phase`) to every function.
+Apply the standard tag set (`Project`, `Owner`, `ManagedBy=terraform`, `Phase`) to every function.
 
 ---
 

@@ -29,7 +29,7 @@ These technology files are **shared across all projects** in this specification 
 | `aws-s3.md` | `aws_services: [aws-s3]` | Private buckets, prefix-per-user company share, encryption, lifecycle |
 | `terraform.md` | `infra: terraform` | Layered roots, S3+DynamoDB remote backend, naming/tags, bash wrappers |
 | `github-actions.md` | `ci: github-actions` | OIDC role assumption, ruff/pytest gates, plan-on-PR / apply-on-merge |
-| `marina-library.md` | `lib: marina` | The `marina` indirection library — the single cloud boundary (never raw boto3) |
+| `cloud-client-library.md` | `lib: cloud-client` | A project-owned cloud client library — the single cloud boundary (never raw boto3) |
 
 ---
 
@@ -64,7 +64,7 @@ These technology files are **shared across all projects** in this specification 
 - **github-actions.md** — CI/CD pipelines (OIDC, no static keys)
 
 ### Client Library
-- **marina-library.md** — The `marina` cloud indirection library (swap layer)
+- **cloud-client-library.md** — The project-owned cloud indirection library (swap layer)
 
 ---
 

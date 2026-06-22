@@ -7,7 +7,7 @@ Technology reference for provisioning AWS with Terraform. This file does not cha
 
 Prerequisites: `stack/aws-dynamodb.md` (lock table), `stack/aws-s3.md` (state bucket)
 
-All Marina cloud infrastructure is Terraform. Nothing is created in the console. The layout separates
+All cloud infrastructure is Terraform. Nothing is created in the console. The layout separates
 **one-shot foundational** state (networking, the DynamoDB table, IAM/OIDC roles, buckets) from
 **rerun-anytime** state (Lambdas, API Gateway) so routine code deploys never risk the foundation.
 
@@ -43,10 +43,10 @@ DynamoDB holds only the lock — this is the canonical pattern behind "state mus
 # infra/services/backend.tf
 terraform {
   backend "s3" {
-    bucket         = "marina-market-tfstate"
+    bucket         = "acme-market-tfstate"
     key            = "services/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "marina-market-tflock"
+    dynamodb_table = "acme-market-tflock"
     encrypt        = true
   }
 }
@@ -79,16 +79,16 @@ no migration step to get wrong.
 
 ## 4. Variables, Locals, and the Standard Tag Set
 
-**Rule**: No hardcoded names, regions, or account IDs. A `project` variable feeds the
-`marina-{project}-{resource}` naming convention. A `locals.marina_tags` map is applied to every taggable
-resource.
+**Rule**: No hardcoded names, regions, or account IDs. An `org` + `project` variable pair feeds the
+`{org}-{project}-{resource}` naming convention. A `locals.common_tags` map is applied to every
+taggable resource.
 
 ```hcl
 variable "project" { type = string }
 variable "org"     { type = string }
 
 locals {
-  marina_tags = {
+  common_tags = {
     Project   = var.project
     Owner     = var.org
     ManagedBy = "terraform"
@@ -104,12 +104,12 @@ cost allocation and cleanup possible.
 
 ## 5. No Secrets in State or Code
 
-**Rule**: Never put secrets in `.tf` files or variables that land in state. Marina avoids this by design
-(SigV4 identity, no API keys, no Secrets Manager). Where a value must be referenced, read it from SSM
-Parameter Store at apply time — do not write it into state.
+**Rule**: Never put secrets in `.tf` files or variables that land in state. Prefer identity-based access
+(SigV4 identity, no API keys) where the system permits it. Where a value must be referenced, read it
+from SSM Parameter Store at apply time — do not write it into state.
 
 **Why**: Terraform state is plaintext JSON in S3. Anything in it is readable by anyone with state
-access. Marina's auth model already removes the need for stored secrets.
+access. Identity-based auth often removes the need for stored secrets.
 
 ---
 
@@ -138,8 +138,8 @@ drift; fmt/validate gates catch errors before they reach a plan.
 
 | Resource | Convention | Example |
 |---|---|---|
-| State bucket | `marina-{project}-tfstate` | `marina-market-tfstate` |
-| Lock table | `marina-{project}-tflock` | `marina-market-tflock` |
+| State bucket | `{org}-{project}-tfstate` | `acme-market-tfstate` |
+| Lock table | `{org}-{project}-tflock` | `acme-market-tflock` |
 | State key | `{layer}/terraform.tfstate` | `services/terraform.tfstate` |
 
 ---
@@ -149,6 +149,6 @@ drift; fmt/validate gates catch errors before they reach a plan.
 - [ ] Layered roots: `backend/`, `foundation/`, `services/`, shared `modules/`
 - [ ] S3 backend (versioned, encrypted) + DynamoDB lock; no local state beyond `backend/`
 - [ ] `backend/` bootstrapped once with local state; excluded from normal pipelines
-- [ ] All names variable-driven via `marina-{project}-{resource}`; standard tags applied
+- [ ] All names variable-driven via `{org}-{project}-{resource}`; standard tags applied
 - [ ] No secrets in state or `.tf`; SSM read at apply time if needed
 - [ ] `infra/bin/` wrappers used; provider versions pinned; `fmt -check` + `validate` in CI

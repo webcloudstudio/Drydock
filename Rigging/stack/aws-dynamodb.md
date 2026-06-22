@@ -1,11 +1,11 @@
 # AWS DynamoDB Best Practices
 
 **Version:** 20260528 V1
-**Description:** DynamoDB single-table design for hierarchical catalog/state data accessed through the Marina library (never raw boto3)
+**Description:** DynamoDB single-table design for hierarchical catalog/state data accessed through a cloud client library (never raw boto3)
 
 Technology reference for Amazon DynamoDB with Python. This file does not change between projects.
 
-Prerequisites: `stack/python.md`, `stack/marina-library.md`
+Prerequisites: `stack/python.md`, `stack/cloud-client-library.md`
 
 DynamoDB is correct here because the data is **simple, hierarchical, and never joined on the server**.
 It is one tree of objects per organization, read as a subtree and assembled client-side. Used this way
@@ -64,8 +64,8 @@ point-in-time recovery (PITR) on the table; leave auto-scaling off (it does not 
 
 ```hcl
 # Terraform (see stack/terraform.md)
-resource "aws_dynamodb_table" "marina" {
-  name         = "marina-${var.project}-catalog"
+resource "aws_dynamodb_table" "catalog" {
+  name         = "${var.project}-catalog"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "PK"
   range_key    = "SK"
@@ -76,7 +76,7 @@ resource "aws_dynamodb_table" "marina" {
   point_in_time_recovery { enabled = true }
   server_side_encryption { enabled = true }
 
-  tags = local.marina_tags
+  tags = local.common_tags
 }
 ```
 
@@ -120,7 +120,7 @@ without a condition. Batch unrelated writes with `BatchWriteItem` (≤25 items);
 only when several items must change atomically.
 
 ```python
-# Access is ALWAYS through the marina library — shown here for the rule only.
+# Access is ALWAYS through the cloud client library — shown here for the rule only.
 table.put_item(
     Item=item,
     ConditionExpression="attribute_not_exists(SK) OR updated_at <= :now",
@@ -165,11 +165,11 @@ overhead. The hierarchical base key already serves the Phase 1/2 patterns.
 
 ---
 
-## 7. Access Only Through the Marina Library
+## 7. Access Only Through the Cloud Client Library
 
-**Rule**: Application and project code never imports `boto3` for DynamoDB. It calls the `marina`
-library (`marina.catalog`, `marina.report`), which owns the client, key construction, retries, and
-pagination. This is the swap layer (see `stack/marina-library.md`).
+**Rule**: Application and project code never imports `boto3` for DynamoDB. It calls the cloud client
+library (`client.catalog`, `client.report`), which owns the client, key construction, retries, and
+pagination. This is the swap layer (see `stack/cloud-client-library.md`).
 
 **Why**: Centralizing key construction prevents key-format drift across callers and lets the storage
 backend change (DynamoDB → another store) without touching consumers.
@@ -180,11 +180,11 @@ backend change (DynamoDB → another store) without touching consumers.
 
 | Resource | Convention | Example |
 |---|---|---|
-| Table | `marina-{project}-catalog` | `marina-market-catalog` |
-| Lock table (Terraform state) | `marina-{project}-tflock` | `marina-market-tflock` |
+| Table | `{project}-catalog` | `market-catalog` |
+| Lock table (Terraform state) | `{org}-{project}-tflock` | `acme-market-tflock` |
 | GSI | `gsi-{purpose}` | `gsi-tag` |
 
-Every resource includes the project name. Tag every table with the standard Marina tag set
+Every resource includes the project name. Tag every table with the standard tag set
 (`Project`, `Owner`, `ManagedBy=terraform`, `Phase`).
 
 ---
@@ -198,5 +198,5 @@ Every resource includes the project name. Tag every table with the standard Mari
 - [ ] Writes idempotent via condition expressions (existence test on `SK`, never `PK`)
 - [ ] `ttl` attribute + DynamoDB TTL on high-volume expirable items (events); durable items carry none
 - [ ] GSIs added only for a documented pattern, with minimal projection
-- [ ] All access through the `marina` library, never raw boto3
+- [ ] All access through the cloud client library, never raw boto3
 - [ ] Table name includes project; standard tags applied

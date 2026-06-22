@@ -3,7 +3,7 @@
 **Version:** 20260528 V1
 **Description:** CI/CD pipelines that assume AWS roles via OIDC (no static keys), gate on lint/test, and run Terraform plan-on-PR / apply-on-merge
 
-Technology reference for GitHub Actions pipelines deploying Marina to AWS. This file does not change
+Technology reference for GitHub Actions pipelines deploying a project to AWS. This file does not change
 between projects.
 
 Prerequisites: `stack/terraform.md`, `stack/python.md`
@@ -28,7 +28,7 @@ permissions:
 steps:
   - uses: aws-actions/configure-aws-credentials@v4
     with:
-      role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/marina-${{ vars.PROJECT }}-deploy
+      role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars.PROJECT }}-deploy
       aws-region: ${{ vars.AWS_REGION }}
 ```
 
@@ -120,7 +120,7 @@ serialize at the pipeline). Required checks make the green-CI gate unbypassable.
 
 | Item | Convention | Example |
 |---|---|---|
-| Deploy role | `marina-{project}-deploy` | `marina-market-deploy` |
+| Deploy role | `{project}-deploy` | `market-deploy` |
 | Workflow files | `ci.yml`, `deploy.yml`, `bootstrap.yml` | — |
 | Repo variables | `AWS_ACCOUNT_ID`, `AWS_REGION`, `PROJECT` | — |
 

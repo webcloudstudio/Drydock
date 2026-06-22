@@ -3,13 +3,13 @@
 **Version:** 20260528 V1
 **Description:** S3 for blob storage and a simple per-user company file share — private, encrypted, prefix-scoped
 
-Technology reference for Amazon S3 with Python (via the `marina` library). This file does not change
+Technology reference for Amazon S3 with Python (via a cloud client library). This file does not change
 between projects.
 
-Prerequisites: `stack/python.md`, `stack/marina-library.md`
+Prerequisites: `stack/python.md`, `stack/cloud-client-library.md`
 
-S3 plays two small roles in Marina: it holds blobs that do not belong in DynamoDB (e.g. VoiceForward
-audio), and it backs a deliberately simple "company share" — each member has a prefix, and members can
+S3 plays two small roles in a typical project: it holds blobs that do not belong in DynamoDB, and it
+backs a deliberately simple "company share" — each member has a prefix, and members can
 read each other's shared files. Nothing in S3 is ever public.
 
 ---
@@ -30,7 +30,7 @@ resource "aws_s3_bucket_public_access_block" "share" {
 }
 ```
 
-**Why**: Public S3 buckets are the canonical cloud data leak. Marina's no-public-inbound rule applies to
+**Why**: Public S3 buckets are the canonical cloud data leak. The no-public-inbound rule applies to
 storage as much as to the API.
 
 ---
@@ -52,12 +52,12 @@ recoverable event; lifecycle expiry keeps version sprawl from accumulating cost.
 allowed; writes are confined to your own prefix.
 
 ```
-marina-{project}-share/
+{org}-{project}-share/
   users/{member}/...        # member writes only here
   shared/...                # optional company-wide drop space
 ```
 
-`marina.share.put()` writes under `users/{current_member}/`; `marina.share.list()` and `get()` may read
+`client.share.put()` writes under `users/{current_member}/`; `client.share.list()` and `get()` may read
 any `users/*` or `shared/*` key.
 
 **Why**: One bucket with prefixes is the simplest model that still isolates write authority. It matches
@@ -75,7 +75,7 @@ not just in library code.
 {
   "Effect": "Allow",
   "Action": ["s3:PutObject", "s3:DeleteObject"],
-  "Resource": "arn:aws:s3:::marina-market-share/users/${aws:username}/*"
+  "Resource": "arn:aws:s3:::acme-market-share/users/${aws:username}/*"
 }
 ```
 
@@ -95,10 +95,10 @@ key in the item avoids scanning the bucket.
 
 ---
 
-## 6. Access Through the Marina Library
+## 6. Access Through the Cloud Client Library
 
-**Rule**: Project code calls `mar.share.put/get/list`; VoiceForward and other features call the same
-library for blob storage. Bucket names and the boto3 S3 client live inside `marina`.
+**Rule**: Project code calls `client.share.put/get/list`; other features call the same library for blob
+storage. Bucket names and the boto3 S3 client live inside the cloud client library.
 
 **Why**: Same swap-layer rule as everywhere — one place owns the bucket name and client.
 
@@ -108,11 +108,11 @@ library for blob storage. Bucket names and the boto3 S3 client live inside `mari
 
 | Resource | Convention | Example |
 |---|---|---|
-| Share bucket | `marina-{project}-share` | `marina-market-share` |
-| Blob bucket | `marina-{project}-{purpose}` | `marina-market-voice` |
-| State bucket (Terraform) | `marina-{project}-tfstate` | `marina-market-tfstate` |
+| Share bucket | `{org}-{project}-share` | `acme-market-share` |
+| Blob bucket | `{org}-{project}-{purpose}` | `acme-market-voice` |
+| State bucket (Terraform) | `{org}-{project}-tfstate` | `acme-market-tfstate` |
 
-Bucket names are globally unique — the project prefix helps. Apply standard Marina tags to every bucket.
+Bucket names are globally unique — the org/project prefix helps. Apply standard tags to every bucket.
 
 ---
 
@@ -123,5 +123,5 @@ Bucket names are globally unique — the project prefix helps. Apply standard Ma
 - [ ] Share bucket partitioned by member prefix (`users/{member}/`)
 - [ ] IAM allows bucket-wide read but write only to own prefix
 - [ ] Object keys indexed in DynamoDB; no bucket scans for discovery
-- [ ] All access through `marina.share`; bucket names not in project code
+- [ ] All access through the cloud client library; bucket names not in project code
 - [ ] Bucket name includes project; standard tags applied
