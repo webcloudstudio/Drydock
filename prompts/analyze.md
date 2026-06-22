@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260618 V8
+version: 20260622 V9
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -201,7 +201,7 @@ blockers exist; emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
 ## Output Format
 
 Emit exactly these blocks in order. COMPASS.md block is conditional.
-**Nothing outside the blocks.** No preamble, no explanation, no commentary.
+**Nothing outside the blocks.** No preamble, no explanation, no commentary, no tool calls, no `<invoke>` XML. Start your response with `=== ANALYSIS.md ===`.
 
 ```
 === ANALYSIS.md ===
@@ -351,7 +351,7 @@ type, always ending with `"other"`. Never open the per-technology files — list
 
 ## Hard Rules
 
-- Emit **only** the `=== ... ===` blocks. No text outside them.
+- Emit **only** the `=== ... ===` / `=== END ... ===` blocks. No text outside them — no preamble, no summary, no prose, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
 - COMPASS.md must be ≤40 lines. It is injected into every build step — brevity is a hard requirement.
