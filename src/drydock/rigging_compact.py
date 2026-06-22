@@ -133,6 +133,7 @@ def discover(
     include_files: list[Path] | None = None,
     exclude_files: list[Path] | None = None,
     include_dirs: list[Path] | None = None,
+    skip_autodiscovery: bool = False,
 ) -> list[Path]:
     """Return source files that need a compact derivative, in stable order.
 
@@ -140,7 +141,8 @@ def discover(
     has a ``*_compact.md`` sibling. ``include_rigging`` adds existing-sibling refreshes from
     Drydock's own Rigging tree. ``include_files`` and ``include_dirs`` add explicit targets.
     ``exclude_files`` removes resolved paths from the candidate set. ``*_compact.md`` files are
-    never treated as sources.
+    never treated as sources. ``skip_autodiscovery`` suppresses the Blueprint-scope scan entirely,
+    leaving only ``include_files`` and ``include_dirs`` as sources.
     """
     sources: list[Path] = []
     seen: set[Path] = set()
@@ -151,14 +153,16 @@ def discover(
             seen.add(resolved)
             sources.append(resolved)
 
-    for name in REQUIRED_PAIRS:
-        candidate = spec_dir / name
-        if candidate.is_file():
-            add(candidate)
+    if not skip_autodiscovery:
+        for name in REQUIRED_PAIRS:
+            candidate = spec_dir / name
+            if candidate.is_file():
+                add(candidate)
 
-    for md in sorted(spec_dir.glob("*.md")):
-        if not _is_compact(md) and _compact_path(md).is_file():
-            add(md)
+    if not skip_autodiscovery:
+        for md in sorted(spec_dir.glob("*.md")):
+            if not _is_compact(md) and _compact_path(md).is_file():
+                add(md)
 
     if include_rigging:
         for md in sorted(get_rigging_root().rglob("*.md")):
@@ -243,6 +247,7 @@ def compact(
     include_files: list[Path] | None = None,
     exclude_files: list[Path] | None = None,
     include_dirs: list[Path] | None = None,
+    skip_autodiscovery: bool = False,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     on_item: Callable[[CompactItem], None] | None = None,
@@ -271,6 +276,7 @@ def compact(
         include_files=include_files,
         exclude_files=exclude_files,
         include_dirs=include_dirs,
+        skip_autodiscovery=skip_autodiscovery,
     )
 
     for source in sources:

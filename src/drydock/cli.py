@@ -245,6 +245,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         include_files=include_files or None,
         exclude_files=exclude_files or None,
         include_dirs=include_dirs or None,
+        skip_autodiscovery=explicit_only,
         on_item=report,
         model=model,
         llm_provider=llm_provider,
