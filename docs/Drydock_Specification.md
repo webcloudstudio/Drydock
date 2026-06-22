@@ -360,7 +360,7 @@ drydock document <Target>
 drydock document generate <Target>
 drydock document assemble <Target>
 drydock validate <Target> [--verbose]
-drydock rigging compact <Target> [--all] [--force]
+drydock rigging compact <Target> [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
 drydock rigging update <Target>
 drydock rigging verify <Target>
 ```
@@ -1322,23 +1322,43 @@ the relevant artifact type.
 
 ### Compaction — Full Context for Builders, Compact Context for Users
 
-`drydock rigging compact <Target>` creates compact derivatives for eligible Blueprint
-inputs. The full source is used to build the service; consumers receive the compact derivative.
-Existing derivatives are regenerated only when stale: `<stem>_compact.md` is missing or older than
-its source.
+Specification compaction addresses one of the central inefficiencies in LLM-assisted software
+development: the cost of loading build-time context into a consumer's prompt. When a service is
+built from a full specification — routes, schemas, constraints, rationale, implementation guidance
+— that same specification becomes a liability when injected into an agent that only needs to call
+the service. Drydock's answer is the compact derivative: a machine-generated document that extracts
+only the callable surface of a specification file and discards everything else. The format follows
+the Model Context Protocol (MCP) convention — each callable unit is represented by its name or
+route path, a one-line description, a typed input table, and a return description — making the
+compact form immediately interpretable by any LLM familiar with tool-use patterns. Builder stories
+receive the full specification; consumer stories receive the compact derivative. The result is a
+structured, deterministic reduction in prompt size that preserves exactly what a caller needs and
+nothing more.
 
-`--force` ignores the freshness gate
-`--all` creates/refreshes needed files
+`drydock rigging compact <Target>` creates compact derivatives for eligible Blueprint inputs.
+Existing derivatives are regenerated only when stale: `<stem>_compact.md` is missing or older
+than its source.
 
-Certain files, file types, and some `Rigging/` should always be compacted.
+Files that contain no callable technical surface — branding guides, tone documents, process
+narratives — are classified by the compaction agent and skipped with status `no-surface`. These
+files are builder-only inputs and do not produce compact derivatives.
 
-TODO: Figure out what should be done.  The list below is incomplete.
-Note: Rigging should have config for this
+| Flag | Effect |
+|------|--------|
+| `--force` | Ignore the freshness gate; recompact all discovered files |
+| `--all` | Also refresh existing compact derivatives in Drydock's own `Rigging/` tree |
+| `--include-file <file.md>` | Add a specific Markdown file to the compaction set (repeatable) |
+| `--exclude-file <file.md>` | Remove a file from the auto-discovered set (repeatable) |
+| `--include-dir <dir>` | Add all Markdown files under a directory to the compaction set (repeatable) |
 
-| Source | Compact | Stripped to |
-|--------|---------|-------------|
-| `DATABASE.md` | `DATABASE_compact.md` | Class names, method signatures, typed parameters, return types, one-line summaries |
-| `BUSINESS_RULES.md` | `BUSINESS_RULES_compact.md` | Actionable rules only; rationale and examples removed |
+Files are processed one at a time. All `--include-file` and `--include-dir` arguments must
+resolve to `.md` files; `_compact.md` files are never treated as sources.
+
+| Source | Compact | Usage surface extracted |
+|--------|---------|------------------------|
+| `DATABASE.md` | `DATABASE_compact.md` | Class names, method signatures, typed parameters, return types, one-line per-method summaries |
+| `BUSINESS_RULES.md` | `BUSINESS_RULES_compact.md` | Callable enforcement points — conditions and expected outcomes a consuming story must satisfy |
+| Any `FEATURE-*.md` | `FEATURE-*_compact.md` | HTTP routes and callable units with typed input tables and return descriptions |
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -1442,3 +1462,66 @@ Translation performs these steps:
 
 The conversion report is review evidence, not a permanent Specification file. The translator must
 not silently discard ambiguous or conflicting source content.
+
+## Drydock Security
+
+The following explains the current implementation of drydock security.  The surface most exposed is the llm
+parsing and below is how drydock currently implements for claude and codex.
+
+For stronger encapsulation, wrapping this command in bwrap (bubblewrap) confines the build's filesystem to the config home and working directory — recommended as an added safety layer but out of scope for the current implementation.  A pipeline sandbox should limit read/write to the two main directories in scope for this work - namely DRYDOCK_BUILD_DIRECTORY and DRYDOCK_WORKSPACE.  
+
+### Claude Implementation
+
+Drydock encapsulates the llm when claude is chosen via:
+
+    HOME=~/.drydock/claude-home CLAUDE_CONFIG_DIR=~/.drydock/claude-home \
+    claude -p \
+      --verbose \
+      --safe-mode \
+      --output-format stream-json \
+      --include-partial-messages \
+      --dangerously-skip-permissions \
+      --model <model>
+
+    Drydock invokes the Claude CLI as a non-interactive build agent inside an
+    isolated configuration home. HOME / CLAUDE_CONFIG_DIR are set per-subprocess
+    to a dedicated ~/.drydock/claude-home, seeded only with the subscription
+    credentials, so the agent reads none of the user's settings, plugins, MCP
+    servers, history, or state. -p runs in print (headless) mode — single prompt
+    in, response out, no interactive session. 
+
+      --verbose emits full event detail for the durable execution log. 
+      --safe-mode disables auto-discovery of
+    CLAUDE.md/AGENTS.md, auto-memory, hooks, plugins, and MCP servers while
+    preserving subscription/OAuth auth. 
+      --output-format stream-json streams structured JSON events that
+    Drydock parses for live progress and reproducible records.
+      --include-partial-messages forwards incremental token deltas so console
+    output appears as it is generated. 
+      --dangerously-skip-permissions runs the
+    file-writing build agent unattended without permission prompts (text-only
+    Drydock commands instead use --tools "" 
+      --strict-mcp-config to withhold tools). 
+      --model <model> selects the configured model. 
+      
+
+### Codex Implementation
+
+Drydock encapsulates the llm when codex is chosen via:
+
+    Drydock runs Codex in a clean room with
+
+    CODEX_HOME=/tmp/drydock-codex-home-XXXX codex exec --ignore-user-config
+    --ignore-rules --ephemeral --sandbox workspace-write --cd <build_dir> --json
+    --output-last-message <output_file> --model <model> -; 
+    
+    CODEX_HOME=... points Codex at a temporary home seeded only with auth.json, 
+    --ignore-user-config disables $CODEX_HOME/config.toml, 
+    --ignore-rules disables user/project .rules, 
+    --ephemeral disables persisted session state, 
+    --sandbox workspace-write constrains tool execution to the workspace sandbox, 
+    --cd <build_dir> sets the working root, 
+    --json enables structured event output,
+    --output-last-message <output_file> captures the final agent message deterministically, 
+    --model <model> selects the runtime model 
+    trailing - tells Codex to read the fully assembled Drydock prompt from stdin

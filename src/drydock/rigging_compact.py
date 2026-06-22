@@ -1,12 +1,12 @@
-"""``drydock rigging compact`` — LLM-compact stale files into ``_compact.md`` siblings.
+"""``drydock rigging compact`` — extract usage-surface compact derivatives from spec files.
 
-The general compaction entry point. For a Blueprint it discovers every file that needs a compact
-derivative and refreshes only the stale ones (a freshness gate, like V1
-``bin/rulesengine_compact.sh``). With ``include_rigging`` it also refreshes existing derivatives in
-Drydock's own ``Rigging/`` tree.
+Each eligible Markdown file is compacted to an MCP-inspired form containing only caller-facing
+callable units (routes, methods, schemas). Builder files that have no technical surface (branding,
+tone guides, process prose) are classified by the LLM and skipped with status ``no-surface``.
+The full source is used by builder stories; consumer stories receive the compact derivative.
 
-The LLM only emits text; this module writes the derivative deterministically, so execution needs no
-file-write permission and tests inject a fake runner instead of spending API credits.
+The LLM only emits text; this module writes the derivative deterministically. Tests inject a
+fake runner instead of spending API credits.
 """
 
 from __future__ import annotations
@@ -26,25 +26,27 @@ from drydock.prompts import load_prompt
 PROMPT_NAME = "rigging_compact"
 COMPACT_SUFFIX = "_compact"
 
-# Files always expected to carry a compact derivative inside a Blueprint, even before a sibling
-# exists. Source: docs/Drydock_Specification.md — "Rigging - Specification Compaction".
+# Files always expected to carry a compact derivative inside a Blueprint.
 REQUIRED_PAIRS: tuple[str, ...] = ("DATABASE.md", "BUSINESS_RULES.md")
 
 _GENERAL_OBJECTIVE = (
-    "Preserve every actionable rule, code block, signature, and constraint. Remove rationale, "
-    "examples, and narrative. Keep the result behaviorally faithful to the source."
+    "Extract the caller-facing usage surface of this file. For each callable unit (route, method, "
+    "function, schema, or required configuration entry), emit one MCP-style block with a typed "
+    "input table and a returns description. Drop all implementation detail, rationale, and "
+    "build-time constraints. If no callable units exist, emit: "
+    "COMPACT_ERROR: no technical surface — builder use only"
 )
 
-# Per-file "stripped to" targets from docs/Drydock_Specification.md.
 _OBJECTIVES: dict[str, str] = {
     "DATABASE.md": (
-        "Strip to class names, method signatures, typed parameters, return types, and a one-line "
-        "summary per method — the API surface a consuming story reads. Keep every signature exact; "
-        "drop method bodies and prose."
+        "Extract class names and method signatures as MCP-style blocks. For each method: one-line "
+        "description, typed parameter table (name / type / required / description), and return "
+        "type. Drop method bodies, implementation notes, and rationale."
     ),
     "BUSINESS_RULES.md": (
-        "Strip to actionable rules only. Remove rationale and examples. Every 'must', 'never', and "
-        "numeric threshold is preserved verbatim."
+        "Extract callable enforcement points — any rule that a consuming story must satisfy to "
+        "pass validation. Represent each as a named block with the condition and the expected "
+        "outcome. Drop rationale, examples, and motivational prose."
     ),
 }
 
@@ -67,7 +69,8 @@ TextCallback = Callable[[str], None]
 class CompactItem:
     source: Path
     compact: Path
-    status: str  # compacted | skipped-fresh | failed
+    # status: compacted | skipped-fresh | no-surface | failed
+    status: str
     source_bytes: int | None = None
     compact_bytes: int | None = None
     execution_id: str | None = None
@@ -91,6 +94,9 @@ class CompactResult:
     def skipped(self) -> list[CompactItem]:
         return [i for i in self.items if i.status == "skipped-fresh"]
 
+    def no_surface(self) -> list[CompactItem]:
+        return [i for i in self.items if i.status == "no-surface"]
+
     def failed(self) -> list[CompactItem]:
         return [i for i in self.items if i.status == "failed"]
 
@@ -112,20 +118,38 @@ def _is_stale(source: Path, compact: Path) -> bool:
     return source.stat().st_mtime > compact.stat().st_mtime
 
 
-def discover(spec_dir: Path, *, include_rigging: bool = False) -> list[Path]:
+def _resolve_md(path: Path, base: Path) -> Path:
+    """Resolve a file path relative to base if not absolute. Must be a .md file."""
+    p = Path(path)
+    if not p.is_absolute():
+        p = base / p
+    return p.resolve()
+
+
+def discover(
+    spec_dir: Path,
+    *,
+    include_rigging: bool = False,
+    include_files: list[Path] | None = None,
+    exclude_files: list[Path] | None = None,
+    include_dirs: list[Path] | None = None,
+) -> list[Path]:
     """Return source files that need a compact derivative, in stable order.
 
     Blueprint scope: the required pairs (when their source exists) plus any ``*.md`` that already
-    has a ``*_compact.md`` sibling. Rigging scope (``include_rigging``): existing-sibling refreshes
-    only. ``*_compact.md`` files are never treated as sources.
+    has a ``*_compact.md`` sibling. ``include_rigging`` adds existing-sibling refreshes from
+    Drydock's own Rigging tree. ``include_files`` and ``include_dirs`` add explicit targets.
+    ``exclude_files`` removes resolved paths from the candidate set. ``*_compact.md`` files are
+    never treated as sources.
     """
     sources: list[Path] = []
     seen: set[Path] = set()
 
     def add(path: Path) -> None:
-        if path not in seen:
-            seen.add(path)
-            sources.append(path)
+        resolved = path.resolve()
+        if resolved not in seen and not _is_compact(resolved) and resolved.suffix == ".md":
+            seen.add(resolved)
+            sources.append(resolved)
 
     for name in REQUIRED_PAIRS:
         candidate = spec_dir / name
@@ -140,6 +164,21 @@ def discover(spec_dir: Path, *, include_rigging: bool = False) -> list[Path]:
         for md in sorted(get_rigging_root().rglob("*.md")):
             if not _is_compact(md) and _compact_path(md).is_file():
                 add(md)
+
+    if include_dirs:
+        for d in include_dirs:
+            for md in sorted(d.rglob("*.md")):
+                if md.is_file():
+                    add(md)
+
+    if include_files:
+        for f in include_files:
+            if f.is_file():
+                add(f)
+
+    if exclude_files:
+        excluded = {f.resolve() for f in exclude_files}
+        sources = [s for s in sources if s not in excluded]
 
     return sources
 
@@ -161,7 +200,7 @@ def _assemble_prompt(
         f"- DATE: {today}\n\n"
         "### Objective for this file\n\n"
         f"{objective}\n\n"
-        "### Source content (compact this)\n\n"
+        "### Source content (extract usage surface from this)\n\n"
         "```markdown\n"
         f"{source_text}\n"
         "```\n"
@@ -170,12 +209,19 @@ def _assemble_prompt(
 
 _OUTER_FENCE = re.compile(r"\A```[\w-]*\s*\n(.*)\n```\s*\Z", re.DOTALL)
 _LEADING_PROVENANCE = re.compile(r"\A<!--\s*Compacted from.*?-->\s*", re.DOTALL)
+_COMPACT_ERROR = re.compile(r"^\s*COMPACT_ERROR:\s*(.+)", re.MULTILINE)
+
+
+def _extract_compact_error(text: str) -> str | None:
+    """Return the error message if the LLM flagged no technical surface, else None."""
+    m = _COMPACT_ERROR.search(text.strip())
+    return m.group(1).strip() if m else None
 
 
 def _provenance(rel_source: str, today: str) -> str:
     return (
         f"<!-- Compacted from {rel_source} on {today} by drydock rigging compact — "
-        "regenerate with: drydock rigging compact <Blueprint> -->"
+        "regenerate with: drydock rigging compact --include-file {rel_source} -->"
     )
 
 
@@ -194,14 +240,16 @@ def compact(
     *,
     include_rigging: bool = False,
     force: bool = False,
+    include_files: list[Path] | None = None,
+    exclude_files: list[Path] | None = None,
+    include_dirs: list[Path] | None = None,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     on_item: Callable[[CompactItem], None] | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
 ) -> CompactResult:
-    """Compact every stale derivative in ``blueprint`` (and Rigging when requested)."""
-    # Resolved at call time so tests can monkeypatch ``run_prompt`` through the CLI path.
+    """Compact every stale derivative in ``blueprint`` (and optional extra paths)."""
     run = runner if runner is not None else run_prompt
 
     spec_dir = blueprint_dir
@@ -217,7 +265,15 @@ def compact(
         if on_item is not None:
             on_item(item)
 
-    for source in discover(spec_dir, include_rigging=include_rigging):
+    sources = discover(
+        spec_dir,
+        include_rigging=include_rigging,
+        include_files=include_files,
+        exclude_files=exclude_files,
+        include_dirs=include_dirs,
+    )
+
+    for source in sources:
         compact_path = _compact_path(source)
 
         if not force and not _is_stale(source, compact_path):
@@ -261,6 +317,20 @@ def compact(
                     source_bytes=source_bytes,
                     execution_id=result.execution_id,
                     error="empty output" if result.ok else "LLM execution failed",
+                )
+            )
+            continue
+
+        error_msg = _extract_compact_error(result.text)
+        if error_msg:
+            record(
+                CompactItem(
+                    source,
+                    compact_path,
+                    "no-surface",
+                    source_bytes=source_bytes,
+                    execution_id=result.execution_id,
+                    error=error_msg,
                 )
             )
             continue

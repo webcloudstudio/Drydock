@@ -208,16 +208,22 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
+    include_files = [Path(f) for f in (args.include_file or [])]
+    exclude_files = [Path(f) for f in (args.exclude_file or [])]
+    include_dirs = [Path(d) for d in (args.include_dir or [])]
+
     def report(item: CompactItem) -> None:
         src = item.source.name
         dst = item.compact.name
         if item.status == "compacted":
             pct = f" ({item.percent:.0f}% of source)" if item.percent is not None else ""
-            print(f"  [done]     {src} → {dst}  {item.compact_bytes} B{pct}  {item.execution_id}")
+            print(f"  [done]       {src} → {dst}  {item.compact_bytes} B{pct}  {item.execution_id}")
         elif item.status == "skipped-fresh":
-            print(f"  [fresh]    {src} → {dst}  (compact is newer; use --force)")
+            print(f"  [fresh]      {src} → {dst}  (compact is newer; use --force)")
+        elif item.status == "no-surface":
+            print(f"  [no-surface] {src}: {item.error}")
         else:
-            print(f"  [failed]   {src}: {item.error}  see logs/ ({item.execution_id})")
+            print(f"  [failed]     {src}: {item.error}  see logs/ ({item.execution_id})")
 
     print(f"Compacting Blueprint: {args.Target}")
     result = compact(
@@ -225,6 +231,9 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         blueprint_dir,
         include_rigging=args.include_rigging,
         force=args.force,
+        include_files=include_files or None,
+        exclude_files=exclude_files or None,
+        include_dirs=include_dirs or None,
         on_item=report,
         model=model,
         llm_provider=llm_provider,
@@ -235,7 +244,9 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     print()
     print(
         f"RESULT: {len(result.compacted())} compacted, "
-        f"{len(result.skipped())} fresh, {len(result.failed())} failed"
+        f"{len(result.skipped())} fresh, "
+        f"{len(result.no_surface())} no-surface, "
+        f"{len(result.failed())} failed"
     )
     return result.exit_code()
 
@@ -1007,6 +1018,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_rig_c.add_argument(
         "--force", action="store_true", help="Ignore the freshness gate and recompact everything."
+    )
+    p_rig_c.add_argument(
+        "--include-file",
+        dest="include_file",
+        action="append",
+        metavar="<file.md>",
+        help="Add a specific Markdown file to the compaction set (repeatable).",
+    )
+    p_rig_c.add_argument(
+        "--exclude-file",
+        dest="exclude_file",
+        action="append",
+        metavar="<file.md>",
+        help="Exclude a specific file from the auto-discovered compaction set (repeatable).",
+    )
+    p_rig_c.add_argument(
+        "--include-dir",
+        dest="include_dir",
+        action="append",
+        metavar="<dir>",
+        help="Add all Markdown files under a directory to the compaction set (repeatable).",
     )
     _add_llm_override_flags(p_rig_c)
     p_rig_u = rig_sub.add_parser("update", help="Propagate rigging to a target project.")

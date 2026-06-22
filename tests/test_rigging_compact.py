@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.rigging_compact import _finalize, compact, discover
+from drydock.rigging_compact import _extract_compact_error, _finalize, compact, discover
 
 
 @dataclass
@@ -17,7 +17,15 @@ class FakeRun:
     """Stand-in for an LlmResult — never spends API credits."""
 
     ok: bool = True
-    text: str = "# Thing — Compact\n\n- rule must stay verbatim\n"
+    text: str = (
+        "# Widget Service — Usage Surface\n\n"
+        "### POST /widget\n"
+        "Create a widget.\n\n"
+        "| Parameter | Type | Required | Description |\n"
+        "|-----------|------|----------|-------------|\n"
+        "| name | str | yes | Display name |\n\n"
+        "`Returns: WidgetResponse — {id, name}`\n"
+    )
     execution_id: str = "exec-fake"
 
 
@@ -30,6 +38,15 @@ def fake_runner(*calls: object):
         return FakeRun()
 
     run.seen = seen  # type: ignore[attr-defined]
+    return run
+
+
+def fake_runner_no_surface():
+    """Runner that returns a COMPACT_ERROR response."""
+
+    def run(prompt, working_directory, **kwargs):
+        return FakeRun(text="COMPACT_ERROR: no technical surface — builder use only")
+
     return run
 
 
@@ -65,6 +82,43 @@ class TestDiscover:
         _, root = _blueprint(tmp_path, **{"DATABASE.md": "db"})
         assert [p.name for p in discover(root / "bp")] == ["DATABASE.md"]
 
+    def test_include_files_adds_explicit_targets(self, tmp_path):
+        _, root = _blueprint(tmp_path, **{"NOTES.md": "notes"})
+        spec = root / "bp"
+        extra = spec / "NOTES.md"
+        names = [p.name for p in discover(spec, include_files=[extra])]
+        assert "NOTES.md" in names
+
+    def test_exclude_files_removes_from_discovered(self, tmp_path):
+        _, root = _blueprint(
+            tmp_path,
+            **{"DATABASE.md": "db", "BUSINESS_RULES.md": "rules"},
+        )
+        spec = root / "bp"
+        excluded = spec / "DATABASE.md"
+        names = [p.name for p in discover(spec, exclude_files=[excluded])]
+        assert "DATABASE.md" not in names
+        assert "BUSINESS_RULES.md" in names
+
+    def test_include_dir_adds_all_md_in_directory(self, tmp_path):
+        _, root = _blueprint(tmp_path)
+        spec = root / "bp"
+        extra_dir = tmp_path / "extras"
+        extra_dir.mkdir()
+        (extra_dir / "FEATURE.md").write_text("feature", encoding="utf-8")
+        (extra_dir / "IGNORE.txt").write_text("not md", encoding="utf-8")
+        names = [p.name for p in discover(spec, include_dirs=[extra_dir])]
+        assert "FEATURE.md" in names
+        assert "IGNORE.txt" not in names
+
+    def test_compact_files_never_added_via_include_file(self, tmp_path):
+        _, root = _blueprint(tmp_path)
+        spec = root / "bp"
+        compact_file = spec / "FOO_compact.md"
+        compact_file.write_text("compact", encoding="utf-8")
+        names = [p.name for p in discover(spec, include_files=[compact_file])]
+        assert "FOO_compact.md" not in names
+
 
 class TestCompact:
     def test_writes_siblings_with_provenance_and_exit_zero(self, tmp_path):
@@ -82,7 +136,6 @@ class TestCompact:
     def test_freshness_gate_skips_then_force_recompacts(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
         compact(name, root / name, runner=fake_runner())
-        # Make the compact strictly newer than the source.
         compact_file = root / name / "DATABASE_compact.md"
         future = compact_file.stat().st_mtime + 100
         os.utime(compact_file, (future, future))
@@ -110,6 +163,13 @@ class TestCompact:
         assert result.items[0].status == "failed"
         assert result.items[0].error == "empty output"
 
+    def test_no_surface_response_marks_no_surface_not_failed(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "branding prose\n"})
+        result = compact(name, root / name, runner=fake_runner_no_surface())
+        assert result.exit_code() == 0
+        assert result.items[0].status == "no-surface"
+        assert not (root / name / "DATABASE_compact.md").exists()
+
     def test_assembled_prompt_carries_job_context(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "secret-token\n"})
         runner = fake_runner()
@@ -117,7 +177,7 @@ class TestCompact:
         prompt = runner.seen[0]  # type: ignore[attr-defined]
         assert "## Compaction job" in prompt
         assert "SOURCE_PATH: DATABASE.md" in prompt
-        assert "secret-token" in prompt  # source content was injected
+        assert "secret-token" in prompt
 
     def test_unknown_blueprint_raises(self, tmp_path):
         root = tmp_path / "specs"
@@ -131,12 +191,44 @@ class TestCompact:
         assert result.items == []
         assert result.exit_code() == 0
 
+    def test_include_file_arg_targets_explicit_file(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"NOTES.md": "# Notes\nGET /thing\n"})
+        spec = root / name
+        extra = spec / "NOTES.md"
+        result = compact(name, spec, include_files=[extra], runner=fake_runner())
+        assert any(i.source.name == "NOTES.md" for i in result.items)
+
+    def test_exclude_file_arg_removes_required_pair(self, tmp_path):
+        name, root = _blueprint(
+            tmp_path, **{"DATABASE.md": "db\n", "BUSINESS_RULES.md": "rules\n"}
+        )
+        spec = root / name
+        excluded = spec / "DATABASE.md"
+        result = compact(name, spec, exclude_files=[excluded], runner=fake_runner())
+        names = [i.source.name for i in result.items]
+        assert "DATABASE.md" not in names
+        assert "BUSINESS_RULES.md" in names
+
+
+class TestExtractCompactError:
+    def test_detects_compact_error_line(self):
+        text = "COMPACT_ERROR: no technical surface — builder use only"
+        assert _extract_compact_error(text) == "no technical surface — builder use only"
+
+    def test_returns_none_for_normal_output(self):
+        text = "# Widget — Usage Surface\n\n### GET /widget\nFetch a widget.\n"
+        assert _extract_compact_error(text) is None
+
+    def test_detects_error_embedded_in_output(self):
+        text = "some preamble\nCOMPACT_ERROR: builder-only file\nsome trailing"
+        assert _extract_compact_error(text) == "builder-only file"
+
 
 class TestFinalize:
     def test_strips_outer_fence_and_dedupes_provenance(self):
-        text = "```markdown\n<!-- Compacted from old by old -->\n# T — Compact\nbody\n```"
-        out = _finalize(text, rel_source="DATABASE.md", today="2026-06-11")
-        assert out.startswith("<!-- Compacted from DATABASE.md on 2026-06-11")
+        text = "```markdown\n<!-- Compacted from old by old -->\n# T — Usage Surface\nbody\n```"
+        out = _finalize(text, rel_source="DATABASE.md", today="2026-06-22")
+        assert out.startswith("<!-- Compacted from DATABASE.md on 2026-06-22")
         assert out.count("Compacted from") == 1
-        assert "# T — Compact" in out
+        assert "# T — Usage Surface" in out
         assert "```" not in out
