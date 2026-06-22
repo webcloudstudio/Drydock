@@ -52,6 +52,18 @@ def test_render_console_labels_compass_feedback_files():
     assert items["analyze_compass"]["path"] == "../ANALYZE_COMPASS.md"
     assert items["plan_compass"]["label"] == "Plan Compass"
     assert items["plan_compass"]["path"] == "../PLAN_COMPASS.md"
+    assert "build_compass" not in items
+
+
+def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
+    import yaml
+
+    config = render_console("Example", plan_path=tmp_path / "MANIFEST.md")
+    parsed = yaml.safe_load(config)
+    items = {item["id"]: item for item in parsed["items"]}
+
+    assert items["build_compass"]["label"] == "Build Compass"
+    assert items["build_compass"]["path"] == "../MANIFEST.md"
 
 
 def test_render_console_includes_discovery_questionnaire_source(tmp_path):
