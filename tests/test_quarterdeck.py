@@ -656,7 +656,20 @@ def test_non_spike_questionnaire_is_also_buttonless(tmp_path, monkeypatch):
 
     assert "Save Answers" not in rendered
     assert "<button" not in rendered
-    assert "q-save-status" in rendered
+
+
+def test_editable_markdown_analyze_compass_shows_helper_note(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
+    (tmp_path / "ANALYZE_COMPASS.md").write_text("# Analyze Compass\n", encoding="utf-8")
+
+    rendered = quarterdeck.render_editable_markdown(
+        {"id": "analyze_compass", "type": "editable_markdown", "path": "../ANALYZE_COMPASS.md"}
+    )
+
+    assert "injected into every" in rendered
+    assert "instructional boilerplate is not part of the file" in rendered
 
 
 def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):

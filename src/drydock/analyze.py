@@ -36,11 +36,7 @@ _SOURCES_SUBDIR = "sources"
 
 _FEEDBACK_FILENAME = "ANALYZE_COMPASS.md"
 _FEEDBACK_DEFAULT = (
-    "# Analyze Compass\n\n"
-    "These instructions are injected into every `drydock analyze` run for this target. "
-    "Edit this file to steer the analysis. It persists across runs and is never overwritten "
-    "by Drydock.\n\n"
-    "Enter Direction for the Analyze Run\n"
+    "# Analyze Compass\n"
 )
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
@@ -58,6 +54,12 @@ _BLOCKER_ENTRY_RE = re.compile(r"^## \S", re.MULTILINE)
 _OPEN_QUESTIONS_SECTION_RE = re.compile(
     r"^## Open Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
 )
+_TUNING_OPTIONS_SECTION_RE = re.compile(
+    r"^### Tuning Options\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
+)
+_SUMMARY_QUALITY_RE = re.compile(r"^Quality:\s*(\S+)\s*$", re.MULTILINE)
+_SUMMARY_COUNT_RE = re.compile(r"^  (blockers|questions):\s*.+?$", re.MULTILINE)
+_QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
     "Ready": ("ready", "✓", "All blockers resolved. Ready for planning."),
@@ -118,8 +120,16 @@ def ensure_feedback_file(target_dir: Path) -> str:
     """
     path = target_dir / _FEEDBACK_FILENAME
     if not path.is_file():
-        path.write_text(_FEEDBACK_DEFAULT, encoding="utf-8", newline="\n")
+        path.write_text(_FEEDBACK_DEFAULT + "\n", encoding="utf-8", newline="\n")
     return path.read_text(encoding="utf-8")
+
+
+def _feedback_body(feedback_text: str | None) -> str:
+    """Return only meaningful Analyze Compass guidance, without the stock heading."""
+    if not feedback_text:
+        return ""
+    body = re.sub(r"^\s*# Analyze Compass\s*", "", feedback_text, count=1).strip()
+    return body
 
 
 def _rigging_catalog_names() -> list[str]:
@@ -346,6 +356,48 @@ def _remove_open_questions_section(analysis_text: str) -> str:
     return _OPEN_QUESTIONS_SECTION_RE.sub("", analysis_text).strip()
 
 
+def _remove_tuning_options_section(analysis_text: str) -> str:
+    """Remove decomposition-option prose from ANALYSIS.md.
+
+    Human-owned choices belong in questionnaires or standing directives, not in the analysis
+    artifact itself.
+    """
+    return _TUNING_OPTIONS_SECTION_RE.sub("", analysis_text).strip()
+
+
+def _normalize_analysis_summary(analysis_text: str, *, quality: str, blockers: int, questions: int) -> str:
+    """Rewrite summary fields to match the artifacts Drydock actually wrote."""
+    text = _SUMMARY_QUALITY_RE.sub(f"Quality: {quality}", analysis_text, count=1)
+
+    def repl(match: re.Match[str]) -> str:
+        field = match.group(1)
+        if field == "blockers":
+            return f"  blockers: {blockers}"
+        return f"  questions: {questions}"
+
+    return _SUMMARY_COUNT_RE.sub(repl, text)
+
+
+def _count_open_discoveries(questionnaires_dir: Path) -> int:
+    """Count visible open discovery questionnaires backed by files on disk."""
+    if not questionnaires_dir.is_dir():
+        return 0
+    count = 0
+    for path in questionnaires_dir.glob("discovery-*.json"):
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("archived", False):
+            continue
+        if str(data.get("state", "open")) in _QUESTIONNAIRE_DONE_STATES:
+            continue
+        count += 1
+    return count
+
+
 def _parse_output(
     text: str,
 ) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
@@ -372,6 +424,7 @@ def _parse_output(
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
 
     analysis_text = _remove_open_questions_section(blocks["ANALYSIS.md"])
+    analysis_text = _remove_tuning_options_section(analysis_text)
     quality_match = _QUALITY_RE.search(analysis_text)
     quality = quality_match.group(1) if quality_match else "unknown"
 
@@ -465,9 +518,7 @@ def analyze(
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
     feedback_text = ensure_feedback_file(target_dir)
-    feedback_for_prompt = (
-        feedback_text if feedback_text.strip() != _FEEDBACK_DEFAULT.strip() else None
-    )
+    feedback_for_prompt = _feedback_body(feedback_text) or None
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
@@ -542,7 +593,6 @@ def analyze(
             return 0
 
     story_count = _safe_int("stories")
-    question_count = _safe_int("questions")
     blocker_count = _safe_int("blockers")
     screen_count = _safe_int("screens")
     stack = summary.get("stack", "not declared")
@@ -579,6 +629,17 @@ def analyze(
         written_blockers = blockers_md_path
     elif blockers_md_path.is_file():
         blockers_md_path.unlink()
+
+    question_count = _count_open_discoveries(questionnaires_dir)
+    blocker_count = 1 if written_blockers else 0
+    quality = "Blocked" if blocker_count else ("Questions" if question_count else "Ready")
+    analysis_text = _normalize_analysis_summary(
+        analysis_text,
+        quality=quality,
+        blockers=blocker_count,
+        questions=question_count,
+    )
+    analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
 
     # Lifecycle state, sub-state, and date stamp — always written on success.
     stamp_last(target_dir, "analyzed")

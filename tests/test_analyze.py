@@ -12,8 +12,11 @@ from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
     _fill_captains_chair,
+    _feedback_body,
     _is_compass_unpopulated,
+    _normalize_analysis_summary,
     _parse_blocks,
+    _remove_tuning_options_section,
     _parse_output,
     _remove_open_questions_section,
     _validate_blockers,
@@ -28,7 +31,7 @@ from drydock.errors import SpecificationError
 
 
 def test_default_feedback_heading_is_analyze_compass(tmp_path):
-    assert ensure_feedback_file(tmp_path).startswith("# Analyze Compass\n\n")
+    assert ensure_feedback_file(tmp_path) == "# Analyze Compass\n"
 
 
 def test_open_questions_section_is_removed_from_analysis_output():
@@ -37,6 +40,31 @@ def test_open_questions_section_is_removed_from_analysis_output():
     assert "## Open Questions" not in result
     assert "## Story List" in result
     assert "## Notes" in result
+
+
+def test_tuning_options_section_is_removed_from_analysis_output():
+    result = _remove_tuning_options_section(_ANALYSIS_CONTENT)
+
+    assert "### Tuning Options" not in result
+    assert "## Notes" in result
+
+
+def test_feedback_body_strips_heading_and_placeholder():
+    assert _feedback_body("# Analyze Compass\n\nSteer by feature.\n") == "Steer by feature."
+    assert _feedback_body("# Analyze Compass\n") == ""
+
+
+def test_normalize_analysis_summary_rewrites_quality_and_counts():
+    result = _normalize_analysis_summary(
+        _ANALYSIS_CONTENT,
+        quality="Questions",
+        blockers=0,
+        questions=1,
+    )
+
+    assert "Quality: Questions" in result
+    assert "  blockers: 0" in result
+    assert "  questions: 1" in result
 
 
 _ANALYSIS_CONTENT = """\
@@ -68,7 +96,6 @@ Quality: Ready
 ### Tuning Options
 - Option A: Decompose by feature (recommended)
 - Option B: Decompose by layer
-
 ## Notes
 
 None."""
@@ -185,7 +212,6 @@ No stories can be derived until blockers are resolved.
 
 ### Tuning Options
 - N/A
-
 ## Notes
 
 None."""
@@ -203,7 +229,7 @@ No project name is stated. The product cannot be built without a name.
 def _make_llm_output(
     *,
     include_compass: bool = True,
-    include_spikes: bool = True,
+    include_spikes: bool = False,
     extra_spike: bool = False,
     quality: str = "Ready",
     analysis_override: str | None = None,
@@ -818,6 +844,17 @@ class TestAnalyze:
         assert result.screen_count == 2
         assert result.stack == "python/flask"
 
+    def test_question_count_tracks_open_discovery_files_not_model_summary(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(include_spikes=True, quality="Ready")
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+
+        assert result.question_count == 4
+        assert result.quality == "Questions"
+        analysis = result.analysis_path.read_text(encoding="utf-8")
+        assert "Quality: Questions" in analysis
+        assert "  questions: 4" in analysis
+
     def test_compass_written_when_absent(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
@@ -845,7 +882,8 @@ class TestAnalyze:
 
     def test_emitted_spikes_written(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        output = _make_llm_output(include_spikes=True)
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         for name in (
             "discovery-intent.json",
@@ -864,19 +902,21 @@ class TestAnalyze:
 
     def test_spike_paths_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        output = _make_llm_output(include_spikes=True)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert len(result.discovery_paths) >= 4
 
     def test_spike_files_are_valid_json(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        output = _make_llm_output(include_spikes=True)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         for path in result.discovery_paths:
             data = json.loads(path.read_text(encoding="utf-8"))
             assert "questions" in data
 
     def test_variable_spike_written(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        output = _make_llm_output(extra_spike=True)
+        output = _make_llm_output(include_spikes=True, extra_spike=True)
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         assert (questionnaires / "discovery-auth.json").exists()

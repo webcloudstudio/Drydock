@@ -172,7 +172,6 @@ question in `ANALYSIS.md`.
 - Story cap: ~100 stories. If you identify more than 100, the spec is over-decomposed; surface
   this as a blocker and offer to consolidate.
 - Group by feature area. Organize as the project shape suggests — no prescribed order.
-- Offer 2–3 tuning options (e.g., "decompose by module vs by layer").
 
 **5. Derive SOUNDINGS milestones from the story list.**
 - *Consumes:* the story list (and any explicit acceptance criteria stated in the sources).
@@ -221,10 +220,6 @@ Quality: {Ready | Questions | Blocked}
 
 {Tables or grouped lists of story titles with high-level AC. Organize by feature area.
 No prescribed format — use what best communicates the project shape.}
-
-### Tuning Options
-
-{2–3 alternative decomposition approaches the PO can accept or override.}
 
 ## Notes
 
@@ -319,7 +314,7 @@ human-owned decision open:
 
 Do **not** emit a "gaps" or "acceptance criteria" questionnaire. Underspecified acceptance
 criteria, success evidence, smoke checks, build gates, and test sequences are outputs you
-synthesize (into SOUNDINGS, SEA_TRIALS, and story tuning options), never questions you ask.
+synthesize (into SOUNDINGS and SEA_TRIALS), never questions you ask.
 
 Each questionnaire uses this shape:
 

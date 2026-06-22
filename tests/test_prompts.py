@@ -70,6 +70,7 @@ class TestInputTokens:
         )[0]
 
         assert "## Open Questions" not in analysis_contract
+        assert "### Tuning Options" not in analysis_contract
         assert "questions live only in `discovery-*.json`" in prompt.body
 
     def test_render_inputs_emits_in_token_order(self):

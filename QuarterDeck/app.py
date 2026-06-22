@@ -660,8 +660,19 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
     except HTTPException:
         raw = ""
         rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
+    helper = ""
+    if item.get("id") == "analyze_compass":
+        helper = (
+            "<div class='page-note'>"
+            "<strong>Analyze Compass.</strong> This file is injected into every "
+            "<code>drydock analyze</code> run for this target. Keep only brief steering: priorities, "
+            "decomposition guidance, and hard constraints. The instructional boilerplate is not part "
+            "of the file."
+            "</div>"
+        )
     return (
         f"<div class='editable' data-item='{item_id}'>"
+        f"{helper}"
         f"<div class='doc-view'>{rendered}</div>"
         f"<div class='doc-edit' style='display:none'>"
         f"<textarea class='doc-source' spellcheck='false'>{html.escape(raw)}</textarea>"
@@ -1947,6 +1958,9 @@ _STYLE = """
                 box-sizing:border-box; font-family:ui-monospace,'Cascadia Code',Consolas,monospace; font-size:13px; line-height:1.5; }
   .doc-edit-actions { display:flex; gap:8px; margin-top:10px; }
   .page-header { margin-bottom:0; }
+  .page-note { margin:0 0 14px; padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe;
+               border-radius:6px; color:#1e3a8a; font-size:13px; line-height:1.45; }
+  .page-note code { font-family:ui-monospace,'Cascadia Code',Consolas,monospace; font-size:.95em; }
   .ph-title-row { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:6px; }
   .ph-title { margin:0; line-height:1.2; font-size:1.5em; }
   .ph-filename { font-size:12px; color:#94a3b8; font-family:ui-monospace,'Cascadia Code',Consolas,monospace; white-space:nowrap; }
