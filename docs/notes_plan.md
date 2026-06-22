@@ -2,11 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V5 |
-| Route | plan create |
+| Version | 2026-06-22 V6 |
+| Route | plan |
 | Status | Working notes — not canonical specification |
-| Description | Implementation detail for drydock plan create: decomposition pipeline, guardrails, ordering, and the Compass. Shared model lives in notes_analyze.md. V5 adds the PLAN_COMPASS.md standing directive, retires BUILD_CONFIGURATION.md, makes plan create a single-directional clean regenerate (drops state merge), and finalizes the injection stack. |
-| Pending spec | 10 items (6 recommended, 4 approved) | 10 items || Pending impl | 2 unimplemented sections (story-too-big split; auto-batch — both blocked) | 3 unimplemented sections |
+| Description | Implementation detail for drydock plan: decomposition pipeline, guardrails, ordering, the Compass, and compact substitution for stack files. V6 adds compact/applied registry design and cost estimator forward-pass. |
+| Pending spec | 14 items (6 recommended, 8 approved) |
+| Pending impl | 2 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -243,9 +244,60 @@ Removed vs current: `BUILD_CONFIGURATION.md` and the existing `MANIFEST.md` (pri
   `BUILD_CONFIGURATION.md`.
 - **`depends-on` is the only edge syntax.** No `gates`, no other direction. Parser enforces this.
 
+### Compact substitution rule — stack files
+`2026-06-22` · `spec:approved` · `impl:implemented`
+
+The first use of a stack file across the full build uses the full file. Every subsequent use
+substitutes the compact derivative (`*_compact.md`) if it exists. The rule is build-order-global —
+not per-story, not phase-based.
+
+The manifest always stores canonical names (`common.md`, `fastapi.md`). Compact substitution is
+derived, never authored.
+
+### Applied registry in the manifest
+`2026-06-22` · `spec:approved` · `impl:implemented`
+
+`build` writes one field to the manifest: a per-file applied registry. Each entry records the git
+commit ID at the time the file was applied to a build step.
+
+Substitution logic at build time:
+- No applied record, or recorded commit differs from HEAD → use **full** file; record commit on
+  successful build completion
+- Recorded commit matches HEAD → use **compact**
+- Uncommitted working tree → **build blocked** (no clean commit ID available)
+
+The manifest is not human-editable (managed via QuarterDeck). No human override of applied flag.
+
+### Uncommitted files guard
+`2026-06-22` · `spec:approved` · `impl:implemented`
+
+A build step cannot execute if the working tree contains uncommitted changes. The applied registry
+records commit IDs; a dirty tree yields no reliable ID to record or compare.
+
+### Cost estimator forward pass
+`2026-06-22` · `spec:approved` · `impl:implemented`
+
+The cost estimator (QuarterDeck compass / `assemble_steps`) cannot read the applied registry — it
+is empty before any story has run. It simulates the forward pass independently:
+
+1. Walk stories in manifest order.
+2. Maintain a local "seen" set for this calculation pass.
+3. First occurrence of a stack file → cost using the full file.
+4. Subsequent occurrence → cost using compact sibling (if it exists); fall through to full if not.
+
+The cost estimator groups stories and emits a derived view of the manifest showing compact file
+names in downstream stories (e.g., `fastapi_compact.md` instead of `fastapi.md`). The user sees
+the substitution and the resulting token cost before anything runs. This makes the token cost
+honest and the substitution auditable before build executes.
+
+The build runner performs the same substitution at execution time and writes results to the applied
+registry — two passes, same substitution decisions.
+
 ## Open Questions
 
-1. **Story-too-big threshold** — atomicity heuristic (token/context budget? AC count? touched-files
+1. **Compact scope** — does the applied registry and compact substitution rule cover only `stack:`
+   files, or also `rules:` and `context:` files?
+2. **Story-too-big threshold** — atomicity heuristic (token/context budget? AC count? touched-files
    estimate?). Configured in `.env`; specific default value TBD.
 2. **Integrity failure UX** — block `MANIFEST.md` write only, surface as QuarterDeck questions, or
    both? (Lean: block + surface findings; PO decides whether to re-analyze or fix the spec.)

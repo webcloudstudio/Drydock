@@ -43,6 +43,7 @@ class BuildPlan:
     plan_hash: str
     state: str
     blocks: tuple[PlanBlock, ...]
+    applied_registry: dict[str, str] = field(default_factory=dict)
 
     def by_id(self) -> dict[str, PlanBlock]:
         return {block.block_id: block for block in self.blocks}
@@ -120,6 +121,24 @@ class BuildPlan:
 
 def _split_list(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _parse_applied_registry(text: str) -> dict[str, str]:
+    """Parse ``name=commit,name=commit`` applied registry from the manifest preamble."""
+    result: dict[str, str] = {}
+    for entry in text.split(","):
+        entry = entry.strip()
+        if "=" in entry:
+            name, _, commit = entry.partition("=")
+            name, commit = name.strip(), commit.strip()
+            if name and commit:
+                result[name] = commit
+    return result
+
+
+def _format_applied_registry(registry: dict[str, str]) -> str:
+    """Serialize applied registry to ``name=commit,name=commit`` form."""
+    return ",".join(f"{k}={v}" for k, v in sorted(registry.items()))
 
 
 def _collect_block_scalar(lines: list[str], start: int) -> tuple[str, int]:
@@ -272,12 +291,48 @@ def parse_build_plan(path: Path) -> BuildPlan:
         plan_hash=metadata.get("plan_hash", ""),
         state=plan_state,
         blocks=blocks,
+        applied_registry=_parse_applied_registry(metadata.get("applied", "")),
     )
 
 
 def load_target_plan(target: str, target_directory: Path) -> BuildPlan:
     """Load the canonical executable plan for a configured Target name."""
     return parse_build_plan(target_directory / target / "MANIFEST.md")
+
+
+def set_applied_registry(path: Path, registry: dict[str, str]) -> None:
+    """Write the applied stack-file registry to the MANIFEST.md preamble.
+
+    Adds or replaces the ``applied:`` field before the first block header.
+    Preserves all other preamble content verbatim.
+    """
+    if not path.is_file():
+        raise SpecificationError(f"MANIFEST.md not found: {path}")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    value = _format_applied_registry(registry)
+    output: list[str] = []
+    replaced = False
+    first_block = next((i for i, line in enumerate(lines) if _HEADER_RE.match(line)), len(lines))
+    for index, line in enumerate(lines):
+        if index < first_block:
+            field_match = _FIELD_RE.match(line)
+            if field_match and field_match.group(1).lower() == "applied":
+                output.append(f"applied: {value}")
+                replaced = True
+                continue
+        output.append(line)
+    if not replaced:
+        insert_at = next(
+            (i for i, line in enumerate(output) if _HEADER_RE.match(line)), len(output)
+        )
+        output.insert(insert_at, f"applied: {value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False, newline="\n"
+    ) as handle:
+        handle.write("\n".join(output).rstrip() + "\n")
+        temp_path = Path(handle.name)
+    temp_path.replace(path)
 
 
 def set_plan_state(path: Path, state: str, *, feedback: str = "", decision: str = "") -> BuildPlan:

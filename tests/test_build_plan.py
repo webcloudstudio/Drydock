@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from drydock.build_plan import parse_build_plan, set_plan_state
+from drydock.build_plan import (
+    _format_applied_registry,
+    _parse_applied_registry,
+    parse_build_plan,
+    set_applied_registry,
+    set_plan_state,
+)
 from drydock.errors import SpecificationError
 
 
@@ -290,3 +296,44 @@ state: pending
     plan = parse_build_plan(path)
 
     assert [block.block_id for block in plan.runnable_frontier()] == ["workflow-accepted"]
+
+
+class TestAppliedRegistry:
+    _MANIFEST = "# MANIFEST: Test\nstate: approved\n\n## story 1: S\nid: s\nstate: pending\n"
+
+    def test_empty_registry_by_default(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(self._MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        assert plan.applied_registry == {}
+
+    def test_parse_applied_from_preamble(self, tmp_path):
+        manifest = "# MANIFEST: Test\nstate: approved\napplied: common.md=abc123,python.md=def456\n\n## story 1: S\nid: s\nstate: pending\n"
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+        assert plan.applied_registry == {"common.md": "abc123", "python.md": "def456"}
+
+    def test_set_applied_registry_writes_field(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(self._MANIFEST, encoding="utf-8")
+        set_applied_registry(path, {"common.md": "abc123"})
+        plan = parse_build_plan(path)
+        assert plan.applied_registry == {"common.md": "abc123"}
+
+    def test_set_applied_registry_updates_existing(self, tmp_path):
+        manifest = "# MANIFEST: Test\nstate: approved\napplied: common.md=old123\n\n## story 1: S\nid: s\nstate: pending\n"
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        set_applied_registry(path, {"common.md": "new456", "python.md": "xyz789"})
+        plan = parse_build_plan(path)
+        assert plan.applied_registry == {"common.md": "new456", "python.md": "xyz789"}
+
+    def test_parse_applied_registry_helper(self):
+        assert _parse_applied_registry("a.md=abc,b.md=def") == {"a.md": "abc", "b.md": "def"}
+        assert _parse_applied_registry("") == {}
+        assert _parse_applied_registry("bad-entry") == {}
+
+    def test_format_applied_registry_helper(self):
+        result = _format_applied_registry({"b.md": "222", "a.md": "111"})
+        assert result == "a.md=111,b.md=222"  # sorted

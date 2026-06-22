@@ -167,3 +167,94 @@ class TestGroupSteps:
         groups = group_steps(plan, steps)
         assert groups[0].name == "Ungrouped"
         assert groups[0].feature_id is None
+
+
+_TWO_STORY_MANIFEST = """# MANIFEST: Demo
+state: approved
+
+## story 1: Foundation
+id: s1
+implements: ARCHITECTURE.md
+stack: common.md, python.md
+state: pending
+
+## story 2: Feature
+id: s2
+implements: ARCHITECTURE.md
+stack: common.md, python.md
+state: pending
+"""
+
+
+class TestCompactSubstitution:
+    def _roots_with_compacts(self, tmp_path: Path) -> StepRoots:
+        target = tmp_path / "target"
+        blueprint = target / "blueprint"
+        stack = tmp_path / "rigging" / "stack"
+        rigging = tmp_path / "rigging"
+        for d in (blueprint, stack, rigging):
+            d.mkdir(parents=True, exist_ok=True)
+        (blueprint / "ARCHITECTURE.md").write_text("arch" * 100, encoding="utf-8")
+        (target / "COMPASS.md").write_text("compass" * 10, encoding="utf-8")
+        (stack / "common.md").write_text("common_full" * 100, encoding="utf-8")
+        (stack / "common_compact.md").write_text("common_compact" * 20, encoding="utf-8")
+        (stack / "python.md").write_text("python_full" * 80, encoding="utf-8")
+        # no python_compact.md — compact falls through to full
+        return StepRoots(
+            target_dir=target, blueprint_dir=blueprint, stack_dir=stack, rigging_dir=rigging
+        )
+
+    def test_assemble_step_no_compact_by_default(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_TWO_STORY_MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        step = assemble_step(plan.by_id()["s1"], roots)
+        names = {f.name for f in step.files if f.role == "stack"}
+        assert names == {"common.md", "python.md"}
+        assert all(not f.compact_substituted for f in step.files)
+
+    def test_assemble_step_compact_when_in_compact_stack(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_TWO_STORY_MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        step = assemble_step(
+            plan.by_id()["s1"], roots, compact_stack=frozenset({"common.md"})
+        )
+        common_file = next(f for f in step.files if "common" in f.name)
+        assert common_file.name == "common_compact.md"
+        assert common_file.compact_substituted is True
+        # python has no compact sibling — falls through to full
+        python_file = next(f for f in step.files if "python" in f.name)
+        assert python_file.name == "python.md"
+        assert python_file.compact_substituted is False
+
+    def test_assemble_steps_first_use_full_subsequent_compact(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_TWO_STORY_MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        steps = assemble_steps(plan, roots)
+        assert len(steps) == 2
+        # first step: canonical names, no compact substitution
+        s1_common = next(f for f in steps[0].files if "common" in f.name)
+        assert s1_common.name == "common.md"
+        assert s1_common.compact_substituted is False
+        # second step: common.md already seen → compact substituted
+        s2_common = next(f for f in steps[1].files if "common" in f.name)
+        assert s2_common.name == "common_compact.md"
+        assert s2_common.compact_substituted is True
+        # compact file is smaller → second step has lower total cost
+        assert steps[1].total_story_points < steps[0].total_story_points
+
+    def test_compact_fallthrough_when_no_sibling(self, tmp_path):
+        roots = self._roots_with_compacts(tmp_path)
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_TWO_STORY_MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        steps = assemble_steps(plan, roots)
+        # python.md has no compact sibling; second step still uses full python.md
+        s2_python = next(f for f in steps[1].files if "python" in f.name)
+        assert s2_python.name == "python.md"
+        assert s2_python.compact_substituted is False

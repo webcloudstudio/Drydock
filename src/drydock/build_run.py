@@ -14,13 +14,14 @@ returns a summary; tests inject a fake runner so no credits or network are used.
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from drydock.build import StepAssembly, StepRoots, assemble_step, render_build_prompt
-from drydock.build_plan import PlanBlock, parse_build_plan
+from drydock.build_plan import PlanBlock, parse_build_plan, set_applied_registry
 from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
@@ -31,6 +32,36 @@ from drydock.prompts import load_prompt
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
 TextCallback = Callable[[str], None]
+
+
+def _git_head(path: Path) -> str | None:
+    """Return HEAD commit of the git repo containing path, or None if not in git."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _is_dirty(path: Path) -> bool:
+    """True if the git repo containing path has uncommitted changes in that directory."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "status", "--porcelain", "--", "."],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 @dataclass(frozen=True)
@@ -134,12 +165,21 @@ def build_target(
     evidence_dir = target_dir / "evidence"
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
+    stack_dir = get_stack_dir()
     roots = StepRoots(
         target_dir=target_dir,
         blueprint_dir=blueprint_dir_for(target_dir),
-        stack_dir=get_stack_dir(),
+        stack_dir=stack_dir,
         rigging_dir=get_rigging_root(),
     )
+
+    stack_head = _git_head(stack_dir)
+    if stack_head is not None and _is_dirty(stack_dir):
+        raise SpecificationError(
+            "Build blocked: uncommitted changes in the stack directory. "
+            "Commit or stash changes before building."
+        )
+
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
 
@@ -155,7 +195,14 @@ def build_target(
             break
 
         block = frontier[0]
-        assembly = assemble_step(block, roots)
+        compact_stack: frozenset[str] | None = None
+        if stack_head is not None:
+            compact_stack = frozenset(
+                name
+                for name, commit in plan.applied_registry.items()
+                if commit == stack_head
+            )
+        assembly = assemble_step(block, roots, compact_stack=compact_stack)
         prompt_text = render_build_prompt(
             prompt.body,
             assembly,
@@ -203,6 +250,13 @@ def build_target(
             state=state,
             evidence=_rel(evidence_path, target_dir),
         )
+        if status != "failed" and stack_head is not None:
+            stack_fields = block.fields.get("stack", ())
+            if isinstance(stack_fields, tuple) and stack_fields:
+                updated_registry = dict(plan.applied_registry)
+                for name in stack_fields:
+                    updated_registry[name] = stack_head
+                set_applied_registry(manifest_path, updated_registry)
 
         step_result = BuildStepResult(
             block_id=block.block_id,

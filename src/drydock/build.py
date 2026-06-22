@@ -15,6 +15,13 @@ read the same assembly.
 Story points are the token estimate (``ceil(bytes / 4)``), derived on demand and
 never written back. A step whose total exceeds ``PROMPT_WARN_KB`` is flagged
 ``over_warn``: it stacks more context than is reliably built in one prompt.
+
+Compact substitution: stack files have ``*_compact.md`` derivatives that contain
+only the caller-facing surface (types, config, contracts). The first story to use
+a stack file receives the full version; subsequent stories receive the compact
+sibling when one exists. ``assemble_steps`` tracks the first-use set and passes
+``compact_stack`` to each ``assemble_step`` call. ``build_run`` uses the applied
+registry from the manifest instead of a forward-scan set.
 """
 
 from __future__ import annotations
@@ -82,6 +89,7 @@ class StepFile:
     story_points: int
     missing: bool
     source: Path | None = None
+    compact_substituted: bool = False
 
 
 @dataclass(frozen=True)
@@ -123,6 +131,39 @@ def _measure(name: str, role: str, roots: tuple[Path, ...]) -> StepFile:
     return StepFile(name=name, role=role, byte_count=0, story_points=0, missing=True)
 
 
+def _compact_sibling(name: str) -> str:
+    """Return the ``*_compact.md`` sibling name for a stack file."""
+    if name.endswith(".md"):
+        return name[:-3] + "_compact.md"
+    return name
+
+
+def _measure_stack(canonical: str, roots: tuple[Path, ...], *, prefer_compact: bool) -> StepFile:
+    """Resolve a stack file, preferring the compact sibling when requested.
+
+    Falls through to the full file when no compact sibling exists on disk.
+    """
+    if prefer_compact:
+        compact = _compact_sibling(canonical)
+        if compact != canonical:
+            for root in roots:
+                candidate = root / compact
+                try:
+                    byte_count = len(candidate.read_bytes())
+                except OSError:
+                    continue
+                return StepFile(
+                    name=compact,
+                    role="stack",
+                    byte_count=byte_count,
+                    story_points=story_points_for(byte_count),
+                    missing=False,
+                    source=candidate,
+                    compact_substituted=True,
+                )
+    return _measure(canonical, "stack", roots)
+
+
 def _role_names(block: PlanBlock, role: str) -> tuple[str, ...]:
     """Return the file names a block declares for one role."""
     if role == "compass":
@@ -138,11 +179,17 @@ def assemble_step(
     roots: StepRoots,
     *,
     warn_kb: int = PROMPT_WARN_KB,
+    compact_stack: frozenset[str] | None = None,
 ) -> StepAssembly:
     """Resolve and cost the full prompt stack for one executable build block.
 
     Reads files only; writes nothing. Files named by a block but not found are
     reported ``missing`` and contribute zero cost.
+
+    ``compact_stack`` is the set of canonical stack file names (as written in the
+    manifest) that should use their compact sibling for this step. When ``None``,
+    no compact substitution is applied. The caller — either ``assemble_steps``
+    (forward-scan) or ``build_run`` (applied registry) — supplies the set.
     """
     files: list[StepFile] = []
     for role in _ROLE_ORDER:
@@ -151,7 +198,10 @@ def assemble_step(
             if name not in names:
                 names.append(name)
         for name in names:
-            files.append(_measure(name, role, roots.roots_for(role)))
+            if role == "stack" and compact_stack is not None and name in compact_stack:
+                files.append(_measure_stack(name, roots.roots_for(role), prefer_compact=True))
+            else:
+                files.append(_measure(name, role, roots.roots_for(role)))
 
     instructions = str(block.fields.get("instructions", ""))
     instr_bytes = len(instructions.encode("utf-8"))
@@ -181,12 +231,25 @@ def assemble_steps(
     *,
     warn_kb: int = PROMPT_WARN_KB,
 ) -> tuple[StepAssembly, ...]:
-    """Assemble every executable step in the plan, in manifest order."""
-    return tuple(
-        assemble_step(block, roots, warn_kb=warn_kb)
-        for block in plan.blocks
-        if block.block_type in STEP_TYPES
-    )
+    """Assemble every executable step in the plan, in manifest order.
+
+    Performs a forward scan for compact substitution: the first step that names a
+    stack file receives the full version; every subsequent step receives the compact
+    sibling (``*_compact.md``) when one exists on disk. Steps show the resolved
+    name so the QuarterDeck displays honest token costs before the build runs.
+    """
+    stack_seen: set[str] = set()
+    result: list[StepAssembly] = []
+    for block in plan.blocks:
+        if block.block_type not in STEP_TYPES:
+            continue
+        step = assemble_step(
+            block, roots, warn_kb=warn_kb, compact_stack=frozenset(stack_seen)
+        )
+        for name in _role_names(block, "stack"):
+            stack_seen.add(name)
+        result.append(step)
+    return tuple(result)
 
 
 def _fence_for(text: str) -> str:
