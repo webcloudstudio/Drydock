@@ -9,9 +9,11 @@ prompts here; deferred commands have no prompts yet.
 
 - **Naming:** `<command>_<subcommand>[_<modifier>].md`, lowercase (`_<modifier>` only when an
   operation needs more than one prompt).
-- **Metadata:** a leading `---` YAML frontmatter block with required `name`, `description`,
-  `version`, `intent` and optional `command`, `model`, `inputs`, `output`. Loaded and validated by
-  `drydock.prompts.load_prompt`.
+- **YAML frontmatter:** every prompt file begins with a leading `---` YAML frontmatter block.
+- **Required blocks:** every prompt frontmatter block includes `name`, `description`, `version`,
+  and `intent`.
+- **Optional blocks:** frontmatter may also include `command`, `model`, `inputs`, and `output`.
+  Frontmatter is loaded and validated by `drydock.prompts.load_prompt`.
 
 | Command | Prompt file | Status |
 |---|---|---|
