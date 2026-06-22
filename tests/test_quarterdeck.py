@@ -841,7 +841,7 @@ def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatc
     html = quarterdeck.index(_RequestStub({"quarterdeck_target": "Beta"}))
 
     assert "<title>Beta</title>" in html
-    assert "<header><strong>Beta</strong>" in html
+    assert "<header><strong>The Drydock</strong>" in html
     assert "Workspace target" not in html
     assert "Copyright (c) 2026 Beta Studio. All rights reserved." in html
     assert 'Drydock <span class="flyout">↗</span>' in html

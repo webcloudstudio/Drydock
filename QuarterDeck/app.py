@@ -2064,7 +2064,7 @@ def index(request: Request = None) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
-  <header><strong>{html.escape(project_name)}</strong>{home_btn}{help_btn}</header>
+  <header><strong>The Drydock</strong>{home_btn}{help_btn}</header>
   <div class="copyright-bar">{html.escape(copyright_notice)}</div>
   <main>
     <nav>{nav}</nav>
