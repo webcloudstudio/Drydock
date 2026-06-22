@@ -1,9 +1,7 @@
-# Manifest Contract
-
-Contract governing the format, block types, field semantics, lifecycle states, and execution rules
-for `MANIFEST.md` — the single generated executable build plan for a Drydock Target. Used by
-`drydock plan create`, `drydock build`, `drydock analyze`, and the QuarterDeck plan writer.
-
+---
+name: Manifest Contract
+description: Contract governing the format, block types, field semantics, lifecycle states, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
+version: 20260618 V8
 ---
 
 ## Overview

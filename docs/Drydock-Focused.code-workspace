@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"name": "docs",
+			"path": "."
+		},
+		{
+			"name": "Drydock",
+			"path": ".."
+		},
+		{
+			"path": "../targets/Marina2"
+		},
+		{
+			"path": "../targets/Drydock_Prod"
+		}
+	]
+}

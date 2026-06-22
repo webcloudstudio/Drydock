@@ -1,9 +1,7 @@
-# Blueprints Contract
-
-Contract governing the layout, file types, header format, and dependency conventions for Drydock
-Blueprint directories. Used by `drydock analyze`, `drydock plan create`, `drydock refit`, and all
-prompt assembly workflows.
-
+---
+name: Blueprints Contract
+description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
+version: 20260618 V8
 ---
 
 ## Overview
