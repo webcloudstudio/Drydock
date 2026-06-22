@@ -382,6 +382,7 @@ def review_prompt(
     runner: RunnerFn | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
+    log_dir: Path | None = None,
 ) -> PromptReviewResult:
     component = resolve_component(component_name)
     repo_root = get_repo_root()
@@ -395,6 +396,7 @@ def review_prompt(
         model=model or prompt.model,
         command_name="prompt-review",
         parameters={"component": component.name, "command": component.command},
+        log_dir=log_dir,
     )
     if not result.ok or not result.text.strip():
         raise SpecificationError("prompt review execution failed")

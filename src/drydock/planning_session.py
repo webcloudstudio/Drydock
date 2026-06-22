@@ -416,6 +416,7 @@ def create_plan(
     on_text: TextCallback | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
+    log_dir: Path | None = None,
 ) -> PlanCreateResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
@@ -473,6 +474,8 @@ def create_plan(
         model=model or prompt.model,
         command_name="plan create",
         parameters={"target": target, "blueprint": str(blueprint_dir)},
+        log_dir=log_dir,
+        target=target,
         on_text=on_text,
     )
     exec_id = getattr(result, "execution_id", None)

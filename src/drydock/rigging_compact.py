@@ -258,7 +258,8 @@ def compact(
     exclude_files: list[Path] | None = None,
     include_dirs: list[Path] | None = None,
     skip_autodiscovery: bool = False,
-    log_work_dir: Path | None = None,
+    log_dir: Path | None = None,
+    target: str = "",
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     on_item: Callable[[CompactItem], None] | None = None,
@@ -267,17 +268,15 @@ def compact(
 ) -> CompactResult:
     """Compact every stale derivative in ``blueprint`` (and optional extra paths).
 
-    ``log_work_dir`` sets the directory used as ``working_directory`` for LLM execution
-    (and therefore where ``logs/`` is created). Callers should pass the target directory
-    so execution artifacts land in ``targets/<Target>/logs/`` rather than inside the
-    blueprint subdirectory. Defaults to ``blueprint_dir`` when omitted.
+    ``log_dir`` routes LLM execution artifacts to a specific directory; callers pass
+    the workspace logs root so all artifacts land in one place. ``target`` is embedded
+    in per-run filenames to distinguish runs across targets.
     """
     run = runner if runner is not None else run_prompt
 
     spec_dir = blueprint_dir
     if not spec_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {spec_dir}")
-    work_dir = log_work_dir if log_work_dir is not None else spec_dir
 
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
@@ -326,11 +325,13 @@ def compact(
         )
         result = run(
             assembled,
-            work_dir,
+            spec_dir,
             llm=llm_provider,
             model=model or prompt.model,
             command_name="rigging compact",
             parameters={"source": str(source), "compact": str(compact_path)},
+            log_dir=log_dir,
+            target=target,
             on_text=on_text,
         )
 

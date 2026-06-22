@@ -118,6 +118,7 @@ def build_target(
     on_step: Callable[[BuildStepResult], None] | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
+    log_dir: Path | None = None,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
@@ -170,6 +171,8 @@ def build_target(
             command_name="build",
             parameters={"step": block.block_id, "step_type": block.block_type},
             allow_tools=True,
+            log_dir=log_dir,
+            target=target,
             on_text=on_text,
         )
 

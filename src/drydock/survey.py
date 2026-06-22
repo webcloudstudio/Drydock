@@ -366,6 +366,7 @@ def run_survey(
     on_text: TextCallback | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
+    log_dir: Path | None = None,
 ) -> list[dict]:
     """Score each in-scope command and append one record per command to scores.jsonl."""
     run = runner if runner is not None else run_prompt
@@ -387,6 +388,8 @@ def run_survey(
         model=model or prompt.model,
         command_name="survey",
         parameters={"target": target},
+        log_dir=log_dir,
+        target=target,
         on_text=on_text,
     )
     if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():
@@ -446,6 +449,7 @@ def import_specs(
     on_text: TextCallback | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
+    log_dir: Path | None = None,
 ) -> list[Path]:
     """Re-read a Blueprint/sources directory and (re)generate per-command AC files.
 
@@ -474,6 +478,8 @@ def import_specs(
         model=model or prompt.model,
         command_name="survey import",
         parameters={"target": target, "source": str(source_path)},
+        log_dir=log_dir,
+        target=target,
         on_text=on_text,
     )
     if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():

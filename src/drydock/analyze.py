@@ -440,6 +440,7 @@ def analyze(
     on_text: TextCallback | None = None,
     model: str | None = None,
     llm_provider: str | None = None,
+    log_dir: Path | None = None,
 ) -> AnalyzeResult:
     """Analyze a Blueprint and write all analyze artifacts to the Target."""
     blueprint_dir = target_dir / "blueprint"
@@ -489,6 +490,8 @@ def analyze(
         model=model,
         command_name="analyze",
         parameters={"target": target, "blueprint": str(blueprint_dir)},
+        log_dir=log_dir,
+        target=target,
         on_text=on_text,
     )
 

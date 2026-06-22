@@ -201,7 +201,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_rigging_compact(args: argparse.Namespace) -> int:
-    from drydock.config import blueprint_dir_for, get_llm_provider, get_model, get_target_directory, get_workspace
+    from drydock.config import (
+        blueprint_dir_for,
+        get_llm_provider,
+        get_model,
+        get_target_directory,
+        get_workspace,
+    )
     from drydock.rigging_compact import CompactItem, compact
 
     include_files = [Path(f) for f in (args.include_file or [])]
@@ -213,7 +219,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         # No Target: use cwd as the anchor; auto-discovery finds nothing there, explicit paths drive all work.
         spec_dir = Path.cwd()
         label = str(spec_dir)
-        log_work_dir = get_workspace()
+        compact_target = ""
     else:
         if args.Target is None:
             print("error: <Target> is required unless --include-file or --include-dir is provided.", file=sys.stderr)
@@ -221,8 +227,9 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         target_dir = get_target_directory() / args.Target
         spec_dir = blueprint_dir_for(target_dir)
         label = args.Target
-        log_work_dir = target_dir
+        compact_target = args.Target
 
+    log_dir = get_workspace() / "logs"
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
@@ -249,7 +256,8 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         exclude_files=exclude_files or None,
         include_dirs=include_dirs or None,
         skip_autodiscovery=explicit_only,
-        log_work_dir=log_work_dir,
+        log_dir=log_dir,
+        target=compact_target,
         on_item=report,
         model=model,
         llm_provider=llm_provider,
@@ -269,14 +277,15 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
-    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
 
     target_dir = get_target_directory() / args.Target
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    log_dir = get_workspace() / "logs"
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
-    result = analyze(args.Target, target_dir, model=model, llm_provider=llm_provider)
+    result = analyze(args.Target, target_dir, model=model, llm_provider=llm_provider, log_dir=log_dir)
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
@@ -338,17 +347,19 @@ def _print_plan_summary(plan) -> None:
 
 
 def cmd_plan_create(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
     from drydock.planning_session import create_plan
 
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    log_dir = get_workspace() / "logs"
     result = create_plan(
         args.Target,
         args.Target,
         get_target_directory(),
         model=model,
         llm_provider=llm_provider,
+        log_dir=log_dir,
     )
     print()
     print(f"Blueprint: {result.plan.project}")
@@ -391,6 +402,9 @@ def cmd_survey(args: argparse.Namespace) -> int:
     if not target_dir.is_dir():
         raise UsageError(f"Target not found: {args.Target}")
 
+    from drydock.config import get_workspace as _get_workspace
+    log_dir = _get_workspace() / "logs"
+
     if args.import_path:
         written = import_specs(
             args.Target,
@@ -398,6 +412,7 @@ def cmd_survey(args: argparse.Namespace) -> int:
             _Path(args.import_path),
             model=model,
             llm_provider=llm_provider,
+            log_dir=log_dir,
         )
         print(f"Regenerated {len(written)} acceptance-criteria file(s):")
         for path in written:
@@ -412,6 +427,7 @@ def cmd_survey(args: argparse.Namespace) -> int:
             command=args.command_filter,
             model=model,
             llm_provider=llm_provider,
+            log_dir=log_dir,
         )
         print(f"  scored {len(records)} command(s)")
 
@@ -428,14 +444,15 @@ def cmd_survey(args: argparse.Namespace) -> int:
 
 
 def cmd_prompt_review(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model
+    from drydock.config import get_llm_provider, get_model, get_workspace
     from drydock.paths import get_repo_root
     from drydock.prompt_review import review_prompt
 
     print(f"Reviewing prompt: {args.Component}")
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
-    result = review_prompt(args.Component, model=model, llm_provider=llm_provider)
+    log_dir = get_workspace() / "logs"
+    result = review_prompt(args.Component, model=model, llm_provider=llm_provider, log_dir=log_dir)
     repo_root = get_repo_root()
     print(f"  review      →  {result.review_path.relative_to(repo_root)}")
     if result.archive_path:
@@ -811,7 +828,7 @@ def cmd_status_current() -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     from drydock.build_run import BuildStepResult, build_target
-    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
 
     target_dir = get_target_directory() / args.Target
     if not target_dir.is_dir():
@@ -820,6 +837,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
+    log_dir = get_workspace() / "logs"
 
     _marks = {"built": "[built]", "implemented": "[review]", "failed": "[failed]"}
 
@@ -835,6 +853,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         build_dir=build_dir,
         model=model,
         llm_provider=llm_provider,
+        log_dir=log_dir,
         on_step=report,
     )
     print()

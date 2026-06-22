@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.rigging_compact import _extract_compact_error, _finalize, _skip_path, compact, discover
+from drydock.rigging_compact import _extract_compact_error, _finalize, compact, discover
 
 
 @dataclass

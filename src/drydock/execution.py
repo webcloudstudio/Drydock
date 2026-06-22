@@ -45,13 +45,22 @@ class ExecutionArtifacts:
     stderr_file: Path
 
     @classmethod
-    def create(cls, working_directory: Path, command_name: str, llm: str) -> ExecutionArtifacts:
-        logs = working_directory / "logs"
+    def create(
+        cls,
+        working_directory: Path,
+        command_name: str,
+        llm: str,
+        *,
+        log_dir: Path | None = None,
+        target: str = "",
+    ) -> ExecutionArtifacts:
+        logs = log_dir if log_dir is not None else working_directory / "logs"
         logs.mkdir(parents=True, exist_ok=True)
         now = utc_now()
         timestamp = now.strftime("%Y%m%dT%H%M%S%fZ")
         execution_id = f"{timestamp}-{uuid.uuid4().hex[:8]}"
-        base = logs / f"{timestamp}_{_slug(command_name)}_{_slug(llm)}"
+        slug_parts = [p for p in (_slug(target), _slug(command_name), _slug(llm)) if p]
+        base = logs / f"{timestamp}_{'_'.join(slug_parts)}"
         return cls(
             execution_id=execution_id,
             records_file=logs / "executions.jsonl",

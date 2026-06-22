@@ -489,6 +489,8 @@ def run_prompt(
     debug: bool = False,
     timeout_seconds: float | None = None,
     allow_tools: bool = False,
+    log_dir: Path | None = None,
+    target: str = "",
     on_text: TextCallback | None = None,
     on_event: EventCallback | None = None,
 ) -> LlmResult:
@@ -506,7 +508,9 @@ def run_prompt(
     if not working_directory.is_dir():
         raise LlmConfigurationError(f"Working directory does not exist: {working_directory}")
 
-    artifacts = ExecutionArtifacts.create(working_directory, command_name, selected)
+    artifacts = ExecutionArtifacts.create(
+        working_directory, command_name, selected, log_dir=log_dir, target=target
+    )
     prompt_bytes = prompt.encode("utf-8")
     artifacts.prompt_file.write_bytes(prompt_bytes)
     command = _command(selected, working_directory, artifacts, model, allow_tools)
