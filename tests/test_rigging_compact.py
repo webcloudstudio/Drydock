@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.rigging_compact import _extract_compact_error, _finalize, compact, discover
+from drydock.rigging_compact import _extract_compact_error, _finalize, _skip_path, compact, discover
 
 
 @dataclass
@@ -119,6 +119,19 @@ class TestDiscover:
         names = [p.name for p in discover(spec, include_files=[compact_file])]
         assert "FOO_compact.md" not in names
 
+    def test_skip_sibling_included_in_autodiscovery(self, tmp_path):
+        _, root = _blueprint(tmp_path, **{"BRANDING.md": "branding"})
+        spec = root / "bp"
+        (spec / "BRANDING_compact.skip.md").write_text("<!-- no-surface -->", encoding="utf-8")
+        names = [p.name for p in discover(spec)]
+        assert "BRANDING.md" in names
+
+    def test_skip_files_not_treated_as_sources(self, tmp_path):
+        _, root = _blueprint(tmp_path, **{"BRANDING_compact.skip.md": "sentinel"})
+        spec = root / "bp"
+        names = [p.name for p in discover(spec)]
+        assert "BRANDING_compact.skip.md" not in names
+
 
 class TestCompact:
     def test_writes_siblings_with_provenance_and_exit_zero(self, tmp_path):
@@ -163,12 +176,23 @@ class TestCompact:
         assert result.items[0].status == "failed"
         assert result.items[0].error == "empty output"
 
-    def test_no_surface_response_marks_no_surface_not_failed(self, tmp_path):
+    def test_no_surface_response_writes_skip_file_not_compact(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "branding prose\n"})
         result = compact(name, root / name, runner=fake_runner_no_surface())
         assert result.exit_code() == 0
         assert result.items[0].status == "no-surface"
         assert not (root / name / "DATABASE_compact.md").exists()
+        skip = root / name / "DATABASE_compact.skip.md"
+        assert skip.exists()
+        assert "no-surface" in skip.read_text(encoding="utf-8")
+
+    def test_no_surface_skip_file_prevents_rerun(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "branding prose\n"})
+        compact(name, root / name, runner=fake_runner_no_surface())
+        # Second run: skip file exists and is newer → freshness gate fires
+        runner = fake_runner_no_surface()
+        result = compact(name, root / name, runner=runner)
+        assert result.items[0].status == "skipped-fresh"
 
     def test_assembled_prompt_carries_job_context(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "secret-token\n"})

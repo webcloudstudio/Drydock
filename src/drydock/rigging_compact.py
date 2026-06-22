@@ -104,18 +104,28 @@ class CompactResult:
         return 1 if self.failed() else 0
 
 
+SKIP_SUFFIX = "_compact.skip"
+
+
 def _is_compact(path: Path) -> bool:
-    return path.stem.endswith(COMPACT_SUFFIX)
+    """True for any compact derivative: *_compact.md or *_compact.skip.md."""
+    return COMPACT_SUFFIX in path.stem
 
 
 def _compact_path(source: Path) -> Path:
     return source.with_name(f"{source.stem}{COMPACT_SUFFIX}.md")
 
 
-def _is_stale(source: Path, compact: Path) -> bool:
-    if not compact.exists():
-        return True
-    return source.stat().st_mtime > compact.stat().st_mtime
+def _skip_path(source: Path) -> Path:
+    return source.with_name(f"{source.stem}{SKIP_SUFFIX}.md")
+
+
+def _is_stale(source: Path) -> bool:
+    """True when neither the compact nor skip sibling is as new as the source."""
+    for sibling in (_compact_path(source), _skip_path(source)):
+        if sibling.exists() and sibling.stat().st_mtime >= source.stat().st_mtime:
+            return False
+    return True
 
 
 def _resolve_md(path: Path, base: Path) -> Path:
@@ -161,12 +171,12 @@ def discover(
 
     if not skip_autodiscovery:
         for md in sorted(spec_dir.glob("*.md")):
-            if not _is_compact(md) and _compact_path(md).is_file():
+            if not _is_compact(md) and (_compact_path(md).is_file() or _skip_path(md).is_file()):
                 add(md)
 
     if include_rigging:
         for md in sorted(get_rigging_root().rglob("*.md")):
-            if not _is_compact(md) and _compact_path(md).is_file():
+            if not _is_compact(md) and (_compact_path(md).is_file() or _skip_path(md).is_file()):
                 add(md)
 
     if include_dirs:
@@ -281,15 +291,17 @@ def compact(
 
     for source in sources:
         compact_path = _compact_path(source)
+        skip_path = _skip_path(source)
 
-        if not force and not _is_stale(source, compact_path):
+        if not force and not _is_stale(source):
+            fresh_sibling = compact_path if compact_path.exists() else skip_path
             record(
                 CompactItem(
                     source,
-                    compact_path,
+                    fresh_sibling,
                     "skipped-fresh",
                     source_bytes=source.stat().st_size,
-                    compact_bytes=compact_path.stat().st_size,
+                    compact_bytes=fresh_sibling.stat().st_size if fresh_sibling.exists() else None,
                 )
             )
             continue
@@ -329,10 +341,15 @@ def compact(
 
         error_msg = _extract_compact_error(result.text)
         if error_msg:
+            skip_content = (
+                f"<!-- no-surface: {rel_source} on {today} by drydock rigging compact"
+                f" — {error_msg} -->\n"
+            )
+            skip_path.write_text(skip_content, encoding="utf-8", newline="\n")
             record(
                 CompactItem(
                     source,
-                    compact_path,
+                    skip_path,
                     "no-surface",
                     source_bytes=source_bytes,
                     execution_id=result.execution_id,
