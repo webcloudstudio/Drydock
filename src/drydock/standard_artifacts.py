@@ -129,7 +129,7 @@ items:
   - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 6 }}
 {planning_item}  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 7 }}
   - {{ id: plan_compass, label: "Plan Compass", section: core, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 8 }}
-  - {{ id: build_compass, label: "Build Steps", section: core, type: compass, path: ../MANIFEST.md, order: 9 }}
+  - {{ id: build_compass, label: "Build Compass", section: core, type: compass, path: ../MANIFEST.md, order: 9 }}
 
 sources:
   - glob: "QuarterDeck/questionnaires/discovery-*.json"

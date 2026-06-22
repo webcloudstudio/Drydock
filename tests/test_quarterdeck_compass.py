@@ -85,9 +85,9 @@ class TestRender:
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         assert "# Foundation" in out
-        assert "STEP 1" in out
         assert "Core" in out
         assert "story" in out
+        assert "STEP " not in out
 
     def test_step_cost_includes_full_stack(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
@@ -114,7 +114,7 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         assert "post: Core Works" in out
         # The ac is folded, not rendered as its own step.
-        assert "STEP 2" not in out
+        assert "STEP " not in out
 
     def test_over_warn_flagged(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()

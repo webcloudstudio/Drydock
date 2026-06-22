@@ -873,11 +873,9 @@ def render_compass(item: dict[str, Any]) -> str:
         f" · {len(steps)} steps{warn_html}</div>"
     ]
 
-    n = 0
     for group in groups:
         step_cards = []
         for step in group.steps:
-            n += 1
             warn = (
                 f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
             )
@@ -890,7 +888,6 @@ def render_compass(item: dict[str, Any]) -> str:
             step_cards.append(
                 "<div class='cmp-step'>"
                 "<div class='cmp-shead'>"
-                f"<span class='cmp-snum'>STEP {n}</span>"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
                 f"<span class='cmp-gsp'>Story Points = {step.total_story_points}</span>{warn}"

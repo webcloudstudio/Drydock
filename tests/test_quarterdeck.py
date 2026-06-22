@@ -817,7 +817,7 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
         "CONFIG",
         {
             "sections": [
-                {"id": "build_plan", "label": "Build Steps", "dot": "#d97706"},
+                {"id": "build_plan", "label": "Build Compass", "dot": "#d97706"},
                 {"id": "archive", "label": "Archive", "dot": "#94a3b8", "collapsed": True},
             ],
             "items": [
@@ -832,7 +832,7 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
 
     rendered = quarterdeck.render_nav()
 
-    assert "Build Steps" in rendered
+    assert "Build Compass" in rendered
     assert "sec-flag" in rendered
     assert "onclick='toggleSection" not in rendered
     assert "collapse-arrow" not in rendered
@@ -851,7 +851,7 @@ def test_render_nav_includes_build_compass_item_flag(monkeypatch):
             "items": [
                 {
                     "id": "build_compass",
-                    "label": "Build Steps",
+                    "label": "Build Compass",
                     "section": "core",
                     "type": "compass",
                     "path": "../MANIFEST.md",
@@ -865,7 +865,7 @@ def test_render_nav_includes_build_compass_item_flag(monkeypatch):
 
     rendered = quarterdeck.render_nav()
 
-    assert "Build Steps" in rendered
+    assert "Build Compass" in rendered
     assert "class=\"item-flag\"" in rendered or "class='item-flag'" in rendered
 
 
