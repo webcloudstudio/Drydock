@@ -844,7 +844,9 @@ def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatc
     assert "<header><strong>Beta</strong>" in html
     assert "Workspace target" not in html
     assert "Copyright (c) 2026 Beta Studio. All rights reserved." in html
-    assert 'Help <span class="flyout">↗</span>' in html
+    assert 'Drydock <span class="flyout">↗</span>' in html
+    assert 'Drydock Home <span class="flyout">↗</span>' in html
+    assert 'href="https://webcloudstudio.com"' in html
 
 
 def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):

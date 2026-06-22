@@ -2050,17 +2050,21 @@ def index(request: Request = None) -> str:
         init_js = f'loadDoc("{init["id"]}");' if init else ""
 
         help_btn = (
-            '<a class="help-btn" href="/help" target="_blank" rel="noopener" title="Open Help">'
-            'Help <span class="flyout">↗</span></a>'
+            '<a class="help-btn" href="/help" target="_blank" rel="noopener" title="Open Drydock">'
+            'Drydock <span class="flyout">↗</span></a>'
             if console.get("app_help_file_location")
             else ""
+        )
+        home_btn = (
+            '<a class="help-btn" href="https://webcloudstudio.com" target="_blank" rel="noopener" '
+            'title="Open Drydock Home">Drydock Home <span class="flyout">↗</span></a>'
         )
 
         return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
-  <header><strong>{html.escape(project_name)}</strong>{help_btn}</header>
+  <header><strong>{html.escape(project_name)}</strong>{home_btn}{help_btn}</header>
   <div class="copyright-bar">{html.escape(copyright_notice)}</div>
   <main>
     <nav>{nav}</nav>
