@@ -70,6 +70,18 @@ def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
     assert items["build_compass"]["path"] == "../MANIFEST.md"
 
 
+def test_render_console_places_exclude_files_last(tmp_path):
+    import yaml
+
+    config = render_console("Example", plan_path=tmp_path / "MANIFEST.md")
+    parsed = yaml.safe_load(config)
+    items = parsed["items"]
+
+    assert items[-1]["id"] == "exclude_files"
+    assert items[-1]["label"] == "Exclude Files"
+    assert items[-1]["path"] == "../EXCLUDE_FILES.md"
+
+
 def test_render_console_includes_discovery_questionnaire_source(tmp_path):
     config = render_console("Example")
 

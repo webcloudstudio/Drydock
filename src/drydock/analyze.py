@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.errors import SpecificationError
+from drydock.exclude_files import (
+    append_suggested_exclusions,
+    ensure_exclude_file,
+    load_excluded_filenames,
+)
 from drydock.llm import run_prompt
 from drydock.metadata import (
     METADATA_NAME,
@@ -115,12 +120,16 @@ class AnalyzeResult:
         return 0 if self.ok else 1
 
 
-def _collect_blueprint_files(blueprint_dir: Path) -> list[Path]:
+def _collect_blueprint_files(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[Path]:
     """Return imported source files from blueprint/sources/ for analysis."""
     sources_dir = blueprint_dir / _SOURCES_SUBDIR
     if not sources_dir.is_dir():
         return []
-    return sorted(sources_dir.rglob("*.md"))
+    return sorted(
+        p for p in sources_dir.rglob("*.md") if p.is_file() and p.name not in excluded_filenames
+    )
 
 
 def ensure_feedback_file(target_dir: Path) -> str:
@@ -238,7 +247,7 @@ def _managed_doc_parts(
     )
 
 
-def _render_typed_spec(blueprint_dir: Path) -> list[str]:
+def _render_typed_spec(blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()) -> list[str]:
     # The Rigging catalog (stack-option filenames, no content) is analyze scaffolding that
     # reads immediately before the imported sources it contextualizes.
     parts: list[str] = []
@@ -253,7 +262,7 @@ def _render_typed_spec(blueprint_dir: Path) -> list[str]:
             "",
         ]
     parts += ["## Imported source files", ""]
-    for path in _collect_blueprint_files(blueprint_dir):
+    for path in _collect_blueprint_files(blueprint_dir, excluded_filenames=excluded_filenames):
         label = path.relative_to(blueprint_dir).as_posix()
         parts += [
             f"### {prompt_source_header(label, path)}",
@@ -286,6 +295,7 @@ def _assemble_prompt(
         feedback_text=feedback_text,
         blockers_text=blockers_text,
         input_tokens=input_tokens,
+        excluded_filenames=load_excluded_filenames(blueprint_dir.parent),
     ).rendered_text
 
 
@@ -299,6 +309,7 @@ def _assemble_prompt_assembly(
     feedback_text: str | None = None,
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
+    excluded_filenames: frozenset[str] = frozenset(),
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -398,7 +409,9 @@ def _assemble_prompt_assembly(
                 )
             )
         parts_list.append(lines_part("Imported source file header", ["## Imported source files", ""], kind="section"))
-        for path_obj in _collect_blueprint_files(blueprint_dir):
+        for path_obj in _collect_blueprint_files(
+            blueprint_dir, excluded_filenames=excluded_filenames
+        ):
             label = path_obj.relative_to(blueprint_dir).as_posix()
             parts_list.extend(
                 contextual_markdown_parts(
@@ -694,6 +707,10 @@ def analyze(
     # user has edited it beyond the default placeholder.
     feedback_text = ensure_feedback_file(target_dir)
     feedback_for_prompt = _feedback_body(feedback_text) or None
+    source_files = _collect_blueprint_files(blueprint_dir)
+    ensure_exclude_file(target_dir)
+    append_suggested_exclusions(target_dir, source_files)
+    excluded_filenames = load_excluded_filenames(target_dir)
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
@@ -707,6 +724,7 @@ def analyze(
         feedback_text=feedback_for_prompt,
         blockers_text=blockers_text,
         input_tokens=prompt.input_tokens,
+        excluded_filenames=excluded_filenames,
     )
 
     result = run(

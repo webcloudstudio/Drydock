@@ -21,6 +21,7 @@ from typing import Protocol
 
 from drydock.build_plan import BuildPlan, parse_build_plan
 from drydock.errors import SpecificationError
+from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
@@ -126,11 +127,15 @@ def _read_if(path: Path) -> str | None:
     return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
-def _collect_sources(blueprint_dir: Path) -> list[Path]:
+def _collect_sources(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[Path]:
     sources_dir = blueprint_dir / "sources"
     if not sources_dir.is_dir():
         return []
-    return sorted(p for p in sources_dir.rglob("*.md") if p.is_file())
+    return sorted(
+        p for p in sources_dir.rglob("*.md") if p.is_file() and p.name not in excluded_filenames
+    )
 
 
 def _collect_discoveries(target_dir: Path) -> list[Path]:
@@ -260,6 +265,7 @@ def _assemble_prompt(
         today,
         feedback_text=feedback_text,
         input_tokens=input_tokens,
+        excluded_filenames=load_excluded_filenames(target_dir),
     ).rendered_text
 
 
@@ -272,6 +278,7 @@ def _assemble_prompt_assembly(
     *,
     feedback_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
+    excluded_filenames: frozenset[str] = frozenset(),
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -375,7 +382,7 @@ def _assemble_prompt_assembly(
 
     def typed_spec_parts() -> list:
         parts_list = [lines_part("Imported source file header", ["## Imported source files", ""], kind="section")]
-        for path_obj in _collect_sources(blueprint_dir):
+        for path_obj in _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames):
             label = path_obj.relative_to(blueprint_dir).as_posix()
             parts_list.extend(
                 contextual_markdown_parts(
@@ -603,6 +610,7 @@ def create_plan(
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
     feedback_text = ensure_feedback_file(target_dir)
+    ensure_exclude_file(target_dir)
     default_feedback = prompt_header_for_file(_FEEDBACK_FILENAME)
     feedback_for_prompt = (
         feedback_text
@@ -621,6 +629,7 @@ def create_plan(
         today,
         feedback_text=feedback_for_prompt,
         input_tokens=prompt.input_tokens,
+        excluded_filenames=load_excluded_filenames(target_dir),
     )
 
     result = run(

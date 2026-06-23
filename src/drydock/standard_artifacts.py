@@ -141,6 +141,7 @@ items:
 {planning_item}  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 7 }}
   - {{ id: plan_compass, label: "Plan Compass", section: core, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 8, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
 {build_compass_item}
+  - {{ id: exclude_files, label: "Exclude Files", section: core, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 99 }}
 
 sources:
   - glob: "QuarterDeck/questionnaires/discovery-*.json"

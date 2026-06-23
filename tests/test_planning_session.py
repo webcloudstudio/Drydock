@@ -425,3 +425,26 @@ def test_assemble_prompt_labels_source_files_with_fixed_roles(tmp_path):
     )
 
     assert "### sources/request.md - source reference" in result
+
+
+def test_assemble_prompt_excludes_listed_source_filenames(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    (blueprint_dir / "sources" / "BUILD_PLAN.md").write_text("ignore me", encoding="utf-8")
+    (target_dir / "EXCLUDE_FILES.md").write_text(
+        "# Exclude Files\n\n## Excluded files\n- BUILD_PLAN.md\n",
+        encoding="utf-8",
+    )
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        blueprint_dir,
+        _ANALYSIS,
+        "2026-06-17",
+        input_tokens=("TYPED_SPEC",),
+    )
+
+    assert "### sources/request.md - source reference" in result
+    assert "### sources/BUILD_PLAN.md - source reference" not in result
+    assert "ignore me" not in result

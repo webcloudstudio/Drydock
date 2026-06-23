@@ -425,6 +425,21 @@ class TestAssemblePrompt:
         assert "### sources/spec.md - source reference" in result
         assert "imported content" in result
 
+    def test_excludes_listed_source_filenames(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        sources = bp / "sources"
+        sources.mkdir(parents=True)
+        (sources / "spec.md").write_text("keep me", encoding="utf-8")
+        (sources / "BUILD_PLAN.md").write_text("ignore me", encoding="utf-8")
+        (bp.parent / "EXCLUDE_FILES.md").write_text(
+            "# Exclude Files\n\n## Excluded files\n- BUILD_PLAN.md\n",
+            encoding="utf-8",
+        )
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "### sources/spec.md - source reference" in result
+        assert "### sources/BUILD_PLAN.md - source reference" not in result
+        assert "ignore me" not in result
+
     def test_top_level_blueprint_files_not_injected(self, tmp_path):
         bp = tmp_path / "blueprint"
         bp.mkdir()
@@ -440,7 +455,7 @@ class TestAssemblePrompt:
         (sources / "ARCHITECTURE.md").write_text("arch content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
         assert "### sources/ARCHITECTURE.md - source reference" in result
-        assert "imported source material from the user" in result
+        assert "## Imported source files" in result
 
     def test_injects_feedback_directive_when_provided(self, tmp_path):
         bp = tmp_path / "blueprint"
