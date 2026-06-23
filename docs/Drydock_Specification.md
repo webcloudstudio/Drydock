@@ -256,7 +256,7 @@ markdown artifacts using agile. It prepares the following files for Commander re
 | `SOUNDINGS.md` | Target root | Acceptance tests and milestones  |
 | `COMPASS.md` | Target root | The master project intent file.   Always imported.  Review it if one was automatically created. |
 | `questionnaires/*.json` | `QuarterDeck/` | Review questionnaires for unresolved decisions and genuine research spikes |
-| `captains_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
+| `commanders_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
 #### Build Readiness
 
@@ -583,7 +583,7 @@ files from the Drydock-managed Target tree.
 | ARCHITECTURE.md | blueprint/ | · | O | I | I | I |
 | BLOCKERS.md | Target root | O/I | X | · | · | · |
 | BUILD_COMPASS.md | Target root | · | O | I | · | · |
-| captains_chair.html | QuarterDeck/ | O | · | · | · | · |
+| commanders_chair.html | QuarterDeck/ | O | · | · | · | · |
 | COMPASS.md | Target root | O*/I | I | I | I | I |
 | DATABASE.md | blueprint/ | · | O | I | I | I |
 | FEATURE-{Name}.md | blueprint/ | · | O | I | I | I |
@@ -749,7 +749,7 @@ updated by `drydock refit` as specification files and application code evolve.
   - Created and updated: `drydock analyze <Target>`
   - Answered through: QuarterDeck Planning Session
 
-- **`<Target>/QuarterDeck/captains_chair.html`** — Template-filled orientation dashboard; quality
+- **`<Target>/QuarterDeck/commanders_chair.html`** — Template-filled orientation dashboard; quality
   signal, story count, stack, and next recommended step
   - Created: `drydock analyze <Target>` on first run; updated when lifecycle state advances
 
@@ -1194,14 +1194,14 @@ rather than by hand-editing plan files. Decisions of record are appended to the 
 Every Drydock QuarterDeck carries three standard product-owner artifacts. They are the
 methodology's fixed reference points; Drydock's own repository is their reference instance. Each is
 a source-of-truth document, filed in **Drydock Core** and pinned. When a Master Blueprint is
-available, Core presents the artifacts in this order: Captain's Chair, Master Blueprint, Analysis,
+available, Core presents the artifacts in this order: Commanders Chair, Master Blueprint, Analysis,
 Sea Trials, Soundings, then Ship's Log. Each is shown by file existence. The Analysis artifact, when
 `ANALYSIS.md` is present, renders its `##` sections as tabs; `drydock analyze` emits plain Markdown
 and the tabbed presentation is declared on the item, not hardcoded to a filename.
 
 | Artifact | Purpose |
 |---|---|
-| **Captain's Chair** | The orientation page and default view: mission and current state at a glance. |
+| **Commanders Chair** | The orientation page and default view: mission and current state at a glance. |
 | **Soundings** | The project's authoritative acceptance-criteria checklist — each capability, its state, and the evidence. The standard way Drydock tracks acceptance criteria. |
 | **Sea Trials** | The project's objectives and success criteria, derived from the specification — what the project must achieve to be declared delivered. The standard way Drydock states project objectives. |
 
@@ -1209,7 +1209,7 @@ Soundings records *implementation acceptance* — whether each capability is bui
 Trials records *strategic outcomes* — whether the assembled product has proven its purpose. The two
 are complementary, not duplicates.
 
-`drydock init <Target>` creates target-local Captain's Chair, Sea Trials, and Soundings artifacts
+`drydock init <Target>` creates target-local Commanders Chair, Sea Trials, and Soundings artifacts
 without overwriting existing files. Soundings contains one acceptance ledger with `ID`,
 `Acceptance Criterion`, `State`, and `Evidence` columns. `drydock plan` preserves the
 standard artifacts, projects the plan's acceptance gates into Soundings by stable ID, updates their

@@ -112,13 +112,13 @@ project type. Example — Python web server: `flask`, `django`, `fastapi`, `othe
 Rigging stack guidance files are injected into the prompt based on detected project type.
 Rigging stack files are trivial to create (one-line "best practices" prompt generates them).
 
-#### Captain's Chair (QuarterDeck/)
+#### Commanders Chair (QuarterDeck/)
 
 Analyze fills a template with variables — not a custom write. Template lives in Rigging.
 Variables injected: quality signal, story count, question count, blocker count, stack,
 next recommended step, project name.
 
-Format: self-contained HTML with embedded styles (`captains_chair.html`). QuarterDeck
+Format: self-contained HTML with embedded styles (`commanders_chair.html`). QuarterDeck
 registers it as a `document` item with `path_html`; renders in an 80vh iframe. The LLM
 fills a Rigging HTML template with variables (quality, counts, stack, next step). No external
 CSS dependency — file must be self-contained.
@@ -134,10 +134,10 @@ State ladder (forward-only): `init → analyzed → planned → building → bui
 
 Each command:
 1. Reads `drydock build state:` from target-root `METADATA.md`.
-2. If the new state is not forward, skips the Captain's Chair overwrite.
-3. On success, updates `drydock build state:` and writes the Captain's Chair.
+2. If the new state is not forward, skips the Commanders Chair overwrite.
+3. On success, updates `drydock build state:` and writes the Commanders Chair.
 
-The Captain's Chair is write-only from commands — display artifact, never read back.
+The Commanders Chair is write-only from commands — display artifact, never read back.
 
 ---
 
@@ -198,7 +198,7 @@ Spike Contract) is superseded — fixed set is now intent, stack, guardrails.
 8. Blockers are explicitly flagged and distinct from questions.
 9. Technology questionnaires offer concrete Rigging-derived options.
 10. `drydock build state:` in METADATA.md advances forward-only.
-11. Captain's Chair is template-filled, not custom-written.
+11. Commanders Chair is template-filled, not custom-written.
 12. COMPASS is written when absent or unpopulated (template detection by `<!--` or all-None.).
 13. After `import` + `analyze`, `blueprint/` contains only `sources/`; no typed-spec stubs (BUG-7).
 14. `analyze` prints the list of artifact filenames it created (FIX-8).
@@ -216,7 +216,7 @@ Spike Contract) is superseded — fixed set is now intent, stack, guardrails.
 - **No cross-stack batches.** A build batch must never mix component types / stacks.
 - **One spec per story.** A story implements exactly one spec file. Enforced at `plan create`.
 - **~100-story cap.** Over the threshold the tool refuses.
-- **Forward-only state.** Commands do not overwrite Captain's Chair if state would go backwards.
+- **Forward-only state.** Commands do not overwrite Commanders Chair if state would go backwards.
 - **Derived artifacts must be regenerable.** Rogue source of truth = drift.
 - **QuarterDeck is optional.** Full pipeline drivable via CLI.
 - **Fixed I/O locations (Ed, 2026-06-15).** Files never go to the wrong location.
@@ -236,7 +236,7 @@ Spike Contract) is superseded — fixed set is now intent, stack, guardrails.
    `ANALYSIS.md`, or simply regenerate clean?
 2. **Integrity failure UX** — block `MANIFEST.md` write only, surface as questions, or both?
 3. **Drift propagation model** — how green/stale propagates when an upstream node changes post-build.
-4. **Captain's Chair template** — structure and variables to be defined; create Rigging HTML template.
+4. **Commanders Chair template** — structure and variables to be defined; create Rigging HTML template.
 
 ---
 

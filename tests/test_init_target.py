@@ -23,7 +23,7 @@ def test_init_target_creates_specification_independent_baseline(tmp_target_root)
     assert "name: Example" in metadata
     assert "display_name: Example" in metadata
     assert (result.target_dir / "blueprint" / "sources").is_dir()
-    assert "Captain's Chair" in (result.target_dir / "QuarterDeck" / "console.yaml").read_text(
+    assert "Commanders Chair" in (result.target_dir / "QuarterDeck" / "console.yaml").read_text(
         encoding="utf-8"
     )
     assert not (result.target_dir / "SEA_TRIALS.md").is_file()

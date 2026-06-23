@@ -116,7 +116,7 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     exclude_files = docs_by_item["exclude_files"]
     analysis = prompt_header_for_file("ANALYSIS.md")
     soundings_doc = prompt_header_for_file("SOUNDINGS.md")
-    captains_chair_help = (
+    commanders_chair_help = (
         "Live project overview and delivery snapshot for this target."
     )
     sea_trials_help = (
@@ -141,7 +141,7 @@ sections:
 
 items:
   - {{ id: blockers_doc, label: "Blockers", section: blockers, type: editable_markdown, path: ../BLOCKERS.md, help_text: {json.dumps(blockers.help_text)}, prompt_text: {json.dumps(blockers.prompt_text)} }}
-  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1, help_text: {json.dumps(captains_chair_help)} }}
+  - {{ id: commanders_chair, label: "Commanders Chair", section: core, type: document, path_html: commanders_chair.html, order: 1, help_text: {json.dumps(commanders_chair_help)} }}
   - {{ id: compass_edit, label: "Compass", section: core, type: editable_markdown, path: ../COMPASS.md, order: 2, help_text: {json.dumps(compass.help_text)}, prompt_text: {json.dumps(compass.prompt_text)} }}
   - {{ id: analysis, label: "Analysis", section: core, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 3, help_text: {json.dumps(analysis.help_text if analysis else "")} }}
   - {{ id: analyze_compass, label: "Analyze Compass", section: core, type: editable_markdown, path: ../ANALYZE_COMPASS.md, order: 4, help_text: {json.dumps(analyze_compass.help_text)}, prompt_text: {json.dumps(analyze_compass.prompt_text)} }}

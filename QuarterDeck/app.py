@@ -1677,7 +1677,7 @@ def switch_target(target: str, request: Request = None):
         valid_targets = {item.target for item in _current_switchable_targets()}
         if target not in valid_targets:
             raise HTTPException(status_code=404, detail=f"Unknown target: {target}")
-        response = RedirectResponse("/?item=commanders_view", status_code=303)
+        response = RedirectResponse("/?item=commanders_chair", status_code=303)
         response.set_cookie(ACTIVE_TARGET_COOKIE, target, path="/", samesite="lax")
         return response
 

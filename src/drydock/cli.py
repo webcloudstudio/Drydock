@@ -298,9 +298,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}  (created)")
     for discovery_path in result.discovery_paths:
         print(f"  {discovery_path.name:<20} →  {discovery_path.relative_to(tdir)}")
-    if result.captains_chair_path:
+    if result.commanders_chair_path:
         print(
-            f"  captains_chair  →  {result.captains_chair_path.relative_to(tdir)}  (lifecycle: analyzed)"
+            f"  commanders_chair  →  {result.commanders_chair_path.relative_to(tdir)}  (lifecycle: analyzed)"
         )
     print()
     _quality_icon = {"Ready": "✓", "Questions": "⚠", "Blocked": "✗"}.get(result.quality, "?")

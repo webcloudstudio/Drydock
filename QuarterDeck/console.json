@@ -1,7 +1,7 @@
 {
   "console": {
     "name": "Drydock QuarterDeck",
-    "default_item": "overview",
+    "default_item": "commanders_chair",
     "state_db": "data/console_state.sqlite"
   },
   "project": {
@@ -11,8 +11,8 @@
   },
   "items": [
     {
-      "id": "overview",
-      "label": "Captain's Chair",
+      "id": "commanders_chair",
+      "label": "Commanders Chair",
       "section": "core",
       "type": "markdown",
       "path": "pages/overview.md"

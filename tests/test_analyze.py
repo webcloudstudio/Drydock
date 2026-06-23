@@ -12,7 +12,7 @@ from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
     _feedback_body,
-    _fill_captains_chair,
+    _fill_commanders_chair,
     _is_compass_unpopulated,
     _normalize_analysis_summary,
     _parse_blocks,
@@ -793,7 +793,7 @@ class TestValidateBlockers:
 
 
 # ---------------------------------------------------------------------------
-# _fill_captains_chair
+# _fill_commanders_chair
 # ---------------------------------------------------------------------------
 
 
@@ -805,7 +805,7 @@ class TestFillCaptainsChair:
     )
 
     def test_ready_fill(self):
-        result = _fill_captains_chair(
+        result = _fill_commanders_chair(
             self._TEMPLATE,
             quality="Ready",
             story_count=10,
@@ -825,7 +825,7 @@ class TestFillCaptainsChair:
         assert "python/flask" in result
 
     def test_blocked_css_class(self):
-        result = _fill_captains_chair(
+        result = _fill_commanders_chair(
             "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
             quality="Blocked",
             story_count=0,
@@ -841,7 +841,7 @@ class TestFillCaptainsChair:
         assert "✗" in result
 
     def test_questions_css_class(self):
-        result = _fill_captains_chair(
+        result = _fill_commanders_chair(
             "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
             quality="Questions",
             story_count=0,
@@ -1117,16 +1117,16 @@ class TestLifecycleState:
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert get_build_state(target_dir) == "analyzed"
 
-    def test_captains_chair_written_on_first_run(self, tmp_path):
+    def test_commanders_chair_written_on_first_run(self, tmp_path):
         from drydock.metadata import render_metadata
 
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         (target_dir / "METADATA.md").write_text(render_metadata("MyTarget"), encoding="utf-8")
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.captains_chair_path is not None
-        assert result.captains_chair_path.exists()
+        assert result.commanders_chair_path is not None
+        assert result.commanders_chair_path.exists()
 
-    def test_captains_chair_rewritten_when_state_does_not_advance(self, tmp_path):
+    def test_commanders_chair_rewritten_when_state_does_not_advance(self, tmp_path):
         from drydock.metadata import render_metadata, set_build_state
 
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1134,13 +1134,13 @@ class TestLifecycleState:
         set_build_state(target_dir, "analyzed")
 
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.captains_chair_path is not None
-        assert result.captains_chair_path.exists()
+        assert result.commanders_chair_path is not None
+        assert result.commanders_chair_path.exists()
 
-    def test_captains_chair_not_written_when_no_metadata(self, tmp_path):
+    def test_commanders_chair_not_written_when_no_metadata(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.captains_chair_path is None
+        assert result.commanders_chair_path is None
 
     def test_state_not_reversed_when_already_planned(self, tmp_path):
         from drydock.metadata import get_build_state, render_metadata, set_build_state

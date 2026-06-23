@@ -351,7 +351,7 @@ class TestAnalyzeCommand:
                 soundings_path=passed_target_dir / "SOUNDINGS.md",
                 compass_path=None,
                 discovery_paths=(),
-                captains_chair_path=None,
+                commanders_chair_path=None,
                 quality="Ready",
                 story_count=0,
                 question_count=0,

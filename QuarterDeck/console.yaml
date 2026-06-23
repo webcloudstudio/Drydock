@@ -1,6 +1,6 @@
 console:
   name: Drydock QuarterDeck
-  default_item: commanders_view
+  default_item: commanders_chair
 
 project:
   id: drydock
@@ -25,8 +25,8 @@ sources:
 
 items:
   # Core — fixed, source-of-truth (order controls nav sequence)
-  - id: commanders_view
-    label: "Captain's Chair"
+  - id: commanders_chair
+    label: "Commanders Chair"
     section: core
     type: markdown
     path: pages/overview.md

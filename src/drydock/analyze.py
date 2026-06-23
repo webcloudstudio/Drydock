@@ -5,7 +5,7 @@ tests inject a fake runner and never spend API credits.
 
 Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if absent or
 unpopulated), BLOCKERS.md (only when blockers exist), discovery-*.json questionnaires (one per
-open question), captains_chair.html (when lifecycle state advances to analyzed).
+open question), commanders_chair.html (when lifecycle state advances to analyzed).
 """
 
 from __future__ import annotations
@@ -103,7 +103,7 @@ class AnalyzeResult:
     sea_trials_path: Path
     soundings_path: Path
     compass_path: Path | None
-    captains_chair_path: Path | None
+    commanders_chair_path: Path | None
     discovery_paths: tuple[Path, ...]
     quality: str
     story_count: int
@@ -586,7 +586,7 @@ def _parse_output(
     )
 
 
-def _fill_captains_chair(
+def _fill_commanders_chair(
     template: str,
     *,
     quality: str,
@@ -749,7 +749,7 @@ def analyze(
             sea_trials_path=sea_trials_path,
             soundings_path=soundings_path,
             compass_path=None,
-            captains_chair_path=None,
+            commanders_chair_path=None,
             discovery_paths=(),
             quality="unknown",
             story_count=0,
@@ -839,16 +839,16 @@ def analyze(
     stamp_last(target_dir, "analyzed")
     set_sub_state(target_dir, "complete")
 
-    # Captain's Chair reflects the current analyzed state, so rewrite it on every
+    # Commanders Chair reflects the current analyzed state, so rewrite it on every
     # successful analyze run when metadata exists.
-    captains_chair_path: Path | None = None
+    commanders_chair_path: Path | None = None
     state_advanced = set_build_state(target_dir, "analyzed")
     if state_advanced or (target_dir / METADATA_NAME).is_file():
         try:
-            template_path = get_rigging_root() / "templates" / "captains_chair.html"
+            template_path = get_rigging_root() / "templates" / "commanders_chair.html"
             if template_path.is_file():
                 template = template_path.read_text(encoding="utf-8")
-                filled = _fill_captains_chair(
+                filled = _fill_commanders_chair(
                     template,
                     quality=quality,
                     story_count=story_count,
@@ -861,12 +861,12 @@ def analyze(
                     generated_date=today,
                     story_breakdown_html=_render_story_breakdown_html(analysis_text),
                 )
-                chair_path = target_dir / "QuarterDeck" / "captains_chair.html"
+                chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
                 chair_path.parent.mkdir(parents=True, exist_ok=True)
                 chair_path.write_text(filled, encoding="utf-8", newline="\n")
-                captains_chair_path = chair_path
+                commanders_chair_path = chair_path
         except Exception:
-            pass  # Captain's Chair failure must not abort a successful analysis
+            pass  # Commanders Chair failure must not abort a successful analysis
 
     return AnalyzeResult(
         target_dir=target_dir,
@@ -874,7 +874,7 @@ def analyze(
         sea_trials_path=sea_trials_path,
         soundings_path=soundings_path,
         compass_path=written_compass,
-        captains_chair_path=captains_chair_path,
+        commanders_chair_path=commanders_chair_path,
         discovery_paths=tuple(sorted(discovery_paths)),
         quality=quality,
         story_count=story_count,

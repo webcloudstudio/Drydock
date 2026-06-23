@@ -14,12 +14,12 @@ def test_render_console_places_sea_trials_before_soundings(tmp_path):
     assert "command_status" not in config
 
 
-def test_render_console_commanders_view_is_document_type():
+def test_render_console_commanders_chair_is_document_type():
     config = render_console("Example")
 
     assert "type: document" in config
-    assert "path_html: captains_chair.html" in config
-    assert "commanders_view" in config
+    assert "path_html: commanders_chair.html" in config
+    assert "commanders_chair" in config
     assert "pages/overview.md" not in config
 
 
@@ -36,8 +36,8 @@ def test_render_console_declares_tabbed_analysis_item():
     assert analysis["type"] == "markdown"
     assert analysis["tabs"] is True
     assert analysis["path"] == "../ANALYSIS.md"
-    # Captain's Chair stays first; Analysis follows it.
-    assert items["commanders_view"]["order"] < analysis["order"]
+    # Commanders Chair stays first; Analysis follows it.
+    assert items["commanders_chair"]["order"] < analysis["order"]
     assert analysis["order"] < items["sea_trials"]["order"]
 
 
@@ -48,7 +48,7 @@ def test_render_console_labels_compass_feedback_files():
     parsed = yaml.safe_load(config)
     items = {item["id"]: item for item in parsed["items"]}
 
-    assert "help_text" in items["commanders_view"]
+    assert "help_text" in items["commanders_chair"]
     assert items["compass_edit"]["label"] == "Compass"
     assert items["compass_edit"]["path"] == "../COMPASS.md"
     assert "help_text" in items["compass_edit"]

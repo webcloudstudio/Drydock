@@ -10,7 +10,7 @@
 
 console:
   name: Project QuarterDeck
-  default_item: commanders_view
+  default_item: commanders_chair
   state_db: data/console_state.sqlite
 
 project:
@@ -26,8 +26,8 @@ sections:
   - { id: archive,       label: "Archive",        dot: "#94a3b8", collapsed: true }
 
 items:
-  - id: commanders_view
-    label: "Captain's Chair"
+  - id: commanders_chair
+    label: "Commanders Chair"
     section: core
     type: editable_markdown
     path: pages/overview.md

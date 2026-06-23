@@ -32,7 +32,7 @@ import → analyze → [re-analyze loop] → plan create → build
 
 | Step | Reads | Writes |
 |---|---|---|
-| `drydock analyze <tgt>` | Imported material + prior `BUILD_CONFIGURATION.md` | `ANALYSIS.md`, `SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` (conditional), `spike-*.json`, Captain's Chair template fill |
+| `drydock analyze <tgt>` | Imported material + prior `BUILD_CONFIGURATION.md` | `ANALYSIS.md`, `SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` (conditional), `spike-*.json`, Commanders Chair template fill |
 | PO review (CLI or QuarterDeck) | `ANALYSIS.md`, questionnaires | `BUILD_CONFIGURATION.md` (answers + feedback) |
 | Re-analyze *(loop until Ready)* | Same material + updated `BUILD_CONFIGURATION.md` | Refreshed set of all analyze outputs |
 | `drydock plan create <tgt>` | Story list from `ANALYSIS.md` + spec + `BUILD_CONFIGURATION.md` | Typed spec files in `blueprint/`, `BUILD_COMPASS.md`, `MANIFEST.md` |
@@ -185,7 +185,7 @@ Intent + Decisions. A derived artifact holding a fact not recoverable from those
 | Execution | `logs/` execution artifacts | `build` (derived, transient) |
 | Score | `SCORECARD.md` | `build score` |
 | Lifecycle state | `METADATA.md` (`drydock build state:`) | each command |
-| Captain's Chair | `QuarterDeck/captains_chair.<ext>` | each command (template fill) |
+| Commanders Chair | `QuarterDeck/commanders_chair.<ext>` | each command (template fill) |
 
 ---
 
@@ -311,7 +311,7 @@ dependency to `plan create` generation.
 `2026-06-15` · `spec:approved` · `impl:implemented`
 
 `drydock analyze` must report the artifacts it wrote (ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md,
-COMPASS.md if written, each `spike-*.json`, captains_chair.html if written). The CLI handler has
+COMPASS.md if written, each `spike-*.json`, commanders_chair.html if written). The CLI handler has
 the paths on `AnalyzeResult`; surface them as a printed list on success.
 
 ---
@@ -456,4 +456,3 @@ QuarterDeck tabs from `##` headings in ANALYSIS.md. Four decisions agreed in ses
    entirely by `##` headings. All changes are prompt-only edits to `prompts/analyze.md`.
 
 ---
-

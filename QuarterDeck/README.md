@@ -100,7 +100,7 @@ point at any URL).
 ```yaml
 console:
   name: Project QuarterDeck
-  default_item: commanders_view
+  default_item: commanders_chair
   state_db: data/console_state.sqlite
 ```
 

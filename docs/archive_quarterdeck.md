@@ -241,7 +241,7 @@ post-processor, and no reliance on html > pdf > md precedence.
 - `analyze` keeps emitting plain ANALYSIS.md; QuarterDeck decides tabbed presentation purely
   from the console declaration.
 - Standard page header (title + filename) wraps it like any item; the tab strip is the body.
-- Captain's Chair stays a pure scoreboard (quality + counts + next-step); no coupling.
+- Commanders Chair stays a pure scoreboard (quality + counts + next-step); no coupling.
 
 Update `2026-06-16`: the ANALYSIS console item is **wired and verified end-to-end** —
 `standard_artifacts.py` declares it (`type: markdown, tabs: true`, file-existence visibility,

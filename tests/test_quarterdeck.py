@@ -113,9 +113,9 @@ def test_drydock_console_exposes_existing_owned_documents():
 def test_drydock_console_pins_the_three_standard_artifacts_in_core():
     config = _console_config()
     items = {item["id"]: item for item in config["items"]}
-    for standard in ("commanders_view", "soundings", "sea_trials"):
+    for standard in ("commanders_chair", "soundings", "sea_trials"):
         assert items[standard]["section"] == "core", standard
-    assert items["commanders_view"]["label"] == "Captain's Chair"
+    assert items["commanders_chair"]["label"] == "Commanders Chair"
 
 
 # ── Acceptance status (Core Docs only, read-only) ──────────────────────────────
@@ -237,7 +237,7 @@ def test_drydock_console_core_artifact_order():
     )
 
     assert [item["id"] for item in core] == [
-        "commanders_view",
+        "commanders_chair",
         "master_blueprint",
         "sea_trials",
         "soundings",
@@ -439,11 +439,11 @@ def test_item_file_exists_document_hidden_until_path_html_present(tmp_path, monk
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
 
-    item = {"id": "chair", "type": "document", "path_html": "captains_chair.html"}
+    item = {"id": "chair", "type": "document", "path_html": "commanders_chair.html"}
     assert not quarterdeck._item_file_exists(item)
 
-    (tmp_path / "QuarterDeck" / "captains_chair.html").parent.mkdir(parents=True, exist_ok=True)
-    (tmp_path / "QuarterDeck" / "captains_chair.html").write_text("<html/>", encoding="utf-8")
+    (tmp_path / "QuarterDeck" / "commanders_chair.html").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "QuarterDeck" / "commanders_chair.html").write_text("<html/>", encoding="utf-8")
     assert quarterdeck._item_file_exists(item)
 
 
@@ -779,7 +779,7 @@ def _write_target_console(target_dir: Path, name: str) -> None:
         encoding="utf-8",
     )
     (quarterdeck_dir / "pages" / "overview.md").write_text(
-        f"# {name} Captain's Chair\n\nStatus.\n",
+        f"# {name} Commanders Chair\n\nStatus.\n",
         encoding="utf-8",
     )
     (quarterdeck_dir / "console.yaml").write_text(
@@ -787,7 +787,7 @@ def _write_target_console(target_dir: Path, name: str) -> None:
             [
                 "console:",
                 f"  name: {name} QuarterDeck",
-                "  default_item: commanders_view",
+                "  default_item: commanders_chair",
                 "  app_help_file_location: pages/help.html",
                 "project:",
                 f"  id: {name.lower()}",
@@ -797,7 +797,7 @@ def _write_target_console(target_dir: Path, name: str) -> None:
                 "sections:",
                 "  - { id: core, label: \"Core\", dot: \"#0d9488\", pinned: true }",
                 "items:",
-                "  - { id: commanders_view, label: \"Captain's Chair\", section: core, type: markdown, path: pages/overview.md }",
+                "  - { id: commanders_chair, label: \"Commanders Chair\", section: core, type: markdown, path: pages/overview.md }",
                 "",
             ]
         ),
@@ -914,20 +914,20 @@ def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypa
     response = quarterdeck.switch_target("Beta", _RequestStub())
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/?item=commanders_view"
+    assert response.headers["location"] == "/?item=commanders_chair"
     assert "quarterdeck_target=Beta" in response.headers["set-cookie"]
 
     config = quarterdeck.api_config(_RequestStub({"quarterdeck_target": "Beta"}))
     assert config["project"]["name"] == "Beta"
 
 
-def test_captains_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
+def test_commanders_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
 
-    response = quarterdeck.api_document("commanders_view", _RequestStub({"quarterdeck_target": "Beta"}))
+    response = quarterdeck.api_document("commanders_chair", _RequestStub({"quarterdeck_target": "Beta"}))
     html = response["html"]
-    assert "Captain&#x27;s Chair" in html
+    assert "Commanders Chair" in html
     assert "Viewing Target" not in html
     assert "target-panel" not in html
     assert "/switch-target/Beta" not in html
@@ -953,8 +953,8 @@ def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
 
     request = _RequestStub({"quarterdeck_target": "Beta"})
-    request.query_params = {"item": "commanders_view"}
+    request.query_params = {"item": "commanders_chair"}
 
     html = quarterdeck.index(request)
 
-    assert 'loadDoc("commanders_view");' in html
+    assert 'loadDoc("commanders_chair");' in html
