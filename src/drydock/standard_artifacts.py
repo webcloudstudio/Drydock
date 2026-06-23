@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan
-from drydock.compass_docs import target_docs
+from drydock.prompt_headers import prompt_headers
 
 SOUNDINGS_HEADER = ("ID", "Acceptance Criterion", "State", "Evidence")
 
@@ -108,7 +108,7 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
             'type: compass, path: ../MANIFEST.md, order: 9 }\n'
         )
     slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-") or "target"
-    docs_by_item = {doc.item_id: doc for doc in target_docs()}
+    docs_by_item = {doc.item_id: doc for doc in prompt_headers()}
     blockers = docs_by_item["blockers_doc"]
     compass = docs_by_item["compass_edit"]
     analyze_compass = docs_by_item["analyze_compass"]

@@ -365,8 +365,8 @@ def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
 
     # COMPASS leads the file sections; the standing directive reads next; sources land last.
     order = [
-        result.index("## COMPASS.md"),
-        result.index("Plan feedback (standing directive)"),
+        result.index("## Compass header"),
+        result.index("## Plan Compass header"),
         result.index("ANALYSIS.md (the reviewed plan)"),
         result.index("## SOUNDINGS.md"),
         result.index("Imported source files"),
@@ -389,7 +389,26 @@ def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
         "2026-06-17",
         input_tokens=("ANALYSIS.md", "COMPASS.md"),
     )
-    assert result.index("ANALYSIS.md (the reviewed plan)") < result.index("## COMPASS.md")
+    assert result.index("ANALYSIS.md (the reviewed plan)") < result.index("## Compass header")
+
+
+def test_assemble_prompt_injects_plan_compass_header_and_instructions(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        blueprint_dir,
+        _ANALYSIS,
+        "2026-06-17",
+        feedback_text="Decompose by module.",
+        input_tokens=("PLAN_COMPASS.md",),
+    )
+
+    assert "## Plan Compass header" in result
+    assert "## Plan Compass instructions" in result
+    assert "## Plan Compass content" in result
 
 
 def test_assemble_prompt_labels_source_files_with_fixed_roles(tmp_path):

@@ -32,7 +32,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
-from drydock.prompt_assembly import PromptAssembly, lines_part, part
+from drydock.prompt_assembly import (
+    PromptAssembly,
+    fenced_markdown_part,
+    fenced_text_part,
+    lines_part,
+    part,
+)
+from drydock.prompt_headers import prompt_header_for_file
 
 
 def story_points_for(byte_count: int) -> int:
@@ -326,6 +333,34 @@ def render_build_prompt_assembly(
         try:
             content = step_file.source.read_text(encoding="utf-8")
         except OSError:
+            continue
+        header = prompt_header_for_file(step_file.name)
+        if header is not None:
+            parts.extend(
+                [
+                    fenced_text_part(
+                        f"{step_file.name} help",
+                        f"## {header.label} header",
+                        header.help_text,
+                        role="prompt header",
+                        path=step_file.source,
+                    ),
+                    fenced_text_part(
+                        f"{step_file.name} prompt",
+                        f"## {header.label} instructions",
+                        header.prompt_text,
+                        role="prompt instructions",
+                        path=step_file.source,
+                    ),
+                    fenced_markdown_part(
+                        step_file.name,
+                        f"### {step_file.role}: {step_file.name}",
+                        content.rstrip(),
+                        role=step_file.role,
+                        path=step_file.source,
+                    ),
+                ]
+            )
             continue
         parts.append(
             part(

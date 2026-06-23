@@ -119,3 +119,21 @@ def fenced_markdown_part(
         role=role,
         path=path,
     )
+
+
+def fenced_text_part(
+    label: str,
+    heading: str,
+    body: str,
+    *,
+    kind: str = "section",
+    role: str | None = None,
+    path: Path | None = None,
+) -> PromptPart:
+    return part(
+        label,
+        "\n".join([heading, "", "```text", body.rstrip("\n"), "```", ""]),
+        kind=kind,
+        role=role,
+        path=path,
+    )

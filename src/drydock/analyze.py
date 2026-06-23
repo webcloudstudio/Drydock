@@ -18,7 +18,6 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
-from drydock.compass_docs import target_doc_for_file
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import (
@@ -29,8 +28,15 @@ from drydock.metadata import (
     stamp_last,
 )
 from drydock.paths import get_rigging_root
-from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
+from drydock.prompt_assembly import (
+    PromptAssembly,
+    fenced_markdown_part,
+    fenced_text_part,
+    lines_part,
+    part,
+)
 from drydock.prompt_context import prompt_source_header
+from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "analyze"
@@ -120,8 +126,12 @@ def ensure_feedback_file(target_dir: Path) -> str:
     """
     path = target_dir / _FEEDBACK_FILENAME
     if not path.is_file():
-        default_text = target_doc_for_file(_FEEDBACK_FILENAME)
-        path.write_text((default_text.default_text if default_text else "# Analyze Compass\n"), encoding="utf-8", newline="\n")
+        header = prompt_header_for_file(_FEEDBACK_FILENAME)
+        path.write_text(
+            (header.default_text if header and header.default_text is not None else "# Analyze Compass\n"),
+            encoding="utf-8",
+            newline="\n",
+        )
     return path.read_text(encoding="utf-8")
 
 
@@ -173,39 +183,6 @@ def _is_compass_unpopulated(path: Path) -> bool:
     return all(line in _EMPTY_LINE for line in content_lines)
 
 
-def _render_feedback(feedback_text: str | None) -> list[str]:
-    # Standing directive — persistent human steering, re-injected on every run.
-    if not (feedback_text and feedback_text.strip()):
-        return []
-    return [
-        "## Analyze feedback (standing directive)",
-        "",
-        "Human direction for this analysis. Honor it; it persists across runs.",
-        "",
-        "```markdown",
-        feedback_text.strip(),
-        "```",
-        "",
-    ]
-
-
-def _render_blockers(blockers_text: str | None) -> list[str]:
-    # Prior blocker answers, present only after the Commander has answered them.
-    if not blockers_text:
-        return []
-    return [
-        "## Prior blocker answers (BLOCKERS.md)",
-        "",
-        "The Commander has answered the blocking questions from the prior analysis run.",
-        "If the answers resolve the blockers, do not re-raise the same blockers.",
-        "",
-        "```markdown",
-        blockers_text,
-        "```",
-        "",
-    ]
-
-
 def _render_existing_discoveries(questionnaires_dir: Path) -> list[str]:
     """Inject existing discovery questionnaires into the analyze prompt.
 
@@ -234,6 +211,50 @@ def _render_existing_discoveries(questionnaires_dir: Path) -> list[str]:
             continue
         parts += [f"### {path.name}", "", "```json", json.dumps(data, indent=2), "```", ""]
     return parts
+
+
+def _managed_doc_parts(
+    *,
+    filename: str,
+    content: str,
+    content_heading: str,
+    content_role: str,
+    path: Path,
+) -> list:
+    header = prompt_header_for_file(filename)
+    if header is None:
+        return [
+            fenced_markdown_part(
+                filename,
+                content_heading,
+                content,
+                role=content_role,
+                path=path,
+            )
+        ]
+    return [
+        fenced_text_part(
+            f"{filename} help",
+            f"## {header.label} header",
+            header.help_text,
+            role="prompt header",
+            path=path,
+        ),
+        fenced_text_part(
+            f"{filename} prompt",
+            f"## {header.label} instructions",
+            header.prompt_text,
+            role="prompt instructions",
+            path=path,
+        ),
+        fenced_markdown_part(
+            filename,
+            content_heading,
+            content,
+            role=content_role,
+            path=path,
+        ),
+    ]
 
 
 def _render_typed_spec(blueprint_dir: Path) -> list[str]:
@@ -318,28 +339,24 @@ def _assemble_prompt_assembly(
     def feedback_parts() -> list:
         if not (feedback_text and feedback_text.strip()):
             return []
-        return [
-            part(
-                "ANALYZE_COMPASS.md",
-                "\n".join(_render_feedback(feedback_text)),
-                kind="file",
-                role="analyze feedback",
-                path=blueprint_dir.parent / _FEEDBACK_FILENAME,
-            )
-        ]
+        return _managed_doc_parts(
+            filename=_FEEDBACK_FILENAME,
+            content=feedback_text.strip(),
+            content_heading="## Analyze Compass content",
+            content_role="analyze feedback",
+            path=blueprint_dir.parent / _FEEDBACK_FILENAME,
+        )
 
     def blocker_parts() -> list:
         if not blockers_text:
             return []
-        return [
-            part(
-                "BLOCKERS.md",
-                "\n".join(_render_blockers(blockers_text)),
-                kind="file",
-                role="prior blocker answers",
-                path=blueprint_dir.parent / "BLOCKERS.md",
-            )
-        ]
+        return _managed_doc_parts(
+            filename="BLOCKERS.md",
+            content=blockers_text,
+            content_heading="## Prior blocker answers (BLOCKERS.md)",
+            content_role="prior blocker answers",
+            path=blueprint_dir.parent / "BLOCKERS.md",
+        )
 
     def discovery_parts() -> list:
         if questionnaires_dir is None or not questionnaires_dir.is_dir():

@@ -418,7 +418,9 @@ class TestAssemblePrompt:
             compass_exists=False,
             feedback_text="Decompose by module, not by route.",
         )
-        assert "Analyze feedback (standing directive)" in result
+        assert "Analyze Compass header" in result
+        assert "Analyze Compass instructions" in result
+        assert "Analyze Compass content" in result
         assert "Decompose by module, not by route." in result
 
     def test_no_feedback_section_when_absent(self, tmp_path):
@@ -452,7 +454,9 @@ class TestAssemblePrompt:
             compass_exists=False,
             blockers_text="# Blockers\n\n- No name provided.",
         )
-        assert "Prior blocker answers" in result
+        assert "Blockers header" in result
+        assert "Blockers instructions" in result
+        assert "Prior blocker answers (BLOCKERS.md)" in result
         assert "No name provided" in result
 
     def test_no_blockers_section_when_absent(self, tmp_path):

@@ -20,13 +20,19 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.build_plan import BuildPlan, parse_build_plan
-from drydock.compass_docs import target_doc_for_file
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
-from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
+from drydock.prompt_assembly import (
+    PromptAssembly,
+    fenced_markdown_part,
+    fenced_text_part,
+    lines_part,
+    part,
+)
 from drydock.prompt_context import prompt_source_header
+from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
@@ -159,8 +165,12 @@ def ensure_feedback_file(target_dir: Path) -> str:
     """
     path = target_dir / _FEEDBACK_FILENAME
     if not path.is_file():
-        default_text = target_doc_for_file(_FEEDBACK_FILENAME)
-        path.write_text((default_text.default_text if default_text else "# Plan Compass\n"), encoding="utf-8", newline="\n")
+        header = prompt_header_for_file(_FEEDBACK_FILENAME)
+        path.write_text(
+            (header.default_text if header and header.default_text is not None else "# Plan Compass\n"),
+            encoding="utf-8",
+            newline="\n",
+        )
     return path.read_text(encoding="utf-8")
 
 
@@ -174,22 +184,6 @@ def _fenced(label: str, body: str, *, lang: str = "markdown") -> list[str]:
 def _fenced_if(path: Path, label: str) -> list[str]:
     text = _read_if(path)
     return _fenced(label, text) if text else []
-
-
-def _render_feedback(feedback_text: str | None) -> list[str]:
-    # Standing directive — persistent human steering, re-injected on every run.
-    if not (feedback_text and feedback_text.strip()):
-        return []
-    return [
-        "## Plan feedback (standing directive)",
-        "",
-        "Human direction for plan creation. Honor it; it persists across runs.",
-        "",
-        "```markdown",
-        feedback_text.strip(),
-        "```",
-        "",
-    ]
 
 
 def _render_answered_discoveries(target_dir: Path) -> list[str]:
@@ -226,6 +220,50 @@ def _render_sources(blueprint_dir: Path) -> list[str]:
             "",
         ]
     return parts
+
+
+def _managed_doc_parts(
+    *,
+    filename: str,
+    content: str,
+    content_heading: str,
+    content_role: str,
+    path: Path,
+) -> list:
+    header = prompt_header_for_file(filename)
+    if header is None:
+        return [
+            fenced_markdown_part(
+                filename,
+                content_heading,
+                content,
+                role=content_role,
+                path=path,
+            )
+        ]
+    return [
+        fenced_text_part(
+            f"{filename} help",
+            f"## {header.label} header",
+            header.help_text,
+            role="prompt header",
+            path=path,
+        ),
+        fenced_text_part(
+            f"{filename} prompt",
+            f"## {header.label} instructions",
+            header.prompt_text,
+            role="prompt instructions",
+            path=path,
+        ),
+        fenced_markdown_part(
+            filename,
+            content_heading,
+            content,
+            role=content_role,
+            path=path,
+        ),
+    ]
 
 
 def _assemble_prompt(
@@ -286,28 +324,24 @@ def _assemble_prompt_assembly(
         text = _read_if(path)
         if not text:
             return []
-        return [
-            fenced_markdown_part(
-                "COMPASS.md",
-                "## COMPASS.md",
-                text,
-                role="compass",
-                path=path,
-            )
-        ]
+        return _managed_doc_parts(
+            filename="COMPASS.md",
+            content=text,
+            content_heading="## Compass content",
+            content_role="compass",
+            path=path,
+        )
 
     def plan_compass_parts() -> list:
         if not (feedback_text and feedback_text.strip()):
             return []
-        return [
-            part(
-                "PLAN_COMPASS.md",
-                "\n".join(_render_feedback(feedback_text)),
-                kind="file",
-                role="plan feedback",
-                path=target_dir / _FEEDBACK_FILENAME,
-            )
-        ]
+        return _managed_doc_parts(
+            filename=_FEEDBACK_FILENAME,
+            content=feedback_text.strip(),
+            content_heading="## Plan Compass content",
+            content_role="plan feedback",
+            path=target_dir / _FEEDBACK_FILENAME,
+        )
 
     def analysis_parts() -> list:
         return [
@@ -596,7 +630,7 @@ def create_plan(
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
     feedback_text = ensure_feedback_file(target_dir)
-    default_feedback = target_doc_for_file(_FEEDBACK_FILENAME)
+    default_feedback = prompt_header_for_file(_FEEDBACK_FILENAME)
     feedback_for_prompt = (
         feedback_text
         if feedback_text.strip() != (default_feedback.default_text.strip() if default_feedback and default_feedback.default_text else "# Plan Compass")

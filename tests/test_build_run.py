@@ -95,6 +95,8 @@ def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     first = runner.calls[0]["prompt"]
     assert "DB SPEC CONTENT" in first
     assert "Build the database." in first
+    assert "Compass header" in first
+    assert "Compass instructions" in first
     assert "COMPASS.md" in first
 
 
