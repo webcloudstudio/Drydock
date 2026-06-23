@@ -14,6 +14,7 @@ import pytest
 import drydock.llm
 from drydock.errors import LlmError
 from drydock.llm import run_prompt
+from drydock.prompt_assembly import PromptAssembly, part
 
 
 class FakeStdin(io.StringIO):
@@ -111,6 +112,12 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
         parameters={"spec": "Example", "block": 3},
         on_text=text_chunks.append,
         on_event=streamed_events.append,
+        prompt_assembly=PromptAssembly(
+            parts=(
+                part("Prompt body", "Reply ", kind="prompt-body"),
+                part("Task", "READY", kind="section"),
+            )
+        ),
     )
 
     process = captured["process"]
@@ -141,6 +148,8 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert record["job"]["parameters"] == {"block": 3, "spec": "Example"}
     assert record["job"]["argv"][:2] == ["claude", "-p"]
     assert record["prompt"]["sha256"]
+    assert record["prompt"]["total_tokens_estimate"] == 4
+    assert len(record["prompt"]["parts"]) == 2
     assert record["result"]["raw_sha256"]
     assert record["result"]["output_sha256"]
     assert record["result"]["stats"]["elapsed_ms"] is not None
@@ -492,8 +501,11 @@ def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeyp
         debug=False,
     )
 
-    assert "parameters=" in result.artifacts.log_file.read_text()
+    log_text = result.artifacts.log_file.read_text()
+    assert "parameters=" in log_text
+    assert "[prompt]" in log_text
     stderr = capsys.readouterr().err
     assert "parameters=" not in stderr
+    assert "parts=" in stderr
     assert "[llm]" in stderr
     assert "elapsed=" in stderr

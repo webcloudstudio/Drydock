@@ -658,18 +658,25 @@ def test_non_spike_questionnaire_is_also_buttonless(tmp_path, monkeypatch):
     assert "<button" not in rendered
 
 
-def test_editable_markdown_analyze_compass_shows_helper_note(tmp_path, monkeypatch):
+def test_editable_markdown_renders_configured_help_and_prompt_text(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path / "QuarterDeck")
     monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
     (tmp_path / "ANALYZE_COMPASS.md").write_text("# Analyze Compass\n", encoding="utf-8")
 
     rendered = quarterdeck.render_editable_markdown(
-        {"id": "analyze_compass", "type": "editable_markdown", "path": "../ANALYZE_COMPASS.md"}
+        {
+            "id": "analyze_compass",
+            "type": "editable_markdown",
+            "path": "../ANALYZE_COMPASS.md",
+            "help_text": "Injected into every analyze run.",
+            "prompt_text": "Short steering only.",
+        }
     )
 
-    assert "injected into every" in rendered
-    assert "instructional boilerplate is not part of the file" in rendered
+    assert "Injected into every analyze run." in rendered
+    assert "Prompt Text." in rendered
+    assert "Short steering only." in rendered
 
 
 def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):

@@ -29,6 +29,7 @@ from drydock.execution import (
     utc_now,
 )
 from drydock.logging import close_execution_logger, create_execution_logger
+from drydock.prompt_assembly import PromptAssembly
 
 
 @dataclass(frozen=True)
@@ -278,6 +279,24 @@ def _performance_summary(
     return "  ".join(parts)
 
 
+def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> list[str]:
+    lines = [
+        f"[prompt] {command_name}  parts={len(assembly.records())}  "
+        f"total={assembly.total_bytes} B  est_tokens={assembly.total_tokens_estimate}"
+    ]
+    for record in assembly.records():
+        role = f"  {record['role']}" if record.get("role") else ""
+        path = f"  {record['path']}" if record.get("path") else ""
+        lines.append(
+            f"  [{record['order']:02d}] {record['label']}  {record['bytes']} B  "
+            f"~{record['estimated_tokens']} tok{role}{path}"
+        )
+    lines.append(
+        f"[prompt] total  {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok"
+    )
+    return lines
+
+
 def _print_performance_summary(
     *,
     llm: str,
@@ -297,6 +316,11 @@ def _print_performance_summary(
         file=sys.stderr,
         flush=True,
     )
+
+
+def _print_prompt_breakdown(command_name: str, assembly: PromptAssembly) -> None:
+    for line in _prompt_breakdown_summary(command_name, assembly):
+        print(line, file=sys.stderr, flush=True)
 
 
 def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[str, LlmStats]:
@@ -351,6 +375,7 @@ def _record(
     stats: LlmStats,
     error: str | None,
     timed_out: bool,
+    prompt_assembly: PromptAssembly,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -370,6 +395,8 @@ def _record(
             "path": str(artifacts.prompt_file),
             "sha256": sha256_file(artifacts.prompt_file),
             "bytes": artifacts.prompt_file.stat().st_size,
+            "total_tokens_estimate": prompt_assembly.total_tokens_estimate,
+            "parts": prompt_assembly.records(),
         },
         "artifacts": artifacts.paths(),
         "result": {
@@ -576,6 +603,7 @@ def run_prompt(
     target: str = "",
     on_text: TextCallback | None = None,
     on_event: EventCallback | None = None,
+    prompt_assembly: PromptAssembly | None = None,
 ) -> LlmResult:
     """Run a fully assembled prompt and persist reproducible execution evidence.
 
@@ -590,6 +618,9 @@ def run_prompt(
     working_directory = working_directory.expanduser().resolve()
     if not working_directory.is_dir():
         raise LlmConfigurationError(f"Working directory does not exist: {working_directory}")
+
+    assembly = prompt_assembly or PromptAssembly.single_prompt(prompt)
+    prompt = assembly.rendered_text
 
     artifacts = ExecutionArtifacts.create(
         working_directory, command_name, selected, log_dir=log_dir, target=target
@@ -610,6 +641,9 @@ def run_prompt(
         len(prompt_bytes),
     )
     logger.debug("argv=%r parameters=%r artifacts=%r", command, job_parameters, artifacts.paths())
+    for line in _prompt_breakdown_summary(command_name, assembly):
+        logger.info("%s", line)
+    _print_prompt_breakdown(command_name, assembly)
     _emit_event(
         artifacts,
         _structured_event(
@@ -626,6 +660,7 @@ def run_prompt(
                 "prompt_path": str(artifacts.prompt_file),
                 "prompt_sha256": sha256_bytes(prompt_bytes),
                 "prompt_bytes": len(prompt_bytes),
+                "prompt_total_tokens_estimate": assembly.total_tokens_estimate,
             },
         ),
         on_event,
@@ -679,6 +714,7 @@ def run_prompt(
             stats=stats,
             error=error,
             timed_out=timed_out,
+            prompt_assembly=assembly,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -745,6 +781,7 @@ def run_prompt(
             stats=stats,
             error=str(exc),
             timed_out=False,
+            prompt_assembly=assembly,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(
@@ -778,6 +815,7 @@ def run_prompt(
             stats=stats,
             error="execution interrupted",
             timed_out=False,
+            prompt_assembly=assembly,
         )
         append_execution_record(artifacts.records_file, record)
         _emit_event(

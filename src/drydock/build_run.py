@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from drydock.build import StepAssembly, StepRoots, assemble_step, render_build_prompt
+from drydock.build import StepAssembly, StepRoots, assemble_step, render_build_prompt_assembly
 from drydock.build_plan import PlanBlock, parse_build_plan, set_applied_registry
 from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
@@ -203,7 +203,7 @@ def build_target(
                 if commit == stack_head
             )
         assembly = assemble_step(block, roots, compact_stack=compact_stack)
-        prompt_text = render_build_prompt(
+        prompt_assembly = render_build_prompt_assembly(
             prompt.body,
             assembly,
             target=target,
@@ -211,7 +211,7 @@ def build_target(
             today=today,
         )
         result = run(
-            prompt_text,
+            prompt_assembly.rendered_text,
             resolved_build_dir,
             llm=llm_provider,
             model=model or prompt.model,
@@ -221,6 +221,7 @@ def build_target(
             log_dir=log_dir,
             target=target,
             on_text=on_text,
+            prompt_assembly=prompt_assembly,
         )
 
         ok = bool(getattr(result, "ok", False))

@@ -21,6 +21,7 @@ from typing import Protocol
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_rigging_root
+from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "rigging_compact"
@@ -207,17 +208,38 @@ def _rel(path: Path, base: Path) -> str:
 def _assemble_prompt(
     body: str, *, rel_source: str, today: str, objective: str, source_text: str
 ) -> str:
-    return (
-        f"{body}\n\n"
-        "## Compaction job\n\n"
-        f"- SOURCE_PATH: {rel_source}\n"
-        f"- DATE: {today}\n\n"
-        "### Objective for this file\n\n"
-        f"{objective}\n\n"
-        "### Source content (extract usage surface from this)\n\n"
-        "```markdown\n"
-        f"{source_text}\n"
-        "```\n"
+    return _assemble_prompt_assembly(
+        body,
+        rel_source=rel_source,
+        today=today,
+        objective=objective,
+        source_text=source_text,
+    ).rendered_text
+
+
+def _assemble_prompt_assembly(
+    body: str, *, rel_source: str, today: str, objective: str, source_text: str
+) -> PromptAssembly:
+    return PromptAssembly(
+        parts=(
+            part("Prompt body", body + "\n\n", kind="prompt-body"),
+            lines_part(
+                "Compaction job",
+                ["## Compaction job", "", f"- SOURCE_PATH: {rel_source}", f"- DATE: {today}", ""],
+                kind="job",
+            ),
+            lines_part(
+                "Compaction objective",
+                ["### Objective for this file", "", objective, ""],
+                kind="section",
+            ),
+            fenced_markdown_part(
+                rel_source,
+                "### Source content (extract usage surface from this)",
+                source_text,
+                role="source file",
+            ),
+        )
     )
 
 
@@ -316,7 +338,7 @@ def compact(
         rel_source = _rel(source, spec_dir)
         source_text = source.read_text(encoding="utf-8")
         source_bytes = len(source_text.encode("utf-8"))
-        assembled = _assemble_prompt(
+        prompt_assembly = _assemble_prompt_assembly(
             prompt.body,
             rel_source=rel_source,
             today=today,
@@ -324,7 +346,7 @@ def compact(
             source_text=source_text,
         )
         result = run(
-            assembled,
+            prompt_assembly.rendered_text,
             spec_dir,
             llm=llm_provider,
             model=model or prompt.model,
@@ -333,6 +355,7 @@ def compact(
             log_dir=log_dir,
             target=target,
             on_text=on_text,
+            prompt_assembly=prompt_assembly,
         )
 
         if not result.ok or not result.text.strip():

@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.prompt_assembly import PromptAssembly, lines_part, part
 
 
 def story_points_for(byte_count: int) -> int:
@@ -268,6 +269,23 @@ def render_build_prompt(
     build_dir: Path,
     today: str,
 ) -> str:
+    return render_build_prompt_assembly(
+        body,
+        assembly,
+        target=target,
+        build_dir=build_dir,
+        today=today,
+    ).rendered_text
+
+
+def render_build_prompt_assembly(
+    body: str,
+    assembly: StepAssembly,
+    *,
+    target: str,
+    build_dir: Path,
+    today: str,
+) -> PromptAssembly:
     """Compose the full executable build prompt for one step.
 
     The same assembly the compass costs is rendered into the agent prompt: the
@@ -275,20 +293,33 @@ def render_build_prompt(
     role, and the step's instructions. Missing files are listed, not fenced.
     """
     parts = [
-        body.rstrip(),
-        "",
-        "## Build job",
-        f"- TARGET: {target}",
-        f"- BUILD_DIRECTORY: {build_dir}",
-        f"- STEP: {assembly.name} ({assembly.block_id}) [{assembly.block_type}]",
-        f"- DATE: {today}",
-        "",
+        part("Prompt body", body.rstrip() + "\n\n", kind="prompt-body"),
+        lines_part(
+            "Build job",
+            [
+                "## Build job",
+                f"- TARGET: {target}",
+                f"- BUILD_DIRECTORY: {build_dir}",
+                f"- STEP: {assembly.name} ({assembly.block_id}) [{assembly.block_type}]",
+                f"- DATE: {today}",
+                "",
+            ],
+            kind="job",
+        ),
     ]
     missing = assembly.missing_files()
     if missing:
-        parts.append("Missing context files (named by the plan but not found):")
-        parts.extend(f"- {f.role}: {f.name}" for f in missing)
-        parts.append("")
+        parts.append(
+            lines_part(
+                "Missing context files",
+                [
+                    "Missing context files (named by the plan but not found):",
+                    *[f"- {f.role}: {f.name}" for f in missing],
+                    "",
+                ],
+                kind="section",
+            )
+        )
     for step_file in assembly.files:
         if step_file.missing or step_file.source is None:
             continue
@@ -296,15 +327,30 @@ def render_build_prompt(
             content = step_file.source.read_text(encoding="utf-8")
         except OSError:
             continue
-        fence = _fence_for(content)
-        parts.append(f"### {step_file.role}: {step_file.name}")
-        parts.append(f"{fence}\n{content.rstrip()}\n{fence}")
-        parts.append("")
+        parts.append(
+            part(
+                step_file.name,
+                "\n".join(
+                    [
+                        f"### {step_file.role}: {step_file.name}",
+                        f"{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}",
+                        "",
+                    ]
+                ),
+                kind="file",
+                role=step_file.role,
+                path=step_file.source,
+            )
+        )
     if assembly.instructions.strip():
-        parts.append("### Build instructions for this step")
-        parts.append(assembly.instructions.strip())
-        parts.append("")
-    return "\n".join(parts).rstrip() + "\n"
+        parts.append(
+            lines_part(
+                "Build instructions",
+                ["### Build instructions for this step", assembly.instructions.strip(), ""],
+                kind="instructions",
+            )
+        )
+    return PromptAssembly(parts=tuple(parts))
 
 
 @dataclass(frozen=True)

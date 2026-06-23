@@ -50,8 +50,12 @@ def test_render_console_labels_compass_feedback_files():
 
     assert items["analyze_compass"]["label"] == "Analyze Compass"
     assert items["analyze_compass"]["path"] == "../ANALYZE_COMPASS.md"
+    assert "help_text" in items["analyze_compass"]
+    assert "prompt_text" in items["analyze_compass"]
     assert items["plan_compass"]["label"] == "Plan Compass"
     assert items["plan_compass"]["path"] == "../PLAN_COMPASS.md"
+    assert "help_text" in items["plan_compass"]
+    assert "prompt_text" in items["plan_compass"]
     assert "build_compass" not in items
 
 
@@ -86,6 +90,8 @@ def test_render_console_includes_blockers_section_first():
     assert "blockers_doc" in items
     assert items["blockers_doc"]["section"] == "blockers"
     assert items["blockers_doc"]["type"] == "editable_markdown"
+    assert "help_text" in items["blockers_doc"]
+    assert "prompt_text" in items["blockers_doc"]
 
 
 def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):

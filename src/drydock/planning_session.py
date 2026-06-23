@@ -20,12 +20,14 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.build_plan import BuildPlan, parse_build_plan
+from drydock.compass_docs import target_doc_for_file
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
+from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
 from drydock.prompt_context import prompt_source_header
-from drydock.prompts import load_prompt, render_inputs
+from drydock.prompts import load_prompt
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
@@ -53,13 +55,6 @@ _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 _STORY_CAP = 100
 
 _FEEDBACK_FILENAME = "PLAN_COMPASS.md"
-_FEEDBACK_DEFAULT = (
-    "# Plan Compass\n\n"
-    "These instructions are injected into every `drydock plan create` run for this target. "
-    "Edit this file to steer plan creation. It persists across runs and is never overwritten "
-    "by Drydock.\n\n"
-    "Enter Direction for the Plan Run\n"
-)
 
 
 class CompletedRun(Protocol):
@@ -164,7 +159,8 @@ def ensure_feedback_file(target_dir: Path) -> str:
     """
     path = target_dir / _FEEDBACK_FILENAME
     if not path.is_file():
-        path.write_text(_FEEDBACK_DEFAULT, encoding="utf-8", newline="\n")
+        default_text = target_doc_for_file(_FEEDBACK_FILENAME)
+        path.write_text((default_text.default_text if default_text else "# Plan Compass\n"), encoding="utf-8", newline="\n")
     return path.read_text(encoding="utf-8")
 
 
@@ -242,36 +238,184 @@ def _assemble_prompt(
     feedback_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
 ) -> str:
+    return _assemble_prompt_assembly(
+        body,
+        target_dir,
+        blueprint_dir,
+        analysis_text,
+        today,
+        feedback_text=feedback_text,
+        input_tokens=input_tokens,
+    ).rendered_text
+
+
+def _assemble_prompt_assembly(
+    body: str,
+    target_dir: Path,
+    blueprint_dir: Path,
+    analysis_text: str,
+    today: str,
+    *,
+    feedback_text: str | None = None,
+    input_tokens: tuple[str, ...] | None = None,
+) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
     shape_match = _SHAPE_RE.search(analysis_text)
     quality_match = _QUALITY_RE.search(analysis_text)
-    parts: list[str] = [
-        body,
-        "",
-        "## Planning job",
-        "",
-        f"- TARGET: {target_dir.name}",
-        f"- BLUEPRINT_PATH: {blueprint_dir}",
-        f"- DATE: {today}",
-        f"- SYSTEM_SHAPE: {shape_match.group(1) if shape_match else 'unknown'}",
-        f"- ANALYSIS_QUALITY: {quality_match.group(1) if quality_match else 'unknown'}",
-        "",
+    prompt_parts = [
+        part("Prompt body", body + "\n\n", kind="prompt-body"),
+        lines_part(
+            "Planning job",
+            [
+                "## Planning job",
+                "",
+                f"- TARGET: {target_dir.name}",
+                f"- BLUEPRINT_PATH: {blueprint_dir}",
+                f"- DATE: {today}",
+                f"- SYSTEM_SHAPE: {shape_match.group(1) if shape_match else 'unknown'}",
+                f"- ANALYSIS_QUALITY: {quality_match.group(1) if quality_match else 'unknown'}",
+                "",
+            ],
+            kind="job",
+        ),
     ]
-    # Injection order is the prompt's inputs: row. BLOCKERS.md has no renderer: it is the
-    # refuse-if-present gate for plan create, so it never exists when assembly runs.
-    renderers: dict[str, Callable[[], list[str]]] = {
-        "COMPASS.md": lambda: _fenced_if(target_dir / "COMPASS.md", "COMPASS.md"),
-        "PLAN_COMPASS.md": lambda: _render_feedback(feedback_text),
-        "ANALYSIS.md": lambda: _fenced("ANALYSIS.md (the reviewed plan)", analysis_text),
-        "SOUNDINGS.md": lambda: _fenced_if(target_dir / "SOUNDINGS.md", "SOUNDINGS.md"),
-        "QUESTIONNAIRES": lambda: _render_answered_discoveries(target_dir),
-        "TYPED_SPEC": lambda: _render_sources(blueprint_dir),
+
+    def compass_parts() -> list:
+        path = target_dir / "COMPASS.md"
+        text = _read_if(path)
+        if not text:
+            return []
+        return [
+            fenced_markdown_part(
+                "COMPASS.md",
+                "## COMPASS.md",
+                text,
+                role="compass",
+                path=path,
+            )
+        ]
+
+    def plan_compass_parts() -> list:
+        if not (feedback_text and feedback_text.strip()):
+            return []
+        return [
+            part(
+                "PLAN_COMPASS.md",
+                "\n".join(_render_feedback(feedback_text)),
+                kind="file",
+                role="plan feedback",
+                path=target_dir / _FEEDBACK_FILENAME,
+            )
+        ]
+
+    def analysis_parts() -> list:
+        return [
+            fenced_markdown_part(
+                "ANALYSIS.md",
+                "## ANALYSIS.md (the reviewed plan)",
+                analysis_text,
+                role="planning basis",
+                path=target_dir / "ANALYSIS.md",
+            )
+        ]
+
+    def soundings_parts() -> list:
+        path = target_dir / "SOUNDINGS.md"
+        text = _read_if(path)
+        if not text:
+            return []
+        return [
+            fenced_markdown_part(
+                "SOUNDINGS.md",
+                "## SOUNDINGS.md",
+                text,
+                role="acceptance context",
+                path=path,
+            )
+        ]
+
+    def questionnaire_parts() -> list:
+        answered = [(p, _answered_discovery(p)) for p in _collect_discoveries(target_dir)]
+        answered = [(p, data) for p, data in answered if data is not None]
+        if not answered:
+            return []
+        parts_list = [
+            lines_part(
+                "Answered questionnaire header",
+                ["## Answered questionnaires (consume these decisions)", ""],
+                kind="section",
+            )
+        ]
+        for path_obj, data in answered:
+            parts_list.append(
+                part(
+                    path_obj.name,
+                    "\n".join(
+                        [
+                            "### " + path_obj.name,
+                            "",
+                            "```json",
+                            json.dumps(data, indent=2),
+                            "```",
+                            "",
+                        ]
+                    ),
+                    kind="file",
+                    role="questionnaire",
+                    path=path_obj,
+                )
+            )
+        return parts_list
+
+    def typed_spec_parts() -> list:
+        parts_list = [lines_part("Imported source file header", ["## Imported source files", ""], kind="section")]
+        for path_obj in _collect_sources(blueprint_dir):
+            label = path_obj.relative_to(blueprint_dir).as_posix()
+            parts_list.append(
+                fenced_markdown_part(
+                    label,
+                    f"### {prompt_source_header(label, path_obj)}",
+                    path_obj.read_text(encoding="utf-8").rstrip(),
+                    role="source file",
+                    path=path_obj,
+                )
+            )
+        return parts_list
+
+    def contract_parts(name: str) -> list:
+        try:
+            contract_path = get_prompts_root() / name
+        except Exception:
+            return []
+        if not contract_path.is_file():
+            return []
+        return [
+            fenced_markdown_part(
+                name,
+                f"## {name}",
+                contract_path.read_text(encoding="utf-8"),
+                role="contract",
+                path=contract_path,
+            )
+        ]
+
+    renderers: dict[str, Callable[[], list]] = {
+        "COMPASS.md": compass_parts,
+        "PLAN_COMPASS.md": plan_compass_parts,
+        "ANALYSIS.md": analysis_parts,
+        "SOUNDINGS.md": soundings_parts,
+        "QUESTIONNAIRES": questionnaire_parts,
+        "TYPED_SPEC": typed_spec_parts,
     }
     for contract in _CONTRACT_FILES:
-        renderers[contract] = lambda c=contract: _render_contract(c)
-    parts += render_inputs(input_tokens, renderers)
-    return "\n".join(parts)
+        renderers[contract] = lambda c=contract: contract_parts(c)
+    for token in input_tokens:
+        render = renderers.get(token)
+        if render is None:
+            continue
+        prompt_parts.extend(render())
+    return PromptAssembly(parts=tuple(prompt_parts))
 
 
 # ── Integrity gate ──────────────────────────────────────────────────────────────────
@@ -452,14 +596,17 @@ def create_plan(
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
     feedback_text = ensure_feedback_file(target_dir)
+    default_feedback = target_doc_for_file(_FEEDBACK_FILENAME)
     feedback_for_prompt = (
-        feedback_text if feedback_text.strip() != _FEEDBACK_DEFAULT.strip() else None
+        feedback_text
+        if feedback_text.strip() != (default_feedback.default_text.strip() if default_feedback and default_feedback.default_text else "# Plan Compass")
+        else None
     )
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
-    assembled = _assemble_prompt(
+    prompt_assembly = _assemble_prompt_assembly(
         prompt.body,
         target_dir,
         blueprint_dir,
@@ -470,7 +617,7 @@ def create_plan(
     )
 
     result = run(
-        assembled,
+        prompt_assembly.rendered_text,
         target_dir,
         llm=llm_provider,
         model=model or prompt.model,
@@ -479,6 +626,7 @@ def create_plan(
         log_dir=log_dir,
         target=target,
         on_text=on_text,
+        prompt_assembly=prompt_assembly,
     )
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():

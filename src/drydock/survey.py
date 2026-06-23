@@ -23,6 +23,7 @@ from pathlib import Path
 
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
+from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
 from drydock.prompts import load_prompt
 
 SCHEMA = 1
@@ -334,14 +335,36 @@ def _ac_block(specs: list[CommandSpec]) -> str:
 
 
 def _assemble_survey_prompt(body: str, *, target: str, inventory: str, ac_block: str) -> str:
-    return (
-        f"{body}\n\n"
-        "## Survey job\n\n"
-        f"- TARGET: {target}\n\n"
-        "### Available artifacts\n\n"
-        f"{inventory}\n\n"
-        "### Acceptance criteria to evaluate\n\n"
-        f"{ac_block}\n"
+    return _assemble_survey_prompt_assembly(
+        body,
+        target=target,
+        inventory=inventory,
+        ac_block=ac_block,
+    ).rendered_text
+
+
+def _assemble_survey_prompt_assembly(
+    body: str,
+    *,
+    target: str,
+    inventory: str,
+    ac_block: str,
+) -> PromptAssembly:
+    return PromptAssembly(
+        parts=(
+            part("Prompt body", body + "\n\n", kind="prompt-body"),
+            lines_part("Survey job", ["## Survey job", "", f"- TARGET: {target}", ""], kind="job"),
+            lines_part(
+                "Available artifacts",
+                ["### Available artifacts", "", inventory, ""],
+                kind="section",
+            ),
+            lines_part(
+                "Acceptance criteria",
+                ["### Acceptance criteria to evaluate", "", ac_block, ""],
+                kind="section",
+            ),
+        )
     )
 
 
@@ -375,14 +398,14 @@ def run_survey(
     by_command = {s.command: s for s in specs}
 
     prompt = load_prompt("survey")
-    assembled = _assemble_survey_prompt(
+    prompt_assembly = _assemble_survey_prompt_assembly(
         prompt.body,
         target=target,
         inventory=_artifact_inventory(target_dir),
         ac_block=_ac_block(specs),
     )
     result = run(
-        assembled,
+        prompt_assembly.rendered_text,
         target_dir,
         llm=llm_provider,
         model=model or prompt.model,
@@ -391,6 +414,7 @@ def run_survey(
         log_dir=log_dir,
         target=target,
         on_text=on_text,
+        prompt_assembly=prompt_assembly,
     )
     if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():
         raise SpecificationError("survey LLM execution failed or returned no output")
@@ -465,14 +489,31 @@ def import_specs(
 
     inventory = []
     for md in sorted(source_path.glob("*.md")):
-        inventory.append(f"#### {md.name}\n\n```markdown\n{md.read_text(encoding='utf-8')}\n```")
+        inventory.append(md)
     prompt = load_prompt("survey_import")
-    assembled = (
-        f"{prompt.body}\n\n## Import job\n\n- TARGET: {target}\n- SOURCE: {source_path}\n\n"
-        "### Source specification files\n\n" + "\n\n".join(inventory) + "\n"
+    prompt_assembly = PromptAssembly(
+        parts=(
+            part("Prompt body", prompt.body + "\n\n", kind="prompt-body"),
+            lines_part(
+                "Import job",
+                ["## Import job", "", f"- TARGET: {target}", f"- SOURCE: {source_path}", ""],
+                kind="job",
+            ),
+            lines_part("Source specification file header", ["### Source specification files", ""], kind="section"),
+            *tuple(
+                fenced_markdown_part(
+                    md.name,
+                    f"#### {md.name}",
+                    md.read_text(encoding="utf-8"),
+                    role="source file",
+                    path=md,
+                )
+                for md in inventory
+            ),
+        )
     )
     result = run(
-        assembled,
+        prompt_assembly.rendered_text,
         target_dir,
         llm=llm_provider,
         model=model or prompt.model,
@@ -481,6 +522,7 @@ def import_specs(
         log_dir=log_dir,
         target=target,
         on_text=on_text,
+        prompt_assembly=prompt_assembly,
     )
     if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():
         raise SpecificationError("survey import LLM execution failed or returned no output")

@@ -42,9 +42,9 @@ import html
 import json
 import os
 import re
+from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -661,13 +661,17 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
         raw = ""
         rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
     helper = ""
-    if item.get("id") == "analyze_compass":
-        helper = (
+    if item.get("help_text"):
+        helper += (
             "<div class='page-note'>"
-            "<strong>Analyze Compass.</strong> This file is injected into every "
-            "<code>drydock analyze</code> run for this target. Keep only brief steering: priorities, "
-            "decomposition guidance, and hard constraints. The instructional boilerplate is not part "
-            "of the file."
+            f"{html.escape(str(item.get('help_text', '')).strip())}"
+            "</div>"
+        )
+    if item.get("prompt_text"):
+        helper += (
+            "<div class='page-note page-note-secondary'>"
+            "<strong>Prompt Text.</strong> "
+            f"{html.escape(str(item.get('prompt_text', '')).strip())}"
             "</div>"
         )
     return (

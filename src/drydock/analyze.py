@@ -18,6 +18,7 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
+from drydock.compass_docs import target_doc_for_file
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import (
@@ -28,17 +29,15 @@ from drydock.metadata import (
     stamp_last,
 )
 from drydock.paths import get_rigging_root
+from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
 from drydock.prompt_context import prompt_source_header
-from drydock.prompts import load_prompt, render_inputs
+from drydock.prompts import load_prompt
 
 PROMPT_NAME = "analyze"
 
 _SOURCES_SUBDIR = "sources"
 
 _FEEDBACK_FILENAME = "ANALYZE_COMPASS.md"
-_FEEDBACK_DEFAULT = (
-    "# Analyze Compass\n"
-)
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
 _WRITE_INVOKE_RE = re.compile(
@@ -121,7 +120,8 @@ def ensure_feedback_file(target_dir: Path) -> str:
     """
     path = target_dir / _FEEDBACK_FILENAME
     if not path.is_file():
-        path.write_text(_FEEDBACK_DEFAULT + "\n", encoding="utf-8", newline="\n")
+        default_text = target_doc_for_file(_FEEDBACK_FILENAME)
+        path.write_text((default_text.default_text if default_text else "# Analyze Compass\n"), encoding="utf-8", newline="\n")
     return path.read_text(encoding="utf-8")
 
 
@@ -275,29 +275,164 @@ def _assemble_prompt(
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
 ) -> str:
+    return _assemble_prompt_assembly(
+        body,
+        blueprint_dir,
+        today,
+        questionnaires_dir=questionnaires_dir,
+        compass_exists=compass_exists,
+        feedback_text=feedback_text,
+        blockers_text=blockers_text,
+        input_tokens=input_tokens,
+    ).rendered_text
+
+
+def _assemble_prompt_assembly(
+    body: str,
+    blueprint_dir: Path,
+    today: str,
+    *,
+    questionnaires_dir: Path | None = None,
+    compass_exists: bool,
+    feedback_text: str | None = None,
+    blockers_text: str | None = None,
+    input_tokens: tuple[str, ...] | None = None,
+) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
-    parts = [
-        "## Analysis job",
-        "",
-        f"- BLUEPRINT_PATH: {blueprint_dir}",
-        f"- DATE: {today}",
-        f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
-        "",
+    prompt_parts = [
+        lines_part(
+            "Analysis job",
+            [
+                "## Analysis job",
+                "",
+                f"- BLUEPRINT_PATH: {blueprint_dir}",
+                f"- DATE: {today}",
+                f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
+                "",
+            ],
+            kind="job",
+        )
     ]
-    # Injection order is the prompt's inputs: row. COMPASS.md is the COMPASS_EXISTS flag above
-    # (no content section); TYPED_SPEC carries the Rigging catalog plus the imported sources.
-    renderers: dict[str, Callable[[], list[str]]] = {
-        "ANALYZE_COMPASS.md": lambda: _render_feedback(feedback_text),
-        "BLOCKERS.md": lambda: _render_blockers(blockers_text),
-        "EXISTING_SPIKES": lambda: (
-            _render_existing_discoveries(questionnaires_dir) if questionnaires_dir else []
-        ),
-        "TYPED_SPEC": lambda: _render_typed_spec(blueprint_dir),
+
+    def feedback_parts() -> list:
+        if not (feedback_text and feedback_text.strip()):
+            return []
+        return [
+            part(
+                "ANALYZE_COMPASS.md",
+                "\n".join(_render_feedback(feedback_text)),
+                kind="file",
+                role="analyze feedback",
+                path=blueprint_dir.parent / _FEEDBACK_FILENAME,
+            )
+        ]
+
+    def blocker_parts() -> list:
+        if not blockers_text:
+            return []
+        return [
+            part(
+                "BLOCKERS.md",
+                "\n".join(_render_blockers(blockers_text)),
+                kind="file",
+                role="prior blocker answers",
+                path=blueprint_dir.parent / "BLOCKERS.md",
+            )
+        ]
+
+    def discovery_parts() -> list:
+        if questionnaires_dir is None or not questionnaires_dir.is_dir():
+            return []
+        paths = sorted(questionnaires_dir.glob("discovery-*.json"))
+        if not paths:
+            return []
+        parts_list = [
+            lines_part(
+                "Existing discovery questionnaire header",
+                [
+                    "## Existing discovery questionnaires",
+                    "",
+                    "These were created by prior analyze runs and live in the target QuarterDeck.",
+                    "Rules:",
+                    "- Do not emit a discovery block whose filename already appears here.",
+                    "- Questions with a non-empty `answer` field are settled — do not re-raise them.",
+                    "- Generate new discovery-*.json blocks only for genuinely new open questions.",
+                    "",
+                ],
+                kind="section",
+            )
+        ]
+        for path_obj in paths:
+            try:
+                data = json.loads(path_obj.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            parts_list.append(
+                part(
+                    path_obj.name,
+                    "\n".join(
+                        [
+                            f"### {path_obj.name}",
+                            "",
+                            "```json",
+                            json.dumps(data, indent=2),
+                            "```",
+                            "",
+                        ]
+                    ),
+                    kind="file",
+                    role="questionnaire",
+                    path=path_obj,
+                )
+            )
+        return parts_list
+
+    def typed_spec_parts() -> list:
+        parts_list = []
+        catalog = _rigging_catalog_names()
+        if catalog:
+            parts_list.append(
+                lines_part(
+                    "Rigging catalog",
+                    [
+                        "## Rigging catalog (filenames only)",
+                        "",
+                        "Selectable stack options for discovery-stack.json. Names only — never open these files.",
+                        "",
+                        *[f"- {name}" for name in catalog],
+                        "",
+                    ],
+                    kind="section",
+                )
+            )
+        parts_list.append(lines_part("Imported source file header", ["## Imported source files", ""], kind="section"))
+        for path_obj in _collect_blueprint_files(blueprint_dir):
+            label = path_obj.relative_to(blueprint_dir).as_posix()
+            parts_list.append(
+                fenced_markdown_part(
+                    label,
+                    f"### {prompt_source_header(label, path_obj)}",
+                    path_obj.read_text(encoding="utf-8"),
+                    role="source file",
+                    path=path_obj,
+                )
+            )
+        return parts_list
+
+    renderers: dict[str, Callable[[], list]] = {
+        "ANALYZE_COMPASS.md": feedback_parts,
+        "BLOCKERS.md": blocker_parts,
+        "EXISTING_SPIKES": discovery_parts,
+        "TYPED_SPEC": typed_spec_parts,
     }
-    parts += render_inputs(input_tokens, renderers)
-    parts += ["", body]
-    return "\n".join(parts)
+    for token in input_tokens:
+        render = renderers.get(token)
+        if render is None:
+            continue
+        prompt_parts.extend(render())
+    prompt_parts.append(part("Prompt body", "\n" + body, kind="prompt-body"))
+    return PromptAssembly(parts=tuple(prompt_parts))
 
 
 def _parse_blocks(text: str) -> dict[str, str]:
@@ -525,7 +660,7 @@ def analyze(
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
-    assembled = _assemble_prompt(
+    prompt_assembly = _assemble_prompt_assembly(
         prompt.body,
         blueprint_dir,
         today,
@@ -537,7 +672,7 @@ def analyze(
     )
 
     result = run(
-        assembled,
+        prompt_assembly.rendered_text,
         target_dir,
         llm=llm_provider,
         model=model,
@@ -546,6 +681,7 @@ def analyze(
         log_dir=log_dir,
         target=target,
         on_text=on_text,
+        prompt_assembly=prompt_assembly,
     )
 
     exec_id = getattr(result, "execution_id", None)

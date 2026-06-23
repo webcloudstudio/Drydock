@@ -22,7 +22,7 @@ from drydock.planning_session import (
 
 
 def test_default_feedback_heading_is_plan_compass(tmp_path):
-    assert ensure_feedback_file(tmp_path).startswith("# Plan Compass\n\n")
+    assert ensure_feedback_file(tmp_path) == "# Plan Compass\n"
 
 
 _ANALYSIS = """# Blueprint Analysis: Example

@@ -14,6 +14,7 @@ from typing import Protocol
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_repo_root
+from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "prompt_review"
@@ -157,6 +158,12 @@ def _format_markdown_block(title: str, path: Path, text: str) -> str:
 
 
 def _assemble_prompt(component: PromptReviewComponent, repo_root: Path, body: str) -> str:
+    return _assemble_prompt_assembly(component, repo_root, body).rendered_text
+
+
+def _assemble_prompt_assembly(
+    component: PromptReviewComponent, repo_root: Path, body: str
+) -> PromptAssembly:
     prompt_path = repo_root / component.prompt_file
     notes_path = repo_root / component.notes_file
     spec_path = repo_root / "docs" / "Drydock_Specification.md"
@@ -168,27 +175,58 @@ def _assemble_prompt(component: PromptReviewComponent, repo_root: Path, body: st
     )
 
     parts = [
-        body,
-        "",
-        "## Review job",
-        "",
-        f"- COMPONENT: {component.name}",
-        f"- COMMAND: {component.command}",
-        f"- PROMPT_FILE: {prompt_path}",
-        f"- NOTES_FILE: {notes_path}",
-        f"- SPEC_SECTION: {component.spec_heading}",
-        "",
-        _format_markdown_block("Prompt Under Review", prompt_path, prompt_text),
-        _format_markdown_block("Working Notes", notes_path, notes_text),
-        _format_markdown_block("Authoritative Spec Slice", spec_path, spec_text),
+        part("Prompt body", body + "\n\n", kind="prompt-body"),
+        lines_part(
+            "Review job",
+            [
+                "## Review job",
+                "",
+                f"- COMPONENT: {component.name}",
+                f"- COMMAND: {component.command}",
+                f"- PROMPT_FILE: {prompt_path}",
+                f"- NOTES_FILE: {notes_path}",
+                f"- SPEC_SECTION: {component.spec_heading}",
+                "",
+            ],
+            kind="job",
+        ),
+        fenced_markdown_part(
+            "Prompt Under Review",
+            f"## Prompt Under Review\npath: {prompt_path}",
+            prompt_text,
+            role="prompt under review",
+            path=prompt_path,
+        ),
+        fenced_markdown_part(
+            "Working Notes",
+            f"## Working Notes\npath: {notes_path}",
+            notes_text,
+            role="notes",
+            path=notes_path,
+        ),
+        fenced_markdown_part(
+            "Authoritative Spec Slice",
+            f"## Authoritative Spec Slice\npath: {spec_path}",
+            spec_text,
+            role="spec slice",
+            path=spec_path,
+        ),
     ]
 
     for relative_path in component.support_files:
         support_path = repo_root / relative_path
         support_text = _read_required(support_path, "support file")
-        parts.append(_format_markdown_block("Consumer Contract", support_path, support_text))
+        parts.append(
+            fenced_markdown_part(
+                "Consumer Contract",
+                f"## Consumer Contract\npath: {support_path}",
+                support_text,
+                role="consumer contract",
+                path=support_path,
+            )
+        )
 
-    return "\n".join(parts).rstrip() + "\n"
+    return PromptAssembly(parts=tuple(parts))
 
 
 def _coerce_score(value: object, category: str) -> float:
@@ -387,16 +425,17 @@ def review_prompt(
     component = resolve_component(component_name)
     repo_root = get_repo_root()
     prompt = load_prompt(PROMPT_NAME)
-    assembled = _assemble_prompt(component, repo_root, prompt.body)
+    prompt_assembly = _assemble_prompt_assembly(component, repo_root, prompt.body)
     run = runner if runner is not None else run_prompt
     result = run(
-        assembled,
+        prompt_assembly.rendered_text,
         repo_root,
         llm=llm_provider,
         model=model or prompt.model,
         command_name="prompt-review",
         parameters={"component": component.name, "command": component.command},
         log_dir=log_dir,
+        prompt_assembly=prompt_assembly,
     )
     if not result.ok or not result.text.strip():
         raise SpecificationError("prompt review execution failed")
