@@ -174,7 +174,7 @@ def contextual_markdown_parts(
     if metadata is not None:
         parts.append(
             part(
-                f"{label} prompt",
+                f"{label} instructions",
                 "\n".join(
                     [
                         f"## {metadata.label}",
@@ -224,7 +224,7 @@ def contextual_fenced_parts(
     if metadata is not None:
         parts.append(
             part(
-                f"{label} prompt",
+                f"{label} instructions",
                 "\n".join(
                     [
                         f"## {metadata.label}",
