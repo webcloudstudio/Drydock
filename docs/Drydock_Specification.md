@@ -574,8 +574,7 @@ Drydock stores its own state under `$DRYDOCK_WORKSPACE/targets/<Target>`. The bu
 lives under `$DRYDOCK_BUILD_DIRECTORY/<Target>`. The QuarterDeck is configuration driven and uses
 files from the Drydock-managed Target tree.
 
-Each workspace artifact exists to feed commands. The Artifact Feed Matrix specifies, for every
-artifact, which command produces it and which commands consume it.
+### Artifact Usage Matrix
 
 | Artifact | Location | analyze | plan | build | build score | refit |
 |---|---|---|---|---|---|---|
@@ -604,6 +603,8 @@ artifact, which command produces it and which commands consume it.
 `·` no relation · `O*` the command produces the artifact only when it is absent.
 
 Human-authored feedback artifacts (`ANALYZE_COMPASS.md`, `PLAN_COMPASS.md`, answered `BLOCKERS.md`) are prompts that guide future runs of the commands.
+
+### Directory Layout
 
 ```text
 $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
