@@ -284,12 +284,12 @@ def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> li
         f"[prompt] {command_name}  parts={len(assembly.records())}  "
         f"total={assembly.total_bytes} B  est_tokens={assembly.total_tokens_estimate}"
     ]
-    for record in assembly.records():
-        role = f"  {record['role']}" if record.get("role") else ""
-        lines.append(
-            f"  [{record['order']:02d}] {record['label']}  "
-            f"~{record['estimated_tokens']} tok{role}"
-        )
+    records = assembly.records()
+    names = [Path(str(r["label"])).name for r in records]
+    col_w = max((len(n) for n in names), default=0)
+    for record, name in zip(records, names):
+        tok = f"~{record['estimated_tokens']} tok"
+        lines.append(f"  [{record['order']:02d}] {name:<{col_w}}  {tok}")
     lines.append(
         f"[prompt] total  {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok"
     )
