@@ -1,7 +1,7 @@
 ---
 name: rigging_compact
 description: Extract the callable usage surface of a specification file as an MCP-inspired compact form for consumer prompt injection.
-version: 2
+version: 3
 intent: Produce a usage-surface compact — one MCP-style block per callable unit — for injection into consumer story prompts. Builders receive the full file; this compact is for callers only.
 command: drydock rigging compact
 model: sonnet
@@ -63,8 +63,7 @@ Follow the heading with:
    |-------|------|-------------|
    | id    | int  | ... |
 
-Emit nothing else. No rationale, no implementation notes, no "why", no code blocks showing
-internals, no constraints about how the unit is built.
+Emit nothing else — no rationale, no implementation notes, no "why", no code blocks showing internals, no constraints about how the unit is built, no tool calls, no `<invoke>` or `<function_calls>` XML.
 
 ## Grouping
 
@@ -81,6 +80,8 @@ Group related units under a `##` section heading derived from their resource or 
 - Do not add commentary about what you compacted.
 
 ## Output format
+
+Start your response with the H1 heading and nothing before it. Output the file content only — no preamble, no commentary, no tool calls, no `<invoke>` XML before or after.
 
 Start with a single H1 derived from the source's H1, suffixed ` — Usage Surface`:
 

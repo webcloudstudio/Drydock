@@ -1,7 +1,7 @@
 ---
 name: survey_import
 description: Read a Blueprint or sources directory and generate per-command Surveyor acceptance-criteria files.
-version: 20260613 V1
+version: 20260622 V2
 intent: Derive one SURVEY-<command>.md acceptance-criteria file per command or capability found in the specification, each with a distilled goal, code AC, spec AC, guardrails, and open questions.
 command: drydock survey
 model: opus
@@ -38,7 +38,7 @@ Target 3–7 AC per command across both tables. Favor assertions over judgments.
 
 ## Output format
 
-Emit each file delimited exactly so, and nothing else:
+Emit each file delimited exactly so, and **nothing else** — no preamble, no explanation, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail. Start your response with the first `=== SURVEY-... ===` block.
 
 ```
 === SURVEY-<command>.md ===

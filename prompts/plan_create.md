@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260621 V5
+version: 20260622 V6
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -294,7 +294,7 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 
 ## Output Format
 
-Emit exactly these block types in this order. Do not add commentary outside the blocks.
+Emit exactly these block types in this order. **Nothing outside the blocks** — no preamble, no explanation, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail. Start your response with the first `=== ... ===` block.
 
 1. Zero or more authored Blueprint file blocks
 2. One `MANIFEST.md` block
@@ -328,7 +328,7 @@ for blocker resolution.
 
 ## Hard Rules
 
-- Nothing outside the required output blocks.
+- Nothing outside the required output blocks — no preamble, no summary, no prose, no tool calls, no `<invoke>` or `<function_calls>` XML.
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
 - Every `implements:` entry in `MANIFEST.md` must name a real emitted authored spec file.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed

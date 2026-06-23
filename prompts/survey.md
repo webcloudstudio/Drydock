@@ -1,7 +1,7 @@
 ---
 name: survey
 description: Score a target's commands against their acceptance criteria and emit generalized actionable recommendations.
-version: 20260613 V1
+version: 20260622 V2
 intent: Judge each acceptance criterion as pass/partial/fail with a one-line note, flag root causes, and propose generalized fixes — not over-specific ones — that an implementation agent can act on.
 command: drydock survey
 model: opus
@@ -42,7 +42,7 @@ behavior; let the implementer find the lines.
 
 ## Output
 
-Emit **only** a single JSON object, no prose, no code fence:
+Emit **only** a single JSON object — no prose, no code fence, no preamble, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Start your response with `{`.
 
 ```
 {
