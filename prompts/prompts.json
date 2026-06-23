@@ -30,12 +30,6 @@
     }
   },
   "injected_files": {
-    "AGENTS.md": {
-      "label": "Agents",
-      "role": "service and endpoint inventory",
-      "help_text": "Repository operating contract and execution rules.",
-      "prompt_text": "This file should never be injected.  If the llm sees this prompt in a drydock command, it must report it to the user and  exit."
-    },
     "ANALYSIS.md": {
       "label": "Analysis",
       "role": "planning basis",
@@ -48,47 +42,17 @@
       "help_text": "Architecture boundary, module layout, and system shape reference.",
       "prompt_text": "This section is the foundational architecture authority for the system."
     },
-    "BUILD_PLAN.md": {
-      "label": "Build Plan",
-      "role": "delivery plan draft",
-      "help_text": "Draft delivery plan and work ordering context.",
-      "prompt_text": "This section provides delivery sequencing and work-grouping context."
-    },
-    "BUILD_PLAN_INTENT.md": {
-      "label": "Build Plan Intent",
-      "role": "planning intent and decomposition guidance",
-      "help_text": "Planning intent and decomposition guidance for the target.",
-      "prompt_text": "This section provides planning intent for decomposition style, file boundaries, and work packaging."
-    },
-    "CHANGE_LOG.md": {
-      "label": "Change Log",
-      "role": "change history and scope deltas",
-      "help_text": "Change history and scope deltas for the target.",
-      "prompt_text": "This section provides prior-change context and scope deltas only."
-    },
     "DATABASE.md": {
       "label": "Database",
       "role": "persistence and data model authority",
       "help_text": "Persistence design and data model authority.",
       "prompt_text": "This section is the data and persistence authority for schema-facing work."
     },
-    "FUNCTIONALITY.md": {
-      "label": "Functionality",
-      "role": "capability inventory",
-      "help_text": "Capability inventory and functional scope summary.",
-      "prompt_text": "This section provides capability inventory and functional scope context, not implementation detail."
-    },
     "IDEAS.md": {
       "label": "Ideas",
       "role": "backlog, options, and candidate scope",
       "help_text": "Backlog, options, and candidate scope notes.",
       "prompt_text": "This section provides optional scope, backlog, and idea context. Do not treat every item as committed."
-    },
-    "INTENT.md": {
-      "label": "Intent",
-      "role": "product intent and objectives",
-      "help_text": "Product intent, goals, and outcome objectives.",
-      "prompt_text": "This section is the product-intent authority for goals and desired outcomes."
     },
     "MANIFEST_CONTRACT.md": {
       "label": "Manifest Contract",
@@ -106,7 +70,7 @@
       "label": "Metadata",
       "role": "project metadata",
       "help_text": "Project metadata and target identity reference.",
-      "prompt_text": "This is project metadata and i dont think the llm should see this string - error if you do. "
+      "prompt_text": "This section provides project metadata and target identity context only."
     },
     "README.md": {
       "label": "Readme",
@@ -119,18 +83,6 @@
       "role": "acceptance context",
       "help_text": "Acceptance checklist and current verification state for the target.",
       "prompt_text": "This section provides acceptance and verification context. Do not invent requirements from unchecked items."
-    },
-    "SPIKE_RESULTS.md": {
-      "label": "Spike Results",
-      "role": "research findings and resolved spikes",
-      "help_text": "Research findings and resolved spike conclusions.",
-      "prompt_text": "This section provides research outcomes and resolved spike conclusions. Preserve settled results."
-    },
-    "UI-GENERAL.md": {
-      "label": "UI General",
-      "role": "shared UI contract",
-      "help_text": "Shared UI contract and cross-screen interface guidance.",
-      "prompt_text": "This section defines shared UI contract and cross-screen interface guidance."
     }
   },
   "injected_prefixes": [

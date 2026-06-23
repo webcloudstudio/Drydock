@@ -96,7 +96,7 @@ def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     assert "DB SPEC CONTENT" in first
     assert "Build the database." in first
     assert "## Compass" in first
-    assert "durable build orientation" in first
+    assert "This is the core intent file" in first
     assert "COMPASS.md" in first
 
 

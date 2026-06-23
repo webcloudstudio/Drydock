@@ -407,7 +407,7 @@ def test_assemble_prompt_injects_plan_compass_instruction_block(tmp_path):
     )
 
     assert "## Plan Compass" in result
-    assert "standing steering for `drydock plan`" in result
+    assert "standing user steering" in result
     assert "## Plan Compass content" in result
 
 

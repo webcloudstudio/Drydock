@@ -420,7 +420,7 @@ class TestAssemblePrompt:
             feedback_text="Decompose by module, not by route.",
         )
         assert "## Analyze Compass" in result
-        assert "standing steering for `drydock analyze`" in result
+        assert "standing user steering" in result
         assert "## Analyze Compass content" in result
         assert "Decompose by module, not by route." in result
 
