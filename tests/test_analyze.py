@@ -476,9 +476,7 @@ class TestAssemblePrompt:
             feedback_text="Steer this way.",
             blockers_text="- No name.",
         )
-        assert result.index("Analyze feedback (standing directive)") < result.index(
-            "Prior blocker answers"
-        )
+        assert result.index("## Analyze Compass content") < result.index("Prior blocker answers")
 
     def test_injection_order_is_driven_by_input_tokens(self, tmp_path):
         bp = tmp_path / "blueprint"
@@ -494,9 +492,7 @@ class TestAssemblePrompt:
             feedback_text="Steer this way.",
             input_tokens=("TYPED_SPEC", "ANALYZE_COMPASS.md"),
         )
-        assert result.index("Imported source files") < result.index(
-            "Analyze feedback (standing directive)"
-        )
+        assert result.index("Imported source files") < result.index("## Analyze Compass content")
 
     def test_compass_token_injects_no_content_section(self, tmp_path):
         # COMPASS.md is the COMPASS_EXISTS flag for analyze, not a fenced content block.

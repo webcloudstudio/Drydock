@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.prompt_headers import prompt_header_for_file
+
 
 def estimate_tokens(byte_count: int) -> int:
     """Return Drydock's coarse token estimate: ``ceil(bytes / 4)``."""
@@ -137,3 +139,45 @@ def fenced_text_part(
         role=role,
         path=path,
     )
+
+
+def contextual_markdown_parts(
+    label: str,
+    heading: str,
+    body: str,
+    *,
+    filename: str,
+    role: str | None = None,
+    path: Path | None = None,
+) -> tuple[PromptPart, ...]:
+    metadata = prompt_header_for_file(filename)
+    parts: list[PromptPart] = []
+    if metadata is not None:
+        parts.extend(
+            [
+                fenced_text_part(
+                    f"{label} help",
+                    f"## {metadata.label} header",
+                    metadata.help_text,
+                    role="prompt header",
+                    path=path,
+                ),
+                fenced_text_part(
+                    f"{label} prompt",
+                    f"## {metadata.label} instructions",
+                    metadata.prompt_text,
+                    role="prompt instructions",
+                    path=path,
+                ),
+            ]
+        )
+    parts.append(
+        fenced_markdown_part(
+            label,
+            heading,
+            body,
+            role=role or (metadata.role if metadata is not None else None),
+            path=path,
+        )
+    )
+    return tuple(parts)

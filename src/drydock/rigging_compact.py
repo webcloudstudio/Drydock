@@ -21,7 +21,12 @@ from typing import Protocol
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_rigging_root
-from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
+from drydock.prompt_assembly import (
+    PromptAssembly,
+    contextual_markdown_parts,
+    lines_part,
+    part,
+)
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "rigging_compact"
@@ -233,10 +238,11 @@ def _assemble_prompt_assembly(
                 ["### Objective for this file", "", objective, ""],
                 kind="section",
             ),
-            fenced_markdown_part(
+            *contextual_markdown_parts(
                 rel_source,
                 "### Source content (extract usage surface from this)",
                 source_text,
+                filename=Path(rel_source).name,
                 role="source file",
             ),
         )

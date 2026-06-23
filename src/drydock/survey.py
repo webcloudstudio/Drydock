@@ -23,7 +23,12 @@ from pathlib import Path
 
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
-from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
+from drydock.prompt_assembly import (
+    PromptAssembly,
+    contextual_markdown_parts,
+    lines_part,
+    part,
+)
 from drydock.prompts import load_prompt
 
 SCHEMA = 1
@@ -501,14 +506,16 @@ def import_specs(
             ),
             lines_part("Source specification file header", ["### Source specification files", ""], kind="section"),
             *tuple(
-                fenced_markdown_part(
+                prompt_part
+                for md in inventory
+                for prompt_part in contextual_markdown_parts(
                     md.name,
                     f"#### {md.name}",
                     md.read_text(encoding="utf-8"),
+                    filename=md.name,
                     role="source file",
                     path=md,
                 )
-                for md in inventory
             ),
         )
     )

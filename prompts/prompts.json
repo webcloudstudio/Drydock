@@ -28,5 +28,125 @@
       "help_text": "This file is injected into every `drydock plan` run for this target. Use it to steer decomposition, ordering, and durable file boundaries.",
       "prompt_text": "Capture planning directives only: decomposition preferences, ordering rules, and any non-default planning constraints."
     }
-  }
+  },
+  "injected_files": {
+    "AGENTS.md": {
+      "label": "Agents",
+      "role": "service and endpoint inventory",
+      "help_text": "Repository operating contract and execution rules.",
+      "prompt_text": "Treat this as the local operating contract for the work, not as product requirements."
+    },
+    "ANALYSIS.md": {
+      "label": "Analysis",
+      "role": "planning basis",
+      "help_text": "Reviewed analysis that plan uses as its immediate decomposition basis.",
+      "prompt_text": "Use this as current planning basis; preserve settled conclusions unless superseded by stronger source evidence."
+    },
+    "ARCHITECTURE.md": {
+      "label": "Architecture",
+      "role": "architecture boundary and module layout",
+      "help_text": "Architecture boundary, module layout, and system shape reference.",
+      "prompt_text": "Use this as architecture authority for boundaries and structure, not as an implementation transcript."
+    },
+    "BUILD_PLAN.md": {
+      "label": "Build Plan",
+      "role": "delivery plan draft",
+      "help_text": "Draft delivery plan and work ordering context.",
+      "prompt_text": "Use this for delivery sequencing and work grouping context."
+    },
+    "BUILD_PLAN_INTENT.md": {
+      "label": "Build Plan Intent",
+      "role": "planning intent and decomposition guidance",
+      "help_text": "Planning intent and decomposition guidance for the target.",
+      "prompt_text": "Use this to guide decomposition style, file boundaries, and work packaging."
+    },
+    "CHANGE_LOG.md": {
+      "label": "Change Log",
+      "role": "change history and scope deltas",
+      "help_text": "Change history and scope deltas for the target.",
+      "prompt_text": "Use this only for prior-change context and scope deltas."
+    },
+    "DATABASE.md": {
+      "label": "Database",
+      "role": "persistence and data model authority",
+      "help_text": "Persistence design and data model authority.",
+      "prompt_text": "Treat this as the data and persistence authority for schema-facing work."
+    },
+    "FUNCTIONALITY.md": {
+      "label": "Functionality",
+      "role": "capability inventory",
+      "help_text": "Capability inventory and functional scope summary.",
+      "prompt_text": "Use this as capability inventory context, not as implementation detail."
+    },
+    "IDEAS.md": {
+      "label": "Ideas",
+      "role": "backlog, options, and candidate scope",
+      "help_text": "Backlog, options, and candidate scope notes.",
+      "prompt_text": "Use this only as optional scope and idea context; do not treat every item as committed."
+    },
+    "INTENT.md": {
+      "label": "Intent",
+      "role": "product intent and objectives",
+      "help_text": "Product intent, goals, and outcome objectives.",
+      "prompt_text": "Use this as product-intent authority for goals and desired outcomes."
+    },
+    "MANIFEST_CONTRACT.md": {
+      "label": "Manifest Contract",
+      "role": "contract",
+      "help_text": "Prompt contract defining required MANIFEST output shape.",
+      "prompt_text": "Follow this contract exactly when producing manifest structure."
+    },
+    "BLUEPRINTS_CONTRACT.md": {
+      "label": "Blueprints Contract",
+      "role": "contract",
+      "help_text": "Prompt contract defining required Blueprint output shape.",
+      "prompt_text": "Follow this contract exactly when producing Blueprint files."
+    },
+    "METADATA.md": {
+      "label": "Metadata",
+      "role": "project metadata",
+      "help_text": "Project metadata and target identity reference.",
+      "prompt_text": "Use this as metadata context only."
+    },
+    "README.md": {
+      "label": "Readme",
+      "role": "project overview",
+      "help_text": "Project overview and high-level orientation.",
+      "prompt_text": "Use this as broad orientation, not as detailed authority when more specific files exist."
+    },
+    "SOUNDINGS.md": {
+      "label": "Soundings",
+      "role": "acceptance context",
+      "help_text": "Acceptance checklist and current verification state for the target.",
+      "prompt_text": "Use this as acceptance and verification context; do not invent requirements from unchecked items."
+    },
+    "SPIKE_RESULTS.md": {
+      "label": "Spike Results",
+      "role": "research findings and resolved spikes",
+      "help_text": "Research findings and resolved spike conclusions.",
+      "prompt_text": "Use this as research outcome context and preserve settled spike conclusions."
+    },
+    "UI-GENERAL.md": {
+      "label": "UI General",
+      "role": "shared UI contract",
+      "help_text": "Shared UI contract and cross-screen interface guidance.",
+      "prompt_text": "Use this as shared UI contract across screen-specific work."
+    }
+  },
+  "injected_prefixes": [
+    {
+      "prefix": "FEATURE-",
+      "label": "Feature Contract",
+      "role": "feature contract",
+      "help_text": "Feature-specific contract defining one capability boundary.",
+      "prompt_text": "Treat this as the authority for the named feature's behavior and boundaries."
+    },
+    {
+      "prefix": "SCREEN-",
+      "label": "Screen Contract",
+      "role": "screen contract",
+      "help_text": "Screen-specific contract defining one UI surface.",
+      "prompt_text": "Treat this as the authority for the named screen's UI behavior and boundary."
+    }
+  ]
 }

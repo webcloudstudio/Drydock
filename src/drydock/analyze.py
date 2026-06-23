@@ -30,8 +30,7 @@ from drydock.metadata import (
 from drydock.paths import get_rigging_root
 from drydock.prompt_assembly import (
     PromptAssembly,
-    fenced_markdown_part,
-    fenced_text_part,
+    contextual_markdown_parts,
     lines_part,
     part,
 )
@@ -221,40 +220,16 @@ def _managed_doc_parts(
     content_role: str,
     path: Path,
 ) -> list:
-    header = prompt_header_for_file(filename)
-    if header is None:
-        return [
-            fenced_markdown_part(
-                filename,
-                content_heading,
-                content,
-                role=content_role,
-                path=path,
-            )
-        ]
-    return [
-        fenced_text_part(
-            f"{filename} help",
-            f"## {header.label} header",
-            header.help_text,
-            role="prompt header",
-            path=path,
-        ),
-        fenced_text_part(
-            f"{filename} prompt",
-            f"## {header.label} instructions",
-            header.prompt_text,
-            role="prompt instructions",
-            path=path,
-        ),
-        fenced_markdown_part(
+    return list(
+        contextual_markdown_parts(
             filename,
             content_heading,
             content,
+            filename=filename,
             role=content_role,
             path=path,
-        ),
-    ]
+        )
+    )
 
 
 def _render_typed_spec(blueprint_dir: Path) -> list[str]:
@@ -426,11 +401,12 @@ def _assemble_prompt_assembly(
         parts_list.append(lines_part("Imported source file header", ["## Imported source files", ""], kind="section"))
         for path_obj in _collect_blueprint_files(blueprint_dir):
             label = path_obj.relative_to(blueprint_dir).as_posix()
-            parts_list.append(
-                fenced_markdown_part(
+            parts_list.extend(
+                contextual_markdown_parts(
                     label,
                     f"### {prompt_source_header(label, path_obj)}",
                     path_obj.read_text(encoding="utf-8"),
+                    filename=path_obj.name,
                     role="source file",
                     path=path_obj,
                 )

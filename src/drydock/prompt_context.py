@@ -4,36 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_ROLE_BY_NAME = {
-    "AGENTS.md": "service and endpoint inventory",
-    "ARCHITECTURE.md": "architecture boundary and module layout",
-    "BUILD_PLAN.md": "delivery plan draft",
-    "BUILD_PLAN_INTENT.md": "planning intent and decomposition guidance",
-    "CHANGE_LOG.md": "change history and scope deltas",
-    "DATABASE.md": "persistence and data model authority",
-    "FUNCTIONALITY.md": "capability inventory",
-    "IDEAS.md": "backlog, options, and candidate scope",
-    "INTENT.md": "product intent and objectives",
-    "METADATA.md": "project metadata",
-    "README.md": "project overview",
-    "SPIKE_RESULTS.md": "research findings and resolved spikes",
-    "UI-GENERAL.md": "shared UI contract",
-}
-
-_ROLE_BY_PREFIX = (
-    ("FEATURE-", "feature contract"),
-    ("SCREEN-", "screen contract"),
-)
+from drydock.prompt_headers import prompt_header_for_file
 
 
 def source_file_role(path: Path) -> str:
-    """Return the fixed role label for an injected source file."""
-    name = path.name
-    if name in _ROLE_BY_NAME:
-        return _ROLE_BY_NAME[name]
-    for prefix, role in _ROLE_BY_PREFIX:
-        if name.startswith(prefix):
-            return role
+    """Return the configured role label for an injected source file."""
+    header = prompt_header_for_file(path.name)
+    if header is not None and header.role:
+        return header.role
     return "source reference"
 
 

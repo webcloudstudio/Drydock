@@ -26,8 +26,7 @@ from drydock.metadata import increment_version, set_build_state, set_sub_state, 
 from drydock.paths import get_prompts_root
 from drydock.prompt_assembly import (
     PromptAssembly,
-    fenced_markdown_part,
-    fenced_text_part,
+    contextual_markdown_parts,
     lines_part,
     part,
 )
@@ -230,40 +229,16 @@ def _managed_doc_parts(
     content_role: str,
     path: Path,
 ) -> list:
-    header = prompt_header_for_file(filename)
-    if header is None:
-        return [
-            fenced_markdown_part(
-                filename,
-                content_heading,
-                content,
-                role=content_role,
-                path=path,
-            )
-        ]
-    return [
-        fenced_text_part(
-            f"{filename} help",
-            f"## {header.label} header",
-            header.help_text,
-            role="prompt header",
-            path=path,
-        ),
-        fenced_text_part(
-            f"{filename} prompt",
-            f"## {header.label} instructions",
-            header.prompt_text,
-            role="prompt instructions",
-            path=path,
-        ),
-        fenced_markdown_part(
+    return list(
+        contextual_markdown_parts(
             filename,
             content_heading,
             content,
+            filename=filename,
             role=content_role,
             path=path,
-        ),
-    ]
+        )
+    )
 
 
 def _assemble_prompt(
@@ -344,30 +319,32 @@ def _assemble_prompt_assembly(
         )
 
     def analysis_parts() -> list:
-        return [
-            fenced_markdown_part(
+        return list(
+            contextual_markdown_parts(
                 "ANALYSIS.md",
                 "## ANALYSIS.md (the reviewed plan)",
                 analysis_text,
+                filename="ANALYSIS.md",
                 role="planning basis",
                 path=target_dir / "ANALYSIS.md",
             )
-        ]
+        )
 
     def soundings_parts() -> list:
         path = target_dir / "SOUNDINGS.md"
         text = _read_if(path)
         if not text:
             return []
-        return [
-            fenced_markdown_part(
+        return list(
+            contextual_markdown_parts(
                 "SOUNDINGS.md",
                 "## SOUNDINGS.md",
                 text,
+                filename="SOUNDINGS.md",
                 role="acceptance context",
                 path=path,
             )
-        ]
+        )
 
     def questionnaire_parts() -> list:
         answered = [(p, _answered_discovery(p)) for p in _collect_discoveries(target_dir)]
@@ -406,11 +383,12 @@ def _assemble_prompt_assembly(
         parts_list = [lines_part("Imported source file header", ["## Imported source files", ""], kind="section")]
         for path_obj in _collect_sources(blueprint_dir):
             label = path_obj.relative_to(blueprint_dir).as_posix()
-            parts_list.append(
-                fenced_markdown_part(
+            parts_list.extend(
+                contextual_markdown_parts(
                     label,
                     f"### {prompt_source_header(label, path_obj)}",
                     path_obj.read_text(encoding="utf-8").rstrip(),
+                    filename=path_obj.name,
                     role="source file",
                     path=path_obj,
                 )
@@ -424,15 +402,16 @@ def _assemble_prompt_assembly(
             return []
         if not contract_path.is_file():
             return []
-        return [
-            fenced_markdown_part(
+        return list(
+            contextual_markdown_parts(
                 name,
                 f"## {name}",
                 contract_path.read_text(encoding="utf-8"),
+                filename=name,
                 role="contract",
                 path=contract_path,
             )
-        ]
+        )
 
     renderers: dict[str, Callable[[], list]] = {
         "COMPASS.md": compass_parts,

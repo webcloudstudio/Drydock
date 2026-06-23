@@ -27,3 +27,21 @@ def test_prompt_header_lookup_by_filename():
     assert header is not None
     assert header.item_id == "compass_edit"
     assert "injected into every build step" in header.help_text
+
+
+def test_prompt_header_lookup_for_injected_file():
+    header = prompt_header_for_file("ANALYSIS.md")
+
+    assert header is not None
+    assert header.item_id is None
+    assert header.role == "planning basis"
+    assert "planning basis" in header.prompt_text
+
+
+def test_prompt_header_lookup_for_injected_prefix():
+    header = prompt_header_for_file("FEATURE-Auth.md")
+
+    assert header is not None
+    assert header.item_id is None
+    assert header.role == "feature contract"
+    assert header.label == "Feature Contract"
