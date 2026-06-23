@@ -3648,3 +3648,9 @@
 {"command": "drydock init Marina2", "time": "2026-06-22 21:15", "target": "Marina2", "return_code": 0}
 {"command": "drydock import Marina2 /mnt/c/Users/barlo/projects/Specifications/Marina --format markdown", "time": "2026-06-22 21:16", "target": "Marina2", "return_code": 0}
 {"command": "drydock analyze Marina2", "time": "2026-06-22 21:26", "target": "Marina2", "return_code": 0}
+{"command": "drydock init Marina2", "time": "2026-06-22 22:53", "target": "Marina2", "return_code": 0}
+{"command": "drydock import Marina2 /mnt/c/Users/barlo/projects/Specifications/Marina --format markdown", "time": "2026-06-22 22:53", "target": "Marina2", "return_code": 0}
+{"command": "drydock analyze Marina2", "time": "2026-06-22 23:05", "target": "Marina2", "return_code": 1}
+{"command": "drydock analyze Marina2", "time": "2026-06-22 23:41", "target": "Marina2", "return_code": 0}
+{"command": "drydock plan Marina2", "time": "2026-06-23 00:16", "target": "Marina2", "return_code": 1}
+{"command": "drydock plan Marina2", "time": "2026-06-23 01:45", "target": "Marina2", "return_code": 1}
