@@ -365,8 +365,8 @@ def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
 
     # COMPASS leads the file sections; the standing directive reads next; sources land last.
     order = [
-        result.index("## Compass header"),
-        result.index("## Plan Compass header"),
+        result.index("## Compass"),
+        result.index("## Plan Compass"),
         result.index("ANALYSIS.md (the reviewed plan)"),
         result.index("## SOUNDINGS.md"),
         result.index("Imported source files"),
@@ -389,10 +389,10 @@ def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
         "2026-06-17",
         input_tokens=("ANALYSIS.md", "COMPASS.md"),
     )
-    assert result.index("ANALYSIS.md (the reviewed plan)") < result.index("## Compass header")
+    assert result.index("ANALYSIS.md (the reviewed plan)") < result.index("## Compass")
 
 
-def test_assemble_prompt_injects_plan_compass_header_and_instructions(tmp_path):
+def test_assemble_prompt_injects_plan_compass_instruction_block(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
 
@@ -406,8 +406,8 @@ def test_assemble_prompt_injects_plan_compass_header_and_instructions(tmp_path):
         input_tokens=("PLAN_COMPASS.md",),
     )
 
-    assert "## Plan Compass header" in result
-    assert "## Plan Compass instructions" in result
+    assert "## Plan Compass" in result
+    assert "standing steering for `drydock plan`" in result
     assert "## Plan Compass content" in result
 
 

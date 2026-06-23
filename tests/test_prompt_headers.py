@@ -27,6 +27,7 @@ def test_prompt_header_lookup_by_filename():
     assert header is not None
     assert header.item_id == "compass_edit"
     assert "injected into every build step" in header.help_text
+    assert "durable build orientation" in header.prompt_text
 
 
 def test_prompt_header_lookup_for_injected_file():
@@ -35,7 +36,7 @@ def test_prompt_header_lookup_for_injected_file():
     assert header is not None
     assert header.item_id is None
     assert header.role == "planning basis"
-    assert "planning basis" in header.prompt_text
+    assert "analysis basis for planning" in header.prompt_text
 
 
 def test_prompt_header_lookup_for_injected_prefix():

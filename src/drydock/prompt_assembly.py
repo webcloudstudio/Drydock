@@ -153,29 +153,36 @@ def contextual_markdown_parts(
     metadata = prompt_header_for_file(filename)
     parts: list[PromptPart] = []
     if metadata is not None:
-        parts.extend(
-            [
-                fenced_text_part(
-                    f"{label} help",
-                    f"## {metadata.label} header",
-                    metadata.help_text,
-                    role="prompt header",
-                    path=path,
+        parts.append(
+            part(
+                f"{label} prompt",
+                "\n".join(
+                    [
+                        f"## {metadata.label}",
+                        metadata.prompt_text.rstrip("\n"),
+                        "---",
+                        "",
+                    ]
                 ),
-                fenced_text_part(
-                    f"{label} prompt",
-                    f"## {metadata.label} instructions",
-                    metadata.prompt_text,
-                    role="prompt instructions",
-                    path=path,
-                ),
-            ]
+                role="prompt instructions",
+                path=path,
+            )
         )
     parts.append(
-        fenced_markdown_part(
+        part(
             label,
-            heading,
-            body,
+            "\n".join(
+                [
+                    heading,
+                    "",
+                    "```markdown",
+                    body.rstrip("\n"),
+                    "```",
+                    "---",
+                    "",
+                ]
+            ),
+            kind="file",
             role=role or (metadata.role if metadata is not None else None),
             path=path,
         )

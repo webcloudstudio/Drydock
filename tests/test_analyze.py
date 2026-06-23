@@ -265,6 +265,7 @@ def _make_llm_output(
 
 
 _VALID_LLM_OUTPUT = _make_llm_output(include_compass=True)
+_VALID_LLM_OUTPUT_WITH_SPIKES = _make_llm_output(include_compass=True, include_spikes=True)
 _VALID_LLM_OUTPUT_NO_COMPASS = _make_llm_output(include_compass=False)
 
 
@@ -418,9 +419,9 @@ class TestAssemblePrompt:
             compass_exists=False,
             feedback_text="Decompose by module, not by route.",
         )
-        assert "Analyze Compass header" in result
-        assert "Analyze Compass instructions" in result
-        assert "Analyze Compass content" in result
+        assert "## Analyze Compass" in result
+        assert "standing steering for `drydock analyze`" in result
+        assert "## Analyze Compass content" in result
         assert "Decompose by module, not by route." in result
 
     def test_no_feedback_section_when_absent(self, tmp_path):
@@ -454,8 +455,8 @@ class TestAssemblePrompt:
             compass_exists=False,
             blockers_text="# Blockers\n\n- No name provided.",
         )
-        assert "Blockers header" in result
-        assert "Blockers instructions" in result
+        assert "## Blockers" in result
+        assert "existing blocking issues" in result
         assert "Prior blocker answers (BLOCKERS.md)" in result
         assert "No name provided" in result
 
@@ -552,7 +553,7 @@ class TestParseBlocks:
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
         analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = (
-            _parse_output(_VALID_LLM_OUTPUT)
+            _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         )
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
@@ -567,7 +568,7 @@ class TestParseOutput:
         assert "discovery-guardrails.json" in spikes
 
     def test_summary_fields_parsed(self):
-        _, _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT)
+        _, _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         assert summary.get("stories") == "5"
         assert summary.get("blockers") == "0"
         assert summary.get("questions") == "0"
@@ -635,7 +636,7 @@ class TestParseOutput:
         assert spikes == {}
 
     def test_invalid_spike_json_raises(self):
-        bad = _VALID_LLM_OUTPUT.replace(_DISCOVERY_INTENT, "{bad json")
+        bad = _VALID_LLM_OUTPUT_WITH_SPIKES.replace(_DISCOVERY_INTENT, "{bad json")
         with pytest.raises(ValueError, match="not valid JSON"):
             _parse_output(bad)
 
