@@ -22,7 +22,9 @@ _PLAN_HEADER_RE = re.compile(r"^#\s+MANIFEST:\s*(.+?)\s*$")
 _LIST_FIELDS = {"depends", "implements", "context", "stack", "rules"}
 # Compact single-line ac form: "## ac N: Summary (smoke|assertion: check)".
 # The check is greedy to the final ')' so embedded parens (e.g. json.load(x)) survive.
-_COMPACT_AC_RE = re.compile(r"^(?P<summary>.*?)\s*\((?P<kind>smoke|assertion):\s*(?P<check>.*)\)\s*$")
+_COMPACT_AC_RE = re.compile(
+    r"^(?P<summary>.*?)\s*\((?P<kind>smoke|assertion):\s*(?P<check>.*)\)\s*$"
+)
 
 
 @dataclass(frozen=True)

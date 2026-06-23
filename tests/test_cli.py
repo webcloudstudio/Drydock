@@ -486,6 +486,7 @@ class TestLlmOverrideFlags:
         assert seen["kwargs"]["llm_provider"] == "codex"
         assert seen["kwargs"]["model"] == "gpt-5.4"
 
+
 class TestPlanInspection:
     PLAN = """# MANIFEST: Example
 updated: 2026-06-11T12:00:00

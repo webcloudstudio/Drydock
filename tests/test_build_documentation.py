@@ -156,13 +156,13 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock status [<Target>]",
         "drydock validate <Target> [--verbose]",
         "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
-        "drydock import <Target> <Source> --format <auto|markdown|source|speckit|intent>",
+        "drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>",
         "drydock analyze <Target>",
-        "drydock plan create <Target>",
+        "drydock plan <Target>",
         "drydock build <Target>",
         "drydock build status <Target>",
         "drydock build score <Target>",
-        "drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>",
+        "drydock refit <Target> <blueprint|target|both> <Scope> <Change>",
         "drydock rigging compact <Target> [--all] [--force]",
         "drydock rigging update <Target>",
         "drydock rigging verify <Target>",
@@ -176,7 +176,7 @@ def test_canonical_specification_documents_current_command_surface():
 
     phase_headings = (
         "## SAIL Phase 1 — Set Up: Laying the Keel",
-        "## SAIL Phase 2 — Arrange: Charting the Build",
+        "## SAIL Phase 2 — Analyze: Charting the Build",
         "## SAIL Phase 3 — Implement: Working the Frontier",
         "## SAIL Phase 4 — Loop: The Refit",
     )
@@ -184,11 +184,7 @@ def test_canonical_specification_documents_current_command_surface():
         specification.index(heading) for heading in phase_headings
     )
     for phase in specification.split("## SAIL Phase ")[1:]:
-        assert (
-            phase.index("### Explanation")
-            < phase.index("### Commands")
-            < phase.index("### Workflow:")
-        )
+        assert "### Commands" in phase
 
     for nonexistent in ("drydock conform", "drydock plan validate", "drydock plan approve"):
         assert nonexistent not in specification

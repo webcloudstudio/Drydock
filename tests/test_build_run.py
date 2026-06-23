@@ -62,7 +62,7 @@ def _setup(tmp_path, manifest=_TWO_STORIES):
     blueprint = target_dir / "blueprint"
     blueprint.mkdir(parents=True)
     (target_dir / "MANIFEST.md").write_text(manifest, encoding="utf-8")
-    (target_dir / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+    (target_dir / "COMPASS.md").write_text("COMPASS INTENT CONTENT\n", encoding="utf-8")
     (blueprint / "DATABASE.md").write_text("DB SPEC CONTENT\n", encoding="utf-8")
     (blueprint / "SERVICE.md").write_text("SVC SPEC CONTENT\n", encoding="utf-8")
     return target_dir, tmp_path / "build"
@@ -96,7 +96,7 @@ def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     assert "DB SPEC CONTENT" in first
     assert "Build the database." in first
     assert "## Compass" in first
-    assert "This is the core intent file" in first
+    assert "COMPASS INTENT CONTENT" in first
     assert "COMPASS.md" in first
 
 

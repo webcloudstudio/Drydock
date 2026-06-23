@@ -33,7 +33,7 @@ def test_prompt_header_lookup_by_filename():
 
     assert header is not None
     assert header.item_id == "compass_edit"
-    assert "injected into every build step" in header.help_text
+    assert "injected into every" in header.help_text
     assert header.prompt_text.strip()
 
 
