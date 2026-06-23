@@ -37,6 +37,15 @@ def test_prompt_header_lookup_by_filename():
     assert header.prompt_text.strip()
 
 
+def test_prompt_header_lookup_for_exclude_files():
+    header = prompt_header_for_file("EXCLUDE_FILES.md")
+
+    assert header is not None
+    assert header.item_id == "exclude_files"
+    assert "excluded from prompt injection" in header.help_text
+    assert header.prompt_text.strip()
+
+
 def test_prompt_header_lookup_for_injected_file():
     header = prompt_header_for_file("ANALYSIS.md")
 

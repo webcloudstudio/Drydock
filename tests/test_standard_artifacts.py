@@ -48,6 +48,10 @@ def test_render_console_labels_compass_feedback_files():
     parsed = yaml.safe_load(config)
     items = {item["id"]: item for item in parsed["items"]}
 
+    assert items["compass_edit"]["label"] == "Compass"
+    assert items["compass_edit"]["path"] == "../COMPASS.md"
+    assert "help_text" in items["compass_edit"]
+    assert "prompt_text" in items["compass_edit"]
     assert items["analyze_compass"]["label"] == "Analyze Compass"
     assert items["analyze_compass"]["path"] == "../ANALYZE_COMPASS.md"
     assert "help_text" in items["analyze_compass"]
@@ -80,6 +84,8 @@ def test_render_console_places_exclude_files_last(tmp_path):
     assert items[-1]["id"] == "exclude_files"
     assert items[-1]["label"] == "Exclude Files"
     assert items[-1]["path"] == "../EXCLUDE_FILES.md"
+    assert "help_text" in items[-1]
+    assert "prompt_text" in items[-1]
 
 
 def test_render_console_includes_discovery_questionnaire_source(tmp_path):

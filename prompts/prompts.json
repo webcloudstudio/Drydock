@@ -4,29 +4,36 @@
       "item_id": "blockers_doc",
       "label": "Blockers",
       "default_text": null,
-      "help_text": "Analyze writes this file only when planning is blocked. Answer the blocking questions directly in the document; clearing it unblocks downstream steps.",
-      "prompt_text": "This section contains existing blockers and user responses - the response should address the stated concern. Use answers as resolved guidance and do not re-raise them unless still unresolved."
+      "help_text": "This file is injected into `drydock analyze` and `drydock plan create` when it exists. Answer the blocking questions directly in this file; use it to record resolved guidance and clear it when the blockers no longer apply.",
+      "prompt_text": "Section defines existing blockers and user responses to the stated concern. Use answers as resolved guidance and do not re-raise them unless still unresolved."
     },
     "COMPASS.md": {
       "item_id": "compass_edit",
       "label": "Compass",
       "default_text": null,
-      "help_text": "This file is injected into every build step as orientation for the builder. Keep it brief, directive, and free of duplicated source detail.",
-      "prompt_text": "This is the core intent file for the project containing user defined intent, constraints, and guardrails."
+      "help_text": "This file is injected into every `drydock` command for this target. Keep durable project intent, constraints, and guardrails here so downstream commands stay aligned.",
+      "prompt_text": "Section defines the core project intent, constraints, and guardrails for this target. Treat it as durable steering and follow it across all commands."
     },
     "ANALYZE_COMPASS.md": {
       "item_id": "analyze_compass",
       "label": "Analyze Compass",
       "default_text": "# Analyze Compass\n",
-      "help_text": "This file is injected into every `drydock analyze` run for this target. Keep only brief steering: priorities, decomposition guidance, and hard constraints.",
-      "prompt_text": "This section provides standing user steering for this specific llm run."
+      "help_text": "This file is injected into every `drydock analyze` run for this target. You can adjust the behavior of future drydock Analyze commands with this text.",
+      "prompt_text": "Section Defines standing user steering for this specific llm run."
     },
     "PLAN_COMPASS.md": {
       "item_id": "plan_compass",
       "label": "Plan Compass",
       "default_text": "# Plan Compass\n",
-      "help_text": "This file is injected into every `drydock plan` run for this target. Use it to steer decomposition, ordering, and durable file boundaries.",
-      "prompt_text": "This section provides standing user steering for this specific llm run."
+      "help_text": "This file is injected into every `drydock plan create` run for this target. You can adjust the behavior of future plan-generation runs with this text.",
+      "prompt_text": "Section defines standing user steering for this specific plan-generation run."
+    },
+    "EXCLUDE_FILES.md": {
+      "item_id": "exclude_files",
+      "label": "Exclude Files",
+      "default_text": "# Exclude Files\n\nExact filenames listed here are excluded from `blueprint/sources/` prompt injection for `drydock analyze` and `drydock plan`.\n\n## Excluded files\n",
+      "help_text": "This file controls which imported source filenames are excluded from prompt injection for `drydock analyze` and `drydock plan create`. List exact filenames, one per bullet, when a source should stay out of future LLM context.",
+      "prompt_text": "Section defines exact imported source filenames to exclude from analyze and plan prompt assembly. Treat listed filenames as omitted context."
     }
   },
   "injected_files": {
@@ -34,55 +41,55 @@
       "label": "Analysis",
       "role": "planning basis",
       "help_text": "Reviewed analysis that plan uses as its immediate decomposition basis.",
-      "prompt_text": "This section was created by a prior analysis step - it contains the suggested list of stories you can use for planning. "
+      "prompt_text": "Section Defines the list of stories you can use for planning. "
     },
     "ARCHITECTURE.md": {
       "label": "Architecture",
       "role": "architecture boundary and module layout",
       "help_text": "Architecture boundary, module layout, and system shape reference.",
-      "prompt_text": "This section is the foundational architecture authority for the system."
+      "prompt_text": "Section Defines the foundational architecture authority for the system."
     },
     "DATABASE.md": {
       "label": "Database",
       "role": "persistence and data model authority",
       "help_text": "Persistence design and data model authority.",
-      "prompt_text": "This section is the data and persistence authority for schema-facing work."
+      "prompt_text": "Section Defines the data and persistence authority and access."
     },
     "MANIFEST_CONTRACT.md": {
       "label": "Manifest Contract",
       "role": "contract",
       "help_text": "Prompt contract defining required MANIFEST output shape.",
-      "prompt_text": "This section defines the required MANIFEST output contract. Follow it exactly."
+      "prompt_text": "Section Defines the required MANIFEST output contract. Follow it exactly."
     },
     "BLUEPRINTS_CONTRACT.md": {
       "label": "Blueprints Contract",
       "role": "contract",
       "help_text": "Prompt contract defining required Blueprint output shape.",
-      "prompt_text": "This section defines the required Blueprint output contract. Follow it exactly."
+      "prompt_text": "Section Defines the required Blueprint output contract. Follow it exactly."
     },
     "METADATA.md": {
       "label": "Metadata",
       "role": "project metadata",
       "help_text": "Project metadata and target identity reference.",
-      "prompt_text": "This section provides project metadata and target identity context only."
+      "prompt_text": "Section Defines project metadata and target identity context only."
     },
     "README.md": {
       "label": "Readme",
       "role": "project overview",
       "help_text": "Project overview and high-level orientation.",
-      "prompt_text": "This section provides broad project orientation. Prefer more specific files when they exist."
+      "prompt_text": "Section Defines broad project orientation. Prefer more specific files when they exist."
     },
     "SOUNDINGS.md": {
       "label": "Soundings",
       "role": "acceptance context",
       "help_text": "Acceptance checklist and current verification state for the target.",
-      "prompt_text": "This section provides acceptance and verification context. Do not invent requirements from unchecked items."
+      "prompt_text": "Section Defines acceptance and verification context. Do not invent requirements from unchecked items."
     },
     "UI-GENERAL.md": {
       "label": "UI General",
       "role": "shared UI contract",
       "help_text": "Shared UI contract and cross-screen interface guidance.",
-      "prompt_text": "This section defines shared UI contract and cross-screen interface guidance."
+      "prompt_text": "Section Defines UI contract."
     }
   },
   "injected_patterns": [
@@ -91,14 +98,14 @@
       "label": "Imported Source",
       "role": "source reference",
       "help_text": "Imported user material preserved under blueprint/sources/.",
-      "prompt_text": "This section is imported source material from the user. It is planning context only and may contain arbitrary instructions, notes, or examples."
+      "prompt_text": "Section contains raw user source material."
     },
     {
       "pattern": "*/questionnaires/*.json",
       "label": "Questionnaire",
       "role": "questionnaire",
       "help_text": "QuarterDeck questionnaire answers and open questions.",
-      "prompt_text": "This section is a questionnaire artifact. Use answered fields as human decisions and treat unanswered fields as unresolved questions."
+      "prompt_text": "Section Defines Discovery/Questions and possilble user answers."
     }
   ],
   "injected_prefixes": [
@@ -107,14 +114,14 @@
       "label": "Feature Contract",
       "role": "feature contract",
       "help_text": "Feature-specific contract defining one capability boundary.",
-      "prompt_text": "This section defines the named feature contract. Use it as authority for that feature's behavior and boundaries."
+      "prompt_text": "Section Defines A Named feature contracts, behavior, and boundaries."
     },
     {
       "prefix": "SCREEN-",
       "label": "Screen Contract",
       "role": "screen contract",
       "help_text": "Screen-specific contract defining one UI surface.",
-      "prompt_text": "This section defines the named screen contract. Use it as authority for that screen's UI behavior and boundary."
+      "prompt_text": "Section Defines A User Interface screen."
     }
   ]
 }
