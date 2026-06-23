@@ -19,6 +19,8 @@ from drydock.analyze import (
     _parse_output,
     _remove_open_questions_section,
     _remove_tuning_options_section,
+    _render_story_breakdown_html,
+    _story_breakdown,
     _validate_blockers,
     analyze,
     ensure_feedback_file,
@@ -99,6 +101,36 @@ Quality: Ready
 ## Notes
 
 None."""
+
+_GROUPED_ANALYSIS_CONTENT = """\
+# Blueprint Analysis: TestProject
+generated: 2026-06-14
+blueprint: /some/path
+
+Quality: Ready
+  blockers: 0
+  questions: 0
+  stories: 5
+  stack: python/flask
+  screens: 2
+
+## Story List
+
+### Feature Area 1 — Foundation
+
+| ID | Story | High-level AC |
+|---|---|---|
+| FND-001 | One | AC |
+| FND-002 | Two | AC |
+
+### Feature Area 2 — Setup Screen: AWS
+
+| ID | Story | High-level AC |
+|---|---|---|
+| USA-001 | Three | AC |
+| USA-002 | Four | AC |
+| USA-003 | Five | AC |
+"""
 
 _SEA_TRIALS_CONTENT = """\
 # Sea Trials: TestProject
@@ -457,7 +489,7 @@ class TestAssemblePrompt:
             blockers_text="# Blockers\n\n- No name provided.",
         )
         assert "## Blockers" in result
-        assert "existing blocking issues" in result
+        assert "user responses" in result
         assert "Prior blocker answers (BLOCKERS.md)" in result
         assert "No name provided" in result
 
@@ -754,7 +786,7 @@ class TestFillCaptainsChair:
     _TEMPLATE = (
         "{{PROJECT_NAME}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
         "{{STORY_COUNT}}|{{QUESTION_COUNT}}|{{BLOCKER_COUNT}}|{{SCREEN_COUNT}}|"
-        "{{STACK}}|{{NEXT_STEP}}|{{GENERATED_DATE}}"
+        "{{STACK}}|{{NEXT_STEP}}|{{GENERATED_DATE}}|{{STORY_BREAKDOWN_SECTION}}"
     )
 
     def test_ready_fill(self):
@@ -808,6 +840,21 @@ class TestFillCaptainsChair:
         )
         assert "questions" in result
         assert "⚠" in result
+
+
+def test_story_breakdown_extracts_feature_area_counts():
+    breakdown = _story_breakdown(_GROUPED_ANALYSIS_CONTENT)
+
+    assert breakdown == [("Foundation", 2), ("Setup Screen: AWS", 3)]
+
+
+def test_render_story_breakdown_html_renders_rows():
+    rendered = _render_story_breakdown_html(_GROUPED_ANALYSIS_CONTENT)
+
+    assert "Story Shape" in rendered
+    assert "Foundation" in rendered
+    assert "Setup Screen: AWS" in rendered
+    assert ">3<" in rendered
 
 
 # ---------------------------------------------------------------------------
@@ -1064,7 +1111,7 @@ class TestLifecycleState:
         assert result.captains_chair_path is not None
         assert result.captains_chair_path.exists()
 
-    def test_captains_chair_not_overwritten_when_state_does_not_advance(self, tmp_path):
+    def test_captains_chair_rewritten_when_state_does_not_advance(self, tmp_path):
         from drydock.metadata import render_metadata, set_build_state
 
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1072,7 +1119,8 @@ class TestLifecycleState:
         set_build_state(target_dir, "analyzed")
 
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.captains_chair_path is None
+        assert result.captains_chair_path is not None
+        assert result.captains_chair_path.exists()
 
     def test_captains_chair_not_written_when_no_metadata(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

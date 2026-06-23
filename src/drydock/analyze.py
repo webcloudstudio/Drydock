@@ -15,6 +15,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from html import escape
 from pathlib import Path
 from typing import Protocol
 
@@ -65,6 +66,10 @@ _TUNING_OPTIONS_SECTION_RE = re.compile(
 )
 _SUMMARY_QUALITY_RE = re.compile(r"^Quality:\s*(\S+)\s*$", re.MULTILINE)
 _SUMMARY_COUNT_RE = re.compile(r"^  (blockers|questions):\s*.+?$", re.MULTILINE)
+_STORY_SECTION_RE = re.compile(
+    r"^###\s+(?:Feature Area\s+\d+\s+—\s+)?(.+?)\s*$", re.MULTILINE
+)
+_STORY_ROW_RE = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|", re.MULTILINE)
 _QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
@@ -580,6 +585,7 @@ def _fill_captains_chair(
     next_step: str,
     project_name: str,
     generated_date: str,
+    story_breakdown_html: str = "",
 ) -> str:
     css_class, icon, desc = _QUALITY_META.get(quality, ("blocked", "?", quality))
     replacements = {
@@ -595,10 +601,55 @@ def _fill_captains_chair(
         "{{SCREEN_COUNT}}": str(screen_count),
         "{{STACK}}": stack or "not declared",
         "{{NEXT_STEP}}": next_step,
+        "{{STORY_BREAKDOWN_SECTION}}": story_breakdown_html,
     }
     for key, value in replacements.items():
         template = template.replace(key, value)
     return template
+
+
+def _story_breakdown(analysis_text: str) -> list[tuple[str, int]]:
+    story_list = analysis_text.split("## Story List", 1)
+    if len(story_list) != 2:
+        return []
+    body = story_list[1]
+    sections = list(_STORY_SECTION_RE.finditer(body))
+    breakdown: list[tuple[str, int]] = []
+    for index, match in enumerate(sections):
+        start = match.end()
+        end = sections[index + 1].start() if index + 1 < len(sections) else len(body)
+        section_text = body[start:end]
+        count = sum(
+            1
+            for row in _STORY_ROW_RE.finditer(section_text)
+            if row.group(1) not in {"ID"}
+        )
+        if count:
+            breakdown.append((match.group(1).strip(), count))
+    return breakdown
+
+
+def _render_story_breakdown_html(analysis_text: str) -> str:
+    breakdown = _story_breakdown(analysis_text)
+    if not breakdown:
+        return ""
+    items = "\n".join(
+        [
+            '  <div class="breakdown-row">'
+            f'<span class="breakdown-name">{escape(name)}</span>'
+            f'<span class="breakdown-count">{count}</span>'
+            "</div>"
+            for name, count in breakdown
+        ]
+    )
+    return "\n".join(
+        [
+            '<div class="breakdown">',
+            '  <div class="breakdown-label">Story Shape</div>',
+            items,
+            "</div>",
+        ]
+    )
 
 
 def _next_step_hint(quality: str, target: str) -> str:
@@ -770,10 +821,11 @@ def analyze(
     stamp_last(target_dir, "analyzed")
     set_sub_state(target_dir, "complete")
 
-    # Captain's Chair — only when build_state advances to "analyzed".
+    # Captain's Chair reflects the current analyzed state, so rewrite it on every
+    # successful analyze run when metadata exists.
     captains_chair_path: Path | None = None
     state_advanced = set_build_state(target_dir, "analyzed")
-    if state_advanced:
+    if state_advanced or (target_dir / METADATA_NAME).is_file():
         try:
             template_path = get_rigging_root() / "templates" / "captains_chair.html"
             if template_path.is_file():
@@ -789,6 +841,7 @@ def analyze(
                     next_step=_next_step_hint(quality, target),
                     project_name=target,
                     generated_date=today,
+                    story_breakdown_html=_render_story_breakdown_html(analysis_text),
                 )
                 chair_path = target_dir / "QuarterDeck" / "captains_chair.html"
                 chair_path.parent.mkdir(parents=True, exist_ok=True)

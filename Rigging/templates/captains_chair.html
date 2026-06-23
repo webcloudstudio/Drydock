@@ -95,6 +95,36 @@ body {
   margin-bottom: 0.5rem;
 }
 .next-step-value { font-size: 0.875rem; color: #94a3b8; font-family: "SF Mono", "Cascadia Code", monospace; }
+.breakdown {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  margin-top: 1.5rem;
+}
+.breakdown-label {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.75rem;
+}
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid #334155;
+}
+.breakdown-row:first-of-type { border-top: 0; padding-top: 0; }
+.breakdown-name { font-size: 0.9rem; color: #cbd5e1; }
+.breakdown-count {
+  font-size: 0.9rem;
+  color: #f8fafc;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 </style>
 </head>
 <body>
@@ -143,6 +173,8 @@ body {
   <div class="next-step-label">Next Step</div>
   <div class="next-step-value">{{NEXT_STEP}}</div>
 </div>
+
+{{STORY_BREAKDOWN_SECTION}}
 
 </body>
 </html>
