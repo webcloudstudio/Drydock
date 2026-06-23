@@ -3654,3 +3654,25 @@
 {"command": "drydock analyze Marina2", "time": "2026-06-22 23:41", "target": "Marina2", "return_code": 0}
 {"command": "drydock plan Marina2", "time": "2026-06-23 00:16", "target": "Marina2", "return_code": 1}
 {"command": "drydock plan Marina2", "time": "2026-06-23 01:45", "target": "Marina2", "return_code": 1}
+{"command": "drydock build status", "time": "2026-06-23 01:54", "return_code": 2}
+{"command": "drydock config set drydock_build_directory /tmp/pytest-of-barlo/pytest-190/test_config_set_drydock_build_0/builds", "time": "2026-06-23 03:23", "return_code": 0}
+{"command": "drydock config set prompt_warn_kb 75", "time": "2026-06-23 03:23", "return_code": 0}
+{"command": "drydock config set prompt_warn_kb fifty", "time": "2026-06-23 03:23", "return_code": 1}
+{"command": "drydock build status", "time": "2026-06-23 03:23", "return_code": 2}
+{"command": "drydock rigging update MyTarget", "time": "2026-06-23 03:23", "target": "MyTarget", "return_code": 2}
+{"command": "drydock rigging verify MyTarget", "time": "2026-06-23 03:23", "target": "MyTarget", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-23 03:23", "return_code": 2}
+{"command": "drydock rigging update MyTarget", "time": "2026-06-23 03:23", "target": "MyTarget", "return_code": 2}
+{"command": "drydock rigging verify MyTarget", "time": "2026-06-23 03:23", "target": "MyTarget", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-23 03:23", "return_code": 2}
+{"command": "drydock rigging update MyTarget", "time": "2026-06-23 03:23", "target": "MyTarget", "return_code": 2}
+{"command": "drydock rigging verify MyTarget", "time": "2026-06-23 03:23", "target": "MyTarget", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-23 03:23", "return_code": 2}
+{"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-190/test_document_assemble_builds_0/spec.md --output /tmp/pytest-of-barlo/pytest-190/test_document_assemble_builds_0/index.html", "time": "2026-06-23 03:23", "return_code": 0}
+{"command": "drydock plan Marina2", "time": "2026-06-23 14:12", "target": "Marina2", "return_code": 1}
+{"command": "drydock config set drydock_build_directory /tmp/pytest-of-barlo/pytest-196/test_config_set_drydock_build_0/builds", "time": "2026-06-23 14:23", "return_code": 0}
+{"command": "drydock build status", "time": "2026-06-23 14:23", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-23 14:23", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-23 14:23", "return_code": 2}
+{"command": "drydock build score MyTarget", "time": "2026-06-23 14:23", "return_code": 2}
+{"command": "drydock document assemble --source /tmp/pytest-of-barlo/pytest-196/test_document_assemble_builds_0/spec.md --output /tmp/pytest-of-barlo/pytest-196/test_document_assemble_builds_0/index.html", "time": "2026-06-23 14:23", "return_code": 0}

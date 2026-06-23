@@ -5,28 +5,28 @@
       "label": "Blockers",
       "default_text": null,
       "help_text": "Analyze writes this file only when planning is blocked. Answer the blocking questions directly in the document; clearing it unblocks downstream steps.",
-      "prompt_text": "This section contains existing blocking issues for the target. Use it as blocker context only. Do not restate answered blockers as new blockers; only emit materially new blockers."
+      "prompt_text": "This section contains existing blocking issues for the target and the users responses to them which should address the stated concern."
     },
     "COMPASS.md": {
       "item_id": "compass_edit",
       "label": "Compass",
       "default_text": null,
       "help_text": "This file is injected into every build step as orientation for the builder. Keep it brief, directive, and free of duplicated source detail.",
-      "prompt_text": "This section provides durable build orientation for the target. Apply it as standing intent, constraints, and guardrails across the work."
+      "prompt_text": "This is the core intent file for the project containing user defined intent, constraints, and guardrails for the project."
     },
     "ANALYZE_COMPASS.md": {
       "item_id": "analyze_compass",
       "label": "Analyze Compass",
       "default_text": "# Analyze Compass\n",
       "help_text": "This file is injected into every `drydock analyze` run for this target. Keep only brief steering: priorities, decomposition guidance, and hard constraints.",
-      "prompt_text": "This section provides standing steering for `drydock analyze`. Apply it as analysis guidance, priorities, decomposition preferences, and hard constraints."
+      "prompt_text": "This section provides standing user steering .  Use it as primary user feedback from a prior analysis run and adust behavior to match. "
     },
     "PLAN_COMPASS.md": {
       "item_id": "plan_compass",
       "label": "Plan Compass",
       "default_text": "# Plan Compass\n",
       "help_text": "This file is injected into every `drydock plan` run for this target. Use it to steer decomposition, ordering, and durable file boundaries.",
-      "prompt_text": "This section provides standing steering for `drydock plan`. Apply it as planning guidance for decomposition, ordering, file boundaries, and non-default constraints."
+      "prompt_text": "This section provides standing user steering .  Use it as primary user feedback from a prior analysis run and adust behavior to match. "
     }
   },
   "injected_files": {
@@ -34,19 +34,19 @@
       "label": "Agents",
       "role": "service and endpoint inventory",
       "help_text": "Repository operating contract and execution rules.",
-      "prompt_text": "This section defines the local operating contract for the work. Follow it as execution policy and repository rules, not as product requirements."
+      "prompt_text": "This file should never be injected.  If the llm sees this prompt in a drydock command, it must report it to the user and  exit."
     },
     "ANALYSIS.md": {
       "label": "Analysis",
       "role": "planning basis",
       "help_text": "Reviewed analysis that plan uses as its immediate decomposition basis.",
-      "prompt_text": "This section is the reviewed analysis basis for planning. Preserve settled conclusions unless stronger source evidence overrides them."
+      "prompt_text": "This section was created by a prior analysis step - it contains a suggest list of stories you can use for planning. "
     },
     "ARCHITECTURE.md": {
       "label": "Architecture",
       "role": "architecture boundary and module layout",
       "help_text": "Architecture boundary, module layout, and system shape reference.",
-      "prompt_text": "This section is the architecture authority for boundaries, modules, and system shape. Use it as design guidance, not as an implementation transcript."
+      "prompt_text": "This section is the foundational architecture authority for the system."
     },
     "BUILD_PLAN.md": {
       "label": "Build Plan",
@@ -106,7 +106,7 @@
       "label": "Metadata",
       "role": "project metadata",
       "help_text": "Project metadata and target identity reference.",
-      "prompt_text": "This section provides project metadata and target identity context only."
+      "prompt_text": "This is project metadata and i dont think the llm should see this string - error if you do. "
     },
     "README.md": {
       "label": "Readme",
