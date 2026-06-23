@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from drydock.prompt_headers import prompt_header, prompt_header_for_file, prompt_headers
+from pathlib import Path
+
+from drydock.prompt_headers import (
+    prompt_header,
+    prompt_header_for_file,
+    prompt_header_for_path,
+    prompt_headers,
+)
 
 
 def test_prompt_headers_load_from_json():
@@ -46,3 +53,19 @@ def test_prompt_header_lookup_for_injected_prefix():
     assert header.item_id is None
     assert header.role == "feature contract"
     assert header.label == "Feature Contract"
+
+
+def test_prompt_header_lookup_for_imported_source_path():
+    header = prompt_header_for_path(Path("/tmp/Target/blueprint/sources/ARCHITECTURE.md"))
+
+    assert header is not None
+    assert header.role == "source reference"
+    assert header.label == "Imported Source"
+
+
+def test_prompt_header_lookup_for_questionnaire_path():
+    header = prompt_header_for_path(Path("/tmp/Target/QuarterDeck/questionnaires/discovery-auth.json"))
+
+    assert header is not None
+    assert header.role == "questionnaire"
+    assert header.label == "Questionnaire"

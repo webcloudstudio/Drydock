@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from drydock.errors import DrydockError
 from drydock.paths import get_prompts_root
@@ -24,6 +25,15 @@ class PromptHeader:
 @dataclass(frozen=True)
 class PromptPrefixHeader:
     prefix: str
+    label: str
+    role: str | None
+    help_text: str
+    prompt_text: str
+
+
+@dataclass(frozen=True)
+class PromptPatternHeader:
+    pattern: str
     label: str
     role: str | None
     help_text: str
@@ -111,6 +121,28 @@ def _load_prefix_headers() -> tuple[PromptPrefixHeader, ...]:
     return tuple(headers)
 
 
+@lru_cache(maxsize=1)
+def _load_pattern_headers() -> tuple[PromptPatternHeader, ...]:
+    payload = _load_payload()
+    injected_patterns = payload.get("injected_patterns", [])
+    if not isinstance(injected_patterns, list):
+        raise DrydockError("prompts.json field 'injected_patterns' must be an array")
+    headers: list[PromptPatternHeader] = []
+    for item in injected_patterns:
+        if not isinstance(item, dict):
+            raise DrydockError("prompts.json injected_patterns entries must be objects")
+        headers.append(
+            PromptPatternHeader(
+                pattern=str(item.get("pattern", "")).strip(),
+                label=str(item.get("label", "")).strip(),
+                role=str(item.get("role", "")).strip() or None,
+                help_text=str(item.get("help_text", "")).strip(),
+                prompt_text=str(item.get("prompt_text", "")).strip(),
+            )
+        )
+    return tuple(headers)
+
+
 def prompt_header(item_id: str) -> PromptHeader | None:
     for header in _load_target_headers():
         if header.item_id == item_id:
@@ -137,6 +169,25 @@ def prompt_header_for_file(filename: str) -> PromptHeader | None:
                 prompt_text=header.prompt_text,
             )
     return None
+
+
+def prompt_header_for_path(path: Path | str) -> PromptHeader | None:
+    path_obj = Path(path)
+    normalized = path_obj.as_posix().lstrip("./")
+    for header in _load_pattern_headers():
+        if path_obj.match(header.pattern) or normalized == header.pattern or normalized.endswith(
+            header.pattern.lstrip("./")
+        ):
+            return PromptHeader(
+                item_id=None,
+                filename=path_obj.name,
+                label=header.label,
+                default_text=None,
+                role=header.role,
+                help_text=header.help_text,
+                prompt_text=header.prompt_text,
+            )
+    return prompt_header_for_file(path_obj.name)
 
 
 def prompt_headers() -> tuple[PromptHeader, ...]:

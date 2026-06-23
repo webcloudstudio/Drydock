@@ -26,6 +26,7 @@ from drydock.metadata import increment_version, set_build_state, set_sub_state, 
 from drydock.paths import get_prompts_root
 from drydock.prompt_assembly import (
     PromptAssembly,
+    contextual_fenced_parts,
     contextual_markdown_parts,
     lines_part,
     part,
@@ -359,20 +360,13 @@ def _assemble_prompt_assembly(
             )
         ]
         for path_obj, data in answered:
-            parts_list.append(
-                part(
+            parts_list.extend(
+                contextual_fenced_parts(
                     path_obj.name,
-                    "\n".join(
-                        [
-                            "### " + path_obj.name,
-                            "",
-                            "```json",
-                            json.dumps(data, indent=2),
-                            "```",
-                            "",
-                        ]
-                    ),
-                    kind="file",
+                    "### " + path_obj.name,
+                    json.dumps(data, indent=2),
+                    filename=path_obj.name,
+                    fence="json",
                     role="questionnaire",
                     path=path_obj,
                 )

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from drydock.prompt_headers import prompt_header_for_file
+from drydock.prompt_headers import prompt_header_for_path
 
 
 def source_file_role(path: Path) -> str:
     """Return the configured role label for an injected source file."""
-    header = prompt_header_for_file(path.name)
+    header = prompt_header_for_path(path)
     if header is not None and header.role:
         return header.role
     return "source reference"

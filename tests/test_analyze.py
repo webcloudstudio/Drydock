@@ -401,13 +401,14 @@ class TestAssemblePrompt:
         assert "### FEATURE-Auth.md - feature contract" not in result
         assert "should not appear" not in result
 
-    def test_injects_fixed_role_header_for_known_source_type(self, tmp_path):
+    def test_imported_source_uses_generic_source_category_even_for_known_filenames(self, tmp_path):
         bp = tmp_path / "blueprint"
         sources = bp / "sources"
         sources.mkdir(parents=True)
         (sources / "ARCHITECTURE.md").write_text("arch content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### sources/ARCHITECTURE.md - architecture boundary and module layout" in result
+        assert "### sources/ARCHITECTURE.md - source reference" in result
+        assert "imported source material from the user" in result
 
     def test_injects_feedback_directive_when_provided(self, tmp_path):
         bp = tmp_path / "blueprint"

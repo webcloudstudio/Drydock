@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.prompt_headers import prompt_header_for_file
+from drydock.prompt_headers import prompt_header_for_file, prompt_header_for_path
 
 
 def estimate_tokens(byte_count: int) -> int:
@@ -123,6 +123,25 @@ def fenced_markdown_part(
     )
 
 
+def fenced_block_part(
+    label: str,
+    heading: str,
+    body: str,
+    *,
+    fence: str,
+    kind: str = "file",
+    role: str | None = None,
+    path: Path | None = None,
+) -> PromptPart:
+    return part(
+        label,
+        "\n".join([heading, "", f"```{fence}", body.rstrip("\n"), "```", ""]),
+        kind=kind,
+        role=role,
+        path=path,
+    )
+
+
 def fenced_text_part(
     label: str,
     heading: str,
@@ -150,7 +169,7 @@ def contextual_markdown_parts(
     role: str | None = None,
     path: Path | None = None,
 ) -> tuple[PromptPart, ...]:
-    metadata = prompt_header_for_file(filename)
+    metadata = prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
     parts: list[PromptPart] = []
     if metadata is not None:
         parts.append(
@@ -176,6 +195,56 @@ def contextual_markdown_parts(
                     heading,
                     "",
                     "```markdown",
+                    body.rstrip("\n"),
+                    "```",
+                    "---",
+                    "",
+                ]
+            ),
+            kind="file",
+            role=role or (metadata.role if metadata is not None else None),
+            path=path,
+        )
+    )
+    return tuple(parts)
+
+
+def contextual_fenced_parts(
+    label: str,
+    heading: str,
+    body: str,
+    *,
+    filename: str,
+    fence: str,
+    role: str | None = None,
+    path: Path | None = None,
+) -> tuple[PromptPart, ...]:
+    metadata = prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
+    parts: list[PromptPart] = []
+    if metadata is not None:
+        parts.append(
+            part(
+                f"{label} prompt",
+                "\n".join(
+                    [
+                        f"## {metadata.label}",
+                        metadata.prompt_text.rstrip("\n"),
+                        "---",
+                        "",
+                    ]
+                ),
+                role="prompt instructions",
+                path=path,
+            )
+        )
+    parts.append(
+        part(
+            label,
+            "\n".join(
+                [
+                    heading,
+                    "",
+                    f"```{fence}",
                     body.rstrip("\n"),
                     "```",
                     "---",
