@@ -166,6 +166,18 @@ evidence: <Target>/evidence/<id>.md
 | `state` | Yes | Current block state |
 | `evidence` | No | Path to evidence file |
 
+A compact single-line form is also accepted and is equivalent to the field body
+above:
+
+```markdown
+## ac N: {Summary} (smoke|assertion: {check})
+```
+
+The reader derives `id` (a slug of the summary), `kind`, and `check` from the
+header, sets `state: pending`, and assigns `parent` to the nearest preceding
+`story`, `spike`, or `feature`. Use the explicit field body when an `ac` must
+gate a block other than its immediate predecessor or needs `depends`/`evidence`.
+
 ---
 
 ## Block States

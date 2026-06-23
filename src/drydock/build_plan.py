@@ -20,6 +20,9 @@ _HEADER_RE = re.compile(r"^##\s+(feature|story|spike|ac)\s+(\d+):\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$")
 _PLAN_HEADER_RE = re.compile(r"^#\s+MANIFEST:\s*(.+?)\s*$")
 _LIST_FIELDS = {"depends", "implements", "context", "stack", "rules"}
+# Compact single-line ac form: "## ac N: Summary (smoke|assertion: check)".
+# The check is greedy to the final ')' so embedded parens (e.g. json.load(x)) survive.
+_COMPACT_AC_RE = re.compile(r"^(?P<summary>.*?)\s*\((?P<kind>smoke|assertion):\s*(?P<check>.*)\)\s*$")
 
 
 @dataclass(frozen=True)
@@ -171,6 +174,68 @@ def _split_depends(value: str) -> tuple[str, ...]:
     return tuple(item for item in value.split() if item)
 
 
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug or "ac"
+
+
+def _normalize_compact_acs(raw_blocks: list[dict[str, object]]) -> None:
+    """Expand compact one-line ``ac`` headers into the canonical field body.
+
+    The planning LLM may emit ``## ac N: Summary (kind: check)`` with no field
+    body. Each such block inherits its ``parent`` from the nearest preceding
+    non-``ac`` block (so a run of compact ACs gates the same story), derives a
+    unique ``id`` slug from the summary, and pulls ``kind``/``check`` from the
+    parenthetical. Blocks that already carry an ``id`` are left untouched.
+    """
+    seen_ids = {
+        str(raw["fields"].get("id", "")).strip()  # type: ignore[union-attr]
+        for raw in raw_blocks
+        if str(raw["fields"].get("id", "")).strip()  # type: ignore[union-attr]
+    }
+    last_parent: str | None = None
+    for raw in raw_blocks:
+        fields = raw["fields"]
+        assert isinstance(fields, dict)
+        block_type = str(raw["block_type"])
+        existing_id = str(fields.get("id", "")).strip()
+
+        if block_type != "ac":
+            if existing_id:
+                last_parent = existing_id
+            continue
+
+        if existing_id:
+            parent = str(fields.get("parent", "")).strip()
+            if parent:
+                last_parent = parent
+            continue
+
+        match = _COMPACT_AC_RE.match(str(raw["name"]))
+        if not match:
+            continue  # leave malformed; _parse_block raises the existing error
+
+        summary = match.group("summary").strip()
+        candidate = _slugify(summary)
+        unique = candidate
+        suffix = 2
+        while unique in seen_ids:
+            unique = f"{candidate}-{suffix}"
+            suffix += 1
+        seen_ids.add(unique)
+
+        fields["id"] = unique
+        fields.setdefault("summary", summary)
+        fields["kind"] = match.group("kind")
+        check = match.group("check").strip()
+        if check:
+            fields["check"] = check
+        fields.setdefault("state", "pending")
+        if last_parent and not fields.get("parent"):
+            fields["parent"] = last_parent
+        raw["name"] = summary
+
+
 def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
     fields = raw["fields"]
     assert isinstance(fields, dict)
@@ -272,6 +337,7 @@ def parse_build_plan(path: Path) -> BuildPlan:
     if not project:
         raise SpecificationError(f"Missing '# MANIFEST: <ProjectName>' header in {path}")
 
+    _normalize_compact_acs(raw_blocks)
     blocks = tuple(_parse_block(raw, path) for raw in raw_blocks)
     plan_state = metadata.get("state", "approved")
     if plan_state not in PLAN_STATES:

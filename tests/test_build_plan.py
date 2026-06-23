@@ -191,6 +191,67 @@ def test_ac_requires_parent(tmp_path: Path):
         parse_build_plan(path)
 
 
+def test_compact_ac_expands_to_canonical_block(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+
+## story 1: Foundation
+id:      foundation
+summary: Build it.
+state:   pending
+
+## ac 1: Health endpoint returns status=ok (smoke: curl -sf http://h/health | python3 -c "json.load(sys.stdin)")
+## ac 2: Startup aborts outside git (assertion: run in /tmp, confirm exit 1)
+""",
+    )
+
+    plan = parse_build_plan(path)
+    acs = [b for b in plan.blocks if b.block_type == "ac"]
+
+    assert [b.block_id for b in acs] == [
+        "health-endpoint-returns-status-ok",
+        "startup-aborts-outside-git",
+    ]
+    assert all(b.parent == "foundation" for b in acs)
+    assert acs[0].fields["kind"] == "smoke"
+    # Greedy match keeps embedded parens from json.load(sys.stdin) inside check.
+    assert acs[0].fields["check"] == 'curl -sf http://h/health | python3 -c "json.load(sys.stdin)"'
+    assert acs[1].fields["kind"] == "assertion"
+    assert acs[1].fields["check"] == "run in /tmp, confirm exit 1"
+    assert acs[0].name == "Health endpoint returns status=ok"
+
+
+def test_compact_ac_slugs_deduplicate(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+
+## story 1: Foundation
+id:      foundation
+summary: Build it.
+state:   pending
+
+## ac 1: Check passes (smoke: a)
+## ac 2: Check passes (smoke: b)
+""",
+    )
+
+    plan = parse_build_plan(path)
+    acs = [b for b in plan.blocks if b.block_type == "ac"]
+    assert [b.block_id for b in acs] == ["check-passes", "check-passes-2"]
+
+
+def test_compact_ac_without_parent_still_raises(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        "# MANIFEST: Example\n\n## ac 1: Orphan check (smoke: true)\n",
+    )
+
+    with pytest.raises(SpecificationError, match="Missing parent"):
+        parse_build_plan(path)
+
+
 def test_invalid_state_raises(tmp_path: Path):
     path = write_plan(
         tmp_path / "MANIFEST.md",
