@@ -317,12 +317,14 @@ def test_document_renderer_html_takes_priority(tmp_path, monkeypatch):
             "path_md": "../doc.md",
             "path_html": "../doc.html",
             "path_pdf": "../doc.pdf",
+            "help_text": "Document help.",
         }
     )
 
     assert "doc-frame" in rendered  # html iframe rendered
     assert "variant=html" in rendered
     assert "md-tabs" not in rendered  # no tabs
+    assert "Document help." in rendered
 
 
 def test_document_renderer_pdf_fallback_when_no_html(tmp_path, monkeypatch):
@@ -356,11 +358,18 @@ def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
     rendered = quarterdeck.render_document_item(
-        {"id": "solo", "label": "Solo", "type": "document", "path_md": "../doc.md"}
+        {
+            "id": "solo",
+            "label": "Solo",
+            "type": "document",
+            "path_md": "../doc.md",
+            "help_text": "Document help.",
+        }
     )
 
     assert "md-tabs" not in rendered
     assert "Solo" in rendered
+    assert "Document help." in rendered
 
 
 def test_document_renderer_missing_all_paths():
@@ -390,6 +399,7 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
             "type": "markdown",
             "tabs": True,
             "path": "../ANALYSIS.md",
+            "help_text": "Markdown help.",
         }
     )
 
@@ -399,6 +409,7 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     assert "Overview" in rendered
     assert "Open Questions" in rendered
     assert "Notes" in rendered
+    assert "Markdown help." in rendered
 
 
 def test_markdown_renderer_without_tabs_flag_renders_plain(tmp_path, monkeypatch):
@@ -408,10 +419,17 @@ def test_markdown_renderer_without_tabs_flag_renders_plain(tmp_path, monkeypatch
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
     rendered = quarterdeck.render_markdown_item(
-        {"id": "plain", "label": "Plain", "type": "markdown", "path": "../doc.md"}
+        {
+            "id": "plain",
+            "label": "Plain",
+            "type": "markdown",
+            "path": "../doc.md",
+            "help_text": "Markdown help.",
+        }
     )
 
     assert "md-tabs" not in rendered
+    assert "Markdown help." in rendered
 
 
 # ── _item_file_exists ────────────────────────────────────────────────────────
@@ -675,8 +693,8 @@ def test_editable_markdown_renders_configured_help_and_prompt_text(tmp_path, mon
     )
 
     assert "Injected into every analyze run." in rendered
-    assert "Prompt Text." in rendered
-    assert "Short steering only." in rendered
+    assert "Prompt Text." not in rendered
+    assert "Short steering only." not in rendered
 
 
 def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):

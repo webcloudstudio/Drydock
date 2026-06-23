@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan
-from drydock.prompt_headers import prompt_headers
+from drydock.prompt_headers import prompt_header_for_file, prompt_headers
 
 SOUNDINGS_HEADER = ("ID", "Acceptance Criterion", "State", "Evidence")
 
@@ -114,6 +114,14 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     analyze_compass = docs_by_item["analyze_compass"]
     plan_compass = docs_by_item["plan_compass"]
     exclude_files = docs_by_item["exclude_files"]
+    analysis = prompt_header_for_file("ANALYSIS.md")
+    soundings_doc = prompt_header_for_file("SOUNDINGS.md")
+    captains_chair_help = (
+        "Live project overview and delivery snapshot for this target."
+    )
+    sea_trials_help = (
+        "Verification record and trial results for the current target state."
+    )
     return f"""console:
   name: {target} QuarterDeck
   default_item: compass_edit
@@ -133,12 +141,12 @@ sections:
 
 items:
   - {{ id: blockers_doc, label: "Blockers", section: blockers, type: editable_markdown, path: ../BLOCKERS.md, help_text: {json.dumps(blockers.help_text)}, prompt_text: {json.dumps(blockers.prompt_text)} }}
-  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1 }}
+  - {{ id: commanders_view, label: "Captain's Chair", section: core, type: document, path_html: captains_chair.html, order: 1, help_text: {json.dumps(captains_chair_help)} }}
   - {{ id: compass_edit, label: "Compass", section: core, type: editable_markdown, path: ../COMPASS.md, order: 2, help_text: {json.dumps(compass.help_text)}, prompt_text: {json.dumps(compass.prompt_text)} }}
-  - {{ id: analysis, label: "Analysis", section: core, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 3 }}
+  - {{ id: analysis, label: "Analysis", section: core, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 3, help_text: {json.dumps(analysis.help_text if analysis else "")} }}
   - {{ id: analyze_compass, label: "Analyze Compass", section: core, type: editable_markdown, path: ../ANALYZE_COMPASS.md, order: 4, help_text: {json.dumps(analyze_compass.help_text)}, prompt_text: {json.dumps(analyze_compass.prompt_text)} }}
-  - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 5 }}
-  - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 6 }}
+  - {{ id: sea_trials, label: "Sea Trials", section: core, type: markdown, path: ../SEA_TRIALS.md, order: 5, help_text: {json.dumps(sea_trials_help)} }}
+  - {{ id: soundings, label: "Soundings", section: core, type: markdown, path: ../SOUNDINGS.md, order: 6, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
 {planning_item}  - {{ id: board, label: "Delivery Board", section: core, type: kanban, path: tickets.json, order: 7 }}
   - {{ id: plan_compass, label: "Plan Compass", section: core, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 8, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
 {build_compass_item}

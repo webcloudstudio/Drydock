@@ -640,14 +640,22 @@ def _render_markdown_tabbed(item: dict[str, Any], text: str) -> str:
     )
 
 
+def _render_help_note(item: dict[str, Any]) -> str:
+    help_text = str(item.get("help_text", "")).strip()
+    if not help_text:
+        return ""
+    return "<div class='page-note'>" f"{html.escape(help_text)}" "</div>"
+
+
 # ── Renderers (one per type; each takes the item dict) ──────────────────────────
 
 
 def render_markdown_item(item: dict[str, Any]) -> str:
     text = _strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    helper = _render_help_note(item)
     if item.get("tabs"):
-        return _render_markdown_tabbed(item, text)
-    return _md(text)
+        return helper + _render_markdown_tabbed(item, text)
+    return helper + _md(text)
 
 
 def render_editable_markdown(item: dict[str, Any]) -> str:
@@ -660,20 +668,7 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
     except HTTPException:
         raw = ""
         rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
-    helper = ""
-    if item.get("help_text"):
-        helper += (
-            "<div class='page-note'>"
-            f"{html.escape(str(item.get('help_text', '')).strip())}"
-            "</div>"
-        )
-    if item.get("prompt_text"):
-        helper += (
-            "<div class='page-note page-note-secondary'>"
-            "<strong>Prompt Text.</strong> "
-            f"{html.escape(str(item.get('prompt_text', '')).strip())}"
-            "</div>"
-        )
+    helper = _render_help_note(item)
     return (
         f"<div class='editable' data-item='{item_id}'>"
         f"{helper}"
@@ -701,6 +696,7 @@ def render_document_item(item: dict[str, Any]) -> str:
     label = item.get("label", "Document")
     iid = item["id"]
     title = f"<h1>{html.escape(label)}</h1>"
+    helper = _render_help_note(item)
 
     if item.get("path_html"):
         try:
@@ -708,6 +704,7 @@ def render_document_item(item: dict[str, Any]) -> str:
             url = f"/raw/{iid}?variant=html"
             return (
                 title
+                + helper
                 + f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
             )
         except HTTPException:
@@ -719,6 +716,7 @@ def render_document_item(item: dict[str, Any]) -> str:
             url = f"/raw/{iid}?variant=pdf"
             return (
                 title
+                + helper
                 + f"<p><a href='{url}' target='_blank' rel='noopener' class='pdf-open-btn'>Open PDF ↗</a></p>"
             )
         except HTTPException:
@@ -727,11 +725,11 @@ def render_document_item(item: dict[str, Any]) -> str:
     if item.get("path_md"):
         try:
             text = _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
-            return title + _md(text)
+            return title + helper + _md(text)
         except HTTPException:
             pass
 
-    return title + "<p class='subtle'>No files found for this document.</p>"
+    return title + helper + "<p class='subtle'>No files found for this document.</p>"
 
 
 def render_plan_decision(item: dict[str, Any]) -> str:

@@ -48,14 +48,18 @@ def test_render_console_labels_compass_feedback_files():
     parsed = yaml.safe_load(config)
     items = {item["id"]: item for item in parsed["items"]}
 
+    assert "help_text" in items["commanders_view"]
     assert items["compass_edit"]["label"] == "Compass"
     assert items["compass_edit"]["path"] == "../COMPASS.md"
     assert "help_text" in items["compass_edit"]
     assert "prompt_text" in items["compass_edit"]
+    assert "help_text" in items["analysis"]
     assert items["analyze_compass"]["label"] == "Analyze Compass"
     assert items["analyze_compass"]["path"] == "../ANALYZE_COMPASS.md"
     assert "help_text" in items["analyze_compass"]
     assert "prompt_text" in items["analyze_compass"]
+    assert "help_text" in items["sea_trials"]
+    assert "help_text" in items["soundings"]
     assert items["plan_compass"]["label"] == "Plan Compass"
     assert items["plan_compass"]["path"] == "../PLAN_COMPASS.md"
     assert "help_text" in items["plan_compass"]
