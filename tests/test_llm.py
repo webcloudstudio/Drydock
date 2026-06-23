@@ -123,6 +123,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert result.ok
     assert result.text == "READY"
     assert result.stats.model == "claude-test"
+    assert result.stats.elapsed_ms is not None
     assert result.stats.input_tokens == 10
     assert result.command[-2:] == ("--model", "sonnet")
     assert "plan-create_claude" in result.artifacts.log_file.name
@@ -142,6 +143,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert record["prompt"]["sha256"]
     assert record["result"]["raw_sha256"]
     assert record["result"]["output_sha256"]
+    assert record["result"]["stats"]["elapsed_ms"] is not None
     assert [event["event"] for event in _events(tmp_path)] == [
         "execution.started",
         "provider.event",
@@ -149,6 +151,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
         "execution.completed",
     ]
     assert _events(tmp_path)[1]["provider_event_type"] == "stream_event"
+    assert _events(tmp_path)[-1]["elapsed_ms"] is not None
 
 
 def test_claude_content_block_boundaries_are_forwarded_to_live_output(tmp_path, monkeypatch):
@@ -490,4 +493,7 @@ def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeyp
     )
 
     assert "parameters=" in result.artifacts.log_file.read_text()
-    assert "parameters=" not in capsys.readouterr().err
+    stderr = capsys.readouterr().err
+    assert "parameters=" not in stderr
+    assert "[llm]" in stderr
+    assert "elapsed=" in stderr

@@ -7,6 +7,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -33,6 +34,7 @@ from drydock.logging import close_execution_logger, create_execution_logger
 @dataclass(frozen=True)
 class LlmStats:
     model: str | None = None
+    elapsed_ms: int | None = None
     duration_ms: int | None = None
     turns: int | None = None
     input_tokens: int | None = None
@@ -214,6 +216,87 @@ def _first(mapping: Mapping[str, Any], *keys: str) -> Any:
         if value is not None:
             return value
     return None
+
+
+def _elapsed_ms(started_at: datetime, completed_at: datetime) -> int:
+    return max(0, int((completed_at - started_at).total_seconds() * 1000))
+
+
+def _format_ms(milliseconds: int | None) -> str | None:
+    if milliseconds is None:
+        return None
+    seconds = milliseconds / 1000.0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, rem = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{int(minutes)}m {rem:.1f}s"
+    hours, rem = divmod(minutes, 60)
+    return f"{int(hours)}h {int(rem)}m"
+
+
+def _format_cost(cost_usd: float | None) -> str | None:
+    if cost_usd is None:
+        return None
+    return f"${cost_usd:.4f}"
+
+
+def _performance_summary(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    returncode: int,
+    stats: LlmStats,
+) -> str:
+    model = stats.model or "-"
+    elapsed = _format_ms(stats.elapsed_ms) or "-"
+    parts = [
+        f"[llm] {command_name} {llm}/{model}",
+        f"rc={returncode}",
+        f"elapsed={elapsed}",
+    ]
+    provider_duration = _format_ms(stats.duration_ms)
+    if provider_duration and stats.duration_ms != stats.elapsed_ms:
+        parts.append(f"provider={provider_duration}")
+    if stats.turns is not None:
+        parts.append(f"turns={stats.turns}")
+    if stats.input_tokens is not None:
+        parts.append(f"in={stats.input_tokens}")
+    if stats.cached_input_tokens is not None:
+        parts.append(f"cached={stats.cached_input_tokens}")
+    if stats.cache_creation_input_tokens is not None:
+        parts.append(f"cache_write={stats.cache_creation_input_tokens}")
+    if stats.output_tokens is not None:
+        parts.append(f"out={stats.output_tokens}")
+        if stats.elapsed_ms and stats.elapsed_ms > 0:
+            parts.append(f"out_tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
+    cost = _format_cost(stats.cost_usd)
+    if cost is not None:
+        parts.append(f"cost={cost}")
+    parts.append(f"id={execution_id}")
+    return "  ".join(parts)
+
+
+def _print_performance_summary(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    returncode: int,
+    stats: LlmStats,
+) -> None:
+    print(
+        _performance_summary(
+            llm=llm,
+            command_name=command_name,
+            execution_id=execution_id,
+            returncode=returncode,
+            stats=stats,
+        ),
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[str, LlmStats]:
@@ -575,6 +658,8 @@ def run_prompt(
         if selected == "claude":
             artifacts.output_file.write_text(text, encoding="utf-8", newline="\n")
         completed_at = utc_now()
+        elapsed_ms = _elapsed_ms(started_at, completed_at)
+        stats = LlmStats(**{**asdict(stats), "elapsed_ms": elapsed_ms})
         error = (
             (stderr.strip() or ("execution timed out" if timed_out else None))
             if returncode
@@ -605,6 +690,7 @@ def run_prompt(
                 fields={
                     "returncode": returncode,
                     "timed_out": timed_out,
+                    "elapsed_ms": elapsed_ms,
                     "stats": asdict(stats),
                     "error": error,
                 },
@@ -621,6 +707,13 @@ def run_prompt(
             stats.turns,
             stats.input_tokens,
             stats.output_tokens,
+        )
+        _print_performance_summary(
+            llm=selected,
+            command_name=command_name,
+            execution_id=artifacts.execution_id,
+            returncode=returncode,
+            stats=stats,
         )
         return LlmResult(
             execution_id=artifacts.execution_id,
