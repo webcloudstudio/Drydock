@@ -11,14 +11,14 @@ import pytest
 from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
-    _fill_captains_chair,
     _feedback_body,
+    _fill_captains_chair,
     _is_compass_unpopulated,
     _normalize_analysis_summary,
     _parse_blocks,
-    _remove_tuning_options_section,
     _parse_output,
     _remove_open_questions_section,
+    _remove_tuning_options_section,
     _validate_blockers,
     analyze,
     ensure_feedback_file,
@@ -389,7 +389,7 @@ class TestAssemblePrompt:
         sources.mkdir(parents=True)
         (sources / "spec.md").write_text("imported content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### spec.md" in result
+        assert "### sources/spec.md - source reference" in result
         assert "imported content" in result
 
     def test_top_level_blueprint_files_not_injected(self, tmp_path):
@@ -397,8 +397,16 @@ class TestAssemblePrompt:
         bp.mkdir()
         (bp / "FEATURE-Auth.md").write_text("should not appear", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### FEATURE-Auth.md" not in result
+        assert "### FEATURE-Auth.md - feature contract" not in result
         assert "should not appear" not in result
+
+    def test_injects_fixed_role_header_for_known_source_type(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        sources = bp / "sources"
+        sources.mkdir(parents=True)
+        (sources / "ARCHITECTURE.md").write_text("arch content", encoding="utf-8")
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "### sources/ARCHITECTURE.md - architecture boundary and module layout" in result
 
     def test_injects_feedback_directive_when_provided(self, tmp_path):
         bp = tmp_path / "blueprint"

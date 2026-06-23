@@ -28,6 +28,7 @@ from drydock.metadata import (
     stamp_last,
 )
 from drydock.paths import get_rigging_root
+from drydock.prompt_context import prompt_source_header
 from drydock.prompts import load_prompt, render_inputs
 
 PROMPT_NAME = "analyze"
@@ -251,8 +252,9 @@ def _render_typed_spec(blueprint_dir: Path) -> list[str]:
         ]
     parts += ["## Imported source files", ""]
     for path in _collect_blueprint_files(blueprint_dir):
+        label = path.relative_to(blueprint_dir).as_posix()
         parts += [
-            f"### {path.name}",
+            f"### {prompt_source_header(label, path)}",
             "",
             "```markdown",
             path.read_text(encoding="utf-8"),

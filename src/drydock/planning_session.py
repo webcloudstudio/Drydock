@@ -24,6 +24,7 @@ from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
+from drydock.prompt_context import prompt_source_header
 from drydock.prompts import load_prompt, render_inputs
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
@@ -219,8 +220,9 @@ def _render_contract(name: str) -> list[str]:
 def _render_sources(blueprint_dir: Path) -> list[str]:
     parts = ["## Imported source files", ""]
     for path in _collect_sources(blueprint_dir):
+        label = path.relative_to(blueprint_dir).as_posix()
         parts += [
-            f"### {path.relative_to(blueprint_dir).as_posix()}",
+            f"### {prompt_source_header(label, path)}",
             "",
             "```markdown",
             path.read_text(encoding="utf-8").rstrip(),
