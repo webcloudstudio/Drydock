@@ -243,7 +243,6 @@ def _assemble_prompt_assembly(
             ),
             *contextual_markdown_parts(
                 rel_source,
-                "### Source content (extract usage surface from this)",
                 source_text,
                 filename=Path(rel_source).name,
                 role="source file",

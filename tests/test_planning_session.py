@@ -365,15 +365,15 @@ def test_assemble_prompt_orders_sections_by_input_tokens(tmp_path):
 
     # COMPASS leads the file sections; the standing directive reads next; sources land last.
     order = [
-        result.index("## Compass"),
-        result.index("## Plan Compass"),
-        result.index("ANALYSIS.md (the reviewed plan)"),
-        result.index("## SOUNDINGS.md"),
+        result.index('filename="COMPASS.md"'),
+        result.index('filename="PLAN_COMPASS.md"'),
+        result.index('filename="ANALYSIS.md"'),
+        result.index('filename="SOUNDINGS.md"'),
         result.index("Imported source files"),
     ]
     assert order == sorted(order)
     # BLOCKERS.md is the plan-create gate: listed, but never injected as a content section.
-    assert "## BLOCKERS.md" not in result
+    assert 'filename="BLOCKERS.md"' not in result
 
 
 def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
@@ -389,7 +389,7 @@ def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
         "2026-06-17",
         input_tokens=("ANALYSIS.md", "COMPASS.md"),
     )
-    assert result.index("ANALYSIS.md (the reviewed plan)") < result.index("## Compass")
+    assert result.index('filename="ANALYSIS.md"') < result.index('filename="COMPASS.md"')
 
 
 def test_assemble_prompt_injects_plan_compass_instruction_block(tmp_path):
@@ -406,9 +406,8 @@ def test_assemble_prompt_injects_plan_compass_instruction_block(tmp_path):
         input_tokens=("PLAN_COMPASS.md",),
     )
 
-    assert "## Plan Compass" in result
+    assert 'filename="PLAN_COMPASS.md"' in result
     assert "standing user steering" in result
-    assert "## Plan Compass content" in result
 
 
 def test_assemble_prompt_labels_source_files_with_fixed_roles(tmp_path):
@@ -424,7 +423,7 @@ def test_assemble_prompt_labels_source_files_with_fixed_roles(tmp_path):
         input_tokens=("TYPED_SPEC",),
     )
 
-    assert "### sources/request.md - source reference" in result
+    assert 'filename="sources/request.md"' in result
 
 
 def test_assemble_prompt_excludes_listed_source_filenames(tmp_path):
@@ -445,6 +444,6 @@ def test_assemble_prompt_excludes_listed_source_filenames(tmp_path):
         input_tokens=("TYPED_SPEC",),
     )
 
-    assert "### sources/request.md - source reference" in result
-    assert "### sources/BUILD_PLAN.md - source reference" not in result
+    assert 'filename="sources/request.md"' in result
+    assert 'filename="sources/BUILD_PLAN.md"' not in result
     assert "ignore me" not in result

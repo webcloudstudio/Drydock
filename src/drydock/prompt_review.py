@@ -200,21 +200,18 @@ def _assemble_prompt_assembly(
         ),
         fenced_markdown_part(
             "Prompt Under Review",
-            f"## Prompt Under Review\npath: {prompt_path}",
             prompt_text,
             role="prompt under review",
             path=prompt_path,
         ),
         fenced_markdown_part(
             "Working Notes",
-            f"## Working Notes\npath: {notes_path}",
             notes_text,
             role="notes",
             path=notes_path,
         ),
         fenced_markdown_part(
             "Authoritative Spec Slice",
-            f"## Authoritative Spec Slice\npath: {spec_path}",
             spec_text,
             role="spec slice",
             path=spec_path,
@@ -227,7 +224,6 @@ def _assemble_prompt_assembly(
         parts.append(
             fenced_markdown_part(
                 "Consumer Contract",
-                f"## Consumer Contract\npath: {support_path}",
                 support_text,
                 role="consumer contract",
                 path=support_path,

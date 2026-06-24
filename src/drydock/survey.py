@@ -516,7 +516,6 @@ def import_specs(
                 for md in inventory
                 for prompt_part in contextual_markdown_parts(
                     md.name,
-                    f"#### {md.name}",
                     md.read_text(encoding="utf-8"),
                     filename=md.name,
                     role="source file",

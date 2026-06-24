@@ -341,7 +341,6 @@ def render_build_prompt_assembly(
             parts.extend(
                 contextual_markdown_parts(
                     step_file.name,
-                    f"### {step_file.role}: {step_file.name}",
                     content.rstrip(),
                     filename=step_file.name,
                     role=step_file.role,
@@ -352,12 +351,10 @@ def render_build_prompt_assembly(
         parts.append(
             part(
                 step_file.name,
-                "\n".join(
-                    [
-                        f"### {step_file.role}: {step_file.name}",
-                        f"{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}",
-                        "",
-                    ]
+                (
+                    f'<pblock filename="{step_file.name}" role="{step_file.role}"'
+                    + (f' path="{step_file.source}"' if step_file.source else "")
+                    + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
                 ),
                 kind="file",
                 role=step_file.role,

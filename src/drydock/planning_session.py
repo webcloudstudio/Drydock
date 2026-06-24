@@ -233,14 +233,12 @@ def _managed_doc_parts(
     *,
     filename: str,
     content: str,
-    content_heading: str,
     content_role: str,
     path: Path,
 ) -> list:
     return list(
         contextual_markdown_parts(
             filename,
-            content_heading,
             content,
             filename=filename,
             role=content_role,
@@ -313,7 +311,6 @@ def _assemble_prompt_assembly(
         return _managed_doc_parts(
             filename="COMPASS.md",
             content=text,
-            content_heading="## Compass content",
             content_role="compass",
             path=path,
         )
@@ -324,7 +321,6 @@ def _assemble_prompt_assembly(
         return _managed_doc_parts(
             filename=_FEEDBACK_FILENAME,
             content=feedback_text.strip(),
-            content_heading="## Plan Compass content",
             content_role="plan feedback",
             path=target_dir / _FEEDBACK_FILENAME,
         )
@@ -333,7 +329,6 @@ def _assemble_prompt_assembly(
         return list(
             contextual_markdown_parts(
                 "ANALYSIS.md",
-                "## ANALYSIS.md (the reviewed plan)",
                 analysis_text,
                 filename="ANALYSIS.md",
                 role="planning basis",
@@ -349,7 +344,6 @@ def _assemble_prompt_assembly(
         return list(
             contextual_markdown_parts(
                 "SOUNDINGS.md",
-                "## SOUNDINGS.md",
                 text,
                 filename="SOUNDINGS.md",
                 role="acceptance context",
@@ -373,7 +367,6 @@ def _assemble_prompt_assembly(
             parts_list.extend(
                 contextual_fenced_parts(
                     path_obj.name,
-                    "### " + path_obj.name,
                     json.dumps(data, indent=2),
                     filename=path_obj.name,
                     fence="json",
@@ -390,7 +383,6 @@ def _assemble_prompt_assembly(
             parts_list.extend(
                 contextual_markdown_parts(
                     label,
-                    f"### {prompt_source_header(label, path_obj)}",
                     path_obj.read_text(encoding="utf-8").rstrip(),
                     filename=path_obj.name,
                     role="source file",
@@ -409,7 +401,6 @@ def _assemble_prompt_assembly(
         return list(
             contextual_markdown_parts(
                 name,
-                f"## {name}",
                 contract_path.read_text(encoding="utf-8"),
                 filename=name,
                 role="contract",

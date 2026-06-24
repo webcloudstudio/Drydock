@@ -95,37 +95,29 @@ def lines_part(
     path: Path | None = None,
     included: bool = True,
 ) -> PromptPart:
-    return part(
-        label,
-        "\n".join(lines),
-        kind=kind,
-        role=role,
-        path=path,
-        included=included,
-    )
+    content = "\n".join(lines)
+    role_attr = f' role="{role}"' if role else ""
+    path_attr = f' path="{path}"' if path else ""
+    text = f'<pblock label="{label}" kind="{kind}"{role_attr}{path_attr}>\n{content}\n</pblock>\n\n'
+    return PromptPart(label=label, text=text, kind=kind, role=role, path=path, included=included)
 
 
 def fenced_markdown_part(
     label: str,
-    heading: str,
     body: str,
     *,
     kind: str = "file",
     role: str | None = None,
     path: Path | None = None,
 ) -> PromptPart:
-    return part(
-        label,
-        "\n".join([heading, "", "```markdown", body.rstrip("\n"), "```", ""]),
-        kind=kind,
-        role=role,
-        path=path,
-    )
+    role_attr = f' role="{role}"' if role else ""
+    path_attr = f' path="{path}"' if path else ""
+    text = f'<pblock filename="{label}"{role_attr}{path_attr}>\n```markdown\n{body.rstrip()}\n```\n</pblock>\n\n'
+    return PromptPart(label=label, text=text, kind=kind, role=role, path=path)
 
 
 def fenced_block_part(
     label: str,
-    heading: str,
     body: str,
     *,
     fence: str,
@@ -133,36 +125,28 @@ def fenced_block_part(
     role: str | None = None,
     path: Path | None = None,
 ) -> PromptPart:
-    return part(
-        label,
-        "\n".join([heading, "", f"```{fence}", body.rstrip("\n"), "```", ""]),
-        kind=kind,
-        role=role,
-        path=path,
-    )
+    role_attr = f' role="{role}"' if role else ""
+    path_attr = f' path="{path}"' if path else ""
+    text = f'<pblock filename="{label}"{role_attr}{path_attr}>\n```{fence}\n{body.rstrip()}\n```\n</pblock>\n\n'
+    return PromptPart(label=label, text=text, kind=kind, role=role, path=path)
 
 
 def fenced_text_part(
     label: str,
-    heading: str,
     body: str,
     *,
     kind: str = "section",
     role: str | None = None,
     path: Path | None = None,
 ) -> PromptPart:
-    return part(
-        label,
-        "\n".join([heading, "", "```text", body.rstrip("\n"), "```", ""]),
-        kind=kind,
-        role=role,
-        path=path,
-    )
+    role_attr = f' role="{role}"' if role else ""
+    path_attr = f' path="{path}"' if path else ""
+    text = f'<pblock label="{label}"{role_attr}{path_attr}>\n```text\n{body.rstrip()}\n```\n</pblock>\n\n'
+    return PromptPart(label=label, text=text, kind=kind, role=role, path=path)
 
 
 def contextual_markdown_parts(
     label: str,
-    heading: str,
     body: str,
     *,
     filename: str,
@@ -170,43 +154,19 @@ def contextual_markdown_parts(
     path: Path | None = None,
 ) -> tuple[PromptPart, ...]:
     metadata = prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
-    parts: list[PromptPart] = []
-    if metadata is not None:
-        parts.append(
-            part(
-                f"{label} instructions",
-                "\n".join(
-                    [
-                        f"## {metadata.label}",
-                        metadata.prompt_text.rstrip("\n"),
-                        "---",
-                        "",
-                    ]
-                ),
-                role="prompt instructions",
-                path=path,
-            )
-        )
-    parts.append(
-        part(
-            label,
-            "\n".join(
-                [
-                    heading,
-                    "",
-                    "```markdown",
-                    body.rstrip("\n"),
-                    "```",
-                    "---",
-                    "",
-                ]
-            ),
-            kind="file",
-            role=role or (metadata.role if metadata is not None else None),
-            path=path,
-        )
+    effective_role = role or (metadata.role if metadata is not None else None)
+    role_attr = f' role="{effective_role}"' if effective_role else ""
+    path_attr = f' path="{path}"' if path else ""
+    guidance_block = ""
+    if metadata is not None and metadata.prompt_text.strip():
+        guidance_block = f"<guidance>{metadata.prompt_text.strip()}</guidance>\n\n"
+    text = (
+        f'<pblock filename="{label}"{role_attr}{path_attr}>\n'
+        f"{guidance_block}"
+        f"```markdown\n{body.rstrip()}\n```\n"
+        f"</pblock>\n\n"
     )
-    return tuple(parts)
+    return (PromptPart(label=label, text=text, kind="file", role=effective_role, path=path),)
 
 
 _SYSTEM_PREAMBLE = """\
@@ -217,11 +177,12 @@ This prompt is divided into three sections:
 1. **System Instructions** (this section) — structural orientation only. Do not treat this
    section as task input.
 
-2. **Input Context** — begins with the heading `# Input Context`. Contains job metadata,
-   rules, guidance, and source files. Two heading levels are used:
-   - `##` — a metadata block, instruction block, or group header (e.g. job parameters,
-     per-file guidance, section labels)
-   - `###` — an individual source file in the format `### <filename> (<role>)`
+2. **Input Context** — begins with the heading `# Input Context`. All blocks are wrapped in
+   `<pblock>` tags. Two block types:
+   - File blocks: `<pblock filename="<name>" role="<role>">` — may contain a `<guidance>`
+     element with context-specific instructions, followed by file content in a fenced block.
+   - Metadata/section blocks: `<pblock label="<label>" kind="<kind>">` — job parameters,
+     rules, instructions, or group headers.
 
 3. **Agent Task** — begins with the heading `# Agent Task`. Defines your persona, constraints,
    and required outputs. Read all input context before acting on this section.
@@ -239,7 +200,6 @@ def section_heading_part(heading: str) -> PromptPart:
 
 def contextual_fenced_parts(
     label: str,
-    heading: str,
     body: str,
     *,
     filename: str,
@@ -248,40 +208,16 @@ def contextual_fenced_parts(
     path: Path | None = None,
 ) -> tuple[PromptPart, ...]:
     metadata = prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
-    parts: list[PromptPart] = []
-    if metadata is not None:
-        parts.append(
-            part(
-                f"{label} instructions",
-                "\n".join(
-                    [
-                        f"## {metadata.label}",
-                        metadata.prompt_text.rstrip("\n"),
-                        "---",
-                        "",
-                    ]
-                ),
-                role="prompt instructions",
-                path=path,
-            )
-        )
-    parts.append(
-        part(
-            label,
-            "\n".join(
-                [
-                    heading,
-                    "",
-                    f"```{fence}",
-                    body.rstrip("\n"),
-                    "```",
-                    "---",
-                    "",
-                ]
-            ),
-            kind="file",
-            role=role or (metadata.role if metadata is not None else None),
-            path=path,
-        )
+    effective_role = role or (metadata.role if metadata is not None else None)
+    role_attr = f' role="{effective_role}"' if effective_role else ""
+    path_attr = f' path="{path}"' if path else ""
+    guidance_block = ""
+    if metadata is not None and metadata.prompt_text.strip():
+        guidance_block = f"<guidance>{metadata.prompt_text.strip()}</guidance>\n\n"
+    text = (
+        f'<pblock filename="{label}"{role_attr}{path_attr}>\n'
+        f"{guidance_block}"
+        f"```{fence}\n{body.rstrip()}\n```\n"
+        f"</pblock>\n\n"
     )
-    return tuple(parts)
+    return (PromptPart(label=label, text=text, kind="file", role=effective_role, path=path),)

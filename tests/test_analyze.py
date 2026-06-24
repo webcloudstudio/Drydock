@@ -422,7 +422,7 @@ class TestAssemblePrompt:
         sources.mkdir(parents=True)
         (sources / "spec.md").write_text("imported content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### sources/spec.md - source reference" in result
+        assert 'filename="sources/spec.md"' in result
         assert "imported content" in result
 
     def test_excludes_listed_source_filenames(self, tmp_path):
@@ -436,8 +436,8 @@ class TestAssemblePrompt:
             encoding="utf-8",
         )
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### sources/spec.md - source reference" in result
-        assert "### sources/BUILD_PLAN.md - source reference" not in result
+        assert 'filename="sources/spec.md"' in result
+        assert 'filename="sources/BUILD_PLAN.md"' not in result
         assert "ignore me" not in result
 
     def test_top_level_blueprint_files_not_injected(self, tmp_path):
@@ -445,7 +445,7 @@ class TestAssemblePrompt:
         bp.mkdir()
         (bp / "FEATURE-Auth.md").write_text("should not appear", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### FEATURE-Auth.md - feature contract" not in result
+        assert 'filename="FEATURE-Auth.md"' not in result
         assert "should not appear" not in result
 
     def test_imported_source_uses_generic_source_category_even_for_known_filenames(self, tmp_path):
@@ -454,7 +454,7 @@ class TestAssemblePrompt:
         sources.mkdir(parents=True)
         (sources / "ARCHITECTURE.md").write_text("arch content", encoding="utf-8")
         result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
-        assert "### sources/ARCHITECTURE.md - source reference" in result
+        assert 'filename="sources/ARCHITECTURE.md"' in result
         assert "## Imported source files" in result
 
     def test_injects_feedback_directive_when_provided(self, tmp_path):
@@ -467,9 +467,8 @@ class TestAssemblePrompt:
             compass_exists=False,
             feedback_text="Decompose by module, not by route.",
         )
-        assert "## Analyze Compass" in result
+        assert 'filename="ANALYZE_COMPASS.md"' in result
         assert "standing user steering" in result
-        assert "## Analyze Compass content" in result
         assert "Decompose by module, not by route." in result
 
     def test_no_feedback_section_when_absent(self, tmp_path):
@@ -503,9 +502,8 @@ class TestAssemblePrompt:
             compass_exists=False,
             blockers_text="# Blockers\n\n- No name provided.",
         )
-        assert "## Blockers" in result
+        assert 'filename="BLOCKERS.md"' in result
         assert "user responses" in result
-        assert "Prior blocker answers (BLOCKERS.md)" in result
         assert "No name provided" in result
 
     def test_no_blockers_section_when_absent(self, tmp_path):
@@ -525,7 +523,7 @@ class TestAssemblePrompt:
             feedback_text="Steer this way.",
             blockers_text="- No name.",
         )
-        assert result.index("## Analyze Compass content") < result.index("Prior blocker answers")
+        assert result.index("ANALYZE_COMPASS.md") < result.index("BLOCKERS.md")
 
     def test_injection_order_is_driven_by_input_tokens(self, tmp_path):
         bp = tmp_path / "blueprint"
@@ -541,7 +539,7 @@ class TestAssemblePrompt:
             feedback_text="Steer this way.",
             input_tokens=("TYPED_SPEC", "ANALYZE_COMPASS.md"),
         )
-        assert result.index("Imported source files") < result.index("## Analyze Compass content")
+        assert result.index("Imported source files") < result.index("ANALYZE_COMPASS.md")
 
     def test_compass_token_injects_no_content_section(self, tmp_path):
         # COMPASS.md is the COMPASS_EXISTS flag for analyze, not a fenced content block.

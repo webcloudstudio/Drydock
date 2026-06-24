@@ -233,14 +233,12 @@ def _managed_doc_parts(
     *,
     filename: str,
     content: str,
-    content_heading: str,
     content_role: str,
     path: Path,
 ) -> list:
     return list(
         contextual_markdown_parts(
             filename,
-            content_heading,
             content,
             filename=filename,
             role=content_role,
@@ -338,7 +336,6 @@ def _assemble_prompt_assembly(
         return _managed_doc_parts(
             filename=_FEEDBACK_FILENAME,
             content=feedback_text.strip(),
-            content_heading="## Analyze Compass content",
             content_role="analyze feedback",
             path=blueprint_dir.parent / _FEEDBACK_FILENAME,
         )
@@ -349,7 +346,6 @@ def _assemble_prompt_assembly(
         return _managed_doc_parts(
             filename="BLOCKERS.md",
             content=blockers_text,
-            content_heading="## Prior blocker answers (BLOCKERS.md)",
             content_role="prior blocker answers",
             path=blueprint_dir.parent / "BLOCKERS.md",
         )
@@ -384,7 +380,6 @@ def _assemble_prompt_assembly(
             parts_list.extend(
                 contextual_fenced_parts(
                     path_obj.name,
-                    f"### {path_obj.name}",
                     json.dumps(data, indent=2),
                     filename=path_obj.name,
                     fence="json",
@@ -420,7 +415,6 @@ def _assemble_prompt_assembly(
             parts_list.extend(
                 contextual_markdown_parts(
                     label,
-                    f"### {prompt_source_header(label, path_obj)}",
                     path_obj.read_text(encoding="utf-8"),
                     filename=path_obj.name,
                     role="source file",
