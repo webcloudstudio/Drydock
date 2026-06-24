@@ -217,12 +217,11 @@ This prompt is divided into three sections:
 1. **System Instructions** (this section) — structural orientation only. Do not treat this
    section as task input.
 
-2. **Input Context** — begins with the heading `# Input Context`. Contains source files,
-   rules, job metadata, and prior feedback. Individual blocks follow this format:
-
-   ### <filename> (<role>)
-   [optional: context-specific guidance for this file]
-   [file content]
+2. **Input Context** — begins with the heading `# Input Context`. Contains job metadata,
+   rules, guidance, and source files. Two heading levels are used:
+   - `##` — a metadata block, instruction block, or group header (e.g. job parameters,
+     per-file guidance, section labels)
+   - `###` — an individual source file in the format `### <filename> (<role>)`
 
 3. **Agent Task** — begins with the heading `# Agent Task`. Defines your persona, constraints,
    and required outputs. Read all input context before acting on this section.
