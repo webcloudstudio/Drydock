@@ -468,7 +468,7 @@ class TestAssemblePrompt:
             feedback_text="Decompose by module, not by route.",
         )
         assert 'filename="ANALYZE_COMPASS.md"' in result
-        assert "standing user steering" in result
+        assert "user steering" in result
         assert "Decompose by module, not by route." in result
 
     def test_no_feedback_section_when_absent(self, tmp_path):

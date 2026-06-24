@@ -157,12 +157,11 @@ def contextual_markdown_parts(
     effective_role = role or (metadata.role if metadata is not None else None)
     role_attr = f' role="{effective_role}"' if effective_role else ""
     path_attr = f' path="{path}"' if path else ""
-    guidance_block = ""
+    guidance_attr = ""
     if metadata is not None and metadata.prompt_text.strip():
-        guidance_block = f"<guidance>{metadata.prompt_text.strip()}</guidance>\n\n"
+        guidance_attr = f' guidance="{metadata.prompt_text.strip()}"'
     text = (
-        f'<pblock filename="{label}"{role_attr}{path_attr}>\n'
-        f"{guidance_block}"
+        f'<pblock filename="{label}"{role_attr}{path_attr}{guidance_attr}>\n'
         f"```markdown\n{body.rstrip()}\n```\n"
         f"</pblock>\n\n"
     )
@@ -179,8 +178,8 @@ This prompt is divided into three sections:
 
 2. **Input Context** — begins with the heading `# Input Context`. All blocks are wrapped in
    `<pblock>` tags. Two block types:
-   - File blocks: `<pblock filename="<name>" role="<role>">` — may contain a `<guidance>`
-     element with context-specific instructions, followed by file content in a fenced block.
+   - File blocks: `<pblock filename="<name>" role="<role>" guidance="...">` — optional
+     `guidance` attribute carries context-specific instructions; content is in a fenced block.
    - Metadata/section blocks: `<pblock label="<label>" kind="<kind>">` — job parameters,
      rules, instructions, or group headers.
 
@@ -211,12 +210,11 @@ def contextual_fenced_parts(
     effective_role = role or (metadata.role if metadata is not None else None)
     role_attr = f' role="{effective_role}"' if effective_role else ""
     path_attr = f' path="{path}"' if path else ""
-    guidance_block = ""
+    guidance_attr = ""
     if metadata is not None and metadata.prompt_text.strip():
-        guidance_block = f"<guidance>{metadata.prompt_text.strip()}</guidance>\n\n"
+        guidance_attr = f' guidance="{metadata.prompt_text.strip()}"'
     text = (
-        f'<pblock filename="{label}"{role_attr}{path_attr}>\n'
-        f"{guidance_block}"
+        f'<pblock filename="{label}"{role_attr}{path_attr}{guidance_attr}>\n'
         f"```{fence}\n{body.rstrip()}\n```\n"
         f"</pblock>\n\n"
     )

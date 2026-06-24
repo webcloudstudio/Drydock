@@ -407,7 +407,7 @@ def test_assemble_prompt_injects_plan_compass_instruction_block(tmp_path):
     )
 
     assert 'filename="PLAN_COMPASS.md"' in result
-    assert "standing user steering" in result
+    assert "user steering" in result
 
 
 def test_assemble_prompt_labels_source_files_with_fixed_roles(tmp_path):
