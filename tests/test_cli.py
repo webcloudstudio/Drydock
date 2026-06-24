@@ -578,6 +578,8 @@ state: pending
         assert rc == 0, err
         assert "[built]" in out
         assert "foundation" in out
+        assert "Setting up git directory in" in out
+        assert "Ran git commit to commit changes" in out
         assert (target / "evidence" / "foundation.md").is_file()
 
 

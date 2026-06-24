@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,11 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert (target_dir / "evidence" / "foundation.md").is_file()
     assert (target_dir / "evidence" / "service.md").is_file()
     assert result.exit_code() == 0
+    assert (build_dir / ".git").is_dir()
+    assert result.git_initialized is True
+    assert result.git_commit is not None
+    assert result.git_commit_message is not None
+    assert result.git_commit_message.startswith("drydock build Demo ")
 
 
 def test_prompt_stacks_spec_content_and_instructions(tmp_path):
@@ -127,6 +133,17 @@ def test_allow_tools_enabled_and_runs_in_build_dir(tmp_path):
     assert call["allow_tools"] is True
     assert call["wd"] == build_dir
     assert build_dir.is_dir()
+
+
+def test_existing_git_repo_not_reinitialized(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    build_dir.mkdir(parents=True)
+    subprocess.run(["git", "-C", str(build_dir), "init"], check=True, capture_output=True, text=True)
+    runner = make_runner()
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert result.git_initialized is False
+    assert result.git_commit is not None
 
 
 def test_step_with_child_ac_stops_at_review_gate(tmp_path):
@@ -194,6 +211,7 @@ def test_text_without_file_delta_marks_failed(tmp_path):
     assert result.steps[0].error == "no build files written"
     assert _state(target_dir, "foundation") == "closed/failed"
     assert _state(target_dir, "service") == "pending"
+    assert result.git_commit is None
 
 
 def test_missing_structured_report_marks_failed(tmp_path):
@@ -208,6 +226,7 @@ def test_missing_structured_report_marks_failed(tmp_path):
     assert result.steps[0].status == "failed"
     assert result.steps[0].error == "missing structured build report"
     assert _state(target_dir, "foundation") == "closed/failed"
+    assert result.git_commit is not None
 
 
 _WITH_STACK = """# MANIFEST: Demo

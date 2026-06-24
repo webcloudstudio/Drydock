@@ -10,7 +10,9 @@ automatically. A step advances only when the agent returns a structured success
 report and the build directory shows real file changes.
 
 The module owns evidence and state writes. The agent writes application files and
-returns a summary; tests inject a fake runner so no credits or network are used.
+returns a summary; the build directory is git-initialized on first use and any
+resulting changes are committed after the build run. Tests inject a fake runner
+so no credits or network are used.
 """
 
 from __future__ import annotations
@@ -72,6 +74,70 @@ def _is_dirty(path: Path) -> bool:
         return False
 
 
+def _ensure_git_repo(path: Path) -> bool:
+    """Initialize ``path`` as a git repo when needed. Returns True if created."""
+    if (path / ".git").is_dir():
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "init"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SpecificationError(f"git init failed for build directory {path}: {exc}") from exc
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout).strip() or "git init failed"
+        raise SpecificationError(f"git init failed for build directory {path}: {message}")
+    return True
+
+
+def _commit_build_dir(path: Path, target: str, today: str) -> tuple[str | None, str | None]:
+    """Commit dirty build-directory changes. Returns ``(commit, message)``."""
+    if not _is_dirty(path):
+        return None, None
+    try:
+        add_result = subprocess.run(
+            ["git", "-C", str(path), "add", "-A"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SpecificationError(f"git add failed for build directory {path}: {exc}") from exc
+    if add_result.returncode != 0:
+        message = (add_result.stderr or add_result.stdout).strip() or "git add failed"
+        raise SpecificationError(f"git add failed for build directory {path}: {message}")
+
+    message = f"drydock build {target} {today}"
+    try:
+        commit_result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(path),
+                "-c",
+                "user.name=Drydock Build",
+                "-c",
+                "user.email=drydock@local",
+                "commit",
+                "-m",
+                message,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SpecificationError(f"git commit failed for build directory {path}: {exc}") from exc
+    if commit_result.returncode != 0:
+        detail = (commit_result.stderr or commit_result.stdout).strip() or "git commit failed"
+        raise SpecificationError(f"git commit failed for build directory {path}: {detail}")
+
+    return _git_head(path), message
+
+
 @dataclass(frozen=True)
 class BuildStepResult:
     block_id: str
@@ -90,6 +156,9 @@ class BuildResult:
     target: str
     build_dir: Path
     steps: list[BuildStepResult]
+    git_initialized: bool = False
+    git_commit: str | None = None
+    git_commit_message: str | None = None
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -250,6 +319,7 @@ def build_target(
 
     resolved_build_dir = build_dir or build_dir_for(target)
     resolved_build_dir.mkdir(parents=True, exist_ok=True)
+    git_initialized = _ensure_git_repo(resolved_build_dir)
     evidence_dir = target_dir / "evidence"
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
@@ -372,4 +442,12 @@ def build_target(
         if status == "failed":
             break
 
-    return BuildResult(target=target, build_dir=resolved_build_dir, steps=steps)
+    git_commit, git_commit_message = _commit_build_dir(resolved_build_dir, target, today)
+    return BuildResult(
+        target=target,
+        build_dir=resolved_build_dir,
+        steps=steps,
+        git_initialized=git_initialized,
+        git_commit=git_commit,
+        git_commit_message=git_commit_message,
+    )

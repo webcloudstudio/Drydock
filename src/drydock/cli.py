@@ -857,6 +857,12 @@ def cmd_build(args: argparse.Namespace) -> int:
         on_step=report,
     )
     print()
+    if result.git_initialized:
+        print(f"Setting up git directory in {result.build_dir}")
+    if result.git_commit:
+        print(f"Ran git commit to commit changes ({result.git_commit})")
+    else:
+        print("No git changes to commit.")
     if not result.steps:
         print("  Nothing buildable — no pending step has all dependencies verified.")
     print(f"Build directory: {result.build_dir}")
