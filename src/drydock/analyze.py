@@ -40,6 +40,8 @@ from drydock.prompt_assembly import (
     contextual_markdown_parts,
     lines_part,
     part,
+    section_heading_part,
+    system_preamble_part,
 )
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
@@ -314,6 +316,8 @@ def _assemble_prompt_assembly(
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
     prompt_parts = [
+        system_preamble_part(),
+        section_heading_part("# Input Context"),
         lines_part(
             "Analysis job",
             [
@@ -325,7 +329,7 @@ def _assemble_prompt_assembly(
                 "",
             ],
             kind="job",
-        )
+        ),
     ]
 
     def feedback_parts() -> list:
@@ -436,6 +440,7 @@ def _assemble_prompt_assembly(
         if render is None:
             continue
         prompt_parts.extend(render())
+    prompt_parts.append(section_heading_part("# Agent Task"))
     prompt_parts.append(part("Prompt body", "\n" + body, kind="prompt-body"))
     return PromptAssembly(parts=tuple(prompt_parts))
 

@@ -31,6 +31,8 @@ from drydock.prompt_assembly import (
     contextual_markdown_parts,
     lines_part,
     part,
+    section_heading_part,
+    system_preamble_part,
 )
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
@@ -285,7 +287,8 @@ def _assemble_prompt_assembly(
     shape_match = _SHAPE_RE.search(analysis_text)
     quality_match = _QUALITY_RE.search(analysis_text)
     prompt_parts = [
-        part("Prompt body", body + "\n\n", kind="prompt-body"),
+        system_preamble_part(),
+        section_heading_part("# Input Context"),
         lines_part(
             "Planning job",
             [
@@ -429,6 +432,8 @@ def _assemble_prompt_assembly(
         if render is None:
             continue
         prompt_parts.extend(render())
+    prompt_parts.append(section_heading_part("# Agent Task"))
+    prompt_parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(prompt_parts))
 
 

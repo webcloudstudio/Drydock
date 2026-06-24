@@ -26,6 +26,8 @@ from drydock.prompt_assembly import (
     contextual_markdown_parts,
     lines_part,
     part,
+    section_heading_part,
+    system_preamble_part,
 )
 from drydock.prompts import load_prompt
 
@@ -227,7 +229,8 @@ def _assemble_prompt_assembly(
 ) -> PromptAssembly:
     return PromptAssembly(
         parts=(
-            part("Prompt body", body + "\n\n", kind="prompt-body"),
+            system_preamble_part(),
+            section_heading_part("# Input Context"),
             lines_part(
                 "Compaction job",
                 ["## Compaction job", "", f"- SOURCE_PATH: {rel_source}", f"- DATE: {today}", ""],
@@ -245,6 +248,8 @@ def _assemble_prompt_assembly(
                 filename=Path(rel_source).name,
                 role="source file",
             ),
+            section_heading_part("# Agent Task"),
+            part("Prompt body", body + "\n\n", kind="prompt-body"),
         )
     )
 

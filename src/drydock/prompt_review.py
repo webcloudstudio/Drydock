@@ -14,7 +14,14 @@ from typing import Protocol
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_repo_root
-from drydock.prompt_assembly import PromptAssembly, fenced_markdown_part, lines_part, part
+from drydock.prompt_assembly import (
+    PromptAssembly,
+    fenced_markdown_part,
+    lines_part,
+    part,
+    section_heading_part,
+    system_preamble_part,
+)
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "prompt_review"
@@ -175,7 +182,8 @@ def _assemble_prompt_assembly(
     )
 
     parts = [
-        part("Prompt body", body + "\n\n", kind="prompt-body"),
+        system_preamble_part(),
+        section_heading_part("# Input Context"),
         lines_part(
             "Review job",
             [
@@ -226,6 +234,8 @@ def _assemble_prompt_assembly(
             )
         )
 
+    parts.append(section_heading_part("# Agent Task"))
+    parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(parts))
 
 

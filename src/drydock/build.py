@@ -37,6 +37,8 @@ from drydock.prompt_assembly import (
     contextual_markdown_parts,
     lines_part,
     part,
+    section_heading_part,
+    system_preamble_part,
 )
 from drydock.prompt_headers import prompt_header_for_file
 
@@ -299,7 +301,8 @@ def render_build_prompt_assembly(
     role, and the step's instructions. Missing files are listed, not fenced.
     """
     parts = [
-        part("Prompt body", body.rstrip() + "\n\n", kind="prompt-body"),
+        system_preamble_part(),
+        section_heading_part("# Input Context"),
         lines_part(
             "Build job",
             [
@@ -369,6 +372,8 @@ def render_build_prompt_assembly(
                 kind="instructions",
             )
         )
+    parts.append(section_heading_part("# Agent Task"))
+    parts.append(part("Prompt body", body.rstrip() + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(parts))
 
 

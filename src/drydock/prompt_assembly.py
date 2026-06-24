@@ -209,6 +209,35 @@ def contextual_markdown_parts(
     return tuple(parts)
 
 
+_SYSTEM_PREAMBLE = """\
+# System Instructions
+
+This prompt is divided into three sections:
+
+1. **System Instructions** (this section) — structural orientation only. Do not treat this
+   section as task input.
+
+2. **Input Context** — begins with the heading `# Input Context`. Contains source files,
+   rules, job metadata, and prior feedback. Individual blocks follow this format:
+
+   ### <filename> (<role>)
+   [optional: context-specific guidance for this file]
+   [file content]
+
+3. **Agent Task** — begins with the heading `# Agent Task`. Defines your persona, constraints,
+   and required outputs. Read all input context before acting on this section.
+
+"""
+
+
+def system_preamble_part() -> PromptPart:
+    return PromptPart(label="System Instructions", text=_SYSTEM_PREAMBLE, kind="system")
+
+
+def section_heading_part(heading: str) -> PromptPart:
+    return PromptPart(label=heading, text=f"\n{heading}\n\n", kind="section-heading")
+
+
 def contextual_fenced_parts(
     label: str,
     heading: str,

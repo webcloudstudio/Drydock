@@ -28,6 +28,8 @@ from drydock.prompt_assembly import (
     contextual_markdown_parts,
     lines_part,
     part,
+    section_heading_part,
+    system_preamble_part,
 )
 from drydock.prompts import load_prompt
 
@@ -357,7 +359,8 @@ def _assemble_survey_prompt_assembly(
 ) -> PromptAssembly:
     return PromptAssembly(
         parts=(
-            part("Prompt body", body + "\n\n", kind="prompt-body"),
+            system_preamble_part(),
+            section_heading_part("# Input Context"),
             lines_part("Survey job", ["## Survey job", "", f"- TARGET: {target}", ""], kind="job"),
             lines_part(
                 "Available artifacts",
@@ -369,6 +372,8 @@ def _assemble_survey_prompt_assembly(
                 ["### Acceptance criteria to evaluate", "", ac_block, ""],
                 kind="section",
             ),
+            section_heading_part("# Agent Task"),
+            part("Prompt body", body + "\n\n", kind="prompt-body"),
         )
     )
 
@@ -498,7 +503,8 @@ def import_specs(
     prompt = load_prompt("survey_import")
     prompt_assembly = PromptAssembly(
         parts=(
-            part("Prompt body", prompt.body + "\n\n", kind="prompt-body"),
+            system_preamble_part(),
+            section_heading_part("# Input Context"),
             lines_part(
                 "Import job",
                 ["## Import job", "", f"- TARGET: {target}", f"- SOURCE: {source_path}", ""],
@@ -517,6 +523,8 @@ def import_specs(
                     path=md,
                 )
             ),
+            section_heading_part("# Agent Task"),
+            part("Prompt body", prompt.body + "\n\n", kind="prompt-body"),
         )
     )
     result = run(
