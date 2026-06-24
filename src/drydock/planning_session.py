@@ -534,8 +534,8 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     (quarterdeck / "planning-session.md").write_text(
         f"# Planning Session: {plan.project}\n\n"
         f"Plan state: **{plan.state}**\n\n"
-        "Review the proposed decomposition and acceptance gates on the Delivery Board. "
-        "Approve the complete plan here before building.\n",
+        "Review the proposed decomposition, build order, and acceptance gates on the Delivery Board. "
+        "The Planning Session shows the manifest build tree for execution review.\n",
         encoding="utf-8",
     )
     (quarterdeck / "console.yaml").write_text(

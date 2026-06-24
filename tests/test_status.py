@@ -29,6 +29,17 @@ id: extra-feature
 state: implemented
 """
 
+DRAFT_PLAN = """\
+# MANIFEST: TestProject
+state: draft
+updated: 2026-01-01T00:00:00
+plan_hash: abc123
+
+## story 1: Core feature
+id: core-feature
+state: pending
+"""
+
 
 class TestStatusBlueprintTarget:
     def _setup(self, tmp_target_root):
@@ -97,6 +108,18 @@ class TestStatusBlueprintTarget:
         assert result.target_info.analysis is not None
         assert result.target_info.analysis.quality == "Ready"
         assert result.target_info.next_operation == "drydock plan TestTarget"
+
+    def test_draft_plan_points_to_quarterdeck_review(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        tgt.mkdir()
+        (tgt / "MANIFEST.md").write_text(DRAFT_PLAN, encoding="utf-8")
+
+        result = status_blueprint_target("TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root)
+
+        assert result.target_info is not None
+        assert result.target_info.phase == "Arrange"
+        assert "review the Planning Session build tree" in result.target_info.phase_detail
+        assert result.target_info.next_operation == "drydock run quarterdeck TestTarget"
 
 
 class TestStatusBlueprint:

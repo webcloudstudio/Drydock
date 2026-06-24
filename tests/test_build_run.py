@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from drydock.build_plan import parse_build_plan
@@ -46,12 +48,28 @@ class FakeResult:
         self.execution_id = execution_id
 
 
-def make_runner(*, ok=True, text="Built it. Created app.py."):
+def _success_report(*, changed: tuple[str, ...], summary: str = "Built it.") -> str:
+    return (
+        "RESULT: SUCCESS\n\n"
+        "FILES CHANGED:\n"
+        + "\n".join(f"- {path}" for path in changed)
+        + f"\n\nSUMMARY:\n{summary}\n"
+    )
+
+
+def make_runner(*, ok=True, text: str | None = None, write_files=True):
     calls: list[dict] = []
 
     def runner(prompt, working_directory, **kwargs):
+        step_id = kwargs["parameters"]["step"]
+        changed = (f"{step_id}.txt",)
+        if write_files:
+            Path(working_directory).mkdir(parents=True, exist_ok=True)
+            (Path(working_directory) / changed[0]).write_text(
+                f"built {step_id}\n", encoding="utf-8"
+            )
         calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
-        return FakeResult(ok=ok, text=text)
+        return FakeResult(ok=ok, text=text or _success_report(changed=changed))
 
     runner.calls = calls  # type: ignore[attr-defined]
     return runner
@@ -127,7 +145,7 @@ def test_step_with_child_ac_stops_at_review_gate(tmp_path):
 
 def test_failed_step_marks_failed_and_stops(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
-    runner = make_runner(ok=False, text="")
+    runner = make_runner(ok=False, text="", write_files=False)
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
     assert result.steps[0].status == "failed"
@@ -139,13 +157,19 @@ def test_failed_step_marks_failed_and_stops(tmp_path):
 
 def test_evidence_records_summary_and_state(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
-    runner = make_runner(text="Implemented persistence layer.")
+    runner = make_runner(
+        text=_success_report(
+            changed=("foundation.txt",),
+            summary="Implemented persistence layer.",
+        )
+    )
     build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "Implemented persistence layer." in evidence
     assert "resulting state: closed/verified" in evidence
     assert "exec-1" in evidence
+    assert "foundation.txt" in evidence
 
 
 def test_missing_manifest_raises(tmp_path):
@@ -155,6 +179,35 @@ def test_missing_manifest_raises(tmp_path):
     target_dir.mkdir()
     with pytest.raises(SpecificationError, match="MANIFEST.md not found"):
         build_target("Demo", target_dir, build_dir=tmp_path / "build", runner=make_runner())
+
+
+def test_text_without_file_delta_marks_failed(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(write_files=False),
+    )
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "no build files written"
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert _state(target_dir, "service") == "pending"
+
+
+def test_missing_structured_report_marks_failed(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(text="Built it."),
+    )
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "missing structured build report"
+    assert _state(target_dir, "foundation") == "closed/failed"
 
 
 _WITH_STACK = """# MANIFEST: Demo
@@ -201,6 +254,25 @@ class TestDirtyGuard:
         target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
         result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
         assert result.exit_code() == 0
+
+    def test_no_applied_registry_written_when_no_file_delta(self, tmp_path, monkeypatch):
+        import drydock.build_run as br
+        from drydock.build_plan import parse_build_plan
+
+        monkeypatch.setattr(br, "_git_head", lambda p: "abc123")
+        monkeypatch.setattr(br, "_is_dirty", lambda p: False)
+
+        target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
+        (target_dir / "blueprint" / "common.md").write_text("stack content\n", encoding="utf-8")
+        build_target(
+            "Demo",
+            target_dir,
+            build_dir=build_dir,
+            runner=make_runner(write_files=False),
+        )
+
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+        assert "common.md" not in plan.applied_registry
 
 
 class TestAppliedRegistryIntegration:

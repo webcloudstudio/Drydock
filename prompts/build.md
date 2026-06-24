@@ -29,7 +29,23 @@ Operating contract:
 3. Follow the stack and rules for languages, structure, naming, and branding.
 4. Satisfy every guardrail and acceptance criterion stated in the `implements`
    specifications.
-5. When finished, end your response with a concise, reviewable summary: what you
-   built, the files you created or changed (relative to the build working
-   directory), and any assumptions or follow-ups. This summary is captured as the
-   step's build evidence.
+5. Do not claim success unless you actually created or modified project files in
+   the build working directory. If you cannot write files or cannot complete the
+   step, report failure explicitly.
+6. End your response with this exact closing structure:
+
+```text
+RESULT: SUCCESS | FAILED
+
+FILES CHANGED:
+- relative/path
+
+SUMMARY:
+<brief reviewable summary>
+
+BLOCKERS:
+- <only if any>
+```
+
+7. `FILES CHANGED` must list only files actually written in the build working
+   directory. If no files were written, use `RESULT: FAILED`.

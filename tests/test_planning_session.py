@@ -142,6 +142,9 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     # QuarterDeck projection written.
     assert (target_dir / "QuarterDeck" / "tickets.json").is_file()
     assert (target_dir / "QuarterDeck" / "console.yaml").is_file()
+    planning = (target_dir / "QuarterDeck" / "planning-session.md").read_text(encoding="utf-8")
+    assert "manifest build tree" in planning
+    assert "Approve the complete plan" not in planning
 
 
 def test_cli_overrides_are_passed_to_runner(tmp_path):

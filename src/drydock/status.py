@@ -231,8 +231,8 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         assert plan_summary is not None
         if plan.state == "draft":
             phase = "Arrange"
-            detail = "Draft plan created — awaiting QuarterDeck approval"
-            next_op = f"drydock run quarterdeck {name}  (then approve in Planning Session)"
+            detail = "Draft plan created — review the Planning Session build tree"
+            next_op = f"drydock run quarterdeck {name}"
         elif plan_summary.total > 0 and plan_summary.verified == plan_summary.total:
             phase = "Loop"
             detail = f"All {plan_summary.total} blocks verified — ready for Refit"

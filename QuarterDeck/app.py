@@ -20,7 +20,7 @@ Page types (one Python renderer each, in TYPES):
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
   - command_status derive acceptance readiness and consistency from configured Core Docs
-  - plan_decision review and decide an authoritative Drydock MANIFEST.md
+  - plan_decision review the authoritative Drydock MANIFEST.md build tree
 
 console.yaml also accepts:
   sources:   list of {glob, section, type, ...} rules that auto-discover files as items.
@@ -734,15 +734,76 @@ def render_document_item(item: dict[str, Any]) -> str:
 
 def render_plan_decision(item: dict[str, Any]) -> str:
     from drydock.build_plan import parse_build_plan
+    from drydock.build_status import build_status
 
     plan = parse_build_plan(Path(item["plan_path"]))
+    report = build_status(plan)
+
+    def _state_mark(state: str) -> str:
+        return {
+            "closed/verified": "[done]",
+            "implemented": "[review]",
+            "pending": "[pending]",
+            "closed/failed": "[failed]",
+        }.get(state, f"[{state}]")
+
+    groups: list[str] = []
+    for group in report.groups:
+        feature_acs = "".join(
+            "<li class='cmp-ac'>"
+            f"{_state_mark(ac.state)} {html.escape(ac.name)}"
+            "</li>"
+            for ac in group.feature_acs
+        )
+        feature_acs_html = f"<ul class='cmp-acs'>{feature_acs}</ul>" if feature_acs else ""
+
+        steps = []
+        for step in group.steps:
+            next_mark = " <span class='cmp-warn'>buildable now</span>" if step.buildable else ""
+            acs = "".join(
+                "<li class='cmp-ac'>"
+                f"{_state_mark(ac.state)} {html.escape(ac.name)}"
+                "</li>"
+                for ac in step.acs
+            )
+            acs_html = f"<ul class='cmp-acs'>{acs}</ul>" if acs else ""
+            steps.append(
+                "<div class='cmp-step'>"
+                "<div class='cmp-shead'>"
+                f"<span class='cmp-stype'>{_state_mark(step.block.state)}</span>"
+                f"<span class='cmp-sname'>{html.escape(step.block.name)}</span>"
+                f"<span class='cmp-gsp'>{html.escape(step.block.block_type)}</span>{next_mark}"
+                "</div>"
+                f"{acs_html}"
+                "</div>"
+            )
+
+        groups.append(
+            "<div class='cmp-group'>"
+            "<div class='cmp-ghead'>"
+            f"<span class='cmp-gname'># {html.escape(group.name)}</span>"
+            f"<span class='cmp-gsp'>{group.verified}/{group.total} verified</span>"
+            "</div>"
+            f"{feature_acs_html}"
+            + "".join(steps)
+            + "</div>"
+        )
+
+    buildable = ", ".join(report.buildable_ids) or "(none)"
+    counts = (
+        f"{report.steps_verified} verified · "
+        f"{report.steps_implemented} in review · "
+        f"{report.steps_pending} pending · "
+        f"{report.steps_failed} failed"
+    )
     return (
         f"<h1>{html.escape(item.get('label', 'Planning Session'))}</h1>"
         f"<p>Plan state: <strong>{html.escape(plan.state)}</strong></p>"
-        f"<p>{len(plan.blocks)} proposed work and acceptance objects.</p>"
-        "<div class='decision'><div class='decision-bar'>"
-        f"<button class='d-btn d-approve' onclick=\"submitPlanDecision('{html.escape(item['id'])}','approve')\">Approve plan</button>"
-        "</div></div>"
+        f"<p>{len(plan.blocks)} manifest objects. {report.steps_total} executable steps.</p>"
+        f"<p>{html.escape(counts)}</p>"
+        f"<p>Buildable now: <strong>{html.escape(buildable)}</strong></p>"
+        "<p class='subtle'>Legend: [pending] not yet built · [review] built and awaiting acceptance checks · [done] verified · [failed] failed.</p>"
+        + "".join(groups)
     )
 
 
@@ -1610,22 +1671,14 @@ def api_set_source(item_id: str, update: SourceUpdate, request: Request = None) 
 def api_plan_decision(
     item_id: str, update: PlanDecision, request: Request = None
 ) -> dict[str, Any]:
-    from drydock.build_plan import set_plan_state
-
     with _request_context(request):
         item = find_item(item_id)
         if item.get("type") != "plan_decision":
             raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a plan decision")
-        if update.decision != "approve":
-            raise HTTPException(
-                status_code=400, detail="The Planning Session supports plan approval."
-            )
-        plan = set_plan_state(
-            Path(item["plan_path"]),
-            "approved",
-            decision=update.decision,
+        raise HTTPException(
+            status_code=400,
+            detail="Planning Session is read-only; plan approval is no longer supported.",
         )
-        return {"ok": True, "decision": update.decision, "state": plan.state}
 
 
 @app.post("/api/compass/{item_id}/move")

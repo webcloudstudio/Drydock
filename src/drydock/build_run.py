@@ -6,7 +6,8 @@ compass costs) and runs a tool-enabled agent that writes the application into th
 build working directory. After each step it writes reviewable evidence and
 transitions the block's state through the decision writer: a step with child
 acceptance checks goes to ``implemented`` (a review gate); a step with none closes
-automatically. Running build is the approval — it is not gated by plan state.
+automatically. A step advances only when the agent returns a structured success
+report and the build directory shows real file changes.
 
 The module owns evidence and state writes. The agent writes application files and
 returns a summary; tests inject a fake runner so no credits or network are used.
@@ -18,6 +19,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 
 from drydock.build import StepAssembly, StepRoots, assemble_step, render_build_prompt_assembly
@@ -32,6 +34,12 @@ from drydock.prompts import load_prompt
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
 TextCallback = Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class FileFingerprint:
+    size: int
+    digest: str
 
 
 def _git_head(path: Path) -> str | None:
@@ -104,6 +112,81 @@ def _has_child_acs(blocks: tuple[PlanBlock, ...], block_id: str) -> bool:
     return any(b.block_type == "ac" and b.parent == block_id for b in blocks)
 
 
+def _snapshot_files(root: Path) -> dict[str, FileFingerprint]:
+    """Return a stable fingerprint map for regular files under ``root``."""
+    snapshots: dict[str, FileFingerprint] = {}
+    if not root.is_dir():
+        return snapshots
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(root))
+        data = path.read_bytes()
+        snapshots[rel] = FileFingerprint(size=len(data), digest=sha256(data).hexdigest())
+    return snapshots
+
+
+def _written_files(
+    before: dict[str, FileFingerprint],
+    after: dict[str, FileFingerprint],
+) -> tuple[str, ...]:
+    """Return created/modified files under the build directory."""
+    changed: list[str] = []
+    for rel, fp in after.items():
+        if before.get(rel) != fp:
+            changed.append(rel)
+    return tuple(changed)
+
+
+def _parse_build_report(summary: str) -> tuple[str | None, tuple[str, ...] | None]:
+    """Extract ``RESULT`` and ``FILES CHANGED`` from the final build report."""
+    lines = summary.splitlines()
+    result: str | None = None
+    files: list[str] = []
+    in_files = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_files:
+                in_files = False
+            continue
+        if stripped.startswith("RESULT:"):
+            result = stripped.partition(":")[2].strip().upper()
+            in_files = False
+            continue
+        if stripped == "FILES CHANGED:":
+            in_files = True
+            continue
+        if stripped.endswith(":") and stripped != "FILES CHANGED:":
+            in_files = False
+            continue
+        if in_files and stripped.startswith("- "):
+            files.append(stripped[2:].strip())
+    return result, tuple(files) if files else None
+
+
+def _build_outcome(
+    summary: str,
+    *,
+    ok: bool,
+    wrote_files: tuple[str, ...],
+) -> tuple[str, str, str | None]:
+    """Map provider result + report contract + file delta to manifest outcome."""
+    if not ok:
+        return "closed/failed", "failed", "LLM execution failed"
+    if not summary.strip():
+        return "closed/failed", "failed", "empty output"
+
+    result, reported_files = _parse_build_report(summary)
+    if result is None or reported_files is None:
+        return "closed/failed", "failed", "missing structured build report"
+    if result != "SUCCESS":
+        return "closed/failed", "failed", "build agent reported failure"
+    if not wrote_files:
+        return "closed/failed", "failed", "no build files written"
+    return "", "", None
+
+
 def _write_evidence(
     path: Path,
     block: PlanBlock,
@@ -112,6 +195,7 @@ def _write_evidence(
     state: str,
     execution_id: str | None,
     summary: str,
+    written_files: tuple[str, ...],
     today: str,
 ) -> None:
     lines = [
@@ -134,6 +218,10 @@ def _write_evidence(
         f"- {f.role}: {f.name} (SP {f.story_points})" for f in assembly.files if not f.missing
     )
     lines.append("")
+    if written_files:
+        lines.append("## Build directory changes")
+        lines.extend(f"- {changed}" for changed in written_files)
+        lines.append("")
     lines.append("## Build summary")
     lines.append(summary.strip() or "(no summary returned)")
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
@@ -210,6 +298,7 @@ def build_target(
             build_dir=resolved_build_dir,
             today=today,
         )
+        before_files = _snapshot_files(resolved_build_dir)
         result = run(
             prompt_assembly.rendered_text,
             resolved_build_dir,
@@ -223,13 +312,15 @@ def build_target(
             on_text=on_text,
             prompt_assembly=prompt_assembly,
         )
+        after_files = _snapshot_files(resolved_build_dir)
+        changed_files = _written_files(before_files, after_files)
 
         ok = bool(getattr(result, "ok", False))
         summary = str(getattr(result, "text", "") or "")
         execution_id = getattr(result, "execution_id", None)
-        if not ok or not summary.strip():
-            state, status = "closed/failed", "failed"
-            error = "empty output" if ok else "LLM execution failed"
+        state, status, error = _build_outcome(summary, ok=ok, wrote_files=changed_files)
+        if status == "failed":
+            pass
         elif _has_child_acs(plan.blocks, block.block_id):
             state, status, error = "implemented", "implemented", None
         else:
@@ -243,6 +334,7 @@ def build_target(
             state=state,
             execution_id=execution_id,
             summary=summary,
+            written_files=changed_files,
             today=today,
         )
         set_block_fields(

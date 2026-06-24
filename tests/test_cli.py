@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -555,7 +556,20 @@ state: pending
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
 
         def _run(*a, **k):
-            return SimpleNamespace(ok=True, text="Built foundation.", execution_id="exec-fake")
+            out_dir = Path(a[1])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "foundation.txt").write_text("built\n", encoding="utf-8")
+            return SimpleNamespace(
+                ok=True,
+                text=(
+                    "RESULT: SUCCESS\n\n"
+                    "FILES CHANGED:\n"
+                    "- foundation.txt\n\n"
+                    "SUMMARY:\n"
+                    "Built foundation.\n"
+                ),
+                execution_id="exec-fake",
+            )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
 
@@ -634,6 +648,7 @@ class TestPlanningSession:
         assert rc == 0, err
         assert "Plan state: draft" in out
         assert "Authored 2 Blueprint spec file(s)" in out
+        assert "review the manifest build tree in the Planning Session" in out
         assert "=== ARCHITECTURE.md ===" not in out
         assert "Status command exits successfully." not in out
         assert not (bp.parent / "BUILD_COMPASS.md").exists()

@@ -184,7 +184,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"  1. Import source material:  drydock import {t} <source> --format markdown")
     print(f"  2. Analyze the spec:        drydock analyze {t}")
     print(f"  3. Create a plan:           drydock plan {t}")
-    print(f"  4. Review and approve:      drydock run quarterdeck {t}")
+    print(f"  4. Review the build tree:   drydock run quarterdeck {t}")
     return 0
 
 
@@ -379,7 +379,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         for warning in result.warnings:
             print(f"  - {warning}")
     print()
-    print("Next step: review and approve the plan in the Planning Session.")
+    print("Next step: review the manifest build tree in the Planning Session.")
     return 0
 
 

@@ -246,11 +246,14 @@ def test_drydock_console_core_artifact_order():
     ]
 
 
-def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):
+def test_plan_decision_renders_manifest_tree_without_controls(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     plan_path = tmp_path / "MANIFEST.md"
     plan_path.write_text(
-        "# MANIFEST: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
+        "# MANIFEST: Example\nstate: draft\n\n"
+        "## feature 1: Core\nid: core\nstate: pending\n\n"
+        "## story 1: Work\nid: work\nparent: core\nstate: pending\n\n"
+        "## ac 2: Check\nid: check\nparent: work\nkind: assertion\nstate: pending\n",
         encoding="utf-8",
     )
     item = {
@@ -263,15 +266,16 @@ def test_plan_decision_approves_authoritative_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(quarterdeck, "CONFIG", {"items": [item]})
     monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
 
-    result = quarterdeck.api_plan_decision(
-        "planning_session", quarterdeck.PlanDecision(decision="approve")
-    )
+    rendered = quarterdeck.render_plan_decision(item)
+    assert "Plan state" in rendered
+    assert "Buildable now" in rendered
+    assert "# Core" in rendered
+    assert "Work" in rendered
+    assert "Check" in rendered
+    assert "Approve plan" not in rendered
 
-    assert result["state"] == "approved"
-    assert "state: approved" in plan_path.read_text(encoding="utf-8")
 
-
-def test_plan_decision_rejects_non_approval(tmp_path, monkeypatch):
+def test_plan_decision_api_is_read_only(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     plan_path = tmp_path / "MANIFEST.md"
     plan_path.write_text(
@@ -281,9 +285,9 @@ def test_plan_decision_rejects_non_approval(tmp_path, monkeypatch):
     item = {"type": "plan_decision", "plan_path": str(plan_path)}
     monkeypatch.setattr(quarterdeck, "find_item", lambda _item_id: item)
 
-    with pytest.raises(quarterdeck.HTTPException, match="supports plan approval"):
+    with pytest.raises(quarterdeck.HTTPException, match="read-only"):
         quarterdeck.api_plan_decision(
-            "planning_session", quarterdeck.PlanDecision(decision="revise")
+            "planning_session", quarterdeck.PlanDecision(decision="approve")
         )
 
 
