@@ -14,15 +14,41 @@ body {
   min-height: 80vh;
 }
 .header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem 1.5rem;
   margin-bottom: 2rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #1e293b;
 }
 .project-name { font-size: 1.5rem; font-weight: 700; color: #f8fafc; }
-.sub { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+.sub {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.header-meta {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.header-meta li {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+  font-family: "SF Mono", "Cascadia Code", monospace;
+}
+.header-meta li:first-child { margin-top: 0; }
+.chair-title {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  align-self: start;
+  padding-top: 0.25rem;
+}
 .quality-banner {
   display: flex;
   align-items: center;
@@ -43,15 +69,21 @@ body {
 .quality-desc { font-size: 0.875rem; color: #94a3b8; margin-top: 0.25rem; }
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
+  align-items: start;
 }
 .stat {
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 0.5rem;
   padding: 1rem 1.25rem;
+}
+.stat-next-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
 }
 .stat-value { font-size: 2rem; font-weight: 700; color: #f8fafc; line-height: 1; }
 .stat-label {
@@ -61,55 +93,25 @@ body {
   letter-spacing: 0.06em;
   margin-top: 0.375rem;
 }
-.info {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  padding: 0.875rem 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-.info-label {
-  font-size: 0.7rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  width: 80px;
-  flex-shrink: 0;
-}
-.info-value { font-size: 0.875rem; color: #cbd5e1; font-family: "SF Mono", "Cascadia Code", monospace; }
-.next-step {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  padding: 1rem 1.25rem;
-  margin-top: 1.5rem;
-}
 .next-step-label {
   font-size: 0.7rem;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-bottom: 0.5rem;
 }
 .next-step-value { font-size: 0.875rem; color: #94a3b8; font-family: "SF Mono", "Cascadia Code", monospace; }
-.breakdown {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  padding: 1rem 1.25rem;
-  margin-top: 1.5rem;
+.story-breakdown {
+  border-top: 1px solid #334155;
+  padding-top: 0.9rem;
 }
-.breakdown-label {
+.story-breakdown-label {
   font-size: 0.7rem;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 0.75rem;
 }
-.breakdown-row {
+.story-breakdown-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -117,9 +119,9 @@ body {
   padding: 0.35rem 0;
   border-top: 1px solid #334155;
 }
-.breakdown-row:first-of-type { border-top: 0; padding-top: 0; }
-.breakdown-name { font-size: 0.9rem; color: #cbd5e1; }
-.breakdown-count {
+.story-breakdown-row:first-of-type { border-top: 0; padding-top: 0; }
+.story-breakdown-name { font-size: 0.9rem; color: #cbd5e1; }
+.story-breakdown-count {
   font-size: 0.9rem;
   color: #f8fafc;
   font-weight: 700;
@@ -131,10 +133,13 @@ body {
 
 <div class="header">
   <div>
-    <div class="project-name">{{PROJECT_NAME}}</div>
-    <div class="sub">Analyzed {{GENERATED_DATE}}</div>
+    <div class="project-name">Target</div>
+    <ul class="header-meta">
+      <li>- Analyzed {{GENERATED_DATE}}</li>
+      <li>- Build Directory {{BUILD_DIRECTORY}}</li>
+    </ul>
   </div>
-  <div class="sub">Commanders Chair</div>
+  <div class="chair-title">Commanders Chair</div>
 </div>
 
 <div class="quality-banner {{QUALITY_CSS}}">
@@ -154,6 +159,11 @@ body {
     <div class="stat-value">{{QUESTION_COUNT}}</div>
     <div class="stat-label">Questions</div>
   </div>
+  <div class="stat stat-next-step">
+    <div class="next-step-label">Next Step</div>
+    <div class="next-step-value">{{NEXT_STEP}}</div>
+    {{STORY_BREAKDOWN_SECTION}}
+  </div>
   <div class="stat">
     <div class="stat-value">{{BLOCKER_COUNT}}</div>
     <div class="stat-label">Blockers</div>
@@ -163,18 +173,6 @@ body {
     <div class="stat-label">Screens</div>
   </div>
 </div>
-
-<div class="info">
-  <span class="info-label">Stack</span>
-  <span class="info-value">{{STACK}}</span>
-</div>
-
-<div class="next-step">
-  <div class="next-step-label">Next Step</div>
-  <div class="next-step-value">{{NEXT_STEP}}</div>
-</div>
-
-{{STORY_BREAKDOWN_SECTION}}
 
 </body>
 </html>

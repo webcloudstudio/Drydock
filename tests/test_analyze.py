@@ -799,7 +799,7 @@ class TestFillCaptainsChair:
     _TEMPLATE = (
         "{{PROJECT_NAME}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
         "{{STORY_COUNT}}|{{QUESTION_COUNT}}|{{BLOCKER_COUNT}}|{{SCREEN_COUNT}}|"
-        "{{STACK}}|{{NEXT_STEP}}|{{GENERATED_DATE}}|{{STORY_BREAKDOWN_SECTION}}"
+        "{{NEXT_STEP}}|{{GENERATED_DATE}}|{{BUILD_DIRECTORY}}|{{STORY_BREAKDOWN_SECTION}}"
     )
 
     def test_ready_fill(self):
@@ -810,17 +810,17 @@ class TestFillCaptainsChair:
             question_count=0,
             blocker_count=0,
             screen_count=3,
-            stack="python/flask",
             next_step="drydock plan Foo",
             project_name="Foo",
             generated_date="2026-06-14",
+            build_directory="/tmp/builds/Foo",
         )
         assert "Foo" in result
         assert "Ready" in result
         assert "ready" in result
         assert "✓" in result
         assert "10" in result
-        assert "python/flask" in result
+        assert "/tmp/builds/Foo" in result
 
     def test_blocked_css_class(self):
         result = _fill_commanders_chair(
@@ -830,10 +830,10 @@ class TestFillCaptainsChair:
             question_count=0,
             blocker_count=1,
             screen_count=0,
-            stack="",
             next_step="",
             project_name="X",
             generated_date="",
+            build_directory="",
         )
         assert "blocked" in result
         assert "✗" in result
@@ -846,10 +846,10 @@ class TestFillCaptainsChair:
             question_count=2,
             blocker_count=0,
             screen_count=0,
-            stack="",
             next_step="",
             project_name="X",
             generated_date="",
+            build_directory="",
         )
         assert "questions" in result
         assert "⚠" in result
@@ -1120,9 +1120,15 @@ class TestLifecycleState:
 
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         (target_dir / "METADATA.md").write_text(render_metadata("MyTarget"), encoding="utf-8")
-        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        output = _make_llm_output(analysis_override=_GROUPED_ANALYSIS_CONTENT)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert result.commanders_chair_path is not None
         assert result.commanders_chair_path.exists()
+        html = result.commanders_chair_path.read_text(encoding="utf-8")
+        assert "Commanders Chair" in html
+        assert "Build Directory" in html
+        assert "Story Shape" in html
+        assert "Stack" not in html
 
     def test_commanders_chair_rewritten_when_state_does_not_advance(self, tmp_path):
         from drydock.metadata import render_metadata, set_build_state

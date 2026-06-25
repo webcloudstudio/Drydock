@@ -28,6 +28,7 @@ from drydock.exclude_files import (
 from drydock.llm import run_prompt
 from drydock.metadata import (
     METADATA_NAME,
+    get_build_dir,
     set_build_state,
     set_field,
     set_sub_state,
@@ -593,16 +594,17 @@ def _fill_commanders_chair(
     question_count: int,
     blocker_count: int,
     screen_count: int,
-    stack: str,
     next_step: str,
     project_name: str,
     generated_date: str,
+    build_directory: str,
     story_breakdown_html: str = "",
 ) -> str:
     css_class, icon, desc = _QUALITY_META.get(quality, ("blocked", "?", quality))
     replacements = {
         "{{PROJECT_NAME}}": project_name,
         "{{GENERATED_DATE}}": generated_date,
+        "{{BUILD_DIRECTORY}}": build_directory,
         "{{QUALITY}}": quality,
         "{{QUALITY_CSS}}": css_class,
         "{{QUALITY_ICON}}": icon,
@@ -611,7 +613,6 @@ def _fill_commanders_chair(
         "{{QUESTION_COUNT}}": str(question_count),
         "{{BLOCKER_COUNT}}": str(blocker_count),
         "{{SCREEN_COUNT}}": str(screen_count),
-        "{{STACK}}": stack or "not declared",
         "{{NEXT_STEP}}": next_step,
         "{{STORY_BREAKDOWN_SECTION}}": story_breakdown_html,
     }
@@ -647,17 +648,17 @@ def _render_story_breakdown_html(analysis_text: str) -> str:
         return ""
     items = "\n".join(
         [
-            '  <div class="breakdown-row">'
-            f'<span class="breakdown-name">{escape(name)}</span>'
-            f'<span class="breakdown-count">{count}</span>'
+            '  <div class="story-breakdown-row">'
+            f'<span class="story-breakdown-name">{escape(name)}</span>'
+            f'<span class="story-breakdown-count">{count}</span>'
             "</div>"
             for name, count in breakdown
         ]
     )
     return "\n".join(
         [
-            '<div class="breakdown">',
-            '  <div class="breakdown-label">Story Shape</div>',
+            '<div class="story-breakdown">',
+            '  <div class="story-breakdown-label">Story Shape</div>',
             items,
             "</div>",
         ]
@@ -844,6 +845,10 @@ def analyze(
     state_advanced = set_build_state(target_dir, "analyzed")
     if state_advanced or (target_dir / METADATA_NAME).is_file():
         try:
+            try:
+                build_directory = str(get_build_dir(target, target_dir))
+            except Exception:
+                build_directory = "not configured"
             template_path = get_rigging_root() / "templates" / "commanders_chair.html"
             if template_path.is_file():
                 template = template_path.read_text(encoding="utf-8")
@@ -854,10 +859,10 @@ def analyze(
                     question_count=question_count,
                     blocker_count=blocker_count,
                     screen_count=screen_count,
-                    stack=stack,
                     next_step=_next_step_hint(quality, target),
                     project_name=target,
                     generated_date=today,
+                    build_directory=build_directory,
                     story_breakdown_html=_render_story_breakdown_html(analysis_text),
                 )
                 chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
