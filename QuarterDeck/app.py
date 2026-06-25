@@ -1507,13 +1507,15 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
     label = html.escape(item.get("label", ""))
     iid = html.escape(item["id"])
     t = item.get("type", "")
+    show_filename = item.get("id") != "commanders_chair"
 
     fname = ""
-    for key in ("path", "path_md", "path_html", "path_pdf", "href"):
-        v = item.get(key)
-        if v:
-            fname = Path(v).name
-            break
+    if show_filename:
+        for key in ("path", "path_md", "path_html", "path_pdf", "href"):
+            v = item.get(key)
+            if v:
+                fname = Path(v).name
+                break
     fname_html = f"<span class='ph-filename'>{html.escape(fname)}</span>" if fname else ""
 
     btns: list[str] = []
