@@ -34,7 +34,7 @@ from drydock.metadata import (
     set_sub_state,
     stamp_last,
 )
-from drydock.paths import get_rigging_root
+from drydock.paths import get_quarterdeck_template_dir
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -849,7 +849,7 @@ def analyze(
                 build_directory = str(get_build_dir(target, target_dir))
             except Exception:
                 build_directory = "not configured"
-            template_path = get_rigging_root() / "templates" / "commanders_chair.html"
+            template_path = get_quarterdeck_template_dir() / "commanders_chair.html"
             if template_path.is_file():
                 template = template_path.read_text(encoding="utf-8")
                 filled = _fill_commanders_chair(

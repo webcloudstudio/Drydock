@@ -64,6 +64,7 @@ packages = ["src/drydock"]
 "prompts" = "drydock/resources/prompts"
 "QuarterDeck/app.py" = "drydock/resources/QuarterDeck/app.py"
 "QuarterDeck/requirements.txt" = "drydock/resources/QuarterDeck/requirements.txt"
+"QuarterDeck/templates" = "drydock/resources/QuarterDeck/templates"
 
 [tool.hatch.build.targets.sdist]
 include = [

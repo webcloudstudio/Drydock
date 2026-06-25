@@ -114,6 +114,11 @@ def get_quarterdeck_root() -> Path:
         ) from exc
 
 
+def get_quarterdeck_template_dir() -> Path:
+    """Return the QuarterDeck template directory."""
+    return get_quarterdeck_root() / "templates"
+
+
 def get_spec_template_dir() -> Path:
     """Return the spec_template/ directory inside Rigging."""
     return get_rigging_root() / "spec_template"
