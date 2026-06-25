@@ -392,7 +392,7 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     md_file = tmp_path / "ANALYSIS.md"
     md_file.write_text(
-        "# Blueprint Analysis\n\nQuality: Ready\n\n## Open Questions\n- None.\n\n## Notes\nNone.\n",
+        "# Blueprint Analysis\n\n## Story List\n- Story.\n\n## Analysis Notes\nQuality: Ready\n\nNone.\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
@@ -409,11 +409,10 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     )
 
     assert "md-tabs" in rendered
-    # Overview tab (pre-## block) + Open Questions + Notes = 3 tab buttons.
-    assert rendered.count("md-tab-btn") >= 3
-    assert "Overview" in rendered
-    assert "Open Questions" in rendered
-    assert "Notes" in rendered
+    assert rendered.count("<button class='md-tab-btn") == 2
+    assert "Overview" not in rendered
+    assert "Story List" in rendered
+    assert "Analysis Notes" in rendered
     assert "Markdown help." in rendered
 
 

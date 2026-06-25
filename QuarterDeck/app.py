@@ -598,7 +598,7 @@ def _split_h2_sections(text: str) -> list[tuple[str, str]]:
     result: list[tuple[str, str]] = []
     intro = parts[0].strip()
     if intro:
-        body = re.sub(r"^# [^\n]*\n", "", intro, count=1).strip()
+        body = re.sub(r"^# [^\n]*(?:\n|$)", "", intro, count=1).strip()
         if body:
             result.append(("Overview", body))
     for i in range(1, len(parts) - 1, 2):

@@ -15,6 +15,7 @@ from drydock.analyze import (
     _feedback_body,
     _fill_commanders_chair,
     _is_compass_unpopulated,
+    _normalize_analysis_layout,
     _normalize_analysis_summary,
     _parse_blocks,
     _parse_output,
@@ -70,6 +71,17 @@ def test_normalize_analysis_summary_rewrites_quality_and_counts():
     assert "Quality: Questions" in result
     assert "  blockers: 0" in result
     assert "  questions: 1" in result
+
+
+def test_normalize_analysis_layout_moves_summary_into_analysis_notes():
+    result = _normalize_analysis_layout(
+        _remove_tuning_options_section(_remove_open_questions_section(_ANALYSIS_CONTENT))
+    )
+
+    assert result.startswith("# Blueprint Analysis: TestProject\n\n## Story List")
+    assert "## Analysis Notes\n\ngenerated: 2026-06-14" in result
+    assert "\nQuality: Ready\n  blockers: 0" in result
+    assert "## Notes" not in result
 
 
 _ANALYSIS_CONTENT = """\

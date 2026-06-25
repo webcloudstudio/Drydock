@@ -206,6 +206,13 @@ Emit exactly these blocks in order. COMPASS.md block is conditional.
 ```
 === ANALYSIS.md ===
 # Blueprint Analysis: {ProjectName}
+## Story List
+
+{Tables or grouped lists of story titles with high-level AC. Organize by feature area.
+No prescribed format — use what best communicates the project shape.}
+
+## Analysis Notes
+
 generated: {ISO date}
 blueprint: {BLUEPRINT_PATH from job block}
 
@@ -215,13 +222,6 @@ Quality: {Ready | Questions | Blocked}
   stories: {N}
   stack: {declared stack value or "not declared"}
   screens: {N}
-
-## Story List
-
-{Tables or grouped lists of story titles with high-level AC. Organize by feature area.
-No prescribed format — use what best communicates the project shape.}
-
-## Analysis notes
 
 {Non-conformant headers, ambiguous signals, observations. "None." if clean.
 Do not add an ## Overview section or any other sections not listed here.}

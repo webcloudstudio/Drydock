@@ -74,6 +74,9 @@ _TUNING_OPTIONS_SECTION_RE = re.compile(
 )
 _SUMMARY_QUALITY_RE = re.compile(r"^Quality:\s*(\S+)\s*$", re.MULTILINE)
 _SUMMARY_COUNT_RE = re.compile(r"^  (blockers|questions):\s*.+?$", re.MULTILINE)
+_ANALYSIS_NOTES_HEADING_RE = re.compile(
+    r"^## (?:Analysis notes|Notes)\s*$", re.MULTILINE | re.IGNORECASE
+)
 _STORY_SECTION_RE = re.compile(
     r"^###\s+(?:Feature Area\s+\d+\s+—\s+)?(.+?)\s*$", re.MULTILINE
 )
@@ -520,6 +523,35 @@ def _normalize_analysis_summary(analysis_text: str, *, quality: str, blockers: i
     return _SUMMARY_COUNT_RE.sub(repl, text)
 
 
+def _normalize_analysis_layout(analysis_text: str) -> str:
+    """Move the generated summary out of the tab preamble and into Analysis Notes."""
+    text = _ANALYSIS_NOTES_HEADING_RE.sub("## Analysis Notes", analysis_text.strip())
+    match = re.match(r"(?s)\A(#[^\n]*(?:\n|$))(?P<intro>.*?)(?=^## |\Z)(?P<body>.*)\Z", text, re.MULTILINE)
+    if not match:
+        return text
+
+    title = match.group(1).strip()
+    intro = match.group("intro").strip()
+    body = match.group("body").strip()
+    if not intro:
+        return "\n\n".join(part for part in (title, body) if part)
+
+    notes_match = re.search(
+        r"(?ms)^## Analysis Notes\s*$(?P<notes>.*?)(?=^## |\Z)",
+        body,
+    )
+    if notes_match:
+        notes = notes_match.group("notes").strip()
+        replacement = "## Analysis Notes\n\n" + intro
+        if notes:
+            replacement += "\n\n" + notes
+        body = body[: notes_match.start()] + replacement + body[notes_match.end() :]
+    else:
+        body = "\n\n".join(part for part in (body, "## Analysis Notes\n\n" + intro) if part)
+
+    return "\n\n".join(part for part in (title, body.strip()) if part)
+
+
 def _count_open_discoveries(questionnaires_dir: Path) -> int:
     """Count visible open discovery questionnaires backed by files on disk."""
     if not questionnaires_dir.is_dir():
@@ -571,6 +603,7 @@ def _parse_output(
     quality = quality_match.group(1) if quality_match else "unknown"
 
     summary = _parse_summary_fields(analysis_text)
+    analysis_text = _normalize_analysis_layout(analysis_text)
     compass_content = blocks.get("COMPASS.md") or None
     blockers_content = _validate_blockers(blocks.get("BLOCKERS.md"))
 
