@@ -108,7 +108,7 @@ def test_render_console_groups_artifacts_by_phase():
 
     parsed = yaml.safe_load(config)
     section_ids = [s["id"] for s in parsed["sections"]]
-    assert section_ids == ["analyze", "plan", "build", "archive"]
+    assert section_ids == ["analyze", "plan", "build"]
     items = {item["id"]: item for item in parsed["items"]}
     assert "blockers_doc" in items
     assert items["blockers_doc"]["section"] == "analyze"

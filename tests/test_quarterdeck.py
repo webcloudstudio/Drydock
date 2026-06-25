@@ -56,16 +56,15 @@ def test_jsonl_renderer_sorts_fields_and_isolates_invalid_lines(tmp_path, monkey
     assert "line 2" in rendered
 
 
-def test_drydock_console_has_four_configured_sections():
+def test_drydock_console_has_three_configured_sections():
     config = _console_config()
     section_ids = [s["id"] for s in config["sections"]]
-    assert section_ids == ["core", "actions", "docs", "archive"]
+    assert section_ids == ["core", "actions", "docs"]
 
 
-def test_drydock_console_archive_section_is_collapsed():
+def test_drydock_console_has_no_archive_section():
     config = _console_config()
-    archive = next(s for s in config["sections"] if s["id"] == "archive")
-    assert archive.get("collapsed") is True
+    assert "archive" not in {s["id"] for s in config["sections"]}
 
 
 def test_drydock_console_core_has_master_blueprint():
@@ -545,57 +544,28 @@ def test_expand_sources_skips_files_covered_by_explicit_items(tmp_path):
         quarterdeck.BASE_DIR = tmp_path.parent / "QuarterDeck"
 
 
-# ── archive / unarchive ───────────────────────────────────────────────────────
+# ── navigation controls ───────────────────────────────────────────────────────
 
 
-def test_archive_and_unarchive_item(tmp_path, monkeypatch):
-    quarterdeck = _load_quarterdeck()
-
-    monkeypatch.setattr(quarterdeck, "_SESSION_ARCHIVED", set())
-    monkeypatch.setattr(
-        quarterdeck,
-        "CONFIG",
-        {
-            "sections": [
-                {"id": "project_pages", "label": "Project Pages"},
-                {"id": "archive", "label": "Archive", "collapsed": True},
-            ],
-            "items": [
-                {
-                    "id": "my_doc",
-                    "label": "My Doc",
-                    "section": "project_pages",
-                    "type": "markdown",
-                    "path": "x.md",
-                }
-            ],
-        },
-    )
-    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
-
-    result = quarterdeck.api_archive_item("my_doc")
-    assert result["ok"] is True
-    assert quarterdeck._archive_key("my_doc") in quarterdeck._SESSION_ARCHIVED
-
-    result = quarterdeck.api_unarchive_item("my_doc")
-    assert result["ok"] is True
-    assert quarterdeck._archive_key("my_doc") not in quarterdeck._SESSION_ARCHIVED
-
-
-def test_archive_blocked_for_pinned_section(monkeypatch):
+def test_nav_has_no_archive_controls(monkeypatch):
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(
         quarterdeck,
         "CONFIG",
         {
-            "sections": [{"id": "core", "label": "Core", "pinned": True}],
-            "items": [{"id": "spec", "section": "core", "type": "markdown", "path": "x.md"}],
+            "sections": [{"id": "docs", "label": "Docs"}],
+            "items": [{"id": "spec", "section": "docs", "type": "markdown", "path": "x.md"}],
         },
     )
     monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
 
-    with pytest.raises(quarterdeck.HTTPException, match="pinned"):
-        quarterdeck.api_archive_item("spec")
+    rendered = quarterdeck.render_nav()
+
+    assert "arc-btn" not in rendered
+    assert "archiveToggle" not in rendered
+    assert not hasattr(quarterdeck, "api_archive_item")
+    assert not hasattr(quarterdeck, "api_unarchive_item")
 
 
 # ── Spike questionnaire template ──────────────────────────────────────────────
@@ -755,7 +725,6 @@ def test_answered_discovery_stays_in_analyze_section(tmp_path, monkeypatch):
         {
             "sections": [
                 {"id": "analyze", "label": "Analyze", "dot": "#0d9488"},
-                {"id": "archive", "label": "Archive", "dot": "#94a3b8", "collapsed": True},
             ],
             "items": [item],
         },
@@ -866,17 +835,14 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
         {
             "sections": [
                 {"id": "build_plan", "label": "Build Compass", "dot": "#d97706"},
-                {"id": "archive", "label": "Archive", "dot": "#94a3b8", "collapsed": True},
             ],
             "items": [
                 {"id": "plan", "label": "Plan", "section": "build_plan", "type": "markdown", "path": "plan.md"},
-                {"id": "old", "label": "Old", "section": "archive", "type": "markdown", "path": "old.md"},
             ],
         },
     )
     monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
     monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
-    monkeypatch.setattr(quarterdeck, "_is_item_archived", lambda _item: False)
 
     rendered = quarterdeck.render_nav()
 
@@ -884,7 +850,6 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
     assert "sec-flag" in rendered
     assert "onclick='toggleSection" not in rendered
     assert "collapse-arrow" not in rendered
-    assert "data-item='old'" in rendered
 
 
 def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
@@ -926,7 +891,6 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
     )
     monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
     monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
-    monkeypatch.setattr(quarterdeck, "_is_item_archived", lambda _item: False)
 
     rendered = quarterdeck.render_nav()
 
@@ -959,7 +923,6 @@ def test_render_nav_includes_build_compass_item_flag(monkeypatch):
     )
     monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
     monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
-    monkeypatch.setattr(quarterdeck, "_is_item_archived", lambda _item: False)
 
     rendered = quarterdeck.render_nav()
 

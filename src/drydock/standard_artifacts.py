@@ -136,7 +136,6 @@ sections:
   - {{ id: analyze, label: "Analyze", dot: "#0d9488", pinned: true }}
   - {{ id: plan, label: "Plan", dot: "#2563eb" }}
   - {{ id: build, label: "Build", dot: "#d97706" }}
-  - {{ id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }}
 
 items:
   - {{ id: blockers_doc, label: "Blockers", section: analyze, type: editable_markdown, path: ../BLOCKERS.md, order: 1, help_text: {json.dumps(blockers.help_text)}, prompt_text: {json.dumps(blockers.prompt_text)} }}

@@ -11,7 +11,6 @@ sections:
   - { id: core,    label: "Core",    dot: "#0d9488", pinned: true }
   - { id: actions, label: "Actions", dot: "#dc2626" }
   - { id: docs,    label: "Docs",    dot: "#2563eb" }
-  - { id: archive, label: "Archive", dot: "#94a3b8", collapsed: true }
 
 # Auto-discover files into sections. Explicit items (matched by ID or by path) take
 # priority; overrides adjust source-generated items before insertion.
@@ -87,16 +86,15 @@ items:
     path: pages/initial-review.md
     review: true
 
-  # Archive — completed ephemeral items
   - id: choose_next_slice
     label: "Choose Next Slice"
-    section: archive
+    section: actions
     type: questionnaire
     path: questionnaires/initial-direction.json
 
   - id: console_contract
     label: "QuarterDeck Contract"
-    section: archive
+    section: docs
     type: markdown
     path: README.md
 

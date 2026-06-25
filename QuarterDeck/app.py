@@ -9,7 +9,7 @@ Each item carries navigation properties (`label`, `section`) and type properties
 (`type` + type-specific fields). Sections are defined in the `sections:` block of
 `console.yaml` (id / label / dot / collapsed / pinned); items reference a section id.
 
-Canonical target sections: Analyze · Plan · Build · Archive (collapsed by default).
+Canonical target sections: Analyze · Plan · Build.
 
 Page types (one Python renderer each, in TYPES):
   - markdown      render a markdown file as HTML
@@ -26,10 +26,6 @@ console.yaml also accepts:
              Items in the explicit `items:` list (matched by ID or by path) take priority.
   overrides: list of {match: <path-relative-to-project-root>, <field overrides>} applied
              to source-generated items before they are added.
-
-Archive/unarchive (POST /api/item/{id}/archive|unarchive): for questionnaire items the
-archive flag is written directly into the questionnaire JSON file; for all other item types
-the flag is session-scoped (resets on restart). Items in pinned sections cannot be archived.
 
 Tickets (the kanban's work items) live in a separate JSON file the framework writes;
 the QuarterDeck renders them read-only. Contract: QuarterDeck/README.md
@@ -152,19 +148,6 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect y="0" width="16" height="4" fill="#eab308"/>'
         '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
         '<rect y="8" width="16" height="4" fill="#eab308"/>'
-        "</svg>"
-    ),
-    "archive": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#eab308"/>'
-        '<rect x="0" y="0" width="4" height="3" fill="#111"/>'
-        '<rect x="8" y="0" width="4" height="3" fill="#111"/>'
-        '<rect x="4" y="3" width="4" height="3" fill="#111"/>'
-        '<rect x="12" y="3" width="4" height="3" fill="#111"/>'
-        '<rect x="0" y="6" width="4" height="3" fill="#111"/>'
-        '<rect x="8" y="6" width="4" height="3" fill="#111"/>'
-        '<rect x="4" y="9" width="4" height="3" fill="#111"/>'
-        '<rect x="12" y="9" width="4" height="3" fill="#111"/>'
         "</svg>"
     ),
 }
@@ -517,23 +500,16 @@ def nav_model() -> list[dict[str, Any]]:
     Items whose backing file does not exist are hidden from the sidebar; they
     reappear automatically once the file is created — no console.yaml rewrite needed.
 
-    Archived items (from non-pinned sections) are transparently moved to the
-    archive section; pinned-section items are immune to archiving.
     """
     config_sections = require_config().get("sections", [])
     config_map = {s["id"]: s for s in config_sections}
-    pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
 
     by_section: dict[str, list[dict[str, Any]]] = {}
     order: list[str] = []
     for item in items():
         if not _item_file_exists(item):
             continue
-        home_sid = item.get("section", "project_pages")
-        if _is_item_archived(item) and home_sid not in pinned_sids:
-            sid = "archive"
-        else:
-            sid = home_sid
+        sid = item.get("section", "project_pages")
         if sid not in by_section:
             by_section[sid] = []
             order.append(sid)
@@ -1456,13 +1432,6 @@ def render_item(item: dict[str, Any]) -> str:
 # ── State store (questionnaire answers) ─────────────────────────────────────────
 
 
-_SESSION_ARCHIVED: set[str] = set()  # session-scoped archive state for non-questionnaire items
-
-
-def _archive_key(item_id: str) -> str:
-    return f"{_current_active_target()}::{item_id}"
-
-
 def _q_path_for(item_id: str) -> Path | None:
     """Return the resolved path of a questionnaire JSON file, or None."""
     item = next(
@@ -1472,31 +1441,6 @@ def _q_path_for(item_id: str) -> Path | None:
         return None
     p = (_current_base_dir() / item["path"]).resolve()
     return p if p.exists() else None
-
-
-def _is_item_archived(item: dict[str, Any]) -> bool:
-    """Return True when this item has been archived via the UI."""
-    if item.get("type") == "questionnaire" and "path" in item:
-        try:
-            p = (_current_base_dir() / item["path"]).resolve()
-            data = json.loads(p.read_text(encoding="utf-8"))
-            return bool(data.get("archived", False))
-        except Exception:
-            return False
-    return _archive_key(item.get("id", "")) in _SESSION_ARCHIVED
-
-
-def _set_q_archived(item_id: str, archived: bool) -> None:
-    """Write the ``archived`` flag into a questionnaire JSON file."""
-    p = _q_path_for(item_id)
-    if not p:
-        return
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    data["archived"] = archived
-    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def item_pending(item: dict[str, Any]) -> bool:
@@ -1747,34 +1691,6 @@ def switch_target(target: str, request: Request = None):
         return response
 
 
-@app.post("/api/item/{item_id}/archive")
-def api_archive_item(item_id: str, request: Request = None) -> dict[str, Any]:
-    with _request_context(request):
-        item = find_item(item_id)
-        config_sections = require_config().get("sections", [])
-        pinned_sids = {s["id"] for s in config_sections if s.get("pinned")}
-        if item.get("section") in pinned_sids:
-            raise HTTPException(
-                status_code=400, detail="Items in pinned sections cannot be archived."
-            )
-        if item.get("type") == "questionnaire":
-            _set_q_archived(item_id, True)
-        else:
-            _SESSION_ARCHIVED.add(_archive_key(item_id))
-        return {"ok": True, "item_id": item_id}
-
-
-@app.post("/api/item/{item_id}/unarchive")
-def api_unarchive_item(item_id: str, request: Request = None) -> dict[str, Any]:
-    with _request_context(request):
-        item = find_item(item_id)
-        if item.get("type") == "questionnaire":
-            _set_q_archived(item_id, False)
-        else:
-            _SESSION_ARCHIVED.discard(_archive_key(item_id))
-        return {"ok": True, "item_id": item_id}
-
-
 @app.post("/api/state/{key}")
 def api_set_state(key: str, update: StateUpdate, request: Request = None) -> dict[str, Any]:
     with _request_context(request):
@@ -1880,18 +1796,6 @@ def render_nav() -> str:
                 iid = html.escape(item["id"])
                 icon = _NAV_STATUS_HTML.get(item_nav_status(item) or "", "")
                 item_flag = _ITEM_FLAGS.get(item["id"], "")
-                if section["id"] == "archive":
-                    arc = (
-                        f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',false)\" "
-                        "title='Unarchive'>↑</button>"
-                    )
-                elif not section.get("pinned") and item.get("type") != "questionnaire":
-                    arc = (
-                        f"<button class='arc-btn' onclick=\"archiveToggle('{iid}',true)\" "
-                        "title='Archive'>↓</button>"
-                    )
-                else:
-                    arc = ""
                 if item.get("type") == "link":
                     href = item.get("href", "")
                     url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
@@ -1905,7 +1809,7 @@ def render_nav() -> str:
                         f"<button class='doc-btn' data-item='{iid}'>"
                         f"{icon}{item_flag}{lbl}</button>"
                     )
-                item_htmls.append(f"<div class='nav-item-row'>{btn}{arc}</div>")
+                item_htmls.append(f"<div class='nav-item-row'>{btn}</div>")
             btns = "".join(item_htmls)
         else:
             btns = "<div class='section-empty'>— empty —</div>"
@@ -1992,8 +1896,6 @@ _STYLE = """
              display:flex; align-items:center; }
   .doc-btn:hover { background:#eef2f7; }
   .doc-btn.active { background:#111827; color:#fff; }
-  .nav-section[data-sec="archive"] .doc-btn { color:#94a3b8; }
-  .nav-section[data-sec="archive"] .doc-btn.active { color:#fff; }
   .section-empty { padding:4px 24px; font-size:12px; color:#cbd5e1; }
   article { padding:24px 32px; max-width:1100px; overflow-x:auto; }
   article h1 { line-height:1.2; margin-top:0; }
@@ -2072,9 +1974,6 @@ _STYLE = """
   .pdf-open-btn:hover { opacity:.9; }
   .nav-item-row { display:flex; align-items:center; gap:2px; margin:0 0 3px; }
   .nav-item-row .doc-btn { flex:1; margin:0; }
-  .arc-btn { background:none; border:none; cursor:pointer; font-size:11px; color:#94a3b8;
-             padding:2px 4px; opacity:.55; flex:none; border-radius:3px; }
-  .arc-btn:hover { opacity:1; color:#475569; background:#eef2f7; }
   .sec-flag { display:inline-flex; align-items:center; flex:none; margin-right:2px;
               border:1px solid rgba(0,0,0,.15); border-radius:1px; }
   .item-flag { display:inline-flex; align-items:center; flex:none; margin-right:6px;
@@ -2304,12 +2203,6 @@ def index(request: Request = None) -> str:
         el.addEventListener('blur', save);
         if (el.tagName === 'SELECT') el.addEventListener('change', save);
       }});
-    }}
-    async function archiveToggle(itemId, doArchive) {{
-      const url = doArchive ? `/api/item/${{itemId}}/archive` : `/api/item/${{itemId}}/unarchive`;
-      const r = await fetch(url, {{method: 'POST'}});
-      if (r.ok) window.location.reload();
-      else {{ const d = await r.json().catch(() => ({{}})); alert('Archive failed: ' + (d.detail || r.status)); }}
     }}
     function mdTab(btn, index) {{
       const t = btn.closest('.md-tabs');
