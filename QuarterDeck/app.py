@@ -177,7 +177,6 @@ class ConsoleConfigError(RuntimeError):
 @dataclass(frozen=True)
 class ConsoleTarget:
     target: str
-    label: str
     project_root: Path
     base_dir: Path
     config_path: Path
@@ -350,18 +349,10 @@ def _discover_switchable_targets(workspace_root: Path) -> tuple[ConsoleTarget, .
         config_path = base_dir / "console.yaml"
         if not config_path.is_file():
             continue
-        label = target_dir.name
-        try:
-            config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-            project = config.get("project", {})
-            label = str(project.get("name") or label)
-        except yaml.YAMLError:
-            pass
         accent, accent_soft = _target_palette(index)
         discovered.append(
             ConsoleTarget(
                 target=target_dir.name,
-                label=label,
                 project_root=target_dir,
                 base_dir=base_dir,
                 config_path=config_path,
@@ -445,8 +436,7 @@ def items() -> list[dict[str, Any]]:
 
 
 def _current_project_name() -> str:
-    project = require_config().get("project", {})
-    return str(project.get("name") or _current_active_target() or "Project")
+    return _current_active_target() or "Project"
 
 
 def _current_copyright() -> str:
@@ -1844,7 +1834,7 @@ def render_target_switcher() -> str:
             "<span class='target-flag flag-a'></span>"
             "<span class='target-flag flag-b'></span>"
             "</span>"
-            f"<span class='target-btn-name'>{html.escape(target.label)}</span>"
+            f"<span class='target-btn-name'>{html.escape(target.target)}</span>"
             "</span>"
             "</a>"
         )

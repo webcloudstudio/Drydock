@@ -952,6 +952,47 @@ def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatc
     assert 'href="https://webcloudstudio.com"' in html
 
 
+def test_target_identity_uses_slug_not_project_name(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    stim_console = workspace / "targets" / "stim" / "QuarterDeck"
+    stim_console.mkdir(parents=True, exist_ok=True)
+    (stim_console / "pages").mkdir(parents=True, exist_ok=True)
+    (stim_console / "pages" / "help.html").write_text("<p>stim help</p>", encoding="utf-8")
+    (stim_console / "commanders_chair.html").write_text("<h1>stim</h1>", encoding="utf-8")
+    (stim_console / "console.yaml").write_text(
+        "\n".join(
+            [
+                "console:",
+                "  name: Secure Team Inventory Matrix QuarterDeck",
+                "  default_item: commanders_chair",
+                "  app_help_file_location: pages/help.html",
+                "project:",
+                "  id: stim",
+                "  name: Secure Team Inventory Matrix",
+                "  description: \"Target description\"",
+                "  copyright: Copyright (c) 2026 Stim Studio. All rights reserved.",
+                "sections:",
+                '  - { id: core, label: "Core", dot: "#0d9488", pinned: true }',
+                "items:",
+                '  - { id: commanders_chair, label: "Commanders Chair", section: core, type: document, path_html: commanders_chair.html }',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    nav_html = quarterdeck.api_nav(_RequestStub({"quarterdeck_target": "stim"}))["html"]
+    index_html = quarterdeck.index(_RequestStub({"quarterdeck_target": "stim"}))
+
+    assert "/switch-target/stim" in nav_html
+    assert ">stim</span>" in nav_html
+    assert "Secure Team Inventory Matrix" not in nav_html
+    assert "<title>stim</title>" in index_html
+    assert "Secure Team Inventory Matrix" not in index_html
+
+
 def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
