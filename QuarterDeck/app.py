@@ -629,7 +629,6 @@ def _render_markdown_tabbed(item: dict[str, Any], text: str) -> str:
         for i, (_, c) in enumerate(sections)
     )
     return (
-        f"<h1>{html.escape(item.get('label', ''))}</h1>"
         f"<div class='md-tabs'><div class='md-tab-bar'>{tab_btns}</div>"
         f"<div class='md-tab-body'>{tab_panes}</div></div>"
     )
@@ -690,7 +689,6 @@ def render_document_item(item: dict[str, Any]) -> str:
     """Render a document using priority: html > pdf > md (single format, no tabs)."""
     label = item.get("label", "Document")
     iid = item["id"]
-    title = f"<h1>{html.escape(label)}</h1>"
     helper = _render_help_note(item)
 
     if item.get("path_html"):
@@ -707,8 +705,7 @@ def render_document_item(item: dict[str, Any]) -> str:
             resolve_path(item["path_pdf"])
             url = f"/raw/{iid}?variant=pdf"
             return (
-                title
-                + helper
+                helper
                 + f"<p><a href='{url}' target='_blank' rel='noopener' class='pdf-open-btn'>Open PDF ↗</a></p>"
             )
         except HTTPException:
@@ -719,11 +716,11 @@ def render_document_item(item: dict[str, Any]) -> str:
             text = _strip_leading_h1(
                 _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
             )
-            return title + helper + _md(text)
+            return helper + _md(text)
         except HTTPException:
             pass
 
-    return title + helper + "<p class='subtle'>No files found for this document.</p>"
+    return helper + "<p class='subtle'>No files found for this document.</p>"
 
 
 def render_plan_decision(item: dict[str, Any]) -> str:

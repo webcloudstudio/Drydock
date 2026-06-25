@@ -353,6 +353,7 @@ def test_document_renderer_pdf_fallback_when_no_html(tmp_path, monkeypatch):
 
     assert "pdf-open-btn" in rendered
     assert "variant=pdf" in rendered
+    assert "<h1>Test Doc</h1>" not in rendered
 
 
 def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
@@ -373,7 +374,7 @@ def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
     )
 
     assert "md-tabs" not in rendered
-    assert "Solo" in rendered
+    assert "<h1>Solo</h1>" not in rendered
     assert "Source Heading" not in rendered
     assert "Document help." in rendered
 
@@ -411,6 +412,7 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
 
     assert "md-tabs" in rendered
     assert rendered.count("<button class='md-tab-btn") == 2
+    assert "<h1>Analysis</h1>" not in rendered
     assert "Overview" not in rendered
     assert "Story List" in rendered
     assert "Analysis Notes" in rendered
