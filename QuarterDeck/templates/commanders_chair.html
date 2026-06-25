@@ -14,9 +14,7 @@ body {
   min-height: 80vh;
 }
 .header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem 1.5rem;
+  display: block;
   margin-bottom: 2rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #1e293b;
@@ -41,12 +39,6 @@ body {
   font-family: "SF Mono", "Cascadia Code", monospace;
 }
 .header-meta li:first-child { margin-top: 0; }
-.chair-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #f8fafc;
-  line-height: 1;
-}
 .quality-banner {
   display: flex;
   align-items: center;
@@ -120,7 +112,6 @@ body {
       <li>- Build Directory {{BUILD_DIRECTORY}}</li>
     </ul>
   </div>
-  <div class="chair-title">Commanders Chair</div>
 </div>
 
 <div class="quality-banner {{QUALITY_CSS}}">

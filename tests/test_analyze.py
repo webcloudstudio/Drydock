@@ -1125,7 +1125,7 @@ class TestLifecycleState:
         assert result.commanders_chair_path is not None
         assert result.commanders_chair_path.exists()
         html = result.commanders_chair_path.read_text(encoding="utf-8")
-        assert "Commanders Chair" in html
+        assert "Commanders Chair" not in html
         assert "Build Directory" in html
         assert "Open questions remain." in html
         assert "Next Step" in html
