@@ -328,7 +328,8 @@ def test_document_renderer_html_takes_priority(tmp_path, monkeypatch):
     assert "doc-frame" in rendered  # html iframe rendered
     assert "variant=html" in rendered
     assert "md-tabs" not in rendered  # no tabs
-    assert "Document help." in rendered
+    assert "Document help." not in rendered
+    assert "<h1>Test Doc</h1>" not in rendered
 
 
 def test_document_renderer_pdf_fallback_when_no_html(tmp_path, monkeypatch):

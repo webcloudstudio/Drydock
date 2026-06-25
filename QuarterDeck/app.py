@@ -692,11 +692,8 @@ def render_document_item(item: dict[str, Any]) -> str:
         try:
             resolve_path(item["path_html"])
             url = f"/raw/{iid}?variant=html"
-            return (
-                title
-                + helper
-                + f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
-            )
+            # HTML documents own the full pane; do not add QuarterDeck title/help chrome above them.
+            return f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
         except HTTPException:
             pass
 
