@@ -32,7 +32,7 @@ def test_render_console_declares_tabbed_analysis_item():
 
     assert "analysis" in items
     analysis = items["analysis"]
-    assert analysis["section"] == "core"
+    assert analysis["section"] == "analyze"
     assert analysis["type"] == "markdown"
     assert analysis["tabs"] is True
     assert analysis["path"] == "../ANALYSIS.md"
@@ -75,21 +75,22 @@ def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
     items = {item["id"]: item for item in parsed["items"]}
 
     assert items["build_compass"]["label"] == "Build Compass"
+    assert items["build_compass"]["section"] == "build"
     assert items["build_compass"]["path"] == "../MANIFEST.md"
 
 
-def test_render_console_places_exclude_files_last(tmp_path):
+def test_render_console_places_exclude_files_in_analyze(tmp_path):
     import yaml
 
     config = render_console("Example", plan_path=tmp_path / "MANIFEST.md")
     parsed = yaml.safe_load(config)
-    items = parsed["items"]
+    items = {item["id"]: item for item in parsed["items"]}
 
-    assert items[-1]["id"] == "exclude_files"
-    assert items[-1]["label"] == "Exclude Files"
-    assert items[-1]["path"] == "../EXCLUDE_FILES.md"
-    assert "help_text" in items[-1]
-    assert "prompt_text" in items[-1]
+    assert items["exclude_files"]["label"] == "Exclude Files"
+    assert items["exclude_files"]["section"] == "analyze"
+    assert items["exclude_files"]["path"] == "../EXCLUDE_FILES.md"
+    assert "help_text" in items["exclude_files"]
+    assert "prompt_text" in items["exclude_files"]
 
 
 def test_render_console_includes_discovery_questionnaire_source(tmp_path):
@@ -97,23 +98,28 @@ def test_render_console_includes_discovery_questionnaire_source(tmp_path):
 
     assert "discovery-*.json" in config
     assert "questionnaire" in config
-    assert "section: actions" in config
+    assert "section: analyze" in config
     assert "template: discovery" in config
 
 
-def test_render_console_includes_blockers_section_first():
+def test_render_console_groups_artifacts_by_phase():
     config = render_console("Example")
     import yaml
 
     parsed = yaml.safe_load(config)
     section_ids = [s["id"] for s in parsed["sections"]]
-    assert section_ids[0] == "blockers"
+    assert section_ids == ["analyze", "plan", "build", "archive"]
     items = {item["id"]: item for item in parsed["items"]}
     assert "blockers_doc" in items
-    assert items["blockers_doc"]["section"] == "blockers"
+    assert items["blockers_doc"]["section"] == "analyze"
     assert items["blockers_doc"]["type"] == "editable_markdown"
     assert "help_text" in items["blockers_doc"]
     assert "prompt_text" in items["blockers_doc"]
+    assert items["commanders_chair"]["section"] == "analyze"
+    assert items["sea_trials"]["section"] == "analyze"
+    assert items["soundings"]["section"] == "analyze"
+    assert items["board"]["section"] == "plan"
+    assert items["plan_compass"]["section"] == "plan"
 
 
 def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):

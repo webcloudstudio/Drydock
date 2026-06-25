@@ -37,7 +37,7 @@
 | QD-003 | Soundings is a single acceptance ledger and QuarterDeck calculates acceptance totals | DONE | `QuarterDeck/app.py::render_command_status`, `tests/test_quarterdeck.py` |
 | QD-004 | `drydock init` creates target-local Sea Trials and Soundings without overwriting existing files | DONE | `src/drydock/init_target.py`, `tests/test_init_target.py` |
 | QD-005 | `drydock plan create` preserves standard artifacts and projects plan acceptance gates into Soundings | DONE | `src/drydock/planning_session.py`, `tests/test_standard_artifacts.py` |
-| QD-006 | QuarterDeck YAML configuration drives five-section navigation and item rendering | DONE | `QuarterDeck/console.yaml`, `QuarterDeck/app.py`, `tests/test_quarterdeck.py` |
+| QD-006 | QuarterDeck YAML configuration drives phase-based target navigation and item rendering | DONE | `QuarterDeck/app.py`, `src/drydock/standard_artifacts.py`, `tests/test_quarterdeck.py`, `tests/test_standard_artifacts.py` |
 | QD-007 | QuarterDeck document items collapse Markdown, HTML, and PDF variants into one tabbed view | DONE | `QuarterDeck/app.py::render_document_item`, `tests/test_quarterdeck.py` |
 | QD-008 | QuarterDeck source rules auto-discover files while explicit items and overrides take priority | DONE | `QuarterDeck/app.py::_expand_sources`, `tests/test_quarterdeck.py` |
 | QD-009 | QuarterDeck archive controls preserve pinned Core artifacts | DONE | `QuarterDeck/app.py`, `tests/test_quarterdeck.py` |

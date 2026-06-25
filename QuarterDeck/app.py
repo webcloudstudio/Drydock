@@ -9,8 +9,7 @@ Each item carries navigation properties (`label`, `section`) and type properties
 (`type` + type-specific fields). Sections are defined in the `sections:` block of
 `console.yaml` (id / label / dot / collapsed / pinned); items reference a section id.
 
-Five canonical sections: Drydock Core (pinned) · Build Plan · Action Items ·
-Project Pages · Archive (collapsed by default).
+Canonical target sections: Analyze · Plan · Build · Archive (collapsed by default).
 
 Page types (one Python renderer each, in TYPES):
   - markdown      render a markdown file as HTML
@@ -99,6 +98,27 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect x="8" y="0" width="8" height="6" fill="#eab308"/>'
         '<rect x="0" y="6" width="8" height="6" fill="#eab308"/>'
         '<rect x="8" y="6" width="8" height="6" fill="#dc2626"/>'
+        "</svg>"
+    ),
+    "analyze": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#0f766e"/>'
+        '<rect x="0" y="0" width="8" height="6" fill="#ffffff"/>'
+        '<rect x="8" y="6" width="8" height="6" fill="#ffffff"/>'
+        "</svg>"
+    ),
+    "plan": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#1d4ed8"/>'
+        '<rect x="4" width="4" height="12" fill="#ffffff"/>'
+        '<rect y="4" width="16" height="4" fill="#ffffff"/>'
+        "</svg>"
+    ),
+    "build": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#ffffff"/>'
+        '<rect x="0" y="0" width="8" height="6" fill="#d97706"/>'
+        '<rect x="8" y="6" width="8" height="6" fill="#d97706"/>'
         "</svg>"
     ),
     "core": (
@@ -512,8 +532,6 @@ def nav_model() -> list[dict[str, Any]]:
         home_sid = item.get("section", "project_pages")
         if _is_item_archived(item) and home_sid not in pinned_sids:
             sid = "archive"
-        elif item_pending(item):
-            sid = "actions"
         else:
             sid = home_sid
         if sid not in by_section:
@@ -1892,15 +1910,28 @@ def render_nav() -> str:
         else:
             btns = "<div class='section-empty'>— empty —</div>"
         blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
+        phase_cls = " section-head-target section-head-phase" if section["id"] in {"analyze", "plan", "build"} else ""
         target_cls = " section-head-target" if section["id"] == "core" else ""
         flag = _SECTION_FLAGS.get(section["id"], "")
+        if section["id"] in {"analyze", "plan", "build"}:
+            target = html.escape(_current_project_name().upper())
+            phase = html.escape(section["label"].upper())
+            heading = (
+                f"<span class='section-target-name'>{target}</span>"
+                f"{flag}"
+                f"<span class='section-phase-name'>{phase}</span>"
+            )
+        else:
+            heading = (
+                f"{flag}"
+                f"<span class='dot' style='background:{section['dot']}'></span>"
+                f"<span class='section-label'>{html.escape(section['label'])}</span>"
+            )
         nav_parts.append(
             f"<div class='nav-section{blockers_cls}' "
             f"data-sec='{html.escape(section['id'])}'>"
-            f"<div class='section-head{target_cls}'>"
-            f"{flag}"
-            f"<span class='dot' style='background:{section['dot']}'></span>"
-            f"<span class='section-label'>{html.escape(section['label'])}</span>"
+            f"<div class='section-head{target_cls}{phase_cls}'>"
+            f"{heading}"
             "</div>"
             f"{btns}</div>"
         )
@@ -1952,6 +1983,9 @@ _STYLE = """
                   border-bottom:1px solid #eef2f7; margin-bottom:5px; user-select:none; }
   .section-head-target { font-size:13px; font-weight:800; letter-spacing:.03em; color:#0f172a; }
   .section-head-target .section-label { line-height:1.15; }
+  .section-head-phase { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(58px,auto); gap:8px; align-items:center; }
+  .section-target-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.15; }
+  .section-phase-name { justify-self:end; text-align:right; line-height:1.15; }
   .section-head .dot { width:8px; height:8px; border-radius:50%; flex:none; }
   .doc-btn { width:100%; margin:0 0 3px; padding:7px 10px 7px 8px; border:1px solid transparent;
              background:#fff; text-align:left; cursor:pointer; font-size:13px; color:#1b2430; border-radius:3px;

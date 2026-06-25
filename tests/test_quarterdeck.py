@@ -623,7 +623,7 @@ def _discovery_item() -> dict:
     return {
         "id": "discovery_intent",
         "label": "Discovery: Intent",
-        "section": "actions",
+        "section": "analyze",
         "type": "questionnaire",
         "template": "discovery",
         "path": "questionnaires/discovery-intent.json",
@@ -675,7 +675,7 @@ def test_non_spike_questionnaire_is_also_buttonless(tmp_path, monkeypatch):
     item = {
         "id": "q1",
         "label": "Q",
-        "section": "actions",
+        "section": "analyze",
         "type": "questionnaire",
         "path": "q.json",
     }
@@ -732,7 +732,7 @@ def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):
     assert written["questions"][0]["answer"] == "Build a ship."
 
 
-def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
+def test_answered_discovery_stays_in_analyze_section(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     q_dir = tmp_path / "QuarterDeck" / "questionnaires"
     q_dir.mkdir(parents=True)
@@ -743,7 +743,7 @@ def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
     item = {
         "id": "discovery_guardrails",
         "label": "Discovery: Guardrails",
-        "section": "actions",
+        "section": "analyze",
         "type": "questionnaire",
         "template": "discovery",
         "path": "questionnaires/discovery-guardrails.json",
@@ -754,7 +754,7 @@ def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
         "CONFIG",
         {
             "sections": [
-                {"id": "actions", "label": "Actions", "dot": "#dc2626"},
+                {"id": "analyze", "label": "Analyze", "dot": "#0d9488"},
                 {"id": "archive", "label": "Archive", "dot": "#94a3b8", "collapsed": True},
             ],
             "items": [item],
@@ -762,7 +762,7 @@ def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
 
-    assert [section["id"] for section in quarterdeck.nav_model()] == ["actions"]
+    assert [section["id"] for section in quarterdeck.nav_model()] == ["analyze"]
 
     quarterdeck.api_set_state(
         "questionnaire.discovery-guardrails",
@@ -773,10 +773,10 @@ def test_answered_discovery_stays_in_actions_section(tmp_path, monkeypatch):
         ),
     )
 
-    # Answering does not archive — item stays in actions, shows as done.
-    assert [section["id"] for section in quarterdeck.nav_model()] == ["actions"]
+    # Answering does not archive; the item stays in Analyze and shows as done.
+    assert [section["id"] for section in quarterdeck.nav_model()] == ["analyze"]
     rendered = quarterdeck.render_nav()
-    assert "data-sec='actions'" in rendered
+    assert "data-sec='analyze'" in rendered
     assert "data-item='discovery_guardrails'" in rendered
     assert "ns-done" in rendered
 
@@ -885,6 +885,56 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
     assert "onclick='toggleSection" not in rendered
     assert "collapse-arrow" not in rendered
     assert "data-item='old'" in rendered
+
+
+def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", Path("/tmp/workspace/targets/stim"))
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [
+                {"id": "analyze", "label": "Analyze", "dot": "#0d9488", "pinned": True},
+                {"id": "plan", "label": "Plan", "dot": "#2563eb"},
+                {"id": "build", "label": "Build", "dot": "#d97706"},
+            ],
+            "items": [
+                {
+                    "id": "analysis",
+                    "label": "Analysis",
+                    "section": "analyze",
+                    "type": "markdown",
+                    "path": "analysis.md",
+                },
+                {
+                    "id": "board",
+                    "label": "Delivery Board",
+                    "section": "plan",
+                    "type": "kanban",
+                    "path": "tickets.json",
+                },
+                {
+                    "id": "build_compass",
+                    "label": "Build Compass",
+                    "section": "build",
+                    "type": "compass",
+                    "path": "../MANIFEST.md",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
+    monkeypatch.setattr(quarterdeck, "_is_item_archived", lambda _item: False)
+
+    rendered = quarterdeck.render_nav()
+
+    assert "section-head-phase" in rendered
+    assert "<span class='section-target-name'>STIM</span>" in rendered
+    assert "<span class='section-phase-name'>ANALYZE</span>" in rendered
+    assert "<span class='section-phase-name'>PLAN</span>" in rendered
+    assert "<span class='section-phase-name'>BUILD</span>" in rendered
 
 
 def test_render_nav_includes_build_compass_item_flag(monkeypatch):
