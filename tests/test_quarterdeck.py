@@ -932,7 +932,7 @@ def test_commanders_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
 
     response = quarterdeck.api_document("commanders_chair", _RequestStub({"quarterdeck_target": "Beta"}))
     html = response["html"]
-    assert "Commanders Chair" in html
+    assert 'class="chair-title"' not in html
     assert "Viewing Target" not in html
     assert "target-panel" not in html
     assert "/switch-target/Beta" not in html
