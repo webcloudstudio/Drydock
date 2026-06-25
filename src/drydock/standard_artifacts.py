@@ -104,8 +104,8 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
             f"type: plan_decision, plan_path: {json.dumps(str(plan_path))} }}\n"
         )
         build_compass_item = (
-            '\n  - { id: build_compass, label: "Build Compass", section: build, '
-            'type: compass, path: ../MANIFEST.md, order: 9 }\n'
+            '\n  - { id: build_compass, label: "Build Compass", section: plan, '
+            'type: compass, path: ../MANIFEST.md, order: 4 }\n'
         )
     slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-") or "target"
     docs_by_item = {doc.item_id: doc for doc in prompt_headers()}
@@ -133,7 +133,7 @@ project:
   description: "Drydock target workspace."
 
 sections:
-  - {{ id: analyze, label: "Analyze", dot: "#0d9488", pinned: true }}
+  - {{ id: analyze, label: "Analysis", dot: "#0d9488", pinned: true }}
   - {{ id: plan, label: "Plan", dot: "#2563eb" }}
   - {{ id: build, label: "Build", dot: "#d97706" }}
 

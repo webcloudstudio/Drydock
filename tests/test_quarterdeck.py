@@ -860,7 +860,7 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
         "CONFIG",
         {
             "sections": [
-                {"id": "analyze", "label": "Analyze", "dot": "#0d9488", "pinned": True},
+                {"id": "analyze", "label": "Analysis", "dot": "#0d9488", "pinned": True},
                 {"id": "plan", "label": "Plan", "dot": "#2563eb"},
                 {"id": "build", "label": "Build", "dot": "#d97706"},
             ],
@@ -879,13 +879,6 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
                     "type": "kanban",
                     "path": "tickets.json",
                 },
-                {
-                    "id": "build_compass",
-                    "label": "Build Compass",
-                    "section": "build",
-                    "type": "compass",
-                    "path": "../MANIFEST.md",
-                },
             ],
         },
     )
@@ -896,9 +889,11 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
 
     assert "section-head-phase" in rendered
     assert "<span class='section-target-name'>STIM</span>" in rendered
-    assert "<span class='section-phase-name'>ANALYZE</span>" in rendered
+    assert "<span class='section-phase-name'>ANALYSIS</span>" in rendered
     assert "<span class='section-phase-name'>PLAN</span>" in rendered
     assert "<span class='section-phase-name'>BUILD</span>" in rendered
+    assert "data-sec='build'" in rendered
+    assert "section-empty" in rendered
 
 
 def test_render_nav_includes_build_compass_item_flag(monkeypatch):

@@ -516,12 +516,13 @@ def nav_model() -> list[dict[str, Any]]:
         by_section[sid].append(item)
 
     config_ids = [s["id"] for s in config_sections]
-    ordered_ids = [sid for sid in config_ids if sid in by_section]
+    always_visible = {"analyze", "plan", "build"}
+    ordered_ids = [sid for sid in config_ids if sid in by_section or sid in always_visible]
     ordered_ids += [sid for sid in order if sid not in config_ids]
 
     sections = []
     for sid in ordered_ids:
-        docs = sorted(by_section[sid], key=lambda d: d.get("order", 0))
+        docs = sorted(by_section.get(sid, []), key=lambda d: d.get("order", 0))
         sec_cfg = config_map.get(sid, {})
         label = sec_cfg.get("label", sid.replace("_", " ").title())
         if sid == "core":

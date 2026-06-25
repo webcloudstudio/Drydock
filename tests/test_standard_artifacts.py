@@ -75,7 +75,7 @@ def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
     items = {item["id"]: item for item in parsed["items"]}
 
     assert items["build_compass"]["label"] == "Build Compass"
-    assert items["build_compass"]["section"] == "build"
+    assert items["build_compass"]["section"] == "plan"
     assert items["build_compass"]["path"] == "../MANIFEST.md"
 
 
