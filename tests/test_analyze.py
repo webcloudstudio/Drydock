@@ -1125,9 +1125,12 @@ class TestLifecycleState:
         assert result.commanders_chair_path is not None
         assert result.commanders_chair_path.exists()
         html = result.commanders_chair_path.read_text(encoding="utf-8")
-        assert 'class="chair-title"' not in html
+        assert "Commanders Chair" in html
         assert "Build Directory" in html
-        assert "Story Shape" in html
+        assert "Open questions remain." in html
+        assert "Next Step" in html
+        assert "Review QuarterDeck action items" in html
+        assert "Story Shape" not in html
         assert "Stack" not in html
 
     def test_commanders_chair_rewritten_when_state_does_not_advance(self, tmp_path):

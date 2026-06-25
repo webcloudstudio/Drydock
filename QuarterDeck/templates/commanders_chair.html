@@ -41,6 +41,14 @@ body {
   font-family: "SF Mono", "Cascadia Code", monospace;
 }
 .header-meta li:first-child { margin-top: 0; }
+.chair-title {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  align-self: start;
+  padding-top: 0.25rem;
+}
 .quality-banner {
   display: flex;
   align-items: center;
@@ -92,32 +100,15 @@ body {
   letter-spacing: 0.06em;
 }
 .next-step-value { font-size: 0.875rem; color: #94a3b8; font-family: "SF Mono", "Cascadia Code", monospace; }
-.story-breakdown {
+.question-detail {
+  margin-top: 0.7rem;
+  font-size: 0.875rem;
+  color: #cbd5e1;
+}
+.question-next-step {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
   border-top: 1px solid #334155;
-  padding-top: 0.9rem;
-}
-.story-breakdown-label {
-  font-size: 0.7rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.75rem;
-}
-.story-breakdown-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1rem;
-  padding: 0.35rem 0;
-  border-top: 1px solid #334155;
-}
-.story-breakdown-row:first-of-type { border-top: 0; padding-top: 0; }
-.story-breakdown-name { font-size: 0.9rem; color: #cbd5e1; }
-.story-breakdown-count {
-  font-size: 0.9rem;
-  color: #f8fafc;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 </style>
 </head>
@@ -131,6 +122,7 @@ body {
       <li>- Build Directory {{BUILD_DIRECTORY}}</li>
     </ul>
   </div>
+  <div class="chair-title">Commanders Chair</div>
 </div>
 
 <div class="quality-banner {{QUALITY_CSS}}">
@@ -146,14 +138,14 @@ body {
     <div class="stat-value">{{STORY_COUNT}}</div>
     <div class="stat-label">Stories</div>
   </div>
-  <div class="stat">
+  <div class="stat stat-next-step">
     <div class="stat-value">{{QUESTION_COUNT}}</div>
     <div class="stat-label">Questions</div>
-  </div>
-  <div class="stat stat-next-step">
+    <div class="question-detail">Open questions remain.</div>
+    <div class="question-next-step">
     <div class="next-step-label">Next Step</div>
     <div class="next-step-value">{{NEXT_STEP}}</div>
-    {{STORY_BREAKDOWN_SECTION}}
+    </div>
   </div>
   <div class="stat">
     <div class="stat-value">{{BLOCKER_COUNT}}</div>
