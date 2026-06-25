@@ -544,6 +544,47 @@ def test_expand_sources_skips_files_covered_by_explicit_items(tmp_path):
         quarterdeck.BASE_DIR = tmp_path.parent / "QuarterDeck"
 
 
+def test_expand_sources_keeps_discovery_items_last_when_rule_sets_order(tmp_path):
+    quarterdeck = _load_quarterdeck()
+    q_dir = tmp_path / "QuarterDeck" / "questionnaires"
+    q_dir.mkdir(parents=True)
+    (q_dir / "discovery-stack.json").write_text(_discovery_json(), encoding="utf-8")
+
+    project_root_orig = quarterdeck.PROJECT_ROOT
+    base_dir_orig = quarterdeck.BASE_DIR
+    quarterdeck.PROJECT_ROOT = tmp_path
+    quarterdeck.BASE_DIR = tmp_path / "QuarterDeck"
+
+    try:
+        config: dict = {
+            "sources": [
+                {
+                    "glob": "QuarterDeck/questionnaires/discovery-*.json",
+                    "section": "analyze",
+                    "type": "questionnaire",
+                    "template": "discovery",
+                    "order": 99,
+                }
+            ],
+            "items": [
+                {
+                    "id": "analysis",
+                    "label": "Analysis",
+                    "section": "analyze",
+                    "type": "markdown",
+                    "path": "../ANALYSIS.md",
+                    "order": 4,
+                }
+            ],
+        }
+        quarterdeck._expand_sources(config)
+        generated = next(item for item in config["items"] if item["id"] == "discovery_stack")
+        assert generated["order"] == 99
+    finally:
+        quarterdeck.PROJECT_ROOT = project_root_orig
+        quarterdeck.BASE_DIR = base_dir_orig
+
+
 # ── navigation controls ───────────────────────────────────────────────────────
 
 

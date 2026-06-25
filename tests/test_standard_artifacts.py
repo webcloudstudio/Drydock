@@ -100,6 +100,7 @@ def test_render_console_includes_discovery_questionnaire_source(tmp_path):
     assert "questionnaire" in config
     assert "section: analyze" in config
     assert "template: discovery" in config
+    assert "order: 99" in config
 
 
 def test_render_console_groups_artifacts_by_phase():
