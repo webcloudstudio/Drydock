@@ -815,7 +815,8 @@ class TestFillCaptainsChair:
         "{{PROJECT_NAME}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
         "{{STORY_COUNT}}|{{QUESTION_COUNT}}|{{BLOCKER_COUNT}}|{{SCREEN_COUNT}}|"
         "{{NEXT_STEP}}|{{GENERATED_DATE}}|{{BUILD_DIRECTORY}}|{{QUESTION_STATUS}}|"
-        "{{STORIES_HTML}}|{{QUESTIONS_HTML}}|{{BLOCKERS_HTML}}|{{SCREENS_HTML}}"
+        "{{QUESTION_LEAD_HTML}}|{{STORIES_HTML}}|{{QUESTIONS_HTML}}|{{BLOCKERS_HTML}}|"
+        "{{SCREENS_HTML}}"
     )
 
     def test_ready_fill(self):
@@ -838,6 +839,7 @@ class TestFillCaptainsChair:
         assert "10" in result
         assert "/tmp/builds/Foo" in result
         assert "No open questions" in result
+        assert "<strong>Questions:</strong> No open questions" in result
 
     def test_blocked_css_class(self):
         result = _fill_commanders_chair(
@@ -870,6 +872,23 @@ class TestFillCaptainsChair:
         )
         assert "questions" in result
         assert "⚠" in result
+
+    def test_open_questions_render_status_under_heading(self):
+        result = _fill_commanders_chair(
+            "{{QUESTION_LEAD_HTML}}",
+            quality="Questions",
+            story_count=0,
+            question_count=2,
+            blocker_count=0,
+            screen_count=0,
+            next_step="",
+            project_name="X",
+            generated_date="",
+            build_directory="",
+        )
+        assert "<h2>Questions</h2>" in result
+        assert "Open questions remain" in result
+        assert "<strong>Questions:</strong>" not in result
 
 
 def test_story_breakdown_extracts_feature_area_counts():
@@ -1154,9 +1173,12 @@ class TestLifecycleState:
         assert result.commanders_chair_path is not None
         assert result.commanders_chair_path.exists()
         html = result.commanders_chair_path.read_text(encoding="utf-8")
-        assert "Target: MyTarget" in html
+        assert '<span class="label">Target:</span> MyTarget' in html
         assert "Commanders Chair" in html
-        assert "Build Directory:" in html
+        assert "Build Directory:" not in html
+        assert 'class="stat" href="#stories"' in html
+        assert 'section id="stories"' in html
+        assert "<strong>Questions:</strong> No open questions" in html
         assert "No open questions" in html
         assert "Next Step" in html
         assert "drydock plan MyTarget" in html

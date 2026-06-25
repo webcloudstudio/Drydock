@@ -76,10 +76,17 @@ body {
   margin-bottom: 2rem;
 }
 .stat {
+  display: block;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 0.5rem;
   padding: 1rem 1.25rem;
+  color: inherit;
+  text-decoration: none;
+}
+.stat[href]:hover {
+  border-color: #64748b;
+  background: #26354a;
 }
 .stat-value {
   color: #f8fafc;
@@ -134,23 +141,21 @@ body {
     <div class="target-line"><span class="label">Target:</span> {{PROJECT_NAME}}</div>
     <ul class="header-meta">
       <li>- Analyzed: {{GENERATED_DATE}}</li>
-      <li>- Build Directory: {{BUILD_DIRECTORY}}</li>
     </ul>
   </div>
   <div class="chair-title">Commanders Chair</div>
 </div>
 
 <section class="question-lead">
-  <h2>Questions</h2>
-  <div class="question-status">{{QUESTION_STATUS}}</div>
+  {{QUESTION_LEAD_HTML}}
   <div class="next-step"><strong>Next Step:</strong> {{NEXT_STEP}}</div>
 </section>
 
 <div class="stats">
-  <div class="stat">
+  <a class="stat" href="#stories">
     <div class="stat-value">{{STORY_COUNT}}</div>
     <div class="stat-label">Stories</div>
-  </div>
+  </a>
   <div class="stat">
     <div class="stat-value">{{QUESTION_COUNT}}</div>
     <div class="stat-label">Questions</div>
@@ -166,19 +171,19 @@ body {
 </div>
 
 <div class="details">
-  <section class="detail-section">
+  <section id="stories" class="detail-section">
     <h2>Stories</h2>
     {{STORIES_HTML}}
   </section>
-  <section class="detail-section">
+  <section id="questions" class="detail-section">
     <h2>Questions</h2>
     {{QUESTIONS_HTML}}
   </section>
-  <section class="detail-section">
+  <section id="blockers" class="detail-section">
     <h2>Blockers</h2>
     {{BLOCKERS_HTML}}
   </section>
-  <section class="detail-section">
+  <section id="screens" class="detail-section">
     <h2>Screens</h2>
     {{SCREENS_HTML}}
   </section>

@@ -638,6 +638,16 @@ def _fill_commanders_chair(
 ) -> str:
     css_class, icon, desc = _QUALITY_META.get(quality, ("blocked", "?", quality))
     question_status = "Open questions remain" if question_count else "No open questions"
+    if question_count:
+        question_lead_html = (
+            "<h2>Questions</h2>"
+            f'<div class="question-status">{escape(question_status)}</div>'
+        )
+    else:
+        question_lead_html = (
+            '<div class="question-status question-status-inline">'
+            f"<strong>Questions:</strong> {escape(question_status)}</div>"
+        )
     replacements = {
         "{{PROJECT_NAME}}": project_name,
         "{{GENERATED_DATE}}": generated_date,
@@ -652,6 +662,7 @@ def _fill_commanders_chair(
         "{{SCREEN_COUNT}}": str(screen_count),
         "{{NEXT_STEP}}": next_step,
         "{{QUESTION_STATUS}}": question_status,
+        "{{QUESTION_LEAD_HTML}}": question_lead_html,
         "{{STORIES_HTML}}": stories_html,
         "{{QUESTIONS_HTML}}": questions_html,
         "{{BLOCKERS_HTML}}": blockers_html,

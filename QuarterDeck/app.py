@@ -592,6 +592,11 @@ def _strip_frontmatter(text: str) -> str:
     return text
 
 
+def _strip_leading_h1(text: str) -> str:
+    """Suppress a file's leading H1 when QuarterDeck already supplies the document title."""
+    return re.sub(r"\A[ \t]*# [^\n]*(?:\n+|$)", "", text, count=1)
+
+
 def _split_h2_sections(text: str) -> list[tuple[str, str]]:
     """Split markdown at ## headings. Returns (tab_label, content) pairs."""
     parts = re.split(r"^## (.+)$", text, flags=re.MULTILINE)
@@ -641,7 +646,7 @@ def _render_help_note(item: dict[str, Any]) -> str:
 
 
 def render_markdown_item(item: dict[str, Any]) -> str:
-    text = _strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    text = _strip_leading_h1(_strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8")))
     helper = _render_help_note(item)
     if item.get("tabs"):
         return helper + _render_markdown_tabbed(item, text)
@@ -654,7 +659,7 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
     item_id = html.escape(item["id"])
     try:
         raw = resolve_path(item["path"]).read_text(encoding="utf-8")
-        rendered = _md(raw)
+        rendered = _md(_strip_leading_h1(_strip_frontmatter(raw)))
     except HTTPException:
         raw = ""
         rendered = "<p><em>File not yet created — edit and save to create it.</em></p>"
@@ -711,7 +716,9 @@ def render_document_item(item: dict[str, Any]) -> str:
 
     if item.get("path_md"):
         try:
-            text = _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
+            text = _strip_leading_h1(
+                _strip_frontmatter(resolve_path(item["path_md"]).read_text(encoding="utf-8"))
+            )
             return title + helper + _md(text)
         except HTTPException:
             pass

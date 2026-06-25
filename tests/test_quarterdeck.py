@@ -358,7 +358,7 @@ def test_document_renderer_pdf_fallback_when_no_html(tmp_path, monkeypatch):
 def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     md_file = tmp_path / "doc.md"
-    md_file.write_text("# Solo\ncontent", encoding="utf-8")
+    md_file.write_text("# Source Heading\ncontent", encoding="utf-8")
 
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
@@ -374,6 +374,7 @@ def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
 
     assert "md-tabs" not in rendered
     assert "Solo" in rendered
+    assert "Source Heading" not in rendered
     assert "Document help." in rendered
 
 
@@ -434,6 +435,8 @@ def test_markdown_renderer_without_tabs_flag_renders_plain(tmp_path, monkeypatch
 
     assert "md-tabs" not in rendered
     assert "Markdown help." in rendered
+    assert "<h1>Title</h1>" not in rendered
+    assert "Title" not in rendered
 
 
 # ── _item_file_exists ────────────────────────────────────────────────────────
@@ -697,6 +700,7 @@ def test_editable_markdown_renders_configured_help_and_prompt_text(tmp_path, mon
     )
 
     assert "Injected into every analyze run." in rendered
+    assert "<h1>Analyze Compass</h1>" not in rendered
     assert "Prompt Text." not in rendered
     assert "Short steering only." not in rendered
 
