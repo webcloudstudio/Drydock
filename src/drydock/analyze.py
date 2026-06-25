@@ -34,7 +34,7 @@ from drydock.metadata import (
     set_sub_state,
     stamp_last,
 )
-from drydock.paths import get_quarterdeck_template_dir
+from drydock.paths import get_quarterdeck_template_dir, get_rigging_root
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -598,9 +598,13 @@ def _fill_commanders_chair(
     project_name: str,
     generated_date: str,
     build_directory: str,
-    story_breakdown_html: str = "",
+    stories_html: str = "",
+    questions_html: str = "",
+    blockers_html: str = "",
+    screens_html: str = "",
 ) -> str:
     css_class, icon, desc = _QUALITY_META.get(quality, ("blocked", "?", quality))
+    question_status = "Open questions remain" if question_count else "No open questions"
     replacements = {
         "{{PROJECT_NAME}}": project_name,
         "{{GENERATED_DATE}}": generated_date,
@@ -614,7 +618,11 @@ def _fill_commanders_chair(
         "{{BLOCKER_COUNT}}": str(blocker_count),
         "{{SCREEN_COUNT}}": str(screen_count),
         "{{NEXT_STEP}}": next_step,
-        "{{STORY_BREAKDOWN_SECTION}}": story_breakdown_html,
+        "{{QUESTION_STATUS}}": question_status,
+        "{{STORIES_HTML}}": stories_html,
+        "{{QUESTIONS_HTML}}": questions_html,
+        "{{BLOCKERS_HTML}}": blockers_html,
+        "{{SCREENS_HTML}}": screens_html,
     }
     for key, value in replacements.items():
         template = template.replace(key, value)
@@ -663,6 +671,74 @@ def _render_story_breakdown_html(analysis_text: str) -> str:
             "</div>",
         ]
     )
+
+
+def _list_html(items: list[str], *, empty: str) -> str:
+    if not items:
+        return f'<p class="empty">{escape(empty)}</p>'
+    rows = "\n".join(f"  <li>{escape(item)}</li>" for item in items)
+    return f"<ul>\n{rows}\n</ul>"
+
+
+def _story_items(analysis_text: str) -> list[str]:
+    story_list = analysis_text.split("## Story List", 1)
+    if len(story_list) != 2:
+        return []
+    items: list[str] = []
+    for line in story_list[1].splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            items.append(stripped[2:].strip())
+            continue
+        if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-"}:
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not cells or cells[0].lower() in {"id", "area"}:
+            continue
+        if len(cells) >= 2 and re.match(r"^[A-Z][A-Z0-9-]+$", cells[0]):
+            items.append(f"{cells[0]} - {cells[1]}")
+        elif len(cells) >= 2:
+            items.append(f"{cells[0]} - {cells[1]}")
+    return items
+
+
+def _screen_items(analysis_text: str) -> list[str]:
+    screens: list[str] = []
+    for heading in _STORY_SECTION_RE.findall(analysis_text):
+        if "screen" in heading.lower():
+            screens.append(heading.strip())
+    for item in _story_items(analysis_text):
+        if "screen" in item.lower() and item not in screens:
+            screens.append(item)
+    return screens
+
+
+def _question_items(questionnaires_dir: Path) -> list[str]:
+    if not questionnaires_dir.is_dir():
+        return []
+    items: list[str] = []
+    for path in sorted(questionnaires_dir.glob("discovery-*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            items.append(f"See questionnaire {path.name}")
+            continue
+        state = str(data.get("state", "open")).lower()
+        if state in _QUESTIONNAIRE_DONE_STATES:
+            continue
+        label = str(data.get("title") or data.get("id") or path.stem)
+        items.append(f"See questionnaire {label}")
+    return items
+
+
+def _blocker_items(blockers_text: str | None) -> list[str]:
+    if not blockers_text:
+        return []
+    items = [
+        match.group(1).strip()
+        for match in re.finditer(r"^##\s+(.+?)\s*$", blockers_text, re.MULTILINE)
+    ]
+    return items or ["Review BLOCKERS.md"]
 
 
 def _next_step_hint(quality: str, target: str) -> str:
@@ -863,7 +939,14 @@ def analyze(
                     project_name=target,
                     generated_date=today,
                     build_directory=build_directory,
-                    story_breakdown_html=_render_story_breakdown_html(analysis_text),
+                    stories_html=_list_html(_story_items(analysis_text), empty="No stories found."),
+                    questions_html=_list_html(
+                        _question_items(questionnaires_dir), empty="No open questionnaires."
+                    ),
+                    blockers_html=_list_html(
+                        _blocker_items(blockers_text_out), empty="No blockers file."
+                    ),
+                    screens_html=_list_html(_screen_items(analysis_text), empty="No screens found."),
                 )
                 chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
                 chair_path.parent.mkdir(parents=True, exist_ok=True)

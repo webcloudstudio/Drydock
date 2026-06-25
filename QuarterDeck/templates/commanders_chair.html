@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Commanders Chair — {{PROJECT_NAME}}</title>
+<title>Commanders Chair - {{PROJECT_NAME}}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -14,22 +14,24 @@ body {
   min-height: 80vh;
 }
 .header {
-  display: block;
-  margin-bottom: 2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: start;
   padding-bottom: 1rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #334155;
 }
-.project-name { font-size: 1.5rem; font-weight: 700; color: #f8fafc; }
-.sub {
-  font-size: 0.75rem;
-  color: #64748b;
-  margin-top: 0.25rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.target-line,
+.chair-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.2;
 }
+.label { color: #94a3b8; }
 .header-meta {
   list-style: none;
-  margin: 0.5rem 0 0;
+  margin: 0.75rem 0 0;
   padding: 0;
 }
 .header-meta li {
@@ -38,31 +40,40 @@ body {
   margin-top: 0.35rem;
   font-family: "SF Mono", "Cascadia Code", monospace;
 }
-.header-meta li:first-child { margin-top: 0; }
-.quality-banner {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  margin-bottom: 2rem;
-  border: 1px solid;
+.question-lead {
+  margin: 2rem 0;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #334155;
 }
-.quality-banner.ready    { background: #052e16; border-color: #16a34a; }
-.quality-banner.questions{ background: #1c1917; border-color: #ca8a04; }
-.quality-banner.blocked  { background: #2d0011; border-color: #dc2626; }
-.quality-icon { font-size: 2.5rem; line-height: 1; }
-.quality-label { font-size: 2rem; font-weight: 800; letter-spacing: -0.025em; }
-.quality-banner.ready     .quality-label { color: #4ade80; }
-.quality-banner.questions .quality-label { color: #fbbf24; }
-.quality-banner.blocked   .quality-label { color: #f87171; }
-.quality-desc { font-size: 0.875rem; color: #94a3b8; margin-top: 0.25rem; }
+.question-lead h2 {
+  color: #f8fafc;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
+.question-status {
+  color: #cbd5e1;
+  font-size: 1rem;
+  margin-bottom: 0.9rem;
+}
+.next-step {
+  color: #f8fafc;
+  font-size: 0.95rem;
+  font-family: "SF Mono", "Cascadia Code", monospace;
+}
+.next-step strong {
+  color: #94a3b8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+}
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
-  align-items: start;
 }
 .stat {
   background: #1e293b;
@@ -70,35 +81,49 @@ body {
   border-radius: 0.5rem;
   padding: 1rem 1.25rem;
 }
-.stat-next-step {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
+.stat-value {
+  color: #f8fafc;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
 }
-.stat-value { font-size: 2rem; font-weight: 700; color: #f8fafc; line-height: 1; }
 .stat-label {
-  font-size: 0.7rem;
-  color: #64748b;
-  text-transform: uppercase;
+  color: #94a3b8;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
-  margin-top: 0.375rem;
-}
-.next-step-label {
-  font-size: 0.7rem;
-  color: #64748b;
+  margin-top: 0.45rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
-.next-step-value { font-size: 0.875rem; color: #94a3b8; font-family: "SF Mono", "Cascadia Code", monospace; }
-.question-detail {
-  margin-top: 0.7rem;
-  font-size: 0.875rem;
-  color: #cbd5e1;
+.details {
+  display: grid;
+  gap: 1.25rem;
 }
-.question-next-step {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+.detail-section {
   border-top: 1px solid #334155;
+  padding-top: 1rem;
+}
+.detail-section h2 {
+  color: #f8fafc;
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+.detail-section ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.detail-section li {
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin: 0.25rem 0;
+}
+.empty {
+  color: #94a3b8;
+  font-style: italic;
+}
+@media (max-width: 760px) {
+  body { padding: 1.25rem; }
+  .header { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
 </head>
@@ -106,35 +131,29 @@ body {
 
 <div class="header">
   <div>
-    <div class="project-name">Target</div>
+    <div class="target-line"><span class="label">Target:</span> {{PROJECT_NAME}}</div>
     <ul class="header-meta">
-      <li>- Analyzed {{GENERATED_DATE}}</li>
-      <li>- Build Directory {{BUILD_DIRECTORY}}</li>
+      <li>- Analyzed: {{GENERATED_DATE}}</li>
+      <li>- Build Directory: {{BUILD_DIRECTORY}}</li>
     </ul>
   </div>
+  <div class="chair-title">Commanders Chair</div>
 </div>
 
-<div class="quality-banner {{QUALITY_CSS}}">
-  <div class="quality-icon">{{QUALITY_ICON}}</div>
-  <div>
-    <div class="quality-label">{{QUALITY}}</div>
-    <div class="quality-desc">{{QUALITY_DESC}}</div>
-  </div>
-</div>
+<section class="question-lead">
+  <h2>Questions</h2>
+  <div class="question-status">{{QUESTION_STATUS}}</div>
+  <div class="next-step"><strong>Next Step:</strong> {{NEXT_STEP}}</div>
+</section>
 
 <div class="stats">
   <div class="stat">
     <div class="stat-value">{{STORY_COUNT}}</div>
     <div class="stat-label">Stories</div>
   </div>
-  <div class="stat stat-next-step">
+  <div class="stat">
     <div class="stat-value">{{QUESTION_COUNT}}</div>
     <div class="stat-label">Questions</div>
-    <div class="question-detail">Open questions remain.</div>
-    <div class="question-next-step">
-    <div class="next-step-label">Next Step</div>
-    <div class="next-step-value">{{NEXT_STEP}}</div>
-    </div>
   </div>
   <div class="stat">
     <div class="stat-value">{{BLOCKER_COUNT}}</div>
@@ -144,6 +163,25 @@ body {
     <div class="stat-value">{{SCREEN_COUNT}}</div>
     <div class="stat-label">Screens</div>
   </div>
+</div>
+
+<div class="details">
+  <section class="detail-section">
+    <h2>Stories</h2>
+    {{STORIES_HTML}}
+  </section>
+  <section class="detail-section">
+    <h2>Questions</h2>
+    {{QUESTIONS_HTML}}
+  </section>
+  <section class="detail-section">
+    <h2>Blockers</h2>
+    {{BLOCKERS_HTML}}
+  </section>
+  <section class="detail-section">
+    <h2>Screens</h2>
+    {{SCREENS_HTML}}
+  </section>
 </div>
 
 </body>

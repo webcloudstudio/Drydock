@@ -10,6 +10,7 @@ import pytest
 
 from drydock.analyze import (
     _assemble_prompt,
+    _blocker_items,
     _collect_blueprint_files,
     _feedback_body,
     _fill_commanders_chair,
@@ -20,7 +21,9 @@ from drydock.analyze import (
     _remove_open_questions_section,
     _remove_tuning_options_section,
     _render_story_breakdown_html,
+    _screen_items,
     _story_breakdown,
+    _story_items,
     _validate_blockers,
     analyze,
     ensure_feedback_file,
@@ -799,7 +802,8 @@ class TestFillCaptainsChair:
     _TEMPLATE = (
         "{{PROJECT_NAME}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
         "{{STORY_COUNT}}|{{QUESTION_COUNT}}|{{BLOCKER_COUNT}}|{{SCREEN_COUNT}}|"
-        "{{NEXT_STEP}}|{{GENERATED_DATE}}|{{BUILD_DIRECTORY}}|{{STORY_BREAKDOWN_SECTION}}"
+        "{{NEXT_STEP}}|{{GENERATED_DATE}}|{{BUILD_DIRECTORY}}|{{QUESTION_STATUS}}|"
+        "{{STORIES_HTML}}|{{QUESTIONS_HTML}}|{{BLOCKERS_HTML}}|{{SCREENS_HTML}}"
     )
 
     def test_ready_fill(self):
@@ -821,6 +825,7 @@ class TestFillCaptainsChair:
         assert "✓" in result
         assert "10" in result
         assert "/tmp/builds/Foo" in result
+        assert "No open questions" in result
 
     def test_blocked_css_class(self):
         result = _fill_commanders_chair(
@@ -868,6 +873,18 @@ def test_render_story_breakdown_html_renders_rows():
     assert "Foundation" in rendered
     assert "Setup Screen: AWS" in rendered
     assert ">3<" in rendered
+
+
+def test_commanders_chair_extracts_story_screen_and_blocker_items():
+    assert _story_items(_GROUPED_ANALYSIS_CONTENT) == [
+        "FND-001 - One",
+        "FND-002 - Two",
+        "USA-001 - Three",
+        "USA-002 - Four",
+        "USA-003 - Five",
+    ]
+    assert _screen_items(_GROUPED_ANALYSIS_CONTENT) == ["Setup Screen: AWS"]
+    assert _blocker_items(_BLOCKERS_CONTENT) == ["blocker-001: Missing project name"]
 
 
 # ---------------------------------------------------------------------------
@@ -1125,11 +1142,14 @@ class TestLifecycleState:
         assert result.commanders_chair_path is not None
         assert result.commanders_chair_path.exists()
         html = result.commanders_chair_path.read_text(encoding="utf-8")
-        assert "Commanders Chair" not in html
-        assert "Build Directory" in html
-        assert "Open questions remain." in html
+        assert "Target: MyTarget" in html
+        assert "Commanders Chair" in html
+        assert "Build Directory:" in html
+        assert "No open questions" in html
         assert "Next Step" in html
-        assert "Review QuarterDeck action items" in html
+        assert "drydock plan MyTarget" in html
+        assert "FND-001 - One" in html
+        assert "Setup Screen: AWS" in html
         assert "Story Shape" not in html
         assert "Stack" not in html
 
