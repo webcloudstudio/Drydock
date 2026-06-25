@@ -1504,18 +1504,19 @@ _H1_RE = re.compile(r"^\s*<h1[^>]*>.*?</h1>\s*", re.DOTALL | re.IGNORECASE)
 
 def _wrap_page(item: dict[str, Any], body: str) -> str:
     """Wrap rendered body with the standard page header: title, filename, action buttons."""
+    if item.get("id") == "commanders_chair":
+        return body
+
     label = html.escape(item.get("label", ""))
     iid = html.escape(item["id"])
     t = item.get("type", "")
-    show_filename = item.get("id") != "commanders_chair"
 
     fname = ""
-    if show_filename:
-        for key in ("path", "path_md", "path_html", "path_pdf", "href"):
-            v = item.get(key)
-            if v:
-                fname = Path(v).name
-                break
+    for key in ("path", "path_md", "path_html", "path_pdf", "href"):
+        v = item.get(key)
+        if v:
+            fname = Path(v).name
+            break
     fname_html = f"<span class='ph-filename'>{html.escape(fname)}</span>" if fname else ""
 
     btns: list[str] = []
