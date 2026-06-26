@@ -1799,7 +1799,7 @@ def api_compass_move(item_id: str, move: CompassMove, request: Request = None) -
 
     with _request_context(request):
         item = find_item(item_id)
-        if item.get("type") != "compass":
+        if item.get("type") not in ("compass", "build_plan"):
             raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
         try:
             apply_move(

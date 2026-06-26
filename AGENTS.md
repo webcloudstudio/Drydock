@@ -21,7 +21,7 @@ not make, stop and reconcile.
 - Edit surgically with the Edit tool. Never use Write or shell redirection to replace the file.
 - When reading, report any divergence, inconsistency, or hand-edit error detected; do not
 silently fix it. Surface the conflict and let Ed decide.
-- TODO: is the marker used to identify items in the specification which need improvement 
+- TODO: is the marker used to identify items in the specification which need improvement
 
 **Content** — normative statements of intended behavior only. No rationale, reasoning, open
 questions, status, history, alternatives, or hedging ("we could / should probably / might /
@@ -46,7 +46,7 @@ One section per command; duplicate or overlapping command headings are violation
 **Workspace Layout** reflects the current on-disk file set. The Blueprint file inventory states
 each file's purpose and whether it is human-editable.
 
-At the completion of any edits, the file should be committed in git. 
+At the completion of any edits, the file should be committed in git.
 
 ## Project Layout
 

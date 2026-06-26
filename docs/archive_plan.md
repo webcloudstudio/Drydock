@@ -32,4 +32,3 @@ fatal); precondition gate (ANALYSIS.md exists, not Blocked, no `BLOCKERS.md`).
 The injected "contract files" are `prompts/MANIFEST_CONTRACT.md` (MANIFEST block format) and
 `prompts/BLUEPRINTS_CONTRACT.md` (typed-spec file format) — output-format authoring contracts.
 `docs/Drydock_Specification.md` (the product spec) is **not** injected into plan create.
-

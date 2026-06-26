@@ -62,4 +62,3 @@ Per-command `inputs:` (matrix-derived):
 
 `build`/`build score`/`refit` rows above are recorded for when those prompts are authored; their
 assemblers adopt the same `render_inputs` pattern.
-

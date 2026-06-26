@@ -29,4 +29,3 @@ Three flags per section:
 | impl | `implemented` / `unimplemented` | Based on known codebase state |
 
 The file header tracks summary counts (`Pending spec`, `Pending impl`) updated on every write.
-
