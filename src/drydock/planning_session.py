@@ -700,6 +700,10 @@ def create_plan(
     set_sub_state(target_dir, "approved")
     stamp_last(target_dir, "planned")
 
+    from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+    _refresh_chair(target_dir)
+
     return PlanCreateResult(
         plan=plan,
         target_dir=target_dir,

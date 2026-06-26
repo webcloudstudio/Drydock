@@ -653,6 +653,11 @@ def build_target(
     drydock_commit_skipped_after_build = git_commit is None and any(
         step.status in {"built", "implemented"} and step.written_files for step in steps
     )
+
+    from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+    _refresh_chair(target_dir)
+
     return BuildResult(
         target=target,
         build_dir=resolved_build_dir,

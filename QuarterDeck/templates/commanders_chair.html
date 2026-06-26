@@ -101,6 +101,35 @@ body {
   margin-top: 0.45rem;
   text-transform: uppercase;
 }
+.story-list { display: grid; gap: 0.35rem; margin: 0; }
+.story-feature {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 0.75rem;
+  margin-bottom: 0.2rem;
+}
+.story-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+.story-name { flex: 1; }
+.badge {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.badge-pending  { background: #334155; color: #94a3b8; }
+.badge-review   { background: #78350f; color: #fde68a; }
+.badge-verified { background: #14532d; color: #86efac; }
+.badge-failed   { background: #7f1d1d; color: #fca5a5; }
 .details {
   display: grid;
   gap: 1.25rem;
@@ -140,7 +169,7 @@ body {
   <div>
     <div class="target-line"><span class="label">Target:</span> {{PROJECT_NAME}}</div>
     <ul class="header-meta">
-      <li>- Analyzed: {{GENERATED_DATE}}</li>
+      <li>- {{PHASE_LABEL}}: {{GENERATED_DATE}}</li>
     </ul>
   </div>
   <div class="chair-title">Commanders Chair</div>
@@ -152,22 +181,7 @@ body {
 </section>
 
 <div class="stats">
-  <a class="stat" href="#stories">
-    <div class="stat-value">{{STORY_COUNT}}</div>
-    <div class="stat-label">Stories</div>
-  </a>
-  <div class="stat">
-    <div class="stat-value">{{QUESTION_COUNT}}</div>
-    <div class="stat-label">Questions</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value">{{BLOCKER_COUNT}}</div>
-    <div class="stat-label">Blockers</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value">{{SCREEN_COUNT}}</div>
-    <div class="stat-label">Screens</div>
-  </div>
+{{STATS_HTML}}
 </div>
 
 <div class="details">

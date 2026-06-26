@@ -10,10 +10,8 @@ import pytest
 
 from drydock.analyze import (
     _assemble_prompt,
-    _blocker_items,
     _collect_blueprint_files,
     _feedback_body,
-    _fill_commanders_chair,
     _is_compass_unpopulated,
     _normalize_analysis_layout,
     _normalize_analysis_summary,
@@ -21,15 +19,19 @@ from drydock.analyze import (
     _parse_output,
     _remove_open_questions_section,
     _remove_tuning_options_section,
-    _render_story_breakdown_html,
-    _screen_items,
-    _story_breakdown,
-    _story_items,
     _validate_blockers,
     analyze,
     ensure_feedback_file,
 )
 from drydock.errors import SpecificationError
+from drydock.quarterdeck_state import (
+    _blocker_items,
+    _fill_chair,
+    _render_story_breakdown_html,
+    _screen_items,
+    _story_breakdown,
+    _story_items,
+)
 
 # ---------------------------------------------------------------------------
 # Minimal valid LLM output helpers
@@ -811,85 +813,96 @@ class TestValidateBlockers:
 
 
 # ---------------------------------------------------------------------------
-# _fill_commanders_chair
+# _fill_chair
 # ---------------------------------------------------------------------------
+
+_CHAIR_TEMPLATE = (
+    "{{PROJECT_NAME}}|{{PHASE_LABEL}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
+    "{{STATS_HTML}}|{{NEXT_STEP}}|{{GENERATED_DATE}}|{{QUESTION_STATUS}}|"
+    "{{QUESTION_LEAD_HTML}}|{{STORIES_HTML}}|{{QUESTIONS_HTML}}|{{BLOCKERS_HTML}}|"
+    "{{SCREENS_HTML}}"
+)
+
+
+def _base_fill(**overrides):
+    kwargs = dict(
+        project_name="Foo",
+        phase_label="Analyzed",
+        generated_date="2026-06-14",
+        quality="Ready",
+        stats_html="<div>10 stories</div>",
+        next_step="drydock plan Foo",
+        question_count=0,
+        stories_html="",
+        questions_html="",
+        blockers_html="",
+        screens_html="",
+    )
+    kwargs.update(overrides)
+    return _fill_chair(_CHAIR_TEMPLATE, **kwargs)
 
 
 class TestFillCaptainsChair:
-    _TEMPLATE = (
-        "{{PROJECT_NAME}}|{{QUALITY}}|{{QUALITY_CSS}}|{{QUALITY_ICON}}|"
-        "{{STORY_COUNT}}|{{QUESTION_COUNT}}|{{BLOCKER_COUNT}}|{{SCREEN_COUNT}}|"
-        "{{NEXT_STEP}}|{{GENERATED_DATE}}|{{BUILD_DIRECTORY}}|{{QUESTION_STATUS}}|"
-        "{{QUESTION_LEAD_HTML}}|{{STORIES_HTML}}|{{QUESTIONS_HTML}}|{{BLOCKERS_HTML}}|"
-        "{{SCREENS_HTML}}"
-    )
-
     def test_ready_fill(self):
-        result = _fill_commanders_chair(
-            self._TEMPLATE,
-            quality="Ready",
-            story_count=10,
-            question_count=0,
-            blocker_count=0,
-            screen_count=3,
-            next_step="drydock plan Foo",
-            project_name="Foo",
-            generated_date="2026-06-14",
-            build_directory="/tmp/builds/Foo",
-        )
+        result = _base_fill()
         assert "Foo" in result
         assert "Ready" in result
         assert "ready" in result
         assert "✓" in result
-        assert "10" in result
-        assert "/tmp/builds/Foo" in result
+        assert "Analyzed" in result
         assert "No open questions" in result
         assert "<strong>Questions:</strong> No open questions" in result
 
     def test_blocked_css_class(self):
-        result = _fill_commanders_chair(
+        result = _fill_chair(
             "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
             quality="Blocked",
-            story_count=0,
-            question_count=0,
-            blocker_count=1,
-            screen_count=0,
-            next_step="",
             project_name="X",
+            phase_label="Analyzed",
             generated_date="",
-            build_directory="",
+            stats_html="",
+            next_step="",
+            question_count=0,
+            stories_html="",
+            questions_html="",
+            blockers_html="",
+            screens_html="",
         )
         assert "blocked" in result
         assert "✗" in result
 
     def test_questions_css_class(self):
-        result = _fill_commanders_chair(
+        result = _fill_chair(
             "{{QUALITY_CSS}}|{{QUALITY_ICON}}",
             quality="Questions",
-            story_count=0,
-            question_count=2,
-            blocker_count=0,
-            screen_count=0,
-            next_step="",
             project_name="X",
+            phase_label="Analyzed",
             generated_date="",
-            build_directory="",
+            stats_html="",
+            next_step="",
+            question_count=2,
+            stories_html="",
+            questions_html="",
+            blockers_html="",
+            screens_html="",
         )
         assert "questions" in result
         assert "⚠" in result
 
     def test_open_questions_render_status_under_heading(self):
-        result = _fill_commanders_chair(
+        result = _fill_chair(
             "{{QUESTION_LEAD_HTML}}",
             quality="Questions",
-            story_count=0,
-            question_count=2,
-            blocker_count=0,
-            screen_count=0,
-            next_step="",
             project_name="X",
+            phase_label="Analyzed",
             generated_date="",
-            build_directory="",
+            stats_html="",
+            next_step="",
+            question_count=2,
+            stories_html="",
+            questions_html="",
+            blockers_html="",
+            screens_html="",
         )
         assert "<h2>Questions</h2>" in result
         assert "Open questions remain" in result
@@ -1203,10 +1216,11 @@ class TestLifecycleState:
         assert result.commanders_chair_path is not None
         assert result.commanders_chair_path.exists()
 
-    def test_commanders_chair_not_written_when_no_metadata(self, tmp_path):
+    def test_commanders_chair_written_on_first_analyze(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.commanders_chair_path is None
+        assert result.commanders_chair_path is not None
+        assert result.commanders_chair_path.exists()
 
     def test_state_not_reversed_when_already_planned(self, tmp_path):
         from drydock.metadata import get_build_state, render_metadata, set_build_state

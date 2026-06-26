@@ -960,6 +960,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 def cmd_build_verify(target: str, step_id: str) -> int:
     from drydock.build_review import verify_build_step
     from drydock.config import get_target_directory
+    from drydock.quarterdeck_state import refresh_commanders_chair
 
     target_dir = get_target_directory() / target
     result = verify_build_step(target_dir / "MANIFEST.md", step_id)
@@ -969,6 +970,7 @@ def cmd_build_verify(target: str, step_id: str) -> int:
         print(f"Verified: {result.step_id}  {result.step_name}")
     if result.ac_ids:
         print("Acceptance checks: " + ", ".join(result.ac_ids))
+    refresh_commanders_chair(target_dir)
     print(f"Next: drydock build status {target}")
     return 0
 

@@ -15,7 +15,6 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
-from html import escape
 from pathlib import Path
 from typing import Protocol
 
@@ -28,13 +27,12 @@ from drydock.exclude_files import (
 from drydock.llm import run_prompt
 from drydock.metadata import (
     METADATA_NAME,
-    get_build_dir,
     set_build_state,
     set_field,
     set_sub_state,
     stamp_last,
 )
-from drydock.paths import get_quarterdeck_template_dir, get_rigging_root
+from drydock.paths import get_rigging_root
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -77,15 +75,7 @@ _SUMMARY_COUNT_RE = re.compile(r"^  (blockers|questions):\s*.+?$", re.MULTILINE)
 _ANALYSIS_NOTES_HEADING_RE = re.compile(
     r"^## (?:Analysis notes|Notes)\s*$", re.MULTILINE | re.IGNORECASE
 )
-_STORY_SECTION_RE = re.compile(r"^###\s+(?:Feature Area\s+\d+\s+—\s+)?(.+?)\s*$", re.MULTILINE)
-_STORY_ROW_RE = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|", re.MULTILINE)
 _QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
-
-_QUALITY_META: dict[str, tuple[str, str, str]] = {
-    "Ready": ("ready", "✓", "All blockers resolved. Ready for planning."),
-    "Questions": ("questions", "⚠", "Open questions remain. Planning can proceed."),
-    "Blocked": ("blocked", "✗", "Unresolved blockers. Review before continuing."),
-}
 
 
 class CompletedRun(Protocol):
@@ -631,171 +621,6 @@ def _parse_output(
     )
 
 
-def _fill_commanders_chair(
-    template: str,
-    *,
-    quality: str,
-    story_count: int,
-    question_count: int,
-    blocker_count: int,
-    screen_count: int,
-    next_step: str,
-    project_name: str,
-    generated_date: str,
-    build_directory: str,
-    stories_html: str = "",
-    questions_html: str = "",
-    blockers_html: str = "",
-    screens_html: str = "",
-) -> str:
-    css_class, icon, desc = _QUALITY_META.get(quality, ("blocked", "?", quality))
-    question_status = "Open questions remain" if question_count else "No open questions"
-    if question_count:
-        question_lead_html = (
-            f'<h2>Questions</h2><div class="question-status">{escape(question_status)}</div>'
-        )
-    else:
-        question_lead_html = (
-            '<div class="question-status question-status-inline">'
-            f"<strong>Questions:</strong> {escape(question_status)}</div>"
-        )
-    replacements = {
-        "{{PROJECT_NAME}}": project_name,
-        "{{GENERATED_DATE}}": generated_date,
-        "{{BUILD_DIRECTORY}}": build_directory,
-        "{{QUALITY}}": quality,
-        "{{QUALITY_CSS}}": css_class,
-        "{{QUALITY_ICON}}": icon,
-        "{{QUALITY_DESC}}": desc,
-        "{{STORY_COUNT}}": str(story_count),
-        "{{QUESTION_COUNT}}": str(question_count),
-        "{{BLOCKER_COUNT}}": str(blocker_count),
-        "{{SCREEN_COUNT}}": str(screen_count),
-        "{{NEXT_STEP}}": next_step,
-        "{{QUESTION_STATUS}}": question_status,
-        "{{QUESTION_LEAD_HTML}}": question_lead_html,
-        "{{STORIES_HTML}}": stories_html,
-        "{{QUESTIONS_HTML}}": questions_html,
-        "{{BLOCKERS_HTML}}": blockers_html,
-        "{{SCREENS_HTML}}": screens_html,
-    }
-    for key, value in replacements.items():
-        template = template.replace(key, value)
-    return template
-
-
-def _story_breakdown(analysis_text: str) -> list[tuple[str, int]]:
-    story_list = analysis_text.split("## Story List", 1)
-    if len(story_list) != 2:
-        return []
-    body = story_list[1]
-    sections = list(_STORY_SECTION_RE.finditer(body))
-    breakdown: list[tuple[str, int]] = []
-    for index, match in enumerate(sections):
-        start = match.end()
-        end = sections[index + 1].start() if index + 1 < len(sections) else len(body)
-        section_text = body[start:end]
-        count = sum(1 for row in _STORY_ROW_RE.finditer(section_text) if row.group(1) not in {"ID"})
-        if count:
-            breakdown.append((match.group(1).strip(), count))
-    return breakdown
-
-
-def _render_story_breakdown_html(analysis_text: str) -> str:
-    breakdown = _story_breakdown(analysis_text)
-    if not breakdown:
-        return ""
-    items = "\n".join([
-        '  <div class="story-breakdown-row">'
-        f'<span class="story-breakdown-name">{escape(name)}</span>'
-        f'<span class="story-breakdown-count">{count}</span>'
-        "</div>"
-        for name, count in breakdown
-    ])
-    return "\n".join([
-        '<div class="story-breakdown">',
-        '  <div class="story-breakdown-label">Story Shape</div>',
-        items,
-        "</div>",
-    ])
-
-
-def _list_html(items: list[str], *, empty: str) -> str:
-    if not items:
-        return f'<p class="empty">{escape(empty)}</p>'
-    rows = "\n".join(f"  <li>{escape(item)}</li>" for item in items)
-    return f"<ul>\n{rows}\n</ul>"
-
-
-def _story_items(analysis_text: str) -> list[str]:
-    story_list = analysis_text.split("## Story List", 1)
-    if len(story_list) != 2:
-        return []
-    items: list[str] = []
-    for line in story_list[1].splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            items.append(stripped[2:].strip())
-            continue
-        if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-"}:
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if not cells or cells[0].lower() in {"id", "area"}:
-            continue
-        if len(cells) >= 2 and re.match(r"^[A-Z][A-Z0-9-]+$", cells[0]):
-            items.append(f"{cells[0]} - {cells[1]}")
-        elif len(cells) >= 2:
-            items.append(f"{cells[0]} - {cells[1]}")
-    return items
-
-
-def _screen_items(analysis_text: str) -> list[str]:
-    screens: list[str] = []
-    for heading in _STORY_SECTION_RE.findall(analysis_text):
-        if "screen" in heading.lower():
-            screens.append(heading.strip())
-    for item in _story_items(analysis_text):
-        if "screen" in item.lower() and item not in screens:
-            screens.append(item)
-    return screens
-
-
-def _question_items(questionnaires_dir: Path) -> list[str]:
-    if not questionnaires_dir.is_dir():
-        return []
-    items: list[str] = []
-    for path in sorted(questionnaires_dir.glob("discovery-*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            items.append(f"See questionnaire {path.name}")
-            continue
-        state = str(data.get("state", "open")).lower()
-        if state in _QUESTIONNAIRE_DONE_STATES:
-            continue
-        label = str(data.get("title") or data.get("id") or path.stem)
-        items.append(f"See questionnaire {label}")
-    return items
-
-
-def _blocker_items(blockers_text: str | None) -> list[str]:
-    if not blockers_text:
-        return []
-    items = [
-        match.group(1).strip()
-        for match in re.finditer(r"^##\s+(.+?)\s*$", blockers_text, re.MULTILINE)
-    ]
-    return items or ["Review BLOCKERS.md"]
-
-
-def _next_step_hint(quality: str, target: str) -> str:
-    if quality == "Blocked":
-        return f"Resolve blockers, then re-run: drydock analyze {target}"
-    if quality == "Questions":
-        return f"Review QuarterDeck action items, then run: drydock plan {target}"
-    return f"drydock plan {target}"
-
-
 def analyze(
     target: str,
     target_dir: Path,
@@ -962,47 +787,11 @@ def analyze(
     stamp_last(target_dir, "analyzed")
     set_sub_state(target_dir, "complete")
 
-    # Commanders Chair reflects the current analyzed state, so rewrite it on every
-    # successful analyze run when metadata exists.
-    commanders_chair_path: Path | None = None
-    state_advanced = set_build_state(target_dir, "analyzed")
-    if state_advanced or (target_dir / METADATA_NAME).is_file():
-        try:
-            try:
-                build_directory = str(get_build_dir(target, target_dir))
-            except Exception:
-                build_directory = "not configured"
-            template_path = get_quarterdeck_template_dir() / "commanders_chair.html"
-            if template_path.is_file():
-                template = template_path.read_text(encoding="utf-8")
-                filled = _fill_commanders_chair(
-                    template,
-                    quality=quality,
-                    story_count=story_count,
-                    question_count=question_count,
-                    blocker_count=blocker_count,
-                    screen_count=screen_count,
-                    next_step=_next_step_hint(quality, target),
-                    project_name=target,
-                    generated_date=today,
-                    build_directory=build_directory,
-                    stories_html=_list_html(_story_items(analysis_text), empty="No stories found."),
-                    questions_html=_list_html(
-                        _question_items(questionnaires_dir), empty="No open questionnaires."
-                    ),
-                    blockers_html=_list_html(
-                        _blocker_items(blockers_text_out), empty="No blockers file."
-                    ),
-                    screens_html=_list_html(
-                        _screen_items(analysis_text), empty="No screens found."
-                    ),
-                )
-                chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
-                chair_path.parent.mkdir(parents=True, exist_ok=True)
-                chair_path.write_text(filled, encoding="utf-8", newline="\n")
-                commanders_chair_path = chair_path
-        except Exception:
-            pass  # Commanders Chair failure must not abort a successful analysis
+    # Commanders Chair reflects the current analyzed state; delegate to shared builder.
+    set_build_state(target_dir, "analyzed")
+    from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+    commanders_chair_path = _refresh_chair(target_dir)
 
     return AnalyzeResult(
         target_dir=target_dir,
