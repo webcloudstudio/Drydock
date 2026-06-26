@@ -62,6 +62,16 @@ def test_verify_build_step_requires_implemented_state(tmp_path):
         verify_build_step(path, "foundation")
 
 
+def test_verify_build_step_is_idempotent_for_verified_step(tmp_path):
+    path = _write(tmp_path, _MANIFEST.replace("state: implemented", "state: closed/verified", 1))
+
+    result = verify_build_step(path, "foundation")
+
+    assert result.already_verified is True
+    assert result.ac_ids == ("ac-starts", "ac-persists")
+    assert _state(path, "foundation") == "closed/verified"
+
+
 def test_verify_build_step_rejects_acceptance_block(tmp_path):
     path = _write(tmp_path)
 

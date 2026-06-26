@@ -865,9 +865,25 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("No git changes to commit.")
     if not result.steps:
         print("  Nothing buildable — no pending step has all dependencies verified.")
+        reviewable = _reviewable_build_steps(target_dir)
+        if reviewable:
+            print("  Review required before more build work can run:")
+            for step_id, name in reviewable:
+                print(f"    drydock build verify {args.Target} {step_id}  # {name}")
     print(f"Build directory: {result.build_dir}")
     print(f"RESULT: {len(result.built())} built, {len(result.failed())} failed")
     return result.exit_code()
+
+
+def _reviewable_build_steps(target_dir: Path) -> list[tuple[str, str]]:
+    from drydock.build_plan import parse_build_plan
+
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    return [
+        (block.block_id, block.name)
+        for block in plan.blocks
+        if block.block_type in {"story", "spike"} and block.state == "implemented"
+    ]
 
 
 _BUILD_STATE_MARK = {
@@ -928,7 +944,10 @@ def cmd_build_verify(target: str, step_id: str) -> int:
 
     target_dir = get_target_directory() / target
     result = verify_build_step(target_dir / "MANIFEST.md", step_id)
-    print(f"Verified: {result.step_id}  {result.step_name}")
+    if result.already_verified:
+        print(f"Already verified: {result.step_id}  {result.step_name}")
+    else:
+        print(f"Verified: {result.step_id}  {result.step_name}")
     if result.ac_ids:
         print("Acceptance checks: " + ", ".join(result.ac_ids))
     print(f"Next: drydock build status {target}")

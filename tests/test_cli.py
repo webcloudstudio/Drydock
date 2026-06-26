@@ -555,6 +555,17 @@ state: pending
         assert "id: awaiting-checks\nstate: closed/verified" in manifest
         assert "id: system-starts\nparent: awaiting-checks\nstate: closed/verified" in manifest
 
+    def test_build_verify_already_verified_is_success(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        run_cli("build", "verify", "ExampleTarget", "awaiting-checks")
+
+        rc, out, err = run_cli("build", "verify", "ExampleTarget", "awaiting-checks")
+
+        assert rc == 0, err
+        assert "Already verified: awaiting-checks" in out
+
     def test_build_verify_usage_error(self):
         rc, out, err = run_cli("build", "verify", "ExampleTarget")
 
@@ -604,6 +615,25 @@ state: pending
         assert "Setting up git directory in" in out
         assert "Ran git commit to commit changes" in out
         assert (target / "evidence" / "foundation.md").is_file()
+
+    def test_build_with_review_gate_prints_verify_command(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        target.mkdir()
+        manifest = self.PLAN.replace(
+            "id: import-documents\ndepends: foundation\nstate: pending",
+            "id: import-documents\ndepends: awaiting-checks\nstate: pending",
+        )
+        (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+
+        rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
+
+        assert rc == 0, err
+        assert "Review required before more build work can run" in out
+        assert "drydock build verify ExampleTarget awaiting-checks" in out
 
 
 class TestPlanningSession:

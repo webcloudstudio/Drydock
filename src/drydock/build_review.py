@@ -19,6 +19,7 @@ class BuildVerifyResult:
     step_id: str
     step_name: str
     ac_ids: tuple[str, ...]
+    already_verified: bool = False
 
 
 def _child_acs(blocks: tuple[PlanBlock, ...], step_id: str) -> tuple[PlanBlock, ...]:
@@ -39,12 +40,19 @@ def verify_build_step(manifest_path: Path, step_id: str) -> BuildVerifyResult:
         raise SpecificationError(f"Build step {step_id!r} not found in {manifest_path}")
     if step.block_type not in _STEP_TYPES:
         raise SpecificationError(f"{step_id!r} is not a build step")
+    acs = _child_acs(plan.blocks, step_id)
+    if step.state == "closed/verified":
+        return BuildVerifyResult(
+            step_id=step.block_id,
+            step_name=step.name,
+            ac_ids=tuple(ac.block_id for ac in acs),
+            already_verified=True,
+        )
     if step.state != "implemented":
         raise SpecificationError(
             f"{step_id!r} is {step.state!r}; only implemented steps can be verified"
         )
 
-    acs = _child_acs(plan.blocks, step_id)
     if not acs:
         raise SpecificationError(
             f"{step_id!r} has no acceptance checks; it should have closed during build"
