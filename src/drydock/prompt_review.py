@@ -151,17 +151,15 @@ def _read_required(path: Path, label: str) -> str:
 
 
 def _format_markdown_block(title: str, path: Path, text: str) -> str:
-    return "\n".join(
-        [
-            f"## {title}",
-            f"path: {path}",
-            "",
-            "```markdown",
-            text.rstrip(),
-            "```",
-            "",
-        ]
-    )
+    return "\n".join([
+        f"## {title}",
+        f"path: {path}",
+        "",
+        "```markdown",
+        text.rstrip(),
+        "```",
+        "",
+    ])
 
 
 def _assemble_prompt(component: PromptReviewComponent, repo_root: Path, body: str) -> str:
@@ -361,33 +359,29 @@ def render_review_markdown(
     ]
     for category in _CATEGORY_ORDER:
         lines.append(f"  {category}: {_format_score(review.scorecard[category])}")
-    lines.extend(
-        [
-            "status: current",
-            "archive_of: null",
-            "---",
-            "",
-            f"# Prompt Review: {component.name}",
-            "",
-            "## Executive Assessment",
-            review.executive_assessment,
-            "",
-            "## General Recommendation",
-            review.general_recommendation,
-            "",
-            "## Best Plan",
-        ]
-    )
+    lines.extend([
+        "status: current",
+        "archive_of: null",
+        "---",
+        "",
+        f"# Prompt Review: {component.name}",
+        "",
+        "## Executive Assessment",
+        review.executive_assessment,
+        "",
+        "## General Recommendation",
+        review.general_recommendation,
+        "",
+        "## Best Plan",
+    ])
     lines.extend([f"{index}. {item}" for index, item in enumerate(review.best_plan, start=1)])
     lines.extend(["", "## Findings"])
     for index, finding in enumerate(review.findings, start=1):
-        lines.extend(
-            [
-                f"{index}. [{finding['severity']}] {finding['title']}",
-                f"Evidence: {finding['evidence']}",
-                f"Impact: {finding['impact']}",
-            ]
-        )
+        lines.extend([
+            f"{index}. [{finding['severity']}] {finding['title']}",
+            f"Evidence: {finding['evidence']}",
+            f"Impact: {finding['impact']}",
+        ])
     lines.extend(["", "## Strengths"])
     lines.extend([f"- {item}" for item in review.strengths])
     lines.extend(["", "## Open Questions"])

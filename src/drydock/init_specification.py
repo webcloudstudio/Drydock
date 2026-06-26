@@ -57,7 +57,8 @@ def _derive_display_name(slug: str) -> str:
 
 def _apply_tokens(text: str, slug: str, display_name: str, today: str, today_compact: str) -> str:
     return (
-        text.replace("__PROJECT_NAME__", display_name)
+        text
+        .replace("__PROJECT_NAME__", display_name)
         .replace("__PROJECT_SLUG__", slug)
         .replace("__SHORT_DESCRIPTION__", "TODO: add short description")
         .replace("__TODAY__", today)

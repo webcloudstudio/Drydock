@@ -175,8 +175,10 @@ def prompt_header_for_path(path: Path | str) -> PromptHeader | None:
     path_obj = Path(path)
     normalized = path_obj.as_posix().lstrip("./")
     for header in _load_pattern_headers():
-        if path_obj.match(header.pattern) or normalized == header.pattern or normalized.endswith(
-            header.pattern.lstrip("./")
+        if (
+            path_obj.match(header.pattern)
+            or normalized == header.pattern
+            or normalized.endswith(header.pattern.lstrip("./"))
         ):
             return PromptHeader(
                 item_id=None,

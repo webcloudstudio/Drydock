@@ -549,9 +549,7 @@ state: pending
         assert rc == 0, err
         assert "Verified: awaiting-checks" in out
         assert "Acceptance checks: system-starts" in out
-        manifest = (tmp_target_root / "ExampleTarget" / "MANIFEST.md").read_text(
-            encoding="utf-8"
-        )
+        manifest = (tmp_target_root / "ExampleTarget" / "MANIFEST.md").read_text(encoding="utf-8")
         assert "id: awaiting-checks\nstate: closed/verified" in manifest
         assert "id: system-starts\nparent: awaiting-checks\nstate: closed/verified" in manifest
 
@@ -1179,7 +1177,9 @@ class TestStatus:
         workspace.mkdir()
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(workspace))
         init_target("MyProject", workspace / "targets")
-        append_command_history(workspace, "drydock analyze MyProject", target="MyProject", return_code=0)
+        append_command_history(
+            workspace, "drydock analyze MyProject", target="MyProject", return_code=0
+        )
 
         rc, out, err = run_cli("status")
 
@@ -1197,7 +1197,9 @@ class TestStatus:
         workspace.mkdir()
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(workspace))
         init_target("MyProject", workspace / "targets")
-        append_command_history(workspace, "drydock analyze MyProject", target="MyProject", return_code=1)
+        append_command_history(
+            workspace, "drydock analyze MyProject", target="MyProject", return_code=1
+        )
 
         rc, out, err = run_cli("status")
 

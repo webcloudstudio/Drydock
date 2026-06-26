@@ -77,9 +77,7 @@ _SUMMARY_COUNT_RE = re.compile(r"^  (blockers|questions):\s*.+?$", re.MULTILINE)
 _ANALYSIS_NOTES_HEADING_RE = re.compile(
     r"^## (?:Analysis notes|Notes)\s*$", re.MULTILINE | re.IGNORECASE
 )
-_STORY_SECTION_RE = re.compile(
-    r"^###\s+(?:Feature Area\s+\d+\s+—\s+)?(.+?)\s*$", re.MULTILINE
-)
+_STORY_SECTION_RE = re.compile(r"^###\s+(?:Feature Area\s+\d+\s+—\s+)?(.+?)\s*$", re.MULTILINE)
 _STORY_ROW_RE = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|", re.MULTILINE)
 _QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 
@@ -148,7 +146,11 @@ def ensure_feedback_file(target_dir: Path) -> str:
     if not path.is_file():
         header = prompt_header_for_file(_FEEDBACK_FILENAME)
         path.write_text(
-            (header.default_text if header and header.default_text is not None else "# Analyze Compass\n"),
+            (
+                header.default_text
+                if header and header.default_text is not None
+                else "# Analyze Compass\n"
+            ),
             encoding="utf-8",
             newline="\n",
         )
@@ -251,7 +253,9 @@ def _managed_doc_parts(
     )
 
 
-def _render_typed_spec(blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()) -> list[str]:
+def _render_typed_spec(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[str]:
     # The Rigging catalog (stack-option filenames, no content) is analyze scaffolding that
     # reads immediately before the imported sources it contextualizes.
     parts: list[str] = []
@@ -411,7 +415,11 @@ def _assemble_prompt_assembly(
                     kind="section",
                 )
             )
-        parts_list.append(lines_part("Imported source file header", ["## Imported source files", ""], kind="section"))
+        parts_list.append(
+            lines_part(
+                "Imported source file header", ["## Imported source files", ""], kind="section"
+            )
+        )
         for path_obj in _collect_blueprint_files(
             blueprint_dir, excluded_filenames=excluded_filenames
         ):
@@ -510,7 +518,9 @@ def _remove_tuning_options_section(analysis_text: str) -> str:
     return _TUNING_OPTIONS_SECTION_RE.sub("", analysis_text).strip()
 
 
-def _normalize_analysis_summary(analysis_text: str, *, quality: str, blockers: int, questions: int) -> str:
+def _normalize_analysis_summary(
+    analysis_text: str, *, quality: str, blockers: int, questions: int
+) -> str:
     """Rewrite summary fields to match the artifacts Drydock actually wrote."""
     text = _SUMMARY_QUALITY_RE.sub(f"Quality: {quality}", analysis_text, count=1)
 
@@ -526,7 +536,9 @@ def _normalize_analysis_summary(analysis_text: str, *, quality: str, blockers: i
 def _normalize_analysis_layout(analysis_text: str) -> str:
     """Move the generated summary out of the tab preamble and into Analysis Notes."""
     text = _ANALYSIS_NOTES_HEADING_RE.sub("## Analysis Notes", analysis_text.strip())
-    match = re.match(r"(?s)\A(#[^\n]*(?:\n|$))(?P<intro>.*?)(?=^## |\Z)(?P<body>.*)\Z", text, re.MULTILINE)
+    match = re.match(
+        r"(?s)\A(#[^\n]*(?:\n|$))(?P<intro>.*?)(?=^## |\Z)(?P<body>.*)\Z", text, re.MULTILINE
+    )
     if not match:
         return text
 
@@ -640,8 +652,7 @@ def _fill_commanders_chair(
     question_status = "Open questions remain" if question_count else "No open questions"
     if question_count:
         question_lead_html = (
-            "<h2>Questions</h2>"
-            f'<div class="question-status">{escape(question_status)}</div>'
+            f'<h2>Questions</h2><div class="question-status">{escape(question_status)}</div>'
         )
     else:
         question_lead_html = (
@@ -684,11 +695,7 @@ def _story_breakdown(analysis_text: str) -> list[tuple[str, int]]:
         start = match.end()
         end = sections[index + 1].start() if index + 1 < len(sections) else len(body)
         section_text = body[start:end]
-        count = sum(
-            1
-            for row in _STORY_ROW_RE.finditer(section_text)
-            if row.group(1) not in {"ID"}
-        )
+        count = sum(1 for row in _STORY_ROW_RE.finditer(section_text) if row.group(1) not in {"ID"})
         if count:
             breakdown.append((match.group(1).strip(), count))
     return breakdown
@@ -698,23 +705,19 @@ def _render_story_breakdown_html(analysis_text: str) -> str:
     breakdown = _story_breakdown(analysis_text)
     if not breakdown:
         return ""
-    items = "\n".join(
-        [
-            '  <div class="story-breakdown-row">'
-            f'<span class="story-breakdown-name">{escape(name)}</span>'
-            f'<span class="story-breakdown-count">{count}</span>'
-            "</div>"
-            for name, count in breakdown
-        ]
-    )
-    return "\n".join(
-        [
-            '<div class="story-breakdown">',
-            '  <div class="story-breakdown-label">Story Shape</div>',
-            items,
-            "</div>",
-        ]
-    )
+    items = "\n".join([
+        '  <div class="story-breakdown-row">'
+        f'<span class="story-breakdown-name">{escape(name)}</span>'
+        f'<span class="story-breakdown-count">{count}</span>'
+        "</div>"
+        for name, count in breakdown
+    ])
+    return "\n".join([
+        '<div class="story-breakdown">',
+        '  <div class="story-breakdown-label">Story Shape</div>',
+        items,
+        "</div>",
+    ])
 
 
 def _list_html(items: list[str], *, empty: str) -> str:
@@ -990,7 +993,9 @@ def analyze(
                     blockers_html=_list_html(
                         _blocker_items(blockers_text_out), empty="No blockers file."
                     ),
-                    screens_html=_list_html(_screen_items(analysis_text), empty="No screens found."),
+                    screens_html=_list_html(
+                        _screen_items(analysis_text), empty="No screens found."
+                    ),
                 )
                 chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
                 chair_path.parent.mkdir(parents=True, exist_ok=True)

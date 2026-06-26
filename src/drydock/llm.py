@@ -165,9 +165,7 @@ def _isolate_codex_env(process_env: dict[str, str]) -> Path:
     Mutates ``process_env`` in place and returns the temporary directory so the
     caller can remove it after the subprocess exits.
     """
-    source_home = Path(
-        process_env.get("CODEX_HOME") or Path.home() / ".codex"
-    ).expanduser()
+    source_home = Path(process_env.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
     build_home = Path(tempfile.mkdtemp(prefix="drydock-codex-home-"))
     build_home.chmod(0o700)
     source_auth = source_home / "auth.json"
@@ -291,9 +289,7 @@ def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> li
     tok_w = max((len(t) for t in toks), default=0)
     for record, name, tok in zip(records, names, toks):
         lines.append(f"  [{record['order']:02d}] {name:<{col_w}}  {tok:>{tok_w}}")
-    lines.append(
-        f"[prompt] total  {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok"
-    )
+    lines.append(f"[prompt] total  {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok")
     return lines
 
 

@@ -30,26 +30,22 @@ def test_jsonl_renderer_sorts_fields_and_isolates_invalid_lines(tmp_path, monkey
     quarterdeck = _load_quarterdeck()
     source = tmp_path / "events.jsonl"
     source.write_text(
-        "\n".join(
-            [
-                json.dumps({"recorded_at": "2026-01-01T00:00:00Z", "title": "Older"}),
-                "{broken",
-                json.dumps({"recorded_at": "2026-02-01T00:00:00Z", "title": "Newer"}),
-            ]
-        ),
+        "\n".join([
+            json.dumps({"recorded_at": "2026-01-01T00:00:00Z", "title": "Older"}),
+            "{broken",
+            json.dumps({"recorded_at": "2026-02-01T00:00:00Z", "title": "Newer"}),
+        ]),
         encoding="utf-8",
     )
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: source)
 
-    rendered = quarterdeck.render_jsonl_item(
-        {
-            "label": "Events",
-            "path": "events.jsonl",
-            "fields": ["recorded_at", "title"],
-            "sort": "recorded_at",
-            "sort_direction": "desc",
-        }
-    )
+    rendered = quarterdeck.render_jsonl_item({
+        "label": "Events",
+        "path": "events.jsonl",
+        "fields": ["recorded_at", "title"],
+        "sort": "recorded_at",
+        "sort_direction": "desc",
+    })
 
     assert rendered.index("Newer") < rendered.index("Older")
     assert "2 record(s)" in rendered
@@ -312,17 +308,15 @@ def test_document_renderer_html_takes_priority(tmp_path, monkeypatch):
 
     monkeypatch.setattr(quarterdeck, "resolve_path", fake_resolve)
 
-    rendered = quarterdeck.render_document_item(
-        {
-            "id": "test_doc",
-            "label": "Test Doc",
-            "type": "document",
-            "path_md": "../doc.md",
-            "path_html": "../doc.html",
-            "path_pdf": "../doc.pdf",
-            "help_text": "Document help.",
-        }
-    )
+    rendered = quarterdeck.render_document_item({
+        "id": "test_doc",
+        "label": "Test Doc",
+        "type": "document",
+        "path_md": "../doc.md",
+        "path_html": "../doc.html",
+        "path_pdf": "../doc.pdf",
+        "help_text": "Document help.",
+    })
 
     assert "doc-frame" in rendered  # html iframe rendered
     assert "variant=html" in rendered
@@ -346,9 +340,12 @@ def test_document_renderer_pdf_fallback_when_no_html(tmp_path, monkeypatch):
 
     monkeypatch.setattr(quarterdeck, "resolve_path", fake_resolve)
 
-    rendered = quarterdeck.render_document_item(
-        {"id": "test_doc", "label": "Test Doc", "type": "document", "path_pdf": "../doc.pdf"}
-    )
+    rendered = quarterdeck.render_document_item({
+        "id": "test_doc",
+        "label": "Test Doc",
+        "type": "document",
+        "path_pdf": "../doc.pdf",
+    })
 
     assert "pdf-open-btn" in rendered
     assert "variant=pdf" in rendered
@@ -362,15 +359,13 @@ def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
 
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
-    rendered = quarterdeck.render_document_item(
-        {
-            "id": "solo",
-            "label": "Solo",
-            "type": "document",
-            "path_md": "../doc.md",
-            "help_text": "Document help.",
-        }
-    )
+    rendered = quarterdeck.render_document_item({
+        "id": "solo",
+        "label": "Solo",
+        "type": "document",
+        "path_md": "../doc.md",
+        "help_text": "Document help.",
+    })
 
     assert "md-tabs" not in rendered
     assert "<h1>Solo</h1>" not in rendered
@@ -381,9 +376,11 @@ def test_document_renderer_single_md_no_tabs(tmp_path, monkeypatch):
 def test_document_renderer_missing_all_paths():
     quarterdeck = _load_quarterdeck()
 
-    rendered = quarterdeck.render_document_item(
-        {"id": "empty", "label": "Empty", "type": "document"}
-    )
+    rendered = quarterdeck.render_document_item({
+        "id": "empty",
+        "label": "Empty",
+        "type": "document",
+    })
 
     assert "No files found" in rendered
 
@@ -398,16 +395,14 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
-    rendered = quarterdeck.render_markdown_item(
-        {
-            "id": "analysis",
-            "label": "Analysis",
-            "type": "markdown",
-            "tabs": True,
-            "path": "../ANALYSIS.md",
-            "help_text": "Markdown help.",
-        }
-    )
+    rendered = quarterdeck.render_markdown_item({
+        "id": "analysis",
+        "label": "Analysis",
+        "type": "markdown",
+        "tabs": True,
+        "path": "../ANALYSIS.md",
+        "help_text": "Markdown help.",
+    })
 
     assert "md-tabs" in rendered
     assert rendered.count("<button class='md-tab-btn") == 2
@@ -424,15 +419,13 @@ def test_markdown_renderer_without_tabs_flag_renders_plain(tmp_path, monkeypatch
     md_file.write_text("# Title\n\n## One\na\n\n## Two\nb\n", encoding="utf-8")
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
 
-    rendered = quarterdeck.render_markdown_item(
-        {
-            "id": "plain",
-            "label": "Plain",
-            "type": "markdown",
-            "path": "../doc.md",
-            "help_text": "Markdown help.",
-        }
-    )
+    rendered = quarterdeck.render_markdown_item({
+        "id": "plain",
+        "label": "Plain",
+        "type": "markdown",
+        "path": "../doc.md",
+        "help_text": "Markdown help.",
+    })
 
     assert "md-tabs" not in rendered
     assert "Markdown help." in rendered
@@ -702,15 +695,13 @@ def test_editable_markdown_renders_configured_help_and_prompt_text(tmp_path, mon
     monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", tmp_path)
     (tmp_path / "ANALYZE_COMPASS.md").write_text("# Analyze Compass\n", encoding="utf-8")
 
-    rendered = quarterdeck.render_editable_markdown(
-        {
-            "id": "analyze_compass",
-            "type": "editable_markdown",
-            "path": "../ANALYZE_COMPASS.md",
-            "help_text": "Injected into every analyze run.",
-            "prompt_text": "Short steering only.",
-        }
-    )
+    rendered = quarterdeck.render_editable_markdown({
+        "id": "analyze_compass",
+        "type": "editable_markdown",
+        "path": "../ANALYZE_COMPASS.md",
+        "help_text": "Injected into every analyze run.",
+        "prompt_text": "Short steering only.",
+    })
 
     assert "Injected into every analyze run." in rendered
     assert "<h1>Analyze Compass</h1>" not in rendered
@@ -803,24 +794,22 @@ def _write_target_console(target_dir: Path, name: str) -> None:
         encoding="utf-8",
     )
     (quarterdeck_dir / "console.yaml").write_text(
-        "\n".join(
-            [
-                "console:",
-                f"  name: {name} QuarterDeck",
-                "  default_item: commanders_chair",
-                "  app_help_file_location: pages/help.html",
-                "project:",
-                f"  id: {name.lower()}",
-                f"  name: {name}",
-                "  description: \"Workspace target\"",
-                f"  copyright: Copyright (c) 2026 {name} Studio. All rights reserved.",
-                "sections:",
-                "  - { id: core, label: \"Core\", dot: \"#0d9488\", pinned: true }",
-                "items:",
-                "  - { id: commanders_chair, label: \"Commanders Chair\", section: core, type: markdown, path: pages/overview.md }",
-                "",
-            ]
-        ),
+        "\n".join([
+            "console:",
+            f"  name: {name} QuarterDeck",
+            "  default_item: commanders_chair",
+            "  app_help_file_location: pages/help.html",
+            "project:",
+            f"  id: {name.lower()}",
+            f"  name: {name}",
+            '  description: "Workspace target"',
+            f"  copyright: Copyright (c) 2026 {name} Studio. All rights reserved.",
+            "sections:",
+            '  - { id: core, label: "Core", dot: "#0d9488", pinned: true }',
+            "items:",
+            '  - { id: commanders_chair, label: "Commanders Chair", section: core, type: markdown, path: pages/overview.md }',
+            "",
+        ]),
         encoding="utf-8",
     )
 
@@ -878,7 +867,13 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
                 {"id": "build_plan", "label": "Build Compass", "dot": "#d97706"},
             ],
             "items": [
-                {"id": "plan", "label": "Plan", "section": "build_plan", "type": "markdown", "path": "plan.md"},
+                {
+                    "id": "plan",
+                    "label": "Plan",
+                    "section": "build_plan",
+                    "type": "markdown",
+                    "path": "plan.md",
+                },
             ],
         },
     )
@@ -963,7 +958,7 @@ def test_render_nav_includes_build_compass_item_flag(monkeypatch):
     rendered = quarterdeck.render_nav()
 
     assert "Build Compass" in rendered
-    assert "class=\"item-flag\"" in rendered or "class='item-flag'" in rendered
+    assert 'class="item-flag"' in rendered or "class='item-flag'" in rendered
 
 
 def test_switch_target_sets_cookie_and_changes_active_context(tmp_path, monkeypatch):
@@ -984,7 +979,9 @@ def test_commanders_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
 
-    response = quarterdeck.api_document("commanders_chair", _RequestStub({"quarterdeck_target": "Beta"}))
+    response = quarterdeck.api_document(
+        "commanders_chair", _RequestStub({"quarterdeck_target": "Beta"})
+    )
     html = response["html"]
     assert "commanders_chair.html" not in html
     assert "ph-title-row" not in html
@@ -1018,24 +1015,22 @@ def test_target_identity_uses_slug_not_project_name(tmp_path, monkeypatch):
     (stim_console / "pages" / "help.html").write_text("<p>stim help</p>", encoding="utf-8")
     (stim_console / "commanders_chair.html").write_text("<h1>stim</h1>", encoding="utf-8")
     (stim_console / "console.yaml").write_text(
-        "\n".join(
-            [
-                "console:",
-                "  name: Secure Team Inventory Matrix QuarterDeck",
-                "  default_item: commanders_chair",
-                "  app_help_file_location: pages/help.html",
-                "project:",
-                "  id: stim",
-                "  name: Secure Team Inventory Matrix",
-                "  description: \"Target description\"",
-                "  copyright: Copyright (c) 2026 Stim Studio. All rights reserved.",
-                "sections:",
-                '  - { id: core, label: "Core", dot: "#0d9488", pinned: true }',
-                "items:",
-                '  - { id: commanders_chair, label: "Commanders Chair", section: core, type: document, path_html: commanders_chair.html }',
-                "",
-            ]
-        ),
+        "\n".join([
+            "console:",
+            "  name: Secure Team Inventory Matrix QuarterDeck",
+            "  default_item: commanders_chair",
+            "  app_help_file_location: pages/help.html",
+            "project:",
+            "  id: stim",
+            "  name: Secure Team Inventory Matrix",
+            '  description: "Target description"',
+            "  copyright: Copyright (c) 2026 Stim Studio. All rights reserved.",
+            "sections:",
+            '  - { id: core, label: "Core", dot: "#0d9488", pinned: true }',
+            "items:",
+            '  - { id: commanders_chair, label: "Commanders Chair", section: core, type: document, path_html: commanders_chair.html }',
+            "",
+        ]),
         encoding="utf-8",
     )
 

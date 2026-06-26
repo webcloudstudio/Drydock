@@ -112,9 +112,7 @@ def _read_analysis_summary(target_dir: Path) -> AnalysisSummary | None:
     text = path.read_text(encoding="utf-8")
     quality_match = _QUALITY_RE.search(text)
     quality = quality_match.group(1) if quality_match else ""
-    fields = {
-        key.lower(): value.strip() for key, value in _SUMMARY_FIELD_RE.findall(text)
-    }
+    fields = {key.lower(): value.strip() for key, value in _SUMMARY_FIELD_RE.findall(text)}
 
     def _as_int(key: str) -> int:
         try:

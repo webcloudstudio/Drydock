@@ -446,23 +446,21 @@ def run_survey(
         results = {a["id"]: a.get("result", "fail") for a in ac_entries if "id" in a}
         flags = entry.get("flags", [])
         scored = compute_score(spec, results)
-        records.append(
-            {
-                "schema": SCHEMA,
-                "recorded_at": recorded_at,
-                "command": spec.command,
-                "surveyed_commit": head,
-                "run_ref": execution_id or "manual",
-                "dimensions": scored.dimensions,
-                "assessed": scored.assessed,
-                "score": scored.score,
-                "band": band_for(scored.score, flags),
-                "provisional": scored.provisional,
-                "flags": flags,
-                "ac": ac_entries,
-                "actions": entry.get("actions", []),
-            }
-        )
+        records.append({
+            "schema": SCHEMA,
+            "recorded_at": recorded_at,
+            "command": spec.command,
+            "surveyed_commit": head,
+            "run_ref": execution_id or "manual",
+            "dimensions": scored.dimensions,
+            "assessed": scored.assessed,
+            "score": scored.score,
+            "band": band_for(scored.score, flags),
+            "provisional": scored.provisional,
+            "flags": flags,
+            "ac": ac_entries,
+            "actions": entry.get("actions", []),
+        })
 
     if records:
         append_records(survey_dir, records)
@@ -510,7 +508,11 @@ def import_specs(
                 ["## Import job", "", f"- TARGET: {target}", f"- SOURCE: {source_path}", ""],
                 kind="job",
             ),
-            lines_part("Source specification file header", ["### Source specification files", ""], kind="section"),
+            lines_part(
+                "Source specification file header",
+                ["### Source specification files", ""],
+                kind="section",
+            ),
             *tuple(
                 prompt_part
                 for md in inventory

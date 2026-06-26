@@ -87,7 +87,9 @@ def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _extract_global_llm_overrides(argv: list[str] | None) -> tuple[list[str] | None, dict[str, str | None]]:
+def _extract_global_llm_overrides(
+    argv: list[str] | None,
+) -> tuple[list[str] | None, dict[str, str | None]]:
     """Strip invocation-wide LLM override flags from argv so every command accepts them.
 
     The remaining argv is parsed by the normal command parser. This allows flags like
@@ -222,7 +224,10 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         compact_target = ""
     else:
         if args.Target is None:
-            print("error: <Target> is required unless --include-file or --include-dir is provided.", file=sys.stderr)
+            print(
+                "error: <Target> is required unless --include-file or --include-dir is provided.",
+                file=sys.stderr,
+            )
             return 2
         target_dir = get_target_directory() / args.Target
         spec_dir = blueprint_dir_for(target_dir)
@@ -285,7 +290,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     log_dir = get_workspace() / "logs"
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
-    result = analyze(args.Target, target_dir, model=model, llm_provider=llm_provider, log_dir=log_dir)
+    result = analyze(
+        args.Target, target_dir, model=model, llm_provider=llm_provider, log_dir=log_dir
+    )
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
@@ -403,6 +410,7 @@ def cmd_survey(args: argparse.Namespace) -> int:
         raise UsageError(f"Target not found: {args.Target}")
 
     from drydock.config import get_workspace as _get_workspace
+
     log_dir = _get_workspace() / "logs"
 
     if args.import_path:

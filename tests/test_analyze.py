@@ -304,7 +304,12 @@ def _make_llm_output(
         blocks.append(f"=== BLOCKERS.md ===\n{blockers}\n=== END BLOCKERS.md ===")
     if extra_spike:
         extra = json.dumps(
-            {"id": "discovery-auth", "title": "Discovery: Auth", "purpose": "Auth model.", "questions": []},
+            {
+                "id": "discovery-auth",
+                "title": "Discovery: Auth",
+                "purpose": "Auth model.",
+                "questions": [],
+            },
             indent=2,
         )
         blocks.append(f"=== discovery-auth.json ===\n{extra}\n=== END discovery-auth.json ===")
@@ -769,8 +774,8 @@ Compass text.
 - None stated.</parameter>
 </invoke>
 </function_calls>"""
-        analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = _parse_output(
-            text
+        analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = (
+            _parse_output(text)
         )
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials

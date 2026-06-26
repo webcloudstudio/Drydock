@@ -115,7 +115,10 @@ def test_render_page_supports_sail_cover_layout():
     assert "<p>Your Ship&#x27;s Log preserves material decisions and milestones</p>" in page
     assert '<div class="idea-title">Setup and Install Drydock</div>' in page
     assert "<li>pip install, drydock config, drydock init</li>" in page
-    assert "<li>Import your projects into <strong>Blueprints</strong> - Typed Specifications</li>" in page
+    assert (
+        "<li>Import your projects into <strong>Blueprints</strong> - Typed Specifications</li>"
+        in page
+    )
 
 
 def test_build_documentation_writes_output(tmp_path: Path):

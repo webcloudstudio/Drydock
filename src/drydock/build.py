@@ -261,9 +261,7 @@ def assemble_steps(
     for block in plan.blocks:
         if block.block_type not in STEP_TYPES:
             continue
-        step = assemble_step(
-            block, roots, warn_kb=warn_kb, compact_stack=frozenset(files_seen)
-        )
+        step = assemble_step(block, roots, warn_kb=warn_kb, compact_stack=frozenset(files_seen))
         for role in _ROLE_ORDER:
             for name in _role_names(block, role):
                 files_seen.add(name)

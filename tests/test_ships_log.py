@@ -72,14 +72,12 @@ def test_audit_reports_invalid_json_duplicate_and_unknown_supersedes(tmp_path):
     path = ships_log_path(tmp_path)
     path.parent.mkdir()
     path.write_text(
-        "\n".join(
-            [
-                json.dumps(first),
-                "{broken",
-                json.dumps(first),
-                json.dumps(second),
-            ]
-        )
+        "\n".join([
+            json.dumps(first),
+            "{broken",
+            json.dumps(first),
+            json.dumps(second),
+        ])
         + "\n",
         encoding="utf-8",
     )

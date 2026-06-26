@@ -27,18 +27,27 @@ def _mkdir_one(path: Path) -> None:
     # WSL/DrvFs zombie: stat returns ENOENT but mkdir returns EEXIST.
     # cmd.exe can create the directory on the Windows side, resolving the inconsistency.
     try:
-        win_path = subprocess.check_output(
-            ["wslpath", "-w", str(path)], stderr=subprocess.DEVNULL, timeout=5
-        ).decode().strip()
+        win_path = (
+            subprocess
+            .check_output(["wslpath", "-w", str(path)], stderr=subprocess.DEVNULL, timeout=5)
+            .decode()
+            .strip()
+        )
         subprocess.run(
             ["cmd.exe", "/c", "mkdir", win_path],
-            check=False, capture_output=True, timeout=10,
+            check=False,
+            capture_output=True,
+            timeout=10,
         )
     except Exception:
         pass
 
     if not path.is_dir():
-        raise OSError(errno.EEXIST, "File exists (WSL/DrvFs zombie — run `wsl --shutdown` and retry)", str(path))
+        raise OSError(
+            errno.EEXIST,
+            "File exists (WSL/DrvFs zombie — run `wsl --shutdown` and retry)",
+            str(path),
+        )
 
 
 def _mkdir(path: Path) -> None:

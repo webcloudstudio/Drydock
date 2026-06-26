@@ -82,14 +82,18 @@ class TestStatusBlueprintTarget:
 
     def test_missing_target_raises(self, tmp_target_root):
         with pytest.raises(Exception):
-            status_blueprint_target("X", "NoTarget", tmp_target_root / "NoTarget" / "blueprint", tmp_target_root)
+            status_blueprint_target(
+                "X", "NoTarget", tmp_target_root / "NoTarget" / "blueprint", tmp_target_root
+            )
 
     def test_imported_sources_without_analysis_show_arrange(self, tmp_target_root):
         tgt = tmp_target_root / "TestTarget"
         (tgt / "blueprint" / "sources").mkdir(parents=True)
         (tgt / "blueprint" / "sources" / "request.md").write_text("# Request\n", encoding="utf-8")
 
-        result = status_blueprint_target("TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root)
+        result = status_blueprint_target(
+            "TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root
+        )
 
         assert result.target_info is not None
         assert result.target_info.phase == "Arrange"
@@ -101,7 +105,9 @@ class TestStatusBlueprintTarget:
         tgt.mkdir()
         (tgt / "ANALYSIS.md").write_text(ANALYSIS_READY, encoding="utf-8")
 
-        result = status_blueprint_target("TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root)
+        result = status_blueprint_target(
+            "TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root
+        )
 
         assert result.target_info is not None
         assert result.target_info.phase == "Arrange"
@@ -114,7 +120,9 @@ class TestStatusBlueprintTarget:
         tgt.mkdir()
         (tgt / "MANIFEST.md").write_text(DRAFT_PLAN, encoding="utf-8")
 
-        result = status_blueprint_target("TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root)
+        result = status_blueprint_target(
+            "TestTarget", "TestTarget", tgt / "blueprint", tmp_target_root
+        )
 
         assert result.target_info is not None
         assert result.target_info.phase == "Arrange"

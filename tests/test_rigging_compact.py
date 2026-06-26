@@ -223,9 +223,7 @@ class TestCompact:
         assert any(i.source.name == "NOTES.md" for i in result.items)
 
     def test_exclude_file_arg_removes_required_pair(self, tmp_path):
-        name, root = _blueprint(
-            tmp_path, **{"DATABASE.md": "db\n", "BUSINESS_RULES.md": "rules\n"}
-        )
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n", "BUSINESS_RULES.md": "rules\n"})
         spec = root / name
         excluded = spec / "DATABASE.md"
         result = compact(name, spec, exclude_files=[excluded], runner=fake_runner())

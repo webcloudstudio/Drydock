@@ -219,9 +219,7 @@ class TestCompactSubstitution:
         path = tmp_path / "MANIFEST.md"
         path.write_text(_TWO_STORY_MANIFEST, encoding="utf-8")
         plan = parse_build_plan(path)
-        step = assemble_step(
-            plan.by_id()["s1"], roots, compact_stack=frozenset({"common.md"})
-        )
+        step = assemble_step(plan.by_id()["s1"], roots, compact_stack=frozenset({"common.md"}))
         common_file = next(f for f in step.files if "common" in f.name)
         assert common_file.name == "common_compact.md"
         assert common_file.compact_substituted is True
@@ -263,7 +261,9 @@ class TestCompactSubstitution:
         roots = self._roots_with_compacts(tmp_path)
         # Add a rules file with a compact sibling to the rigging dir
         (roots.rigging_dir / "CLAUDE_RULES.md").write_text("rules" * 100, encoding="utf-8")
-        (roots.rigging_dir / "CLAUDE_RULES_compact.md").write_text("rules_compact" * 10, encoding="utf-8")
+        (roots.rigging_dir / "CLAUDE_RULES_compact.md").write_text(
+            "rules_compact" * 10, encoding="utf-8"
+        )
         manifest = """# MANIFEST: Demo
 state: approved
 

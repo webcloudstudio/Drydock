@@ -15,9 +15,17 @@ from drydock.errors import SpecificationError
 from drydock.init_specification import init_specification
 from drydock.metadata import METADATA_NAME, set_field
 
-_EXCLUDE_DIRS: frozenset[str] = frozenset(
-    {"venv", ".venv", "env", "__pycache__", "node_modules", ".git", "dist", "build", ".eggs"}
-)
+_EXCLUDE_DIRS: frozenset[str] = frozenset({
+    "venv",
+    ".venv",
+    "env",
+    "__pycache__",
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    ".eggs",
+})
 
 # Stack detection markers — used by this module and reusable by analyze/build steps.
 _STACK_FILE_MARKERS: list[tuple[str, str]] = [

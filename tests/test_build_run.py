@@ -152,7 +152,9 @@ def test_allow_tools_enabled_and_runs_in_build_dir(tmp_path):
 def test_existing_git_repo_not_reinitialized(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     build_dir.mkdir(parents=True)
-    subprocess.run(["git", "-C", str(build_dir), "init"], check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-C", str(build_dir), "init"], check=True, capture_output=True, text=True
+    )
     runner = make_runner()
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
@@ -325,7 +327,9 @@ class TestAppliedRegistryIntegration:
         preamble = "# MANIFEST: Demo\nstate: draft\n"
         if applied:
             preamble += f"applied: {applied}\n"
-        body = preamble + """
+        body = (
+            preamble
+            + """
 ## story 1: Foundation
 id: foundation
 implements: DATABASE.md
@@ -333,6 +337,7 @@ stack: common.md
 instructions: Build it.
 state: pending
 """
+        )
         target_dir = tmp_path / "target"
         blueprint = target_dir / "blueprint"
         blueprint.mkdir(parents=True)

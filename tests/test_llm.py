@@ -62,35 +62,29 @@ def _events(target: Path) -> list[dict]:
 
 
 def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monkeypatch):
-    raw = "\n".join(
-        [
-            json.dumps(
-                {
-                    "type": "stream_event",
-                    "event": {
-                        "type": "content_block_delta",
-                        "delta": {"type": "text_delta", "text": "READY"},
-                    },
-                }
-            ),
-            json.dumps(
-                {
-                    "type": "result",
-                    "result": "READY",
-                    "model": "claude-test",
-                    "duration_ms": 123,
-                    "num_turns": 2,
-                    "total_cost_usd": 0.0,
-                    "usage": {
-                        "input_tokens": 10,
-                        "cache_read_input_tokens": 4,
-                        "cache_creation_input_tokens": 2,
-                        "output_tokens": 1,
-                    },
-                }
-            ),
-        ]
-    )
+    raw = "\n".join([
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "READY"},
+            },
+        }),
+        json.dumps({
+            "type": "result",
+            "result": "READY",
+            "model": "claude-test",
+            "duration_ms": 123,
+            "num_turns": 2,
+            "total_cost_usd": 0.0,
+            "usage": {
+                "input_tokens": 10,
+                "cache_read_input_tokens": 4,
+                "cache_creation_input_tokens": 2,
+                "output_tokens": 1,
+            },
+        }),
+    ])
     captured = {}
 
     def fake_popen(command, **kwargs):
@@ -164,47 +158,37 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
 
 
 def test_claude_content_block_boundaries_are_forwarded_to_live_output(tmp_path, monkeypatch):
-    raw = "\n".join(
-        [
-            json.dumps(
-                {
-                    "type": "stream_event",
-                    "event": {
-                        "type": "content_block_start",
-                        "content_block": {"type": "text", "text": ""},
-                    },
-                }
-            ),
-            json.dumps(
-                {
-                    "type": "stream_event",
-                    "event": {
-                        "type": "content_block_delta",
-                        "delta": {"type": "text_delta", "text": "First step."},
-                    },
-                }
-            ),
-            json.dumps(
-                {
-                    "type": "stream_event",
-                    "event": {
-                        "type": "content_block_start",
-                        "content_block": {"type": "text", "text": ""},
-                    },
-                }
-            ),
-            json.dumps(
-                {
-                    "type": "stream_event",
-                    "event": {
-                        "type": "content_block_delta",
-                        "delta": {"type": "text_delta", "text": "Second step."},
-                    },
-                }
-            ),
-            json.dumps({"type": "result", "result": "Second step."}),
-        ]
-    )
+    raw = "\n".join([
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "content_block": {"type": "text", "text": ""},
+            },
+        }),
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "First step."},
+            },
+        }),
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "content_block": {"type": "text", "text": ""},
+            },
+        }),
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Second step."},
+            },
+        }),
+        json.dumps({"type": "result", "result": "Second step."}),
+    ])
     monkeypatch.setattr(
         subprocess,
         "Popen",
@@ -218,14 +202,12 @@ def test_claude_content_block_boundaries_are_forwarded_to_live_output(tmp_path, 
 
 
 def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, monkeypatch):
-    raw = json.dumps(
-        {
-            "type": "item.completed",
-            "item": {"type": "agent_message", "text": "CODEX READY"},
-            "model": "codex-test",
-            "usage": {"input_tokens": 8, "output_tokens": 2},
-        }
-    )
+    raw = json.dumps({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "CODEX READY"},
+        "model": "codex-test",
+        "usage": {"input_tokens": 8, "output_tokens": 2},
+    })
 
     def fake_popen(command, **kwargs):
         output_path = Path(command[command.index("--output-last-message") + 1])
@@ -253,9 +235,7 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
 
 
 def _claude_result_raw(text: str = "READY") -> str:
-    return (
-        json.dumps({"type": "result", "result": text, "model": "claude-test"}) + "\n"
-    )
+    return json.dumps({"type": "result", "result": text, "model": "claude-test"}) + "\n"
 
 
 def _capture_env_popen(captured: dict, raw: str):
@@ -314,13 +294,11 @@ def test_codex_isolates_codex_home_and_seeds_auth_only(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: fake_home)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.setenv("HOME", "/original/home")
-    raw = json.dumps(
-        {
-            "type": "item.completed",
-            "item": {"type": "agent_message", "text": "OK"},
-            "model": "codex-test",
-        }
-    )
+    raw = json.dumps({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "OK"},
+        "model": "codex-test",
+    })
 
     def fake_popen(command, **kwargs):
         Path(command[command.index("--output-last-message") + 1]).write_text("OK")
@@ -352,13 +330,11 @@ def test_codex_isolation_still_creates_clean_home_without_auth(tmp_path, monkeyp
 
     monkeypatch.setattr(Path, "home", lambda: fake_home)
     monkeypatch.delenv("CODEX_HOME", raising=False)
-    raw = json.dumps(
-        {
-            "type": "item.completed",
-            "item": {"type": "agent_message", "text": "OK"},
-            "model": "codex-test",
-        }
-    )
+    raw = json.dumps({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "OK"},
+        "model": "codex-test",
+    })
 
     captured = {}
 
@@ -390,7 +366,12 @@ def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False: (sys.executable, "-u", "-c", code),
+        lambda llm, working_directory, artifacts, model, allow_tools=False: (
+            sys.executable,
+            "-u",
+            "-c",
+            code,
+        ),
     )
     callback_times = []
     started = time.monotonic()
@@ -414,7 +395,12 @@ def test_timeout_terminates_process_and_writes_failed_record(tmp_path, monkeypat
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False: (sys.executable, "-u", "-c", code),
+        lambda llm, working_directory, artifacts, model, allow_tools=False: (
+            sys.executable,
+            "-u",
+            "-c",
+            code,
+        ),
     )
 
     result = run_prompt("ignored", tmp_path, llm="claude", timeout_seconds=0.1)
@@ -427,12 +413,10 @@ def test_timeout_terminates_process_and_writes_failed_record(tmp_path, monkeypat
 
 
 def test_interrupt_terminates_process_and_writes_failed_record(tmp_path, monkeypatch):
-    raw = json.dumps(
-        {
-            "type": "content_block_delta",
-            "delta": {"type": "text_delta", "text": "stop"},
-        }
-    )
+    raw = json.dumps({
+        "type": "content_block_delta",
+        "delta": {"type": "text_delta", "text": "stop"},
+    })
     process = FakePopen(("claude",), stdout_text=raw + "\n")
     monkeypatch.setattr(subprocess, "Popen", lambda command, **kwargs: process)
 

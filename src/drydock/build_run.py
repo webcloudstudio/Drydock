@@ -392,9 +392,7 @@ def build_target(
         compact_stack: frozenset[str] | None = None
         if stack_head is not None:
             compact_stack = frozenset(
-                name
-                for name, commit in plan.applied_registry.items()
-                if commit == stack_head
+                name for name, commit in plan.applied_registry.items() if commit == stack_head
             )
         assembly = assemble_step(block, roots, compact_stack=compact_stack)
         prompt_assembly = render_build_prompt_assembly(

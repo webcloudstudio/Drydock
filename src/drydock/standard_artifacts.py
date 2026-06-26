@@ -105,7 +105,7 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
         )
         build_compass_item = (
             '\n  - { id: build_compass, label: "Build Compass", section: plan, '
-            'type: compass, path: ../MANIFEST.md, order: 4 }\n'
+            "type: compass, path: ../MANIFEST.md, order: 4 }\n"
         )
     slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-") or "target"
     docs_by_item = {doc.item_id: doc for doc in prompt_headers()}
@@ -116,12 +116,8 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     exclude_files = docs_by_item["exclude_files"]
     analysis = prompt_header_for_file("ANALYSIS.md")
     soundings_doc = prompt_header_for_file("SOUNDINGS.md")
-    commanders_chair_help = (
-        "Live project overview and delivery snapshot for this target."
-    )
-    sea_trials_help = (
-        "Verification record and trial results for the current target state."
-    )
+    commanders_chair_help = "Live project overview and delivery snapshot for this target."
+    sea_trials_help = "Verification record and trial results for the current target state."
     return f"""console:
   name: {target} QuarterDeck
   default_item: compass_edit

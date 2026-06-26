@@ -174,7 +174,11 @@ def ensure_feedback_file(target_dir: Path) -> str:
     if not path.is_file():
         header = prompt_header_for_file(_FEEDBACK_FILENAME)
         path.write_text(
-            (header.default_text if header and header.default_text is not None else "# Plan Compass\n"),
+            (
+                header.default_text
+                if header and header.default_text is not None
+                else "# Plan Compass\n"
+            ),
             encoding="utf-8",
             newline="\n",
         )
@@ -377,7 +381,11 @@ def _assemble_prompt_assembly(
         return parts_list
 
     def typed_spec_parts() -> list:
-        parts_list = [lines_part("Imported source file header", ["## Imported source files", ""], kind="section")]
+        parts_list = [
+            lines_part(
+                "Imported source file header", ["## Imported source files", ""], kind="section"
+            )
+        ]
         for path_obj in _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames):
             label = path_obj.relative_to(blueprint_dir).as_posix()
             parts_list.extend(
@@ -610,7 +618,12 @@ def create_plan(
     default_feedback = prompt_header_for_file(_FEEDBACK_FILENAME)
     feedback_for_prompt = (
         feedback_text
-        if feedback_text.strip() != (default_feedback.default_text.strip() if default_feedback and default_feedback.default_text else "# Plan Compass")
+        if feedback_text.strip()
+        != (
+            default_feedback.default_text.strip()
+            if default_feedback and default_feedback.default_text
+            else "# Plan Compass"
+        )
         else None
     )
 

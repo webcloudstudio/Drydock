@@ -60,7 +60,9 @@ class PromptAssembly:
         return sum(part.estimated_tokens for part in self.parts if part.included)
 
     def records(self) -> list[dict[str, object]]:
-        return [part.record(order=index + 1) for index, part in enumerate(self.parts) if part.included]
+        return [
+            part.record(order=index + 1) for index, part in enumerate(self.parts) if part.included
+        ]
 
     @classmethod
     def single_prompt(cls, text: str, *, label: str = "Prompt") -> PromptAssembly:
@@ -153,7 +155,9 @@ def contextual_markdown_parts(
     role: str | None = None,
     path: Path | None = None,
 ) -> tuple[PromptPart, ...]:
-    metadata = prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
+    metadata = (
+        prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
+    )
     effective_role = role or (metadata.role if metadata is not None else None)
     role_attr = f' role="{effective_role}"' if effective_role else ""
     path_attr = f' path="{path}"' if path else ""
@@ -206,7 +210,9 @@ def contextual_fenced_parts(
     role: str | None = None,
     path: Path | None = None,
 ) -> tuple[PromptPart, ...]:
-    metadata = prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
+    metadata = (
+        prompt_header_for_path(path) if path is not None else prompt_header_for_file(filename)
+    )
     effective_role = role or (metadata.role if metadata is not None else None)
     role_attr = f' role="{effective_role}"' if effective_role else ""
     path_attr = f' path="{path}"' if path else ""

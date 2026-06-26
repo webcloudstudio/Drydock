@@ -30,18 +30,16 @@ CASE_RE = re.compile(r"^# VALIDATION CASE:\s*(?P<slug>[a-z0-9-]+)\s*$", re.MULTI
 ASSERTION_ID_RE = re.compile(r"^[A-Z0-9-]+$")
 RESULT_STATUS = {"pass": 1.0, "partial": 0.5, "fail": 0.0}
 DEFAULT_MINIMUM_SCORE = 85
-VALID_GAP_CLASSES = frozenset(
-    {
-        "missing-artifact",
-        "wrong-output",
-        "behavior-mismatch",
-        "missing-test",
-        "missing-evidence",
-        "runtime-failure",
-        "contract-drift",
-        "shortcut-or-fabrication",
-    }
-)
+VALID_GAP_CLASSES = frozenset({
+    "missing-artifact",
+    "wrong-output",
+    "behavior-mismatch",
+    "missing-test",
+    "missing-evidence",
+    "runtime-failure",
+    "contract-drift",
+    "shortcut-or-fabrication",
+})
 _BANDS: tuple[tuple[int, str], ...] = (
     (90, "SEAWORTHY"),
     (75, "SEA_TRIALS"),
@@ -158,9 +156,7 @@ def parse_case_spec(path: Path) -> CaseSpec:
     sections = _sections(text)
     missing = [name for name in REQUIRED_SECTIONS if name not in sections]
     if missing:
-        raise SpecificationError(
-            f"validation case missing required sections {missing!r}: {path}"
-        )
+        raise SpecificationError(f"validation case missing required sections {missing!r}: {path}")
 
     build_steps = [
         line[2:].strip()
@@ -290,7 +286,9 @@ def _default_gap(assertion: CaseAssertion, status: str) -> list[str]:
     return ["contract-drift"]
 
 
-def score_case(spec: CaseSpec, payload: dict[str, Any], *, result_path: Path | None = None) -> ScoredCase:
+def score_case(
+    spec: CaseSpec, payload: dict[str, Any], *, result_path: Path | None = None
+) -> ScoredCase:
     if payload.get("case") != spec.slug:
         raise SpecificationError(
             f"validation result case {payload.get('case')!r} does not match spec {spec.slug!r}"

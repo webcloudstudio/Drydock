@@ -98,17 +98,15 @@ def _make_repo(tmp_path: Path) -> Path:
     (repo / "docs" / "notes_analyze.md").write_text("# Notes Analyze\n", encoding="utf-8")
     (repo / "docs" / "notes_plan.md").write_text("# Notes Plan\n", encoding="utf-8")
     (repo / "docs" / "Drydock_Specification.md").write_text(
-        "\n".join(
-            [
-                "# Drydock",
-                "",
-                "### Analyze Your Specification",
-                "Analyze spec text.",
-                "",
-                "### Building and Reviewing the Build Plan / Manifest",
-                "Plan spec text.",
-            ]
-        ),
+        "\n".join([
+            "# Drydock",
+            "",
+            "### Analyze Your Specification",
+            "Analyze spec text.",
+            "",
+            "### Building and Reviewing the Build Plan / Manifest",
+            "Plan spec text.",
+        ]),
         encoding="utf-8",
     )
     (repo / "src" / "drydock" / "analyze.py").write_text(

@@ -73,7 +73,9 @@ def test_prompt_header_lookup_for_imported_source_path():
 
 
 def test_prompt_header_lookup_for_questionnaire_path():
-    header = prompt_header_for_path(Path("/tmp/Target/QuarterDeck/questionnaires/discovery-auth.json"))
+    header = prompt_header_for_path(
+        Path("/tmp/Target/QuarterDeck/questionnaires/discovery-auth.json")
+    )
 
     assert header is not None
     assert header.role == "questionnaire"

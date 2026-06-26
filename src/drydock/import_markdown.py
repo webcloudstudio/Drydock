@@ -9,9 +9,20 @@ from pathlib import Path
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
 
-_CODE_EXTENSIONS: frozenset[str] = frozenset(
-    {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".rb", ".java", ".cpp", ".c", ".h"}
-)
+_CODE_EXTENSIONS: frozenset[str] = frozenset({
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".rb",
+    ".java",
+    ".cpp",
+    ".c",
+    ".h",
+})
 
 
 @dataclass(frozen=True)
