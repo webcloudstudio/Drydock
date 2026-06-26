@@ -345,18 +345,23 @@ Implement the Blueprint using the Manifest
 
 ```text
 drydock build <Target>
-drydock build status <Target>
+drydock build <Target> --step <STEP>
+drydock build <Target> --step <STEP> --force
 drydock build verify <Target>
+drydock build verify <Target> <STEP>
+drydock build status <Target>
 drydock build score <Target>
+
 drydock document <Target>
 drydock document generate <Target>
 drydock document assemble <Target>
+
 drydock validate <Target> [--verbose]
+
 drydock rigging compact <Target> [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
 drydock rigging update <Target>
 drydock rigging verify <Target>
 ```
-
 ### Planning Session
 
 The first step is Story Planning, which is the agile step where your work is prioritized and assigned to a developer. It lives in QuarterDeck before build execution and produces `BUILD_COMPASS.md`.
@@ -422,6 +427,67 @@ flowchart LR
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
 `drydock build <Target>` executes the approved frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
+Before executing any agent, `drydock build` compares every previously applied Blueprint
+Specification in the Manifest's `applied_specs` registry against the current Blueprint file
+content. A changed or missing previously applied Specification blocks the build and reports the
+stale file, recorded commit, current commit, recorded hash, and current hash. New unapplied
+Specification files do not block build.
+
+### Build State Machine
+
+  ```pseudocode
+  states:
+    pending = not built
+    implemented = built, awaiting review
+    closed/verified = accepted, unlocks dependents
+    closed/failed = failed/rejected
+
+  status_labels:
+    pending -> [pending]
+    implemented -> [review]
+    closed/verified -> [done]
+    closed/failed -> [FAILED]
+
+  next_buildable_step:
+    for feature in manifest:
+      for step in feature.stories_and_spikes:
+        if step.state != pending: continue
+        if any(dep.state != closed/verified for dep in step.depends): continue
+        return step
+    return none
+
+  build:
+    step = selected_step or next_buildable_step()
+    if step is none: stop
+    run_agent(step)
+    if agent_failed or no_files_written:
+      step.state = closed/failed
+    else if step.has_child_acs:
+      step.state = implemented
+    else:
+      step.state = closed/verified
+
+  verify(step):
+    if step.state == closed/verified: return already_done
+    if step.state != implemented: error
+    for ac in step.child_acs:
+      ac.state = closed/verified
+    step.state = closed/verified
+
+  force_rebuild(step):
+    step.state = pending
+    for ac in step.child_acs:
+      ac.state = pending
+    build(step)
+```
+
+### drydock build verify
+
+  - Requires <step-id> to be a story or spike.
+  - Requires that step to be in state: implemented.
+  - Marks the step state: closed/verified.
+  - Marks all child ac blocks state: closed/verified.
+  - This unblocks dependent build steps for the next drydock build.
 
 ### drydock run quarterdeck — Build Review
 
@@ -887,11 +953,17 @@ The Manifest itself has one lifecycle state:
 updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
 state:       draft
+applied_specs: |
+  DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
 ```
 
-Build provenance lives in the execution log, not the plan header: every build block records the
-content hash of each specification, stack, and prompt file injected into it. The plan header
-carries only the plan's own identity.
+Build execution evidence lives in the execution log. The Manifest preamble carries build-state
+provenance required to detect stale previously applied Blueprint Specifications.
+`applied_specs` records one line per Blueprint Specification file that has been applied by a
+successful story or spike. The path is relative to `blueprint/`. `sha256` is the authoritative
+dirty signal. `commit` is the latest git commit that touched that file, or `-` when unavailable.
+`applied_by` identifies the story or spike that last applied the file. `applied_at` is the UTC
+application timestamp.
 
 ### Story Blocks
 
@@ -1041,175 +1113,46 @@ The QuarterDeck is the command surface where the product owner reviews LLM build
 decisions. Evidence is presented using Agile methodology — the same structured handoff between
 builder and owner, without the meeting.
 
-**You are in control.** The QuarterDeck exists so the LLM can surface what it built and what it
-needs a decision on. You review, approve, revise, or reject — and those decisions write back into
-the build.
+The QuarterDeck is configuration-driven: a console rendered from a single `QuarterDeck/console.yaml`
+index file over Markdown and JSON inputs. It holds no logic of its own; it shows the artifacts a
+project produces and routes the few that require a decision to the product owner. Full configuration
+reference, page-type schemas, and API surface are documented in `QuarterDeck/README.md`.
 
-The QuarterDeck is configuration-driven: a console rendered from a single index file over Markdown
-and JSON inputs. It holds no logic of its own. It shows the artifacts a project produces and routes
-the few that require a decision to the product owner.
-
-### Console Index — console.yaml
-
-**`QuarterDeck/console.yaml`** is the console index. It defines project identity, the
-default view, the sidebar section taxonomy (id / label / dot / collapsed / pinned), and every
-renderable navigation item: source-of-truth documents, the kanban board, questionnaires, evidence
-pages, and review pages. Each item declares its renderer, source path, home section, and optional
-review target. Console state — archive overrides and questionnaire answers — is held in
-`QuarterDeck/data/console_state.sqlite`. No command rewrites `console.yaml` at runtime.
-
-The section taxonomy:
-
-| Section id | Label | Behavior |
-|---|---|---|
-| `blockers` | Blockers | Conditional, first in the sidebar; appears only when `BLOCKERS.md` exists; full red treatment. |
-| `core` | Drydock Core | Fixed source-of-truth artifacts, pinned; shown by file existence. |
-| `actions` | Action Items | Derived; receives any item carrying a pending action from its home section. |
-| `docs` | Docs | Glob-discovered from `docs/`; single-format rendering, priority html > pdf > md. |
-| `archive` | Archive | Collapsed; completed ephemeral items; no status icons. |
-
-The **Master Blueprint** is the standard label for the authoritative project specification file in
-the Drydock Core section.
-
-**`tickets.json`** is the target ticketing-system artifact and a generated projection of
-the Agile `MANIFEST.md`. Spikes and stories appear as tickets; acceptance criteria are folded under
-their parent. Column assignment maps directly to object state. `drydock init` does not create
-`tickets.json`; `drydock plan` is its sole writer. The kanban board lives in Core and, like
-every item, stays hidden until its backing file exists — it appears once a plan exists.
-
-For Drydock's own repository, the QuarterDeck is also the primary viewer for project-owned
-artifacts under `docs/`: the authoritative specification, Sea Trials, Soundings acceptance ledger,
-rendered documentation, and supporting publication or reservation artifacts. The QuarterDeck
-points to those files directly and never duplicates their content.
-
-### Page Types
-
-Each item declares exactly one renderer:
+**Page types.** Each item in `console.yaml` declares one renderer:
 
 | Type | Purpose |
 |---|---|
 | `markdown` | Renders a single `.md` file as HTML; `tabs: true` splits `##` headings into clickable tabs. |
-| `editable_markdown` | Renders a `.md` file as HTML and exposes an EDIT control that opens the backing file for in-place editing in the console. |
-| `document` | Collapses related `path_md` / `path_html` / `path_pdf` variants into a tab bar (Read / View HTML / PDF). Missing variants are silently omitted; a single present variant renders without tabs. |
-| `jsonl` | Read-only table from an append-only JSONL file; supports field selection, date truncation, and badge coloring. |
+| `editable_markdown` | Renders a `.md` file with an EDIT control for in-place editing. |
+| `document` | Collapses `path_md` / `path_html` / `path_pdf` variants into a tab bar. |
+| `jsonl` | Read-only table from an append-only JSONL file. |
 | `kanban` | Renders `MANIFEST.md`-derived tickets as a four-column board. |
 | `questionnaire` | Form backed by a JSON file; saves answers in SQLite and writes them back to the source file. |
 | `link` | External URL or local file; opens in a new tab. |
-| `command_status` | Derived read-only view of acceptance readiness from Core Docs (see below). |
+| `command_status` | Derived read-only acceptance-readiness view from Core Docs. |
 | `plan_decision` | Whole-plan approval for a `MANIFEST.md`. |
 
-The reusable `command_status` page type derives a read-only acceptance-status report using only
-configured Markdown Core Docs. It discovers the authoritative Soundings source by its single table
-with `ID`, `Acceptance Criterion`, `State`, and `Evidence` columns, calculates status totals, and
-reports deterministic structural inconsistencies. It does not inspect implementation files, tests,
-non-Core artifacts, or invoke an LLM. It is specific to Drydock's own repository and is not seeded
-in a target's console.
-
-### Section Routing and Status Icons
-
-Each item declares a `section` — its **home**, where it rests when complete. Actions is not declared
-on items; it is derived. The console computes each item's displayed section in order:
-
-1. Backing file absent — the item is hidden.
-2. Manually archived — Archive.
-3. Carries a pending action — Actions, regardless of declared home.
-4. Otherwise — its home section.
-
-An item carries a pending action when it is a `questionnaire` not yet in a done state, or a review
-item (`review: true`) not yet approved. All other items carry no pending action and appear in their
-home section immediately.
-
-The sidebar carries two status states only: a red ❌ box for an item with a pending action, a green
-✅ box for an item that is done or carries no pending action. Items in Archive and `link` items
-carry no status icon.
-
-### Page Header and Controls
-
-Each page renders a standard header: the item title, the backing filename in small monospace, and
-context-appropriate controls above a divider, then the file content.
-
-- **EDIT** appears for `editable_markdown` items; it opens the backing file for in-place editing.
-- **APPROVE** appears for review items not yet approved; once approved the header shows a
-  "✓ Approved" badge in its place.
-- Questionnaire submission is its approval; questionnaires carry no separate APPROVE control.
-
-No reject control exists. A review item that is not approved remains in Actions until the product
-owner revises its backing file and approves it.
-
-### Auto-Discovery and Overrides
-
-The **`sources:`** key in `console.yaml` accepts a list of glob rules
-(`{glob, section, type, ...}`) that auto-discover files as items. Items in the explicit `items:`
-list (matched by ID or by resolved path) take priority — a file already referenced by an explicit
-item is never duplicated. The optional **`overrides:`** list (`{match: <path>, <fields>}`) adjusts
-source-generated items before they are appended, supporting label, section, and type customization
-without hand-listing every file.
-
-**Archive/unarchive toggle** — any item not in a pinned section can be moved to the Archive section
-via `POST /api/item/{id}/archive`. The original section is not rewritten; the override is
-SQLite-backed and reversed by `POST /api/item/{id}/unarchive`. Pinned sections (e.g. Drydock Core)
-are immune. Items in the Archive section of the nav carry an unarchive `↑` button; items in
-non-pinned sections carry an archive `↓` button.
-
-### Blockers
-
-`drydock analyze` emits `BLOCKERS.md` only when it finds questions that prevent planning. A
-healthy project has no `BLOCKERS.md`; the file's existence is the signal. When present, the Blockers
-section appears first in the sidebar with full red treatment and holds a single editable item. The
-product owner answers the questions in `BLOCKERS.md` and re-runs `drydock analyze`, which injects the
-answers; when all blockers are resolved the new run deletes `BLOCKERS.md` rather than writing an
-empty file. Blockers are mandatory gate conditions, distinct from spikes, which are optional
-exploratory questionnaires.
-
-### Decisions Write Back
-
-Review decisions made in the QuarterDeck — approve, revise, reject, add defect — are written back
-to `MANIFEST.md` by the same decision writer used by the CLI. Both files regenerate after each
-decision.
-
-Before execution begins, the generated `plan_decision` page runs the Planning Session. It presents
-the Draft plan and applies whole-plan approval through the authoritative plan-state
-writer. Ordinary QuarterDeck review controls do not approve a plan.
-
-The QuarterDeck does not replace the Blueprint, `MANIFEST.md`, or build engine. It renders
-their state and records decisions through a standardized interface.
-
-**The QuarterDeck is a generated projection.** It holds no state of its own —
-`MANIFEST.md` remains the single source of build state, and the console can be deleted and
-regenerated at any time. This property keeps it honest: every decision made in the console writes
-back through the decision writer, and failed work is reopened and revised here interactively
-rather than by hand-editing plan files. Decisions of record are appended to the Ship's Log.
-
-### Standard QuarterDeck Artifacts
-
-Every Drydock QuarterDeck carries three standard product-owner artifacts. They are the
-methodology's fixed reference points; Drydock's own repository is their reference instance. Each is
-a source-of-truth document, filed in **Drydock Core** and pinned. When a Master Blueprint is
-available, Core presents the artifacts in this order: Commanders Chair, Master Blueprint, Analysis,
-Sea Trials, Soundings, then Ship's Log. Each is shown by file existence. The Analysis artifact, when
-`ANALYSIS.md` is present, renders its `##` sections as tabs; `drydock analyze` emits plain Markdown
-and the tabbed presentation is declared on the item, not hardcoded to a filename.
+**Standard artifacts.** Every Drydock QuarterDeck carries three pinned source-of-truth artifacts
+in Drydock Core, shown by file existence:
 
 | Artifact | Purpose |
 |---|---|
-| **Commanders Chair** | The orientation page and default view: mission and current state at a glance. |
-| **Soundings** | The project's authoritative acceptance-criteria checklist — each capability, its state, and the evidence. The standard way Drydock tracks acceptance criteria. |
-| **Sea Trials** | The project's objectives and success criteria, derived from the specification — what the project must achieve to be declared delivered. The standard way Drydock states project objectives. |
+| **Commanders Chair** | Orientation and default view: mission and current state at a glance. |
+| **Soundings** | Acceptance-criteria checklist — each capability, its state, and evidence. |
+| **Sea Trials** | Objectives and success criteria — what the project must achieve to be declared delivered. |
 
-Soundings records *implementation acceptance* — whether each capability is built and verified. Sea
-Trials records *strategic outcomes* — whether the assembled product has proven its purpose. The two
-are complementary, not duplicates.
+`drydock init <Target>` creates these artifacts without overwriting existing files. `drydock plan`
+preserves them and projects acceptance gates into Soundings by stable ID.
 
-`drydock init <Target>` creates target-local Commanders Chair, Sea Trials, and Soundings artifacts
-without overwriting existing files. Soundings contains one acceptance ledger with `ID`,
-`Acceptance Criterion`, `State`, and `Evidence` columns. `drydock plan` preserves the
-standard artifacts, projects the plan's acceptance gates into Soundings by stable ID, updates their
-state from the plan, and preserves recorded evidence. QuarterDeck calculates summary totals from
-the ledger; Soundings does not store a redundant summary.
+**Decisions write back.** Review decisions made in the QuarterDeck are written to `MANIFEST.md` by
+the same decision writer used by the CLI. The `plan_decision` page runs the Planning Session and
+applies whole-plan approval. The QuarterDeck renders plan state and records decisions; it does not
+replace the Blueprint, `MANIFEST.md`, or build engine.
 
-**QuarterDeck pages are terse.** A page carries minimal exposition: a one-line statement of what it
-is, then the content. The standard artifacts are checklists and criteria, not essays — Soundings is
-a list of acceptance criteria under a single-sentence header, not a narrative.
+**Blockers.** `drydock analyze` emits `BLOCKERS.md` only when questions prevent planning; a healthy
+project has no `BLOCKERS.md`. When present, the Blockers section appears first in the sidebar. The
+product owner answers the questions and re-runs `drydock analyze`; when all blockers are resolved
+the file is deleted. Blockers are mandatory gate conditions, distinct from spikes.
 
 ## The Ship's Log — Your Decision Log
 
