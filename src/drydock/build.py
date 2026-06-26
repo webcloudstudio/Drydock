@@ -63,6 +63,14 @@ STEP_TYPES = ("story", "spike")
 # Per-role search roots are supplied by ``StepRoots``; each role resolves its
 # named files against an ordered list of directories, first hit wins.
 _ROLE_ORDER = ("compass", "implements", "context", "stack", "rules")
+_PROMPT_RENDER_ROLE_ORDER = ("compass", "rules", "stack", "context", "implements")
+_ROLE_HEADINGS = {
+    "compass": "## COMPASS - Target Orientation",
+    "rules": "## RULES - Governance",
+    "stack": "## STACK - Technology HOW",
+    "context": "## CONTEXT - Read-Only Support",
+    "implements": "## IMPLEMENTS - Authoritative Step Specifications",
+}
 
 
 @dataclass(frozen=True)
@@ -309,8 +317,11 @@ def render_build_prompt_assembly(
                 "## Build job",
                 f"- TARGET: {target}",
                 f"- BUILD_DIRECTORY: {build_dir}",
+                f"- WORKING_DIRECTORY: {build_dir}",
                 f"- STEP: {assembly.name} ({assembly.block_id}) [{assembly.block_type}]",
                 f"- DATE: {today}",
+                "- BUILD_SCOPE: exactly one MANIFEST.md step",
+                "- WRITE_BOUNDARY: write only inside BUILD_DIRECTORY",
                 "",
             ],
             kind="job",
@@ -329,38 +340,57 @@ def render_build_prompt_assembly(
                 kind="section",
             )
         )
-    for step_file in assembly.files:
-        if step_file.missing or step_file.source is None:
+    for role in _PROMPT_RENDER_ROLE_ORDER:
+        role_files = tuple(
+            step_file
+            for step_file in assembly.files
+            if step_file.role == role and not step_file.missing and step_file.source is not None
+        )
+        if not role_files:
             continue
-        try:
-            content = step_file.source.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        header = prompt_header_for_file(step_file.name)
-        if header is not None:
-            parts.extend(
-                contextual_markdown_parts(
+        parts.append(section_heading_part(_ROLE_HEADINGS[role]))
+        if role == "implements":
+            parts.append(
+                lines_part(
+                    "Implementation recency anchor",
+                    [
+                        "The files in this section are the load-bearing specifications for this step.",
+                        "Build these files exactly. Treat earlier sections as constraints and context.",
+                        "",
+                    ],
+                    kind="section",
+                )
+            )
+        for step_file in role_files:
+            try:
+                content = step_file.source.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            header = prompt_header_for_file(step_file.name)
+            if header is not None:
+                parts.extend(
+                    contextual_markdown_parts(
+                        step_file.name,
+                        content.rstrip(),
+                        filename=step_file.name,
+                        role=step_file.role,
+                        path=step_file.source,
+                    )
+                )
+                continue
+            parts.append(
+                part(
                     step_file.name,
-                    content.rstrip(),
-                    filename=step_file.name,
+                    (
+                        f'<pblock filename="{step_file.name}" role="{step_file.role}"'
+                        + (f' path="{step_file.source}"' if step_file.source else "")
+                        + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
+                    ),
+                    kind="file",
                     role=step_file.role,
                     path=step_file.source,
                 )
             )
-            continue
-        parts.append(
-            part(
-                step_file.name,
-                (
-                    f'<pblock filename="{step_file.name}" role="{step_file.role}"'
-                    + (f' path="{step_file.source}"' if step_file.source else "")
-                    + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
-                ),
-                kind="file",
-                role=step_file.role,
-                path=step_file.source,
-            )
-        )
     if assembly.instructions.strip():
         parts.append(
             lines_part(

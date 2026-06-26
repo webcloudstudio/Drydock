@@ -92,10 +92,12 @@ def get_build_directory() -> Path:
     val, _source = _get("DRYDOCK_BUILD_DIRECTORY")
     resolved = Path(val).expanduser().resolve() if val else _default_build_directory()
     if not resolved.is_dir():
-        raise ConfigurationError(
-            f"Directory does not exist: {resolved}\n"
-            "  Create the directory first, then re-run config set."
-        )
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ConfigurationError(
+                f"Could not create build directory: {resolved}\n  {exc}"
+            ) from exc
     return resolved
 
 

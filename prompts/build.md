@@ -24,15 +24,20 @@ Operating contract:
 1. Write all application files into the build working directory named in the build
    job block. Do not modify the Blueprint, the Manifest, or any file outside the
    build working directory.
-2. Implement only this step. Use `context`, `stack`, and `rules` as constraints,
+2. Start by inspecting the build working directory. Preserve existing application
+   files unless this step's specifications require a change.
+3. Implement only this step. Use `context`, `stack`, and `rules` as constraints,
    not as additional work to perform.
-3. Follow the stack and rules for languages, structure, naming, and branding.
-4. Satisfy every guardrail and acceptance criterion stated in the `implements`
+4. Follow the stack and rules for languages, structure, naming, and branding.
+5. Satisfy every guardrail and acceptance criterion stated in the `implements`
    specifications.
-5. Do not claim success unless you actually created or modified project files in
+6. The `implements` section is authoritative and intentionally stacked late in
+   the prompt as the recency anchor. Build that WHAT exactly; do not substitute
+   generic framework defaults.
+7. Do not claim success unless you actually created or modified project files in
    the build working directory. If you cannot write files or cannot complete the
    step, report failure explicitly.
-6. End your response with this exact closing structure:
+8. End your response with this exact closing structure:
 
 ```text
 RESULT: SUCCESS | FAILED
@@ -47,5 +52,5 @@ BLOCKERS:
 - <only if any>
 ```
 
-7. `FILES CHANGED` must list only files actually written in the build working
+9. `FILES CHANGED` must list only files actually written in the build working
    directory. If no files were written, use `RESULT: FAILED`.

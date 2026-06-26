@@ -132,10 +132,13 @@ class TestWorkspaceResolution:
         monkeypatch.setattr(config, "_default_build_directory", lambda: drydock_root.parent)
         assert get_build_directory() == projects_root
 
-    def test_build_directory_env_must_exist(self, isolated_config, monkeypatch):
-        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", "/this/does/not/exist")
-        with pytest.raises(ConfigurationError, match="does not exist"):
-            get_build_directory()
+    def test_build_directory_env_is_created_when_missing(
+        self, tmp_path, isolated_config, monkeypatch
+    ):
+        build_root = tmp_path / "new" / "builds"
+        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
+        assert get_build_directory() == build_root.resolve()
+        assert build_root.is_dir()
 
     def test_build_dir_for_target(self, tmp_path, isolated_config, monkeypatch):
         build_root = tmp_path / "builds"

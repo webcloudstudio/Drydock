@@ -30,7 +30,7 @@ from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.manifest_edit import set_block_fields
-from drydock.paths import get_rigging_root, get_stack_dir
+from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
 
 PROMPT_NAME = "build"
@@ -72,6 +72,41 @@ def _is_dirty(path: Path) -> bool:
         return result.returncode == 0 and bool(result.stdout.strip())
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+def _dirty_paths(path: Path) -> tuple[str, ...]:
+    """Return porcelain status lines for the git repo rooted at ``path``."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    if result.returncode != 0:
+        return ()
+    return tuple(line for line in result.stdout.splitlines() if line.strip())
+
+
+def _ensure_drydock_source_clean() -> None:
+    """Block build agents when the Drydock implementation checkout is dirty."""
+    try:
+        repo_root = get_repo_root()
+    except FileNotFoundError:
+        return
+    dirty = _dirty_paths(repo_root)
+    if not dirty:
+        return
+    preview = "\n".join(f"  {line}" for line in dirty[:20])
+    omitted = len(dirty) - 20
+    suffix = f"\n  ... {omitted} more" if omitted > 0 else ""
+    raise SpecificationError(
+        "Build blocked: uncommitted changes exist in the Drydock repository. "
+        "Commit or stash Drydock changes before running `drydock build`.\n"
+        f"{preview}{suffix}"
+    )
 
 
 def _ensure_git_repo(path: Path) -> bool:
@@ -310,6 +345,7 @@ def build_target(
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
+    _ensure_drydock_source_clean()
 
     manifest_path = target_dir / "MANIFEST.md"
     if not manifest_path.is_file():

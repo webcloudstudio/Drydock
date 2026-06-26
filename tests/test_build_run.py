@@ -10,6 +10,16 @@ import pytest
 from drydock.build_plan import parse_build_plan
 from drydock.build_run import build_target
 
+
+@pytest.fixture(autouse=True)
+def clean_drydock_source(monkeypatch, request):
+    import drydock.build_run as br
+
+    if request.node.name == "test_dirty_drydock_source_blocks_build":
+        return
+    monkeypatch.setattr(br, "_ensure_drydock_source_clean", lambda: None)
+
+
 _TWO_STORIES = """# MANIFEST: Demo
 state: draft
 
@@ -122,6 +132,10 @@ def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     assert 'filename="COMPASS.md"' in first
     assert "COMPASS INTENT CONTENT" in first
     assert "COMPASS.md" in first
+    assert first.index("## COMPASS - Target Orientation") < first.index(
+        "## IMPLEMENTS - Authoritative Step Specifications"
+    )
+    assert first.index("DB SPEC CONTENT") < first.rindex("# Agent Task")
 
 
 def test_allow_tools_enabled_and_runs_in_build_dir(tmp_path):
@@ -242,6 +256,18 @@ state: pending
 
 
 class TestDirtyGuard:
+    def test_dirty_drydock_source_blocks_build(self, tmp_path, monkeypatch):
+        import drydock.build_run as br
+        from drydock.errors import SpecificationError
+
+        monkeypatch.setattr(br, "get_repo_root", lambda: tmp_path / "Drydock")
+        monkeypatch.setattr(br, "_dirty_paths", lambda p: (" M src/drydock/build_run.py",))
+
+        target_dir, build_dir = _setup(tmp_path)
+
+        with pytest.raises(SpecificationError, match="Drydock repository"):
+            build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
     def test_dirty_stack_dir_blocks_build(self, tmp_path, monkeypatch):
         import drydock.build_run as br
         from drydock.errors import SpecificationError
