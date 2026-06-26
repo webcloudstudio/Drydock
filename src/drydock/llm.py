@@ -287,9 +287,10 @@ def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> li
     records = assembly.records()
     names = [Path(str(r["label"])).name for r in records]
     col_w = max((len(n) for n in names), default=0)
-    for record, name in zip(records, names):
-        tok = f"~{record['estimated_tokens']} tok"
-        lines.append(f"  [{record['order']:02d}] {name:<{col_w}}  {tok}")
+    toks = [f"~{r['estimated_tokens']} tok" for r in records]
+    tok_w = max((len(t) for t in toks), default=0)
+    for record, name, tok in zip(records, names, toks):
+        lines.append(f"  [{record['order']:02d}] {name:<{col_w}}  {tok:>{tok_w}}")
     lines.append(
         f"[prompt] total  {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok"
     )
