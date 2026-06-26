@@ -102,7 +102,7 @@ no_implicit_optional = true
 
 [tool.ruff]
 line-length = 100
-exclude = ["Rigging/", "dist/"]
+exclude = ["Rigging/", "dist/", "validation/fixtures/", "*.md"]
 target-version = "py311"
 preview = true
 

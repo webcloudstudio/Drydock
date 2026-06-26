@@ -161,6 +161,14 @@ _ITEM_FLAGS: dict[str, str] = {
         '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
         "</svg>"
     ),
+    "build_plan": (
+        '<svg class="item-flag" width="14" height="10" viewBox="0 0 16 12" '
+        "aria-hidden='true'>"
+        '<rect width="16" height="12" fill="#ffffff"/>'
+        '<rect x="0" y="0" width="8" height="6" fill="#1d4ed8"/>'
+        '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
+        "</svg>"
+    ),
 }
 
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
@@ -457,7 +465,7 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
     item_type = item.get("type", "")
     if item_type in _UNTRACKED_TYPES:
         return True
-    if item_type == "compass":
+    if item_type in ("compass", "build_plan"):
         # Always visible: the renderer offers to seed when the file is absent.
         return True
     if item_type == "plan_decision":
@@ -516,7 +524,7 @@ def nav_model() -> list[dict[str, Any]]:
         by_section[sid].append(item)
 
     config_ids = [s["id"] for s in config_sections]
-    always_visible = {"analyze", "plan", "build"}
+    always_visible = {"analyze", "plan"}
     ordered_ids = [sid for sid in config_ids if sid in by_section or sid in always_visible]
     ordered_ids += [sid for sid in order if sid not in config_ids]
 
@@ -527,16 +535,14 @@ def nav_model() -> list[dict[str, Any]]:
         label = sec_cfg.get("label", sid.replace("_", " ").title())
         if sid == "core":
             label = _current_project_name()
-        sections.append(
-            {
-                "id": sid,
-                "label": label,
-                "dot": sec_cfg.get("dot", _DEFAULT_DOT),
-                "collapsed": sec_cfg.get("collapsed", False),
-                "pinned": sec_cfg.get("pinned", False),
-                "items": docs,
-            }
-        )
+        sections.append({
+            "id": sid,
+            "label": label,
+            "dot": sec_cfg.get("dot", _DEFAULT_DOT),
+            "collapsed": sec_cfg.get("collapsed", False),
+            "pinned": sec_cfg.get("pinned", False),
+            "items": docs,
+        })
     return sections
 
 
@@ -633,14 +639,16 @@ def _render_help_note(item: dict[str, Any]) -> str:
     help_text = str(item.get("help_text", "")).strip()
     if not help_text:
         return ""
-    return "<div class='page-note'>" f"{html.escape(help_text)}" "</div>"
+    return f"<div class='page-note'>{html.escape(help_text)}</div>"
 
 
 # ── Renderers (one per type; each takes the item dict) ──────────────────────────
 
 
 def render_markdown_item(item: dict[str, Any]) -> str:
-    text = _strip_leading_h1(_strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8")))
+    text = _strip_leading_h1(
+        _strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    )
     helper = _render_help_note(item)
     if item.get("tabs"):
         return helper + _render_markdown_tabbed(item, text)
@@ -736,9 +744,7 @@ def render_plan_decision(item: dict[str, Any]) -> str:
     groups: list[str] = []
     for group in report.groups:
         feature_acs = "".join(
-            "<li class='cmp-ac'>"
-            f"{_state_mark(ac.state)} {html.escape(ac.name)}"
-            "</li>"
+            f"<li class='cmp-ac'>{_state_mark(ac.state)} {html.escape(ac.name)}</li>"
             for ac in group.feature_acs
         )
         feature_acs_html = f"<ul class='cmp-acs'>{feature_acs}</ul>" if feature_acs else ""
@@ -747,9 +753,7 @@ def render_plan_decision(item: dict[str, Any]) -> str:
         for step in group.steps:
             next_mark = " <span class='cmp-warn'>buildable now</span>" if step.buildable else ""
             acs = "".join(
-                "<li class='cmp-ac'>"
-                f"{_state_mark(ac.state)} {html.escape(ac.name)}"
-                "</li>"
+                f"<li class='cmp-ac'>{_state_mark(ac.state)} {html.escape(ac.name)}</li>"
                 for ac in step.acs
             )
             acs_html = f"<ul class='cmp-acs'>{acs}</ul>" if acs else ""
@@ -770,9 +774,7 @@ def render_plan_decision(item: dict[str, Any]) -> str:
             f"<span class='cmp-gname'># {html.escape(group.name)}</span>"
             f"<span class='cmp-gsp'>{group.verified}/{group.total} verified</span>"
             "</div>"
-            f"{feature_acs_html}"
-            + "".join(steps)
-            + "</div>"
+            f"{feature_acs_html}" + "".join(steps) + "</div>"
         )
 
     buildable = ", ".join(report.buildable_ids) or "(none)"
@@ -806,6 +808,7 @@ def _step_roots():
     """Resolve the per-role file roots the assembler reads, for this Target."""
     from drydock.build import StepRoots
     from drydock.paths import get_rigging_root, get_stack_dir
+
     project_root = _current_project_root()
 
     return StepRoots(
@@ -857,8 +860,7 @@ def _feature_options(plan, selected: str | None) -> str:
             continue
         sel = " selected" if block.block_id == selected else ""
         opts.append(
-            f'<option value="{html.escape(block.block_id)}"{sel}>'
-            f"{html.escape(block.name)}</option>"
+            f'<option value="{html.escape(block.block_id)}"{sel}>{html.escape(block.name)}</option>'
         )
     return "".join(opts)
 
@@ -875,6 +877,7 @@ def render_compass(item: dict[str, Any]) -> str:
     from drydock.build import assemble_steps, group_steps
     from drydock.build_plan import parse_build_plan
     from drydock.errors import SpecificationError
+
     project_root = _current_project_root()
 
     try:
@@ -936,9 +939,7 @@ def render_compass(item: dict[str, Any]) -> str:
     for group in groups:
         step_cards = []
         for step in group.steps:
-            warn = (
-                f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
-            )
+            warn = f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
             ac_lines = "".join(
                 f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
                 f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"
@@ -970,6 +971,157 @@ def render_compass(item: dict[str, Any]) -> str:
             f"{''.join(step_cards)}"
             "</div>"
         )
+    return "".join(parts)
+
+
+def render_build_plan(item: dict[str, Any]) -> str:
+    """Render MANIFEST.md as Build Plan: groups, steps with state badges and SP cost.
+
+    Merges the Build Compass format (story-point cost, collapsible file breakdown,
+    reorder controls) with per-step build state from MANIFEST block state fields.
+    Done steps are tinted green; state badges show the current lifecycle position.
+    """
+    from drydock.build import StepAssembly, assemble_steps, group_steps
+    from drydock.build_plan import parse_build_plan
+    from drydock.errors import SpecificationError
+
+    project_root = _current_project_root()
+
+    try:
+        plan = parse_build_plan(project_root / "MANIFEST.md")
+    except SpecificationError:
+        return _render_compass_empty()
+
+    steps = assemble_steps(plan, _step_roots())
+    if not steps:
+        return _render_compass_empty()
+
+    groups = group_steps(plan, steps)
+    by_id = plan.by_id()
+    acs_by_parent: dict[str, list] = {}
+    for block in plan.blocks:
+        if block.block_type == "ac" and block.parent:
+            acs_by_parent.setdefault(block.parent, []).append(block)
+
+    item_id = html.escape(item.get("id", ""))
+
+    def _state_badge(state: str) -> str:
+        if state == "closed/verified":
+            return "<span class='bp-state bp-done'>✓ done</span>"
+        if state == "implemented":
+            return "<span class='bp-state bp-review'>review</span>"
+        if state == "closed/failed":
+            return "<span class='bp-state bp-failed'>failed</span>"
+        return "<span class='bp-state bp-pending'>pending</span>"
+
+    def _step_controls(step: StepAssembly) -> str:
+        bid = html.escape(step.block_id)
+        return (
+            "<span class='cmp-move'>"
+            f"<button class='cmp-mbtn' title='Move up' "
+            f"onclick=\"compassMove('{item_id}','move_step','{bid}','up')\">▲</button>"
+            f"<button class='cmp-mbtn' title='Move down' "
+            f"onclick=\"compassMove('{item_id}','move_step','{bid}','down')\">▼</button>"
+            f"<select class='cmp-regroup' title='Move to feature' "
+            f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
+            f"{_feature_options(plan, step.parent)}</select>"
+            "</span>"
+        )
+
+    def _feature_controls(feature_id: str | None) -> str:
+        if not feature_id:
+            return ""
+        fid = html.escape(feature_id)
+        return (
+            "<span class='cmp-move'>"
+            f"<button class='cmp-mbtn' title='Move feature up' "
+            f"onclick=\"compassMove('{item_id}','move_feature','{fid}','up')\">▲</button>"
+            f"<button class='cmp-mbtn' title='Move feature down' "
+            f"onclick=\"compassMove('{item_id}','move_feature','{fid}','down')\">▼</button>"
+            "</span>"
+        )
+
+    steps_verified = sum(
+        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
+    )
+    steps_implemented = sum(
+        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "implemented"
+    )
+    steps_pending = sum(
+        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "pending"
+    )
+    steps_failed = sum(
+        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/failed"
+    )
+    steps_total = len(steps)
+    total_sp = sum(s.total_story_points for s in steps)
+    pct = round(100 * steps_verified / steps_total) if steps_total else 0
+    warn_n = sum(1 for s in steps if s.over_warn)
+    warn_html = (
+        f" <span class='cmp-warn'>{warn_n} step(s) over {steps[0].warn_kb}KB</span>"
+        if warn_n
+        else ""
+    )
+    counts = (
+        f"{steps_verified} verified · {steps_implemented} in review · "
+        f"{steps_pending} pending · {steps_failed} failed"
+    )
+
+    parts = [
+        f"<div class='cmp-total'>"
+        f"SP = <strong>{total_sp}</strong> · {steps_total} steps · "
+        f"<span class='bp-complete'>{pct}% verified</span>{warn_html}"
+        f"</div>"
+        f"<p class='subtle'>{html.escape(counts)}</p>"
+    ]
+
+    for group in groups:
+        group_verified = sum(
+            1
+            for s in group.steps
+            if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
+        )
+        group_total = len(group.steps)
+        step_cards = []
+        for step in group.steps:
+            state = by_id[step.block_id].state if step.block_id in by_id else "pending"
+            done_cls = " bp-step-done" if state == "closed/verified" else ""
+            warn = f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
+            ac_lines = "".join(
+                f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
+                f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"
+                for ac in acs_by_parent.get(step.block_id, [])
+            )
+            ac_html = f"<ul class='cmp-acs'>{ac_lines}</ul>" if ac_lines else ""
+            step_cards.append(
+                f"<div class='cmp-step{done_cls}'>"
+                "<div class='cmp-shead'>"
+                f"{_state_badge(state)}"
+                f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
+                f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
+                f"<span class='cmp-gsp'>SP {step.total_story_points}</span>{warn}"
+                f"{_step_controls(step)}"
+                "</div>"
+                f"{_render_step_files(step)}"
+                f"{ac_html}"
+                "</div>"
+            )
+
+        gname = group.name
+        if group.feature_id and group.feature_id in by_id:
+            gname = by_id[group.feature_id].name
+        parts.append(
+            "<div class='cmp-group'>"
+            "<div class='cmp-ghead'>"
+            f"<span class='cmp-gname'># {html.escape(gname)}</span>"
+            f"<span class='cmp-gsp'>SP {group.total_story_points}</span>"
+            f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
+            f"{_feature_controls(group.feature_id)}"
+            "</div>"
+            f"{''.join(step_cards)}"
+            "</div>"
+        )
+
     return "".join(parts)
 
 
@@ -1032,9 +1184,10 @@ def _core_markdown_sources() -> list[tuple[dict[str, Any], str]]:
             sources.append((core_item, resolve_path(core_item["path"]).read_text(encoding="utf-8")))
         elif t == "document" and core_item.get("path_md"):
             try:
-                sources.append(
-                    (core_item, resolve_path(core_item["path_md"]).read_text(encoding="utf-8"))
-                )
+                sources.append((
+                    core_item,
+                    resolve_path(core_item["path_md"]).read_text(encoding="utf-8"),
+                ))
             except HTTPException:
                 pass
     return sources
@@ -1404,6 +1557,7 @@ TYPES: dict[str, TypeDef] = {
     "command_status": TypeDef((), render_command_status),
     "plan_decision": TypeDef(("plan_path",), render_plan_decision),
     "compass": TypeDef(("path",), render_compass),
+    "build_plan": TypeDef((), render_build_plan),
 }
 
 
@@ -1447,7 +1601,7 @@ def _q_path_for(item_id: str) -> Path | None:
 def item_pending(item: dict[str, Any]) -> bool:
     """Return True when this item has an outstanding action requiring user input."""
     t = item.get("type", "")
-    if t in _UNTRACKED_TYPES or t in ("command_status", "compass"):
+    if t in _UNTRACKED_TYPES or t in ("command_status", "compass", "build_plan"):
         return False
     if t == "questionnaire":
         path = item.get("path")
@@ -1747,7 +1901,7 @@ _NAV_STATUS_HTML: dict[str, str] = {
 def item_nav_status(item: dict[str, Any]) -> str | None:
     """Return 'pending', 'done', or None (no icon) for the nav status box."""
     t = item.get("type", "")
-    if t in _UNTRACKED_TYPES or t in ("command_status", "compass"):
+    if t in _UNTRACKED_TYPES or t in ("command_status", "compass", "build_plan"):
         return None
     if item_pending(item):
         return "pending"
@@ -1807,15 +1961,18 @@ def render_nav() -> str:
                     )
                 else:
                     btn = (
-                        f"<button class='doc-btn' data-item='{iid}'>"
-                        f"{icon}{item_flag}{lbl}</button>"
+                        f"<button class='doc-btn' data-item='{iid}'>{icon}{item_flag}{lbl}</button>"
                     )
                 item_htmls.append(f"<div class='nav-item-row'>{btn}</div>")
             btns = "".join(item_htmls)
         else:
             btns = "<div class='section-empty'>— empty —</div>"
         blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
-        phase_cls = " section-head-target section-head-phase" if section["id"] in {"analyze", "plan", "build"} else ""
+        phase_cls = (
+            " section-head-target section-head-phase"
+            if section["id"] in {"analyze", "plan", "build"}
+            else ""
+        )
         target_cls = " section-head-target" if section["id"] == "core" else ""
         flag = _SECTION_FLAGS.get(section["id"], "")
         if section["id"] in {"analyze", "plan", "build"}:
@@ -2021,6 +2178,13 @@ _STYLE = """
     article { padding:20px 18px; }
     .target-btn-stack { flex-direction:row; }
   }
+  .bp-step-done { background:#f0fdf4; }
+  .bp-state { font-size:11px; font-weight:700; padding:1px 8px; border-radius:10px; flex:none; margin-right:4px; }
+  .bp-done    { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+  .bp-review  { background:#dbeafe; color:#1e3a8a; border:1px solid #93c5fd; }
+  .bp-pending { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
+  .bp-failed  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .bp-complete { color:#166534; font-weight:700; }
 """
 
 
@@ -2031,10 +2195,10 @@ def _config_missing_page() -> str:
 <style>body{{font-family:'Segoe UI',Arial,sans-serif;background:#f6f7f9;color:#1b2430;}}
 main{{max-width:760px;margin:48px auto;background:#fff;border:1px solid #d7dde5;padding:28px 32px;border-radius:6px;}}
 code{{background:#eef2f7;padding:2px 6px;border-radius:4px;}}</style></head>
-<body><main><h1>QuarterDeck Config Missing</h1><p>{html.escape(detail['detail'] or "")}</p>
+<body><main><h1>QuarterDeck Config Missing</h1><p>{html.escape(detail["detail"] or "")}</p>
 <p>The QuarterDeck runtime is installed, but this project has no <code>QuarterDeck/console.yaml</code>.
 See <code>console.yaml.sample</code> for the contract.</p>
-<pre>{html.escape(detail['config_path'])}</pre></main></body></html>"""
+<pre>{html.escape(detail["config_path"])}</pre></main></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)

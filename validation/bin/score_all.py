@@ -45,7 +45,12 @@ def main(argv: list[str] | None = None) -> int:
         "average_score": average_score,
         "band": next(
             name
-            for threshold, name in ((90, "SEAWORTHY"), (75, "SEA_TRIALS"), (60, "TAKING_WATER"), (0, "DRY_DOCK"))
+            for threshold, name in (
+                (90, "SEAWORTHY"),
+                (75, "SEA_TRIALS"),
+                (60, "TAKING_WATER"),
+                (0, "DRY_DOCK"),
+            )
             if average_score >= threshold
         ),
         "all_passed": all(bool(case["passed"]) for case in cases),
