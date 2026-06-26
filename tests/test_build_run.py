@@ -490,3 +490,79 @@ state: pending
         plan = parse_build_plan(target_dir / "MANIFEST.md")
         # after build, registry updated with new commit
         assert plan.applied_registry.get("common.md") == "newcommit"
+
+
+class TestAppliedSpecProvenance:
+    def test_successful_step_records_blueprint_spec_hashes(self, tmp_path, monkeypatch):
+        import drydock.build_run as br
+
+        monkeypatch.setattr(br, "_git_file_commit", lambda p: "speccommit")
+        target_dir, build_dir = _setup(tmp_path)
+
+        build_target(
+            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+        )
+
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+        record = plan.applied_specs["DATABASE.md"]
+        assert record.commit == "speccommit"
+        assert record.applied_by == "foundation"
+        assert len(record.sha256) == 64
+
+    def test_successful_step_records_blueprint_context_but_not_target_context(
+        self, tmp_path, monkeypatch
+    ):
+        import drydock.build_run as br
+
+        monkeypatch.setattr(br, "_git_file_commit", lambda p: "speccommit")
+        manifest = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+context: ARCHITECTURE.md, README.md
+instructions: Build the database.
+state: pending
+"""
+        target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+        (target_dir / "blueprint" / "ARCHITECTURE.md").write_text("ARCH SPEC\n", encoding="utf-8")
+        (target_dir / "README.md").write_text("TARGET README\n", encoding="utf-8")
+
+        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+        assert "DATABASE.md" in plan.applied_specs
+        assert "ARCHITECTURE.md" in plan.applied_specs
+        assert "README.md" not in plan.applied_specs
+
+    def test_changed_previously_applied_spec_blocks_before_runner(self, tmp_path):
+        from drydock.errors import SpecificationError
+
+        target_dir, build_dir = _setup(tmp_path)
+        runner = make_runner()
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation")
+        (target_dir / "blueprint" / "DATABASE.md").write_text(
+            "DB SPEC CONTENT CHANGED\n", encoding="utf-8"
+        )
+
+        second_runner = make_runner()
+        with pytest.raises(SpecificationError, match="previously applied Blueprint specifications"):
+            build_target("Demo", target_dir, build_dir=build_dir, runner=second_runner)
+
+        assert len(second_runner.calls) == 0
+
+    def test_deleted_previously_applied_spec_blocks_before_runner(self, tmp_path):
+        from drydock.errors import SpecificationError
+
+        target_dir, build_dir = _setup(tmp_path)
+        build_target(
+            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+        )
+        (target_dir / "blueprint" / "DATABASE.md").unlink()
+
+        runner = make_runner()
+        with pytest.raises(SpecificationError, match="DATABASE.md: missing"):
+            build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+        assert len(runner.calls) == 0

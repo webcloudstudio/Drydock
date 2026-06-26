@@ -21,12 +21,18 @@ import json
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 
 from drydock.build import StepAssembly, StepRoots, assemble_step, render_build_prompt_assembly
-from drydock.build_plan import PlanBlock, parse_build_plan, set_applied_registry
+from drydock.build_plan import (
+    AppliedSpecRecord,
+    PlanBlock,
+    parse_build_plan,
+    set_applied_registry,
+    set_applied_specs,
+)
 from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
@@ -59,6 +65,32 @@ def _git_head(path: Path) -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
+
+
+def _git_file_commit(path: Path) -> str:
+    """Return the latest commit that touched ``path``, or ``-`` when unavailable."""
+    try:
+        root_result = subprocess.run(
+            ["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if root_result.returncode != 0:
+            return "-"
+        root = Path(root_result.stdout.strip())
+        rel = path.relative_to(root)
+        log_result = subprocess.run(
+            ["git", "-C", str(root), "log", "-n", "1", "--format=%H", "--", str(rel)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if log_result.returncode == 0 and log_result.stdout.strip():
+            return log_result.stdout.strip()
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return "-"
 
 
 def _is_dirty(path: Path) -> bool:
@@ -245,6 +277,64 @@ def _written_files(
     return tuple(changed)
 
 
+def _file_sha256(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _blueprint_spec_files(
+    assembly: StepAssembly, blueprint_dir: Path
+) -> tuple[tuple[str, Path], ...]:
+    """Return Blueprint files from implements/context for applied-spec tracking."""
+    files: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for step_file in assembly.files:
+        if step_file.missing or step_file.source is None:
+            continue
+        if step_file.role not in {"implements", "context"}:
+            continue
+        try:
+            rel = str(step_file.source.relative_to(blueprint_dir))
+        except ValueError:
+            continue
+        if rel not in seen:
+            files.append((rel, step_file.source))
+            seen.add(rel)
+    return tuple(files)
+
+
+def _stale_applied_specs(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...]:
+    plan = parse_build_plan(plan_path)
+    stale: list[str] = []
+    for rel_path, record in sorted(plan.applied_specs.items()):
+        source = blueprint_dir / rel_path
+        if not source.is_file():
+            stale.append(
+                f"{rel_path}: missing (applied_by={record.applied_by}, "
+                f"recorded_commit={record.commit})"
+            )
+            continue
+        current_hash = _file_sha256(source)
+        if current_hash == record.sha256:
+            continue
+        current_commit = _git_file_commit(source)
+        stale.append(
+            f"{rel_path}: recorded_commit={record.commit}, current_commit={current_commit}, "
+            f"recorded_sha256={record.sha256[:12]}, current_sha256={current_hash[:12]}"
+        )
+    return tuple(stale)
+
+
+def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> None:
+    stale = _stale_applied_specs(plan_path, blueprint_dir)
+    if not stale:
+        return
+    raise SpecificationError(
+        "Build blocked: previously applied Blueprint specifications changed.\n"
+        "Run the appropriate refit or planning workflow before continuing.\n"
+        + "\n".join(f"  - {line}" for line in stale)
+    )
+
+
 def _parse_build_report(summary: str) -> tuple[str | None, tuple[str, ...] | None]:
     """Extract ``RESULT`` and ``FILES CHANGED`` from the final build report."""
     lines = summary.splitlines()
@@ -408,9 +498,10 @@ def build_target(
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
     stack_dir = get_stack_dir()
+    blueprint_dir = blueprint_dir_for(target_dir)
     roots = StepRoots(
         target_dir=target_dir,
-        blueprint_dir=blueprint_dir_for(target_dir),
+        blueprint_dir=blueprint_dir,
         stack_dir=stack_dir,
         rigging_dir=get_rigging_root(),
     )
@@ -421,6 +512,7 @@ def build_target(
             "Build blocked: uncommitted changes in the stack directory. "
             "Commit or stash changes before building."
         )
+    _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
@@ -523,6 +615,21 @@ def build_target(
                         changed = True
             if changed:
                 set_applied_registry(manifest_path, updated_registry)
+        if status != "failed":
+            applied_specs = dict(parse_build_plan(manifest_path).applied_specs)
+            applied_at = datetime.now(UTC).isoformat(timespec="seconds")
+            changed = False
+            for rel_path, source in _blueprint_spec_files(assembly, blueprint_dir):
+                applied_specs[rel_path] = AppliedSpecRecord(
+                    path=rel_path,
+                    sha256=_file_sha256(source),
+                    commit=_git_file_commit(source),
+                    applied_by=block.block_id,
+                    applied_at=applied_at,
+                )
+                changed = True
+            if changed:
+                set_applied_specs(manifest_path, applied_specs)
 
         step_result = BuildStepResult(
             block_id=block.block_id,

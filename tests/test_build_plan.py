@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 from drydock.build_plan import (
+    AppliedSpecRecord,
     _format_applied_registry,
     _parse_applied_registry,
     parse_build_plan,
     set_applied_registry,
+    set_applied_specs,
     set_plan_state,
 )
 from drydock.errors import SpecificationError
@@ -398,3 +400,82 @@ class TestAppliedRegistry:
     def test_format_applied_registry_helper(self):
         result = _format_applied_registry({"b.md": "222", "a.md": "111"})
         assert result == "a.md=111,b.md=222"  # sorted
+
+
+class TestAppliedSpecs:
+    _MANIFEST = "# MANIFEST: Test\nstate: approved\n\n## story 1: S\nid: s\nstate: pending\n"
+
+    def test_empty_applied_specs_by_default(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(self._MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        assert plan.applied_specs == {}
+
+    def test_parse_applied_specs_from_preamble(self, tmp_path):
+        manifest = """# MANIFEST: Test
+state: approved
+applied_specs: |
+  DATABASE.md sha256=abc123 commit=commit1 applied_by=foundation applied_at=2026-06-26T12:00:00+00:00
+  features/FEATURE-A.md sha256=def456 commit=- applied_by=feature-a applied_at=2026-06-26T12:01:00+00:00
+
+## story 1: S
+id: s
+state: pending
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+
+        assert plan.applied_specs["DATABASE.md"].sha256 == "abc123"
+        assert plan.applied_specs["DATABASE.md"].commit == "commit1"
+        assert plan.applied_specs["features/FEATURE-A.md"].commit == "-"
+
+    def test_set_applied_specs_writes_block_scalar(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(self._MANIFEST, encoding="utf-8")
+        set_applied_specs(
+            path,
+            {
+                "DATABASE.md": AppliedSpecRecord(
+                    path="DATABASE.md",
+                    sha256="abc123",
+                    commit="commit1",
+                    applied_by="foundation",
+                    applied_at="2026-06-26T12:00:00+00:00",
+                )
+            },
+        )
+
+        text = path.read_text(encoding="utf-8")
+        plan = parse_build_plan(path)
+        assert "applied_specs: |" in text
+        assert "  DATABASE.md sha256=abc123 commit=commit1" in text
+        assert plan.applied_specs["DATABASE.md"].applied_by == "foundation"
+
+    def test_set_applied_specs_preserves_applied_registry(self, tmp_path):
+        manifest = (
+            "# MANIFEST: Test\n"
+            "state: approved\n"
+            "applied: common.md=stackcommit\n\n"
+            "## story 1: S\n"
+            "id: s\n"
+            "state: pending\n"
+        )
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        set_applied_specs(
+            path,
+            {
+                "DATABASE.md": AppliedSpecRecord(
+                    path="DATABASE.md",
+                    sha256="abc123",
+                    commit="-",
+                    applied_by="foundation",
+                    applied_at="2026-06-26T12:00:00+00:00",
+                )
+            },
+        )
+
+        plan = parse_build_plan(path)
+        assert plan.applied_registry == {"common.md": "stackcommit"}
+        assert plan.applied_specs["DATABASE.md"].sha256 == "abc123"

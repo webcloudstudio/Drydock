@@ -43,11 +43,16 @@ plan; only the `plan_decision` page applies approval.
 updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
 state:       draft
+applied_specs: |
+  DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
 ```
 
-Build provenance lives in the execution log, not the plan header. Every build block records the
-content hash of each specification, stack, and prompt file injected into it. The plan header
-carries only the plan's own identity.
+Build execution evidence lives in the execution log. The Manifest preamble carries build-state
+provenance required to detect stale previously applied Blueprint Specifications. `applied_specs`
+records one line per Blueprint Specification file applied by a successful story or spike. The path
+is relative to `blueprint/`. `sha256` is the authoritative dirty signal. `commit` is the latest git
+commit that touched that file, or `-` when unavailable. `applied_by` identifies the story or spike
+that last applied the file. `applied_at` is the UTC application timestamp.
 
 ---
 

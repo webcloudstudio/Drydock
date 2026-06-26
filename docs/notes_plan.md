@@ -268,6 +268,21 @@ Substitution logic at build time:
 
 The manifest is not human-editable (managed via QuarterDeck). No human override of applied flag.
 
+### Applied Blueprint Specification provenance
+`2026-06-26` · `spec:approved` · `impl:implemented`
+
+`build` writes `applied_specs` in the Manifest preamble for Blueprint files applied by successful
+stories and spikes. This registry is separate from the older compact-substitution `applied:`
+field. It covers only Blueprint-resolved `implements:` files and Blueprint-resolved `context:`
+files.
+
+Each record stores path, SHA-256 content hash, latest file-level git commit when available,
+applying step id, and application timestamp. SHA-256 is authoritative; commit is diagnostic.
+
+Before executing any agent, `build` compares every previously applied spec record against current
+Blueprint content. Changed or missing files block build with a stale-spec report. New unapplied
+Blueprint files do not block build.
+
 ### Uncommitted files guard
 `2026-06-22` · `spec:approved` · `impl:implemented`
 

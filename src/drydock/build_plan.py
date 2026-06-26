@@ -41,6 +41,15 @@ class PlanBlock:
 
 
 @dataclass(frozen=True)
+class AppliedSpecRecord:
+    path: str
+    sha256: str
+    commit: str
+    applied_by: str
+    applied_at: str
+
+
+@dataclass(frozen=True)
 class BuildPlan:
     path: Path
     project: str
@@ -49,6 +58,7 @@ class BuildPlan:
     state: str
     blocks: tuple[PlanBlock, ...]
     applied_registry: dict[str, str] = field(default_factory=dict)
+    applied_specs: dict[str, AppliedSpecRecord] = field(default_factory=dict)
 
     def by_id(self) -> dict[str, PlanBlock]:
         return {block.block_id: block for block in self.blocks}
@@ -144,6 +154,53 @@ def _parse_applied_registry(text: str) -> dict[str, str]:
 def _format_applied_registry(registry: dict[str, str]) -> str:
     """Serialize applied registry to ``name=commit,name=commit`` form."""
     return ",".join(f"{k}={v}" for k, v in sorted(registry.items()))
+
+
+def _parse_kv_tokens(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for token in text.split():
+        if "=" not in token:
+            continue
+        key, _, value = token.partition("=")
+        if key and value:
+            values[key] = value
+    return values
+
+
+def _parse_applied_specs(text: str) -> dict[str, AppliedSpecRecord]:
+    """Parse the Manifest ``applied_specs`` block-scalar registry."""
+    records: dict[str, AppliedSpecRecord] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        path, _, rest = line.partition(" ")
+        values = _parse_kv_tokens(rest)
+        digest = values.get("sha256", "")
+        applied_by = values.get("applied_by", "")
+        applied_at = values.get("applied_at", "")
+        if not path or not digest or not applied_by or not applied_at:
+            continue
+        records[path] = AppliedSpecRecord(
+            path=path,
+            sha256=digest,
+            commit=values.get("commit", "-") or "-",
+            applied_by=applied_by,
+            applied_at=applied_at,
+        )
+    return records
+
+
+def _format_applied_specs(records: dict[str, AppliedSpecRecord]) -> str:
+    """Serialize applied specification records in stable Manifest order."""
+    lines: list[str] = []
+    for path in sorted(records):
+        record = records[path]
+        lines.append(
+            f"{record.path} sha256={record.sha256} commit={record.commit or '-'} "
+            f"applied_by={record.applied_by} applied_at={record.applied_at}"
+        )
+    return "\n".join(lines)
 
 
 def _collect_block_scalar(lines: list[str], start: int) -> tuple[str, int]:
@@ -360,6 +417,7 @@ def parse_build_plan(path: Path) -> BuildPlan:
         state=plan_state,
         blocks=blocks,
         applied_registry=_parse_applied_registry(metadata.get("applied", "")),
+        applied_specs=_parse_applied_specs(metadata.get("applied_specs", "")),
     )
 
 
@@ -394,6 +452,50 @@ def set_applied_registry(path: Path, registry: dict[str, str]) -> None:
             (i for i, line in enumerate(output) if _HEADER_RE.match(line)), len(output)
         )
         output.insert(insert_at, f"applied: {value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False, newline="\n"
+    ) as handle:
+        handle.write("\n".join(output).rstrip() + "\n")
+        temp_path = Path(handle.name)
+    temp_path.replace(path)
+
+
+def set_applied_specs(path: Path, records: dict[str, AppliedSpecRecord]) -> None:
+    """Write Blueprint specification provenance to the MANIFEST.md preamble."""
+    if not path.is_file():
+        raise SpecificationError(f"MANIFEST.md not found: {path}")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    value = _format_applied_specs(records)
+    output: list[str] = []
+    replaced = False
+    skip_scalar = False
+    first_block = next((i for i, line in enumerate(lines) if _HEADER_RE.match(line)), len(lines))
+
+    for index, line in enumerate(lines):
+        if skip_scalar:
+            if index < first_block and (not line.strip() or line[:1].isspace()):
+                continue
+            skip_scalar = False
+        if index < first_block:
+            field_match = _FIELD_RE.match(line)
+            if field_match and field_match.group(1).lower() == "applied_specs":
+                output.append("applied_specs: |")
+                output.extend(f"  {record_line}" for record_line in value.splitlines())
+                replaced = True
+                if field_match.group(2).strip() in ("|", "|-", "|+", ">", ">-", ">+"):
+                    skip_scalar = True
+                continue
+        output.append(line)
+
+    if not replaced:
+        insert_at = next(
+            (i for i, line in enumerate(output) if _HEADER_RE.match(line)), len(output)
+        )
+        insertion = ["applied_specs: |"]
+        insertion.extend(f"  {record_line}" for record_line in value.splitlines())
+        output[insert_at:insert_at] = insertion
+
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=path.parent, delete=False, newline="\n"
