@@ -614,6 +614,52 @@ state: pending
         assert "Ran git commit to commit changes" in out
         assert (target / "evidence" / "foundation.md").is_file()
 
+    def test_build_step_force_rebuilds_selected_step(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: closed/verified\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _run(*a, **k):
+            out_dir = Path(a[1])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "foundation.txt").write_text("rebuilt\n", encoding="utf-8")
+            return SimpleNamespace(
+                ok=True,
+                text="RESULT: SUCCESS\n\nFILES CHANGED:\n- foundation.txt\n\nSUMMARY:\nRebuilt.\n",
+                execution_id="exec-fake",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--step",
+            "foundation",
+            "--force",
+            "--build-dir",
+            str(tmp_path / "out"),
+        )
+
+        assert rc == 0, err
+        assert "Building step: foundation" in out
+        assert "Force rebuild: resetting foundation and child ACs to pending" in out
+        assert "[built]" in out
+        assert "foundation" in out
+        assert "RESULT: 1 built, 0 failed" in out
+
     def test_build_with_review_gate_prints_verify_command(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

@@ -185,6 +185,7 @@ class BuildStepResult:
     execution_id: str | None = None
     evidence_path: Path | None = None
     error: str | None = None
+    written_files: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,7 @@ class BuildResult:
     git_initialized: bool = False
     git_commit: str | None = None
     git_commit_message: str | None = None
+    drydock_commit_skipped_after_build: bool = False
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -332,6 +334,20 @@ def _write_evidence(
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
+def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
+    """Reset one story/spike and its child ACs to pending before a forced rebuild."""
+    plan = parse_build_plan(manifest_path)
+    block = plan.by_id().get(step_id)
+    if block is None:
+        raise SpecificationError(f"Build step {step_id!r} not found in {manifest_path}")
+    if block.block_type not in {"story", "spike"}:
+        raise SpecificationError(f"{step_id!r} is not a build step")
+    set_block_fields(manifest_path, step_id, state="pending")
+    for child in plan.children(step_id):
+        if child.block_type == "ac":
+            set_block_fields(manifest_path, child.block_id, state="pending")
+
+
 _MANIFEST_TO_TICKET_STATUS: dict[str, str] = {
     "closed/verified": "done",
     "implemented": "review",
@@ -372,6 +388,8 @@ def build_target(
     model: str | None = None,
     llm_provider: str | None = None,
     log_dir: Path | None = None,
+    step_id: str | None = None,
+    force: bool = False,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
@@ -407,11 +425,27 @@ def build_target(
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
 
+    if force and step_id is None:
+        raise SpecificationError("--force requires --step <step-id>")
+    if force and step_id is not None:
+        _reset_step_for_rebuild(manifest_path, step_id)
+
     steps: list[BuildStepResult] = []
     guard = 0
     while True:
         plan = parse_build_plan(manifest_path)
         frontier = plan.buildable_steps()
+        if step_id is not None:
+            selected = [block for block in frontier if block.block_id == step_id]
+            if not selected:
+                current = plan.by_id().get(step_id)
+                if current is None:
+                    raise SpecificationError(f"Build step {step_id!r} not found in {manifest_path}")
+                raise SpecificationError(
+                    f"{step_id!r} is not buildable; state={current.state!r}, "
+                    "dependencies must be closed/verified"
+                )
+            frontier = tuple(selected)
         if not frontier:
             break
         guard += 1
@@ -500,14 +534,18 @@ def build_target(
             execution_id=execution_id,
             evidence_path=evidence_path,
             error=error,
+            written_files=changed_files,
         )
         steps.append(step_result)
         if on_step is not None:
             on_step(step_result)
-        if status == "failed":
+        if status == "failed" or step_id is not None:
             break
 
     git_commit, git_commit_message = _commit_build_dir(resolved_build_dir, target, today)
+    drydock_commit_skipped_after_build = git_commit is None and any(
+        step.status in {"built", "implemented"} and step.written_files for step in steps
+    )
     return BuildResult(
         target=target,
         build_dir=resolved_build_dir,
@@ -515,4 +553,5 @@ def build_target(
         git_initialized=git_initialized,
         git_commit=git_commit,
         git_commit_message=git_commit_message,
+        drydock_commit_skipped_after_build=drydock_commit_skipped_after_build,
     )

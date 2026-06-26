@@ -855,6 +855,10 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
 
     print(f"Building Target: {args.Target}")
+    if getattr(args, "step", None):
+        print(f"Building step: {args.step}")
+    if getattr(args, "force", False):
+        print(f"Force rebuild: resetting {args.step} and child ACs to pending")
     result = build_target(
         args.Target,
         target_dir,
@@ -863,6 +867,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         llm_provider=llm_provider,
         log_dir=log_dir,
         on_step=report,
+        step_id=getattr(args, "step", None),
+        force=bool(getattr(args, "force", False)),
     )
     print()
     if result.git_initialized:
@@ -871,6 +877,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"Ran git commit to commit changes ({result.git_commit})")
     else:
         print("No git changes to commit.")
+        if result.drydock_commit_skipped_after_build:
+            print(
+                "  WARNING: Build files changed but Drydock did not create the final commit. "
+                "Check whether the agent committed directly."
+            )
     if not result.steps:
         print("  Nothing buildable — no pending step has all dependencies verified.")
         reviewable = _reviewable_build_steps(target_dir)
@@ -1306,6 +1317,18 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         default=None,
         metavar="<path>",
         help="Directory where built code is written (overrides METADATA.md and config).",
+    )
+    p.add_argument(
+        "--step",
+        dest="step",
+        default=None,
+        metavar="<step-id>",
+        help="Build only the named MANIFEST story/spike.",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="With --step, reset the step and child ACs to pending before rebuilding.",
     )
     p.add_argument(
         "--model",

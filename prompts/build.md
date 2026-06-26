@@ -37,7 +37,10 @@ Operating contract:
 7. Do not claim success unless you actually created or modified project files in
    the build working directory. If you cannot write files or cannot complete the
    step, report failure explicitly.
-8. End your response with this exact closing structure:
+8. Do not run `git add`, `git commit`, create branches, create tags, rewrite
+   history, or otherwise mutate Git history. Drydock owns the final build
+   directory commit after you return.
+9. End your response with this exact closing structure:
 
 ```text
 RESULT: SUCCESS | FAILED
@@ -52,5 +55,5 @@ BLOCKERS:
 - <only if any>
 ```
 
-9. `FILES CHANGED` must list only files actually written in the build working
+10. `FILES CHANGED` must list only files actually written in the build working
    directory. If no files were written, use `RESULT: FAILED`.

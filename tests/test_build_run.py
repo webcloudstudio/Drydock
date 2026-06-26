@@ -121,6 +121,101 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert result.git_commit_message.startswith("drydock build Demo ")
 
 
+def test_step_selection_builds_only_named_step(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    runner = make_runner()
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+    )
+
+    assert [s.block_id for s in result.steps] == ["foundation"]
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "pending"
+    assert len(runner.calls) == 1
+
+
+def test_step_selection_rejects_dependency_blocked_step(tmp_path):
+    from drydock.errors import SpecificationError
+
+    target_dir, build_dir = _setup(tmp_path)
+
+    with pytest.raises(SpecificationError, match="not buildable"):
+        build_target(
+            "Demo",
+            target_dir,
+            build_dir=build_dir,
+            runner=make_runner(),
+            step_id="service",
+        )
+
+
+def test_force_rebuild_resets_step_and_child_acs(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+instructions: |
+  Build the database.
+state: closed/verified
+
+## story 2: Service
+id: service
+implements: SERVICE.md
+depends: foundation
+instructions: |
+  Build the service.
+state: pending
+
+## ac 3: DB works
+id: ac-db
+parent: foundation
+kind: smoke
+check: "true"
+state: closed/verified
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    runner = make_runner()
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        force=True,
+    )
+
+    assert [s.block_id for s in result.steps] == ["foundation"]
+    assert result.steps[0].status == "implemented"
+    assert _state(target_dir, "foundation") == "implemented"
+    assert _state(target_dir, "ac-db") == "pending"
+    assert _state(target_dir, "service") == "pending"
+
+
+def test_force_requires_step(tmp_path):
+    from drydock.errors import SpecificationError
+
+    target_dir, build_dir = _setup(tmp_path)
+
+    with pytest.raises(SpecificationError, match="--force requires --step"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), force=True)
+
+
+def test_detects_agent_side_commit_when_drydock_has_no_commit(tmp_path, monkeypatch):
+    import drydock.build_run as br
+
+    monkeypatch.setattr(br, "_commit_build_dir", lambda path, target, today: (None, None))
+    target_dir, build_dir = _setup(tmp_path)
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert result.drydock_commit_skipped_after_build is True
+
+
 def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner()
