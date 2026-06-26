@@ -922,6 +922,19 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     return 0
 
 
+def cmd_build_verify(target: str, step_id: str) -> int:
+    from drydock.build_review import verify_build_step
+    from drydock.config import get_target_directory
+
+    target_dir = get_target_directory() / target
+    result = verify_build_step(target_dir / "MANIFEST.md", step_id)
+    print(f"Verified: {result.step_id}  {result.step_name}")
+    if result.ac_ids:
+        print("Acceptance checks: " + ", ".join(result.ac_ids))
+    print(f"Next: drydock build status {target}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Parser construction
 # ---------------------------------------------------------------------------
@@ -1111,6 +1124,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock build <Target>          — build next frontier\n"
             "drydock build status <Target>   — show build state\n"
+            "drydock build verify <Target> <step-id> — accept an implemented step\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1297,6 +1311,15 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             from drydock.config import record_activity
 
             record_activity("build status", tokens[1], tokens[1])
+        return rc
+    elif first == "verify":
+        if len(tokens) != 3:
+            raise UsageError("Usage: drydock build verify <Target> <step-id>")
+        rc = cmd_build_verify(tokens[1], tokens[2])
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("build verify", tokens[1], tokens[1])
         return rc
     elif first == "score":
         not_implemented("build score")

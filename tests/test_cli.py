@@ -539,6 +539,28 @@ state: pending
         assert rc == 2
         assert "Usage: drydock build status" in err
 
+    def test_build_verify_marks_step_and_acs_verified(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+
+        rc, out, err = run_cli("build", "verify", "ExampleTarget", "awaiting-checks")
+
+        assert rc == 0, err
+        assert "Verified: awaiting-checks" in out
+        assert "Acceptance checks: system-starts" in out
+        manifest = (tmp_target_root / "ExampleTarget" / "MANIFEST.md").read_text(
+            encoding="utf-8"
+        )
+        assert "id: awaiting-checks\nstate: closed/verified" in manifest
+        assert "id: system-starts\nparent: awaiting-checks\nstate: closed/verified" in manifest
+
+    def test_build_verify_usage_error(self):
+        rc, out, err = run_cli("build", "verify", "ExampleTarget")
+
+        assert rc == 2
+        assert "Usage: drydock build verify" in err
+
     def test_build_executes_buildable_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
@@ -572,6 +594,7 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
