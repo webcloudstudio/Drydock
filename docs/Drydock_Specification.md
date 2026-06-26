@@ -335,8 +335,9 @@ Review `MANIFEST.md` in the QuarterDeck to understand the build process and upda
 
 Implement the Blueprint using the Manifest
 
-* The Manifest exposes the phases with `drydock build status`.
-* Iterate through the build phases with `drydock build`.
+* The Manifest exposes the phases with `drydock build status <Target>`.
+* Iterate through the build phases with `drydock build <Target>`.
+* Mark Steps Completed (if they meet the AC) with `drydock build verify <Target> <step-name>`.
 * Measure delivery health with `drydock build score`.
 * The rigging implements company standards and branding.
 
@@ -345,6 +346,7 @@ Implement the Blueprint using the Manifest
 ```text
 drydock build <Target>
 drydock build status <Target>
+drydock build verify <Target>
 drydock build score <Target>
 drydock document <Target>
 drydock document generate <Target>
@@ -355,16 +357,29 @@ drydock rigging update <Target>
 drydock rigging verify <Target>
 ```
 
-### Story Planning
+### Planning Session
 
-Story Planning is the agile step where your work is prioritized and assigned to a developer. It lives in QuarterDeck before build execution and produces `BUILD_COMPASS.md`.
+The first step is Story Planning, which is the agile step where your work is prioritized and assigned to a developer. It lives in QuarterDeck before build execution and produces `BUILD_COMPASS.md`.
 
-In story planning, your Agile LLM team provides story points (token costs) to build each story and you:
+In the planning session you review the build plan in the Manifest.   The manifest will group similar steps
+to reduce your context and will set the stories up in a meaningful implementaton plan of Foundation -> Data and Persistence -> Features -> User Interface.  Each step will display its estimated counts and the Commander can:
 * reorder stories so important/testable steps are done first
-* group stories so they can be run by a single agent
+* re group stories so they can be run by a single agent
 * Check / Review Acceptance Criteria
 
-If you do not story plan, you accept the LLM's default order of stories and they will build one by one.
+If you do not story plan, you accept the LLM's default order of stories.
+
+Note that the manifest titles each of the build steps and these steps are the implemented one by one.
+
+The general order for operations is a loop:
+
+    drydock build status <Target>
+    while <STEPS REMAIN TO BE DONE>
+      drydock build <Target>
+      drydock build status <Target>
+      drydock build verify <Target> <step-id>
+
+Once you verify a step is completed, it unlocks the next set of operations to run
 
 ### drydock build
 

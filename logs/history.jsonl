@@ -4009,3 +4009,12 @@
 {"command": "drydock analyze stim --llm-provider codex --model gpt-5.4", "time": "2026-06-25 15:11", "target": "stim", "return_code": 0}
 {"command": "drydock analyze stim --llm-provider codex --model gpt-5.4", "time": "2026-06-25 21:00", "target": "stim", "return_code": 0}
 {"command": "drydock document assemble", "time": "2026-06-26 13:27", "return_code": 0}
+{"command": "drydock build status stim", "time": "2026-06-26 14:38", "return_code": 1}
+{"command": "drydock build status stim", "time": "2026-06-26 14:51", "return_code": 0}
+{"command": "drydock build stim", "time": "2026-06-26 14:52", "return_code": 1}
+{"command": "drydock build status", "time": "2026-06-26 14:57", "return_code": 2}
+{"command": "drydock build verify ExampleTarget", "time": "2026-06-26 14:57", "return_code": 2}
+{"command": "drydock build status", "time": "2026-06-26 14:58", "return_code": 2}
+{"command": "drydock build verify ExampleTarget", "time": "2026-06-26 14:58", "return_code": 2}
+{"command": "drydock build status", "time": "2026-06-26 14:59", "return_code": 2}
+{"command": "drydock build verify ExampleTarget", "time": "2026-06-26 14:59", "return_code": 2}
