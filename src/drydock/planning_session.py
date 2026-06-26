@@ -542,7 +542,7 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     (quarterdeck / "planning-session.md").write_text(
         f"# Planning Session: {plan.project}\n\n"
         f"Plan state: **{plan.state}**\n\n"
-        "Review the proposed decomposition, build order, and acceptance gates on the Delivery Board. "
+        "Review the proposed decomposition, build order, and acceptance gates on the Kanban Board. "
         "The Planning Session shows the manifest build tree for execution review.\n",
         encoding="utf-8",
     )

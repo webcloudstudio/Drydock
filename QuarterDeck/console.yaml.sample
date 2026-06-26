@@ -51,7 +51,7 @@ items:
     path: ../docs/SOUNDINGS.md
 
   - id: board
-    label: "Delivery Board"
+    label: "Kanban Board"
     section: build_plan
     type: kanban
     path: tickets.json

@@ -71,7 +71,7 @@ items:
     order: 5
 
   - id: board
-    label: "Delivery Board"
+    label: "Kanban Board"
     section: core
     type: kanban
     path: tickets.json

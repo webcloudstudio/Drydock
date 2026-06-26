@@ -1044,35 +1044,18 @@ def render_build_plan(item: dict[str, Any]) -> str:
     steps_verified = sum(
         1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
     )
-    steps_implemented = sum(
-        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "implemented"
-    )
-    steps_pending = sum(
-        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "pending"
-    )
-    steps_failed = sum(
-        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/failed"
-    )
     steps_total = len(steps)
     total_sp = sum(s.total_story_points for s in steps)
-    pct = round(100 * steps_verified / steps_total) if steps_total else 0
     warn_n = sum(1 for s in steps if s.over_warn)
     warn_html = (
-        f" <span class='cmp-warn'>{warn_n} step(s) over {steps[0].warn_kb}KB</span>"
+        f"<div class='cmp-warn-bar'>{warn_n} step(s) over {steps[0].warn_kb}KB</div>"
         if warn_n
         else ""
     )
-    counts = (
-        f"{steps_verified} verified · {steps_implemented} in review · "
-        f"{steps_pending} pending · {steps_failed} failed"
-    )
 
     parts = [
-        f"<div class='cmp-total'>"
-        f"SP = <strong>{total_sp}</strong> · {steps_total} steps · "
-        f"<span class='bp-complete'>{pct}% verified</span>{warn_html}"
-        f"</div>"
-        f"<p class='subtle'>{html.escape(counts)}</p>"
+        f"<div class='bp-stats-sentinel' data-sp='{total_sp}' "
+        f"data-verified='{steps_verified}' data-total='{steps_total}'></div>" + warn_html
     ]
 
     for group in groups:
@@ -1099,7 +1082,7 @@ def render_build_plan(item: dict[str, Any]) -> str:
                 f"{_state_badge(state)}"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
-                f"<span class='cmp-gsp'>SP {step.total_story_points}</span>{warn}"
+                f"<span class='cmp-gsp'>Story Points: {step.total_story_points}</span>{warn}"
                 f"{_step_controls(step)}"
                 "</div>"
                 f"{_render_step_files(step)}"
@@ -1114,8 +1097,8 @@ def render_build_plan(item: dict[str, Any]) -> str:
             "<div class='cmp-group'>"
             "<div class='cmp-ghead'>"
             f"<span class='cmp-gname'># {html.escape(gname)}</span>"
-            f"<span class='cmp-gsp'>SP {group.total_story_points}</span>"
-            f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
+            f"<span class='cmp-gsp'>Story Points: {group.total_story_points}</span>"
+            f"<span class='cmp-gsp'>{group_verified}/{group_total} Verified</span>"
             f"{_feature_controls(group.feature_id)}"
             "</div>"
             f"{''.join(step_cards)}"
@@ -1443,16 +1426,33 @@ def _ticket_badges(t: dict[str, Any]) -> str:
     return "".join(out)
 
 
+_KIND_LABEL: dict[str, tuple[str, str]] = {
+    "feature": ("feature", "tk-kind-feature"),
+    "story": ("story", "tk-kind-story"),
+    "spike": ("spike", "tk-kind-spike"),
+    "task": ("task", "tk-kind-task"),
+    "bug": ("bug", "tk-kind-bug"),
+}
+
+
+def _kind_chip(kind: str | None) -> str:
+    if not kind:
+        return ""
+    label, css = _KIND_LABEL.get(kind, (kind, "tk-kind-other"))
+    return f"<span class='tk-kind {css}'>{html.escape(label)}</span>"
+
+
 def _ticket_card(item_id: str, t: dict[str, Any]) -> str:
     tid = html.escape(t["id"])
     parent = t.get("parent")
     chip = f"<span class='parent-chip'>↳ {html.escape(parent)}</span>" if parent else ""
     blocked_cls = " blocked" if t.get("blocked") else ""
     badges = _ticket_badges(t)
+    kind_html = _kind_chip(t.get("kind"))
     return (
         f"<div class='ticket-card{blocked_cls}' onclick=\"loadTicket('{html.escape(item_id)}','{tid}')\">"
         f"<strong>{html.escape(t['title'])}</strong>"
-        f"<div class='ticket-meta'><code>{tid}</code>{chip}</div>"
+        f"<div class='ticket-meta'>{kind_html}<code>{tid}</code>{chip}</div>"
         f"{f'<div class=ticket-badges>{badges}</div>' if badges else ''}</div>"
     )
 
@@ -1494,9 +1494,11 @@ def render_ticket_detail(item: dict[str, Any], ticket_id: str) -> str:
         f"<h2>{html.escape(t.get('title', ticket_id))} <code>{html.escape(ticket_id)}</code></h2>",
     ]
     status = t.get("status", "backlog")
+    kind = t.get("kind")
+    kind_html = f"&nbsp;&nbsp;{_kind_chip(kind)}" if kind else ""
     parts.append(
         f"<p class='subtle'>status: <strong>{html.escape(_STATUS_LABEL.get(status, status))}</strong>"
-        f"&nbsp;&nbsp;{_ticket_badges(t)}</p>"
+        f"{kind_html}&nbsp;&nbsp;{_ticket_badges(t)}</p>"
     )
     if t.get("blocked") and t.get("blocked_reason"):
         parts.append(
@@ -1621,6 +1623,12 @@ def item_pending(item: dict[str, Any]) -> bool:
 # ── Page header (title row + action buttons + divider) ──────────────────────────
 
 _H1_RE = re.compile(r"^\s*<h1[^>]*>.*?</h1>\s*", re.DOTALL | re.IGNORECASE)
+_BP_STATS_RE = re.compile(
+    r'<div class=[\'"]bp-stats-sentinel[\'"] '
+    r'data-sp=[\'"]([^\'"]*)[\'"] '
+    r'data-verified=[\'"]([^\'"]*)[\'"] '
+    r'data-total=[\'"]([^\'"]*)[\'"]></div>'
+)
 
 
 def _wrap_page(item: dict[str, Any], body: str) -> str:
@@ -1631,6 +1639,29 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
     label = html.escape(item.get("label", ""))
     iid = html.escape(item["id"])
     t = item.get("type", "")
+
+    if t == "build_plan":
+        m = _BP_STATS_RE.search(body)
+        body = _BP_STATS_RE.sub("", body, count=1)
+        body = _H1_RE.sub("", body, count=1)
+        if m:
+            sp, verified, total = m.group(1), m.group(2), m.group(3)
+            stats_html = (
+                f"<span class='bp-ph-sp'>Story Points: <strong>{html.escape(sp)}</strong></span>"
+                f"<span class='bp-ph-sep'>·</span>"
+                f"<span class='bp-ph-ver'>{html.escape(verified)}/{html.escape(total)} Verified</span>"
+            )
+        else:
+            stats_html = ""
+        return (
+            f"<div class='page-header'>"
+            f"<div class='ph-title-row ph-title-row-bp'>"
+            f"<h1 class='ph-title'>{label}</h1>"
+            f"<div class='bp-ph-stats'>{stats_html}</div>"
+            f"</div>"
+            f"<hr class='ph-divider'>"
+            f"</div>" + body
+        )
 
     fname = ""
     for key in ("path", "path_md", "path_html", "path_pdf", "href"):
@@ -2185,6 +2216,19 @@ _STYLE = """
   .bp-pending { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
   .bp-failed  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
   .bp-complete { color:#166534; font-weight:700; }
+  .ph-title-row-bp { justify-content:center; gap:20px; flex-wrap:wrap; }
+  .bp-ph-stats { display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; color:#475569; }
+  .bp-ph-sep { color:#cbd5e1; }
+  .bp-ph-sp strong { color:#0f172a; }
+  .bp-ph-ver { color:#166534; }
+  .cmp-warn-bar { font-size:11px; font-weight:700; color:#92400e; background:#fef3c7; padding:4px 10px; border-radius:4px; margin:0 0 12px; display:inline-block; }
+  .tk-kind { font-size:10px; font-weight:700; letter-spacing:.04em; padding:1px 6px; border-radius:3px; margin-right:4px; text-transform:uppercase; }
+  .tk-kind-feature { background:#ede9fe; color:#5b21b6; }
+  .tk-kind-story   { background:#dbeafe; color:#1e40af; }
+  .tk-kind-spike   { background:#fef9c3; color:#854d0e; }
+  .tk-kind-task    { background:#f0fdf4; color:#166534; }
+  .tk-kind-bug     { background:#fee2e2; color:#991b1b; }
+  .tk-kind-other   { background:#f1f5f9; color:#475569; }
 """
 
 

@@ -910,7 +910,7 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
                 },
                 {
                     "id": "board",
-                    "label": "Delivery Board",
+                    "label": "Kanban Board",
                     "section": "plan",
                     "type": "kanban",
                     "path": "tickets.json",

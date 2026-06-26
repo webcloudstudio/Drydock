@@ -142,7 +142,7 @@ items:
   - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 6, help_text: {json.dumps(sea_trials_help)} }}
   - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 7, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
   - {{ id: exclude_files, label: "Exclude Files", section: analyze, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 8, help_text: {json.dumps(exclude_files.help_text)}, prompt_text: {json.dumps(exclude_files.prompt_text)} }}
-{planning_item}  - {{ id: board, label: "Delivery Board", section: plan, type: kanban, path: tickets.json, order: 1 }}
+{planning_item}  - {{ id: board, label: "Kanban Board", section: plan, type: kanban, path: tickets.json, order: 1 }}
   - {{ id: plan_compass, label: "Plan Compass", section: plan, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 2, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
 {build_compass_item}
 
