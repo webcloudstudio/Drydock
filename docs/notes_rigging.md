@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-26 V1 |
+| Version | 2026-06-26 V2 |
 | Route | rigging update / rigging verify |
 | Status | Working notes — not canonical specification |
 | Description | Design decisions for drydock rigging update and rigging verify — injecting compact Rigging into built target projects and verifying compliance. |
 | Pending spec | 0 approved items |
-| Pending impl | 4 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 
 ## Goal
 
@@ -18,7 +18,7 @@ markers, stamp provenance metadata, and report whether the target is current.
 ## Decisions
 
 ### rigging update: inject compact rules into AGENTS.md
-`2026-06-26` · `spec:na` · `impl:unimplemented`
+`2026-06-26` · `spec:na` · `impl:implemented`
 
 Source: `BUSINESS_RULES_compact.md` from Rigging (resolved via `paths.py`).
 Target: `AGENTS.md` in `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
@@ -30,7 +30,7 @@ Mechanism:
 `AGENTS.md` is a contract on the built target — always present.
 
 ### rigging update: stamp METADATA.md
-`2026-06-26` · `spec:na` · `impl:unimplemented`
+`2026-06-26` · `spec:na` · `impl:implemented`
 
 Mechanical stamp — no user input. Fields written to `METADATA.md` in
 `$DRYDOCK_BUILD_DIRECTORY/<Target>`:
@@ -39,7 +39,7 @@ Mechanical stamp — no user input. Fields written to `METADATA.md` in
 |---|---|
 | `drydock_target` | Target name argument |
 | `drydock_build_directory` | Resolved `$DRYDOCK_BUILD_DIRECTORY/<Target>` path |
-| `drydock_project_state` | Lifecycle state read from `$DRYDOCK_WORKSPACE/targets/<Target>/METADATA.md` |
+| `drydock_project_state` | Lifecycle state read from built target's `METADATA.md` |
 | `drydock_rigging_updated` | ISO timestamp of this run |
 
 `name` and `short_description` are required fields but are human-authored (collected during
@@ -47,13 +47,13 @@ Mechanical stamp — no user input. Fields written to `METADATA.md` in
 `rigging verify` flags their absence.
 
 ### Injection markers
-`2026-06-26` · `spec:na` · `impl:unimplemented`
+`2026-06-26` · `spec:na` · `impl:implemented`
 
 Drydock-native markers: `# DRYDOCK_RIGGING_START` and `# DRYDOCK_RIGGING_END`.
 V1 used `# CLAUDE_RULES_START / # CLAUDE_RULES_END`; Drydock uses its own namespace.
 
 ### rigging verify: staleness and compliance checks
-`2026-06-26` · `spec:na` · `impl:unimplemented`
+`2026-06-26` · `spec:na` · `impl:implemented`
 
 Checks (per-check pass/fail output):
 1. `AGENTS.md` injected block exists and its content hash matches the current compact — stale or
@@ -66,7 +66,7 @@ Checks (per-check pass/fail output):
 Overall PASS/FAIL. Exit 0 all pass, 1 any fail.
 
 ### --dry-run flag on rigging update
-`2026-06-26` · `spec:na` · `impl:unimplemented`
+`2026-06-26` · `spec:na` · `impl:implemented`
 
 `--dry-run` previews what would change without writing any files. Mirrors V1 behavior.
 
@@ -85,12 +85,12 @@ This is a required addition to `drydock analyze` but is out of scope for this ri
 
 ## Acceptance Criteria
 
-- `rigging update` injects current compact into `AGENTS.md` via `DRYDOCK_RIGGING_START/END` markers
-- `rigging update` stamps all four provenance fields in the built target's `METADATA.md`
-- `rigging update --dry-run` shows what would change without writing
-- `rigging verify` reports per-check pass/fail and exits 0/1 correctly
-- Stale injected block (compact changed since last update) is detected by verify
-- Missing `name` or `short_description` is flagged by verify
+- `rigging update` injects current compact into `AGENTS.md` via `DRYDOCK_RIGGING_START/END` markers ✓
+- `rigging update` stamps all four provenance fields in the built target's `METADATA.md` ✓
+- `rigging update --dry-run` shows what would change without writing ✓
+- `rigging verify` reports per-check pass/fail and exits 0/1 correctly ✓
+- Stale injected block (compact changed since last update) is detected by verify ✓
+- Missing `name` or `short_description` is flagged by verify ✓
 
 ## Guardrails
 
