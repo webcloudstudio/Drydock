@@ -987,140 +987,59 @@ reports specification changes not covered by a Ship's Log entry.
 
 ## Drydock Rigging — Portfolio Governance
 
-Drydock Rigging is the enterprise conformance layer. It ships with Drydock out of the box —
-opinionated defaults, no configuration required to start. An organization customizes it once
-and every project built by Drydock conforms automatically. Stack files are organized by product and
-are plug-and-play: add the technologies in use, remove the others.
+Drydock Rigging is the enterprise conformance layer shipped with Drydock. Organizations customize it
+once; every project built by Drydock conforms automatically.
 
-Three layers govern what agents build and how they behave: agent behavior rules, technology stack
-rules, and branding.
+Three layers govern agent behavior: business rules, technology stack rules, and branding.
 
-### Agent Behavior Rules
+**Business rules.** `BUSINESS_RULES.md` defines how agents must behave — git workflow, project
+layout, script conventions, error handling. Agents receive the compact derivative
+`BUSINESS_RULES_compact.md`; the full source stays in `Rigging/`.
 
-`BUSINESS_RULES.md` is the authoritative source for how agents must behave — git workflow, project
-layout, script conventions, error handling. `drydock rigging compact` distills the full rules into
-`BUSINESS_RULES_compact.md`; `drydock rigging update` then injects that compact form into the target
-project. Agents read the compact rules as part of their context. Full rationale stays in the source;
-agents receive only the actionable instructions.
+**Stack rules.** `Rigging/stack/` holds one file per technology, prescriptive and standalone.
 
-### Technology Stack Rules
+**Branding.** `BRANDING_MAIN.md` defines the master palette, typography, and design philosophy.
+Per-medium files (`BRANDING_DOCUMENTATION.md`, `BRANDING_WHITEPAPERS.md`, `BRANDING_WEBSITE.md`)
+inherit from it.
 
-Stack files live in `Rigging/stack/` — one file per technology. Each file is prescriptive,
-opinionated, standalone, and copy-paste ready. `MANIFEST.md` declares which stack files apply to
-each build block; `drydock build` injects them into the prompt.
+### Compaction
 
-Early build blocks receive the full stack file — rationale, examples, and constraints included.
-Later build blocks receive compact versions (`_compact.md`) that state expected behavior without
-the reasoning. Agents in later work already have the architecture in scope; they need the contract,
-not the explanation.
+Compaction produces a `<stem>_compact.md` that extracts only the callable surface of a specification
+file — routes, signatures, typed parameters, one-line summaries — discarding rationale and examples.
+It applies to any Blueprint file, not only Rigging files. Consumer stories receive the compact
+derivative; builder stories receive the full file.
 
-```text
-Rigging/stack/
-├── alexa-skills-kit.md
-├── aws-api-gateway.md
-├── aws-dynamodb.md
-├── aws-lambda.md
-├── aws-s3.md
-├── aws-sqs.md
-├── bootstrap5.md
-├── common.md
-├── django.md
-├── fastapi.md
-├── flask.md
-├── github-actions.md
-├── marina-library.md
-├── persistence.md
-├── postgres.md
-├── python.md
-├── sqlite.md
-├── terraform.md
-└── ui-flask.bootstrap-client.md
+If a required compact derivative is absent, the build stops with a directive to run
+`drydock rigging compact <Target>`. `drydock plan` warns when a source is newer than its derivative.
+
+**Rigging compaction.** `Rigging/` ships with pre-built compact derivatives. Regenerating them with
+`--all` cascades rebuild invalidation across every story that references those files via `context:`.
+Do not recompact Rigging files unless the governing source actually changed.
+
+Files without callable surface are classified by the compaction agent and skipped (`no-surface`).
+`_compact.md` files are never treated as sources.
+
+### Commands
+
 ```
-
-### Branding Rules
-
-`BRANDING_MAIN.md` defines the master palette, typography, and design philosophy for Ed Barlow /
-Web Cloud Studio. Per-medium rules inherit from it and are applied automatically when generating
-the relevant artifact type.
-
-| Branding file | Applies to |
-|---|---|
-| `BRANDING_DOCUMENTATION.md` | App Documentation Colors/Format/Branding — `docs/index.html` |
-| `BRANDING_WHITEPAPERS.md` | White papers |
-| `BRANDING_WEBSITE.md` | Web App Colors/Format/Branding |
-
-### Compaction — Full Context for Builders, Compact Context for Users
-
-Specification compaction addresses one of the central inefficiencies in LLM-assisted software
-development: the cost of loading build-time context into a consumer's prompt. When a service is
-built from a full specification — routes, schemas, constraints, rationale, implementation guidance
-— that same specification becomes a liability when injected into an agent that only needs to call
-the service. Drydock's answer is the compact derivative: a machine-generated document that extracts
-only the callable surface of a specification file and discards everything else. The format follows
-the Model Context Protocol (MCP) convention — each callable unit is represented by its name or
-route path, a one-line description, a typed input table, and a return description — making the
-compact form immediately interpretable by any LLM familiar with tool-use patterns. Builder stories
-receive the full specification; consumer stories receive the compact derivative. The result is a
-structured, deterministic reduction in prompt size that preserves exactly what a caller needs and
-nothing more.
-
-`drydock rigging compact <Target>` creates compact derivatives for eligible Blueprint inputs.
-Existing derivatives are regenerated only when stale: `<stem>_compact.md` is missing or older
-than its source.
-
-Files that contain no callable technical surface — branding guides, tone documents, process
-narratives — are classified by the compaction agent and skipped with status `no-surface`. These
-files are builder-only inputs and do not produce compact derivatives.
+drydock rigging compact <Target> [--all] [--force]
+                                 [--include-file <file.md>] [--exclude-file <file.md>]
+                                 [--include-dir <dir>]
+drydock rigging update <Target>
+drydock rigging verify <Target>
+```
 
 | Flag | Effect |
 |------|--------|
+| `--all` | Also regenerate compact derivatives in Drydock's own `Rigging/` tree |
 | `--force` | Ignore the freshness gate; recompact all discovered files |
-| `--all` | Also refresh existing compact derivatives in Drydock's own `Rigging/` tree |
-| `--include-file <file.md>` | Add a specific Markdown file to the compaction set (repeatable) |
+| `--include-file <file.md>` | Add a specific file to the compaction set (repeatable) |
 | `--exclude-file <file.md>` | Remove a file from the auto-discovered set (repeatable) |
-| `--include-dir <dir>` | Add all Markdown files under a directory to the compaction set (repeatable) |
+| `--include-dir <dir>` | Add all Markdown files under a directory (repeatable) |
 
-Files are processed one at a time. All `--include-file` and `--include-dir` arguments must
-resolve to `.md` files; `_compact.md` files are never treated as sources.
-
-| Source | Compact | Usage surface extracted |
-|--------|---------|------------------------|
-| `DATABASE.md` | `DATABASE_compact.md` | Class names, method signatures, typed parameters, return types, one-line per-method summaries |
-| `BUSINESS_RULES.md` | `BUSINESS_RULES_compact.md` | Callable enforcement points — conditions and expected outcomes a consuming story must satisfy |
-| Any `FEATURE-*.md` | `FEATURE-*_compact.md` | HTTP routes and callable units with typed input tables and return descriptions |
-
-```mermaid
-%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart LR
-  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
-  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
-  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
-  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
-
-  DB(["DATABASE.md"]):::dir --> COMPACT["rigging compact"]:::script
-  BR(["BUSINESS_RULES.md"]):::dir --> COMPACT
-  COMPACT --> DBC{{"DATABASE_compact.md"}}:::md
-  COMPACT --> BRC{{"BUSINESS_RULES_compact.md"}}:::md
-```
-
-**Injection rule.** `drydock build` selects the correct form per story automatically:
-
-| Story field | File injected |
-|-------------|---------------|
-| `implements: DATABASE.md` | Full `DATABASE.md` — story builds the class library |
-| `context: DATABASE.md` | `DATABASE_compact.md` — story uses the API |
-
-If a story references `DATABASE.md` via `context:` and `DATABASE_compact.md` does not exist, the
-build stops:
-
-```text
-DATABASE_compact.md not found — run: drydock rigging compact <Target>
-```
-
-`drydock plan` reports a staleness warning when a source file is newer than its compact
-derivative.
+`drydock rigging update` injects `BUSINESS_RULES_compact.md` and standard templates into the target
+project's `AGENTS.md` in an idempotent manner. `drydock rigging verify` checks target compliance
+with the Rigging contract.
 
 ## Documentation — From Blueprint to docs/index.html
 
