@@ -166,8 +166,8 @@ def _rigging_catalog_names() -> list[str]:
         root = get_rigging_root()
     except Exception:
         return []
-    names = [p.name for p in root.glob("BRA*.md")]
-    names += [p.name for p in (root / "stack").glob("*.md")]
+    names = [p.name for p in root.glob("BRA*.md") if "_compact" not in p.name]
+    names += [p.name for p in (root / "stack").glob("*.md") if "_compact" not in p.name]
     return sorted(name for name in names if name != "README.md")
 
 

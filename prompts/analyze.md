@@ -335,7 +335,7 @@ Each questionnaire uses this shape:
       "id": "{question_slug}",
       "label": "{Short Label}",
       "prompt": "{Full question for the Product Owner.}",
-      "input": "text | textarea | select",
+      "input": "text | textarea | select | checkbox_grid",
       "proposed": "{Optional proposed value for the Commander to confirm or override}"
     }
   ]
@@ -377,15 +377,17 @@ on each question to pre-fill the proposed value. Do **not** emit `discovery-iden
 ```
 
 **Stack questionnaire rule.** The stack `options` are the injected Rigging catalog filenames
-(`Rigging/BRA*.md` plus `Rigging/stack/*.md`, no `README.md`), filtered to the detected project
-type, always ending with `"other"`. Never open the per-technology files — list their names only.
+(`Rigging/BRA*.md` plus `Rigging/stack/*.md`, no `README.md`, no `_compact` variants), filtered
+to the detected project type, always ending with `"other"`. Never open the per-technology files —
+list their names only.
 
 - If a source names a technology **and** a matching catalog file exists, treat it as decided:
   record the technology and do **not** raise it as an open question.
 - If a source names a technology with **no** matching catalog file, raise it as a discovery
   questionnaire (a gap: no stack guidance exists for it).
-- If the sources are silent on the stack, emit a `discovery-stack.json` whose `select` options are
-  the filtered filename list plus `"other"`, for the Product Owner to choose.
+- If the sources are silent on the stack, emit a `discovery-stack.json` with `"input": "checkbox_grid"`
+  whose `options` are the filtered filename list plus `"other"`, for the Product Owner to choose.
+  Use `checkbox_grid` (not `select`) so the Commander can select multiple stack components.
 
 ---
 
@@ -410,8 +412,9 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Never re-ask a question already settled by `ANALYZE_COMPASS.md`, a prior `BLOCKERS.md`, or an
   existing questionnaire answer. Never emit a duplicate or reworded version of an existing
   unanswered questionnaire.
-- Stack questionnaire options are the injected catalog filenames, filtered to the detected project
-  type, plus `"other"`. Never open the per-technology stack files — list their names only.
+- Stack questionnaire uses `"input": "checkbox_grid"`. Options are the injected catalog filenames
+  (no `_compact` variants), filtered to the detected project type, plus `"other"`. Never open the
+  per-technology stack files — list their names only.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with
   no matching file is a discovery questionnaire.
 - SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise

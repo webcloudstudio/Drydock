@@ -1357,6 +1357,16 @@ def _render_question_controls(data: dict[str, Any]) -> list[str]:
                 for o in options
             )
             control = f"<select name='{qid}'{multiple}>{opts}</select>"
+        elif input_type == "checkbox_grid":
+            saved_set = set(saved_vals)
+            checkboxes = "".join(
+                f"<label class='cb-grid-item'>"
+                f"<input type='checkbox' name='{qid}' value='{html.escape(str(o))}'"
+                f"{' checked' if str(o) in saved_set else ''}>"
+                f" {html.escape(str(o))}</label>"
+                for o in options
+            )
+            control = f"<div class='cb-grid'>{checkboxes}</div>"
         elif input_type == "textarea":
             control = f"<textarea name='{qid}' rows='4'>{html.escape(saved)}</textarea>"
         elif input_type == "number":
@@ -2097,6 +2107,9 @@ _STYLE = """
   table { border-collapse:collapse; width:100%; } th,td { border-bottom:1px solid #d7dde5; padding:8px; text-align:left; }
   th { background:#f8fafc; font-weight:600; }
   .question { background:#fff; border:1px solid #d7dde5; padding:12px; margin:12px 0; border-radius:4px; }
+  .cb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:4px 16px; margin:8px 0; }
+  .cb-grid-item { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding:3px 0; }
+  .cb-grid-item input[type=checkbox] { width:auto; cursor:pointer; }
   input[type=text],input[type=number],select,textarea { width:100%; max-width:620px; padding:8px;
     border:1px solid #cbd5e1; border-radius:3px; box-sizing:border-box; }
   form > button { padding:10px 14px; background:#111827; color:#fff; border:none; cursor:pointer;
@@ -2410,7 +2423,7 @@ def index(request: Request = None) -> str:
       }};
       form.querySelectorAll('input, select, textarea').forEach(el => {{
         el.addEventListener('blur', save);
-        if (el.tagName === 'SELECT') el.addEventListener('change', save);
+        if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio') el.addEventListener('change', save);
       }});
     }}
     function mdTab(btn, index) {{
