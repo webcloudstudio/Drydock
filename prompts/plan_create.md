@@ -236,9 +236,10 @@ Use `- None.` only when that section is truly empty.
 Additional body guidance:
 
 - `COMPASS.md` body uses `## Compass`, `## Constraints`, and `## Guardrails`.
-- `ARCHITECTURE.md` captures modules, boundaries, route groupings, interfaces, and technical
-  decisions.
-- `DATABASE.md` defines stores plus typed access classes; no raw-storage access outside the
+- `ARCHITECTURE.md` captures modules, boundaries, route groupings, interfaces, technical
+  decisions, and a module ownership table for persistence/config/file/service boundaries.
+- `DATABASE.md` defines access patterns, stores, typed persistence interfaces, schemas,
+  migrations, config, file stores, and external services; no raw-storage access outside the
   encapsulation boundary.
 - `FEATURE-*.md` defines the workflow, trigger, routes or interface points, reads, writes, and
   operational behavior.
@@ -289,6 +290,8 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - Persistence foundations precede features that depend on state.
 - Backend/provider stories precede UI consumer stories.
 - Feature-level acceptance follows its child executable work.
+- Any story that implements `DATABASE.md` must include `persistence.md` in `stack:` plus the
+  selected backend stack file such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
 
 ---
 

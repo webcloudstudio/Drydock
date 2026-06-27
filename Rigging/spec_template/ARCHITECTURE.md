@@ -13,6 +13,15 @@
 |--------|---------------|
 | | |
 
+## Module Ownership
+
+| Module | Owns | May Access |
+|--------|------|------------|
+| config.py | Typed configuration loading and validation | os.environ |
+| db.py | Database connection, schema, migrations, and table classes | database driver |
+| filestore.py | Application file storage | pathlib, open |
+| services/ | External service wrappers | service client libraries |
+
 ## Routes
 
 | Method | Path | Returns |

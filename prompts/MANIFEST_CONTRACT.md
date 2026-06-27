@@ -114,6 +114,9 @@ scope:        blueprint | target | both
 | `evidence` | No | Path to the evidence file written after execution |
 | `scope` | No | `blueprint` \| `target` \| `both` — what this story changes |
 
+When `implements` contains `DATABASE.md`, `stack` must include `persistence.md` and the selected
+backend stack file, such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
+
 ### Spike
 
 A spike answers a question. Results feed future iterations. The `finding` field is written by

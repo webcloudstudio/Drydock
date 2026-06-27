@@ -22,7 +22,7 @@ project is, what it must do, and how it is built.
 | `ARCHITECTURE.md` | Modules, routes, boundaries, interfaces, technical decisions | Yes |
 | `README.md` | One-line description and `## Intent` section | Yes |
 | `AGENTS.md` | Callable surface: `## Endpoints`, `## Capabilities` (JSON), `## Links` | If exposes services |
-| `DATABASE.md` | Persistence contract: all stores, typed access classes, schemas, migrations | If has persistent state |
+| `DATABASE.md` | Persistence contract: access patterns, typed interfaces, all stores, schemas, migrations | If has persistent state |
 | `UI-GENERAL.md` | Shared UI patterns across screens | If has UI |
 | `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
 | `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, AC, guardrails | As needed |
@@ -296,6 +296,17 @@ persistent store and the typed class that encapsulates it:
 
 Application code reaches each store only through its class. A storage change that leaves the
 interface unchanged does not invalidate downstream features.
+
+Every `DATABASE.md` includes `## Access Patterns` and `## Persistence Interfaces` before schema
+details. Access patterns name the caller, operation, store, and interface method. Persistence
+interfaces name the store, public interface, module location, allowed callers, and notes.
+
+`ARCHITECTURE.md` includes a module ownership table for persistence, configuration, file-store, and
+external-service boundaries. It states which module owns each boundary and which low-level APIs that
+module may access.
+
+Any Manifest story that implements `DATABASE.md` includes `persistence.md` in `stack:` plus the
+selected backend stack file such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
 
 ---
 
