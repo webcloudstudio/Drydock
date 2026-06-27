@@ -80,6 +80,8 @@ questionnaires have already decided, nor for anything you can derive yourself.
   questions, and do not move questionnaire questions into `ANALYSIS.md`.
 - **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root; omit the `=== COMPASS.md ===`
   block. `false`: write it.
+- **DISPLAY_NAME** — current `display_name` value from METADATA.md, or `(blank)` when not yet set.
+- **SHORT_DESCRIPTION** — current `short_description` value from METADATA.md, or `(blank)` when not yet set.
 - **Rigging catalog** — a filename list (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, excluding
   `README.md`), injected below if available. These filenames are the selectable options for the
   stack questionnaire. You never open the files themselves — list their names only.
@@ -222,6 +224,8 @@ Quality: {Ready | Questions | Blocked}
   stories: {N}
   stack: {declared stack value or "not declared"}
   screens: {N}
+  display_name: {proposed display name derived from the sources, or "not proposed" when DISPLAY_NAME is already set}
+  short_description: {one-sentence product description derived from the sources, or "not proposed" when SHORT_DESCRIPTION is already set}
 
 {Non-conformant headers, ambiguous signals, observations. "None." if clean.
 Do not add an ## Overview section or any other sections not listed here.}
@@ -306,6 +310,7 @@ Every block must pass the Ownership test: a decision only the human can make. Us
 checklist of what to probe, but emit a block only where the sources (and any prior answers) leave a
 human-owned decision open:
 
+- **identity** — the project display name and short description (see the identity rule below)
 - **intent** — what the product is, who it serves, how success is measured (only where the sources
   genuinely leave the product's purpose or audience open)
 - **stack** — the technology stack (see the stack rule below)
@@ -330,11 +335,45 @@ Each questionnaire uses this shape:
       "id": "{question_slug}",
       "label": "{Short Label}",
       "prompt": "{Full question for the Product Owner.}",
-      "input": "text | textarea | select"
+      "input": "text | textarea | select",
+      "proposed": "{Optional proposed value for the Commander to confirm or override}"
     }
   ]
 }
 === END discovery-{slug}.json ===
+```
+
+**Identity questionnaire rule.** When `DISPLAY_NAME` is `(blank)` or `SHORT_DESCRIPTION` is `(blank)` in
+the job block, derive a proposed display name and one-sentence short description from the sources, include
+them in the `display_name` and `short_description` summary fields in `ANALYSIS.md`, and emit a
+`discovery-identity.json` questionnaire for the Commander to confirm or override. Use the `proposed` field
+on each question to pre-fill the proposed value. Do **not** emit `discovery-identity.json` when both
+`DISPLAY_NAME` and `SHORT_DESCRIPTION` are already set (i.e., neither is `(blank)`).
+
+```
+=== discovery-identity.json ===
+{
+  "id": "discovery-identity",
+  "title": "Discovery: Project Identity",
+  "purpose": "Confirm the proposed display name and short description before planning.",
+  "questions": [
+    {
+      "id": "display_name",
+      "label": "Display Name",
+      "prompt": "The display name Drydock will use for this project. Edit to override the proposal.",
+      "input": "text",
+      "proposed": "{Proposed display name derived from the sources}"
+    },
+    {
+      "id": "short_description",
+      "label": "Short Description",
+      "prompt": "One-sentence description of what this project does. Edit to override the proposal.",
+      "input": "textarea",
+      "proposed": "{Proposed one-sentence description derived from the sources}"
+    }
+  ]
+}
+=== END discovery-identity.json ===
 ```
 
 **Stack questionnaire rule.** The stack `options` are the injected Rigging catalog filenames
@@ -355,6 +394,7 @@ type, always ending with `"other"`. Never open the per-technology files — list
 - Emit **only** the `=== ... ===` / `=== END ... ===` blocks. No text outside them — no preamble, no summary, no prose, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
+- Emit `discovery-identity.json` only when `DISPLAY_NAME` or `SHORT_DESCRIPTION` is `(blank)` in the job block. When both are already set, omit it entirely.
 - COMPASS.md must be ≤40 lines. It is injected into every build step — brevity is a hard requirement.
 - COMPASS.md is orientation for a build agent, not project documentation. Never reproduce source
   file content verbatim, never write API references or usage guides, never narrate architecture.

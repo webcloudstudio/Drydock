@@ -107,7 +107,7 @@ def set_field(path: Path, key: str, value: str, *, overwrite: bool = False) -> b
     if not path.exists():
         return False
     text = path.read_text(encoding="utf-8")
-    pattern = re.compile(rf"^{re.escape(key)}:\s*(.*)$", re.MULTILINE)
+    pattern = re.compile(rf"^{re.escape(key)}:[ \t]*(.*)$", re.MULTILINE)
     m = pattern.search(text)
     if m:
         current = m.group(1).strip()

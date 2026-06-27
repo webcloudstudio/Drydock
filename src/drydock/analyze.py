@@ -27,6 +27,7 @@ from drydock.exclude_files import (
 from drydock.llm import run_prompt
 from drydock.metadata import (
     METADATA_NAME,
+    parse_metadata,
     set_build_state,
     set_field,
     set_sub_state,
@@ -283,6 +284,7 @@ def _assemble_prompt(
     feedback_text: str | None = None,
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
+    identity: dict[str, str] | None = None,
 ) -> str:
     return _assemble_prompt_assembly(
         body,
@@ -294,6 +296,7 @@ def _assemble_prompt(
         blockers_text=blockers_text,
         input_tokens=input_tokens,
         excluded_filenames=load_excluded_filenames(blueprint_dir.parent),
+        identity=identity,
     ).rendered_text
 
 
@@ -308,9 +311,13 @@ def _assemble_prompt_assembly(
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
     excluded_filenames: frozenset[str] = frozenset(),
+    identity: dict[str, str] | None = None,
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
+    _id = identity or {}
+    _display_name = _id.get("display_name", "").strip() or "(blank)"
+    _short_desc = _id.get("short_description", "").strip() or "(blank)"
     prompt_parts = [
         system_preamble_part(),
         section_heading_part("# Input Context"),
@@ -322,6 +329,8 @@ def _assemble_prompt_assembly(
                 f"- BLUEPRINT_PATH: {blueprint_dir}",
                 f"- DATE: {today}",
                 f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
+                f"- DISPLAY_NAME: {_display_name}",
+                f"- SHORT_DESCRIPTION: {_short_desc}",
                 "",
             ],
             kind="job",
@@ -663,6 +672,11 @@ def analyze(
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
+    metadata_fields = parse_metadata(target_dir / METADATA_NAME)
+    identity = {
+        "display_name": metadata_fields.get("display_name", ""),
+        "short_description": metadata_fields.get("short_description", ""),
+    }
     prompt_assembly = _assemble_prompt_assembly(
         prompt.body,
         blueprint_dir,
@@ -673,6 +687,7 @@ def analyze(
         blockers_text=blockers_text,
         input_tokens=prompt.input_tokens,
         excluded_filenames=excluded_filenames,
+        identity=identity,
     )
 
     result = run(
@@ -742,6 +757,19 @@ def analyze(
     # Backfill stack into METADATA.md if the LLM identified it and the field is still blank.
     if stack and stack != "not declared":
         set_field(target_dir / METADATA_NAME, "stack", stack, overwrite=False)
+
+    # Backfill display_name and short_description from proposed summary values when blank.
+    _NOT_PROPOSED = frozenset({"not proposed", "not declared", "unknown"})
+    proposed_display_name = summary.get("display_name", "").strip()
+    if proposed_display_name and proposed_display_name not in _NOT_PROPOSED:
+        set_field(
+            target_dir / METADATA_NAME, "display_name", proposed_display_name, overwrite=False
+        )
+    proposed_short_desc = summary.get("short_description", "").strip()
+    if proposed_short_desc and proposed_short_desc not in _NOT_PROPOSED:
+        set_field(
+            target_dir / METADATA_NAME, "short_description", proposed_short_desc, overwrite=False
+        )
 
     questionnaires_dir.mkdir(parents=True, exist_ok=True)
 

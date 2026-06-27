@@ -97,6 +97,8 @@ Quality: Ready
   stories: 5
   stack: python/flask
   screens: 2
+  display_name: Test Project
+  short_description: A test project for automated analysis.
 
 ## Open Questions
 
@@ -174,6 +176,31 @@ A test project compass.
 
 ## Success Criteria
 - System operational."""
+
+_DISCOVERY_IDENTITY = json.dumps(
+    {
+        "id": "discovery-identity",
+        "title": "Discovery: Project Identity",
+        "purpose": "Confirm the proposed display name and short description before planning.",
+        "questions": [
+            {
+                "id": "display_name",
+                "label": "Display Name",
+                "prompt": "The display name Drydock will use for this project.",
+                "input": "text",
+                "proposed": "Test Project",
+            },
+            {
+                "id": "short_description",
+                "label": "Short Description",
+                "prompt": "One-sentence description of what this project does.",
+                "input": "textarea",
+                "proposed": "A test project for automated analysis.",
+            },
+        ],
+    },
+    indent=2,
+)
 
 _DISCOVERY_INTENT = json.dumps(
     {
@@ -279,6 +306,7 @@ def _make_llm_output(
     *,
     include_compass: bool = True,
     include_spikes: bool = False,
+    include_identity: bool = False,
     extra_spike: bool = False,
     quality: str = "Ready",
     analysis_override: str | None = None,
@@ -293,6 +321,10 @@ def _make_llm_output(
         f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
         f"=== SOUNDINGS.md ===\n{_SOUNDINGS_CONTENT}\n=== END SOUNDINGS.md ===",
     ]
+    if include_identity:
+        blocks.append(
+            f"=== discovery-identity.json ===\n{_DISCOVERY_IDENTITY}\n=== END discovery-identity.json ==="
+        )
     if include_spikes:
         blocks += [
             f"=== discovery-intent.json ===\n{_DISCOVERY_INTENT}\n=== END discovery-intent.json ===",
@@ -573,6 +605,26 @@ class TestAssemblePrompt:
         assert "COMPASS_EXISTS: true" in result
         assert "## COMPASS.md" not in result
 
+    def test_identity_fields_in_job_block_when_provided(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt(
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=False,
+            identity={"display_name": "MyApp", "short_description": "Does things."},
+        )
+        assert "DISPLAY_NAME: MyApp" in result
+        assert "SHORT_DESCRIPTION: Does things." in result
+
+    def test_identity_fields_blank_when_not_provided(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt("body", bp, "2026-06-14", compass_exists=False)
+        assert "DISPLAY_NAME: (blank)" in result
+        assert "SHORT_DESCRIPTION: (blank)" in result
+
 
 # ---------------------------------------------------------------------------
 # _parse_blocks
@@ -642,6 +694,8 @@ class TestParseOutput:
         assert summary.get("questions") == "0"
         assert summary.get("stack") == "python/flask"
         assert summary.get("screens") == "2"
+        assert summary.get("display_name") == "Test Project"
+        assert summary.get("short_description") == "A test project for automated analysis."
 
     def test_blocked_quality_parsed(self):
         output = _make_llm_output(quality="Blocked")
@@ -1109,6 +1163,54 @@ class TestAnalyze:
         assert received_prompts
         assert "Prior blocker answers" in received_prompts[0]
         assert "Name is missing" in received_prompts[0]
+
+    def test_proposed_identity_written_to_metadata(self, tmp_path):
+        from drydock.metadata import parse_metadata
+
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        # Write METADATA.md with blank identity fields so the LLM proposal gets applied.
+        (target_dir / "METADATA.md").write_text(
+            "# AUTHORITATIVE PROJECT METADATA — FIELDS SHOULD BE CURRENT\n\n"
+            "name: MyTarget\n"
+            "display_name: \n"
+            "short_description: \n"
+            "stack: \n"
+            "build_state: \n",
+            encoding="utf-8",
+        )
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.ok
+        fields = parse_metadata(target_dir / "METADATA.md")
+        assert fields.get("display_name") == "Test Project"
+        assert fields.get("short_description") == "A test project for automated analysis."
+
+    def test_proposed_identity_not_overwritten_when_already_set(self, tmp_path):
+        from drydock.metadata import parse_metadata, render_metadata
+
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        meta = render_metadata(
+            "MyTarget", display_name="Existing Name", short_description="Existing desc."
+        )
+        (target_dir / "METADATA.md").write_text(meta, encoding="utf-8")
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert result.ok
+        fields = parse_metadata(target_dir / "METADATA.md")
+        assert fields.get("display_name") == "Existing Name"
+        assert fields.get("short_description") == "Existing desc."
+
+    def test_discovery_identity_questionnaire_written(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(include_identity=True)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+        assert result.ok
+        identity_path = target_dir / "QuarterDeck" / "questionnaires" / "discovery-identity.json"
+        assert identity_path.exists()
+        data = json.loads(identity_path.read_text(encoding="utf-8"))
+        assert data["id"] == "discovery-identity"
+        questions = {q["id"]: q for q in data["questions"]}
+        assert "display_name" in questions
+        assert "short_description" in questions
+        assert questions["display_name"]["proposed"] == "Test Project"
 
     def test_missing_blueprint_raises(self, tmp_path):
         target_dir = tmp_path / "NoBlueprint"
