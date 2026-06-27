@@ -8,8 +8,10 @@ import pytest
 
 from drydock.build_plan import (
     AppliedSpecRecord,
+    CompactRecommendation,
     _format_applied_registry,
     _parse_applied_registry,
+    compact_recommendations,
     parse_build_plan,
     set_applied_registry,
     set_applied_specs,
@@ -479,3 +481,81 @@ state: pending
         plan = parse_build_plan(path)
         assert plan.applied_registry == {"common.md": "stackcommit"}
         assert plan.applied_specs["DATABASE.md"].sha256 == "abc123"
+
+
+class TestCompactRecommendations:
+    _PLAN_TEMPLATE = """\
+# MANIFEST: Proj
+state: approved
+
+## story 1: Alpha
+id: alpha
+state: pending
+implements: ARCH.md
+context: RULES.md, COMMON.md
+
+## story 2: Beta
+id: beta
+state: pending
+context: RULES.md, COMMON.md
+
+## story 3: Gamma
+id: gamma
+state: pending
+context: RULES.md
+
+## story 4: Delta
+id: delta
+state: pending
+context: RARE.md
+"""
+
+    def _plan(self, tmp_path):
+        p = tmp_path / "MANIFEST.md"
+        p.write_text(self._PLAN_TEMPLATE, encoding="utf-8")
+        return parse_build_plan(p)
+
+    def test_returns_files_meeting_threshold(self, tmp_path):
+        plan = self._plan(tmp_path)
+        recs = compact_recommendations(plan)
+        files = [r.file for r in recs]
+        assert "RULES.md" in files  # 3 context refs
+        assert "COMMON.md" in files  # 2 context refs
+        assert "RARE.md" not in files  # 1 context ref — below threshold
+
+    def test_sorted_by_context_count_descending(self, tmp_path):
+        plan = self._plan(tmp_path)
+        recs = compact_recommendations(plan)
+        counts = [r.context_count for r in recs]
+        assert counts == sorted(counts, reverse=True)
+
+    def test_implements_count_tracked(self, tmp_path):
+        plan = self._plan(tmp_path)
+        recs = compact_recommendations(plan)
+        arch_rec = next((r for r in recs if r.file == "ARCH.md"), None)
+        # ARCH.md only has 1 context ref (below threshold=2) but 1 implements
+        assert arch_rec is None
+        rules_rec = next(r for r in recs if r.file == "RULES.md")
+        assert rules_rec.context_count == 3
+        assert rules_rec.implements_count == 0
+
+    def test_custom_threshold(self, tmp_path):
+        plan = self._plan(tmp_path)
+        recs = compact_recommendations(plan, threshold=3)
+        files = [r.file for r in recs]
+        assert "RULES.md" in files
+        assert "COMMON.md" not in files  # only 2 context refs
+
+    def test_empty_plan_returns_empty(self, tmp_path):
+        p = tmp_path / "MANIFEST.md"
+        p.write_text(
+            "# MANIFEST: Empty\nstate: approved\n\n## story 1: S\nid: s\nstate: pending\n",
+            encoding="utf-8",
+        )
+        plan = parse_build_plan(p)
+        assert compact_recommendations(plan) == []
+
+    def test_returns_compact_recommendation_instances(self, tmp_path):
+        plan = self._plan(tmp_path)
+        recs = compact_recommendations(plan)
+        assert all(isinstance(r, CompactRecommendation) for r in recs)

@@ -52,6 +52,7 @@ class TargetInfo:
     next_operation: str = ""
     history: list[dict] = field(default_factory=list)
     history_path: Path | None = None
+    compact_recs: list = field(default_factory=list)
 
 
 @dataclass
@@ -194,14 +195,16 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
 
     plan_summary: PlanSummary | None = None
     frontier: tuple = ()
+    compact_recs: list = []
 
     if build_plan_path.exists():
         try:
-            from drydock.build_plan import parse_build_plan
+            from drydock.build_plan import compact_recommendations, parse_build_plan
 
             plan = parse_build_plan(build_plan_path)
             plan_summary = _summarize_plan(plan)
             frontier = plan.runnable_frontier()
+            compact_recs = compact_recommendations(plan)
         except Exception:
             phase = "Arrange"
             detail = "MANIFEST.md could not be parsed — check its format"
@@ -224,6 +227,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
                 next_operation=next_op,
                 history=history,
                 history_path=history_path,
+                compact_recs=[],
             )
 
         assert plan_summary is not None
@@ -293,6 +297,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         next_operation=next_op,
         history=history,
         history_path=history_path,
+        compact_recs=compact_recs,
     )
 
 

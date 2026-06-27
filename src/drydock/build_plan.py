@@ -421,6 +421,43 @@ def parse_build_plan(path: Path) -> BuildPlan:
     )
 
 
+@dataclass(frozen=True)
+class CompactRecommendation:
+    file: str
+    implements_count: int
+    context_count: int
+
+
+def compact_recommendations(plan: BuildPlan, *, threshold: int = 2) -> list[CompactRecommendation]:
+    """Return files whose context: reference count meets the compaction threshold.
+
+    Break-even: 1 builder + 2 context refs = 3C without compaction vs ~2C with it.
+    Files meeting threshold are sorted by context_count descending.
+    """
+    implements_counts: Counter[str] = Counter()
+    context_counts: Counter[str] = Counter()
+
+    for block in plan.blocks:
+        for f in block.fields.get("implements", ()):
+            implements_counts[str(f)] += 1
+        for f in block.fields.get("context", ()):
+            context_counts[str(f)] += 1
+
+    recs: list[CompactRecommendation] = []
+    for f in sorted(context_counts):
+        c_count = context_counts[f]
+        if c_count >= threshold:
+            recs.append(
+                CompactRecommendation(
+                    file=f,
+                    implements_count=implements_counts[f],
+                    context_count=c_count,
+                )
+            )
+    recs.sort(key=lambda r: r.context_count, reverse=True)
+    return recs
+
+
 def load_target_plan(target: str, target_directory: Path) -> BuildPlan:
     """Load the canonical executable plan for a configured Target name."""
     return parse_build_plan(target_directory / target / "MANIFEST.md")

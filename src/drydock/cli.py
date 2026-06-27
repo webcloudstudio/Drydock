@@ -841,6 +841,21 @@ def _render_status(result) -> None:
     elif result.target:
         print(f"  {'Next step':<{col}}  drydock plan {result.target}")
 
+    recs = result.target_info.compact_recs if result.target_info is not None else []
+    if recs:
+        print()
+        print("Recommendations")
+        for rec in recs:
+            total = rec.implements_count + rec.context_count
+            print(
+                f"  {rec.file} — used {total}×"
+                f" ({rec.implements_count}× implements, {rec.context_count}× context);"
+                f" compact to save ~{rec.context_count}C per build"
+            )
+            print(f"    drydock rigging compact {result.target} --include-file {rec.file}")
+        print()
+        print(f"  Breakeven: 2 context uses.  Compact all: drydock rigging compact {result.target}")
+
 
 def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
     from drydock.config import blueprint_dir_for, get_target_directory, record_activity
@@ -913,6 +928,11 @@ def _render_workspace_status(ws) -> None:
                 f" · {info.questionnaire_count} questionnaires"
             )
         print(f"   {'Next Step:':<{label_width}} {info.next_operation}")
+        if info.compact_recs:
+            print(
+                f"   {'Recommend:':<{label_width}} compact {len(info.compact_recs)} file(s)"
+                f" — run: drydock rigging compact {info.name}"
+            )
         for rec in reversed(info.history):
             cmd = rec.get("command", "")
             stamp = str(rec.get("time", "")).strip()
