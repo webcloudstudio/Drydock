@@ -934,8 +934,6 @@ class TestStubs:
     STUB_CASES = [
         (["document", "generate", "MyTarget"], "document generate"),
         (["document", "MyTarget"], "document"),
-        (["rigging", "update", "MyTarget"], "rigging update"),
-        (["rigging", "verify", "MyTarget"], "rigging verify"),
         (["build", "score", "MyTarget"], "build score"),
         (["refit", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
         (["refit", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),

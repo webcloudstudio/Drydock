@@ -280,6 +280,41 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_rigging_update(args: argparse.Namespace) -> int:
+    from drydock.rigging_update import update
+
+    target = args.Target
+    dry_run = getattr(args, "dry_run", False)
+    label = "[dry-run] " if dry_run else ""
+    print(f"{label}Updating rigging for target: {target}")
+    rc, log = update(target, dry_run=dry_run)
+    for line in log:
+        print(line)
+    print()
+    print(
+        "RESULT: dry-run — no files written"
+        if dry_run
+        else ("RESULT: done" if rc == 0 else "RESULT: failed")
+    )
+    return rc
+
+
+def cmd_rigging_verify(args: argparse.Namespace) -> int:
+    from drydock.rigging_verify import verify
+
+    target = args.Target
+    print(f"Verifying rigging for target: {target}")
+    rc, checks = verify(target)
+    print()
+    for c in checks:
+        icon = "✓" if c.passed else "✗"
+        detail = f"  — {c.message}" if c.message else ""
+        print(f"  {icon}  {c.name}{detail}")
+    print()
+    print(f"RESULT: {'PASS' if rc == 0 else 'FAIL'}")
+    return rc
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
     from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
@@ -1143,6 +1178,9 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_llm_override_flags(p_rig_c)
     p_rig_u = rig_sub.add_parser("update", help="Propagate rigging to a target project.")
     p_rig_u.add_argument("Target", metavar="<Target>")
+    p_rig_u.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing any files."
+    )
     p_rig_v = rig_sub.add_parser("verify", help="Verify target project rigging compliance.")
     p_rig_v.add_argument("Target", metavar="<Target>")
 
@@ -1427,9 +1465,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 record_activity("rigging compact", args.Target)
             return rc
         elif sub == "update":
-            not_implemented("rigging update")
+            return cmd_rigging_update(args)
         elif sub == "verify":
-            not_implemented("rigging verify")
+            return cmd_rigging_verify(args)
         else:
             not_implemented("rigging")
 
