@@ -639,6 +639,77 @@ def cmd_document_assemble(argv: list[str]) -> int:
     return rc
 
 
+def _parse_document_args(tokens: list[str], *, prog: str) -> argparse.Namespace:
+    import argparse as _ap
+
+    p = _ap.ArgumentParser(prog=prog, add_help=False)
+    p.add_argument("Target", metavar="<Target>")
+    p.add_argument("--model", default=None, metavar="<model>")
+    p.add_argument("--theme", default=None, metavar="<theme>")
+    p.add_argument(
+        "--llm-provider",
+        dest="llm_provider",
+        default=None,
+        choices=["claude", "codex"],
+        metavar="<provider>",
+    )
+    parsed, extra = p.parse_known_args(tokens)
+    if extra:
+        raise UsageError(f"Unexpected argument(s): {' '.join(extra)}")
+    return parsed
+
+
+def cmd_document_generate(args: argparse.Namespace) -> int:
+    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.target_documentation import generate_documentation
+
+    result = generate_documentation(
+        args.Target,
+        get_target_directory(),
+        model=get_model(getattr(args, "model", None)),
+        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+    )
+    print(f"Generated documentation: {result.docs_dir}")
+    for path in result.files:
+        print(f"  WROTE  {path.relative_to(result.docs_dir)}")
+    print(f"  LLM execution: {result.execution_id}")
+    return 0
+
+
+def cmd_target_document_assemble(args: argparse.Namespace) -> int:
+    from drydock.config import get_target_directory
+    from drydock.target_documentation import assemble_documentation
+
+    result = assemble_documentation(
+        args.Target,
+        get_target_directory(),
+        theme=getattr(args, "theme", None),
+    )
+    print(f"Assembled documentation: {result.output}")
+    print(f"  Theme: {result.theme}")
+    print(f"  Guides: {', '.join(result.guides)}")
+    return 0
+
+
+def cmd_document_pipeline(args: argparse.Namespace) -> int:
+    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.target_documentation import document_target
+
+    generated, assembled = document_target(
+        args.Target,
+        get_target_directory(),
+        model=get_model(getattr(args, "model", None)),
+        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        theme=getattr(args, "theme", None),
+    )
+    print(f"Generated documentation: {generated.docs_dir}")
+    for path in generated.files:
+        print(f"  WROTE  {path.relative_to(generated.docs_dir)}")
+    print(f"Assembled documentation: {assembled.output}")
+    print(f"  Theme: {assembled.theme}")
+    return 0
+
+
 def _is_target_dir(path: Path) -> bool:
     return (
         (path / "QuarterDeck" / "console.yaml").is_file()
@@ -1334,15 +1405,29 @@ def _dispatch_status(args: argparse.Namespace) -> int:
 def _dispatch_document(args: argparse.Namespace) -> int:
     tokens = args.args
     if not tokens:
-        not_implemented("document")
+        raise UsageError("Usage: drydock document <Target> [--model <model>] [--theme <theme>]")
     first = tokens[0] if tokens else ""
     if first == "generate":
-        not_implemented("document generate")
+        if len(tokens) < 2:
+            raise UsageError("Usage: drydock document generate <Target> [--model <model>]")
+        parsed = _parse_document_args(tokens[1:], prog="drydock document generate")
+        if args.model and parsed.model is None:
+            parsed.model = args.model
+        if args.llm_provider and parsed.llm_provider is None:
+            parsed.llm_provider = args.llm_provider
+        return cmd_document_generate(parsed)
     elif first == "assemble":
-        return cmd_document_assemble(tokens[1:])
+        if len(tokens) < 2:
+            raise UsageError("Usage: drydock document assemble <Target> [--theme <theme>]")
+        parsed = _parse_document_args(tokens[1:], prog="drydock document assemble")
+        return cmd_target_document_assemble(parsed)
     else:
-        not_implemented("document")
-    return 2  # unreachable; not_implemented exits
+        parsed = _parse_document_args(tokens, prog="drydock document")
+        if args.model and parsed.model is None:
+            parsed.model = args.model
+        if args.llm_provider and parsed.llm_provider is None:
+            parsed.llm_provider = args.llm_provider
+        return cmd_document_pipeline(parsed)
 
 
 def _parse_build_args(tokens: list[str]) -> argparse.Namespace:

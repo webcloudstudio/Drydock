@@ -70,9 +70,6 @@ The following commands are registered and visible in help, but not yet
 implemented. Each returns a clear message and exits with code `2`:
 
 ```bash
-drydock document generate <Blueprint> <Target>
-drydock document assemble <Blueprint> <Target>
-drydock document <Blueprint> <Target>
 drydock rigging update <Target>
 drydock rigging verify <Target>
 drydock build <Blueprint> <Target>
@@ -80,6 +77,14 @@ drydock build score <Blueprint> <Target>
 drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
 drydock analyze <Blueprint> [<Target>]
 drydock import <Blueprint> <Source> --format <source|speckit>
+```
+
+Implemented Target documentation commands:
+
+```bash
+drydock document generate <Target> [--model <model>]
+drydock document assemble <Target> [--theme <theme>]
+drydock document <Target> [--model <model>] [--theme <theme>]
 ```
 
 ## Configuration

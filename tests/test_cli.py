@@ -932,8 +932,6 @@ class TestStubs:
     """Deferred commands must exit 2, print a message, and not write anything."""
 
     STUB_CASES = [
-        (["document", "generate", "MyTarget"], "document generate"),
-        (["document", "MyTarget"], "document"),
         (["build", "score", "MyTarget"], "build score"),
         (["refit", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
         (["refit", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
@@ -959,37 +957,39 @@ class TestStubs:
 
 
 class TestDocumentAssemble:
-    """drydock document assemble is wired to build_documentation.main()."""
+    """drydock document assemble renders Target DOC files."""
 
-    def test_document_assemble_builds_output(self, tmp_path):
-        source = tmp_path / "spec.md"
-        output = tmp_path / "index.html"
-        source.write_text(
-            "---\ntitle: Test\neyebrow: E\nsubtitle: S\nauthor: A\nstudio: St\nyear: 2026\n---\n\n# Body\n",
+    @staticmethod
+    def _make_target(tmp_target_root, name: str = "MyTarget"):
+        target = tmp_target_root / name
+        docs = target / "docs"
+        docs.mkdir(parents=True)
+        (target / "METADATA.md").write_text(
+            "name: MyTarget\ndisplay_name: My Target\nshort_description: Test docs\n",
             encoding="utf-8",
         )
-        rc, out, err = run_cli(
-            "document", "assemble", "--source", str(source), "--output", str(output)
-        )
+        (docs / "DOC-OVERVIEW.md").write_text("# Overview\n\nHello.\n", encoding="utf-8")
+        return target
+
+    def test_document_assemble_builds_output(self, tmp_target_root, isolated_config, monkeypatch):
+        self._make_target(tmp_target_root)
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli("document", "assemble", "MyTarget")
+
         assert rc == 0
-        assert output.exists()
-        assert "Built documentation" in out
+        assert (tmp_target_root / "MyTarget" / "docs" / "index.html").exists()
+        assert "Assembled documentation" in out
 
-    def test_document_assemble_no_args_uses_defaults_or_exits(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+    def test_document_assemble_no_args_exits_usage(self):
         rc, out, err = run_cli("document", "assemble")
-        # With no source available the default source path will not exist; exits non-zero.
-        assert rc != 0 or "Built" in out
+        assert rc == 2
+        assert "Usage: drydock document assemble <Target>" in err
 
-    def test_document_assemble_is_not_a_stub(self, tmp_path):
-        source = tmp_path / "spec.md"
-        source.write_text(
-            "---\ntitle: T\neyebrow: E\nsubtitle: S\nauthor: A\nstudio: St\nyear: 2026\n---\n\n# B\n",
-            encoding="utf-8",
-        )
-        rc, out, err = run_cli(
-            "document", "assemble", "--source", str(source), "--output", str(tmp_path / "out.html")
-        )
+    def test_document_assemble_is_not_a_stub(self, tmp_target_root, isolated_config, monkeypatch):
+        self._make_target(tmp_target_root)
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        rc, out, err = run_cli("document", "assemble", "MyTarget")
         combined = out + err
         assert "not implemented" not in combined.lower()
 
