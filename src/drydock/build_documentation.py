@@ -6,10 +6,23 @@ import argparse
 import html
 import json
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_SPECIFICATION = Path("docs/Drydock_Specification.md")
 DEFAULT_OUTPUT = Path("docs/index.html")
+DEFAULT_THEME = "sail"
+SUPPORTED_THEMES = ("sail", "slate", "paper")
+
+PdfRenderer = Callable[[Path, Path], Path]
+
+
+@dataclass(frozen=True)
+class PublishedDocument:
+    html_path: Path
+    pdf_path: Path | None
+    theme: str
 
 
 def _unquote_yaml(value: str) -> str:
@@ -166,8 +179,17 @@ def _render_inline_markup(text: str) -> str:
     return escaped
 
 
-def render_page(metadata: dict[str, object], body: str) -> str:
+def _resolve_theme(metadata: dict[str, object], override: str | None) -> str:
+    selected = (override or str(metadata.get("theme", "")) or DEFAULT_THEME).strip().lower()
+    if selected not in SUPPORTED_THEMES:
+        available = ", ".join(SUPPORTED_THEMES)
+        raise ValueError(f"unknown publish theme: {selected!r}. Available themes: {available}")
+    return selected
+
+
+def render_page(metadata: dict[str, object], body: str, *, theme: str | None = None) -> str:
     """Render parsed Blueprint content into a self-contained HTML document."""
+    selected_theme = _resolve_theme(metadata, theme)
     title = html.escape(str(metadata.get("title", "Drydock")))
     eyebrow = html.escape(str(metadata.get("eyebrow", "")))
     subtitle = html.escape(str(metadata.get("subtitle", "")))
@@ -190,6 +212,14 @@ def render_page(metadata: dict[str, object], body: str) -> str:
 :root {{
   --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
   --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
+}}
+body.theme-slate {{
+  --ink: #26313d; --muted: #647180; --paper: #f4f6f8; --panel: #ffffff;
+  --navy: #17212b; --green: #2cb67d; --line: #d7dee5; --code: #e8edf2; --pre-bg: #202a34;
+}}
+body.theme-paper {{
+  --ink: #2e312d; --muted: #6a6f68; --paper: #fbfbf8; --panel: #ffffff;
+  --navy: #2f3430; --green: #427a5b; --line: #dfe3dd; --code: #eceee9; --pre-bg: #f0f2ed;
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--paper); color: var(--ink);
@@ -294,7 +324,7 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
 }}
 </style>
 </head>
-<body>
+<body class="theme-{selected_theme}">
 <header><strong>Drydock</strong><span>{copyright_text}</span></header>
 <main>
 <section class="cover">
@@ -329,12 +359,56 @@ mermaid.run({{ nodes: content.querySelectorAll(".mermaid") }});
 """
 
 
-def build_documentation(source: Path, output: Path) -> Path:
+def build_documentation(source: Path, output: Path, *, theme: str | None = None) -> Path:
     """Read a conformed Blueprint and write its assembled documentation page."""
     metadata, body = parse_source(source.read_text(encoding="utf-8"))
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render_page(metadata, body), encoding="utf-8")
+    output.write_text(render_page(metadata, body, theme=theme), encoding="utf-8")
     return output
+
+
+def default_pdf_path(html_output: Path) -> Path:
+    return html_output.with_suffix(".pdf")
+
+
+def render_pdf_with_playwright(html_path: Path, pdf_path: Path) -> Path:
+    """Render HTML to PDF with local Playwright/Chromium if available."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF publishing requires Playwright with a local Chromium browser. "
+            "Install Playwright support and run the browser install step, or omit --pdf."
+        ) from exc
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+        page.pdf(path=str(pdf_path), format="Letter", print_background=True)
+        browser.close()
+    return pdf_path
+
+
+def publish_document(
+    source: Path,
+    output: Path,
+    *,
+    theme: str | None = None,
+    pdf: bool = False,
+    pdf_output: Path | None = None,
+    pdf_renderer: PdfRenderer | None = None,
+) -> PublishedDocument:
+    metadata, _body = parse_source(source.read_text(encoding="utf-8"))
+    selected_theme = _resolve_theme(metadata, theme)
+    html_path = build_documentation(source, output, theme=selected_theme)
+    rendered_pdf: Path | None = None
+    if pdf:
+        rendered_pdf = pdf_output or default_pdf_path(html_path)
+        renderer = pdf_renderer or render_pdf_with_playwright
+        rendered_pdf = renderer(html_path, rendered_pdf)
+    return PublishedDocument(html_path=html_path, pdf_path=rendered_pdf, theme=selected_theme)
 
 
 def _repository_root() -> Path:
@@ -349,13 +423,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="conformed Markdown source")
     parser.add_argument("--output", type=Path, help="HTML output path")
+    parser.add_argument("--theme", choices=SUPPORTED_THEMES, default=None, help="publish theme")
+    parser.add_argument("--pdf", action="store_true", help="also render a PDF")
+    parser.add_argument("--pdf-output", type=Path, help="PDF output path")
     args = parser.parse_args(argv)
 
     root = _repository_root()
     source = args.source or _default_source(root)
     output = args.output or root / DEFAULT_OUTPUT
-    built = build_documentation(source, output)
-    print(f"Built documentation: {built}")
+    result = publish_document(
+        source,
+        output,
+        theme=args.theme,
+        pdf=args.pdf,
+        pdf_output=args.pdf_output,
+    )
+    print(f"Built documentation: {result.html_path}")
+    if result.pdf_path is not None:
+        print(f"Built PDF: {result.pdf_path}")
     return 0
 
 

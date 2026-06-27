@@ -44,6 +44,7 @@ class TestHelpAndVersion:
             "validate",
             "prompt",
             "document",
+            "publish",
             "rigging",
             "plan",
             "build",
@@ -1005,6 +1006,46 @@ class TestDocumentAssemble:
         rc, out, err = run_cli("document", "assemble", "MyTarget")
         combined = out + err
         assert "not implemented" not in combined.lower()
+
+
+class TestPublish:
+    """drydock publish renders frontmatter Markdown to HTML."""
+
+    SOURCE = """---
+title: Published
+eyebrow: Paper
+subtitle: Deterministic output
+author: Ed
+studio: Studio
+year: 2026
+---
+
+## Body
+
+Published content.
+"""
+
+    def test_publish_writes_html(self, tmp_path):
+        source = tmp_path / "paper.md"
+        output = tmp_path / "site" / "paper.html"
+        source.write_text(self.SOURCE, encoding="utf-8")
+
+        rc, out, err = run_cli("publish", str(source), "--output", str(output), "--theme", "slate")
+
+        assert rc == 0
+        assert output.exists()
+        assert "Published HTML:" in out
+        assert "Theme: slate" in out
+        assert 'body class="theme-slate"' in output.read_text(encoding="utf-8")
+
+    def test_publish_requires_output(self, tmp_path):
+        source = tmp_path / "paper.md"
+        source.write_text(self.SOURCE, encoding="utf-8")
+
+        rc, out, err = run_cli("publish", str(source))
+
+        assert rc == 2
+        assert "the following arguments are required: --output" in err
 
 
 class TestRunQuarterdeck:

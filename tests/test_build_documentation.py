@@ -10,8 +10,10 @@ from drydock.build_documentation import (
     DEFAULT_SPECIFICATION,
     _default_source,
     build_documentation,
+    default_pdf_path,
     main,
     parse_source,
+    publish_document,
     render_page,
 )
 
@@ -133,6 +135,48 @@ def test_build_documentation_writes_output(tmp_path: Path):
     assert "<h1>Example</h1>" in output.read_text(encoding="utf-8")
 
 
+def test_publish_document_writes_html_with_theme(tmp_path: Path):
+    source = tmp_path / "spec.md"
+    output = tmp_path / "site" / "index.html"
+    source.write_text(SOURCE, encoding="utf-8")
+
+    result = publish_document(source, output, theme="paper")
+
+    assert result.html_path == output
+    assert result.pdf_path is None
+    assert result.theme == "paper"
+    assert 'body class="theme-paper"' in output.read_text(encoding="utf-8")
+
+
+def test_publish_document_writes_pdf_with_injected_renderer(tmp_path: Path):
+    source = tmp_path / "spec.md"
+    output = tmp_path / "index.html"
+    pdf_output = tmp_path / "paper.pdf"
+    source.write_text(SOURCE, encoding="utf-8")
+    calls = []
+
+    def fake_renderer(html_path: Path, pdf_path: Path) -> Path:
+        calls.append((html_path, pdf_path))
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+        return pdf_path
+
+    result = publish_document(
+        source,
+        output,
+        pdf=True,
+        pdf_output=pdf_output,
+        pdf_renderer=fake_renderer,
+    )
+
+    assert result.pdf_path == pdf_output
+    assert pdf_output.read_bytes().startswith(b"%PDF")
+    assert calls == [(output, pdf_output)]
+
+
+def test_default_pdf_path_replaces_html_suffix():
+    assert default_pdf_path(Path("dist/paper.html")) == Path("dist/paper.pdf")
+
+
 def test_main_accepts_explicit_paths(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     source = tmp_path / "spec.md"
     output = tmp_path / "index.html"
@@ -172,6 +216,7 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock document <Target>",
         "drydock document generate <Target>",
         "drydock document assemble <Target>",
+        "drydock publish <Source.md>",
     )
 
     for command in expected:

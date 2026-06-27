@@ -639,6 +639,29 @@ def cmd_document_assemble(argv: list[str]) -> int:
     return rc
 
 
+def cmd_publish(args: argparse.Namespace) -> int:
+    from drydock.build_documentation import publish_document
+
+    try:
+        result = publish_document(
+            args.Source,
+            args.output,
+            theme=args.theme,
+            pdf=args.pdf,
+            pdf_output=args.pdf_output,
+        )
+    except ValueError as exc:
+        raise UsageError(str(exc)) from exc
+    except RuntimeError as exc:
+        raise DrydockError(str(exc)) from exc
+
+    print(f"Published HTML: {result.html_path}")
+    print(f"  Theme: {result.theme}")
+    if result.pdf_path is not None:
+        print(f"Published PDF: {result.pdf_path}")
+    return 0
+
+
 def _parse_document_args(tokens: list[str], *, prog: str) -> argparse.Namespace:
     import argparse as _ap
 
@@ -1222,6 +1245,44 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_llm_override_flags(p_doc)
     p_doc.add_argument("args", nargs=argparse.REMAINDER, metavar="[generate|assemble] <Target>")
 
+    # ── publish ──────────────────────────────────────────────────────────────
+    p_publish = sub.add_parser(
+        "publish",
+        help="Render frontmatter Markdown into publishable HTML.",
+        description=(
+            "drydock publish <Source.md> --output <Output.html>\n"
+            "drydock publish <Source.md> --output <Output.html> --pdf"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_publish.add_argument("Source", metavar="<Source.md>", type=Path)
+    p_publish.add_argument(
+        "--output",
+        required=True,
+        metavar="<Output.html>",
+        type=Path,
+        help="HTML output path.",
+    )
+    p_publish.add_argument(
+        "--theme",
+        choices=("sail", "slate", "paper"),
+        default=None,
+        metavar="<theme>",
+        help="Override the frontmatter theme.",
+    )
+    p_publish.add_argument(
+        "--pdf",
+        action="store_true",
+        help="Also render a PDF using local Playwright/Chromium.",
+    )
+    p_publish.add_argument(
+        "--pdf-output",
+        type=Path,
+        default=None,
+        metavar="<Output.pdf>",
+        help="PDF output path; defaults to the HTML path with .pdf.",
+    )
+
     # ── rigging ──────────────────────────────────────────────────────────────
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
     _add_llm_override_flags(p_rig)
@@ -1559,6 +1620,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "document":
         return _dispatch_document(args)
+
+    if command == "publish":
+        return cmd_publish(args)
 
     if command == "rigging":
         sub = getattr(args, "rigging_command", None)

@@ -1,5 +1,5 @@
 ---
-title: The Drydock
+title: The Drydock - Agile Specification Driven Design
 eyebrow: The SAIL Methodology for Governed Software Delivery
 subtitle: Drydock is an implementation of the SAIL Methodology to build programs from specifications.
 author: Ed Barlow
@@ -89,6 +89,7 @@ positional arguments:
     status    Show project status and orientation.
     validate  Validate a Blueprint's Typed Specification.
     document  Generate and assemble Blueprint documentation.
+    publish   Render frontmatter Markdown into publishable HTML.
     rigging   Manage Drydock Rigging.
     plan      Manage the build plan.
     build     Build or inspect build state.
@@ -356,6 +357,8 @@ drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
 drydock document <Target> [--model <model>] [--theme <theme>]
 
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
+
 drydock validate <Target> [--verbose]
 
 drydock rigging compact <Target> [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
@@ -620,6 +623,19 @@ Supported theme names are `slate`, `harbor`, and `paper`.
 | `DOC-SIGNALS.md` | Target build `docs/` | Optional signals, telemetry, and operating documentation |
 | `index.html` | Target build `docs/` | Browsable single-page documentation site |
 | `styles/spec.css` | Target build `docs/` | Documentation site theme CSS |
+
+### drydock publish
+
+```text
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
+```
+
+`drydock publish` deterministically renders a frontmatter Markdown document into publishable HTML.
+It uses document frontmatter for title, author, studio, cover text, theme, and optional SAIL idea
+cards. It does not call an LLM. Supported themes are `sail`, `slate`, and `paper`.
+
+`--pdf` also renders a PDF from the generated HTML using the local browser renderer. When
+`--pdf-output` is omitted, the PDF path is the HTML output path with a `.pdf` suffix.
 
 ## SAIL Phase 4 — Loop: The Refit
 

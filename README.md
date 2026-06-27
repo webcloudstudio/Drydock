@@ -91,6 +91,15 @@ Target documentation configuration is `$DRYDOCK_WORKSPACE/targets/<Target>/docum
 Generated Markdown and assembled HTML are build artifacts under
 `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`. Supported themes are `slate`, `harbor`, and `paper`.
 
+Deterministic frontmatter Markdown publishing:
+
+```bash
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
+```
+
+`drydock publish` does not call an LLM. It renders frontmatter Markdown into HTML; `--pdf` also
+renders a PDF when local Playwright/Chromium support is available.
+
 ## Configuration
 
 Drydock reads these global configuration values:
