@@ -215,7 +215,7 @@ def validate_specification(
         if stack:
             section2 = "Stack files"
             stack_dir = get_stack_dir()
-            for component in re.split(r"[/,\s]+", stack):
+            for component in re.split(r"[/,]+", stack):
                 component = component.strip()
                 if not component:
                     continue

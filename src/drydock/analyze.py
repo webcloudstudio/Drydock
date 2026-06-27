@@ -754,8 +754,9 @@ def analyze(
     screen_count = _safe_int("screens")
     stack = summary.get("stack", "not declared")
 
-    # Backfill stack into METADATA.md if the LLM identified it and the field is still blank.
-    if stack and stack != "not declared":
+    # Backfill stack into METADATA.md only when the LLM committed to a concrete value.
+    # Prose like "not declared (Python / Node.js / Go...)" must not be written.
+    if stack and not stack.startswith("not declared") and " " not in stack.strip():
         set_field(target_dir / METADATA_NAME, "stack", stack, overwrite=False)
 
     # Backfill display_name and short_description from proposed summary values when blank.
