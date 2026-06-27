@@ -87,6 +87,10 @@ drydock document assemble <Target> [--theme <theme>]
 drydock document <Target> [--model <model>] [--theme <theme>]
 ```
 
+Target documentation configuration is `$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`.
+Generated Markdown and assembled HTML are build artifacts under
+`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`. Supported themes are `slate`, `harbor`, and `paper`.
+
 ## Configuration
 
 Drydock reads these global configuration values:

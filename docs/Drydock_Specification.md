@@ -352,9 +352,9 @@ drydock build verify <Target> <STEP>
 drydock build status <Target>
 drydock build score <Target>
 
-drydock document <Target>
-drydock document generate <Target>
-drydock document assemble <Target>
+drydock document generate <Target> [--model <model>]
+drydock document assemble <Target> [--theme <theme>]
+drydock document <Target> [--model <model>] [--theme <theme>]
 
 drydock validate <Target> [--verbose]
 
@@ -557,11 +557,69 @@ acceptance-criteria files from the specification so the process can iterate on i
 
 ### drydock document
 
-This command reads the specification and branding instructions and creates documentation in `docs/index.html`.
+```text
+drydock document generate <Target> [--model <model>]
+drydock document assemble <Target> [--theme <theme>]
+drydock document <Target> [--model <model>] [--theme <theme>]
+```
 
-`drydock document generate <Target>` reads the Blueprint and Manifest and creates project documentation in `docs/DOC-*.md`.
-`drydock document assemble <Target>` combines into `docs/index.html`.
-`drydock document <Target>` runs both steps as one delivery pipeline.
+`drydock document` creates Target documentation from the Target Blueprint.
+
+`drydock document generate <Target>` reads the Target Blueprint, `METADATA.md`, `MANIFEST.md`,
+and documentation configuration and writes the standard Target documentation set under
+`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`.
+
+`drydock document assemble <Target>` reads existing `DOC-*.md` files under
+`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/` and renders one browsable documentation site at
+`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/index.html`.
+
+`drydock document <Target>` runs `generate` and then `assemble` as one documentation pipeline.
+
+The Target documentation configuration lives at
+`$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`.
+
+```yaml
+theme: slate
+sections:
+  - OVERVIEW
+  - FEATURES
+  - SCREENS
+  - ARCHITECTURE
+  - SCHEMA
+  - FLOWS
+  - PIPELINE
+  - SIGNALS
+```
+
+The `sections:` order defines the documentation navigation order. CLI flags override configuration
+values for the current run.
+
+Supported theme names are `slate`, `harbor`, and `paper`.
+
+**Input files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `documentation.yaml` | Target workspace root | Documentation section, navigation order, and theme configuration |
+| Typed Specification files | Target workspace `blueprint/` | Source material for generated documentation |
+| `MANIFEST.md` | Target workspace root | Build plan and implementation structure used as documentation context |
+| `METADATA.md` | Target workspace root | Target metadata used as documentation context |
+| `DOC-*.md` | Target build `docs/` | Markdown documentation files consumed by `document assemble` |
+
+**Output files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `DOC-OVERVIEW.md` | Target build `docs/` | Product overview documentation |
+| `DOC-FEATURES.md` | Target build `docs/` | Feature documentation |
+| `DOC-SCREENS.md` | Target build `docs/` | Screen and user interface documentation |
+| `DOC-ARCHITECTURE.md` | Target build `docs/` | Architecture documentation |
+| `DOC-SCHEMA.md` | Target build `docs/` | Optional data schema documentation |
+| `DOC-FLOWS.md` | Target build `docs/` | Optional workflow documentation |
+| `DOC-PIPELINE.md` | Target build `docs/` | Optional delivery pipeline documentation |
+| `DOC-SIGNALS.md` | Target build `docs/` | Optional signals, telemetry, and operating documentation |
+| `index.html` | Target build `docs/` | Browsable single-page documentation site |
+| `styles/spec.css` | Target build `docs/` | Documentation site theme CSS |
 
 ## SAIL Phase 4 — Loop: The Refit
 
@@ -1041,12 +1099,12 @@ drydock rigging verify <Target>
 project's `AGENTS.md` in an idempotent manner. `drydock rigging verify` checks target compliance
 with the Rigging contract.
 
-## Documentation — From Blueprint to docs/index.html
+## Documentation — From Blueprint to Build Docs
 
 Generates project documentation from a Blueprint's Typed Specification files in two phases. The AI
 phase writes `DOC-*.md` summaries per Specification section; the assembly phase renders them into a
-versioned `docs/index.html`. The two phases run independently so hand-edited `DOC-*.md` files
-survive re-assembly without being overwritten.
+versioned `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/index.html`. The two phases run independently so
+hand-edited build `DOC-*.md` files survive re-assembly without being overwritten.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -1061,18 +1119,20 @@ flowchart LR
   SPEC(["Blueprint"]):::dir --> GEN["document generate"]:::script
   GEN --> DOCMD{{"DOC-*.md"}}:::md
   DOCMD --> ASSEMBLE["document assemble"]:::script
-  ASSEMBLE --> HTML(["docs/index.html"]):::output
+  ASSEMBLE --> HTML(["Build docs/index.html"]):::output
 ```
 
 1. `drydock document generate <Target>` — AI pass only; creates or overwrites all `DOC-*.md`
-   summaries for each Specification section. **Destructive** — hand-edited `DOC-*.md` files are
-   overwritten without warning. Does not assemble.
+   summaries for each configured section under `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`.
+   **Destructive** — hand-edited build `DOC-*.md` files are overwritten without warning. Does not
+   assemble.
 2. `drydock document assemble <Target>` — no AI; reads existing `DOC-*.md` files and renders them
-   into a versioned `docs/index.html`. Safe to re-run after manual edits.
+   into `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/index.html`. Safe to re-run after manual edits.
 3. `drydock document <Target>` — runs generate then assemble (full pipeline).
 
-Edit `DOC-*.md` files directly to refine documentation without re-running the AI pass; then
-run `drydock document assemble` to regenerate the HTML.
+Edit build `DOC-*.md` files directly to refine documentation without re-running the AI pass; then
+run `drydock document assemble` to regenerate the HTML. The Target root `documentation.yaml`
+stores the navigation order and default theme.
 
 ### Spec Kit Import Contract
 

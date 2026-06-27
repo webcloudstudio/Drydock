@@ -82,7 +82,47 @@ THEMES: dict[str, dict[str, str]] = {
         "--c-pre-bg": "#202a34",
         "--c-pre-text": "#edf4f7",
         "--c-callout-bg": "#eaf4ef",
-    }
+    },
+    "harbor": {
+        "--c-bg": "#f7faf8",
+        "--c-text": "#24342f",
+        "--c-muted": "#5d7069",
+        "--c-topbar-bg": "#103d3f",
+        "--c-side-bg": "#17494d",
+        "--c-side-border": "#27656a",
+        "--c-side-section": "#a8c8c6",
+        "--c-accent": "#d49b32",
+        "--c-h3": "#3d716b",
+        "--c-code-bg": "#e8efeb",
+        "--c-code-text": "#203a38",
+        "--c-th-bg": "#dbe7e3",
+        "--c-th-text": "#213932",
+        "--c-td-border": "#d8e2de",
+        "--c-tr-alt": "#eef5f2",
+        "--c-pre-bg": "#183033",
+        "--c-pre-text": "#eef7f4",
+        "--c-callout-bg": "#f8f0df",
+    },
+    "paper": {
+        "--c-bg": "#fbfbf8",
+        "--c-text": "#2e312d",
+        "--c-muted": "#6a6f68",
+        "--c-topbar-bg": "#2f3430",
+        "--c-side-bg": "#3d463f",
+        "--c-side-border": "#59635c",
+        "--c-side-section": "#c6cec7",
+        "--c-accent": "#427a5b",
+        "--c-h3": "#556359",
+        "--c-code-bg": "#eceee9",
+        "--c-code-text": "#28322d",
+        "--c-th-bg": "#e0e5dd",
+        "--c-th-text": "#2c332e",
+        "--c-td-border": "#dfe3dd",
+        "--c-tr-alt": "#f2f4ef",
+        "--c-pre-bg": "#2d342f",
+        "--c-pre-text": "#f4f5ef",
+        "--c-callout-bg": "#edf5ee",
+    },
 }
 
 
@@ -156,9 +196,8 @@ def _read_config(path: Path) -> DocumentationConfig:
     return DocumentationConfig(theme=theme, sections=tuple(sections) or DEFAULT_SECTIONS)
 
 
-def _ensure_config(docs_dir: Path) -> DocumentationConfig:
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    path = docs_dir / CONFIG_NAME
+def _ensure_config(target_dir: Path) -> DocumentationConfig:
+    path = target_dir / CONFIG_NAME
     if not path.exists():
         path.write_text(default_config_text(), encoding="utf-8", newline="\n")
     return _read_config(path)
@@ -173,9 +212,11 @@ def _validate_theme(theme: str) -> str:
 
 
 def _target_dirs(target: str, targets_root: Path) -> tuple[Path, Path, Path]:
+    from drydock.config import build_dir_for
+
     target_dir = targets_root / target
     blueprint_dir = target_dir / "blueprint"
-    docs_dir = target_dir / "docs"
+    docs_dir = build_dir_for(target) / "docs"
     if not target_dir.is_dir():
         raise SpecificationError(f"Target not found: {target_dir}")
     return target_dir, blueprint_dir, docs_dir
@@ -191,6 +232,13 @@ def _metadata(target_dir: Path, target: str) -> dict[str, str]:
                 fields[key.strip()] = value.strip()
     fields.setdefault("display_name", fields.get("name", target))
     return fields
+
+
+def _manifest_text(target_dir: Path) -> str:
+    path = target_dir / "MANIFEST.md"
+    if not path.is_file():
+        raise SpecificationError(f"MANIFEST.md not found: {path}")
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _blueprint_sources(blueprint_dir: Path) -> list[Path]:
@@ -257,6 +305,14 @@ def _assemble_prompt_assembly(
             role="target metadata",
         )
     )
+    parts.extend(
+        contextual_markdown_parts(
+            "MANIFEST.md",
+            _manifest_text(target_dir),
+            filename="MANIFEST.md",
+            role="build plan",
+        )
+    )
     for source in sources:
         rel = source.relative_to(blueprint_dir)
         parts.extend(
@@ -317,7 +373,7 @@ def generate_documentation(
     on_text: TextCallback | None = None,
 ) -> GeneratedDocumentation:
     target_dir, blueprint_dir, docs_dir = _target_dirs(target, targets_root)
-    config = _ensure_config(docs_dir)
+    config = _ensure_config(target_dir)
     prompt = load_prompt(PROMPT_NAME)
     assembly = _assemble_prompt_assembly(
         prompt.body,
@@ -345,6 +401,7 @@ def generate_documentation(
         raise DrydockError("LLM execution failed for document generate")
 
     docs = parse_generated_docs(result.text, sections=config.sections)
+    docs_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name, content in sorted(docs.items()):
         path = docs_dir / name
@@ -557,7 +614,7 @@ def assemble_documentation(
     theme: str | None = None,
 ) -> AssembledDocumentation:
     target_dir, _blueprint_dir, docs_dir = _target_dirs(target, targets_root)
-    config = _ensure_config(docs_dir)
+    config = _ensure_config(target_dir)
     selected_theme = _validate_theme(theme or config.theme)
     guides = _discover_guides(docs_dir, config.sections)
     if not guides:

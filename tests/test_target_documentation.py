@@ -61,6 +61,10 @@ def _make_target(tmp_target_root: Path, name: str = "Demo") -> Path:
         "# Evidence\n\nBuild evidence is reviewed by humans.\n",
         encoding="utf-8",
     )
+    (target_dir / "MANIFEST.md").write_text(
+        "# MANIFEST: Demo\nstate: approved\n\nid: evidence-review\nkind: story\nstate: pending\n",
+        encoding="utf-8",
+    )
     return target_dir
 
 
@@ -80,12 +84,16 @@ def test_parse_generated_docs_rejects_unexpected_file():
         )
 
 
-def test_generate_documentation_writes_doc_files_and_config(tmp_target_root: Path):
-    _make_target(tmp_target_root)
+def test_generate_documentation_writes_doc_files_and_config(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    target_dir = _make_target(tmp_target_root)
+    build_root = tmp_path / "build"
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
     calls = []
 
     def fake_runner(*args, **kwargs):
-        calls.append(kwargs)
+        calls.append((args, kwargs))
         return FakeRun()
 
     result = generate_documentation(
@@ -96,7 +104,9 @@ def test_generate_documentation_writes_doc_files_and_config(tmp_target_root: Pat
         runner=fake_runner,
     )
 
-    assert (result.docs_dir / "documentation.yaml").exists()
+    assert (target_dir / "documentation.yaml").exists()
+    assert not (target_dir / "docs" / "documentation.yaml").exists()
+    assert result.docs_dir == build_root / "Demo" / "docs"
     assert (
         (result.docs_dir / "DOC-OVERVIEW.md").read_text(encoding="utf-8").startswith("# Overview")
     )
@@ -106,8 +116,9 @@ def test_generate_documentation_writes_doc_files_and_config(tmp_target_root: Pat
         "DOC-OVERVIEW.md",
         "DOC-SCREENS.md",
     ]
-    assert calls[0]["command_name"] == "document generate"
-    assert calls[0]["target"] == "Demo"
+    assert calls[0][1]["command_name"] == "document generate"
+    assert calls[0][1]["target"] == "Demo"
+    assert "# MANIFEST: Demo" in calls[0][0][0]
 
 
 def test_generate_documentation_missing_target_fails(tmp_target_root: Path):
@@ -115,8 +126,11 @@ def test_generate_documentation_missing_target_fails(tmp_target_root: Path):
         generate_documentation("Missing", tmp_target_root, runner=lambda *a, **k: FakeRun())
 
 
-def test_generate_documentation_bad_model_output_fails(tmp_target_root: Path):
+def test_generate_documentation_bad_model_output_fails(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _make_target(tmp_target_root)
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(tmp_path / "build"))
 
     def fake_runner(*args, **kwargs):
         return FakeRun(text="No blocks")
@@ -125,10 +139,14 @@ def test_generate_documentation_bad_model_output_fails(tmp_target_root: Path):
         generate_documentation("Demo", tmp_target_root, runner=fake_runner)
 
 
-def test_assemble_documentation_writes_sidebar_app(tmp_target_root: Path):
+def test_assemble_documentation_writes_sidebar_app(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     target_dir = _make_target(tmp_target_root)
-    docs = target_dir / "docs"
-    docs.mkdir()
+    build_root = tmp_path / "build"
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
+    docs = build_root / "Demo" / "docs"
+    docs.mkdir(parents=True)
     (docs / "DOC-OVERVIEW.md").write_text("# Overview\n\nHello.\n", encoding="utf-8")
     (docs / "DOC-FEATURES.md").write_text(
         "# Features\n\n## Evidence Review\n\nReview evidence.\n", encoding="utf-8"
@@ -138,6 +156,7 @@ def test_assemble_documentation_writes_sidebar_app(tmp_target_root: Path):
     html = result.output.read_text(encoding="utf-8")
 
     assert result.output == docs / "index.html"
+    assert (target_dir / "documentation.yaml").exists()
     assert (docs / "styles" / "spec.css").exists()
     assert 'class="sidebar"' in html
     assert "showGuide" in html
@@ -145,25 +164,36 @@ def test_assemble_documentation_writes_sidebar_app(tmp_target_root: Path):
     assert "marked.parse" in html
 
 
-def test_assemble_documentation_missing_docs_fails(tmp_target_root: Path):
+def test_assemble_documentation_missing_docs_fails(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _make_target(tmp_target_root)
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(tmp_path / "build"))
 
     with pytest.raises(SpecificationError, match="No DOC-\\*\\.md"):
         assemble_documentation("Demo", tmp_target_root)
 
 
-def test_assemble_documentation_bad_theme_fails(tmp_target_root: Path):
-    target_dir = _make_target(tmp_target_root)
-    docs = target_dir / "docs"
-    docs.mkdir()
+def test_assemble_documentation_bad_theme_fails(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _make_target(tmp_target_root)
+    build_root = tmp_path / "build"
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
+    docs = build_root / "Demo" / "docs"
+    docs.mkdir(parents=True)
     (docs / "DOC-OVERVIEW.md").write_text("# Overview\n", encoding="utf-8")
 
     with pytest.raises(UsageError, match="Unknown documentation theme"):
         assemble_documentation("Demo", tmp_target_root, theme="unknown")
 
 
-def test_document_target_runs_generate_then_assemble(tmp_target_root: Path):
+def test_document_target_runs_generate_then_assemble(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _make_target(tmp_target_root)
+    build_root = tmp_path / "build"
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
 
     generated, assembled = document_target(
         "Demo",
@@ -172,4 +202,5 @@ def test_document_target_runs_generate_then_assemble(tmp_target_root: Path):
     )
 
     assert (generated.docs_dir / "DOC-OVERVIEW.md").exists()
+    assert generated.docs_dir == build_root / "Demo" / "docs"
     assert assembled.output.exists()

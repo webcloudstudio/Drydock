@@ -960,25 +960,34 @@ class TestDocumentAssemble:
     """drydock document assemble renders Target DOC files."""
 
     @staticmethod
-    def _make_target(tmp_target_root, name: str = "MyTarget"):
+    def _make_target(tmp_target_root, build_root, name: str = "MyTarget"):
         target = tmp_target_root / name
-        docs = target / "docs"
+        target.mkdir(parents=True)
+        docs = build_root / name / "docs"
         docs.mkdir(parents=True)
         (target / "METADATA.md").write_text(
             "name: MyTarget\ndisplay_name: My Target\nshort_description: Test docs\n",
             encoding="utf-8",
         )
+        (target / "blueprint").mkdir(parents=True, exist_ok=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: MyTarget\nstate: approved\n", encoding="utf-8"
+        )
         (docs / "DOC-OVERVIEW.md").write_text("# Overview\n\nHello.\n", encoding="utf-8")
         return target
 
-    def test_document_assemble_builds_output(self, tmp_target_root, isolated_config, monkeypatch):
-        self._make_target(tmp_target_root)
+    def test_document_assemble_builds_output(
+        self, tmp_target_root, tmp_path, isolated_config, monkeypatch
+    ):
+        build_root = tmp_path / "build"
+        self._make_target(tmp_target_root, build_root)
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
 
         rc, out, err = run_cli("document", "assemble", "MyTarget")
 
         assert rc == 0
-        assert (tmp_target_root / "MyTarget" / "docs" / "index.html").exists()
+        assert (build_root / "MyTarget" / "docs" / "index.html").exists()
         assert "Assembled documentation" in out
 
     def test_document_assemble_no_args_exits_usage(self):
@@ -986,9 +995,13 @@ class TestDocumentAssemble:
         assert rc == 2
         assert "Usage: drydock document assemble <Target>" in err
 
-    def test_document_assemble_is_not_a_stub(self, tmp_target_root, isolated_config, monkeypatch):
-        self._make_target(tmp_target_root)
+    def test_document_assemble_is_not_a_stub(
+        self, tmp_target_root, tmp_path, isolated_config, monkeypatch
+    ):
+        build_root = tmp_path / "build"
+        self._make_target(tmp_target_root, build_root)
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
         rc, out, err = run_cli("document", "assemble", "MyTarget")
         combined = out + err
         assert "not implemented" not in combined.lower()
