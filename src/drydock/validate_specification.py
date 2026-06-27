@@ -217,7 +217,7 @@ def validate_specification(
             stack_dir = get_stack_dir()
             for component in re.split(r"[/,]+", stack):
                 component = component.strip()
-                if not component:
+                if not component or not component.endswith(".md"):
                     continue
                 comp_lower = component.lower()
                 stack_file = stack_dir / f"{comp_lower}.md"
