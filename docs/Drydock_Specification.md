@@ -1,8 +1,8 @@
 ---
-title: The Drydock
-title_sub: Agile Specification Driven Design
+title: Agile Specification Driven Design
+title_sub:
 eyebrow: The SAIL Methodology for Governed Software Delivery
-subtitle:
+subtitle: The Complete Drydock Documentation
 logo: drydock_logo.png
 author: Ed Barlow
 studio: Web Cloud Studio
