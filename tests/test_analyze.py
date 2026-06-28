@@ -15,6 +15,7 @@ from drydock.analyze import (
     _is_compass_unpopulated,
     _normalize_analysis_layout,
     _normalize_analysis_summary,
+    _normalize_discovery,
     _parse_blocks,
     _parse_output,
     _remove_open_questions_section,
@@ -228,6 +229,7 @@ _DISCOVERY_STACK = json.dumps(
                 "label": "Stack",
                 "prompt": "What stack?",
                 "input": "textarea",
+                "options": ["other", "flask.md", "python.md"],
             }
         ],
     },
@@ -1019,6 +1021,26 @@ def test_commanders_chair_story_items_stop_before_analysis_notes_and_skip_header
     ]
 
 
+def test_normalize_discovery_prefills_identity_answers():
+    normalized = _normalize_discovery(
+        "discovery-identity.json",
+        json.loads(_DISCOVERY_IDENTITY),
+    )
+
+    questions = {q["id"]: q for q in normalized["questions"]}
+    assert questions["display_name"]["answer"] == "Test Project"
+    assert questions["short_description"]["answer"] == "A test project for automated analysis."
+
+
+def test_normalize_discovery_forces_stack_checkbox_grid_and_sorted_options():
+    normalized = _normalize_discovery("discovery-stack.json", json.loads(_DISCOVERY_STACK))
+
+    question = normalized["questions"][0]
+    assert question["input"] == "checkbox_grid"
+    assert question["options"] == ["flask.md", "other", "python.md"]
+    assert question["answer"] == ""
+
+
 # ---------------------------------------------------------------------------
 # analyze()
 # ---------------------------------------------------------------------------
@@ -1241,6 +1263,20 @@ class TestAnalyze:
         assert "display_name" in questions
         assert "short_description" in questions
         assert questions["display_name"]["proposed"] == "Test Project"
+        assert questions["display_name"]["answer"] == "Test Project"
+        assert questions["short_description"]["answer"] == "A test project for automated analysis."
+
+    def test_discovery_stack_questionnaire_written_as_sorted_checkbox_grid(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(include_spikes=True)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+        assert result.ok
+        stack_path = target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json"
+        data = json.loads(stack_path.read_text(encoding="utf-8"))
+        question = data["questions"][0]
+        assert question["input"] == "checkbox_grid"
+        assert question["options"] == ["flask.md", "other", "python.md"]
+        assert question["answer"] == ""
 
     def test_missing_blueprint_raises(self, tmp_path):
         target_dir = tmp_path / "NoBlueprint"

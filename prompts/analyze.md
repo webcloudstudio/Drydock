@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260628 V11
+version: 20260628 V12
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -346,7 +346,8 @@ Each questionnaire uses this shape:
       "label": "{Short Label}",
       "prompt": "{Full question for the Product Owner.}",
       "input": "text | textarea | select | checkbox_grid",
-      "proposed": "{Optional proposed value for the Commander to confirm or override}"
+      "proposed": "{Optional proposed value for the Commander to confirm or override}",
+      "answer": "{Optional current answer. Use the proposed value for generated identity answers; use an empty string for undecided stack selections.}"
     }
   ]
 }
@@ -357,8 +358,10 @@ Each questionnaire uses this shape:
 the job block, derive a proposed display name and one-sentence short description from the sources, include
 them in the `display_name` and `short_description` summary fields in `ANALYSIS.md`, and emit a
 `discovery-identity.json` questionnaire for the Commander to confirm or override. Use the `proposed` field
-on each question to pre-fill the proposed value. Do **not** emit `discovery-identity.json` when both
-`DISPLAY_NAME` and `SHORT_DESCRIPTION` are already set (i.e., neither is `(blank)`).
+and the `answer` field on each question to pre-fill the proposed value. The `answer` field must
+match the value analyze writes to METADATA.md so QuarterDeck does not render an empty box. Do **not**
+emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` are already set
+(i.e., neither is `(blank)`).
 
 ```
 === discovery-identity.json ===
@@ -372,14 +375,16 @@ on each question to pre-fill the proposed value. Do **not** emit `discovery-iden
       "label": "Display Name",
       "prompt": "The display name Drydock will use for this project. Edit to override the proposal.",
       "input": "text",
-      "proposed": "{Proposed display name derived from the sources}"
+      "proposed": "{Proposed display name derived from the sources}",
+      "answer": "{Proposed display name derived from the sources}"
     },
     {
       "id": "short_description",
       "label": "Short Description",
       "prompt": "One-sentence description of what this project does. Edit to override the proposal.",
       "input": "textarea",
-      "proposed": "{Proposed one-sentence description derived from the sources}"
+      "proposed": "{Proposed one-sentence description derived from the sources}",
+      "answer": "{Proposed one-sentence description derived from the sources}"
     }
   ]
 }
@@ -397,7 +402,28 @@ list their names only.
   questionnaire (a gap: no stack guidance exists for it).
 - If the sources are silent on the stack, emit a `discovery-stack.json` with `"input": "checkbox_grid"`
   whose `options` are the filtered filename list plus `"other"`, for the Product Owner to choose.
-  Use `checkbox_grid` (not `select`) so the Commander can select multiple stack components.
+  Sort `options` alphabetically. Use `checkbox_grid` (not `select`) so the Commander can select
+  multiple stack components. Set `"answer": ""`; do not guess stack selections.
+
+```
+=== discovery-stack.json ===
+{
+  "id": "discovery-stack",
+  "title": "Discovery: Technology Stack",
+  "purpose": "Select the stack guidance components that apply before planning.",
+  "questions": [
+    {
+      "id": "stack_components",
+      "label": "Stack Components",
+      "prompt": "Select all Rigging stack guidance components that apply. Leave blank when undecided.",
+      "input": "checkbox_grid",
+      "options": ["{alphabetized injected Rigging catalog filename}", "other"],
+      "answer": ""
+    }
+  ]
+}
+=== END discovery-stack.json ===
+```
 
 ---
 
@@ -429,8 +455,9 @@ list their names only.
   existing questionnaire answer. Never emit a duplicate or reworded version of an existing
   unanswered questionnaire.
 - Stack questionnaire uses `"input": "checkbox_grid"`. Options are the injected catalog filenames
-  (no `_compact` variants), filtered to the detected project type, plus `"other"`. Never open the
-  per-technology stack files — list their names only.
+  (no `_compact` variants), filtered to the detected project type, alphabetized, plus `"other"`.
+  Never open the per-technology stack files — list their names only. Leave `answer` as an empty
+  string until the Commander selects one or more components.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with
   no matching file is a discovery questionnaire.
 - SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise

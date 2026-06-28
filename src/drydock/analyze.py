@@ -584,6 +584,31 @@ def _count_open_discoveries(questionnaires_dir: Path) -> int:
     return count
 
 
+def _normalize_discovery(name: str, data: dict) -> dict:
+    """Normalize generated discovery JSON before persisting it.
+
+    The prompt is advisory; the persisted questionnaire is the contract consumed by
+    QuarterDeck and plan creation.
+    """
+    normalized = dict(data)
+    questions = []
+    for raw_question in normalized.get("questions", []):
+        question = dict(raw_question)
+        if name == "discovery-identity.json":
+            proposed = str(question.get("proposed", "")).strip()
+            if proposed and not str(question.get("answer", "")).strip():
+                question["answer"] = proposed
+        if name == "discovery-stack.json":
+            question["input"] = "checkbox_grid"
+            options = question.get("options", [])
+            if isinstance(options, list):
+                question["options"] = sorted(str(option) for option in options)
+            question.setdefault("answer", "")
+        questions.append(question)
+    normalized["questions"] = questions
+    return normalized
+
+
 def _parse_output(
     text: str,
 ) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
@@ -791,6 +816,7 @@ def analyze(
         discovery_path = questionnaires_dir / name
         if discovery_path.exists():
             continue  # never overwrite an existing questionnaire; answers must not be destroyed
+        data = _normalize_discovery(name, data)
         discovery_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         discovery_paths.append(discovery_path)
 
