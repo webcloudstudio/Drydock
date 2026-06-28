@@ -102,6 +102,7 @@ class AnalyzeResult:
     discovery_paths: tuple[Path, ...]
     quality: str
     story_count: int
+    feature_count: int
     question_count: int
     blocker_count: int
     screen_count: int
@@ -589,7 +590,7 @@ def _parse_output(
     """Return (analysis, sea_trials, soundings, compass_or_none, blockers_or_none, discoveries,
     quality, summary).
 
-    ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, screens.
+    ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, features.
     Questionnaires (``discovery-*.json``) and ``BLOCKERS.md`` are emitted dynamically — only when
     the analysis surfaces an open question or a blocker — so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
@@ -716,6 +717,7 @@ def analyze(
             discovery_paths=(),
             quality="unknown",
             story_count=0,
+            feature_count=0,
             question_count=0,
             blocker_count=0,
             screen_count=0,
@@ -750,8 +752,9 @@ def analyze(
             return 0
 
     story_count = _safe_int("stories")
+    feature_count = _safe_int("features")
     blocker_count = _safe_int("blockers")
-    screen_count = _safe_int("screens")
+    screen_count = feature_count or _safe_int("screens")
     stack = summary.get("stack", "not declared")
 
     # Backfill stack into METADATA.md only when the LLM committed to a concrete value.
@@ -832,6 +835,7 @@ def analyze(
         discovery_paths=tuple(sorted(discovery_paths)),
         quality=quality,
         story_count=story_count,
+        feature_count=feature_count,
         question_count=question_count,
         blocker_count=blocker_count,
         screen_count=screen_count,

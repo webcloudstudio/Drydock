@@ -26,6 +26,7 @@ from drydock.analyze import (
 from drydock.errors import SpecificationError
 from drydock.quarterdeck_state import (
     _blocker_items,
+    _feature_items,
     _fill_chair,
     _render_story_breakdown_html,
     _screen_items,
@@ -94,6 +95,7 @@ blueprint: /some/path
 Quality: Ready
   blockers: 0
   questions: 0
+  features: 4
   stories: 5
   stack: python/flask
   screens: 2
@@ -129,6 +131,7 @@ blueprint: /some/path
 Quality: Ready
   blockers: 0
   questions: 0
+  features: 2
   stories: 5
   stack: python/flask
   screens: 2
@@ -690,6 +693,7 @@ class TestParseOutput:
     def test_summary_fields_parsed(self):
         _, _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         assert summary.get("stories") == "5"
+        assert summary.get("features") == "4"
         assert summary.get("blockers") == "0"
         assert summary.get("questions") == "0"
         assert summary.get("stack") == "python/flask"
@@ -904,8 +908,8 @@ class TestFillCaptainsChair:
         assert "ready" in result
         assert "✓" in result
         assert "Analyzed" in result
-        assert "No open questions" in result
-        assert "<strong>Questions:</strong> No open questions" in result
+        assert "No open questionnaires" in result
+        assert "<strong>Questionnaires:</strong> No open questionnaires" in result
 
     def test_blocked_css_class(self):
         result = _fill_chair(
@@ -958,9 +962,9 @@ class TestFillCaptainsChair:
             blockers_html="",
             screens_html="",
         )
-        assert "<h2>Questions</h2>" in result
-        assert "Open questions remain" in result
-        assert "<strong>Questions:</strong>" not in result
+        assert "<h2>Questionnaires</h2>" in result
+        assert "Open questionnaires remain" in result
+        assert "<strong>Questionnaires:</strong>" not in result
 
 
 def test_story_breakdown_extracts_feature_area_counts():
@@ -987,7 +991,32 @@ def test_commanders_chair_extracts_story_screen_and_blocker_items():
         "USA-003 - Five",
     ]
     assert _screen_items(_GROUPED_ANALYSIS_CONTENT) == ["Setup Screen: AWS"]
+    assert _feature_items(_GROUPED_ANALYSIS_CONTENT) == ["Foundation", "Setup Screen: AWS"]
     assert _blocker_items(_BLOCKERS_CONTENT) == ["blocker-001: Missing project name"]
+
+
+def test_commanders_chair_story_items_stop_before_analysis_notes_and_skip_headers():
+    analysis = """\
+# Blueprint Analysis: TestProject
+
+## Story List
+
+### Feature: Inventory
+
+| # | Story | High-level AC |
+|---|---|---|
+| 1 | HTTP server initialization | Server starts. |
+| 2 | Root route `GET /` | Route responds. |
+
+## Analysis Notes
+
+- This note is not a story.
+"""
+
+    assert _story_items(analysis) == [
+        "1 - HTTP server initialization",
+        "2 - Root route `GET /`",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1029,9 +1058,10 @@ class TestAnalyze:
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.story_count == 5
+        assert result.feature_count == 4
         assert result.blocker_count == 0
         assert result.question_count == 0
-        assert result.screen_count == 2
+        assert result.screen_count == 4
         assert result.stack == "python/flask"
 
     def test_question_count_tracks_open_discovery_files_not_model_summary(self, tmp_path):
@@ -1298,12 +1328,13 @@ class TestLifecycleState:
         assert "Build Directory:" not in html
         assert 'class="stat" href="#stories"' in html
         assert 'section id="stories"' in html
-        assert "<strong>Questions:</strong> No open questions" in html
-        assert "No open questions" in html
+        assert "<strong>Questionnaires:</strong> No open questionnaires" in html
+        assert "No open questionnaires" in html
         assert "Next Step" in html
         assert "drydock plan MyTarget" in html
         assert "FND-001 - One" in html
         assert "Setup Screen: AWS" in html
+        assert '<div class="stat-label">Features</div>' in html
         assert "Story Shape" not in html
         assert "Stack" not in html
 

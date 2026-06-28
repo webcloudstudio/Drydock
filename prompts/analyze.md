@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260622 V10
+version: 20260628 V11
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -23,12 +23,13 @@ The core elements are defined below.
 
 Your goal is to do planning for the information you have imported.
 
-You will be creating a set of features and stories.  Features group stories.
+You will be creating a set of Agile features and stories. Features group stories; they are the
+only grouping unit used by `ANALYSIS.md` and the Commanders Chair.
 You raise anything the human must decide as either a blocker or a discovery questionnaire.  A
 blocker stops the pipeline; a discovery questionnaire does not.  Both are carried as questions for
 the human to answer.
 
-A story is an atomic testable unit of work that might have acceptance criteria and guardrails at a later stage.  Stories include user interface screens, the routes used to service those screens, cli options, api served, batch scripts needed, import/export operations, and other 'atomic' units of work according to agile best practices.
+A story is an atomic testable unit of work that might have acceptance criteria and guardrails at a later stage. Stories include user interface screens, the routes used to service those screens, cli options, api served, batch scripts needed, import/export operations, and other atomic units of work according to agile best practices. Do not create a separate Screens grouping or count; UI screens are stories under the relevant Agile feature.
 
 You will note the interrelationships between these elements — for example, a user interface screen uses api calls, and an export depends on the data it reads.  Note them to inform how you cut stories; do not build a dependency graph.  The graph is constructed later, by `plan create`.
 
@@ -167,13 +168,15 @@ carried forward only as discovery questionnaires. A discovery questionnaire is a
 for a blocker — schedule it, mark the blocker answered, carry on. Do not duplicate a questionnaire
 question in `ANALYSIS.md`.
 
-**4. Derive the story list.**
+**4. Derive the feature and story list.**
 - *Consumes:* the sources + role notes + project type.
-- *Emits:* the story list at title + high-level AC level (powers ANALYSIS.md `## Story List`).
+- *Emits:* the Agile feature list and story list at title + high-level AC level (powers ANALYSIS.md `## Story List`).
+- Each feature is an Agile feature area that groups related stories.
 - Each story corresponds to one spec file scope.
 - Story cap: ~100 stories. If you identify more than 100, the spec is over-decomposed; surface
   this as a blocker and offer to consolidate.
-- Group by feature area. Organize as the project shape suggests — no prescribed order.
+- Group all stories under `### Feature: {Feature Name}` headings. Do not use Screens as a
+  separate grouping; screens are stories.
 
 **5. Derive SOUNDINGS milestones from the story list.**
 - *Consumes:* the story list (and any explicit acceptance criteria stated in the sources).
@@ -210,8 +213,15 @@ Emit exactly these blocks in order. COMPASS.md block is conditional.
 # Blueprint Analysis: {ProjectName}
 ## Story List
 
-{Tables or grouped lists of story titles with high-level AC. Organize by feature area.
-No prescribed format — use what best communicates the project shape.}
+Use this exact repeated shape. The `features` summary count must equal the number of
+`### Feature:` headings. The `stories` summary count must equal the total number of story rows
+across all feature tables.
+
+### Feature: {Feature Name}
+
+| ID | Story | High-level AC |
+|---|---|---|
+| {FEATURE-SLUG}-001 | {Story title} | {High-level acceptance signal} |
 
 ## Analysis Notes
 
@@ -221,9 +231,9 @@ blueprint: {BLUEPRINT_PATH from job block}
 Quality: {Ready | Questions | Blocked}
   blockers: {N}
   questions: {N}
+  features: {N}
   stories: {N}
   stack: {declared stack value or "not declared"}
-  screens: {N}
   display_name: {proposed display name derived from the sources, or "not proposed" when DISPLAY_NAME is already set}
   short_description: {one-sentence product description derived from the sources, or "not proposed" when SHORT_DESCRIPTION is already set}
 
@@ -408,6 +418,12 @@ list their names only.
   never as a generic catch-all, and never for work the team can derive itself (acceptance criteria,
   success evidence, smoke checks, build gates, test sequences — these are synthesized outputs).
 - Story list is titles + high-level AC only. Do not write typed spec file content.
+- Story list uses `### Feature: {Feature Name}` headings and `| ID | Story | High-level AC |`
+  tables only. Do not emit `| # | Story |`, unheaded story tables, a separate Screens section,
+  or narrative notes inside `## Story List`.
+- The `features` summary count equals the number of `### Feature:` headings. The `stories`
+  summary count equals the number of story rows in those feature tables. These counts must tie
+  to the Analysis tab and Commanders Chair.
 - Story cap: if you derive more than 100 stories, surface as a blocker.
 - Never re-ask a question already settled by `ANALYZE_COMPASS.md`, a prior `BLOCKERS.md`, or an
   existing questionnaire answer. Never emit a duplicate or reworded version of an existing

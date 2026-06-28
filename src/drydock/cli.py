@@ -348,7 +348,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     _quality_icon = {"Ready": "✓", "Questions": "⚠", "Blocked": "✗"}.get(result.quality, "?")
     print(
         f"Quality: {_quality_icon}  {result.quality}  "
-        f"({result.story_count} stories · {result.question_count} questions · "
+        f"({result.feature_count} features · {result.story_count} stories · "
+        f"{result.question_count} questionnaires · "
         f"{result.blocker_count} blockers)"
     )
     print()

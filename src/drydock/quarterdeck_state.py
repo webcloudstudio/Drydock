@@ -32,7 +32,10 @@ _QUALITY_META: dict[str, tuple[str, str, str]] = {
     "Blocked": ("blocked", "✗", "Unresolved blockers. Review before continuing."),
 }
 
-_STORY_SECTION_RE = re.compile(r"^###\s+(?:Feature Area\s+\d+\s+—\s+)?(.+?)\s*$", re.MULTILINE)
+_STORY_SECTION_RE = re.compile(
+    r"^###\s+(?:(?:Feature Area|Feature)\s+\d+\s+—\s+|Feature:\s*)?(.+?)\s*$",
+    re.MULTILINE,
+)
 _STORY_ROW_RE = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
@@ -100,21 +103,21 @@ def _chair_for_analyzed(target_dir: Path, template: str, today: str) -> str | No
     story_items = _story_items(analysis_text)
     question_items = _question_items(questionnaires_dir)
     blocker_items = _blocker_items(blockers_text)
-    screen_items = _screen_items(analysis_text)
+    feature_items = _feature_items(analysis_text)
 
     story_count = len(story_items)
     question_count = len(question_items)
     blocker_count = 1 if blockers_text and blockers_text.strip() else 0
-    screen_count = len(screen_items)
+    feature_count = len(feature_items)
 
     quality = "Blocked" if blocker_count else ("Questions" if question_count else "Ready")
     target_name = target_dir.name
 
     stats_html = _stat_cards([
+        (None, str(feature_count), "Features"),
         ("#stories", str(story_count), "Stories"),
-        (None, str(question_count), "Questions"),
+        (None, str(question_count), "Questionnaires"),
         (None, str(blocker_count), "Blockers"),
-        (None, str(screen_count), "Screens"),
     ])
 
     return _fill_chair(
@@ -129,7 +132,7 @@ def _chair_for_analyzed(target_dir: Path, template: str, today: str) -> str | No
         stories_html=_list_html(story_items, empty="No stories found."),
         questions_html=_list_html(question_items, empty="No open questionnaires."),
         blockers_html=_list_html(blocker_items, empty="No blockers."),
-        screens_html=_list_html(screen_items, empty="No screens found."),
+        screens_html=_list_html(feature_items, empty="No features found."),
     )
 
 
@@ -311,15 +314,15 @@ def _fill_chair(
     screens_html: str,
 ) -> str:
     css_class, icon, desc = _QUALITY_META.get(quality, ("ready", "✓", quality))
-    question_status = "Open questions remain" if question_count else "No open questions"
+    question_status = "Open questionnaires remain" if question_count else "No open questionnaires"
     if question_count:
         question_lead_html = (
-            f'<h2>Questions</h2><div class="question-status">{escape(question_status)}</div>'
+            f'<h2>Questionnaires</h2><div class="question-status">{escape(question_status)}</div>'
         )
     else:
         question_lead_html = (
             '<div class="question-status question-status-inline">'
-            f"<strong>Questions:</strong> {escape(question_status)}</div>"
+            f"<strong>Questionnaires:</strong> {escape(question_status)}</div>"
         )
 
     replacements = {
@@ -350,10 +353,9 @@ def _fill_chair(
 
 
 def _story_breakdown(analysis_text: str) -> list[tuple[str, int]]:
-    story_list = analysis_text.split("## Story List", 1)
-    if len(story_list) != 2:
+    body = _story_list_body(analysis_text)
+    if not body:
         return []
-    body = story_list[1]
     sections = list(_STORY_SECTION_RE.finditer(body))
     breakdown: list[tuple[str, int]] = []
     for index, match in enumerate(sections):
@@ -386,11 +388,11 @@ def _render_story_breakdown_html(analysis_text: str) -> str:
 
 
 def _story_items(analysis_text: str) -> list[str]:
-    story_list = analysis_text.split("## Story List", 1)
-    if len(story_list) != 2:
+    body = _story_list_body(analysis_text)
+    if not body:
         return []
     items: list[str] = []
-    for line in story_list[1].splitlines():
+    for line in body.splitlines():
         stripped = line.strip()
         if stripped.startswith("- "):
             items.append(stripped[2:].strip())
@@ -398,7 +400,9 @@ def _story_items(analysis_text: str) -> list[str]:
         if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-"}:
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if not cells or cells[0].lower() in {"id", "area"}:
+        if not cells or cells[0].lower() in {"id", "area", "#"}:
+            continue
+        if len(cells) >= 2 and cells[1].lower() in {"story", "stories"}:
             continue
         if len(cells) >= 2 and re.match(r"^[A-Z][A-Z0-9-]+$", cells[0]):
             items.append(f"{cells[0]} - {cells[1]}")
@@ -407,9 +411,25 @@ def _story_items(analysis_text: str) -> list[str]:
     return items
 
 
+def _story_list_body(analysis_text: str) -> str:
+    story_list = analysis_text.split("## Story List", 1)
+    if len(story_list) != 2:
+        return ""
+    body = story_list[1]
+    next_section = re.search(r"^##\s+", body, re.MULTILINE)
+    if next_section:
+        body = body[: next_section.start()]
+    return body
+
+
+def _feature_items(analysis_text: str) -> list[str]:
+    return [name for name, _count in _story_breakdown(analysis_text)]
+
+
 def _screen_items(analysis_text: str) -> list[str]:
     screens: list[str] = []
-    for heading in _STORY_SECTION_RE.findall(analysis_text):
+    body = _story_list_body(analysis_text)
+    for heading in _STORY_SECTION_RE.findall(body):
         if "screen" in heading.lower():
             screens.append(heading.strip())
     for item in _story_items(analysis_text):
