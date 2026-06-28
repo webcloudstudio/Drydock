@@ -29,9 +29,14 @@ header span { color: #c8d6df; font-size: 12px; }
 main { max-width: 980px; margin: 0 auto; padding: 32px 32px 60px; }
 .cover { background: var(--panel); border-top: 5px solid var(--green);
   border-bottom: 1px solid var(--line); padding: 24px 30px; margin-bottom: 22px; }
+.cover-grid { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.cover-text { flex: 1; min-width: 0; }
+.cover-logo { flex: 0 0 auto; max-width: 260px; }
+.cover-logo img { display: block; width: 100%; height: auto; }
 .eyebrow { color: var(--green); font-size: 11px; font-weight: 700;
   letter-spacing: .14em; text-transform: uppercase; }
-h1 { font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }
+h1 { font-size: 36px; line-height: 1.1; margin: 6px 0 4px; }
+h1 .h1-line2 { display: block; font-size: 22px; font-weight: 600; color: var(--muted); margin-top: 2px; }
 .subtitle { color: var(--muted); font-size: 15px; max-width: 800px; }
 .meta { color: var(--muted); display: flex; gap: 18px; margin-top: 14px; font-size: 12px; }
 .ideas { margin: 0 0 22px; }
@@ -126,10 +131,17 @@ footer { color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: c
 <header><strong>Drydock</strong><span>Copyright © 2026 Web Cloud Studio. All rights reserved. No part of this document may be reproduced or distributed without express written consent.</span></header>
 <main>
 <section class="cover">
-  <div class="eyebrow">The SAIL Methodology for Governed Software Delivery</div>
-  <h1>The Drydock - Agile Specification Driven Design</h1>
-  <div class="subtitle">Drydock is an implementation of the SAIL Methodology to build programs from specifications.</div>
-  <div class="meta"><span>Ed Barlow</span><span>Web Cloud Studio</span><span>June 26 2026</span></div>
+  <div class="cover-grid">
+    <div class="cover-text">
+      <div class="eyebrow">The SAIL Methodology for Governed Software Delivery</div>
+      <h1>The Drydock<span class="h1-line2">Agile Specification Driven Design</span></h1>
+      <div class="subtitle">Drydock is an implementation of the SAIL Methodology to build programs from specifications.</div>
+      <div class="meta"><span>Ed Barlow</span><span>Web Cloud Studio</span><span>June 26 2026</span></div>
+    </div>
+    <div class="cover-logo">
+      <img src="drydock_logo.png" alt="Drydock">
+    </div>
+  </div>
 </section>
 <section class="ideas ideas-sail">
 <h2>The SAIL Method</h2>
