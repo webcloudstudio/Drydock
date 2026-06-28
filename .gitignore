@@ -45,6 +45,7 @@ targets/
 
 # QuarterDeck local state
 QuarterDeck/data/*.sqlite
+QuarterDeck/tickets.json
 
 # Local project config
 .env
