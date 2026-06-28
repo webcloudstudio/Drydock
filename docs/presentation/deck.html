@@ -1,303 +1,625 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drydock — Launch Deck</title>
-<style>
-  :root{
-    --green:#0a5c38; --green2:#2cb67d;
-    --gold:#d4a017;  --gold2:#a07810;
-    --blue:#1e40af;  --blue2:#3b5fc0;
-    --rust:#c2410c;  --rust2:#ea580c;
-    --purple:#6d28d9;--purple2:#8b5cf6;
-    --crimson:#be123c;--crimson2:#fb7185;
-    --ink:#0b1f17; --paper:#f4efe2; --muted:#9fb3a8;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
-  body{
-    background:#06120d; color:var(--paper);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    overflow:hidden;
-  }
-  /* deck */
-  .slide{
-    position:fixed; inset:0; display:none;
-    flex-direction:column; justify-content:center;
-    padding:6vh 9vw;
-    background:
-      radial-gradient(120vw 90vh at 80% -10%, rgba(44,182,125,.10), transparent 60%),
-      radial-gradient(90vw 80vh at -10% 110%, rgba(30,64,175,.18), transparent 55%),
-      linear-gradient(160deg,#06120d 0%, #08180f 55%, #061a2a 100%);
-  }
-  .slide.active{display:flex; animation:fade .4s ease}
-  @keyframes fade{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
-
-  .eyebrow{
-    font-size:1.6vh; letter-spacing:.32em; text-transform:uppercase;
-    color:var(--green2); font-weight:700; margin-bottom:2.2vh;
-  }
-  h1{font-size:7.6vh; line-height:1.02; letter-spacing:-.02em; font-weight:800}
-  h2{font-size:5.0vh; line-height:1.05; letter-spacing:-.015em; font-weight:800; margin-bottom:2.4vh}
-  .lead{font-size:3.0vh; line-height:1.4; color:#dfe7e1; max-width:60ch}
-  .sub{font-size:2.4vh; line-height:1.5; color:var(--muted); max-width:64ch; margin-top:2.2vh}
-  .accent{color:var(--gold)}
-  .green{color:var(--green2)}
-  .crimson{color:var(--crimson2)}
-
-  ul{list-style:none; margin-top:3vh; display:flex; flex-direction:column; gap:1.8vh}
-  li{font-size:2.7vh; line-height:1.35; padding-left:3.4vh; position:relative; max-width:64ch}
-  li::before{content:"›"; position:absolute; left:0; color:var(--green2); font-weight:800}
-
-  .cmd{
-    font-family:"SF Mono", "JetBrains Mono",Consolas,monospace;
-    background:rgba(0,0,0,.38); border:1px solid rgba(44,182,125,.28);
-    border-radius:10px; padding:2.6vh 3vh; font-size:2.5vh; color:#e8f3ec;
-    display:inline-block; margin-top:1vh; white-space:pre; line-height:1.6;
-  }
-  .cmd .c{color:var(--green2)} .cmd .a{color:var(--gold)} .cmd .m{color:var(--muted)}
-
-  /* SAIL rail */
-  .rail{display:flex; gap:1.4vh; margin-bottom:3.2vh}
-  .rail .step{
-    font-weight:800; font-size:1.8vh; letter-spacing:.18em; padding:.9vh 2.2vh;
-    border-radius:999px; background:rgba(255,255,255,.05); color:var(--muted);
-    border:1px solid rgba(255,255,255,.08);
-  }
-  .rail .step.on{background:var(--green); color:#fff; border-color:var(--green2)}
-
-  /* phase chips / columns */
-  .cols{display:flex; gap:2.4vh; margin-top:3.4vh; flex-wrap:wrap}
-  .card{
-    flex:1 1 0; min-width:22vh; background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.09); border-radius:14px; padding:2.8vh;
-  }
-  .card h3{font-size:2.4vh; margin-bottom:1.2vh}
-  .card p{font-size:1.95vh; line-height:1.45; color:var(--muted)}
-  .card.g{border-top:4px solid var(--green2)}
-  .card.b{border-top:4px solid var(--blue2)}
-  .card.gold{border-top:4px solid var(--gold)}
-  .card.p{border-top:4px solid var(--purple2)}
-
-  .flow{display:flex; align-items:center; gap:1.6vh; margin-top:4vh; flex-wrap:wrap}
-  .node{
-    font-weight:700; font-size:2.1vh; padding:1.6vh 2.6vh; border-radius:12px;
-    background:var(--blue); color:#fff; box-shadow:0 6px 24px rgba(0,0,0,.35)
-  }
-  .node.dir{background:var(--green)} .node.md{background:var(--gold); color:#111}
-  .node.web{background:var(--crimson)} .node.out{background:var(--purple)}
-  .arrow{color:var(--green2); font-size:3vh; font-weight:800}
-
-  .big{font-size:11vh; font-weight:800; line-height:1; letter-spacing:-.03em}
-  .center{align-items:center; text-align:center}
-  .center .lead{max-width:50ch}
-
-  /* chrome */
-  .brand{position:fixed; top:4.2vh; left:9vw; font-weight:800; letter-spacing:.04em;
-    font-size:2.1vh; color:var(--green2); z-index:5}
-  .brand .dot{color:var(--gold)}
-  .pageno{position:fixed; bottom:4vh; right:9vw; font-size:1.7vh; color:var(--muted); z-index:5}
-  .progress{position:fixed; bottom:0; left:0; height:5px; background:var(--green2); width:0; transition:width .3s; z-index:6}
-  .hint{position:fixed; bottom:4vh; left:9vw; font-size:1.5vh; color:#5d736a; z-index:5}
-  table{border-collapse:collapse; margin-top:3vh; font-size:2.1vh}
-  td{padding:1.3vh 2.4vh; border-bottom:1px solid rgba(255,255,255,.08)}
-  td:first-child{color:var(--crimson2); font-weight:700}
-  td:last-child{color:#dfe7e1}
-</style>
-</head>
-<body>
-<div class="brand">DRY<span class="dot">·</span>DOCK</div>
-<div class="progress" id="prog"></div>
-<div class="pageno" id="pageno">1</div>
-<div class="hint">← → or space to advance · F for fullscreen</div>
-
-<!-- 1 TITLE -->
-<section class="slide active center">
-  <div class="eyebrow">An Agile Process for Specification-Driven Delivery</div>
-  <h1>Drydock</h1>
-  <p class="lead" style="margin-top:3vh">Build working software from specifications —<br>with a real process, so you can reproduce it.</p>
-  <p class="sub" style="text-align:center">Ed Barlow · Web Cloud Studio</p>
-</section>
-
-<!-- 2 PROBLEM -->
-<section class="slide">
-  <div class="eyebrow crimson">The gap</div>
-  <h2>Spec-driven design forgot<br>20 years of software practice.</h2>
-  <ul>
-    <li>It gave us specifications — and threw away the <strong>process</strong> that ships them.</li>
-    <li>You can refine a spec forever. <span class="crimson">Without process you still can't reproduce the build.</span></li>
-    <li>The result: drift, lost context, and a thousand lines no one can govern.</li>
-  </ul>
-  <p class="sub">As any financial engineer knows — a result you can't reproduce isn't a result.</p>
-</section>
-
-<!-- 3 INSIGHT -->
-<section class="slide">
-  <div class="eyebrow">The insight</div>
-  <h2>Reproducible builds need a process.<br>That process already exists.</h2>
-  <div class="cols">
-    <div class="card g"><h3>Process, not just specs</h3><p>You can refine a specification. You can't reproduce a build without control and a repeatable process.</p></div>
-    <div class="card gold"><h3>The process is Agile</h3><p>15 years of best practices, codified in the Agile Manifesto — how developers ship at major companies.</p></div>
-  </div>
-  <p class="sub">Drydock is Agile applied to AI delivery. The specification stays the single source of truth.</p>
-</section>
-
-<!-- 4 INTRO SAIL -->
-<section class="slide">
-  <div class="eyebrow">Introducing Drydock</div>
-  <h2>A governed, Blueprint-driven<br>delivery system. One CLI.</h2>
-  <div class="rail">
-    <span class="step on">S · SET UP</span>
-    <span class="step on">A · ANALYZE</span>
-    <span class="step on">I · IMPLEMENT</span>
-    <span class="step on">L · LOOP</span>
-  </div>
-  <p class="lead">SAIL is an <span class="accent">agile process</span> for AI delivery — from a pile of notes and specs to working, documented software, then kept in sync forever.</p>
-</section>
-
-<!-- 5 COMMANDER -->
-<section class="slide">
-  <div class="eyebrow">We changed your role</div>
-  <h2>Not a developer. The <span class="accent">Product Owner</span>.</h2>
-  <p class="lead">The Commander decides. The LLM <strong>Agile Best Practices Team</strong> develops. This is about the <span class="green">behavior</span> of the system — not sub-agents or prompt tricks.</p>
-  <div class="cols">
-    <div class="card gold"><h3>Compass</h3><p>Your intent, injected into every command.</p></div>
-    <div class="card g"><h3>QuarterDeck</h3><p>Your agile interface to the team.</p></div>
-    <div class="card b"><h3>Ship's Log</h3><p>Every material decision, preserved.</p></div>
-  </div>
-  <p class="sub">You're not prompting a chatbot. You're the product owner directing an agile team.</p>
-</section>
-
-<!-- 6 S -->
-<section class="slide">
-  <div class="rail"><span class="step on">S · SET UP</span><span class="step">A</span><span class="step">I</span><span class="step">L</span></div>
-  <h2>Laying the keel</h2>
-  <div class="cmd"><span class="c">pipx install</span> drydock-sdd
-<span class="c">drydock config</span> set ...
-<span class="c">drydock init</span> <span class="a">MyApp</span></div>
-  <p class="sub">Runs on your existing subscription CLI — Claude or Codex.<br>No new API keys. No per-token billing surprises.</p>
-</section>
-
-<!-- 7 A -->
-<section class="slide">
-  <div class="rail"><span class="step">S</span><span class="step on">A · ANALYZE</span><span class="step">I</span><span class="step">L</span></div>
-  <h2>Charting the course</h2>
-  <div class="flow">
-    <span class="node dir">Sources</span><span class="arrow">→</span>
-    <span class="node">import</span><span class="arrow">→</span>
-    <span class="node">analyze</span><span class="arrow">→</span>
-    <span class="node md">ANALYSIS.md</span>
-  </div>
-  <ul>
-    <li>Import markdown, source code, Spec Kit, or loose notes.</li>
-    <li>Decompose into stories, acceptance milestones, blockers, questions — using agile.</li>
-    <li><span class="crimson">Find a blocker → stop and ask.</span> You answer, you re-run, until the plan is genuinely ready.</li>
-  </ul>
-</section>
-
-<!-- 8 QUARTERDECK -->
-<section class="slide">
-  <div class="eyebrow green">The core differentiator</div>
-  <h2>The QuarterDeck:<br>your Agile interface to the team.</h2>
-  <p class="lead">The optimized path between the product owner and the development team — refined by the Agile Manifesto, not guessed at run by run.</p>
-  <ul>
-    <li>Renders the analysis, story hierarchy, blockers, and questionnaires for review.</li>
-    <li>Approve, answer, redirect. Your feedback is written back to the spec and carried into every run.</li>
-    <li><span class="accent">Instead of guessing, the Commander controls — and gets the best output.</span></li>
-  </ul>
-</section>
-
-<!-- 9 MANIFEST -->
-<section class="slide">
-  <div class="eyebrow">The engine</div>
-  <h2>The Manifest:<br>a dependency graph of your build.</h2>
-  <ul>
-    <li><span class="green">drydock plan</span> turns the analysis into typed Blueprints + the Manifest.</li>
-    <li>The LLM gives an <span class="accent">exact token cost</span> for every story.</li>
-    <li>Drydock stacks exactly the right files into each prompt — intent, the relevant spec slice, the task — under a context budget you set.</li>
-  </ul>
-  <p class="sub">Context is engineered, not hoped for. That's how builds become reproducible.</p>
-</section>
-
-<!-- 10 I -->
-<section class="slide">
-  <div class="rail"><span class="step">S</span><span class="step">A</span><span class="step on">I · IMPLEMENT</span><span class="step">L</span></div>
-  <h2>Sailing the frontier</h2>
-  <ul>
-    <li><span class="green">drydock build</span> walks the graph and builds the runnable frontier, one step at a time.</li>
-    <li>Every step produces reviewable <span class="accent">evidence</span>. Verify against acceptance criteria → unlock dependents.</li>
-    <li><span class="green">drydock build score</span> measures delivery health across <strong>seven dimensions</strong> — spec completeness, test coverage, drift, and more.</li>
-  </ul>
-</section>
-
-<!-- 11 RIGGING -->
-<section class="slide">
-  <div class="eyebrow">For teams</div>
-  <h2>Rigging: your standards,<br>baked into every build.</h2>
-  <p class="lead">Your branding, stack rules, and conventions — injected automatically.</p>
-  <div class="cols">
-    <div class="card g"><h3>Builder</h3><p>Gets the full specification to implement a feature.</p></div>
-    <div class="card gold"><h3>Consumer</h3><p>Gets only a compacted how-to-use. Doesn't need to know how it works.</p></div>
-  </div>
-  <p class="sub">Compaction keeps context lean across a large codebase.</p>
-</section>
-
-<!-- 12 L -->
-<section class="slide">
-  <div class="rail"><span class="step">S</span><span class="step">A</span><span class="step">I</span><span class="step on">L · LOOP</span></div>
-  <h2>The refit</h2>
-  <p class="lead">Software is never done. <span class="green">drydock refit</span> changes the application while keeping the Blueprint and the code aligned.</p>
-  <ul>
-    <li>Tracks the git commit behind every built file — rebuilds only what changed.</li>
-    <li>The spec stays the source of truth. Docs regenerate from it. <span class="accent">Nothing drifts.</span></li>
-  </ul>
-</section>
-
-<!-- 13 WHY -->
-<section class="slide">
-  <div class="eyebrow">Why Drydock</div>
-  <h2>The differentiator is a <span class="accent">process</span> — and it's Agile.</h2>
-  <table>
-    <tr><td>Vibe coding</td><td>No spec, no process — speed, then drift.</td></tr>
-    <tr><td>Spec-driven design</td><td>A specification, but no process to reproduce the build.</td></tr>
-    <tr><td style="color:var(--green2)">Drydock</td><td>Specification + a real Agile process: product owner decides, the team develops, every decision logged.</td></tr>
-  </table>
-  <p class="sub">The goal: working software you can reliably iterate — within the specification.</p>
-</section>
-
-<!-- 14 CTA -->
-<section class="slide center">
-  <div class="eyebrow">Get started</div>
-  <h1 style="font-size:6vh">Take it for a sail.</h1>
-  <div class="cmd" style="margin-top:4vh"><span class="c">pipx install</span> drydock-sdd
-<span class="c">drydock init</span> <span class="a">MyApp</span>  <span class="m"># chart your course</span></div>
-  <p class="sub" style="text-align:center">Open spec · open methodology · looking for Commanders.<br><span class="accent">github.com/&lt;your-handle&gt;/drydock</span></p>
-</section>
-
-<script>
-  const slides=[...document.querySelectorAll('.slide')];
-  let i=0;
-  const prog=document.getElementById('prog'), pageno=document.getElementById('pageno');
-  function show(n){
-    i=Math.max(0,Math.min(slides.length-1,n));
-    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
-    prog.style.width=((i+1)/slides.length*100)+'%';
-    pageno.textContent=(i+1)+' / '+slides.length;
-  }
-  function key(e){
-    if(['ArrowRight',' ','PageDown'].includes(e.key)){show(i+1); e.preventDefault();}
-    else if(['ArrowLeft','PageUp'].includes(e.key)){show(i-1); e.preventDefault();}
-    else if(e.key==='Home'){show(0);}
-    else if(e.key==='End'){show(slides.length-1);}
-    else if(e.key.toLowerCase()==='f'){
-      if(!document.fullscreenElement){document.documentElement.requestFullscreen();}
-      else{document.exitFullscreen();}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drydock — Launch Deck</title>
+  <style>
+    :root {
+      --green: #0a5c38;
+      --green2: #2cb67d;
+      --gold: #d4a017;
+      --gold2: #a07810;
+      --blue: #1e40af;
+      --blue2: #3b5fc0;
+      --rust: #c2410c;
+      --rust2: #ea580c;
+      --purple: #6d28d9;
+      --purple2: #8b5cf6;
+      --crimson: #be123c;
+      --crimson2: #fb7185;
+      --ink: #0b1f17;
+      --paper: #f4efe2;
+      --muted: #9fb3a8;
     }
-  }
-  document.addEventListener('keydown',key);
-  document.addEventListener('click',e=>{ if(e.clientX < window.innerWidth*0.25) show(i-1); else show(i+1); });
-  show(0);
-</script>
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    html,
+    body {
+      height: 100%
+    }
+
+    body {
+      background: #06120d;
+      color: var(--paper);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    /* deck */
+    .slide {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6vh 9vw;
+      background:
+        radial-gradient(120vw 90vh at 80% -10%, rgba(44, 182, 125, .10), transparent 60%),
+        radial-gradient(90vw 80vh at -10% 110%, rgba(30, 64, 175, .18), transparent 55%),
+        linear-gradient(160deg, #06120d 0%, #08180f 55%, #061a2a 100%);
+    }
+
+    .slide.active {
+      display: flex;
+      animation: fade .4s ease
+    }
+
+    @keyframes fade {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: none
+      }
+    }
+
+    .eyebrow {
+      font-size: 2.0vh;
+      letter-spacing: .32em;
+      text-transform: uppercase;
+      color: var(--green2);
+      font-weight: 700;
+      margin-bottom: 2.2vh;
+    }
+
+    h1 {
+      font-size: 7.6vh;
+      line-height: 1.02;
+      letter-spacing: -.02em;
+      font-weight: 800
+    }
+
+    h2 {
+      font-size: 5.4vh;
+      line-height: 1.05;
+      letter-spacing: -.015em;
+      font-weight: 800;
+      margin-bottom: 2.4vh
+    }
+
+    .lead {
+      font-size: 3.2vh;
+      line-height: 1.4;
+      color: #dfe7e1;
+      max-width: 82ch
+    }
+
+    .sub {
+      font-size: 2.6vh;
+      line-height: 1.5;
+      color: var(--muted);
+      max-width: 86ch;
+      margin-top: 2.2vh
+    }
+
+    .accent {
+      color: var(--gold)
+    }
+
+    .green {
+      color: var(--green2)
+    }
+
+    .crimson {
+      color: var(--crimson2)
+    }
+
+    ul {
+      list-style: none;
+      margin-top: 3vh;
+      display: flex;
+      flex-direction: column;
+      gap: 1.8vh
+    }
+
+    li {
+      font-size: 2.9vh;
+      line-height: 1.35;
+      padding-left: 3.4vh;
+      position: relative;
+      max-width: 86ch
+    }
+
+    li::before {
+      content: "›";
+      position: absolute;
+      left: 0;
+      color: var(--green2);
+      font-weight: 800
+    }
+
+    .cmd {
+      font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+      background: rgba(0, 0, 0, .38);
+      border: 1px solid rgba(44, 182, 125, .28);
+      border-radius: 10px;
+      padding: 2.6vh 3vh;
+      font-size: 2.5vh;
+      color: #e8f3ec;
+      display: inline-block;
+      margin-top: 1vh;
+      white-space: pre;
+      line-height: 1.6;
+    }
+
+    .cmd .c {
+      color: var(--green2)
+    }
+
+    .cmd .a {
+      color: var(--gold)
+    }
+
+    .cmd .m {
+      color: var(--muted)
+    }
+
+    /* SAIL rail */
+    .rail {
+      display: flex;
+      gap: 1.4vh;
+      margin-bottom: 3.2vh
+    }
+
+    .rail .step {
+      font-weight: 800;
+      font-size: 1.8vh;
+      letter-spacing: .18em;
+      padding: .9vh 2.2vh;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .05);
+      color: var(--muted);
+      border: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    .rail .step.on {
+      background: var(--green);
+      color: #fff;
+      border-color: var(--green2)
+    }
+
+    /* phase chips / columns */
+    .cols {
+      display: flex;
+      gap: 2.4vh;
+      margin-top: 3.4vh;
+      flex-wrap: wrap
+    }
+
+    .card {
+      flex: 1 1 0;
+      min-width: 22vh;
+      background: rgba(255, 255, 255, .04);
+      border: 1px solid rgba(255, 255, 255, .09);
+      border-radius: 14px;
+      padding: 2.8vh;
+    }
+
+    .card h3 {
+      font-size: 2.6vh;
+      margin-bottom: 1.2vh
+    }
+
+    .card p {
+      font-size: 2.15vh;
+      line-height: 1.45;
+      color: var(--muted)
+    }
+
+    .card.g {
+      border-top: 4px solid var(--green2)
+    }
+
+    .card.b {
+      border-top: 4px solid var(--blue2)
+    }
+
+    .card.gold {
+      border-top: 4px solid var(--gold)
+    }
+
+    .card.p {
+      border-top: 4px solid var(--purple2)
+    }
+
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 1.6vh;
+      margin-top: 4vh;
+      flex-wrap: wrap
+    }
+
+    .node {
+      font-weight: 700;
+      font-size: 2.1vh;
+      padding: 1.6vh 2.6vh;
+      border-radius: 12px;
+      background: var(--blue);
+      color: #fff;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .35)
+    }
+
+    .node.dir {
+      background: var(--green)
+    }
+
+    .node.md {
+      background: var(--gold);
+      color: #111
+    }
+
+    .node.web {
+      background: var(--crimson)
+    }
+
+    .node.out {
+      background: var(--purple)
+    }
+
+    .arrow {
+      color: var(--green2);
+      font-size: 3vh;
+      font-weight: 800
+    }
+
+    .big {
+      font-size: 11vh;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -.03em
+    }
+
+    .center {
+      align-items: center;
+      text-align: center
+    }
+
+    .center .lead {
+      max-width: 64ch
+    }
+
+    /* chrome */
+    .brand {
+      position: fixed;
+      top: 4.2vh;
+      left: 9vw;
+      font-weight: 800;
+      letter-spacing: .04em;
+      font-size: 2.8vh;
+      color: var(--green2);
+      z-index: 5
+    }
+
+    .brand .dot {
+      color: var(--gold)
+    }
+
+    .pageno {
+      position: fixed;
+      bottom: 4vh;
+      right: 9vw;
+      font-size: 1.7vh;
+      color: var(--muted);
+      z-index: 5
+    }
+
+    .progress {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 5px;
+      background: var(--green2);
+      width: 0;
+      transition: width .3s;
+      z-index: 6
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 4vh;
+      left: 9vw;
+      font-size: 1.5vh;
+      color: #5d736a;
+      z-index: 5
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 3vh;
+      font-size: 2.1vh
+    }
+
+    td {
+      padding: 1.3vh 2.4vh;
+      border-bottom: 1px solid rgba(255, 255, 255, .08)
+    }
+
+    td:first-child {
+      color: var(--crimson2);
+      font-weight: 700
+    }
+
+    td:last-child {
+      color: #dfe7e1
+    }
+  </style>
+</head>
+
+<body>
+  <div class="brand">DRY<span class="dot">·</span>DOCK</div>
+  <div class="progress" id="prog"></div>
+  <div class="pageno" id="pageno">1</div>
+  <div class="hint">← → or space to advance · F for fullscreen</div>
+
+  <!-- 1 TITLE -->
+  <section class="slide active center">
+    <div class="eyebrow">An Agile Process for Specification-Driven Delivery</div>
+    <h1>Drydock</h1>
+    <p class="lead" style="margin-top:3vh">Build working software from specifications —<br>with a real process, so you
+      can reproduce it.</p>
+    <p class="sub" style="text-align:center">Ed Barlow · Web Cloud Studio</p>
+  </section>
+
+  <!-- 2 PROBLEM -->
+  <section class="slide">
+    <div class="eyebrow crimson">The gap</div>
+    <h2>Spec-driven design forgot<br>25 years of software best practices.</h2>
+    <ul>
+      <li>It gave us specifications — and threw away the <strong>process</strong> that ships them.</li>
+      <li>You can refine a spec forever. <span class="crimson">Without process you still can't reproduce the
+          build.</span></li>
+      <li>The result: drift, lost context, and a thousand lines no one can govern.</li>
+    </ul>
+    <p class="sub">As any software engineer knows — a result you can't reproduce isn't a result.</p>
+  </section>
+
+  <!-- 3 INSIGHT -->
+  <section class="slide">
+    <div class="eyebrow">The insight</div>
+    <h2>Reproducible builds need a process.<br>That process already exists.</h2>
+    <div class="cols">
+      <div class="card g">
+        <h3>Process, not just specs</h3>
+        <p>You can refine a specification. You can't reproduce a build without control and a repeatable process.</p>
+      </div>
+      <div class="card gold">
+        <h3>That process is Agile</h3>
+        <p>15 years of best practices, codified in the Agile Manifesto — how developers ship at major companies.</p>
+      </div>
+    </div>
+    <p class="sub">Drydock is Agile applied to AI SDD delivery. The specification stays the single source of truth.</p>
+  </section>
+
+  <!-- 4 INTRO SAIL -->
+  <section class="slide">
+    <div class="eyebrow">Introducing Drydock</div>
+    <h2>SAIL - Governed, Blueprint-driven delivery system. </h2>
+    <div class="rail">
+      <span class="step on">S · SET UP</span>
+      <span class="step on">A · ANALYZE</span>
+      <span class="step on">I · IMPLEMENT</span>
+      <span class="step on">L · LOOP</span>
+    </div>
+    <p class="lead">SAIL is an <span class="accent">agile process</span> for software delivery — import your notes or
+      LLM-created specifications. Your LLM best-practices agile team analyzes and converts them to specification files
+      divided into features and stories, plans a dependency graph to implement, and enables you to build working
+      software. The process keeps the results in sync with change tickets or edits to your specifications. SAIL then
+      creates conforming documentation and measures build quality and drift. Drydock Rigging lets builds use
+      common stack files and branding.</p>
+  </section>
+
+  <!-- 5 COMMANDER -->
+  <section class="slide">
+    <div class="eyebrow">We changed your role</div>
+    <h2>You are NOT a developer. You are the <span class="accent">Commander</span>.</h2>
+    <p class="lead">The Commander decides — the Commander is the Agile Product Owner.
+      The LLM is your <strong>Agile Best Practices Team</strong>, and the QuarterDeck enables
+      clear, accurate communication between them. This is the
+      <span class="green">behavior</span> of the system — not sub-agents or prompt tricks.</p>
+    <div class="cols">
+      <div class="card gold">
+        <h3>Compass</h3>
+        <p>Your project intent with files specifying your intent by step.</p>
+      </div>
+      <div class="card g">
+        <h3>QuarterDeck</h3>
+        <p>Your agile interface to the team.</p>
+      </div>
+      <div class="card b">
+        <h3>Ship's Log</h3>
+        <p>Every material decision, preserved.</p>
+      </div>
+    </div>
+    <p class="sub">The QuarterDeck lets the Commander control the build, directing your agile LLM team to produce
+      quality.</p>
+  </section>
+
+  <!-- 6 S -->
+  <section class="slide">
+    <div class="rail"><span class="step on">S · SET UP</span><span class="step">A</span><span class="step">I</span><span
+        class="step">L</span></div>
+    <h2>Laying the keel</h2>
+    <div class="cmd"><span class="c">pipx install</span> drydock-sdd
+      <span class="c">drydock config</span> set ...
+      <span class="c">drydock init</span> <span class="a">MyApp</span>
+    </div>
+    <p class="sub">Requires your existing subscription to Claude or Codex.<br>No API keys. No per-token billing.
+      All you need is a subscription and an idea.</p>
+  </section>
+
+  <!-- 7 A -->
+  <section class="slide">
+    <div class="rail"><span class="step">S</span><span class="step on">A · ANALYZE</span><span
+        class="step">I</span><span class="step">L</span></div>
+    <h2>Charting the course</h2>
+    <div class="flow">
+      <span class="node dir">Sources</span><span class="arrow">→</span>
+      <span class="node">import</span><span class="arrow">→</span>
+      <span class="node">analyze</span><span class="arrow">→</span>
+      <span class="node md">ANALYSIS.md</span>
+    </div>
+    <ul>
+      <li>Import markdown, source code, Spec Kit, or loose notes.</li>
+      <li>Decompose into stories, acceptance milestones, blockers, questions — using agile.</li>
+      <li><span class="crimson">If the LLM finds blockers → it stops and asks.</span> You answer in the QuarterDeck and
+        rerun.</li>
+      <li>The output is a tentative set of Features, Stories, and Spikes for you to review in the QuarterDeck.</li>
+    </ul>
+  </section>
+
+  <!-- 8 QUARTERDECK -->
+  <section class="slide">
+    <div class="eyebrow green">The core differentiator</div>
+    <h2>The QuarterDeck is your Agile Web interface to the process.</h2>
+    <p class="lead">An optimized communication path between the Commander and the LLM Process.</p>
+    <ul>
+      <li>Analyze creates the story hierarchy, identifies blockers, and surfaces questionnaires for review.</li>
+      <li>Answer and redirect or proceed. Your feedback is persisted.</li>
+      <li><span class="accent">The Commander controls — The GOAL is Working Software you can Iterate.</span></li>
+      <li><span class="green">drydock rigging compact</span> produces minimal context using Builder/User roles for each
+        file</li>
+    </ul>
+  </section>
+
+  <!-- 9 MANIFEST -->
+  <section class="slide">
+    <div class="eyebrow">The engine</div>
+    <h2>The Manifest is a dependency graph of your build.</h2>
+    <ul>
+      <li><span class="green">drydock plan</span> turns the analysis into typed Blueprints + the Manifest.</li>
+      <li>The LLM estimates <span class="accent">Story Points (token cost)</span> for every story using the dependency
+        graph.</li>
+      <li>Drydock stacks the minimal context of the correct files into build prompt.</li>
+    </ul>
+    <p class="sub">Context is engineered, not hoped for. That's how builds become reproducible.</p>
+  </section>
+
+  <!-- 10 I -->
+  <section class="slide">
+    <div class="rail"><span class="step">S</span><span class="step">A</span><span class="step on">I ·
+        IMPLEMENT</span><span class="step">L</span></div>
+    <h2>IMPLEMENT - Sailing the frontier</h2>
+    <ul>
+      <li><span class="green">drydock build</span> walks the graph and builds the runnable frontier. The build is done
+        by
+        one context optimized step at a time.
+      </li>
+      <li>Every step can be verified against acceptance criteria.</li>
+      <li><span class="green">drydock build score</span> measures delivery health across <strong>seven
+          dimensions</strong> — spec completeness, test coverage, drift, and more.</li>
+    </ul>
+  </section>
+
+  <!-- 11 RIGGING -->
+  <section class="slide">
+    <div class="eyebrow">For teams</div>
+    <h2>Rigging: your standards,<br>baked into every build.</h2>
+    <p class="lead">Your branding, stack rules, and conventions — injected automatically.</p>
+    <div class="cols">
+      <div class="card g">
+        <h3>Builder</h3>
+        <p>Gets the full specification to implement a feature.</p>
+      </div>
+      <div class="card gold">
+        <h3>Consumer</h3>
+        <p>Gets only a compacted how-to-use. Doesn't need to know how it works.</p>
+      </div>
+    </div>
+    <p class="sub">Compaction keeps context lean across a large codebase.</p>
+  </section>
+
+  <!-- 12 L -->
+  <section class="slide">
+    <div class="rail"><span class="step">S</span><span class="step">A</span><span class="step">I</span><span
+        class="step on">L · LOOP</span></div>
+    <h2>The refit</h2>
+    <p class="lead">Software is never done. <span class="green">drydock refit</span> changes the application while
+      keeping the Blueprint and the code aligned.</p>
+    <ul>
+      <li>Option 1: Edit your specification files. Drydock tracks git commits for every built file and can do a minimal
+        rebuild of only what changed.</li>
+      <li>Option 2: Change tickets tied to existing specification files, dynamically built using minimized context.</li>
+      <li>Summary: The specification is the source of truth. <span class="accent">Minimal drift.</span></li>
+    </ul>
+  </section>
+
+  <!-- 13 WHY -->
+  <section class="slide">
+    <div class="eyebrow">Why Drydock</div>
+    <h2>The differentiator is <span class="accent">PROCESS</span> — That process is Agile.</h2>
+    <table>
+      <tr>
+        <td>Vibe coding</td>
+        <td>No spec, no process — speed, then drift.</td>
+      </tr>
+      <tr>
+        <td>Spec-driven design</td>
+        <td>A specification, but no process to reproduce the build.</td>
+      </tr>
+      <tr>
+        <td style="color:var(--green2)">Drydock</td>
+        <td>Specification + a real Agile process: product owner decides, the team develops, every decision logged.</td>
+      </tr>
+    </table>
+    <p class="sub">The goal: working software you can reliably iterate with an easy path to rebuild anytime.</p>
+  </section>
+
+  <!-- 14 CTA -->
+  <section class="slide center">
+    <div class="eyebrow">Get started</div>
+    <h1 style="font-size:6vh">Take it for a sail.</h1>
+    <div class="cmd" style="margin-top:4vh"><span class="c">pipx install</span> drydock-sdd
+      <span class="c">drydock init</span> <span class="a">MyApp</span> <span class="m"># chart your course</span>
+    </div>
+    <p class="sub" style="text-align:center">Open spec · open methodology · looking for Commanders.<br><span
+        class="accent">github.com/&lt;your-handle&gt;/drydock</span></p>
+  </section>
+
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    let i = 0;
+    const prog = document.getElementById('prog'), pageno = document.getElementById('pageno');
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach((s, k) => s.classList.toggle('active', k === i));
+      prog.style.width = ((i + 1) / slides.length * 100) + '%';
+      pageno.textContent = (i + 1) + ' / ' + slides.length;
+    }
+    function key(e) {
+      if (['ArrowRight', ' ', 'PageDown'].includes(e.key)) { show(i + 1); e.preventDefault(); }
+      else if (['ArrowLeft', 'PageUp'].includes(e.key)) { show(i - 1); e.preventDefault(); }
+      else if (e.key === 'Home') { show(0); }
+      else if (e.key === 'End') { show(slides.length - 1); }
+      else if (e.key.toLowerCase() === 'f') {
+        if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); }
+        else { document.exitFullscreen(); }
+      }
+    }
+    document.addEventListener('keydown', key);
+    document.addEventListener('click', e => { if (e.clientX < window.innerWidth * 0.25) show(i - 1); else show(i + 1); });
+    show(0);
+  </script>
 </body>
+
 </html>
