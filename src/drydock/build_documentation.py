@@ -187,10 +187,17 @@ def _resolve_theme(metadata: dict[str, object], override: str | None) -> str:
     return selected
 
 
-def render_page(metadata: dict[str, object], body: str, *, theme: str | None = None) -> str:
+def render_page(
+    metadata: dict[str, object],
+    body: str,
+    *,
+    theme: str | None = None,
+    logo_data_uri: str | None = None,
+) -> str:
     """Render parsed Blueprint content into a self-contained HTML document."""
     selected_theme = _resolve_theme(metadata, theme)
     title = html.escape(str(metadata.get("title", "Drydock")))
+    title_sub = html.escape(str(metadata.get("title_sub", "")))
     eyebrow = html.escape(str(metadata.get("eyebrow", "")))
     subtitle = html.escape(str(metadata.get("subtitle", "")))
     author = html.escape(str(metadata.get("author", "")))
@@ -199,6 +206,12 @@ def render_page(metadata: dict[str, object], body: str, *, theme: str | None = N
     copyright_text = html.escape(str(metadata.get("copyright", "")))
     ideas = _render_ideas(metadata)
     body_json = _json_for_script(body)
+    title_sub_html = f'<span class="h1-sub">{title_sub}</span>' if title_sub else ""
+    logo_html = (
+        f'<div class="cover-logo"><img src="{logo_data_uri}" alt="Drydock"></div>'
+        if logo_data_uri
+        else ""
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -231,9 +244,14 @@ header span {{ color: #c8d6df; font-size: 12px; }}
 main {{ max-width: 980px; margin: 0 auto; padding: 32px 32px 60px; }}
 .cover {{ background: var(--panel); border-top: 5px solid var(--green);
   border-bottom: 1px solid var(--line); padding: 24px 30px; margin-bottom: 22px; }}
+.cover-grid {{ display: flex; align-items: center; justify-content: space-between; gap: 24px; }}
+.cover-text {{ flex: 1; min-width: 0; }}
+.cover-logo {{ flex: 0 0 auto; max-width: 260px; }}
+.cover-logo img {{ display: block; width: 100%; height: auto; }}
 .eyebrow {{ color: var(--green); font-size: 11px; font-weight: 700;
   letter-spacing: .14em; text-transform: uppercase; }}
-h1 {{ font-size: 36px; line-height: 1.1; margin: 6px 0 10px; }}
+h1 {{ font-size: 36px; line-height: 1.1; margin: 6px 0 4px; }}
+h1 .h1-sub {{ display: block; font-size: 22px; font-weight: 600; color: var(--muted); margin-top: 2px; }}
 .subtitle {{ color: var(--muted); font-size: 15px; max-width: 800px; }}
 .meta {{ color: var(--muted); display: flex; gap: 18px; margin-top: 14px; font-size: 12px; }}
 .ideas {{ margin: 0 0 22px; }}
@@ -328,10 +346,14 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
 <header><strong>Drydock</strong><span>{copyright_text}</span></header>
 <main>
 <section class="cover">
-  <div class="eyebrow">{eyebrow}</div>
-  <h1>{title}</h1>
-  <div class="subtitle">{subtitle}</div>
-  <div class="meta"><span>{author}</span><span>{studio}</span><span>{year}</span></div>
+  <div class="cover-grid">
+    <div class="cover-text">
+      <div class="eyebrow">{eyebrow}</div>
+      <h1>{title}{title_sub_html}</h1>
+      <div class="subtitle">{subtitle}</div>
+      <div class="meta"><span>{author}</span><span>{studio}</span><span>{year}</span></div>
+    </div>{logo_html}
+  </div>
 </section>
 {ideas}
 <article id="content"></article>
@@ -361,9 +383,21 @@ mermaid.run({{ nodes: content.querySelectorAll(".mermaid") }});
 
 def build_documentation(source: Path, output: Path, *, theme: str | None = None) -> Path:
     """Read a conformed Blueprint and write its assembled documentation page."""
+    import base64
+
     metadata, body = parse_source(source.read_text(encoding="utf-8"))
+    logo_data_uri: str | None = None
+    logo_field = str(metadata.get("logo", "")).strip()
+    if logo_field:
+        logo_path = source.parent / logo_field
+        if logo_path.is_file():
+            b64 = base64.b64encode(logo_path.read_bytes()).decode()
+            logo_data_uri = f"data:image/png;base64,{b64}"
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render_page(metadata, body, theme=theme), encoding="utf-8")
+    output.write_text(
+        render_page(metadata, body, theme=theme, logo_data_uri=logo_data_uri),
+        encoding="utf-8",
+    )
     return output
 
 
