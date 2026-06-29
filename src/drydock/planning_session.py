@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -56,7 +57,7 @@ _WRITE_CALL_RE = re.compile(
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
-_RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt"})
+_RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
@@ -95,6 +96,59 @@ class PlanCreateResult:
 def _parse_blocks(text: str) -> dict[str, str]:
     """Return block-name → stripped content from ``=== NAME ===`` delimiters."""
     return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
+
+
+def _execution_output_path(result: CompletedRun) -> str | None:
+    artifacts = getattr(result, "artifacts", None)
+    output_file = getattr(artifacts, "output_file", None)
+    return str(output_file) if output_file else None
+
+
+def _with_execution_evidence(message: str, result: CompletedRun) -> str:
+    output_file = _execution_output_path(result)
+    if output_file:
+        return f"{message}\n  Execution output: {output_file}"
+    return message
+
+
+def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
+    """Parse the required artifact block protocol and reject malformed output."""
+    blocks: dict[str, str] = {}
+    cursor = 0
+    for match in _BLOCK_RE.finditer(text):
+        outside = text[cursor : match.start()]
+        if outside.strip():
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                    "  Text appeared outside delimited artifact blocks.\n"
+                    "  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
+        name = match.group(1).strip()
+        if name in blocks:
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                    f"  Duplicate artifact block: {name}\n"
+                    "  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
+        blocks[name] = match.group(2).strip()
+        cursor = match.end()
+
+    if text[cursor:].strip():
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                "  Text appeared outside delimited artifact blocks.\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+    return blocks
 
 
 def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -> dict[str, str]:
@@ -456,7 +510,9 @@ def _has_cycle(edges: dict[str, set[str]]) -> bool:
     return any(color[node] == WHITE and visit(node) for node in edges)
 
 
-def _integrity_check(plan: BuildPlan, blueprint_dir: Path) -> list[str]:
+def _integrity_check(
+    plan: BuildPlan, blueprint_dir: Path, *, available_specs: frozenset[str] = frozenset()
+) -> list[str]:
     """Fatal issues raise SpecificationError; non-fatal issues return as warnings."""
     ids = {block.block_id for block in plan.blocks}
     fatal: list[str] = []
@@ -480,7 +536,7 @@ def _integrity_check(plan: BuildPlan, blueprint_dir: Path) -> list[str]:
         implements = block.fields.get("implements", ())
         targets = implements if isinstance(implements, tuple) else (implements,)
         for name in targets:
-            if name and not (blueprint_dir / name).is_file():
+            if name and name not in available_specs and not (blueprint_dir / name).is_file():
                 fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
         # Every story must carry at least one acceptance gate — hard emission gate.
         has_ac = any(b.block_type == "ac" and b.parent == block.block_id for b in plan.blocks)
@@ -494,6 +550,100 @@ def _integrity_check(plan: BuildPlan, blueprint_dir: Path) -> list[str]:
     if fatal:
         raise SpecificationError("Plan integrity check failed:\n  " + "\n  ".join(fatal))
     return warnings
+
+
+def _parse_plan_text(text: str) -> BuildPlan:
+    """Parse Manifest text before target files are mutated."""
+    with tempfile.TemporaryDirectory(prefix="drydock-plan-") as tmp:
+        path = Path(tmp) / "MANIFEST.md"
+        _write_text(path, text)
+        return parse_build_plan(path)
+
+
+def _validate_plan_output(
+    blocks: dict[str, str], blueprint_dir: Path, result: CompletedRun
+) -> tuple[BuildPlan, tuple[str, ...]]:
+    """Validate one LLM response mode and return the parsed plan for success mode."""
+    mode_blocks = {"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"} & set(blocks)
+
+    if "PLAN_CREATE_BLOCKED.txt" in blocks:
+        if set(blocks) != {"PLAN_CREATE_BLOCKED.txt"}:
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                    "  BLOCKED MODE must emit only PLAN_CREATE_BLOCKED.txt.\n"
+                    "  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
+        raise SpecificationError(
+            "Planning cannot proceed. No Blueprint or Manifest artifacts were written.\n  "
+            + blocks["PLAN_CREATE_BLOCKED.txt"].strip()
+        )
+
+    if "PLAN_CREATE_ERROR.txt" in blocks:
+        if set(blocks) != {"PLAN_CREATE_ERROR.txt"}:
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                    "  ERROR MODE must emit only PLAN_CREATE_ERROR.txt.\n"
+                    "  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
+        raise SpecificationError(
+            "Plan generation failed: LLM reported that it could not produce a complete plan.\n"
+            "  No Blueprint or Manifest artifacts were written.\n  "
+            + blocks["PLAN_CREATE_ERROR.txt"].strip()
+        )
+
+    if not mode_blocks:
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output missing === MANIFEST.md === block.\n"
+                "  The response must contain only delimited artifact blocks.\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    if mode_blocks != {"MANIFEST.md"}:
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output mixed response modes.\n"
+                "  SUCCESS MODE must not include PLAN_CREATE_BLOCKED.txt or PLAN_CREATE_ERROR.txt.\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    plan = _parse_plan_text(blocks["MANIFEST.md"])
+
+    emitted_specs = frozenset(name for name in blocks if name not in _RESERVED_BLOCKS)
+    missing_from_response: list[str] = []
+    for block in plan.blocks:
+        if block.block_type != "story":
+            continue
+        implements = block.fields.get("implements", ())
+        targets = implements if isinstance(implements, tuple) else (implements,)
+        for name in targets:
+            if name and name not in emitted_specs and not (blueprint_dir / name).is_file():
+                missing_from_response.append(
+                    f"{block.block_id}: implements missing spec file {name!r}"
+                )
+
+    if missing_from_response:
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output did not satisfy the artifact contract.\n  "
+                + "\n  ".join(missing_from_response)
+                + "\n  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    warnings = tuple(_integrity_check(plan, blueprint_dir, available_specs=emitted_specs))
+    return plan, warnings
 
 
 # ── QuarterDeck projection ──────────────────────────────────────────────────────────
@@ -655,25 +805,10 @@ def create_plan(
     )
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():
-        raise SpecificationError("plan LLM execution failed")
+        raise SpecificationError("Plan generation failed: plan LLM execution failed")
 
-    blocks = _parse_blocks(result.text)
-    if not blocks:
-        blocks = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
-    if "PLAN_CREATE_BLOCKED.txt" in blocks:
-        raise SpecificationError(
-            "Planning cannot proceed — analysis is Blocked. "
-            "The existing Blueprint is preserved.\n  " + blocks["PLAN_CREATE_BLOCKED.txt"].strip()
-        )
-    if "MANIFEST.md" not in blocks:
-        artifacts = getattr(result, "artifacts", None)
-        output_file = getattr(artifacts, "output_file", None)
-        evidence = f"\n  Execution output: {output_file}" if output_file else ""
-        raise SpecificationError(
-            "plan output missing === MANIFEST.md === block. "
-            "The LLM response must contain only delimited artifact blocks."
-            f"{evidence}"
-        )
+    blocks = _parse_strict_blocks(result.text, result)
+    plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
 
     # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
     authored: list[Path] = []
@@ -688,9 +823,8 @@ def create_plan(
     #    a new plan is authored fresh every run (LLM output is non-deterministic).
     _write_text(plan_path, blocks["MANIFEST.md"])
 
-    # 4. Structural validation + deterministic integrity gate.
+    # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)
-    warnings = _integrity_check(plan, blueprint_dir)
 
     changed = prior_manifest != (plan_path.read_text(encoding="utf-8"))
     quarterdeck = _write_quarterdeck(plan, target_dir)

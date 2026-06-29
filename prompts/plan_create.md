@@ -295,12 +295,24 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 
 ---
 
-## Output Format
+## Output Contract
 
-Emit exactly these block types in this order. **Nothing outside the blocks** — no preamble, no explanation, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail. Start your response with the first `=== ... ===` block.
+Emit exactly one response mode. **Nothing outside the blocks** — no preamble, no explanation, no
+commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited
+block is a protocol violation and will cause the run to fail. Start your response with the first
+`=== ... ===` block.
 
-1. Zero or more authored Blueprint file blocks
-2. One `MANIFEST.md` block
+### Success Mode
+
+Use Success Mode only when you can produce a complete, internally consistent Blueprint and
+Manifest.
+
+Emit one block for every authored Blueprint spec file, followed by one `MANIFEST.md` block.
+Every `implements:` filename in `MANIFEST.md` must exactly match one emitted Blueprint file block
+or an existing Blueprint spec file from the input context. If `MANIFEST.md` names
+`ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, `UI-GENERAL.md`, or `AGENTS.md`,
+that file must exist as an emitted file block in the same response unless it already exists in the
+input Blueprint.
 
 Use this wrapper for every emitted file:
 
@@ -318,13 +330,42 @@ Examples:
 - `=== AGENTS.md ===`
 - `=== MANIFEST.md ===`
 
-If the analysis quality is `Blocked`, emit only:
+The final block in Success Mode must be:
+
+```text
+=== MANIFEST.md ===
+{full manifest contents}
+=== END MANIFEST.md ===
+```
+
+### Blocked Mode
+
+Use Blocked Mode only when `ANALYSIS_QUALITY` is `Blocked`. Emit only:
 
 ```text
 === PLAN_CREATE_BLOCKED.txt ===
-Planning cannot proceed because ANALYSIS.md is Blocked. Preserve the existing Blueprint and wait
-for blocker resolution.
+Planning cannot proceed because ANALYSIS.md is Blocked.
+Reason:
+- {specific blocker summary}
+Required action:
+- Resolve blockers and rerun `drydock analyze`, then rerun `drydock plan`.
 === END PLAN_CREATE_BLOCKED.txt ===
+```
+
+### Error Mode
+
+Use Error Mode only when you cannot produce a complete, internally consistent Success Mode
+response. Emit only:
+
+```text
+=== PLAN_CREATE_ERROR.txt ===
+Planning output was not produced.
+Error type: {format|missing-input|conflict|insufficient-specification|other}
+Reason:
+- {specific reason}
+Required action:
+- {specific user or source correction}
+=== END PLAN_CREATE_ERROR.txt ===
 ```
 
 ---
@@ -332,8 +373,14 @@ for blocker resolution.
 ## Hard Rules
 
 - Nothing outside the required output blocks — no preamble, no summary, no prose, no tool calls, no `<invoke>` or `<function_calls>` XML.
+- Never emit `MANIFEST.md` in Error Mode or Blocked Mode.
+- Never emit partial Blueprint files in Error Mode or Blocked Mode.
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
-- Every `implements:` entry in `MANIFEST.md` must name a real emitted authored spec file.
+- Every `implements:` entry in `MANIFEST.md` must name a real emitted authored spec file or an
+  authored spec file that already exists in the input Blueprint.
+- Do not use `AGENTS.md` unless the target exposes a reusable callable or service surface and an
+  `=== AGENTS.md ===` block is emitted or `AGENTS.md` already exists in the Blueprint.
+- Do not use `AGENTS.md` as a generic implementation instruction file.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
   header table and end with `## Acceptance Criteria`, `## Guardrails`, and `## Open Questions`.
 - `Depends On`, `Provides`, `Consumes`, and `Phase` must be internally consistent across the full

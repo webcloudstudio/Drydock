@@ -770,6 +770,39 @@ class TestPlanningSession:
         assert rc == 0, err
         assert "Buildable now: story-status" in out
 
+    def test_plan_invalid_llm_output_prints_clear_failure(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint" / "sources").mkdir(parents=True)
+        (target / "blueprint" / "sources" / "request.md").write_text(
+            "# Request\n\nBuild a status command.\n", encoding="utf-8"
+        )
+        (target / "ANALYSIS.md").write_text(
+            "# Blueprint Analysis: ExampleTarget\n\nQuality: Questions\n\n"
+            "## Story List\n\nProject type: `cli`\n",
+            encoding="utf-8",
+        )
+        bad_manifest = (
+            "=== MANIFEST.md ===\n"
+            "# MANIFEST: ExampleTarget\nupdated: 2026-06-16\nplan_hash: test\nstate: draft\n\n"
+            "## story 1: Bad\nid: bad\nsummary: Bad plan.\nimplements: GHOST.md\n"
+            "state: pending\n\n"
+            "## ac 1: Bad check\nid: bad-check\nparent: bad\nkind: assertion\nstate: pending\n"
+            "=== END MANIFEST.md ===\n"
+        )
+        self._patch_runner(monkeypatch, bad_manifest)
+
+        rc, out, err = run_cli("plan", "ExampleTarget")
+
+        assert rc == 1
+        assert "Plan generation failed" in err
+        assert "implements missing spec file 'GHOST.md'" in err
+        assert "No Blueprint or Manifest artifacts were written" in err
+        assert not (target / "MANIFEST.md").exists()
+        assert not (target / "QuarterDeck" / "tickets.json").exists()
+
     @pytest.mark.parametrize("verb", ["create", "init", "show", "approve", "revise", "reject"])
     def test_plan_has_no_public_subcommands(self, verb):
         rc, out, err = run_cli("plan", verb, "Example", "Target")

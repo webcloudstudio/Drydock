@@ -25,6 +25,17 @@ def test_default_feedback_heading_is_plan_compass(tmp_path):
     assert ensure_feedback_file(tmp_path) == "# Plan Compass\n"
 
 
+def test_plan_prompt_declares_strict_artifact_contract():
+    prompt = (Path(__file__).parents[1] / "prompts" / "plan_create.md").read_text(encoding="utf-8")
+
+    assert "Emit exactly one response mode" in prompt
+    assert "### Success Mode" in prompt
+    assert "=== PLAN_CREATE_ERROR.txt ===" in prompt
+    assert "Never emit `MANIFEST.md` in Error Mode or Blocked Mode" in prompt
+    assert "Every `implements:` filename in `MANIFEST.md` must exactly match" in prompt
+    assert "Do not use `AGENTS.md` as a generic implementation instruction file" in prompt
+
+
 _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16
 blueprint: bp
@@ -214,11 +225,35 @@ def test_plan_create_blocked_block_refuses(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
 
+def test_plan_create_error_block_refuses_without_writes(tmp_path):
+    target_dir = _make_target(tmp_path)
+    out = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Planning output was not produced.\n"
+        "Error type: insufficient-specification\n"
+        "Reason:\n"
+        "- Missing route ownership.\n"
+        "Required action:\n"
+        "- Clarify route ownership.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+
+    with pytest.raises(SpecificationError, match="could not produce a complete plan"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+    assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
+
+
 def test_integrity_missing_implements_is_fatal(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     out = _llm_output(_manifest(implements="GHOST.md"))
     with pytest.raises(SpecificationError, match="implements missing spec file"):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+    assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
 
 
 def test_integrity_unknown_dependency_is_fatal(tmp_path):
@@ -271,10 +306,11 @@ def test_story_without_acceptance_is_fatal(tmp_path):
 
 
 def test_missing_manifest_block_refuses(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     out = "=== ARCHITECTURE.md ===\n# ARCHITECTURE: X\n=== END ARCHITECTURE.md ===\n"
     with pytest.raises(SpecificationError, match="missing === MANIFEST.md"):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
 
 
 def test_missing_required_block_explains_required_response_contract(tmp_path):
@@ -285,7 +321,35 @@ def test_missing_required_block_explains_required_response_contract(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
 
-def test_simulated_write_calls_recover_plan_artifacts(tmp_path):
+def test_text_outside_blocks_refuses_without_writes(tmp_path):
+    target_dir = _make_target(tmp_path)
+    out = "Here is the plan:\n" + _llm_output()
+
+    with pytest.raises(SpecificationError, match="Text appeared outside"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "FEATURE-Status.md").exists()
+    assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
+
+
+def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
+    target_dir = _make_target(tmp_path)
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest(implements='ARCHITECTURE.md')}\n=== END MANIFEST.md ===\n"
+    )
+
+    with pytest.raises(SpecificationError, match="Duplicate artifact block"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+
+
+def test_simulated_write_calls_are_rejected(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     output = _llm_output()
@@ -299,11 +363,11 @@ def test_simulated_write_calls_recover_plan_artifacts(tmp_path):
             "</invoke>"
         )
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
+    with pytest.raises(SpecificationError, match="Text appeared outside"):
+        create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
 
-    assert result.plan.state == "draft"
-    assert (target_dir / "MANIFEST.md").is_file()
-    assert (blueprint_dir / "FEATURE-Status.md").is_file()
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (blueprint_dir / "FEATURE-Status.md").exists()
 
 
 def test_failed_run_refuses(tmp_path):
