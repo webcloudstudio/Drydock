@@ -20,14 +20,18 @@ The Drydock caller writes files. You only emit delimited Markdown blocks in this
 # Overview
 
 ...
+=== END DOC-OVERVIEW.md ===
 
 === DOC-FEATURES.md ===
 # Features
 
 ...
+=== END DOC-FEATURES.md ===
 ```
 
 Do not use tool calls. Do not describe what you did. Do not wrap the full answer in a code fence.
+Every block must have a matching `=== END DOC-*.md ===` delimiter. Any output outside delimited
+blocks is a protocol violation and will cause the run to fail without writing documentation files.
 
 ## Files
 

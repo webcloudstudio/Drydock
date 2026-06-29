@@ -211,6 +211,41 @@ class TestImport:
         assert written[0].name == "SURVEY-login.md"
         assert "drydock login" in written[0].read_text(encoding="utf-8")
 
+    def test_import_rejects_text_outside_blocks_without_writes(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+
+        def runner(prompt, working_directory, **kwargs):
+            return FakeRun(
+                text=(
+                    "Here are the files.\n"
+                    "=== SURVEY-login.md ===\n"
+                    "# SURVEY-SPEC: drydock login\n"
+                    "=== END SURVEY-login.md ===\n"
+                )
+            )
+
+        with pytest.raises(SpecificationError, match="Text appeared outside"):
+            import_specs(target, target_dir, source, runner=runner)
+
+        assert not (target_dir / "survey" / "ac" / "SURVEY-login.md").exists()
+
+    def test_import_rejects_unexpected_artifact_without_writes(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+
+        def runner(prompt, working_directory, **kwargs):
+            return FakeRun(text="=== NOTES.md ===\n# Notes\n=== END NOTES.md ===\n")
+
+        with pytest.raises(SpecificationError, match="unexpected artifact"):
+            import_specs(target, target_dir, source, runner=runner)
+
+        assert not (target_dir / "survey" / "ac" / "NOTES.md").exists()
+
     def test_import_cli_overrides_are_passed_to_runner(self, tmp_path):
         target, target_dir = _make_target(tmp_path)
         source = tmp_path / "blueprint"

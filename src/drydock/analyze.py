@@ -18,7 +18,8 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
-from drydock.errors import SpecificationError
+from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.errors import DrydockError, SpecificationError
 from drydock.exclude_files import (
     append_suggested_exclusions,
     ensure_exclude_file,
@@ -53,14 +54,6 @@ _SOURCES_SUBDIR = "sources"
 
 _FEEDBACK_FILENAME = "ANALYZE_COMPASS.md"
 
-_BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
-_WRITE_INVOKE_RE = re.compile(
-    r'<invoke name="(?:Write|mcp__claude-code__write_file)">\s*'
-    r'<parameter name="(?:path|file_path)">(.*?)</parameter>\s*'
-    r'<parameter name="content">(.*?)</parameter>\s*'
-    r"</invoke>",
-    re.DOTALL,
-)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
 # A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
@@ -114,6 +107,11 @@ class AnalyzeResult:
 
     def exit_code(self) -> int:
         return 0 if self.ok else 1
+
+
+def _parse_blocks(text: str) -> dict[str, str]:
+    """Parse strict analyze artifact blocks."""
+    return parse_artifact_blocks(text, label="Analyze")
 
 
 def _collect_blueprint_files(
@@ -451,27 +449,6 @@ def _assemble_prompt_assembly(
     return PromptAssembly(parts=tuple(prompt_parts))
 
 
-def _parse_blocks(text: str) -> dict[str, str]:
-    """Return a dict of block-name → stripped content from model output.
-
-    Preferred format is the documented ``=== NAME ===`` block contract. As a recovery path for
-    Claude responses that ignore the contract and instead emit a ``Write`` tool transcript, accept
-    ``<invoke name="Write">`` records and map them by basename only. Drydock still performs the
-    actual file writes deterministically.
-    """
-    blocks = {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
-    if blocks:
-        return blocks
-
-    recovered: dict[str, str] = {}
-    for match in _WRITE_INVOKE_RE.finditer(text):
-        name = Path(match.group(1).strip()).name
-        content = match.group(2).strip()
-        if name:
-            recovered[name] = content
-    return recovered
-
-
 def _validate_blockers(raw: str | None) -> str | None:
     """Return blocker content only when it is a genuine, structured blocker list.
 
@@ -620,7 +597,12 @@ def _parse_output(
     the analysis surfaces an open question or a blocker — so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
     """
-    blocks = _parse_blocks(text)
+    blocks = parse_artifact_blocks(
+        text,
+        label="Analyze",
+        allowed_names={"ANALYSIS.md", "SEA_TRIALS.md", "SOUNDINGS.md", "BLOCKERS.md", "COMPASS.md"},
+        allowed_prefixes=("discovery-",),
+    )
 
     for required in ("ANALYSIS.md", "SEA_TRIALS.md", "SOUNDINGS.md"):
         if required not in blocks:
@@ -767,7 +749,7 @@ def analyze(
             quality,
             summary,
         ) = _parse_output(result.text)
-    except ValueError as exc:
+    except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
 
     def _safe_int(key: str) -> int:

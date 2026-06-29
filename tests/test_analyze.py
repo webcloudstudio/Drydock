@@ -653,7 +653,7 @@ class TestParseBlocks:
         blocks = _parse_blocks(text)
         assert blocks["x.md"] == "content"
 
-    def test_recovers_write_tool_transcript_by_basename(self):
+    def test_rejects_write_tool_transcript(self):
         text = """\
 <function_calls>
 <invoke name="Write">
@@ -665,9 +665,8 @@ class TestParseBlocks:
 <parameter name="content">compass body</parameter>
 </invoke>
 </function_calls>"""
-        blocks = _parse_blocks(text)
-        assert blocks["ANALYSIS.md"] == "analysis body"
-        assert blocks["COMPASS.md"] == "compass body"
+        with pytest.raises(Exception, match="Text appeared outside"):
+            _parse_blocks(text)
 
 
 # ---------------------------------------------------------------------------
@@ -740,21 +739,21 @@ class TestParseOutput:
         truncated = _VALID_LLM_OUTPUT.replace("=== ANALYSIS.md ===", "").replace(
             "=== END ANALYSIS.md ===", ""
         )
-        with pytest.raises(ValueError, match="ANALYSIS.md"):
+        with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(truncated)
 
     def test_missing_sea_trials_raises(self):
         truncated = _VALID_LLM_OUTPUT.replace("=== SEA_TRIALS.md ===", "").replace(
             "=== END SEA_TRIALS.md ===", ""
         )
-        with pytest.raises(ValueError, match="SEA_TRIALS.md"):
+        with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(truncated)
 
     def test_missing_soundings_raises(self):
         truncated = _VALID_LLM_OUTPUT.replace("=== SOUNDINGS.md ===", "").replace(
             "=== END SOUNDINGS.md ===", ""
         )
-        with pytest.raises(ValueError, match="SOUNDINGS.md"):
+        with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(truncated)
 
     def test_no_spikes_is_tolerated(self):
@@ -778,7 +777,7 @@ class TestParseOutput:
         _, _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "discovery-auth.json" in spikes
 
-    def test_write_tool_transcript_is_recovered(self):
+    def test_write_tool_transcript_is_rejected(self):
         text = """\
 <function_calls>
 <invoke name="Write">
@@ -836,17 +835,8 @@ Compass text.
 - None stated.</parameter>
 </invoke>
 </function_calls>"""
-        analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = (
+        with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(text)
-        )
-        assert "Blueprint Analysis" in analysis
-        assert "Sea Trials" in sea_trials
-        assert "Soundings" in soundings
-        assert "COMPASS" in compass
-        assert blockers is None
-        assert spikes == {}
-        assert quality == "Ready"
-        assert summary["stories"] == "5"
 
 
 # ---------------------------------------------------------------------------

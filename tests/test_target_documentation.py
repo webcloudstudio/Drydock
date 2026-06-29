@@ -19,6 +19,7 @@ LLM_OUTPUT = """=== DOC-OVERVIEW.md ===
 # Overview
 
 The system tracks build evidence.
+=== END DOC-OVERVIEW.md ===
 
 === DOC-FEATURES.md ===
 # Features
@@ -26,6 +27,7 @@ The system tracks build evidence.
 ## Evidence Review
 
 Reviewers inspect accepted work.
+=== END DOC-FEATURES.md ===
 
 === DOC-SCREENS.md ===
 # Screens
@@ -33,6 +35,7 @@ Reviewers inspect accepted work.
 ## Dashboard
 
 Shows current state.
+=== END DOC-SCREENS.md ===
 
 === DOC-ARCHITECTURE.md ===
 # Architecture
@@ -40,6 +43,7 @@ Shows current state.
 ## Runtime
 
 CLI modules write target artifacts.
+=== END DOC-ARCHITECTURE.md ===
 """
 
 
@@ -71,7 +75,7 @@ def _make_target(tmp_target_root: Path, name: str = "Demo") -> Path:
 def test_parse_generated_docs_requires_required_blocks():
     with pytest.raises(DrydockError, match="DOC-FEATURES.md"):
         parse_generated_docs(
-            "=== DOC-OVERVIEW.md ===\n# Overview\n",
+            "=== DOC-OVERVIEW.md ===\n# Overview\n=== END DOC-OVERVIEW.md ===\n",
             sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
         )
 
@@ -79,7 +83,15 @@ def test_parse_generated_docs_requires_required_blocks():
 def test_parse_generated_docs_rejects_unexpected_file():
     with pytest.raises(DrydockError, match="unexpected"):
         parse_generated_docs(
-            LLM_OUTPUT + "\n=== DOC-DATABASE.md ===\n# Database\n",
+            LLM_OUTPUT + "\n=== DOC-DATABASE.md ===\n# Database\n=== END DOC-DATABASE.md ===\n",
+            sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
+        )
+
+
+def test_parse_generated_docs_rejects_text_outside_blocks():
+    with pytest.raises(DrydockError, match="Text appeared outside"):
+        parse_generated_docs(
+            "Here are the files.\n" + LLM_OUTPUT,
             sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
         )
 
@@ -135,8 +147,10 @@ def test_generate_documentation_bad_model_output_fails(
     def fake_runner(*args, **kwargs):
         return FakeRun(text="No blocks")
 
-    with pytest.raises(DrydockError, match="missing required documentation block"):
+    with pytest.raises(DrydockError, match="Text appeared outside"):
         generate_documentation("Demo", tmp_target_root, runner=fake_runner)
+
+    assert not (tmp_path / "build" / "Demo" / "docs").exists()
 
 
 def test_assemble_documentation_writes_sidebar_app(

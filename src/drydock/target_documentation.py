@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from drydock.artifact_blocks import parse_artifact_blocks
 from drydock.errors import DrydockError, SpecificationError, UsageError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
@@ -330,24 +331,21 @@ def _assemble_prompt_assembly(
     return PromptAssembly(parts=tuple(parts))
 
 
-_DOC_BLOCK = re.compile(
-    r"^===\s*(DOC-[A-Z0-9_-]+\.md)\s*===\s*$\n(.*?)(?=^===\s*DOC-[A-Z0-9_-]+\.md\s*===\s*$|\Z)",
-    re.MULTILINE | re.DOTALL,
-)
 _OUTER_FENCE = re.compile(r"\A```(?:markdown|md)?\s*\n(.*)\n```\s*\Z", re.DOTALL)
 
 
 def parse_generated_docs(text: str, *, sections: tuple[str, ...]) -> dict[str, str]:
     docs: dict[str, str] = {}
     allowed = {f"DOC-{section}.md" for section in sections}
-    for match in _DOC_BLOCK.finditer(text.strip()):
-        name = match.group(1).strip()
-        body = match.group(2).strip()
+    blocks = parse_artifact_blocks(
+        text,
+        label="Document generation",
+        allowed_names=allowed,
+    )
+    for name, body in blocks.items():
         fenced = _OUTER_FENCE.match(body)
         if fenced:
             body = fenced.group(1).strip()
-        if name not in allowed:
-            raise DrydockError(f"LLM output contains unexpected documentation file: {name}")
         if not body:
             raise DrydockError(f"LLM output contains empty documentation file: {name}")
         docs[name] = body + "\n"
@@ -358,8 +356,6 @@ def parse_generated_docs(text: str, *, sections: tuple[str, ...]) -> dict[str, s
         raise DrydockError(
             "LLM output is missing required documentation block(s): " + ", ".join(missing)
         )
-    if not docs:
-        raise DrydockError("LLM output did not contain any DOC-*.md blocks")
     return docs
 
 

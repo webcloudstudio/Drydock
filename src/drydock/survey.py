@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from drydock.errors import SpecificationError
+from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
     PromptAssembly,
@@ -543,11 +544,17 @@ def import_specs(
     if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():
         raise SpecificationError("survey import LLM execution failed or returned no output")
 
+    try:
+        blocks = parse_artifact_blocks(
+            result.text,
+            label="Survey import",
+            allowed_patterns=(r"SURVEY-[\w-]+\.md",),
+        )
+    except DrydockError as exc:
+        raise SpecificationError(str(exc)) from exc
     written: list[Path] = []
-    for block in re.finditer(
-        r"=== (SURVEY-[\w-]+\.md) ===\s*\n(.*?)\n=== END \1 ===", result.text, re.DOTALL
-    ):
-        name, body = block.group(1), block.group(2).strip() + "\n"
+    for name, content in sorted(blocks.items()):
+        body = content.strip() + "\n"
         out = ac_dir / name
         out.write_text(body, encoding="utf-8", newline="\n")
         written.append(out)
