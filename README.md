@@ -1,228 +1,299 @@
 # Drydock
 
-Drydock is an installable Python CLI implementing the governed Drydock Blueprint Methodology
-through **SAIL: Set Up, Arrange, Implement, Loop**.
+Drydock is a governed, Blueprint-driven software delivery CLI for building working
+software from specifications with a repeatable Agile process.
+
+It adds the missing process layer to specification-driven development: import the
+source material, analyze it into stories and acceptance criteria, review decisions in
+the QuarterDeck, plan a dependency graph, build one context-optimized frontier at a
+time, verify evidence, and keep the Blueprint and software aligned as the product
+changes.
 
 Copyright (c) 2026 Web Cloud Studio. All rights reserved. See [LICENSE](LICENSE).
 
----
+## What Drydock Is
 
-## Installation
+Drydock is an installable Python command-line package. The PyPI distribution is
+`drydock-sdd`; the installed command is `drydock`.
+
+Drydock implements the SAIL methodology:
+
+| Phase | Purpose | Primary commands |
+|---|---|---|
+| Set Up | Install, configure, and initialize a Target workspace | `config`, `init`, `status` |
+| Analyze | Import material and decompose it into stories, blockers, and acceptance milestones | `import`, `analyze`, `run quarterdeck`, `plan` |
+| Implement | Build the Manifest frontier and verify evidence | `build`, `build status`, `build verify`, `rigging`, `document` |
+| Loop | Manage change while preserving the Blueprint as source of truth | `refit`, `build`, `document` |
+
+The core idea is simple: reproducible LLM builds require a process. Drydock uses
+Agile structure, explicit product-owner review, durable evidence, and context-managed
+build prompts so generated software can be inspected, repeated, and iterated.
+
+## Subscription CLI Requirement
+
+Drydock is for subscription-authenticated CLI users.
+
+It does not use API-key-backed model calls and does not require per-token API billing.
+LLM-assisted commands execute through a locally authenticated provider CLI:
+
+- `claude` for Anthropic Claude subscription CLI users.
+- `codex` for OpenAI Codex subscription CLI users.
+
+Set the provider with:
 
 ```bash
-uv pip install drydock
+drydock config set llm_provider claude
+# or
+drydock config set llm_provider codex
 ```
 
-Or from source:
+The provider CLI must already be installed, authenticated, and available on `PATH`.
+Deterministic commands such as `status`, `validate`, `document assemble`, and `publish`
+do not call an LLM.
+
+## Install
+
+Python 3.11 or later is required.
+
+Recommended:
 
 ```bash
-git clone <repo>
+uv tool install drydock-sdd
+```
+
+Alternative:
+
+```bash
+pipx install drydock-sdd
+```
+
+Virtual environment install:
+
+```bash
+python -m pip install drydock-sdd
+```
+
+Verify:
+
+```bash
+drydock --version
+drydock --help
+```
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full installation and release
+verification guide.
+
+## Quick Start
+
+Create one projects directory, configure Drydock's workspace and build output root, and
+initialize a Target.
+
+```bash
+export PROJECTS="$HOME/projects"
+mkdir -p "$PROJECTS/drydock"
+
+drydock config set drydock_workspace "$PROJECTS/drydock"
+drydock config set drydock_build_directory "$PROJECTS"
+drydock config set llm_provider claude
+
+drydock init MyApp --display-name "My App" --description "A working software product."
+drydock status
+```
+
+Import source material and run the planning loop:
+
+```bash
+drydock import MyApp ./notes --format markdown
+drydock analyze MyApp
+drydock run quarterdeck MyApp
+drydock plan MyApp
+drydock build status MyApp
+```
+
+Build and verify one frontier at a time:
+
+```bash
+drydock build MyApp
+drydock build status MyApp
+drydock build verify MyApp <step-id>
+```
+
+The Target workspace lives under:
+
+```text
+$DRYDOCK_WORKSPACE/targets/<Target>/
+```
+
+The generated application is written under:
+
+```text
+$DRYDOCK_BUILD_DIRECTORY/<Target>/
+```
+
+## Why It Is Different
+
+Drydock is not a prompt collection and it is not a one-shot code generator. It is a
+delivery system with durable artifacts:
+
+- Blueprint: typed Markdown specifications that remain the source of truth.
+- Manifest: the executable dependency graph for build order, dependencies, and state.
+- QuarterDeck: the web review surface where the product owner answers questions,
+  reviews stories, and directs the process.
+- Compass files: persistent product-owner intent injected into the right command runs.
+- Soundings: acceptance checklist and implementation evidence.
+- Sea Trials: product-level objectives and proof-of-delivery criteria.
+- Rigging: shared branding, stack rules, templates, and compact context derivatives.
+- Execution logs: reproducible prompt, raw output, stderr, event, and result artifacts.
+
+The Commander is the product owner. The LLM is treated as an Agile delivery team.
+Drydock's job is to make that relationship explicit, reviewable, and repeatable.
+
+## Current Release Status
+
+Drydock is in final testing. The primary SAIL path is implemented:
+
+- Workspace configuration and Target initialization.
+- Markdown, source tree, Spec Kit, and Compass import.
+- LLM-assisted analysis with blockers, questionnaires, Soundings, Sea Trials, and
+  Commander review artifacts.
+- LLM-assisted planning into typed Blueprint files and `MANIFEST.md`.
+- Manifest-frontier build execution, evidence capture, and human verification.
+- QuarterDeck runtime for review and process navigation.
+- Rigging compaction, update, and verification.
+- Target documentation generation and assembly.
+- Deterministic Markdown publishing to HTML and optional PDF.
+- Survey and prompt-review tooling used to evaluate Drydock's own command quality.
+
+Two command surfaces remain visible but deferred in the current CLI:
+
+- `drydock build score <Target>`
+- `drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>`
+
+Read [docs/SOUNDINGS.md](docs/SOUNDINGS.md) for the authoritative implementation
+readiness checklist and test evidence.
+
+## Command Surface
+
+```text
+drydock --help
+drydock --version
+
+drydock config show
+drydock config set <key> <value>
+
+drydock init <Target> [--display-name <name>] [--description <desc>]
+drydock status [<Target>]
+drydock validate <Target> [--verbose]
+drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
+
+drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>
+drydock analyze <Target> [--model <model>] [--llm-provider <claude|codex>]
+drydock plan <Target> [--model <model>] [--llm-provider <claude|codex>]
+
+drydock build <Target> [--step <step-id>] [--force] [--build-dir <path>]
+drydock build status <Target>
+drydock build verify <Target> <step-id>
+drydock build score <Target>
+
+drydock rigging compact [<Target>] [--all] [--force]
+drydock rigging compact <Target> --include-file <file.md>
+drydock rigging update <Target> [--dry-run]
+drydock rigging verify <Target>
+
+drydock document generate <Target> [--model <model>]
+drydock document assemble <Target> [--theme <theme>]
+drydock document <Target> [--model <model>] [--theme <theme>]
+
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf]
+drydock survey <Target> [--run] [--import <path>] [--command <name>] [--raw]
+drydock prompt review <component>
+```
+
+Configuration keys:
+
+| Key | Environment override | Purpose |
+|---|---|---|
+| `drydock_workspace` | `DRYDOCK_WORKSPACE` | Workspace containing `targets/` and Drydock logs |
+| `drydock_build_directory` | `DRYDOCK_BUILD_DIRECTORY` | Root where generated applications are written |
+| `drydock_model` | `DRYDOCK_MODEL` | Default model for LLM-assisted commands |
+| `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
+| `prompt_warn_kb` | `PROMPT_WARN_KB` | Prompt-size warning threshold in KiB |
+| `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
+
+## Public Documentation
+
+Core references:
+
+- [Install Drydock](docs/INSTALLATION.md)
+- [Drydock specification](docs/Drydock_Specification.md)
+- [Rendered specification HTML](docs/Drydock_Specification.html)
+- [Rendered specification PDF](docs/Drydock_Specification.pdf)
+- [Published methodology page](docs/index.html)
+- [Launch deck](docs/presentation/deck.html)
+- [Launch script](docs/presentation/script.md)
+- [Talking points](docs/presentation/talking_points.md)
+- [Soundings readiness checklist](docs/SOUNDINGS.md)
+- [Sea Trials sample](docs/SEA_TRIALS_SAMPLE.md)
+
+Development and governance:
+
+- [Contributing](CONTRIBUTING.md)
+- [Drydock skills](docs/Drydock_SKILLS.md)
+- [PyPI name reservation notes](docs/PYPI_NAME_RESERVATION.md)
+- [Launch distribution plan](docs/presentation/distribution.md)
+
+## Source Development
+
+Install from a source checkout:
+
+```bash
+git clone https://github.com/webcloudstudio/Drydock.git
 cd Drydock
 uv venv
 uv pip install -e ".[dev]"
 ```
 
-## Working Commands
+Run local verification:
 
-The following commands are fully implemented:
+```bash
+python -m pytest
+ruff check src/ tests/
+ruff format --check src/ tests/
+```
+
+Build release artifacts:
+
+```bash
+python -m hatchling build
+```
+
+After the editable install, run the installed console entry point against the source
+tree:
 
 ```bash
 drydock --help
-drydock --version
-
-drydock config show
-drydock config set blueprint_directory <path>
-drydock config set target_directory <path>
-
-drydock init <Target>
-
-drydock validate <Blueprint>
-drydock validate <Blueprint> --verbose
-
-drydock rigging compact <Blueprint> [--all] [--force]
-
-drydock import <Blueprint> <Source> --format markdown
-drydock prompt review <component>
-drydock plan create <Blueprint> <Target>
-drydock build status <Blueprint> <Target>
 ```
 
-The planning flow starts with Target initialization, then uses three commands plus QuarterDeck
-approval:
+## Security Model
 
-```bash
-drydock init <Target>
-drydock import <Blueprint> <Source> --format markdown
-drydock plan create <Blueprint> <Target>
-# Review and approve the draft plan in <Target>/QuarterDeck.
-drydock build status <Blueprint> <Target>
-```
+Drydock assembles prompts deterministically and runs the selected provider CLI as a
+subprocess. Execution evidence is persisted under Drydock logs so a run can be audited.
 
-`init` creates the specification-independent Target baseline and QuarterDeck. `import` creates the
-Blueprint workspace and preserves the source material. `plan create`
-internally inventories the Blueprint inputs and writes the executable `MANIFEST.md` into the
-Target. Configured Blueprint and Target roots belong in Drydock's user-scoped `.env`, never project
-`METADATA.md`.
+Provider handling is intentionally subscription-oriented:
 
-## Deferred Commands
+- API-key environment variables are not the intended execution path.
+- Claude and Codex are run through isolated command wrappers.
+- Build commands operate against the configured Target workspace and generated application
+  directory.
+- Tests use injected runners and never require network or paid API access.
 
-The following commands are registered and visible in help, but not yet
-implemented. Each returns a clear message and exits with code `2`:
-
-```bash
-drydock rigging update <Target>
-drydock rigging verify <Target>
-drydock build <Blueprint> <Target>
-drydock build score <Blueprint> <Target>
-drydock refit <Blueprint> <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>
-drydock analyze <Blueprint> [<Target>]
-drydock import <Blueprint> <Source> --format <source|speckit>
-```
-
-Implemented Target documentation commands:
-
-```bash
-drydock document generate <Target> [--model <model>]
-drydock document assemble <Target> [--theme <theme>]
-drydock document <Target> [--model <model>] [--theme <theme>]
-```
-
-Target documentation configuration is `$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`.
-Generated Markdown and assembled HTML are build artifacts under
-`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`. Supported themes are `slate`, `harbor`, and `paper`.
-
-Deterministic frontmatter Markdown publishing:
-
-```bash
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
-```
-
-`drydock publish` does not call an LLM. It renders frontmatter Markdown into HTML; `--pdf` also
-renders a PDF when local Playwright/Chromium support is available.
-
-## Configuration
-
-Drydock reads these global configuration values:
-
-| Variable | Purpose |
-|---|---|
-| `BLUEPRINT_DIRECTORY` | Root path containing all Drydock Blueprints |
-| `TARGET_DIRECTORY` | Root path containing all target software projects |
-| `LLM_PROVIDER` | Subscription CLI provider: `claude` (default) or `codex` |
-
-**Effective-value precedence:**
-1. Environment variables `BLUEPRINT_DIRECTORY`, `TARGET_DIRECTORY`, and `LLM_PROVIDER`.
-2. Values persisted in the user-scoped Drydock `.env` file.
-
-**Config file location** (OS-appropriate):
-- Linux/macOS: `~/.config/drydock/.env`
-- Windows: `%APPDATA%\drydock\.env`
-
-Set values with:
-
-```bash
-drydock config set blueprint_directory /path/to/blueprints
-drydock config set target_directory /path/to/projects
-```
-
-`SPECIFICATION_DIRECTORY` and `specification_directory` remain accepted as deprecated migration
-aliases for `BLUEPRINT_DIRECTORY` and `blueprint_directory`.
-
-## Source-Tree Launchers
-
-When developing, you can run Drydock without installing it:
-
-```bash
-# Bash (Linux/macOS)
-bin/drydock.sh --help
-
-# PowerShell (Windows)
-bin/drydock.ps1 --help
-
-# Python module
-python -m drydock --help
-```
-
-All three dispatch to the same CLI entry point as the installed `drydock` command.
-
-PowerShell structural behavior is defined but not runtime-verified in WSL environments.
-
-## LLM Execution Foundation
-
-Application functions pass a fully assembled prompt to the subscription-authenticated CLI runner:
-
-```python
-from drydock.llm import run_prompt
-
-result = run_prompt(
-    prompt,
-    target_directory,
-    llm="claude",                 # optional; LLM_PROVIDER or claude default
-    model="sonnet",               # optional
-    command_name="plan-create",
-    parameters={"blueprint": blueprint_name, "block": block_id},
-    debug=debug,
-    timeout_seconds=3600,
-    on_text=lambda chunk: print(chunk, end="", flush=True),
-    on_event=handle_structured_event,
-)
-```
-
-Every run writes timestamped prompt, human log, raw provider output, final output, and stderr files
-under `<Target>/logs/`. `<Target>/logs/executions.jsonl` contains one self-contained JSON object per
-run with the effective argv, working directory, caller parameters, artifact paths, hashes, status,
-and parsed provider statistics. The JSONL file is append-only and intentionally extensible for
-future provenance and staleness fields.
-
-Provider JSONL is read while the process runs. `on_text` receives Claude partial text deltas or
-Codex agent-message steps immediately; `on_event` receives structured Drydock lifecycle and
-provider events. The same events are appended immediately to `<Target>/logs/events.jsonl`.
-Timeouts terminate the child process and return exit code `124`; interruption terminates the child,
-records exit code `130`, and re-raises `KeyboardInterrupt`.
-
-Material Drydock product decisions and delivery milestones are separate from execution mechanics.
-Agents developing Drydock follow the Ship's Log Process in `AGENTS.md` and use the repository-local
-utility:
-
-```text
-python bin/ships_log.py record --event-type decision --title "..." --summary "..." \
-  --rationale "..." --source-type agent [--scope ...] [--evidence ...] [--tag ...]
-python bin/ships_log.py audit
-```
-
-The sole Ship's Log artifact is Drydock's `logs/ships_log.jsonl`. It is append-only, rendered by
-QuarterDeck's generic JSONL viewer, and intended as the direct input to downstream publishing
-tools. It is not a public `drydock` command or a target-project Rigging rule. No Markdown Ship's Log
-is generated.
-
-## Project Governance Documents
-
-- `docs/Drydock_Specification.md` — sole authoritative Drydock behavior specification; agents
-  require product-owner approval before changing it.
-- `docs/SOUNDINGS.md` — authoritative implementation acceptance/readiness checklist and completion
-  evidence.
-- `docs/SEA_TRIALS.md` — strategic product outcomes and proof-of-methodology criteria.
-- `AGENTS.md` — operating rules, development architecture, and the mandatory Drydock-only agent
-  decision-capture (Ship's Log) process.
-
-QuarterDeck exposes these documents and the other owned artifacts under `docs/` directly.
-
-`LLM_PROVIDER=claude|codex` may be set in the process environment or user-scoped Drydock `.env`;
-the process environment takes precedence and Claude is the default. API-key environment variables
-are removed before invoking either CLI.
-
-## Packaged Rigging Resources
-
-The installed wheel contains a synchronized copy of the Drydock Rigging at
-`drydock/resources/Rigging/`. This is the same tree as the root-level `Rigging/`
-directory; it is included so Blueprint import, validation, and Rigging commands work from an
-installed wheel without access to the source checkout. The installed wheel also contains the
-QuarterDeck runtime used by `drydock init <Target>`.
-
-When running from the source tree, Drydock uses the root-level `Rigging/` directly.
-When running from an installed wheel, it falls back to `importlib.resources`.
+See the "Drydock Security" section in
+[docs/Drydock_Specification.md](docs/Drydock_Specification.md#drydock-security) for the
+current provider execution contracts.
 
 ## License
 
-Proprietary — Web Cloud Studio. See [LICENSE](LICENSE) for terms.
-No part of this software may be used without explicit written permission.
+Proprietary - Web Cloud Studio. See [LICENSE](LICENSE).
+
+Possession of a copy does not grant a license or right to use the software or
+documentation. Use requires explicit written permission from Web Cloud Studio.
