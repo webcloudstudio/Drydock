@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -71,6 +72,12 @@ _ROLE_HEADINGS = {
     "context": "## CONTEXT - Read-Only Support",
     "implements": "## IMPLEMENTS - Authoritative Step Specifications",
 }
+_AUTO_CONTEXT_MANAGED = frozenset({
+    "ARCHITECTURE.md",
+    "DATABASE.md",
+    "ARCHITECTURE_compact.md",
+    "DATABASE_compact.md",
+})
 
 
 @dataclass(frozen=True)
@@ -155,6 +162,90 @@ def _compact_sibling(name: str) -> str:
     return name
 
 
+def _implements(block: PlanBlock) -> tuple[str, ...]:
+    value = block.fields.get("implements", ())
+    if isinstance(value, tuple):
+        return value
+    return ()
+
+
+def _context_names(block: PlanBlock) -> tuple[str, ...]:
+    value = block.fields.get("context", ())
+    if isinstance(value, tuple):
+        return value
+    return ()
+
+
+def is_feature_step(block: PlanBlock) -> bool:
+    """True when the step implements one or more FEATURE-* specs."""
+    return any(name.startswith("FEATURE-") for name in _implements(block))
+
+
+def is_screen_step(block: PlanBlock) -> bool:
+    """True when the step implements one or more SCREEN-* specs and no feature specs."""
+    implements = _implements(block)
+    return (
+        bool(implements)
+        and not is_feature_step(block)
+        and all(name.startswith("SCREEN-") for name in implements)
+    )
+
+
+def auto_context_files(block: PlanBlock, blueprint_dir: Path) -> tuple[str, ...]:
+    """Return deterministic compact context injected for feature steps."""
+    if not is_feature_step(block):
+        return ()
+    names: list[str] = []
+    if (blueprint_dir / "ARCHITECTURE.md").is_file():
+        names.append("ARCHITECTURE_compact.md")
+    if (blueprint_dir / "DATABASE.md").is_file():
+        names.append("DATABASE_compact.md")
+    return tuple(names)
+
+
+def normalize_context_names(block: PlanBlock, blueprint_dir: Path) -> tuple[str, ...]:
+    """Return authored context with managed architecture/database entries normalized."""
+    current = _context_names(block)
+    if not (is_feature_step(block) or is_screen_step(block)):
+        return current
+    names: list[str] = [name for name in current if name not in _AUTO_CONTEXT_MANAGED]
+    for name in auto_context_files(block, blueprint_dir):
+        if name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def required_auto_compact_sources(block: PlanBlock, blueprint_dir: Path) -> tuple[Path, ...]:
+    """Return source spec files whose compact derivatives must be fresh for this step."""
+    required: list[Path] = []
+    implements = _implements(block)
+    effective_context = normalize_context_names(block, blueprint_dir)
+    if "ARCHITECTURE.md" in implements or "ARCHITECTURE_compact.md" in effective_context:
+        path = blueprint_dir / "ARCHITECTURE.md"
+        if path.is_file():
+            required.append(path)
+    if "DATABASE.md" in implements or "DATABASE_compact.md" in effective_context:
+        path = blueprint_dir / "DATABASE.md"
+        if path.is_file():
+            required.append(path)
+    return tuple(required)
+
+
+def required_plan_auto_compact_sources(
+    blocks: Iterable[PlanBlock],
+    blueprint_dir: Path,
+) -> tuple[Path, ...]:
+    """Return unique ARCHITECTURE/DATABASE source files required anywhere in the plan."""
+    seen: set[Path] = set()
+    required: list[Path] = []
+    for block in blocks:
+        for path in required_auto_compact_sources(block, blueprint_dir):
+            if path not in seen:
+                seen.add(path)
+                required.append(path)
+    return tuple(required)
+
+
 def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> StepFile:
     """Resolve a file, preferring the ``*_compact.md`` sibling when it exists on disk.
 
@@ -180,10 +271,14 @@ def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> Step
     return _measure(canonical, role, roots)
 
 
-def _role_names(block: PlanBlock, role: str) -> tuple[str, ...]:
+def _role_names(
+    block: PlanBlock, role: str, *, blueprint_dir: Path | None = None
+) -> tuple[str, ...]:
     """Return the file names a block declares for one role."""
     if role == "compass":
         return ("COMPASS.md",)
+    if role == "context" and blueprint_dir is not None:
+        return normalize_context_names(block, blueprint_dir)
     value = block.fields.get(role, ())
     if isinstance(value, tuple):
         return value
@@ -211,7 +306,7 @@ def assemble_step(
     files: list[StepFile] = []
     for role in _ROLE_ORDER:
         names: list[str] = []
-        for name in _role_names(block, role):
+        for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
             if name not in names:
                 names.append(name)
         for name in names:
@@ -263,7 +358,7 @@ def assemble_steps(
             continue
         step = assemble_step(block, roots, warn_kb=warn_kb, compact_stack=frozenset(files_seen))
         for role in _ROLE_ORDER:
-            for name in _role_names(block, role):
+            for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
                 files_seen.add(name)
         result.append(step)
     return tuple(result)

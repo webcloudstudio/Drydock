@@ -326,18 +326,19 @@ def write_manifest(doc: ManifestDoc) -> None:
     temp_path.replace(doc.path)
 
 
-def _set_field_line(block: RawBlock, key: str, value: str) -> None:
-    """Rewrite (or insert after ``id:``) a scalar field line on a block."""
+def _set_field_line(block: RawBlock, key: str, value: str | None) -> None:
+    """Rewrite, insert, or delete a scalar field line on a block."""
     kept: list[str] = []
     replaced = False
     for line in block.lines:
         match = _FIELD_LINE_RE.match(line)
         if match and match.group(1).lower() == key:
-            kept.append(f"{key}: {value}")
+            if value is not None:
+                kept.append(f"{key}: {value}")
             replaced = True
             continue
         kept.append(line)
-    if not replaced:
+    if value is not None and not replaced:
         insert_at = 1
         for i, line in enumerate(kept):
             match = _FIELD_LINE_RE.match(line)
@@ -348,7 +349,7 @@ def _set_field_line(block: RawBlock, key: str, value: str) -> None:
     block.lines = kept
 
 
-def set_block_fields(path: Path, block_id: str, **fields: str) -> None:
+def set_block_fields(path: Path, block_id: str, **fields: str | None) -> None:
     """Decision writer: set scalar fields on one block and rewrite MANIFEST.md.
 
     The single mutator for per-block state transitions (``state``, ``evidence``,
@@ -363,7 +364,7 @@ def set_block_fields(path: Path, block_id: str, **fields: str) -> None:
     write_manifest(doc)
 
 
-def batch_set_block_fields(path: Path, updates: dict[str, dict[str, str]]) -> None:
+def batch_set_block_fields(path: Path, updates: dict[str, dict[str, str | None]]) -> None:
     """Set scalar fields on multiple blocks in a single parse-and-write cycle.
 
     ``updates`` maps block_id → {field_name → value}. Blocks not present in the

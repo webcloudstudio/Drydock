@@ -26,6 +26,7 @@ project is, what it must do, and how it is built.
 | `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
 | `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, AC, guardrails | As needed |
 | `ARCHITECTURE_compact.md` | Compact architecture derivative for downstream build-step injection | Optional |
+| `DATABASE_compact.md` | Compact persistence derivative for downstream build-step injection | Optional |
 | `HOMEPAGE.md` | Portfolio homepage: branding, contact, bio | If publishes a portfolio |
 | `HOMEPAGE-PUBLISHER.md` | Template-based homepage publishing configuration | If publishes a portfolio |
 | `IDEAS.md` | Feature ideas and backlog — no typed header required | No |
@@ -38,6 +39,8 @@ Every authored Specification file ends with `## Acceptance Criteria`, `## Guardr
 `ARCHITECTURE_compact.md` is a compact derivative of `ARCHITECTURE.md` produced by
 `drydock rigging compact`. Drydock uses filename-selected compaction algorithms rather than
 phase-aware compact variants.
+
+`DATABASE_compact.md` is a compact derivative of `DATABASE.md` produced by `drydock rigging compact`.
 
 ---
 

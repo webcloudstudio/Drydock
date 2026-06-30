@@ -100,6 +100,8 @@ def _has_section(text: str, heading: str) -> bool:
 
 
 def _file_needs_typed_heading(fname: str) -> bool:
+    if "_compact." in fname:
+        return False
     if fname in _NO_TERMINAL_NEEDED:
         return False
     if fname in _GENERATED_FILES:
@@ -260,6 +262,9 @@ def validate_specification(
         fname = md_file.name
         if fname in _ALLOWED_ROOT_NAMES:
             p(section, f"{fname} (standard file)")
+            continue
+        if re.match(r"^(ARCHITECTURE|DATABASE)_compact(\.skip)?\.md$", fname):
+            p(section, f"{fname} (generated compact)")
             continue
         if any(fname.startswith(prefix) for prefix in _SPEC_FILE_PREFIXES):
             p(section, f"{fname} (spec file)")

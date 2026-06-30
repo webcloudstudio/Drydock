@@ -25,7 +25,13 @@ from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 
-from drydock.build import StepAssembly, StepRoots, assemble_step, render_build_prompt_assembly
+from drydock.build import (
+    StepAssembly,
+    StepRoots,
+    assemble_step,
+    render_build_prompt_assembly,
+    required_plan_auto_compact_sources,
+)
 from drydock.build_plan import (
     AppliedSpecRecord,
     PlanBlock,
@@ -40,6 +46,7 @@ from drydock.manifest_edit import set_block_fields
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
+from drydock.rigging_compact import ensure_compact_files
 
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
@@ -513,6 +520,17 @@ def build_target(
             "Build blocked: uncommitted changes in the stack directory. "
             "Commit or stash changes before building."
         )
+    plan = parse_build_plan(manifest_path)
+    ensure_compact_files(
+        blueprint_dir,
+        sources=list(required_plan_auto_compact_sources(plan.blocks, blueprint_dir)),
+        reason="pre-build context refresh",
+        log_dir=log_dir,
+        target=target,
+        on_text=on_text,
+        model=model,
+        llm_provider=llm_provider,
+    )
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
     prompt = load_prompt(PROMPT_NAME)

@@ -123,6 +123,17 @@ class TestNonSpecBlueprintFiles:
         assert result.has_failures()
         assert any("AGENTS.md is forbidden in blueprint/" in message for message in messages)
 
+    def test_generated_compacts_are_allowed(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        blueprint = target_dir / "blueprint"
+        (blueprint / "ARCHITECTURE_compact.md").write_text("# Compact\n", encoding="utf-8")
+        (blueprint / "DATABASE_compact.md").write_text("# Compact\n", encoding="utf-8")
+
+        result = validate_specification("TestProject", target_dir)
+        messages = [f.message for f in result.findings]
+        assert "Unexpected file name: ARCHITECTURE_compact.md" not in messages
+        assert "Unexpected file name: DATABASE_compact.md" not in messages
+
 
 class TestExampleFileWarnings:
     def test_screen_example_warns(self, tmp_target_root):

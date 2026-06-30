@@ -126,6 +126,9 @@ Rules:
 - Every important route, capability, interface, dataset, topic, or command named in analysis must
   be represented in one or more `FEATURE-*.md` files, with `ARCHITECTURE.md` and `DATABASE.md`
   carrying shared technical structure where needed.
+- Drydock deterministically injects `ARCHITECTURE_compact.md` and `DATABASE_compact.md` into
+  `FEATURE-*` build steps when those source files exist. Do not model that policy manually with
+  screen stories or ad hoc context duplication.
 
 **4. Write authored specification content.**
 - *Consumes:* the file mapping and all planning inputs.

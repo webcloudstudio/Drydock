@@ -125,6 +125,50 @@ class TestAssembleStep:
         step = assemble_step(plan.by_id()["core"], _roots(tmp_path))
         assert step.over_warn is False
 
+    def test_feature_steps_receive_architecture_and_database_compacts(self, tmp_path):
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## story 1: Feature
+id: feature
+implements: FEATURE-Status.md
+context: README.md
+state: pending
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "FEATURE-Status.md").write_text("feature\n", encoding="utf-8")
+        (roots.blueprint_dir / "ARCHITECTURE_compact.md").write_text(
+            "arch-compact\n", encoding="utf-8"
+        )
+        (roots.blueprint_dir / "DATABASE_compact.md").write_text("db-compact\n", encoding="utf-8")
+
+        step = assemble_step(plan.by_id()["feature"], roots)
+        context_names = {f.name for f in step.files if f.role == "context"}
+        assert context_names == {"README.md", "ARCHITECTURE_compact.md", "DATABASE_compact.md"}
+
+    def test_screen_steps_do_not_receive_managed_compact_context(self, tmp_path):
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## story 1: Screen
+id: screen
+implements: SCREEN-Home.md
+context: README.md, ARCHITECTURE.md, DATABASE.md
+state: pending
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "SCREEN-Home.md").write_text("screen\n", encoding="utf-8")
+
+        step = assemble_step(plan.by_id()["screen"], roots)
+        context_names = {f.name for f in step.files if f.role == "context"}
+        assert context_names == {"README.md"}
+
 
 class TestAssembleSteps:
     def test_only_story_and_spike_are_steps(self, tmp_path):

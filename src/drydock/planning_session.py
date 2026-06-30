@@ -25,6 +25,7 @@ from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol
 
+from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
 from drydock.errors import SpecificationError
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
@@ -44,6 +45,7 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
+from drydock.rigging_compact import ensure_compact_files
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
@@ -889,6 +891,26 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
 
 
+def _normalize_manifest_contexts(plan_path: Path, blueprint_dir: Path) -> None:
+    """Rewrite MANIFEST context fields to Drydock's deterministic compact policy."""
+    plan = parse_build_plan(plan_path)
+    updates: dict[str, dict[str, str | None]] = {}
+    from drydock.build import normalize_context_names
+
+    for block in plan.blocks:
+        if block.block_type not in {"story", "spike"}:
+            continue
+        normalized = normalize_context_names(block, blueprint_dir)
+        current = block.fields.get("context", ())
+        current_tuple = current if isinstance(current, tuple) else ()
+        if normalized == current_tuple:
+            continue
+        updates[block.block_id] = {
+            "context": ", ".join(normalized) if normalized else None,
+        }
+    batch_set_block_fields(plan_path, updates)
+
+
 # ── Entry point ─────────────────────────────────────────────────────────────────────
 
 
@@ -1008,6 +1030,19 @@ def create_plan(
     #    a replan. Dirty blocks (implements: sha256 changed) are left at pending.
     _write_text(plan_path, blocks["MANIFEST.md"])
     _merge_prior_state(plan_path, blueprint_dir, prior_applied_specs, prior_block_states)
+    _normalize_manifest_contexts(plan_path, blueprint_dir)
+
+    normalized_plan = parse_build_plan(plan_path)
+    ensure_compact_files(
+        blueprint_dir,
+        sources=list(required_plan_auto_compact_sources(normalized_plan.blocks, blueprint_dir)),
+        reason="created after plan",
+        log_dir=log_dir,
+        target=target,
+        on_text=on_text,
+        model=model,
+        llm_provider=llm_provider,
+    )
 
     # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)

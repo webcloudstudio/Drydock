@@ -450,6 +450,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         model=model,
         llm_provider=llm_provider,
         log_dir=log_dir,
+        on_text=print,
     )
     print()
     print(f"Blueprint: {result.plan.project}")
@@ -1063,6 +1064,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         model=model,
         llm_provider=llm_provider,
         log_dir=log_dir,
+        on_text=print,
         on_step=report,
         step_id=getattr(args, "step", None),
         force=bool(getattr(args, "force", False)),

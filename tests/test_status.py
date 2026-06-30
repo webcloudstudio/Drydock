@@ -144,6 +144,22 @@ class TestStatusBlueprintTarget:
         assert result.target_info is not None
         assert result.target_info.authored_blueprints == 1
 
+    def test_authored_blueprint_count_excludes_generated_compacts(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        blueprint = tgt / "blueprint"
+        blueprint.mkdir(parents=True)
+        (tgt / "METADATA.md").write_text(
+            "name: TestTarget\ndisplay_name: TestTarget\n", encoding="utf-8"
+        )
+        (blueprint / "ARCHITECTURE.md").write_text("# ARCHITECTURE: X\n", encoding="utf-8")
+        (blueprint / "ARCHITECTURE_compact.md").write_text("# Compact\n", encoding="utf-8")
+        (blueprint / "DATABASE_compact.md").write_text("# Compact\n", encoding="utf-8")
+
+        result = status_blueprint_target("TestTarget", "TestTarget", blueprint, tmp_target_root)
+
+        assert result.target_info is not None
+        assert result.target_info.authored_blueprints == 1
+
     def test_compact_recommendations_exclude_noncompactable_files(self, tmp_target_root):
         tgt = tmp_target_root / "TestTarget"
         blueprint = tgt / "blueprint"

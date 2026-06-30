@@ -104,6 +104,8 @@ def _count_authored_blueprints(blueprint_dir: Path) -> int:
             continue
         if path.name == "AGENTS.md":
             continue
+        if "_compact." in path.name:
+            continue
         count += 1
     return count
 

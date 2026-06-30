@@ -140,6 +140,14 @@ class FakeRun:
     execution_id: str = "exec-fake"
 
 
+@pytest.fixture(autouse=True)
+def fake_compactor(monkeypatch):
+    def fake(prompt, working_directory, **kwargs):
+        return FakeRun(text="# Compact\n\nBody\n", execution_id="compact-fake")
+
+    monkeypatch.setattr("drydock.rigging_compact.run_prompt", fake)
+
+
 def _fake(text: str):
     return lambda *a, **k: FakeRun(text=text)
 
@@ -288,6 +296,28 @@ def test_replan_restores_applied_specs(tmp_path):
     plan = parse_build_plan(target_dir / "MANIFEST.md")
     assert "FEATURE-Status.md" in plan.applied_specs
     assert plan.applied_specs["FEATURE-Status.md"].applied_by == "story-status"
+
+
+def test_plan_normalizes_feature_context_and_auto_compacts(tmp_path):
+    target_dir = _make_target(tmp_path)
+    db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.")
+    manifest = _manifest().replace(
+        "scope: both\nstate: pending",
+        "scope: both\ncontext: README.md, ARCHITECTURE.md\nstate: pending",
+    )
+    out = (
+        f"=== ARCHITECTURE.md ===\n{_SPEC_HEADER.format(ftype='ARCHITECTURE', name='Example', ac='None.')}\n=== END ARCHITECTURE.md ===\n"
+        f"=== DATABASE.md ===\n{db}\n=== END DATABASE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{_SPEC_HEADER.format(ftype='FEATURE', name='Status', ac='Status command exits successfully.')}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"
+    )
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "context: README.md, ARCHITECTURE_compact.md, DATABASE_compact.md" in text
+    assert (target_dir / "blueprint" / "ARCHITECTURE_compact.md").is_file()
+    assert (target_dir / "blueprint" / "DATABASE_compact.md").is_file()
 
 
 def test_replan_preserves_spike_finding(tmp_path):

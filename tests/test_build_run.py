@@ -59,6 +59,14 @@ class FakeResult:
         self.execution_id = execution_id
 
 
+@pytest.fixture(autouse=True)
+def fake_compactor(monkeypatch):
+    def fake(prompt, working_directory, **kwargs):
+        return FakeResult(text="# Compact\n\nBody\n", execution_id="compact-fake")
+
+    monkeypatch.setattr("drydock.rigging_compact.run_prompt", fake)
+
+
 def _success_report(*, changed: tuple[str, ...], summary: str = "Built it.") -> str:
     return (
         "RESULT: SUCCESS\n\n"
@@ -119,6 +127,34 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert result.git_commit is not None
     assert result.git_commit_message is not None
     assert result.git_commit_message.startswith("drydock build Demo ")
+
+
+def test_feature_step_auto_compacts_and_injects_compact_context(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## story 1: Feature
+id: feature
+implements: FEATURE-Status.md
+instructions: |
+  Build the feature.
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    blueprint = target_dir / "blueprint"
+    (blueprint / "ARCHITECTURE.md").write_text("ARCH SPEC CONTENT\n", encoding="utf-8")
+    (blueprint / "DATABASE.md").write_text("DB SPEC CONTENT\n", encoding="utf-8")
+    (blueprint / "FEATURE-Status.md").write_text("FEATURE SPEC CONTENT\n", encoding="utf-8")
+
+    log: list[str] = []
+    runner = make_runner()
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
+
+    assert any("AUTO-COMPACT:" in line and "ARCHITECTURE_compact.md" in line for line in log)
+    assert any("AUTO-COMPACT:" in line and "DATABASE_compact.md" in line for line in log)
+    prompt = runner.calls[0]["prompt"]
+    assert 'filename="ARCHITECTURE_compact.md"' in prompt
+    assert 'filename="DATABASE_compact.md"' in prompt
 
 
 def test_successful_build_updates_target_lifecycle_metadata(tmp_path):

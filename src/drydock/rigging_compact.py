@@ -145,6 +145,61 @@ class CompactResult:
         return 1 if self.failed() else 0
 
 
+def ensure_compact_files(
+    blueprint_dir: Path,
+    *,
+    sources: list[Path],
+    reason: str,
+    log_dir: Path | None = None,
+    target: str = "",
+    runner: RunnerFn | None = None,
+    on_text: TextCallback | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
+) -> CompactResult:
+    """Ensure explicit source files have fresh compact derivatives.
+
+    Missing files are ignored. ARCHITECTURE.md and DATABASE.md are treated as required:
+    a no-surface or failed compaction raises ``SpecificationError`` because downstream
+    build context depends on them.
+    """
+    explicit = [path for path in sources if path.is_file()]
+    if not explicit:
+        return CompactResult(spec_dir=blueprint_dir, items=[])
+
+    result = compact(
+        blueprint_dir.name or target or "blueprint",
+        blueprint_dir,
+        include_files=explicit,
+        skip_autodiscovery=True,
+        log_dir=log_dir,
+        target=target,
+        runner=runner,
+        on_text=on_text,
+        model=model,
+        llm_provider=llm_provider,
+    )
+
+    for item in result.items:
+        role = f"{item.role} via {item.prompt_name}.md"
+        if item.status == "compacted":
+            detail = f"{item.compact.name} refreshed from {item.source.name}"
+        elif item.status == "skipped-fresh":
+            detail = f"{item.compact.name} already fresh for {item.source.name}"
+        elif item.status == "no-surface":
+            detail = f"{item.source.name} rejected: {item.error}"
+        else:
+            detail = f"{item.source.name} failed: {item.error}"
+        if on_text is not None:
+            on_text(f"AUTO-COMPACT: {detail} [{role}] ({reason})")
+        if item.status in {"no-surface", "failed"}:
+            raise SpecificationError(
+                f"Auto-compaction failed for {item.source.name}: {item.error or item.status}"
+            )
+
+    return result
+
+
 SKIP_SUFFIX = "_compact.skip"
 
 
