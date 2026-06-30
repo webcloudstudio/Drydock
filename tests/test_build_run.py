@@ -121,6 +121,25 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert result.git_commit_message.startswith("drydock build Demo ")
 
 
+def test_successful_build_updates_target_lifecycle_metadata(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "METADATA.md").write_text(
+        "name: Demo\n"
+        "display_name: Demo\n"
+        "short_description: demo\n"
+        "build_state: planned\n"
+        "build_sub_state: approved\n",
+        encoding="utf-8",
+    )
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    metadata = (target_dir / "METADATA.md").read_text(encoding="utf-8")
+    assert "build_state: built" in metadata
+    assert "build_sub_state: complete" in metadata
+    assert "last_built: \n" not in metadata
+
+
 def test_step_selection_builds_only_named_step(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner()

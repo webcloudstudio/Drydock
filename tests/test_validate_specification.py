@@ -98,12 +98,30 @@ class TestMetadataFields:
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()
 
+    def test_missing_legacy_status_is_not_a_failure(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        result = validate_specification("TestProject", target_dir)
+        assert "status not set in METADATA.md" not in [f.message for f in result.findings]
+
     def test_invalid_status_is_failure(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         meta = target_dir / "METADATA.md"
         meta.write_text(meta.read_text().replace("status: IDEA", "status: BADVALUE"))
         result = validate_specification("TestProject", target_dir)
         assert result.has_failures()
+
+
+class TestNonSpecBlueprintFiles:
+    def test_agents_md_is_ignored_by_typed_spec_validation(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        agents = target_dir / "blueprint" / "AGENTS.md"
+        agents.write_text("# Not a typed spec\n", encoding="utf-8")
+
+        result = validate_specification("TestProject", target_dir)
+        messages = [f.message for f in result.findings]
+
+        assert "Unexpected file name: AGENTS.md" not in messages
+        assert not any("AGENTS.md missing" in message for message in messages)
 
 
 class TestExampleFileWarnings:

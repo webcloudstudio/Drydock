@@ -102,8 +102,31 @@ def _count_authored_blueprints(blueprint_dir: Path) -> int:
     for path in blueprint_dir.rglob("*.md"):
         if "sources" in path.parts:
             continue
+        if path.name == "AGENTS.md":
+            continue
         count += 1
     return count
+
+
+def _compact_derivative_paths(name: str) -> tuple[str, str]:
+    stem = name[:-3] if name.endswith(".md") else name
+    return (f"{stem}_compact.md", f"{stem}_compact.skip.md")
+
+
+def _eligible_compaction_recommendations(plan, blueprint_dir: Path) -> list:
+    from drydock.build_plan import compact_recommendations
+    from drydock.rigging_compact import REQUIRED_PAIRS
+
+    recommendations = compact_recommendations(plan)
+    eligible: list = []
+    for rec in recommendations:
+        if rec.file in REQUIRED_PAIRS:
+            eligible.append(rec)
+            continue
+        compact_name, skip_name = _compact_derivative_paths(rec.file)
+        if (blueprint_dir / compact_name).is_file() or (blueprint_dir / skip_name).is_file():
+            eligible.append(rec)
+    return eligible
 
 
 def _read_analysis_summary(target_dir: Path) -> AnalysisSummary | None:
@@ -199,12 +222,12 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
 
     if build_plan_path.exists():
         try:
-            from drydock.build_plan import compact_recommendations, parse_build_plan
+            from drydock.build_plan import parse_build_plan
 
             plan = parse_build_plan(build_plan_path)
             plan_summary = _summarize_plan(plan)
             frontier = plan.runnable_frontier()
-            compact_recs = compact_recommendations(plan)
+            compact_recs = _eligible_compaction_recommendations(plan, blueprint_dir)
         except Exception:
             phase = "Arrange"
             detail = "MANIFEST.md could not be parsed — check its format"

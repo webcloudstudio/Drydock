@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from drydock.metadata import get_field, parse_metadata
+from drydock.metadata import BUILD_STATE_LADDER, get_field, parse_metadata
 from drydock.paths import get_stack_dir
 
 
@@ -74,6 +74,10 @@ _GENERATED_FILES = {
     "SPEC_ITERATION.md",
     "SPEC_PATCHES.md",
     "REFERENCE_GAPS.md",
+}
+
+_NON_SPEC_BLUEPRINT_FILES = {
+    "AGENTS.md",
 }
 
 _TERMINAL_SECTIONS_REQUIRED = {"Acceptance Criteria", "Guardrails", "Open Questions"}
@@ -185,7 +189,7 @@ def validate_specification(
     metadata: dict[str, str] = {}
     if metadata_path.exists():
         metadata = parse_metadata(metadata_path)
-        for key in ("name", "display_name", "short_description", "status"):
+        for key in ("name", "display_name", "short_description"):
             val = get_field(metadata, key)
             if val:
                 p(section, f"{key}: {val}")
@@ -199,7 +203,7 @@ def validate_specification(
         elif meta_name:
             p(section, f"name matches spec name ({spec_name!r})")
 
-        # status value
+        # Legacy product status is optional; lifecycle is tracked via build_state.
         status = get_field(metadata, "status")
         if status:
             if status in _VALID_STATUSES:
@@ -209,6 +213,19 @@ def validate_specification(
                     section,
                     f"status value invalid: {status!r} (expected {' | '.join(sorted(_VALID_STATUSES))})",
                 )
+
+        build_state = get_field(metadata, "build_state")
+        if build_state:
+            if build_state in BUILD_STATE_LADDER:
+                p(section, f"build_state value valid: {build_state}")
+            else:
+                f(
+                    section,
+                    "build_state value invalid: "
+                    f"{build_state!r} (expected {' | '.join(BUILD_STATE_LADDER)})",
+                )
+        else:
+            p(section, "build_state not set in METADATA.md (defaults to init)")
 
         # stack file check
         stack = get_field(metadata, "stack")
@@ -234,6 +251,8 @@ def validate_specification(
     bad_names = 0
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
+        if fname in _NON_SPEC_BLUEPRINT_FILES:
+            continue
         if fname in _ALLOWED_ROOT_NAMES:
             p(section, f"{fname} (standard file)")
             continue
@@ -265,6 +284,8 @@ def validate_specification(
     section = "Terminal sections"
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
+        if fname in _NON_SPEC_BLUEPRINT_FILES:
+            continue
         if fname in _NO_TERMINAL_NEEDED or fname in _GENERATED_FILES:
             continue
         if re.match(r"^(AC|PATCH)-\d{3}-|.*-AC\.md$|.*-AC-.*\.md$", fname):
@@ -298,6 +319,8 @@ def validate_specification(
     section = "Typed headings"
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
+        if fname in _NON_SPEC_BLUEPRINT_FILES:
+            continue
         if not _file_needs_typed_heading(fname):
             continue
         if fname in _GENERATED_FILES:

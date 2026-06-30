@@ -64,6 +64,7 @@ _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
 _RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
+_NON_BLUEPRINT_ARTIFACTS = frozenset({"AGENTS.md"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
@@ -774,6 +775,17 @@ def _validate_plan_output(
     plan = _parse_plan_text(blocks["MANIFEST.md"])
 
     emitted_specs = frozenset(name for name in blocks if name not in _RESERVED_BLOCKS)
+    forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
+    if forbidden_artifacts:
+        names = ", ".join(forbidden_artifacts)
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output emitted non-Blueprint artifacts.\n"
+                f"  Forbidden artifact(s): {names}\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
     missing_from_response: list[str] = []
     for block in plan.blocks:
         if block.block_type != "story":
@@ -781,6 +793,11 @@ def _validate_plan_output(
         implements = block.fields.get("implements", ())
         targets = implements if isinstance(implements, tuple) else (implements,)
         for name in targets:
+            if name in _NON_BLUEPRINT_ARTIFACTS:
+                missing_from_response.append(
+                    f"{block.block_id}: implements non-Blueprint file {name!r}"
+                )
+                continue
             if name and name not in emitted_specs and not (blueprint_dir / name).is_file():
                 missing_from_response.append(
                     f"{block.block_id}: implements missing spec file {name!r}"

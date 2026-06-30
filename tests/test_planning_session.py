@@ -39,6 +39,19 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "Do not use `AGENTS.md` as a generic implementation instruction file" in prompt
 
 
+def test_validate_plan_output_rejects_agents_artifact(tmp_path):
+    from drydock.planning_session import _validate_plan_output
+
+    manifest = _manifest(implements="AGENTS.md")
+    blocks = {
+        "MANIFEST.md": manifest,
+        "AGENTS.md": "# AGENTS\n",
+    }
+
+    with pytest.raises(SpecificationError, match="Forbidden artifact\\(s\\): AGENTS.md"):
+        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+
 _ANALYSIS = """# Blueprint Analysis: Example
 generated: 2026-06-16
 blueprint: bp

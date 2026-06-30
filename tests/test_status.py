@@ -129,6 +129,52 @@ class TestStatusBlueprintTarget:
         assert "review the Planning Session build tree" in result.target_info.phase_detail
         assert result.target_info.next_operation == "drydock run quarterdeck TestTarget"
 
+    def test_authored_blueprint_count_excludes_agents_md(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        blueprint = tgt / "blueprint"
+        blueprint.mkdir(parents=True)
+        (tgt / "METADATA.md").write_text(
+            "name: TestTarget\ndisplay_name: TestTarget\n", encoding="utf-8"
+        )
+        (blueprint / "ARCHITECTURE.md").write_text("# ARCHITECTURE: X\n", encoding="utf-8")
+        (blueprint / "AGENTS.md").write_text("# not a spec\n", encoding="utf-8")
+
+        result = status_blueprint_target("TestTarget", "TestTarget", blueprint, tmp_target_root)
+
+        assert result.target_info is not None
+        assert result.target_info.authored_blueprints == 1
+
+    def test_compact_recommendations_exclude_noncompactable_files(self, tmp_target_root):
+        tgt = tmp_target_root / "TestTarget"
+        blueprint = tgt / "blueprint"
+        blueprint.mkdir(parents=True)
+        (tgt / "METADATA.md").write_text(
+            "name: TestTarget\ndisplay_name: TestTarget\n", encoding="utf-8"
+        )
+        (tgt / "MANIFEST.md").write_text(
+            """# MANIFEST: TestTarget
+state: approved
+
+## story 1: One
+id: one
+state: pending
+context: ARCHITECTURE.md, DATABASE.md
+
+## story 2: Two
+id: two
+state: pending
+context: ARCHITECTURE.md, DATABASE.md
+""",
+            encoding="utf-8",
+        )
+        (blueprint / "ARCHITECTURE.md").write_text("# ARCHITECTURE: X\n", encoding="utf-8")
+        (blueprint / "DATABASE.md").write_text("# DATABASE: X\n", encoding="utf-8")
+
+        result = status_blueprint_target("TestTarget", "TestTarget", blueprint, tmp_target_root)
+
+        assert result.target_info is not None
+        assert [rec.file for rec in result.target_info.compact_recs] == ["DATABASE.md"]
+
 
 class TestStatusBlueprint:
     def test_valid_spec_returns_pass(self, tmp_target_root):

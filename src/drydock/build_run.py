@@ -37,6 +37,7 @@ from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.manifest_edit import set_block_fields
+from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
 
@@ -516,6 +517,8 @@ def build_target(
 
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
+    set_build_state(target_dir, "building")
+    set_sub_state(target_dir, "running")
 
     if force and step_id is None:
         raise SpecificationError("--force requires --step <step-id>")
@@ -655,6 +658,11 @@ def build_target(
     )
 
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+    if any(step.status in {"built", "implemented"} for step in steps):
+        set_build_state(target_dir, "built")
+        set_sub_state(target_dir, "complete")
+        stamp_last(target_dir, "built")
 
     _refresh_chair(target_dir)
 
