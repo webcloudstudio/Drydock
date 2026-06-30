@@ -101,6 +101,13 @@
       "prompt_text": "Raw User Source"
     },
     {
+      "pattern": "*/changes/*.md",
+      "label": "Change Ticket",
+      "role": "change ticket",
+      "help_text": "Incremental change ticket under blueprint/changes/. Amends an existing Blueprint spec via its Amends: header.",
+      "prompt_text": "Change Ticket — amends an existing Blueprint spec. Inherit parent spec dependencies in the manifest."
+    },
+    {
       "pattern": "*/questionnaires/*.json",
       "label": "Questionnaire",
       "role": "questionnaire",

@@ -680,4 +680,44 @@ def test_assemble_prompt_excludes_listed_source_filenames(tmp_path):
 
     assert 'filename="sources/request.md"' in result
     assert 'filename="sources/BUILD_PLAN.md"' not in result
+
+
+def test_assemble_prompt_includes_change_tickets_in_typed_spec(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    changes_dir = blueprint_dir / "changes"
+    changes_dir.mkdir(parents=True)
+    (changes_dir / "TICKET-001-AddCopy.md").write_text(
+        "# Change Ticket: Add Copy\n\nAmends: FEATURE-Status.md\n",
+        encoding="utf-8",
+    )
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        blueprint_dir,
+        _ANALYSIS,
+        "2026-06-30",
+        input_tokens=("TYPED_SPEC",),
+    )
+
+    assert 'filename="changes/TICKET-001-AddCopy.md"' in result
+    assert "Change tickets" in result
+    assert "Amends:" in result
+
+
+def test_assemble_prompt_omits_change_ticket_section_when_no_changes(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        blueprint_dir,
+        _ANALYSIS,
+        "2026-06-30",
+        input_tokens=("TYPED_SPEC",),
+    )
+
+    assert "Change tickets" not in result
     assert "ignore me" not in result

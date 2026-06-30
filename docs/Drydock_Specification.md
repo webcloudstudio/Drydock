@@ -748,6 +748,7 @@ TODO: The refit can roll the change tickets into the primary specification files
 | SCREEN-{Name}.md | blueprint/ | · | O | I | I | I |
 | SEA_TRIALS.md | Target root | O | · | · | · | · |
 | SOUNDINGS.md | Target root | O | O/I | O | I | · |
+| changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
 | sources/* | blueprint/sources/ | I | I | · | · | · |
 | tickets.json | Target root | · | O | I | I | I |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |

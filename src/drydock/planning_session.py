@@ -309,6 +309,17 @@ def _collect_sources(
     )
 
 
+def _collect_changes(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[Path]:
+    changes_dir = blueprint_dir / "changes"
+    if not changes_dir.is_dir():
+        return []
+    return sorted(
+        p for p in changes_dir.glob("*.md") if p.is_file() and p.name not in excluded_filenames
+    )
+
+
 def _collect_discoveries(target_dir: Path) -> list[Path]:
     qd = target_dir / "QuarterDeck" / "questionnaires"
     if not qd.is_dir():
@@ -566,6 +577,34 @@ def _assemble_prompt_assembly(
                     path=path_obj,
                 )
             )
+        change_files = _collect_changes(blueprint_dir, excluded_filenames=excluded_filenames)
+        if change_files:
+            parts_list.append(
+                lines_part(
+                    "Change ticket header",
+                    [
+                        "## Change tickets",
+                        "",
+                        "These files amend existing Blueprint specs. Each ticket declares the",
+                        "parent spec in its `Amends:` header. Stories generated for a change",
+                        "ticket must inherit the full `depends:` chain of the parent spec's",
+                        "stories.",
+                        "",
+                    ],
+                    kind="section",
+                )
+            )
+            for path_obj in change_files:
+                label = f"changes/{path_obj.name}"
+                parts_list.extend(
+                    contextual_markdown_parts(
+                        label,
+                        path_obj.read_text(encoding="utf-8").rstrip(),
+                        filename=label,
+                        role="change ticket",
+                        path=path_obj,
+                    )
+                )
         return parts_list
 
     def contract_parts(name: str) -> list:
