@@ -112,7 +112,7 @@ class TestMetadataFields:
 
 
 class TestNonSpecBlueprintFiles:
-    def test_agents_md_is_ignored_by_typed_spec_validation(self, tmp_target_root):
+    def test_agents_md_is_forbidden_in_blueprint(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         agents = target_dir / "blueprint" / "AGENTS.md"
         agents.write_text("# Not a typed spec\n", encoding="utf-8")
@@ -120,8 +120,8 @@ class TestNonSpecBlueprintFiles:
         result = validate_specification("TestProject", target_dir)
         messages = [f.message for f in result.findings]
 
-        assert "Unexpected file name: AGENTS.md" not in messages
-        assert not any("AGENTS.md missing" in message for message in messages)
+        assert result.has_failures()
+        assert any("AGENTS.md is forbidden in blueprint/" in message for message in messages)
 
 
 class TestExampleFileWarnings:

@@ -21,7 +21,6 @@ project is, what it must do, and how it is built.
 | `COMPASS.md` | Project guidance: intent, constraints, and guardrails | Yes |
 | `ARCHITECTURE.md` | Modules, routes, boundaries, interfaces, technical decisions | Yes |
 | `README.md` | One-line description and `## Intent` section | Yes |
-| `AGENTS.md` | Callable surface: `## Endpoints`, `## Capabilities` (JSON), `## Links` | If exposes services |
 | `DATABASE.md` | Persistence contract: access patterns, typed interfaces, all stores, schemas, migrations | If has persistent state |
 | `UI-GENERAL.md` | Shared UI patterns across screens | If has UI |
 | `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
@@ -123,100 +122,6 @@ Success criteria belong in `SEA_TRIALS.md`; acceptance criteria in `SOUNDINGS.md
 open questions in spike questionnaires. Do not add those sections to `COMPASS.md`.
 
 ---
-
-## AGENTS.md Format
-
-Three optional sections; include only what applies. JSON only — no YAML.
-
-### ## Endpoints
-
-Documents the project's HTTP API. Parsed by GAME's scanner into the Service Catalog.
-
-```markdown
-## Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET    | /health          | Health check |
-| POST   | /api/items       | Create item  |
-| GET    | /api/items/{id}  | Get item     |
-```
-
-### ## Capabilities
-
-Typed, transport-agnostic callable functions. Parsed by GAME's scanner into the Capability
-Catalog.
-
-```json
-{
-  "capabilities": [
-    {
-      "name": "download_prices",
-      "description": "Download historical market prices",
-      "tags": ["finance", "data-source", "etl"],
-
-      "invoke": {
-        "cli": "bin/download_prices",
-        "rest": { "method": "POST", "path": "/download/prices" },
-        "mcp": "download_prices"
-      },
-
-      "input": {
-        "symbol":     { "type": "string", "required": true },
-        "start_date": { "type": "date",   "required": true },
-        "end_date":   { "type": "date",   "required": true }
-      },
-
-      "output": {
-        "dataset_id":      { "type": "string" },
-        "rows_downloaded": { "type": "integer" }
-      },
-
-      "permissions": {
-        "owners": ["ed"],
-        "access": "readwrite"
-      },
-
-      "lifecycle": "on-demand"
-    }
-  ]
-}
-```
-
-**Capability fields:**
-
-| Field | Required | Notes |
-|-------|----------|-------|
-| `name` | Yes | Globally unique slug across the network |
-| `description` | Yes | One sentence |
-| `tags` | No | Arbitrary strings for filtering |
-| `invoke.cli` | If CLI enabled | Path to bin/ script |
-| `invoke.rest` | If REST enabled | `method` + `path` |
-| `invoke.mcp` | If MCP enabled | MCP tool name |
-| `input` | Yes | Named fields: `type`, `required` |
-| `output` | Yes | Named fields: `type` |
-| `permissions.owners` | No | Identities with write access |
-| `permissions.access` | No | `readonly` \| `readwrite` |
-| `lifecycle` | Yes | `on-demand` \| `always-on` \| `scheduled` |
-
-**Rules:**
-1. Capability names are globally unique within the network.
-2. Contracts are transport-independent — same input/output schema regardless of transport.
-3. Input and output must be JSON-serializable.
-4. Permissions are declared in the publishing project and enforced by the platform.
-
-### ## Links
-
-External links shown in the Service Catalog UI.
-
-```markdown
-## Links
-
-| Label | URL |
-|-------|-----|
-| GitHub | https://github.com/... |
-| Docs   | https://...           |
-```
 
 ---
 
@@ -326,7 +231,7 @@ service_name:      Platform        # top-level service grouping (e.g. Platform, 
 service_component: GAME            # component name within the service (matches directory name)
 ```
 
-These fields are used by capability declarations in `AGENTS.md` and by GAME's service registry
+These fields are used by build-time service registration artifacts and by GAME's service registry
 scanner to group related repositories under a named service.
 
 ---
@@ -345,4 +250,4 @@ finding is written into the named file, resolving the matching `## Open Question
 
 **Feature specifications:** all feature purpose, status, triggers, sequences, routes, reads,
 writes, acceptance criteria, and guardrails belong in individual `FEATURE-*.md` files. README,
-METADATA, AGENTS.md, and generated files do not contain feature specifications.
+METADATA, and generated files do not contain feature specifications.

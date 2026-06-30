@@ -76,10 +76,6 @@ _GENERATED_FILES = {
     "REFERENCE_GAPS.md",
 }
 
-_NON_SPEC_BLUEPRINT_FILES = {
-    "AGENTS.md",
-}
-
 _TERMINAL_SECTIONS_REQUIRED = {"Acceptance Criteria", "Guardrails", "Open Questions"}
 _COMPASS_EXTRA_SECTIONS = {"Compass", "Constraints", "Success Criteria"}
 
@@ -147,6 +143,17 @@ def validate_specification(
 
     def f(section: str, msg: str) -> None:
         result.findings.append(Finding(section, Severity.FAIL, msg))
+
+    # --- Forbidden blueprint files ---
+    section = "Blueprint inventory"
+    forbidden = spec_dir / "AGENTS.md"
+    if forbidden.exists():
+        f(
+            section,
+            "AGENTS.md is forbidden in blueprint/. AGENTS.md is distributed with rigging at build time.",
+        )
+    else:
+        p(section, "No forbidden blueprint inventory files present")
 
     # --- Directory existence ---
     section = "Directory"
@@ -251,8 +258,6 @@ def validate_specification(
     bad_names = 0
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
-        if fname in _NON_SPEC_BLUEPRINT_FILES:
-            continue
         if fname in _ALLOWED_ROOT_NAMES:
             p(section, f"{fname} (standard file)")
             continue
@@ -284,8 +289,6 @@ def validate_specification(
     section = "Terminal sections"
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
-        if fname in _NON_SPEC_BLUEPRINT_FILES:
-            continue
         if fname in _NO_TERMINAL_NEEDED or fname in _GENERATED_FILES:
             continue
         if re.match(r"^(AC|PATCH)-\d{3}-|.*-AC\.md$|.*-AC-.*\.md$", fname):
@@ -319,8 +322,6 @@ def validate_specification(
     section = "Typed headings"
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
-        if fname in _NON_SPEC_BLUEPRINT_FILES:
-            continue
         if not _file_needs_typed_heading(fname):
             continue
         if fname in _GENERATED_FILES:

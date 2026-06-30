@@ -36,7 +36,7 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "=== PLAN_CREATE_ERROR.txt ===" in prompt
     assert "Never emit `MANIFEST.md` in Error Mode or Blocked Mode" in prompt
     assert "Every `implements:` filename in `MANIFEST.md` must exactly match" in prompt
-    assert "Do not use `AGENTS.md` as a generic implementation instruction file" in prompt
+    assert "Never emit `AGENTS.md`." in prompt
 
 
 def test_validate_plan_output_rejects_agents_artifact(tmp_path):

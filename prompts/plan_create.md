@@ -34,7 +34,7 @@ definition and build-planning artifacts.
 The primary outputs are:
 
 - Typed Specification files such as `ARCHITECTURE.md`, `FEATURE-*.md`, `SCREEN-*.md`,
-  `DATABASE.md`, `UI-GENERAL.md`, `AGENTS.md`, and AC files where warranted.
+  `DATABASE.md`, `UI-GENERAL.md`, and AC files where warranted.
 - `MANIFEST.md` — the executable build plan containing features, stories, spikes, and `ac` blocks;
   the single work graph that determines build order and grouping.
 
@@ -100,12 +100,12 @@ Default decomposition rules:
 
 | System shape | Durable authored files |
 |---|---|
-| `web` | `ARCHITECTURE.md`, `UI-GENERAL.md` if shared UI exists, one `FEATURE-*.md` per route/service workflow, one `SCREEN-*.md` per user-facing screen, `DATABASE.md` if persistence exists, `AGENTS.md` if services are exposed |
-| `api` | `ARCHITECTURE.md`, one `FEATURE-*.md` per endpoint/capability cluster, `DATABASE.md` if persistence exists, `AGENTS.md` when callable services exist |
-| `cli` | `ARCHITECTURE.md`, one `FEATURE-*.md` per command/capability cluster, `AGENTS.md` when the callable surface should be enumerated |
+| `web` | `ARCHITECTURE.md`, `UI-GENERAL.md` if shared UI exists, one `FEATURE-*.md` per route/service workflow, one `SCREEN-*.md` per user-facing screen, `DATABASE.md` if persistence exists |
+| `api` | `ARCHITECTURE.md`, one `FEATURE-*.md` per endpoint/capability cluster, `DATABASE.md` if persistence exists |
+| `cli` | `ARCHITECTURE.md`, one `FEATURE-*.md` per command/capability cluster |
 | `library` | `ARCHITECTURE.md`, one `FEATURE-*.md` per public module or service area, `DATABASE.md` only if stateful |
 | `pipeline` | `ARCHITECTURE.md`, one `FEATURE-*.md` per pipeline stage or major dataset transformation, `DATABASE.md` only if persistent stores exist |
-| `event-driven` | `ARCHITECTURE.md`, one `FEATURE-*.md` per handler or event workflow cluster, `AGENTS.md` if published callable interfaces exist |
+| `event-driven` | `ARCHITECTURE.md`, one `FEATURE-*.md` per handler or event workflow cluster |
 
 Use `SCREEN-*.md` only for actual user-facing screens. Use `DATABASE.md` only when persistent
 state or external stored state exists. Use AC files only when separate permanent guardrails are
@@ -124,7 +124,8 @@ Rules:
   separates into screen, feature, architecture, or persistence contracts.
 - Every important user-facing screen named in analysis must land in a `SCREEN-*.md`.
 - Every important route, capability, interface, dataset, topic, or command named in analysis must
-  be represented either in a `FEATURE-*.md`, `AGENTS.md`, or both.
+  be represented in one or more `FEATURE-*.md` files, with `ARCHITECTURE.md` and `DATABASE.md`
+  carrying shared technical structure where needed.
 
 **4. Write authored specification content.**
 - *Consumes:* the file mapping and all planning inputs.
@@ -244,9 +245,6 @@ Additional body guidance:
 - `FEATURE-*.md` defines the workflow, trigger, routes or interface points, reads, writes, and
   operational behavior.
 - `SCREEN-*.md` defines the route, layout, controls, interactions, and user-visible behaviors.
-- `AGENTS.md` must follow the contract sections `## Endpoints`, `## Capabilities`, and `## Links`
-  when used. JSON only in `## Capabilities`.
-
 ---
 
 ## Manifest Construction Rules
@@ -310,7 +308,7 @@ Manifest.
 Emit one block for every authored Blueprint spec file, followed by one `MANIFEST.md` block.
 Every `implements:` filename in `MANIFEST.md` must exactly match one emitted Blueprint file block
 or an existing Blueprint spec file from the input context. If `MANIFEST.md` names
-`ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, `UI-GENERAL.md`, or `AGENTS.md`,
+`ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, or `UI-GENERAL.md`,
 that file must exist as an emitted file block in the same response unless it already exists in the
 input Blueprint.
 
@@ -327,7 +325,6 @@ Examples:
 - `=== ARCHITECTURE.md ===`
 - `=== FEATURE-Catalog.md ===`
 - `=== SCREEN-Catalog.md ===`
-- `=== AGENTS.md ===`
 - `=== MANIFEST.md ===`
 
 The final block in Success Mode must be:
@@ -378,9 +375,7 @@ Required action:
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
 - Every `implements:` entry in `MANIFEST.md` must name a real emitted authored spec file or an
   authored spec file that already exists in the input Blueprint.
-- Do not use `AGENTS.md` unless the target exposes a reusable callable or service surface and an
-  `=== AGENTS.md ===` block is emitted or `AGENTS.md` already exists in the Blueprint.
-- Do not use `AGENTS.md` as a generic implementation instruction file.
+- Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
   header table and end with `## Acceptance Criteria`, `## Guardrails`, and `## Open Questions`.
 - `Depends On`, `Provides`, `Consumes`, and `Phase` must be internally consistent across the full
