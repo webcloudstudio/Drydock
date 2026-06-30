@@ -81,6 +81,7 @@ class CompletedRun(Protocol):
     def ok(self) -> bool: ...
 
     text: str
+    stderr: str
     execution_id: str
 
 
@@ -118,6 +119,25 @@ def _with_execution_evidence(message: str, result: CompletedRun) -> str:
     if output_file:
         return f"{message}\n  Execution output: {output_file}"
     return message
+
+
+_AUTH_PHRASES = ("not logged in", "please run /login", "authentication_failed", "unauthenticated")
+
+
+def _raise_llm_failure(command_name: str, detail: str, execution_id: str) -> None:
+    detail_lower = detail.lower()
+    if any(phrase in detail_lower for phrase in _AUTH_PHRASES):
+        raise SpecificationError(
+            f"Plan generation failed: claude CLI is not authenticated.\n"
+            f"  Run: /login  (in the Claude Code session that will execute drydock)\n"
+            f"  Then retry: drydock {command_name}\n"
+            f"  Execution: {execution_id}"
+        )
+    msg = f"Plan generation failed: {command_name} LLM execution failed"
+    if detail:
+        msg += f"\n  Detail: {detail}"
+    msg += f"\n  Execution: {execution_id}"
+    raise SpecificationError(msg)
 
 
 def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
@@ -999,7 +1019,8 @@ def create_plan(
     )
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():
-        raise SpecificationError("Plan generation failed: plan LLM execution failed")
+        detail = result.text.strip() or result.stderr.strip()
+        _raise_llm_failure("plan", detail, result.execution_id)
 
     blocks = _parse_strict_blocks(result.text, result)
     plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)

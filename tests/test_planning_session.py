@@ -137,6 +137,7 @@ def _llm_output(manifest: str | None = None) -> str:
 class FakeRun:
     ok: bool = True
     text: str = ""
+    stderr: str = ""
     execution_id: str = "exec-fake"
 
 
