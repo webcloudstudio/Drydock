@@ -218,8 +218,8 @@ def test_drydock_command_status_renders_current_soundings():
 
     assert "Total criteria</strong><br>48" in rendered
     assert "DONE (33)" in rendered
-    assert "IMPLEMENTED (13)" in rendered
-    assert "STUBBED (2)" in rendered
+    assert "IMPLEMENTED (14)" in rendered
+    assert "STUBBED (1)" in rendered
     assert "NOT STARTED (0)" in rendered
     assert "no structured findings" in rendered
 

@@ -63,7 +63,7 @@ are not authored Specification files.
 ```
 
 **FileType values:** `COMPASS`, `SCREEN`, `FEATURE`, `DATABASE`, `UI-GENERAL`, `ARCHITECTURE`,
-`HOMEPAGE`
+`HOMEPAGE`, `CHANGE`
 
 **ObjectName:** Human-readable name matching the file subject (e.g., `Welcome Summary`,
 `Service Catalog`).
@@ -90,6 +90,13 @@ are not authored Specification files.
 
 `Depends On` and `Provides` are written by `drydock plan create` — do not edit manually.
 `Phase` is written by `drydock plan create` — do not edit manually unless overriding.
+
+**Additional required fields for CHANGE files (`changes/TICKET-NNN-{Name}.md`):**
+
+| Field | Set By | Required | Description |
+|-------|--------|----------|-------------|
+| `Amends` | Author / `drydock refit` | Yes | The parent Blueprint spec this ticket modifies (e.g. `FEATURE-Copy.md`). `drydock refit` reads this field to resolve dependency inheritance and inject parent context. |
+| `Depends On` | `drydock refit` | Yes | Copied from the parent spec's `Depends On` set plus the parent spec filename itself. Do not edit manually. |
 
 ---
 

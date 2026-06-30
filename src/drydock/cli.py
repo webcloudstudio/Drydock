@@ -280,6 +280,48 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_refit(args: argparse.Namespace) -> int:
+    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
+    from drydock.refit import RefitItem, refit_target
+
+    target_dir = get_target_directory() / args.Target
+    log_dir = get_workspace() / "logs"
+    model = get_model(getattr(args, "model", None))
+    llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+
+    def report(item: RefitItem) -> None:
+        name = item.ticket.name
+        if item.status == "conformed":
+            print(f"  [conformed]       {name}  {item.execution_id}")
+        elif item.status == "skipped-no-amends":
+            print(f"  [skipped]         {name}: {item.error}")
+        else:
+            print(f"  [failed]          {name}: {item.error}  see logs/ ({item.execution_id})")
+
+    print(f"Refitting: {args.Target}")
+    result = refit_target(
+        target_dir,
+        log_dir=log_dir,
+        model=model,
+        llm_provider=llm_provider,
+        on_text=print,
+    )
+
+    for item in result.items:
+        report(item)
+
+    if not result.items:
+        print("  No change tickets found in blueprint/changes/ — nothing to do.")
+
+    print()
+    print(
+        f"RESULT: {len(result.conformed())} conformed, "
+        f"{len(result.skipped())} skipped, "
+        f"{len(result.failed())} failed"
+    )
+    return result.exit_code()
+
+
 def cmd_rigging_update(args: argparse.Namespace) -> int:
     from drydock.rigging_update import update
 
@@ -1131,11 +1173,6 @@ def cmd_build_verify(target: str, step_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _canonical_refit_mode(value: str) -> str:
-    """Normalize the deprecated SPEC refit mode."""
-    return "BLUEPRINT" if value == "SPEC" else value
-
-
 def _add_stub(
     sub: argparse._SubParsersAction, name: str, help_text: str, args_spec: list[tuple]
 ) -> argparse.ArgumentParser:  # noqa: SLF001
@@ -1365,17 +1402,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── refit ─────────────────────────────────────────────────────────────────
-    p_iter = sub.add_parser("refit", help="Update Blueprint and target software together.")
+    p_iter = sub.add_parser(
+        "refit",
+        help="Conform change tickets in blueprint/changes/ to the build process and update the manifest.",
+    )
     _add_llm_override_flags(p_iter)
     p_iter.add_argument("Target", metavar="<Target>")
-    p_iter.add_argument(
-        "Mode",
-        metavar="<BOTH|BLUEPRINT|TGT>",
-        choices=["BOTH", "BLUEPRINT", "TGT"],
-        type=_canonical_refit_mode,
-    )
-    p_iter.add_argument("Scope", metavar="<Scope>")
-    p_iter.add_argument("Change", metavar="<Change>")
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser(
@@ -1654,7 +1686,12 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return _dispatch_build(args)
 
     if command == "refit":
-        not_implemented("refit")
+        rc = cmd_refit(args)
+        if rc == 0:
+            from drydock.config import record_activity
+
+            record_activity("refit", args.Target, args.Target)
+        return rc
 
     if command == "analyze":
         rc = cmd_analyze(args)

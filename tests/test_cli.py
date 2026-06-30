@@ -967,8 +967,6 @@ class TestStubs:
 
     STUB_CASES = [
         (["build", "score", "MyTarget"], "build score"),
-        (["refit", "MyTarget", "BOTH", "SomeScope", "SomeChange"], "refit"),
-        (["refit", "MyTarget", "SPEC", "SomeScope", "SomeChange"], "refit"),
     ]
 
     @pytest.mark.parametrize("args,label", STUB_CASES)
@@ -988,6 +986,28 @@ class TestStubs:
         run_cli(*args)
         written = list(tmp_path.rglob("*"))
         assert not written, f"{label!r} wrote files: {written}"
+
+
+class TestRefit:
+    """drydock refit CLI contract."""
+
+    def test_help_mentions_target(self):
+        rc, out, err = run_cli("refit", "--help")
+        assert rc == 0
+        combined = out + err
+        assert "<Target>" in combined
+
+    def test_missing_target_exits_2(self):
+        rc, out, err = run_cli("refit")
+        assert rc == 2
+
+    def test_no_changes_dir_exits_0(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = tmp_path / "targets" / "MyProject"
+        (target / "blueprint").mkdir(parents=True)
+        rc, out, err = run_cli("refit", "MyProject")
+        assert rc == 0
+        assert "nothing to do" in (out + err).lower()
 
 
 class TestDocumentAssemble:

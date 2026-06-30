@@ -695,7 +695,7 @@ can rerun only those files.
 ### Commands
 
 ```text
-drydock refit <Target> <blueprint|target|both> <Scope> <Change>
+drydock refit <Target>
 ```
 
 ```mermaid
@@ -715,17 +715,22 @@ flowchart LR
 ```
 ### drydock refit
 
-Drydock supports several mechanisms to Refit your project.
+`drydock refit` conforms change tickets in `blueprint/changes/` to the Drydock build process. The Commander (or an external ticketing system) places `TICKET-NNN-{Name}.md` files in that directory. Refit normalizes each ticket's typed spec header, generates or refines stories and acceptance criteria, and patches `MANIFEST.md` with new story rows for those tickets. Applied manifest rows are never touched.
 
-**Method 1: Change Tickets:** Change tickets are related to features with the `build refit` and can be built with `drydock build`. Change tickets are incremental work items. A change ticket is just a new Specification file with the correct frontmatter as created by the refit process. Change tickets are identified as such because they are either new markdown files in the specification directory or loacted in changes/.
+**Change ticket format.** A change ticket is a Typed Specification file with FileType `CHANGE`. It carries an `Amends:` header field that names the parent Blueprint spec the ticket modifies (e.g. `Amends: FEATURE-Copy.md`). `drydock refit` reads this field to resolve dependency inheritance and to inject the parent spec as context.
 
-**Method 2: Specification Updates:**  Drydock currently tracks the commit ids and chksums of built objects in its graph database.  This enables drydock to 'dirty' the specification files that have been
-updated.
+**Dependency inheritance.** A change ticket's `Depends On:` field equals the parent spec's `Depends On:` set plus the parent spec filename itself. `drydock refit` computes this deterministically from the parent spec header before the LLM call and injects the resolved list into the prompt.
 
-**Method 3: Emergency Change Tickets:**  Implement emergency changes using an 'apply in parallel' methedology.  Skills create the change tickets while simultaneously updating your application.
-My process uses a /thinkthrough skill which is a directed discussion on a feature and which on close out will create persistent notes.  I can then release with /apply (TBD: rename to /release, the skill is highly tuned to my process and 'voice' and needs to be made general).
+**Role boundary.** `drydock refit` is a targeted patch: it processes only tickets in `blueprint/changes/` and inserts or replaces pending manifest rows for those tickets. `drydock plan create` is a full regeneration: it reads all Blueprint inputs and rewrites `MANIFEST.md` with state-preserving merge. Run `drydock plan create` after `drydock refit` when the full plan graph must be recomputed.
 
-`drydock refit` will update the headers of your tickets and the manifest. You can then rerurn `drydock build`.  The Planning and build execution process it like any other Specification driven builds.
+**Behavior.** Scans `blueprint/changes/*.md`. For each ticket: reads `Amends:`, resolves parent spec dependencies, runs one LLM call to normalize the ticket header and generate manifest rows, writes the updated ticket, and patches `MANIFEST.md`. Tickets without an `Amends:` field are skipped with a warning. Exits 0 when no tickets are found.
+
+**Input files.** `blueprint/changes/*.md`, `blueprint/<parent-spec>.md`, `MANIFEST.md`, `COMPASS.md`, `MANIFEST_CONTRACT.md`.
+
+**Output files.** Updated `blueprint/changes/*.md` (headers normalized); patched `MANIFEST.md`.
+
+**Exit codes.** `0` success or no-op; `1` operational failure; `2` usage error.
+
 TODO: The refit can roll the change tickets into the primary specification files.
 
 ## Artifact I/O Matrix - What drydock operations read/write
