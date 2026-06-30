@@ -4,9 +4,13 @@
 material into typed Blueprint specification files and the executable ``MANIFEST.md`` — all as
 delimited ``=== NAME ===`` blocks. The Manifest is the single work graph: it carries build order,
 grouping, and per-step prompt-assembly fields, so no separate build-ordering file is emitted.
-The module parses the blocks, runs a deterministic integrity gate, and writes the files. Each run is
-a single-directional clean regenerate: prior block states are not merged. The model emits text; the
-module writes files. Tests inject a fake runner and never spend API credits.
+The module parses the blocks, runs a deterministic integrity gate, and writes the files.
+
+When a prior MANIFEST.md exists, a state-preserving merge runs after the new Manifest is written:
+``applied_specs`` is restored verbatim, block states are carried forward for clean files (sha256
+unchanged), dirty files (sha256 changed) are reset to ``pending``, and applied Blueprint files are
+protected from overwrite. The model emits text; the module writes files. Tests inject a fake runner
+and never spend API credits.
 """
 
 from __future__ import annotations
@@ -17,13 +21,15 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol
 
-from drydock.build_plan import BuildPlan, parse_build_plan
+from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
 from drydock.errors import SpecificationError
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
+from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
 from drydock.prompt_assembly import (
@@ -181,6 +187,115 @@ def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -
 
 def _read_if(path: Path) -> str | None:
     return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+# ── Replan state merge ─────────────────────────────────────────────────────────
+
+
+def _file_sha256(path: Path) -> str:
+    return _sha256(path.read_bytes()).hexdigest()
+
+
+def _load_prior_plan_state(
+    plan_path: Path,
+) -> tuple[dict[str, AppliedSpecRecord], dict[str, tuple[str, str | None]]]:
+    """Parse an existing MANIFEST.md and extract preservation state.
+
+    Returns (applied_specs, {block_id → (state, finding)}).  Returns empty dicts
+    when the manifest does not exist or cannot be parsed.  ``finding`` is non-None
+    only for spike blocks that carry a non-empty finding text.
+    """
+    if not plan_path.is_file():
+        return {}, {}
+    try:
+        prior = parse_build_plan(plan_path)
+    except Exception:
+        return {}, {}
+    block_states: dict[str, tuple[str, str | None]] = {}
+    for block in prior.blocks:
+        finding: str | None = None
+        if block.block_type == "spike":
+            raw = block.fields.get("finding")
+            if isinstance(raw, tuple):
+                raw = ", ".join(str(r) for r in raw)
+            finding = str(raw).strip() if raw else None
+            if not finding:
+                finding = None
+        block_states[block.block_id] = (block.state, finding)
+    return dict(prior.applied_specs), block_states
+
+
+def _spec_is_dirty(
+    spec_name: str,
+    blueprint_dir: Path,
+    applied_specs: dict[str, AppliedSpecRecord],
+) -> bool:
+    """Return True if the Blueprint file has changed since it was applied.
+
+    A file with no applied_specs entry has never been applied — not dirty.
+    A deleted file that was previously applied is dirty.
+    """
+    record = applied_specs.get(spec_name)
+    if record is None:
+        return False
+    spec_path = blueprint_dir / spec_name
+    if not spec_path.is_file():
+        return True
+    return _file_sha256(spec_path) != record.sha256
+
+
+def _merge_prior_state(
+    plan_path: Path,
+    blueprint_dir: Path,
+    prior_applied_specs: dict[str, AppliedSpecRecord],
+    prior_block_states: dict[str, tuple[str, str | None]],
+) -> None:
+    """Carry forward execution state from a prior MANIFEST.md into the freshly written one.
+
+    Rules applied in order:
+    - ``applied_specs`` is restored verbatim — the graph database is never regenerated.
+    - A block whose prior state is ``pending`` receives no update.
+    - A block whose implements: files are all clean (sha256 unchanged) carries its prior
+      state and, for spikes, its prior ``finding``.
+    - A block with any dirty implements: file is left at ``pending``; the LLM will re-apply it.
+    """
+    if prior_applied_specs:
+        set_applied_specs(plan_path, prior_applied_specs)
+
+    if not prior_block_states:
+        return
+
+    new_plan = parse_build_plan(plan_path)
+    updates: dict[str, dict[str, str]] = {}
+
+    for block in new_plan.blocks:
+        prior_state, prior_finding = prior_block_states.get(block.block_id, ("pending", None))
+
+        if prior_state == "pending":
+            if block.block_type == "spike" and prior_finding:
+                updates[block.block_id] = {"finding": prior_finding}
+            continue
+
+        implements = block.fields.get("implements", ())
+        if isinstance(implements, str):
+            implements = (implements,)
+
+        dirty = any(
+            _spec_is_dirty(str(spec), blueprint_dir, prior_applied_specs)
+            for spec in implements
+            if spec
+        )
+
+        block_updates: dict[str, str] = {}
+        if not dirty:
+            block_updates["state"] = prior_state
+        if block.block_type == "spike" and prior_finding:
+            block_updates["finding"] = prior_finding
+
+        if block_updates:
+            updates[block.block_id] = block_updates
+
+    batch_set_block_fields(plan_path, updates)
 
 
 def _collect_sources(
@@ -759,7 +874,8 @@ def create_plan(
         )
 
     plan_path = target_dir / "MANIFEST.md"
-    prior_manifest = _read_if(plan_path)  # read only to report `changed`; not injected, not merged
+    prior_manifest = _read_if(plan_path)
+    prior_applied_specs, prior_block_states = _load_prior_plan_state(plan_path)
 
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
@@ -810,18 +926,32 @@ def create_plan(
     blocks = _parse_strict_blocks(result.text, result)
     plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
 
+    # Applied Blueprint files whose sha256 hasn't changed are protected: the LLM's
+    # regenerated version is discarded so the file sha256 stays stable and the
+    # merge can confirm the story is still clean (no re-run needed).
+    _protected: frozenset[str] = frozenset(
+        name
+        for name in prior_applied_specs
+        if not _spec_is_dirty(name, blueprint_dir, prior_applied_specs)
+    )
+
     # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
     authored: list[Path] = []
     for name, content in blocks.items():
         if name in _RESERVED_BLOCKS:
             continue
         dest = _safe_blueprint_path(blueprint_dir, name)
+        if name in _protected:
+            authored.append(dest)
+            continue
         _write_text(dest, content)
         authored.append(dest)
 
-    # 2. The executable plan. Single-directional regenerate: prior states are not merged —
-    #    a new plan is authored fresh every run (LLM output is non-deterministic).
+    # 2. The executable plan. Write the LLM output, then merge prior block states and
+    #    restore applied_specs so that closed/verified work and the graph database survive
+    #    a replan. Dirty blocks (implements: sha256 changed) are left at pending.
     _write_text(plan_path, blocks["MANIFEST.md"])
+    _merge_prior_state(plan_path, blueprint_dir, prior_applied_specs, prior_block_states)
 
     # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)

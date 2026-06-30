@@ -11,11 +11,14 @@ from pathlib import Path
 
 import pytest
 
+from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import SpecificationError
 from drydock.planning_session import (
     _answered_discovery,
     _assemble_prompt,
+    _load_prior_plan_state,
     _parse_blocks,
+    _spec_is_dirty,
     create_plan,
     ensure_feedback_file,
 )
@@ -180,18 +183,182 @@ def test_cli_overrides_are_passed_to_runner(tmp_path):
     assert calls[0]["llm"] == "codex"
 
 
-def test_replan_does_not_preserve_prior_states(tmp_path):
+def _manifest_with_applied(story_state: str, spec_name: str, sha256: str, story_id: str) -> str:
+    """Build a prior MANIFEST.md with applied_specs in the preamble."""
+    return (
+        f"# MANIFEST: Example\n"
+        f"updated: 2026-06-16\n"
+        f"plan_hash: test\n"
+        f"state: draft\n"
+        f"applied_specs: |\n"
+        f"  {spec_name} sha256={sha256} commit=abc123 applied_by={story_id} applied_at=2026-06-01T00:00:00Z\n"
+        f"\n"
+        f"## feature 1: Status\n"
+        f"id: feature-status\n"
+        f"summary: Deliver the status command.\n"
+        f"state: pending\n"
+        f"\n"
+        f"## story 1: Deliver Status\n"
+        f"id: story-status\n"
+        f"parent: feature-status\n"
+        f"summary: Build the status command.\n"
+        f"implements: {spec_name}\n"
+        f"scope: both\n"
+        f"state: {story_state}\n"
+        f"\n"
+        f"## ac 1: Status command exits successfully\n"
+        f"id: ac-status-exits\n"
+        f"parent: story-status\n"
+        f"kind: assertion\n"
+        f"state: pending\n"
+    )
+
+
+def _spec_sha256(path: Path) -> str:
+    from hashlib import sha256 as _sha256
+
+    return _sha256(path.read_bytes()).hexdigest()
+
+
+def test_replan_preserves_closed_verified_block_with_clean_file(tmp_path):
     target_dir = _make_target(tmp_path)
-    # A prior plan left story-status implemented.
-    (target_dir / "MANIFEST.md").write_text(_manifest(story_state="implemented"), encoding="utf-8")
+    blueprint_dir = target_dir / "blueprint"
+    spec_file = blueprint_dir / "FEATURE-Status.md"
+    spec_file.parent.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text("# Feature\n", encoding="utf-8")
+
+    prior = _manifest_with_applied(
+        "closed/verified", "FEATURE-Status.md", _spec_sha256(spec_file), "story-status"
+    )
+    (target_dir / "MANIFEST.md").write_text(prior, encoding="utf-8")
 
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
     text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
-    assert "id: story-status\n" in text
-    # Single-directional regenerate: the fresh plan is authored as-is (pending); no state merge.
-    assert "state: implemented" not in text
+    assert "state: closed/verified" in text
+
+
+def test_replan_resets_dirty_block_to_pending(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    spec_file = blueprint_dir / "FEATURE-Status.md"
+    spec_file.parent.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text("# Feature\n", encoding="utf-8")
+
+    # Record a stale sha256 so the file appears dirty.
+    prior = _manifest_with_applied(
+        "closed/verified", "FEATURE-Status.md", "000000000000", "story-status"
+    )
+    (target_dir / "MANIFEST.md").write_text(prior, encoding="utf-8")
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "state: closed/verified" not in text
     assert "state: pending" in text
+
+
+def test_replan_restores_applied_specs(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    spec_file = blueprint_dir / "FEATURE-Status.md"
+    spec_file.parent.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text("# Feature\n", encoding="utf-8")
+
+    prior = _manifest_with_applied(
+        "closed/verified", "FEATURE-Status.md", _spec_sha256(spec_file), "story-status"
+    )
+    (target_dir / "MANIFEST.md").write_text(prior, encoding="utf-8")
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    assert "FEATURE-Status.md" in plan.applied_specs
+    assert plan.applied_specs["FEATURE-Status.md"].applied_by == "story-status"
+
+
+def test_replan_preserves_spike_finding(tmp_path):
+    spike_manifest = """# MANIFEST: Example
+updated: 2026-06-16
+plan_hash: test
+state: draft
+
+## spike 1: Choose parser
+id: spike-parser
+summary: Pick the best parser.
+state: closed/verified
+finding: Use the stdlib csv module.
+
+## story 1: Deliver Status
+id: story-status
+summary: Build the status command.
+implements: FEATURE-Status.md
+scope: both
+state: pending
+
+## ac 1: Status exits
+id: ac-status-exits
+parent: story-status
+kind: assertion
+state: pending
+"""
+    target_dir = _make_target(tmp_path)
+    (target_dir / "MANIFEST.md").write_text(spike_manifest, encoding="utf-8")
+
+    spike_llm = (
+        "=== ARCHITECTURE.md ===\n"
+        + _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+        + "\n=== END ARCHITECTURE.md ===\n"
+        "=== FEATURE-Status.md ===\n"
+        + _SPEC_HEADER.format(ftype="FEATURE", name="Status", ac="Status exits.")
+        + "\n=== END FEATURE-Status.md ===\n"
+        "=== MANIFEST.md ===\n"
+        + spike_manifest.replace("finding: Use the stdlib csv module.", "finding:")
+        + "\n=== END MANIFEST.md ===\n"
+    )
+    create_plan("Example", "Example", tmp_path, runner=_fake(spike_llm))
+
+    text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "Use the stdlib csv module" in text
+
+
+def test_load_prior_plan_state_returns_empty_when_no_manifest(tmp_path):
+    specs, states = _load_prior_plan_state(tmp_path / "MANIFEST.md")
+    assert specs == {}
+    assert states == {}
+
+
+def test_spec_is_dirty_false_when_no_applied_record(tmp_path):
+    assert not _spec_is_dirty("FEATURE.md", tmp_path, {})
+
+
+def test_spec_is_dirty_true_when_hash_changed(tmp_path):
+    spec = tmp_path / "FEATURE.md"
+    spec.write_text("changed content", encoding="utf-8")
+    record = AppliedSpecRecord(
+        path="FEATURE.md",
+        sha256="000000000000",
+        commit="-",
+        applied_by="story-x",
+        applied_at="2026-06-01T00:00:00Z",
+    )
+    assert _spec_is_dirty("FEATURE.md", tmp_path, {"FEATURE.md": record})
+
+
+def test_spec_is_dirty_false_when_hash_matches(tmp_path):
+    from hashlib import sha256
+
+    spec = tmp_path / "FEATURE.md"
+    spec.write_text("content", encoding="utf-8")
+    digest = sha256(spec.read_bytes()).hexdigest()
+    record = AppliedSpecRecord(
+        path="FEATURE.md",
+        sha256=digest,
+        commit="-",
+        applied_by="story-x",
+        applied_at="2026-06-01T00:00:00Z",
+    )
+    assert not _spec_is_dirty("FEATURE.md", tmp_path, {"FEATURE.md": record})
 
 
 def test_blocked_quality_refuses_before_llm(tmp_path):

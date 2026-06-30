@@ -7,6 +7,7 @@ import pytest
 from drydock.errors import SpecificationError
 from drydock.manifest_edit import (
     apply_move,
+    batch_set_block_fields,
     move_feature,
     move_step,
     regroup_step,
@@ -169,3 +170,33 @@ def test_apply_move_regroup_persists(tmp_path):
     apply_move(path, "regroup_step", "welcome", feature="feature-core")
     doc = split_manifest(path)
     assert doc.by_id()["welcome"].parent == "feature-core"
+
+
+def test_batch_set_block_fields_updates_multiple_blocks(tmp_path):
+    path = _write(tmp_path)
+    batch_set_block_fields(
+        path,
+        {
+            "foundation": {"state": "closed/verified"},
+            "service": {"state": "implemented"},
+        },
+    )
+    doc = split_manifest(path)
+    assert doc.by_id()["foundation"].lines[1].strip().startswith("id:")
+    text = path.read_text(encoding="utf-8")
+    assert "state: closed/verified" in text
+    assert "state: implemented" in text
+
+
+def test_batch_set_block_fields_skips_unknown_ids(tmp_path):
+    path = _write(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    batch_set_block_fields(path, {"nonexistent-id": {"state": "closed/verified"}})
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_batch_set_block_fields_no_op_when_empty(tmp_path):
+    path = _write(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    batch_set_block_fields(path, {})
+    assert path.read_text(encoding="utf-8") == before

@@ -363,6 +363,25 @@ def set_block_fields(path: Path, block_id: str, **fields: str) -> None:
     write_manifest(doc)
 
 
+def batch_set_block_fields(path: Path, updates: dict[str, dict[str, str]]) -> None:
+    """Set scalar fields on multiple blocks in a single parse-and-write cycle.
+
+    ``updates`` maps block_id → {field_name → value}. Blocks not present in the
+    manifest are silently skipped. Preserves block ordering and all other content.
+    """
+    if not updates:
+        return
+    doc = split_manifest(path)
+    by_id = doc.by_id()
+    for block_id, fields in updates.items():
+        block = by_id.get(block_id)
+        if block is None:
+            continue
+        for key, value in fields.items():
+            _set_field_line(block, key.lower(), value)
+    write_manifest(doc)
+
+
 def apply_move(
     path: Path, kind: str, block_id: str, *, direction: str = "", feature: str = ""
 ) -> None:
