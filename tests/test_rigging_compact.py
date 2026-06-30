@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.rigging_compact import _extract_compact_error, _finalize, compact, discover
+from drydock.rigging_compact import (
+    _extract_compact_error,
+    _finalize,
+    compact,
+    discover,
+    resolve_role,
+)
 
 
 @dataclass
@@ -32,12 +38,15 @@ class FakeRun:
 def fake_runner(*calls: object):
     """Return a runner that records prompts and yields canned results."""
     seen: list[str] = []
+    seen_kwargs: list[dict[str, object]] = []
 
     def run(prompt, working_directory, **kwargs):
         seen.append(prompt)
+        seen_kwargs.append(kwargs)
         return FakeRun()
 
     run.seen = seen  # type: ignore[attr-defined]
+    run.seen_kwargs = seen_kwargs  # type: ignore[attr-defined]
     return run
 
 
@@ -134,6 +143,11 @@ class TestDiscover:
 
 
 class TestCompact:
+    def test_resolve_role_uses_exact_filename_matches(self):
+        assert resolve_role(Path("ARCHITECTURE.md")).key == "architecture"
+        assert resolve_role(Path("DATABASE.md")).key == "database_api"
+        assert resolve_role(Path("FEATURE-Thing.md")).key == "contracts"
+
     def test_writes_siblings_with_provenance_and_exit_zero(self, tmp_path):
         name, root = _blueprint(
             tmp_path, **{"DATABASE.md": "# DB\nclass X: ...\n", "BUSINESS_RULES.md": "must X\n"}
@@ -202,6 +216,14 @@ class TestCompact:
         assert "## Compaction job" in prompt
         assert "SOURCE_PATH: DATABASE.md" in prompt
         assert "secret-token" in prompt
+
+    def test_runner_receives_role_metadata(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"ARCHITECTURE.md": "module layout\n"})
+        runner = fake_runner()
+        compact(name, root / name, include_files=[root / name / "ARCHITECTURE.md"], runner=runner)
+        kwargs = runner.seen_kwargs[0]  # type: ignore[attr-defined]
+        assert kwargs["parameters"]["role"] == "architecture"
+        assert kwargs["parameters"]["prompt"] == "rigging_compact_architecture"
 
     def test_unknown_blueprint_raises(self, tmp_path):
         root = tmp_path / "specs"

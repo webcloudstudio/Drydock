@@ -195,14 +195,21 @@ def record_activity(
     blueprint: str | None = None,
     target: str | None = None,
 ) -> None:
-    cfg = _config_path()
-    cfg.parent.mkdir(parents=True, exist_ok=True)
-    cfg.touch()
-    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
-    set_key(cfg, "LAST_COMMAND", command)
-    set_key(cfg, "LAST_BLUEPRINT", blueprint or "")
-    set_key(cfg, "LAST_TARGET", target or "")
-    set_key(cfg, "LAST_COMMAND_TIME", now)
+    """Persist last-command metadata when the user config path is writable.
+
+    Activity logging is best-effort only and must never change command behavior.
+    """
+    try:
+        cfg = _config_path()
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.touch()
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+        set_key(cfg, "LAST_COMMAND", command)
+        set_key(cfg, "LAST_BLUEPRINT", blueprint or "")
+        set_key(cfg, "LAST_TARGET", target or "")
+        set_key(cfg, "LAST_COMMAND_TIME", now)
+    except OSError:
+        return
 
 
 def get_last_activity() -> dict[str, str]:

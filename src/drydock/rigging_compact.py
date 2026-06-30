@@ -1,12 +1,10 @@
-"""``drydock rigging compact`` — extract usage-surface compact derivatives from spec files.
+"""``drydock rigging compact`` — extract role-based compact derivatives from spec files.
 
-Each eligible Markdown file is compacted to an MCP-inspired form containing only caller-facing
-callable units (routes, methods, schemas). Builder files that have no technical surface (branding,
-tone guides, process prose) are classified by the LLM and skipped with status ``no-surface``.
-The full source is used by builder stories; consumer stories receive the compact derivative.
-
-The LLM only emits text; this module writes the derivative deterministically. Tests inject a
-fake runner instead of spending API credits.
+Each eligible Markdown file is compacted through a filename-selected prompt role:
+contracts (default), architecture, or database API. Files with no compactable technical surface
+are classified by the LLM and skipped with status ``no-surface``. The LLM only emits text; this
+module writes the derivative deterministically. Tests inject a fake runner instead of spending API
+credits.
 """
 
 from __future__ import annotations
@@ -31,32 +29,65 @@ from drydock.prompt_assembly import (
 )
 from drydock.prompts import load_prompt
 
-PROMPT_NAME = "rigging_compact"
 COMPACT_SUFFIX = "_compact"
 
 # Files always expected to carry a compact derivative inside a Blueprint.
 REQUIRED_PAIRS: tuple[str, ...] = ("DATABASE.md", "BUSINESS_RULES.md")
 
-_GENERAL_OBJECTIVE = (
-    "Extract the caller-facing usage surface of this file. For each callable unit (route, method, "
-    "function, schema, or required configuration entry), emit one MCP-style block with a typed "
-    "input table and a returns description. Drop all implementation detail, rationale, and "
-    "build-time constraints. If no callable units exist, emit: "
-    "COMPACT_ERROR: no technical surface — builder use only"
+
+@dataclass(frozen=True)
+class CompactRole:
+    key: str
+    label: str
+    prompt_name: str
+    objective: str
+
+
+_CONTRACTS_ROLE = CompactRole(
+    key="contracts",
+    label="Contracts",
+    prompt_name="rigging_compact_contracts",
+    objective=(
+        "Extract the consumer-facing contract surface of this file. Preserve routes, callable "
+        "units, schemas, request and response shapes, required configuration, and validation "
+        "rules another build step must satisfy. Drop implementation detail, rationale, and "
+        "build-only prose. If there is no technical contract surface, emit: "
+        "COMPACT_ERROR: no technical surface — builder use only"
+    ),
 )
 
-_OBJECTIVES: dict[str, str] = {
-    "DATABASE.md": (
-        "Extract class names and method signatures as MCP-style blocks. For each method: one-line "
-        "description, typed parameter table (name / type / required / description), and return "
-        "type. Drop method bodies, implementation notes, and rationale."
+_ARCHITECTURE_ROLE = CompactRole(
+    key="architecture",
+    label="Architecture",
+    prompt_name="rigging_compact_architecture",
+    objective=(
+        "Extract the builder-facing structural contract of this architecture file. Preserve "
+        "module layout, ownership boundaries, wiring shape, technical constraints, and required "
+        "cross-cutting implementation rules. Drop narrative, repetition, and low-value detail, "
+        "but keep rules that constrain where code may live or how components may interact."
     ),
-    "BUSINESS_RULES.md": (
-        "Extract callable enforcement points — any rule that a consuming story must satisfy to "
-        "pass validation. Represent each as a named block with the condition and the expected "
-        "outcome. Drop rationale, examples, and motivational prose."
+)
+
+_DATABASE_ROLE = CompactRole(
+    key="database_api",
+    label="Database API",
+    prompt_name="rigging_compact_database",
+    objective=(
+        "Extract the builder-facing persistence contract of this database file. Preserve store "
+        "interfaces, reads, writes, schemas, accepted inputs, returned data shapes, mutation "
+        "rules, and persistence guardrails used by consuming steps. Drop internal implementation "
+        "narrative and rationale."
     ),
-}
+)
+
+
+def resolve_role(source: Path) -> CompactRole:
+    """Return the compaction role selected for ``source`` by exact filename."""
+    if source.name == "ARCHITECTURE.md":
+        return _ARCHITECTURE_ROLE
+    if source.name == "DATABASE.md":
+        return _DATABASE_ROLE
+    return _CONTRACTS_ROLE
 
 
 class CompletedRun(Protocol):
@@ -77,6 +108,8 @@ TextCallback = Callable[[str], None]
 class CompactItem:
     source: Path
     compact: Path
+    role: str
+    prompt_name: str
     # status: compacted | skipped-fresh | no-surface | failed
     status: str
     source_bytes: int | None = None
@@ -310,7 +343,6 @@ def compact(
     if not spec_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {spec_dir}")
 
-    prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
     items: list[CompactItem] = []
 
@@ -329,6 +361,7 @@ def compact(
     )
 
     for source in sources:
+        role = resolve_role(source)
         compact_path = _compact_path(source)
         skip_path = _skip_path(source)
 
@@ -338,6 +371,8 @@ def compact(
                 CompactItem(
                     source,
                     fresh_sibling,
+                    role.label,
+                    role.prompt_name,
                     "skipped-fresh",
                     source_bytes=source.stat().st_size,
                     compact_bytes=fresh_sibling.stat().st_size if fresh_sibling.exists() else None,
@@ -345,6 +380,7 @@ def compact(
             )
             continue
 
+        prompt = load_prompt(role.prompt_name)
         rel_source = _rel(source, spec_dir)
         source_text = source.read_text(encoding="utf-8")
         source_bytes = len(source_text.encode("utf-8"))
@@ -352,7 +388,7 @@ def compact(
             prompt.body,
             rel_source=rel_source,
             today=today,
-            objective=_OBJECTIVES.get(source.name, _GENERAL_OBJECTIVE),
+            objective=role.objective,
             source_text=source_text,
         )
         result = run(
@@ -361,7 +397,12 @@ def compact(
             llm=llm_provider,
             model=model or prompt.model,
             command_name="rigging compact",
-            parameters={"source": str(source), "compact": str(compact_path)},
+            parameters={
+                "source": str(source),
+                "compact": str(compact_path),
+                "role": role.key,
+                "prompt": role.prompt_name,
+            },
             log_dir=log_dir,
             target=target,
             on_text=on_text,
@@ -373,6 +414,8 @@ def compact(
                 CompactItem(
                     source,
                     compact_path,
+                    role.label,
+                    role.prompt_name,
                     "failed",
                     source_bytes=source_bytes,
                     execution_id=result.execution_id,
@@ -392,6 +435,8 @@ def compact(
                 CompactItem(
                     source,
                     skip_path,
+                    role.label,
+                    role.prompt_name,
                     "no-surface",
                     source_bytes=source_bytes,
                     execution_id=result.execution_id,
@@ -406,6 +451,8 @@ def compact(
             CompactItem(
                 source,
                 compact_path,
+                role.label,
+                role.prompt_name,
                 "compacted",
                 source_bytes=source_bytes,
                 compact_bytes=len(finalized.encode("utf-8")),

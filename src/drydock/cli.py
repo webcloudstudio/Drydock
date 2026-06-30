@@ -241,15 +241,19 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     def report(item: CompactItem) -> None:
         src = item.source.name
         dst = item.compact.name
+        routing = f"[{item.role} via {item.prompt_name}.md]"
         if item.status == "compacted":
             pct = f" ({item.percent:.0f}% of source)" if item.percent is not None else ""
-            print(f"  [done]       {src} → {dst}  {item.compact_bytes} B{pct}  {item.execution_id}")
+            print(
+                f"  [done]       {src} {routing} → {dst}  "
+                f"{item.compact_bytes} B{pct}  {item.execution_id}"
+            )
         elif item.status == "skipped-fresh":
-            print(f"  [fresh]      {src} → {dst}  (compact is newer; use --force)")
+            print(f"  [fresh]      {src} {routing} → {dst}  (compact is newer; use --force)")
         elif item.status == "no-surface":
-            print(f"  [no-surface] {src}: {item.error}")
+            print(f"  [no-surface] {src} {routing}: {item.error}")
         else:
-            print(f"  [failed]     {src}: {item.error}  see logs/ ({item.execution_id})")
+            print(f"  [failed]     {src} {routing}: {item.error}  see logs/ ({item.execution_id})")
 
     print(f"Compacting: {label}")
     result = compact(

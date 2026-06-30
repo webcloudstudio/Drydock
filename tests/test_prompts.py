@@ -30,9 +30,19 @@ class TestParseFrontmatter:
 
 
 class TestLoadPrompt:
-    def test_loads_rigging_compact_with_required_fields(self):
-        prompt = load_prompt("rigging_compact")
-        assert prompt.name == "rigging_compact"
+    @pytest.mark.parametrize(
+        ("prompt_name", "expected_name"),
+        (
+            ("rigging_compact_contracts", "rigging_compact_contracts"),
+            ("rigging_compact_architecture", "rigging_compact_architecture"),
+            ("rigging_compact_database", "rigging_compact_database"),
+        ),
+    )
+    def test_loads_role_based_rigging_compact_prompts_with_required_fields(
+        self, prompt_name, expected_name
+    ):
+        prompt = load_prompt(prompt_name)
+        assert prompt.name == expected_name
         for field in REQUIRED_FIELDS:
             assert prompt.meta.get(field), f"missing required field {field!r}"
         assert prompt.model == "sonnet"
@@ -51,7 +61,7 @@ class TestLoadPrompt:
 
 class TestInputTokens:
     def test_no_inputs_row_yields_empty_tuple(self):
-        assert load_prompt("rigging_compact").input_tokens == ()
+        assert load_prompt("rigging_compact_contracts").input_tokens == ()
 
     def test_analyze_inputs_are_ordered_compass_first(self):
         tokens = load_prompt("analyze").input_tokens

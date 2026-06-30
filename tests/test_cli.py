@@ -308,6 +308,7 @@ class TestRiggingCompact:
         assert (spec / "DATABASE_compact.md").exists()
         assert "1 compacted" in out
         assert "exec-test" in out
+        assert "Database API via rigging_compact_database.md" in out
 
     def test_failed_execution_exits_one(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup_blueprint(tmp_target_root)
@@ -322,6 +323,17 @@ class TestRiggingCompact:
         rc, out, err = run_cli("rigging", "compact", "Proj")
         assert rc == 0
         assert "Nothing to compact" in out
+
+    def test_reports_contracts_role_for_non_database_file(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        spec = self._setup_blueprint(tmp_target_root, **{"FEATURE-Status.md": "GET /status\n"})
+        self._fake_run_prompt(monkeypatch)
+        rc, out, err = run_cli(
+            "rigging", "compact", "Proj", "--include-file", str(spec / "FEATURE-Status.md")
+        )
+        assert rc == 0, err
+        assert "Contracts via rigging_compact_contracts.md" in out
 
 
 class TestAnalyzeCommand:

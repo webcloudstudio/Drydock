@@ -25,8 +25,7 @@ project is, what it must do, and how it is built.
 | `UI-GENERAL.md` | Shared UI patterns across screens | If has UI |
 | `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
 | `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, AC, guardrails | As needed |
-| `ARCHITECTURE_FUNC_compact.md` | Compact architecture for Functionality phases — module summaries, config, no routes | Optional |
-| `ARCHITECTURE_UI_compact.md` | Compact architecture for UI phases — routes table, directory layout | Optional |
+| `ARCHITECTURE_compact.md` | Compact architecture derivative for downstream build-step injection | Optional |
 | `HOMEPAGE.md` | Portfolio homepage: branding, contact, bio | If publishes a portfolio |
 | `HOMEPAGE-PUBLISHER.md` | Template-based homepage publishing configuration | If publishes a portfolio |
 | `IDEAS.md` | Feature ideas and backlog — no typed header required | No |
@@ -36,10 +35,9 @@ project is, what it must do, and how it is built.
 Every authored Specification file ends with `## Acceptance Criteria`, `## Guardrails`, and
 `## Open Questions`. Use `- None.` when no entries apply.
 
-`ARCHITECTURE_FUNC_compact.md` and `ARCHITECTURE_UI_compact.md` are compact derivatives of
-`ARCHITECTURE.md` authored by the spec author. When present, `drydock plan create` automatically
-selects the appropriate variant based on phase content (FEATURE-* files → FUNC compact; SCREEN-*
-files → UI compact). Both fall back to `ARCHITECTURE.md` if absent.
+`ARCHITECTURE_compact.md` is a compact derivative of `ARCHITECTURE.md` produced by
+`drydock rigging compact`. Drydock uses filename-selected compaction algorithms rather than
+phase-aware compact variants.
 
 ---
 
