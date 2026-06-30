@@ -1124,6 +1124,8 @@ Do not recompact Rigging files unless the governing source actually changed.
 Files without callable surface are classified by the compaction agent and skipped (`no-surface`).
 `_compact.md` files are never treated as sources.
 
+`rigging compact` runs in three forms - the ARCHITECTURE.md role, the DATABASE.md role, and the evrything else role  The ARCHITECTURE and DATABASE components are repeatedly reinjected and should be special compaction when they are created is our solution.
+
 ### Commands
 
 ```

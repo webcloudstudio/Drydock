@@ -224,7 +224,7 @@ def test_canonical_specification_documents_current_command_surface():
 
     phase_headings = (
         "## SAIL Phase 1 — Set Up: Laying the Keel",
-        "## SAIL Phase 2 — Analyze: Charting the Course",
+        "## SAIL Phase 2 — Agile Analyze: Charting the Course",
         "## SAIL Phase 3 — Implement: Sailing the Frontier",
         "## SAIL Phase 4 — Loop: The Refit",
     )

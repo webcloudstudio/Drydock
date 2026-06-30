@@ -524,7 +524,7 @@ def nav_model() -> list[dict[str, Any]]:
         by_section[sid].append(item)
 
     config_ids = [s["id"] for s in config_sections]
-    always_visible = {"analyze", "plan"}
+    always_visible = {"analyze", "plan", "build"}
     ordered_ids = [sid for sid in config_ids if sid in by_section or sid in always_visible]
     ordered_ids += [sid for sid in order if sid not in config_ids]
 
