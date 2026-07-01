@@ -18,6 +18,7 @@ from drydock.planning_session import (
     _assemble_prompt,
     _load_prior_plan_state,
     _parse_blocks,
+    _repair_missing_leading_delimiter,
     _spec_is_dirty,
     create_plan,
     ensure_feedback_file,
@@ -542,6 +543,22 @@ def test_text_outside_blocks_refuses_without_writes(tmp_path):
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "FEATURE-Status.md").exists()
     assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
+
+
+def test_missing_first_delimiter_is_recovered(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output()
+    repaired = output.replace("=== ARCHITECTURE.md ===\n", "", 1)
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(repaired))
+
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    assert (target_dir / "MANIFEST.md").exists()
+    assert (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+
+
+def test_repair_missing_leading_delimiter_refuses_ordinary_preamble():
+    assert _repair_missing_leading_delimiter("Here is the plan.\n" + _llm_output()) is None
 
 
 def test_duplicate_artifact_block_refuses_without_writes(tmp_path):

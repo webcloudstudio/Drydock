@@ -55,6 +55,7 @@ from drydock.standard_artifacts import (
 PROMPT_NAME = "plan_create"
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+_END_BLOCK_LINE_RE = re.compile(r"^=== END (?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
     r'<parameter name="file_path">(?P<path>.*?)</parameter>\s*'
@@ -108,6 +109,36 @@ def _parse_blocks(text: str) -> dict[str, str]:
     return {m.group(1): m.group(2).strip() for m in _BLOCK_RE.finditer(text)}
 
 
+def _repair_missing_leading_delimiter(text: str) -> str | None:
+    """Recover a missing first ``=== NAME ===`` when the orphan END line is unambiguous.
+
+    Claude occasionally emits the first artifact body and closing delimiter but drops the opening
+    delimiter. Recover only when the output starts with body text and the first delimiter we can
+    prove is an orphan ``=== END <name> ===`` line. Any ordinary prose preamble still fails.
+    """
+    if not text or text.lstrip().startswith("==="):
+        return None
+
+    first_end = _END_BLOCK_LINE_RE.search(text)
+    if first_end is None:
+        return None
+
+    leading = text[: first_end.start()]
+    if not leading.strip():
+        return None
+    if "===" in leading:
+        return None
+
+    recovered_name = first_end.group("name").strip()
+    remainder = text[first_end.end() :]
+    if f"=== {recovered_name} ===" in remainder:
+        return None
+
+    leading_body = leading.rstrip("\n")
+    repaired = f"=== {recovered_name} ===\n{leading_body}\n=== END {recovered_name} ==={remainder}"
+    return repaired
+
+
 def _execution_output_path(result: CompletedRun) -> str | None:
     artifacts = getattr(result, "artifacts", None)
     output_file = getattr(artifacts, "output_file", None)
@@ -142,6 +173,9 @@ def _raise_llm_failure(command_name: str, detail: str, execution_id: str) -> Non
 
 def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
     """Parse the required artifact block protocol and reject malformed output."""
+    repaired = _repair_missing_leading_delimiter(text)
+    if repaired is not None:
+        text = repaired
     blocks: dict[str, str] = {}
     cursor = 0
     for match in _BLOCK_RE.finditer(text):
