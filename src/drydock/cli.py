@@ -1120,6 +1120,16 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     target_path = get_target_directory() / target
     report = build_status(plan)
 
+    reviewable = _reviewable_build_steps(target_path)
+    if reviewable:
+        step_id, name = reviewable[0]
+        print(f"Next: drydock build verify {target} {step_id}  # {name}")
+    elif report.buildable_ids:
+        print(f"Next: drydock build {target}")
+    else:
+        print("Next: (no actionable steps — all done or blocked)")
+    print()
+
     print(f"Blueprint: {report.project}")
     print(f"Target: {target_path}")
     print(f"Plan state: {report.plan_state}")
@@ -1608,8 +1618,20 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             record_activity("build status", tokens[1], tokens[1])
         return rc
     elif first == "verify":
-        if len(tokens) != 3:
-            raise UsageError("Usage: drydock build verify <Target> <step-id>")
+        if len(tokens) < 2:
+            raise UsageError("Usage: drydock build verify <Target> [<step-id>]")
+        if len(tokens) == 2:
+            from drydock.config import get_target_directory
+
+            target_dir = get_target_directory() / tokens[1]
+            steps = _reviewable_build_steps(target_dir)
+            if not steps:
+                print("No steps ready to verify.")
+            else:
+                print("Steps ready to verify:")
+                for step_id, name in steps:
+                    print(f"  drydock build verify {tokens[1]} {step_id}  # {name}")
+            return 0
         rc = cmd_build_verify(tokens[1], tokens[2])
         if rc == 0:
             from drydock.config import record_activity

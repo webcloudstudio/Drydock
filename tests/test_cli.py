@@ -578,7 +578,7 @@ state: pending
         assert "Already verified: awaiting-checks" in out
 
     def test_build_verify_usage_error(self):
-        rc, out, err = run_cli("build", "verify", "ExampleTarget")
+        rc, out, err = run_cli("build", "verify")
 
         assert rc == 2
         assert "Usage: drydock build verify" in err
