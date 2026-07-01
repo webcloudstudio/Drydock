@@ -294,6 +294,8 @@ def validate_specification(
     section = "Terminal sections"
     for md_file in sorted(spec_dir.glob("*.md")):
         fname = md_file.name
+        if "_compact." in fname:
+            continue
         if fname in _NO_TERMINAL_NEEDED or fname in _GENERATED_FILES:
             continue
         if re.match(r"^(AC|PATCH)-\d{3}-|.*-AC\.md$|.*-AC-.*\.md$", fname):

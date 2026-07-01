@@ -134,6 +134,22 @@ class TestNonSpecBlueprintFiles:
         assert "Unexpected file name: ARCHITECTURE_compact.md" not in messages
         assert "Unexpected file name: DATABASE_compact.md" not in messages
 
+    def test_generated_compacts_do_not_require_terminal_sections(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        blueprint = target_dir / "blueprint"
+        (blueprint / "ARCHITECTURE_compact.md").write_text("# Compact\n", encoding="utf-8")
+        (blueprint / "DATABASE_compact.md").write_text("# Compact\n", encoding="utf-8")
+
+        result = validate_specification("TestProject", target_dir)
+        messages = [f.message for f in result.findings]
+
+        assert "ARCHITECTURE_compact.md missing ## Acceptance Criteria" not in messages
+        assert "ARCHITECTURE_compact.md missing ## Guardrails" not in messages
+        assert "ARCHITECTURE_compact.md missing ## Open Questions" not in messages
+        assert "DATABASE_compact.md missing ## Acceptance Criteria" not in messages
+        assert "DATABASE_compact.md missing ## Guardrails" not in messages
+        assert "DATABASE_compact.md missing ## Open Questions" not in messages
+
 
 class TestExampleFileWarnings:
     def test_screen_example_warns(self, tmp_target_root):
