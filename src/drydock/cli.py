@@ -450,7 +450,6 @@ def cmd_plan(args: argparse.Namespace) -> int:
         model=model,
         llm_provider=llm_provider,
         log_dir=log_dir,
-        on_text=print,
     )
     print()
     print(f"Blueprint: {result.plan.project}")
