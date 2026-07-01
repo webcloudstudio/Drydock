@@ -55,6 +55,7 @@ from drydock.standard_artifacts import (
 PROMPT_NAME = "plan_create"
 
 _BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+_OPEN_BLOCK_LINE_RE = re.compile(r"^=== (?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
 _END_BLOCK_LINE_RE = re.compile(r"^=== END (?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
@@ -176,33 +177,68 @@ def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
     repaired = _repair_missing_leading_delimiter(text)
     if repaired is not None:
         text = repaired
-    blocks: dict[str, str] = {}
-    cursor = 0
-    for match in _BLOCK_RE.finditer(text):
-        outside = text[cursor : match.start()]
-        if outside.strip():
-            raise SpecificationError(
-                _with_execution_evidence(
-                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                    "  Text appeared outside delimited artifact blocks.\n"
-                    "  No Blueprint or Manifest artifacts were written.",
-                    result,
-                )
-            )
-        name = match.group(1).strip()
-        if name in blocks:
-            raise SpecificationError(
-                _with_execution_evidence(
-                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                    f"  Duplicate artifact block: {name}\n"
-                    "  No Blueprint or Manifest artifacts were written.",
-                    result,
-                )
-            )
-        blocks[name] = match.group(2).strip()
-        cursor = match.end()
+    return _parse_strict_blocks_by_line(text, result)
 
-    if text[cursor:].strip():
+
+def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, str]:
+    blocks: dict[str, str] = {}
+    current_name: str | None = None
+    current_body: list[str] = []
+    outside: list[str] = []
+    saw_delimiter = False
+
+    for line in text.splitlines(keepends=True):
+        open_match = _OPEN_BLOCK_LINE_RE.match(line.strip())
+        end_match = _END_BLOCK_LINE_RE.match(line.strip())
+        if current_name is None:
+            if open_match:
+                if "".join(outside).strip():
+                    raise SpecificationError(
+                        _with_execution_evidence(
+                            "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                            "  Text appeared outside delimited artifact blocks.\n"
+                            "  No Blueprint or Manifest artifacts were written.",
+                            result,
+                        )
+                    )
+                current_name = open_match.group("name").strip()
+                current_body = []
+                outside = []
+                saw_delimiter = True
+                continue
+            outside.append(line)
+            continue
+        if end_match and end_match.group("name").strip() == current_name:
+            if current_name in blocks:
+                raise SpecificationError(
+                    _with_execution_evidence(
+                        "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                        f"  Duplicate artifact block: {current_name}\n"
+                        "  No Blueprint or Manifest artifacts were written.",
+                        result,
+                    )
+                )
+            blocks[current_name] = "".join(current_body).strip()
+            current_name = None
+            current_body = []
+            saw_delimiter = True
+            continue
+        current_body.append(line)
+
+    if current_name is not None:
+        if current_name in blocks:
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                    f"  Duplicate artifact block: {current_name}\n"
+                    "  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
+        blocks[current_name] = "".join(current_body).strip()
+        saw_delimiter = True
+
+    if "".join(outside).strip():
         raise SpecificationError(
             _with_execution_evidence(
                 "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
@@ -211,7 +247,7 @@ def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
                 result,
             )
         )
-    return blocks
+    return blocks if saw_delimiter else {}
 
 
 def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -> dict[str, str]:
@@ -1056,7 +1092,13 @@ def create_plan(
         detail = result.text.strip() or result.stderr.strip()
         _raise_llm_failure("plan", detail, result.execution_id)
 
-    blocks = _parse_strict_blocks(result.text, result)
+    try:
+        blocks = _parse_strict_blocks(result.text, result)
+    except SpecificationError:
+        recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
+        if not recovered:
+            raise
+        blocks = recovered
     plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
 
     # Applied Blueprint files whose sha256 hasn't changed are protected: the LLM's

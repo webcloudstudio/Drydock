@@ -96,6 +96,49 @@ def test_parse_generated_docs_rejects_text_outside_blocks():
         )
 
 
+def test_parse_generated_docs_recovers_missing_final_delimiter():
+    docs = parse_generated_docs(
+        LLM_OUTPUT.replace("\n=== END DOC-ARCHITECTURE.md ===\n", "\n", 1),
+        sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
+    )
+
+    assert docs["DOC-ARCHITECTURE.md"].startswith("# Architecture")
+
+
+def test_parse_generated_docs_recovers_write_transcript():
+    transcript = """\
+<function_calls>
+<invoke name="Write">
+<parameter name="path">/tmp/docs/DOC-OVERVIEW.md</parameter>
+<parameter name="content"># Overview</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/docs/DOC-FEATURES.md</parameter>
+<parameter name="content"># Features</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/docs/DOC-SCREENS.md</parameter>
+<parameter name="content"># Screens</parameter>
+</invoke>
+<invoke name="Write">
+<parameter name="path">/tmp/docs/DOC-ARCHITECTURE.md</parameter>
+<parameter name="content"># Architecture</parameter>
+</invoke>
+</function_calls>"""
+
+    docs = parse_generated_docs(
+        transcript,
+        sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
+    )
+
+    assert sorted(docs) == [
+        "DOC-ARCHITECTURE.md",
+        "DOC-FEATURES.md",
+        "DOC-OVERVIEW.md",
+        "DOC-SCREENS.md",
+    ]
+
+
 def test_generate_documentation_writes_doc_files_and_config(
     tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

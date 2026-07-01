@@ -665,8 +665,9 @@ class TestParseBlocks:
 <parameter name="content">compass body</parameter>
 </invoke>
 </function_calls>"""
-        with pytest.raises(Exception, match="Text appeared outside"):
-            _parse_blocks(text)
+        blocks = _parse_blocks(text)
+        assert blocks["ANALYSIS.md"] == "analysis body"
+        assert blocks["COMPASS.md"] == "compass body"
 
 
 # ---------------------------------------------------------------------------
@@ -777,7 +778,7 @@ class TestParseOutput:
         _, _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "discovery-auth.json" in spikes
 
-    def test_write_tool_transcript_is_rejected(self):
+    def test_write_tool_transcript_is_recovered(self):
         text = """\
 <function_calls>
 <invoke name="Write">
@@ -835,8 +836,14 @@ Compass text.
 - None stated.</parameter>
 </invoke>
 </function_calls>"""
-        with pytest.raises(Exception, match="Text appeared outside"):
-            _parse_output(text)
+        analysis, sea_trials, soundings, compass, blockers, spikes, quality, _ = _parse_output(text)
+        assert "Blueprint Analysis" in analysis
+        assert "Sea Trials" in sea_trials
+        assert "Soundings" in soundings
+        assert compass is not None
+        assert blockers is None
+        assert spikes == {}
+        assert quality == "Ready"
 
 
 # ---------------------------------------------------------------------------

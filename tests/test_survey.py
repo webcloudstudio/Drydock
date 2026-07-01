@@ -246,6 +246,29 @@ class TestImport:
 
         assert not (target_dir / "survey" / "ac" / "NOTES.md").exists()
 
+    def test_import_recovers_write_transcript(self, tmp_path):
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+
+        def runner(prompt, working_directory, **kwargs):
+            return FakeRun(
+                text="""\
+<function_calls>
+<invoke name="Write">
+<parameter name="path">/tmp/target/survey/ac/SURVEY-login.md</parameter>
+<parameter name="content"># SURVEY-SPEC: drydock login\n\n## Goal\n\nLog in.</parameter>
+</invoke>
+</function_calls>"""
+            )
+
+        written = import_specs(target, target_dir, source, runner=runner)
+
+        assert len(written) == 1
+        assert written[0].name == "SURVEY-login.md"
+        assert "drydock login" in written[0].read_text(encoding="utf-8")
+
     def test_import_cli_overrides_are_passed_to_runner(self, tmp_path):
         target, target_dir = _make_target(tmp_path)
         source = tmp_path / "blueprint"

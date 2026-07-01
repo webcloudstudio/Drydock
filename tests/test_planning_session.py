@@ -557,6 +557,16 @@ def test_missing_first_delimiter_is_recovered(tmp_path):
     assert (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
 
 
+def test_missing_final_delimiter_is_recovered(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output().replace("\n=== END MANIFEST.md ===\n", "\n", 1)
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(output))
+
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    assert (target_dir / "MANIFEST.md").exists()
+
+
 def test_repair_missing_leading_delimiter_refuses_ordinary_preamble():
     assert _repair_missing_leading_delimiter("Here is the plan.\n" + _llm_output()) is None
 
@@ -577,7 +587,7 @@ def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
 
 
-def test_simulated_write_calls_are_rejected(tmp_path):
+def test_simulated_write_calls_are_recovered(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     output = _llm_output()
@@ -591,11 +601,11 @@ def test_simulated_write_calls_are_rejected(tmp_path):
             "</invoke>"
         )
 
-    with pytest.raises(SpecificationError, match="Text appeared outside"):
-        create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
+    result = create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
 
-    assert not (target_dir / "MANIFEST.md").exists()
-    assert not (blueprint_dir / "FEATURE-Status.md").exists()
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    assert (target_dir / "MANIFEST.md").exists()
+    assert (blueprint_dir / "FEATURE-Status.md").exists()
 
 
 def test_failed_run_refuses(tmp_path):
