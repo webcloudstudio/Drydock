@@ -747,6 +747,36 @@ def cmd_document_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_document_assemble_readme(target: str) -> int:
+    from drydock.config import build_dir_for, get_target_directory
+    from drydock.metadata import get_field, parse_metadata
+    from drydock.readme_generate import generate_readme
+
+    target_dir = get_target_directory() / target
+    if not target_dir.is_dir():
+        print(f"Error: Target not found: {target_dir}", file=sys.stderr)
+        return 1
+
+    meta = parse_metadata(target_dir / "METADATA.md")
+    build_dir_str = get_field(meta, "build_dir")
+    build_dir = (
+        Path(build_dir_str).expanduser().resolve() if build_dir_str else build_dir_for(target)
+    )
+
+    if not build_dir.exists():
+        print(f"Error: Build directory not found: {build_dir}", file=sys.stderr)
+        print("  Run drydock build first.", file=sys.stderr)
+        return 1
+
+    readme_path = generate_readme(target_dir, build_dir)
+    if readme_path is None:
+        print("Error: README generation failed.", file=sys.stderr)
+        return 1
+
+    print(f"README: {readme_path}")
+    return 0
+
+
 def cmd_target_document_assemble(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory
     from drydock.target_documentation import assemble_documentation
@@ -1287,14 +1317,16 @@ def _build_parser() -> argparse.ArgumentParser:
     # Handles: document <Target>
     #          document generate <Target>
     #          document assemble <Target>
+    #          document assemble readme <Target>
     # Strategy: use REMAINDER args and dispatch on first token.
     p_doc = sub.add_parser(
         "document",
         help="Generate and assemble Blueprint documentation.",
         description=(
-            "drydock document <Target>           — full pipeline\n"
-            "drydock document generate <Target>  — AI pass only\n"
-            "drydock document assemble <Target>  — assembly only"
+            "drydock document <Target>                    — full pipeline\n"
+            "drydock document generate <Target>           — AI pass only\n"
+            "drydock document assemble <Target>           — assembly only\n"
+            "drydock document assemble readme <Target>    — regenerate README.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1550,7 +1582,14 @@ def _dispatch_document(args: argparse.Namespace) -> int:
         return cmd_document_generate(parsed)
     elif first == "assemble":
         if len(tokens) < 2:
-            raise UsageError("Usage: drydock document assemble <Target> [--theme <theme>]")
+            raise UsageError(
+                "Usage: drydock document assemble <Target> [--theme <theme>]\n"
+                "       drydock document assemble readme <Target>"
+            )
+        if tokens[1] == "readme":
+            if len(tokens) < 3:
+                raise UsageError("Usage: drydock document assemble readme <Target>")
+            return cmd_document_assemble_readme(tokens[2])
         parsed = _parse_document_args(tokens[1:], prog="drydock document assemble")
         return cmd_target_document_assemble(parsed)
     else:
