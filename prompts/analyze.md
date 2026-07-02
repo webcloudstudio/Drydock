@@ -263,6 +263,14 @@ Acceptance milestones derived from the imported sources and the story list.
 {Precedence: where a source states explicit acceptance criteria, use them. Otherwise synthesize
 one milestone per feature area / screen / persistence area from the project shape and story list.
 Format: | ac-{feature-slug}-{n} | {Criterion text} | NOT STARTED | |}
+
+**Scan-gate scope rule.** When a criterion is a static or filesystem scan — "X never appears" or
+"Y is never imported outside Z," or any grep/AST/boundary gate — the criterion text must define its
+own scope, or it is not executable. State: the scan root (production source, e.g. `src/`); explicit
+exclusions (`.venv/`, `**/site-packages/**`, vendored or generated code, build artifacts); and
+permitted exceptions (test doubles or fixtures that legitimately use the guarded dependency, such as
+mock backends). A scan gate with no stated scope is a defect to fix here, not a scope decision to
+defer to the build agent.
 === END SOUNDINGS.md ===
 ```
 
