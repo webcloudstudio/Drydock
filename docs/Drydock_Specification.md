@@ -1183,6 +1183,8 @@ Edit build `DOC-*.md` files directly to refine documentation without re-running 
 run `drydock document assemble` to regenerate the HTML. The Target root `documentation.yaml`
 stores the navigation order and default theme.
 
+4. `drydock document assemble readme <Target>` will create a readme.  This is done in a hook when build is done but sometimes you might manually wish to run it.
+
 ### Spec Kit Import Contract
 
 ```text
