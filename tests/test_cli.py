@@ -938,15 +938,9 @@ class TestImport:
         rc, out, err = run_cli("import", "Tgt", str(src_dir), "--format", "speckit")
 
         assert rc == 0, err
-        assert (
-            tmp_target_root
-            / "Tgt"
-            / "blueprint"
-            / "sources"
-            / ".specify"
-            / "memory"
-            / "constitution.md"
-        ).is_file()
+        sources = tmp_target_root / "Tgt" / "blueprint" / "sources"
+        assert (sources / "memory" / "constitution.md").is_file()
+        assert not (sources / ".specify").exists()
         assert "IMPORTED" in out
 
     def test_import_speckit_auto_detects_speckit_directory(

@@ -430,8 +430,8 @@ def test_full_rewrite_mode_reports_prompt_and_inventory(tmp_path):
 def test_speckit_source_selects_speckit_prompt(tmp_path):
     target_dir = _make_target(tmp_path)
     sources = target_dir / "blueprint" / "sources"
-    (sources / ".specify" / "memory").mkdir(parents=True)
-    (sources / ".specify" / "memory" / "constitution.md").write_text(
+    (sources / "memory").mkdir(parents=True)
+    (sources / "memory" / "constitution.md").write_text(
         "# Constitution\n\nBuild reliable software.\n", encoding="utf-8"
     )
     (sources / "specs" / "status").mkdir(parents=True)

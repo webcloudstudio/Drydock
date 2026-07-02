@@ -2,6 +2,9 @@
 
 No LLM call is made. The Spec Kit structure (.specify/ and specs/) is copied to
 ``blueprint/sources/`` for later translation by ``drydock analyze`` or conformance workflows.
+``.specify/``'s children are flattened into ``blueprint/sources/`` directly (for example
+``.specify/memory/constitution.md`` becomes ``blueprint/sources/memory/constitution.md``) so no
+hidden directory is created under ``blueprint/sources/``; ``specs/`` keeps its existing prefix.
 Discovery helpers are provided as reusable functions for downstream commands.
 """
 
@@ -142,7 +145,13 @@ def import_speckit(
             for path in sorted(subdir.rglob("*")):
                 if not path.is_file():
                     continue
-                rel = path.relative_to(source)
+                # Flatten ".specify/" itself so no hidden directory lands in
+                # blueprint/sources/; "specs/" keeps its existing prefix.
+                rel = (
+                    path.relative_to(subdir)
+                    if subdir_name == ".specify"
+                    else path.relative_to(source)
+                )
                 destination = sources_dir / rel
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, destination)

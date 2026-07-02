@@ -98,7 +98,7 @@ class TestImportSpecKit:
             features={"auth": {"spec.md": "# Auth\n\nLogin and logout.\n"}},
         )
 
-    def test_copies_specify_dir_to_sources(self, tmp_path):
+    def test_copies_specify_contents_flattened_to_sources(self, tmp_path):
         src = self._make_src(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
@@ -106,7 +106,8 @@ class TestImportSpecKit:
         result = import_speckit("Proj", "Tgt", src, td)
 
         sources = result.blueprint_dir / "sources"
-        assert (sources / ".specify" / "memory" / "constitution.md").is_file()
+        assert (sources / "memory" / "constitution.md").is_file()
+        assert not (sources / ".specify").exists()
 
     def test_copies_specs_dir_to_sources(self, tmp_path):
         src = self._make_src(tmp_path)

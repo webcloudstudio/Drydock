@@ -626,7 +626,10 @@ def _adopt_source_specs_into_blueprint(
 
 def _is_speckit_source(blueprint_dir: Path) -> bool:
     """True when blueprint/sources/ holds a Spec Kit tree from ``import --format speckit``."""
-    return (blueprint_dir / "sources" / ".specify").is_dir()
+    sources_dir = blueprint_dir / "sources"
+    if (sources_dir / "memory" / "constitution.md").is_file():
+        return True
+    return any(sources_dir.glob("specs/*/spec.md"))
 
 
 def _is_reuse_candidate(specs: list[ExistingSpec]) -> bool:
