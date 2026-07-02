@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -592,6 +593,34 @@ def _collect_existing_typed_specs(
             continue
         specs.append(_parse_existing_spec(path))
     return specs
+
+
+def _collect_typed_source_specs(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[Path]:
+    sources_dir = blueprint_dir / "sources"
+    if not sources_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in sources_dir.glob("*.md")
+        if path.name not in excluded_filenames and _is_typed_blueprint_filename(path.name)
+    )
+
+
+def _adopt_source_specs_into_blueprint(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[Path]:
+    adopted: list[Path] = []
+    for source_path in _collect_typed_source_specs(
+        blueprint_dir, excluded_filenames=excluded_filenames
+    ):
+        dest = blueprint_dir / source_path.name
+        if dest.exists():
+            continue
+        shutil.copyfile(source_path, dest)
+        adopted.append(dest)
+    return adopted
 
 
 def _is_reuse_candidate(specs: list[ExistingSpec]) -> bool:
@@ -1368,13 +1397,21 @@ def create_plan(
 
     run = runner if runner is not None else run_prompt
     today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
+    excluded_filenames = load_excluded_filenames(target_dir)
     existing_specs = _collect_existing_typed_specs(
-        blueprint_dir, excluded_filenames=load_excluded_filenames(target_dir)
+        blueprint_dir, excluded_filenames=excluded_filenames
     )
+    adopted_source_specs: list[Path] = []
+    if not existing_specs:
+        adopted_source_specs = _adopt_source_specs_into_blueprint(
+            blueprint_dir, excluded_filenames=excluded_filenames
+        )
+        if adopted_source_specs:
+            existing_specs = _collect_existing_typed_specs(
+                blueprint_dir, excluded_filenames=excluded_filenames
+            )
     reuse_mode = _is_reuse_candidate(existing_specs)
-    imported_source_paths = _collect_sources(
-        blueprint_dir, excluded_filenames=load_excluded_filenames(target_dir)
-    )
+    imported_source_paths = _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames)
     reusable_spec_paths: list[Path] | None = None
     normalized_existing: list[Path] = []
     prompt_name = _REUSE_PROMPT_NAME if reuse_mode else PROMPT_NAME
@@ -1384,6 +1421,11 @@ def create_plan(
             f"[plan] mode={plan_mode} prompt={prompt_name} "
             f"existing_specs={len(existing_specs)} imported_sources={len(imported_source_paths)}\n"
         )
+        if adopted_source_specs:
+            on_text(
+                f"[plan] adopted {len(adopted_source_specs)} typed spec file(s) from "
+                "blueprint/sources into blueprint/\n"
+            )
     if reuse_mode:
         reusable_spec_paths, normalized_existing = _normalize_existing_specs(
             existing_specs, today=today
@@ -1403,7 +1445,7 @@ def create_plan(
         today,
         feedback_text=feedback_for_prompt,
         input_tokens=prompt.input_tokens,
-        excluded_filenames=load_excluded_filenames(target_dir),
+        excluded_filenames=excluded_filenames,
         typed_spec_paths=reusable_spec_paths,
     )
 
@@ -1493,7 +1535,7 @@ def create_plan(
         target_dir=target_dir,
         quarterdeck_dir=quarterdeck,
         changed=changed,
-        authored_files=tuple(sorted({*authored, *normalized_existing})),
+        authored_files=tuple(sorted({*authored, *normalized_existing, *adopted_source_specs})),
         warnings=tuple(warnings),
         execution_id=exec_id,
     )

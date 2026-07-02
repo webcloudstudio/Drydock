@@ -324,6 +324,74 @@ def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
     assert "## Open Questions" in feature_text
 
 
+def test_plan_adopts_typed_source_specs_then_reuses_them(tmp_path):
+    target_dir = _make_target(tmp_path)
+    sources_dir = target_dir / "blueprint" / "sources"
+    (sources_dir / "ARCHITECTURE.md").write_text(
+        "# ARCHITECTURE: Imported Architecture\n\n## Modules\n\n- Imported architecture body.\n",
+        encoding="utf-8",
+    )
+    (sources_dir / "FEATURE-Status.md").write_text(
+        "# FEATURE: Imported Status\n\n## Trigger\n\n- Imported feature body.\n",
+        encoding="utf-8",
+    )
+    progress: list[str] = []
+    manifest = (
+        "# MANIFEST: Example\n"
+        "updated: 2026-06-16\n"
+        "plan_hash: test\n"
+        "state: draft\n\n"
+        "## feature 1: Status\n"
+        "id: feature-status\n"
+        "summary: Deliver the status command.\n"
+        "state: pending\n\n"
+        "## story 1: Architecture Foundation\n"
+        "id: foundation\n"
+        "parent: feature-status\n"
+        "summary: Keep the architecture specification as the foundation.\n"
+        "implements: ARCHITECTURE.md\n"
+        "scope: both\n"
+        "state: pending\n\n"
+        "## ac 1: Architecture foundation exists\n"
+        "id: ac-foundation\n"
+        "parent: foundation\n"
+        "kind: assertion\n"
+        "state: pending\n\n"
+        "## story 2: Deliver Status\n"
+        "id: story-status\n"
+        "parent: feature-status\n"
+        "summary: Build the status command.\n"
+        "implements: FEATURE-Status.md\n"
+        "scope: both\n"
+        "depends: foundation\n"
+        "state: pending\n\n"
+        "## ac 2: Status command exits successfully\n"
+        "id: ac-status-exits\n"
+        "parent: story-status\n"
+        "kind: assertion\n"
+        "state: pending\n"
+    )
+
+    create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=_fake(f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"),
+        on_text=progress.append,
+    )
+
+    blueprint_dir = target_dir / "blueprint"
+    arch = blueprint_dir / "ARCHITECTURE.md"
+    feature = blueprint_dir / "FEATURE-Status.md"
+    assert arch.is_file()
+    assert feature.is_file()
+    joined = "".join(progress)
+    assert "mode=reuse-manifest-first" in joined
+    assert "adopted 2 typed spec file(s) from blueprint/sources into blueprint/" in joined
+    assert "Imported architecture body." in arch.read_text(encoding="utf-8")
+    assert "Imported feature body." in feature.read_text(encoding="utf-8")
+
+
 def test_cli_overrides_are_passed_to_runner(tmp_path):
     _make_target(tmp_path)
     calls = []
