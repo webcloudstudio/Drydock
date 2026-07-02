@@ -64,6 +64,11 @@ _WRITE_CALL_RE = re.compile(
     r"</invoke>",
     re.DOTALL,
 )
+_FUNCTION_WRAPPER_RE = re.compile(r"</?function_calls>\s*")
+_IGNORABLE_OUTSIDE_LINE_RE = re.compile(
+    r"^(?:Continuing|Next|Proceeding|Writing|Now writing)\b.*$",
+    re.IGNORECASE,
+)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
@@ -192,7 +197,7 @@ def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, s
         end_match = _END_BLOCK_LINE_RE.match(line.strip())
         if current_name is None:
             if open_match:
-                if "".join(outside).strip():
+                if _has_substantive_outside_text("".join(outside), after_artifacts=saw_delimiter):
                     raise SpecificationError(
                         _with_execution_evidence(
                             "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
@@ -238,7 +243,7 @@ def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, s
         blocks[current_name] = "".join(current_body).strip()
         saw_delimiter = True
 
-    if "".join(outside).strip():
+    if _has_substantive_outside_text("".join(outside), after_artifacts=saw_delimiter):
         raise SpecificationError(
             _with_execution_evidence(
                 "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
@@ -260,7 +265,13 @@ def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -
     target_root = target_dir.resolve()
     blueprint_root = blueprint_dir.resolve()
     blocks: dict[str, str] = {}
+    cursor = 0
+    saw_write = False
     for match in _WRITE_CALL_RE.finditer(text):
+        if _outside_text_in_write_transcript(
+            text[cursor : match.start()], after_artifacts=saw_write
+        ):
+            raise SpecificationError("Text appeared outside simulated Write artifacts.")
         try:
             path = Path(match.group("path").strip()).expanduser().resolve()
         except OSError:
@@ -275,7 +286,31 @@ def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -
         if name in blocks:
             raise SpecificationError(f"Duplicate simulated Write artifact: {name}")
         blocks[name] = content
+        cursor = match.end()
+        saw_write = True
+    if saw_write and _outside_text_in_write_transcript(text[cursor:], after_artifacts=True):
+        raise SpecificationError("Text appeared outside simulated Write artifacts.")
     return blocks
+
+
+def _outside_text_in_write_transcript(text: str, *, after_artifacts: bool) -> bool:
+    stripped = _FUNCTION_WRAPPER_RE.sub("", text)
+    return _has_substantive_outside_text(stripped, after_artifacts=after_artifacts)
+
+
+def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
+    if not text.strip():
+        return False
+    if not after_artifacts:
+        return True
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _IGNORABLE_OUTSIDE_LINE_RE.match(stripped):
+            continue
+        return True
+    return False
 
 
 def _read_if(path: Path) -> str | None:

@@ -571,6 +571,42 @@ def test_repair_missing_leading_delimiter_refuses_ordinary_preamble():
     assert _repair_missing_leading_delimiter("Here is the plan.\n" + _llm_output()) is None
 
 
+def test_transition_text_between_blocks_is_ignored(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output().replace(
+        "=== SCREEN-SETUP-SUMMARY.md ===\n",
+        "Continuing with the remaining files next.\n=== SCREEN-SETUP-SUMMARY.md ===\n",
+        1,
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(output))
+
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    assert (target_dir / "MANIFEST.md").exists()
+
+
+def test_transition_text_between_write_calls_is_ignored(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    output = _llm_output()
+    calls = []
+    for index, (name, content) in enumerate(_parse_blocks(output).items()):
+        path = target_dir / name if name == "MANIFEST.md" else blueprint_dir / name
+        calls.append(
+            '<invoke name="Write">\n'
+            f'<parameter name="file_path">{path}</parameter>\n'
+            f'<parameter name="content">{content}</parameter>\n'
+            "</invoke>"
+        )
+        if index == 0:
+            calls.append("Continuing with the remaining files next.")
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
+
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    assert (target_dir / "MANIFEST.md").exists()
+
+
 def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
     target_dir = _make_target(tmp_path)
     arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")

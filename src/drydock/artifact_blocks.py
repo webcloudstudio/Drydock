@@ -19,6 +19,10 @@ _WRITE_CALL_RE = re.compile(
     re.DOTALL,
 )
 _FUNCTION_WRAPPER_RE = re.compile(r"</?function_calls>\s*")
+_IGNORABLE_OUTSIDE_LINE_RE = re.compile(
+    r"^(?:Continuing|Next|Proceeding|Writing|Now writing)\b.*$",
+    re.IGNORECASE,
+)
 
 
 def parse_artifact_blocks(
@@ -111,7 +115,7 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
                 saw_delimiter = True
                 continue
             if open_match:
-                if _outside_has_text(outside):
+                if _outside_has_text(outside, after_artifacts=saw_delimiter):
                     raise _outside_text_error(label)
                 current_name = open_match.group("name").strip()
                 current_body = []
@@ -145,7 +149,7 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
         blocks[current_name] = "".join(current_body).strip()
         saw_delimiter = True
 
-    if _outside_has_text(outside):
+    if _outside_has_text(outside, after_artifacts=saw_delimiter):
         raise _outside_text_error(label)
     return blocks if saw_delimiter else {}
 
@@ -193,7 +197,7 @@ def _parse_write_call_blocks(
     saw_write = False
     for match in _WRITE_CALL_RE.finditer(text):
         outside = text[cursor : match.start()]
-        if _FUNCTION_WRAPPER_RE.sub("", outside).strip():
+        if _outside_text_in_write_transcript(outside, after_artifacts=saw_write):
             if strict:
                 raise _outside_text_error(label)
             return {}
@@ -221,15 +225,35 @@ def _parse_write_call_blocks(
         saw_write = True
     if not saw_write:
         return {}
-    if _FUNCTION_WRAPPER_RE.sub("", text[cursor:]).strip():
+    if _outside_text_in_write_transcript(text[cursor:], after_artifacts=saw_write):
         if strict:
             raise _outside_text_error(label)
         return {}
     return blocks
 
 
-def _outside_has_text(chunks: list[str]) -> bool:
-    return bool("".join(chunks).strip())
+def _outside_has_text(chunks: list[str], *, after_artifacts: bool = False) -> bool:
+    return _has_substantive_outside_text("".join(chunks), after_artifacts=after_artifacts)
+
+
+def _outside_text_in_write_transcript(text: str, *, after_artifacts: bool) -> bool:
+    stripped = _FUNCTION_WRAPPER_RE.sub("", text)
+    return _has_substantive_outside_text(stripped, after_artifacts=after_artifacts)
+
+
+def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
+    if not text.strip():
+        return False
+    if not after_artifacts:
+        return True
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _IGNORABLE_OUTSIDE_LINE_RE.match(stripped):
+            continue
+        return True
+    return False
 
 
 def _outside_text_error(label: str) -> DrydockError:

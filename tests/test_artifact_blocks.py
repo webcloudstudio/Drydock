@@ -50,3 +50,40 @@ def test_parse_artifact_blocks_still_rejects_preamble():
             "Here is the plan.\n=== A.md ===\nalpha\n=== END A.md ===\n",
             label="Test",
         )
+
+
+def test_parse_artifact_blocks_ignores_transition_text_between_blocks():
+    text = (
+        "=== A.md ===\nalpha\n=== END A.md ===\n"
+        "Continuing with the remaining files next.\n"
+        "=== B.md ===\nbeta\n=== END B.md ===\n"
+    )
+
+    blocks = parse_artifact_blocks(text, label="Test")
+
+    assert blocks == {"A.md": "alpha", "B.md": "beta"}
+
+
+def test_parse_artifact_blocks_ignores_transition_text_after_write_calls():
+    text = """\
+<function_calls>
+<invoke name="Write">
+<parameter name="path">/tmp/docs/DOC-OVERVIEW.md</parameter>
+<parameter name="content"># Overview</parameter>
+</invoke>
+</function_calls>
+Continuing with the remaining files next.
+<function_calls>
+<invoke name="Write">
+<parameter name="file_path">/tmp/docs/DOC-FEATURES.md</parameter>
+<parameter name="content"># Features</parameter>
+</invoke>
+</function_calls>"""
+
+    blocks = parse_artifact_blocks(
+        text,
+        label="Test",
+        allowed_names=("DOC-OVERVIEW.md", "DOC-FEATURES.md"),
+    )
+
+    assert blocks == {"DOC-OVERVIEW.md": "# Overview", "DOC-FEATURES.md": "# Features"}
