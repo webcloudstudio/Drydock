@@ -427,6 +427,46 @@ def test_full_rewrite_mode_reports_prompt_and_inventory(tmp_path):
     )
 
 
+def test_speckit_source_selects_speckit_prompt(tmp_path):
+    target_dir = _make_target(tmp_path)
+    sources = target_dir / "blueprint" / "sources"
+    (sources / ".specify" / "memory").mkdir(parents=True)
+    (sources / ".specify" / "memory" / "constitution.md").write_text(
+        "# Constitution\n\nBuild reliable software.\n", encoding="utf-8"
+    )
+    (sources / "specs" / "status").mkdir(parents=True)
+    (sources / "specs" / "status" / "spec.md").write_text(
+        "# Feature: Status\n\nUsers can check status.\n", encoding="utf-8"
+    )
+
+    progress: list[str] = []
+    conversion_report = "# Conversion Report: Example\n\n## Mapped\n\n- None.\n"
+    manifest = _manifest()
+    text = (
+        f"=== ARCHITECTURE.md ===\n"
+        f"{_SPEC_HEADER.format(ftype='ARCHITECTURE', name='Example', ac='None.')}\n"
+        f"=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n"
+        f"{_SPEC_HEADER.format(ftype='FEATURE', name='Status', ac='None.')}\n"
+        f"=== END FEATURE-Status.md ===\n"
+        f"=== CONVERSION_REPORT.md ===\n{conversion_report}\n=== END CONVERSION_REPORT.md ===\n"
+        f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"
+    )
+
+    result = create_plan(
+        "Example", "Example", tmp_path, runner=_fake(text), on_text=progress.append
+    )
+
+    assert progress[0].startswith(
+        "[plan] mode=speckit-translate prompt=plan_create_speckit "
+        "existing_specs=0 imported_sources=3"
+    )
+    assert (target_dir / "blueprint" / "CONVERSION_REPORT.md").read_text(
+        encoding="utf-8"
+    ) == conversion_report
+    assert result.plan.project == "Example"
+
+
 def _manifest_with_applied(story_state: str, spec_name: str, sha256: str, story_id: str) -> str:
     """Build a prior MANIFEST.md with applied_specs in the preamble."""
     return (

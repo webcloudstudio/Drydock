@@ -439,6 +439,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
     from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
     from drydock.planning_session import create_plan
 
+    def _progress(text: str) -> None:
+        # Only surface plan's own mode/status notices; suppress the raw streamed
+        # LLM response text, which for a full-rewrite plan can be very large.
+        if text.startswith("[plan]"):
+            print(text, end="")
+
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     log_dir = get_workspace() / "logs"
@@ -449,7 +455,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         model=model,
         llm_provider=llm_provider,
         log_dir=log_dir,
-        on_text=print,
+        on_text=_progress,
     )
     print()
     print(f"Blueprint: {result.plan.project}")

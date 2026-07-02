@@ -83,6 +83,7 @@ _STORY_CAP = 100
 
 _FEEDBACK_FILENAME = "PLAN_COMPASS.md"
 _REUSE_PROMPT_NAME = "plan_reuse"
+_SPECKIT_PROMPT_NAME = "plan_create_speckit"
 _TERMINAL_SECTIONS = (
     "Programmatic Acceptance",
     "User Acceptance",
@@ -621,6 +622,11 @@ def _adopt_source_specs_into_blueprint(
         shutil.copyfile(source_path, dest)
         adopted.append(dest)
     return adopted
+
+
+def _is_speckit_source(blueprint_dir: Path) -> bool:
+    """True when blueprint/sources/ holds a Spec Kit tree from ``import --format speckit``."""
+    return (blueprint_dir / "sources" / ".specify").is_dir()
 
 
 def _is_reuse_candidate(specs: list[ExistingSpec]) -> bool:
@@ -1411,11 +1417,19 @@ def create_plan(
                 blueprint_dir, excluded_filenames=excluded_filenames
             )
     reuse_mode = _is_reuse_candidate(existing_specs)
+    speckit_mode = not reuse_mode and _is_speckit_source(blueprint_dir)
     imported_source_paths = _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames)
     reusable_spec_paths: list[Path] | None = None
     normalized_existing: list[Path] = []
-    prompt_name = _REUSE_PROMPT_NAME if reuse_mode else PROMPT_NAME
-    plan_mode = "reuse-manifest-first" if reuse_mode else "full-rewrite"
+    if reuse_mode:
+        prompt_name = _REUSE_PROMPT_NAME
+        plan_mode = "reuse-manifest-first"
+    elif speckit_mode:
+        prompt_name = _SPECKIT_PROMPT_NAME
+        plan_mode = "speckit-translate"
+    else:
+        prompt_name = PROMPT_NAME
+        plan_mode = "full-rewrite"
     if on_text is not None:
         on_text(
             f"[plan] mode={plan_mode} prompt={prompt_name} "
