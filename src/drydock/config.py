@@ -19,6 +19,7 @@ _KEY_MAP = {
     "llm_provider": "LLM_PROVIDER",
     "prompt_warn_kb": "PROMPT_WARN_KB",
     "quarterdeck_port": "QUARTERDECK_PORT",
+    "shipslog_dir": "DRYDOCK_SHIPSLOG_DIR",
 }
 
 DEFAULT_MODEL = "sonnet"
@@ -156,6 +157,12 @@ def get_prompt_warn_kb() -> int:
     return kb
 
 
+def get_shipslog_dir() -> Path | None:
+    """Resolve the configured Ship's Log posts package directory, if any."""
+    value, _source = _get("DRYDOCK_SHIPSLOG_DIR")
+    return Path(value).expanduser() if value else None
+
+
 def get_quarterdeck_port() -> int:
     value, _source = _get("QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT))
     try:
@@ -184,6 +191,7 @@ def config_show() -> list[tuple[str, str, str]]:
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("prompt_warn_kb", "PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
+        ("shipslog_dir", "DRYDOCK_SHIPSLOG_DIR", ""),
     ):
         value, source = _get(key_upper, default)
         rows.append((display_key, value or "(not set)", source))

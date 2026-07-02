@@ -207,6 +207,7 @@ drydock document <Target> [--model <model>] [--theme <theme>]
 drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf]
 drydock survey <Target> [--run] [--import <path>] [--command <name>] [--raw]
 drydock prompt review <component>
+drydock shipslog [--dir <path>] [--dry-run]
 ```
 
 Configuration keys:
@@ -219,6 +220,7 @@ Configuration keys:
 | `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `prompt_warn_kb` | `PROMPT_WARN_KB` | Prompt-size warning threshold in KiB |
 | `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
+| `shipslog_dir` | `DRYDOCK_SHIPSLOG_DIR` | Ship's Log posts package directory for `drydock shipslog` |
 
 ## Public Documentation
 

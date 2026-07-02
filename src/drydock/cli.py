@@ -843,6 +843,48 @@ def _resolve_sole_target(targets_root: Path) -> Path:
     )
 
 
+_SHIPSLOG_STATUS_MARK = {
+    "generated": "[generated]",
+    "planned": "[planned]  ",
+    "empty": "[empty]    ",
+    "failed": "[FAILED]   ",
+}
+
+
+def cmd_shipslog(args: argparse.Namespace) -> int:
+    from datetime import timedelta
+
+    from drydock import shipslog
+
+    package_dir = shipslog.resolve_package_dir(getattr(args, "package_dir", None))
+    print(f"Ship's Log posts: {package_dir}")
+    result = shipslog.generate(
+        package_dir,
+        dry_run=bool(getattr(args, "dry_run", False)),
+        on_text=print,
+    )
+    for week in result.weeks:
+        mark = _SHIPSLOG_STATUS_MARK.get(week.status, week.status)
+        detail = f"  {week.detail}" if week.detail else ""
+        events = f"  {week.event_count} events" if week.event_count else ""
+        print(f"  {mark}  {week.start} → {week.end}{events}{detail}")
+    if result.pending_window:
+        start, end = result.pending_window
+        print(
+            f"  [pending]    {start} → {end}  {result.pending_events} events"
+            f"  (week in progress; runs on {end + timedelta(days=1)})"
+        )
+    if not result.weeks and not result.pending_window:
+        print("  Nothing to publish — no unpublished Ship's Log events.")
+    print()
+    generated = len(result.generated())
+    planned = len([w for w in result.weeks if w.status == "planned"])
+    empty = len([w for w in result.weeks if w.status == "empty"])
+    failed = len(result.failed())
+    print(f"RESULT: {generated} generated, {planned} planned, {empty} empty, {failed} failed")
+    return result.exit_code()
+
+
 def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
     from drydock import quarterdeck_run as _qd
     from drydock.config import get_quarterdeck_port, get_target_directory
@@ -1272,6 +1314,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "llm_provider",
             "prompt_warn_kb",
             "quarterdeck_port",
+            "shipslog_dir",
         ],
     )
     p_set.add_argument("value", metavar="<value>")
@@ -1539,6 +1582,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Host to bind to (default: 127.0.0.1).",
     )
 
+    # ── shipslog ──────────────────────────────────────────────────────────────
+    p_slog = sub.add_parser(
+        "shipslog",
+        help="Generate weekly development-log posts from the Ship's Log.",
+        description=(
+            "drydock shipslog             — publish one post per fully elapsed week\n"
+            "drydock shipslog --dry-run   — report the weeks that would publish"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_llm_override_flags(p_slog)
+    p_slog.add_argument(
+        "--dir",
+        dest="package_dir",
+        default=None,
+        metavar="<path>",
+        help="Posts package directory (default: shipslog_dir config, then ./ShipsLog).",
+    )
+    p_slog.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report eligible weeks without generating posts.",
+    )
+
     # ── import ────────────────────────────────────────────────────────────────
     p_import = sub.add_parser("import", help="Reverse-engineer a project into a Blueprint.")
     _add_llm_override_flags(p_import)
@@ -1798,6 +1865,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         else:
             parser.parse_args(["run", "--help"])
             return 0
+
+    if command == "shipslog":
+        return cmd_shipslog(args)
 
     if command == "import":
         rc = cmd_import(args)

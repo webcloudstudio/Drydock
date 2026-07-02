@@ -1040,8 +1040,8 @@ Drydock development agents are instructed by the required repository-local
 `SHIPS_LOG_PROCESS.md`, not shared Rigging or target-project injection. An agent evaluates capture
 immediately after a material decision or milestone and performs a final capture review before
 commit or task completion. The agent invokes `python bin/ships_log.py record`; users are not
-expected to record events manually, and Ship's Log operations are not part of the public `drydock`
-CLI.
+expected to record events manually, and event recording is not part of the public `drydock`
+CLI. Publishing recorded events as development-log posts is: see `drydock shipslog`.
 
 The repository-local utility validates and appends entries. Entries are never rewritten or
 deleted; a reversed decision appends a new event whose `supersedes` list references earlier event
@@ -1058,6 +1058,38 @@ specification files between commits and produce an English analysis of what chan
 decisions the changes imply. Inference is lossy — a diff shows what changed, not why — so diff
 analysis is the audit trail and backfill mechanism, not the primary capture. `drydock analyze`
 reports specification changes not covered by a Ship's Log entry.
+
+### drydock shipslog
+
+```text
+drydock shipslog [--dir <path>] [--dry-run]
+```
+
+`drydock shipslog` generates development-log posts from unpublished Ship's Log decision and
+milestone events. Posts cover aligned seven-day windows that begin on Thursday and end on
+Wednesday, matching the published development-log history. The command generates one post per
+window that has fully elapsed and contains at least one unpublished event; the week in progress is
+never published, and windows with no eligible events are skipped. Because windows are aligned and
+contiguous, the published index reads as a continuous chronological record. Post generation runs
+through the Ship's Log posts package, which performs one subscription-authenticated LLM rewrite
+per post, enforces the disclosure rules, renders a Slate-branded HTML preview, and rebuilds the
+posts index. The package's saved cursor advances only after a successful rewrite, so a failed week
+stops the run and is retried on the next invocation.
+
+The posts package directory is resolved from `--dir`, then the `shipslog_dir` configuration key,
+then a `ShipsLog/` directory in the working directory. `--dry-run` reports the eligible windows
+without generating posts.
+
+Input files: `logs/ships_log.jsonl`, the posts package configuration (`blog.config.sh`), its
+generation and disclosure contracts, and Rigging voice guidance (`BRANDING_POSTS.md`,
+`BRANDING_MAIN.md`).
+
+Output files: one material batch, one Markdown post, and one HTML preview per generated week under
+the posts package's `blog/` tree, plus the rebuilt `blog/posts/index.html` and the advanced
+cursor.
+
+Exit codes: `0` when all eligible weeks generate (including when no week is eligible); `1` when a
+week fails to generate; `2` on usage error.
 
 ## Drydock Rigging — Portfolio Governance
 

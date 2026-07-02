@@ -52,13 +52,16 @@ class TestHelpAndVersion:
             "analyze",
             "import",
             "run",
+            "shipslog",
         ):
             assert cmd in out, f"Command {cmd!r} missing from --help"
 
-    def test_help_does_not_expose_ships_log(self):
+    def test_help_exposes_shipslog_publishing_not_recording(self):
         rc, out, _ = run_cli("--help")
         assert rc == 0
-        assert "log" not in out
+        # Publishing is public; the recording utility stays repository-local.
+        assert "shipslog" in out
+        assert "ships_log.py" not in out
 
     def test_version_shows_version_and_copyright(self):
         rc, out, err = run_cli("--version")

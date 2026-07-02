@@ -80,9 +80,9 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_six_rows(self, isolated_config):
+    def test_show_returns_seven_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 6
+        assert len(rows) == 7
 
     def test_show_defaults_when_empty(self, isolated_config, tmp_path, monkeypatch):
         default_build_root = tmp_path / "projects"
