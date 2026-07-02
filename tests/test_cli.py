@@ -499,6 +499,7 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert seen["kwargs"]["llm_provider"] == "codex"
         assert seen["kwargs"]["model"] == "gpt-5.4"
+        assert seen["kwargs"]["on_text"] is print
 
 
 class TestPlanInspection:
