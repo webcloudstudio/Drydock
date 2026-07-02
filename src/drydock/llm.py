@@ -209,6 +209,15 @@ def _text_from_event(llm: str, event: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _stream_text(llm: str, events: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for event in events:
+        text = _text_from_event(llm, event)
+        if text:
+            parts.append(text)
+    return "".join(parts)
+
+
 def _first(mapping: Mapping[str, Any], *keys: str) -> Any:
     for key in keys:
         value = mapping.get(key)
@@ -337,7 +346,8 @@ def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[st
             usage.update(candidate)
 
     if llm == "claude":
-        text = str(final.get("result") or "")
+        streamed_text = _stream_text(llm, events)
+        text = streamed_text or str(final.get("result") or "")
     elif artifacts.output_file.exists():
         text = artifacts.output_file.read_text(encoding="utf-8", errors="replace")
     else:

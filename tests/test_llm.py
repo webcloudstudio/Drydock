@@ -201,6 +201,41 @@ def test_claude_content_block_boundaries_are_forwarded_to_live_output(tmp_path, 
     assert chunks == ["\n", "First step.", "\n", "Second step."]
 
 
+def test_run_claude_prefers_streamed_text_over_corrupted_final_result(tmp_path, monkeypatch):
+    raw = "\n".join([
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "=== A.md ===\nalpha\n=== END A.md ===\n"},
+            },
+        }),
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "=== B.md ===\nbeta\n=== END B.md ===\n"},
+            },
+        }),
+        json.dumps({
+            "type": "result",
+            "result": "=== B.md ===\nbeta\n=== END B.md ===\n",
+            "model": "claude-test",
+        }),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(command, stdout_text=raw + "\n", **kwargs),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude")
+
+    expected = "=== A.md ===\nalpha\n=== END A.md ===\n=== B.md ===\nbeta\n=== END B.md ===\n"
+    assert result.text == expected
+    assert result.artifacts.output_file.read_text() == expected
+
+
 def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, monkeypatch):
     raw = json.dumps({
         "type": "item.completed",
