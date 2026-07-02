@@ -82,7 +82,11 @@ _SPEC_HEADER = """# {ftype}: {name}
 | Provides    | drydock status |
 | Phase       | 1 |
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - {ac}
 
@@ -260,7 +264,7 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
     assert "Preserve this architecture body." in prompt_texts[0]
     assert "Preserve this feature body." in prompt_texts[0]
     assert "Do not emit any existing conformant Blueprint file again." in prompt_texts[0]
-    assert "## Acceptance Criteria" in architecture.read_text(encoding="utf-8")
+    assert "## Programmatic Acceptance" in architecture.read_text(encoding="utf-8")
     assert "## Guardrails" in feature.read_text(encoding="utf-8")
     assert "Preserve this architecture body." in architecture.read_text(encoding="utf-8")
     assert "Preserve this feature body." in feature.read_text(encoding="utf-8")
@@ -310,7 +314,7 @@ def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
     feature_text = feature.read_text(encoding="utf-8")
     assert arch_text.startswith("# ARCHITECTURE: Architecture")
     assert re.search(r"\| Version\s+\|\s+\d{8} V1 \|", arch_text)
-    assert "## Acceptance Criteria" in arch_text
+    assert "## Programmatic Acceptance" in arch_text
     assert feature_text.startswith("# FEATURE: Status")
     assert "## Open Questions" in feature_text
 

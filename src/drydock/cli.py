@@ -433,7 +433,6 @@ def _print_plan_summary(plan) -> None:
             )
         )
     )
-    print(f"Plan state: {plan.state}")
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
@@ -454,7 +453,6 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print()
     print(f"Blueprint: {result.plan.project}")
     print(f"Plan: {result.plan.path}")
-    print(f"Plan state: {result.plan.state}")
     print(f"Planning Session: {result.quarterdeck_dir}")
     if result.authored_files:
         print(f"Authored {len(result.authored_files)} Blueprint spec file(s):")
@@ -1080,6 +1078,10 @@ def cmd_build(args: argparse.Namespace) -> int:
         mark = _marks.get(step.status, f"[{step.status}]")
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
         print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
+        for check in step.acceptance:
+            check_mark = "OK" if check.passed else "X"
+            detail = f"  {check.error}" if check.error else ""
+            print(f"      [{check_mark}] ac {check.check_id}  {check.intent}{detail}")
 
     print(f"Building Target: {args.Target}")
     if getattr(args, "step", None):
@@ -1114,9 +1116,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("  Nothing buildable — no pending step has all dependencies verified.")
         reviewable = _reviewable_build_steps(target_dir)
         if reviewable:
-            print("  Review required before more build work can run:")
-            for step_id, name in reviewable:
-                print(f"    drydock build verify {args.Target} {step_id}  # {name}")
+            print("  Legacy implemented steps remain; rebuild or revise them to run acceptance.")
     print(f"Build directory: {result.build_dir}")
     if result.readme_path:
         print(f"README: {result.readme_path}")
@@ -1154,8 +1154,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 
     reviewable = _reviewable_build_steps(target_path)
     if reviewable:
-        step_id, name = reviewable[0]
-        print(f"Next: drydock build verify {target} {step_id}  # {name}")
+        print("Next: resolve legacy implemented steps by rebuilding or revising them")
     elif report.buildable_ids:
         print(f"Next: drydock build {target}")
     else:
@@ -1164,9 +1163,6 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 
     print(f"Blueprint: {report.project}")
     print(f"Target: {target_path}")
-    print(f"Plan state: {report.plan_state}")
-    print()
-
     if not report.groups:
         print("  No build steps in the plan.")
     for group in report.groups:
@@ -1442,7 +1438,6 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock build <Target>          — build next frontier\n"
             "drydock build status <Target>   — show build state\n"
-            "drydock build verify <Target> <step-id> — accept an implemented step\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1667,11 +1662,11 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             target_dir = get_target_directory() / tokens[1]
             steps = _reviewable_build_steps(target_dir)
             if not steps:
-                print("No steps ready to verify.")
+                print("No legacy implemented steps.")
             else:
-                print("Steps ready to verify:")
+                print("Legacy implemented steps:")
                 for step_id, name in steps:
-                    print(f"  drydock build verify {tokens[1]} {step_id}  # {name}")
+                    print(f"  {step_id}  # {name}")
             return 0
         rc = cmd_build_verify(tokens[1], tokens[2])
         if rc == 0:

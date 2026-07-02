@@ -25,6 +25,11 @@ from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 
+from drydock.acceptance import (
+    AcceptanceRunResult,
+    programmatic_acceptance_for_step,
+    run_programmatic_acceptance,
+)
 from drydock.build import (
     StepAssembly,
     StepRoots,
@@ -226,6 +231,7 @@ class BuildStepResult:
     evidence_path: Path | None = None
     error: str | None = None
     written_files: tuple[str, ...] = ()
+    acceptance: tuple[AcceptanceRunResult, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -258,6 +264,10 @@ def _rel(path: Path, base: Path) -> str:
 
 def _has_child_acs(blocks: tuple[PlanBlock, ...], block_id: str) -> bool:
     return any(b.block_type == "ac" and b.parent == block_id for b in blocks)
+
+
+def _child_ac_ids(blocks: tuple[PlanBlock, ...], block_id: str) -> tuple[str, ...]:
+    return tuple(b.block_id for b in blocks if b.block_type == "ac" and b.parent == block_id)
 
 
 def _snapshot_files(root: Path) -> dict[str, FileFingerprint]:
@@ -402,6 +412,7 @@ def _write_evidence(
     execution_id: str | None,
     summary: str,
     written_files: tuple[str, ...],
+    acceptance: tuple[AcceptanceRunResult, ...],
     today: str,
 ) -> None:
     lines = [
@@ -427,6 +438,24 @@ def _write_evidence(
     if written_files:
         lines.append("## Build directory changes")
         lines.extend(f"- {changed}" for changed in written_files)
+        lines.append("")
+    if acceptance:
+        lines.append("## Programmatic acceptance")
+        for check in acceptance:
+            mark = "PASS" if check.passed else "FAIL"
+            lines.append(f"- {mark}: {check.check_id} ({check.source})")
+            if check.intent:
+                lines.append(f"  intent: {check.intent}")
+            if check.return_code is not None:
+                lines.append(f"  return code: {check.return_code}")
+            if check.error:
+                lines.append(f"  error: {check.error}")
+            if check.stdout.strip():
+                lines.append("  stdout:")
+                lines.extend(f"    {line}" for line in check.stdout.strip().splitlines())
+            if check.stderr.strip():
+                lines.append("  stderr:")
+                lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
         lines.append("")
     lines.append("## Build summary")
     lines.append(summary.strip() or "(no summary returned)")
@@ -601,12 +630,23 @@ def build_target(
         summary = str(getattr(result, "text", "") or "")
         execution_id = getattr(result, "execution_id", None)
         state, status, error = _build_outcome(summary, ok=ok, wrote_files=changed_files)
-        if status == "failed":
-            pass
-        elif _has_child_acs(plan.blocks, block.block_id):
-            state, status, error = "implemented", "implemented", None
-        else:
-            state, status, error = "closed/verified", "built", None
+        acceptance: tuple[AcceptanceRunResult, ...] = ()
+        if status != "failed":
+            checks = programmatic_acceptance_for_step(block, blueprint_dir)
+            acceptance = run_programmatic_acceptance(
+                checks,
+                build_dir=resolved_build_dir,
+                target_dir=target_dir,
+                blueprint_dir=blueprint_dir,
+            )
+            failed_checks = tuple(check for check in acceptance if not check.passed)
+            if failed_checks:
+                state, status = "closed/failed", "failed"
+                error = "programmatic acceptance failed: " + ", ".join(
+                    check.check_id for check in failed_checks
+                )
+            else:
+                state, status, error = "closed/verified", "built", None
 
         evidence_path = evidence_dir / f"{block.block_id}.md"
         _write_evidence(
@@ -617,6 +657,7 @@ def build_target(
             execution_id=execution_id,
             summary=summary,
             written_files=changed_files,
+            acceptance=acceptance,
             today=today,
         )
         set_block_fields(
@@ -625,6 +666,9 @@ def build_target(
             state=state,
             evidence=_rel(evidence_path, target_dir),
         )
+        if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
+            for child_id in _child_ac_ids(plan.blocks, block.block_id):
+                set_block_fields(manifest_path, child_id, state="closed/verified")
         _sync_ticket_status(target_dir, block.block_id, state)
         if status != "failed" and stack_head is not None:
             updated_registry = dict(plan.applied_registry)
@@ -664,6 +708,7 @@ def build_target(
             evidence_path=evidence_path,
             error=error,
             written_files=changed_files,
+            acceptance=acceptance,
         )
         steps.append(step_result)
         if on_step is not None:

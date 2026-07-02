@@ -246,9 +246,9 @@ state: closed/verified
     )
 
     assert [s.block_id for s in result.steps] == ["foundation"]
-    assert result.steps[0].status == "implemented"
-    assert _state(target_dir, "foundation") == "implemented"
-    assert _state(target_dir, "ac-db") == "pending"
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "ac-db") == "closed/verified"
     assert _state(target_dir, "service") == "pending"
 
 
@@ -312,18 +312,68 @@ def test_existing_git_repo_not_reinitialized(tmp_path):
     assert result.git_commit is not None
 
 
-def test_step_with_child_ac_stops_at_review_gate(tmp_path):
+def test_step_with_child_ac_auto_verifies_legacy_manifest_ac(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_STORY_WITH_AC)
     runner = make_runner()
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
-    # foundation has an ac, so it stops at review and does not auto-close;
-    # service depends on a verified foundation, so it stays blocked.
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "ac-db") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/verified"
+    assert len(runner.calls) == 2
+
+
+def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-file\n"
+        "Foundation writes its output marker.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'built foundation\\n'\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "built"
+    assert result.steps[0].acceptance[0].check_id == "foundation-file"
+    assert result.steps[0].acceptance[0].passed is True
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "## Programmatic acceptance" in evidence
+    assert "PASS: foundation-file" in evidence
+
+
+def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-file\n"
+        "Foundation writes the expected marker.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'wrong\\n'\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
     assert [s.block_id for s in result.steps] == ["foundation"]
-    assert result.steps[0].status == "implemented"
-    assert _state(target_dir, "foundation") == "implemented"
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "programmatic acceptance failed: foundation-file"
+    assert result.steps[0].acceptance[0].passed is False
+    assert _state(target_dir, "foundation") == "closed/failed"
     assert _state(target_dir, "service") == "pending"
-    assert len(runner.calls) == 1
+    assert result.exit_code() == 1
 
 
 def test_failed_step_marks_failed_and_stops(tmp_path):

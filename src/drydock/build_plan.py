@@ -67,8 +67,6 @@ class BuildPlan:
         return Counter(block.state for block in self.blocks)
 
     def runnable_frontier(self) -> tuple[PlanBlock, ...]:
-        if self.state != "approved":
-            return ()
         by_id = self.by_id()
 
         def verified(block_id: str) -> bool:

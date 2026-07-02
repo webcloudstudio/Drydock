@@ -617,6 +617,7 @@ state: pending
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
         monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
@@ -655,6 +656,7 @@ state: pending
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
         monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
             "build",
@@ -673,7 +675,7 @@ state: pending
         assert "foundation" in out
         assert "RESULT: 1 built, 0 failed" in out
 
-    def test_build_with_review_gate_prints_verify_command(
+    def test_build_with_legacy_implemented_step_does_not_print_verify_command(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         target = tmp_target_root / "ExampleTarget"
@@ -685,12 +687,14 @@ state: pending
         (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
         monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 0, err
-        assert "Review required before more build work can run" in out
-        assert "drydock build verify ExampleTarget awaiting-checks" in out
+        assert "Review required before more build work can run" not in out
+        assert "drydock build verify ExampleTarget awaiting-checks" not in out
+        assert "Legacy implemented steps remain" in out
 
 
 class TestPlanningSession:
@@ -702,14 +706,16 @@ class TestPlanningSession:
         "# ARCHITECTURE: ExampleTarget\n\n"
         "| Field | Value |\n|---|---|\n| Version | 20260616 V1 |\n"
         "| Description | Status command architecture. |\n| Phase | 1 |\n\n"
-        "## Acceptance Criteria\n\n- None.\n\n## Guardrails\n\n- None.\n\n"
+        "## Programmatic Acceptance\n\n- None.\n\n## User Acceptance\n\n- None.\n\n"
+        "## Guardrails\n\n- None.\n\n"
         "## Open Questions\n\n- None.\n"
         "=== END ARCHITECTURE.md ===\n"
         "=== FEATURE-Status.md ===\n"
         "# FEATURE: Status\n\n"
         "| Field | Value |\n|---|---|\n| Version | 20260616 V1 |\n"
         "| Description | Status command. |\n| Phase | 1 |\n\n"
-        "## Acceptance Criteria\n\n- Status command exits successfully.\n\n"
+        "## Programmatic Acceptance\n\n- None.\n\n## User Acceptance\n\n"
+        "- Status command exits successfully.\n\n"
         "## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
         "=== END FEATURE-Status.md ===\n"
         "=== MANIFEST.md ===\n"
@@ -731,6 +737,7 @@ class TestPlanningSession:
             return SimpleNamespace(ok=True, text=payload, execution_id="exec-fake")
 
         monkeypatch.setattr("drydock.planning_session.run_prompt", _run)
+        monkeypatch.setattr("drydock.planning_session.ensure_compact_files", lambda *a, **k: None)
 
     def test_markdown_import_plan_create_and_approve(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -758,7 +765,7 @@ class TestPlanningSession:
 
         rc, out, err = run_cli("plan", "ExampleTarget")
         assert rc == 0, err
-        assert "Plan state: draft" in out
+        assert "Plan state:" not in out
         assert "Authored 2 Blueprint spec file(s)" in out
         assert "review the manifest build tree in the Planning Session" in out
         assert "=== ARCHITECTURE.md ===" not in out

@@ -76,7 +76,12 @@ _GENERATED_FILES = {
     "REFERENCE_GAPS.md",
 }
 
-_TERMINAL_SECTIONS_REQUIRED = {"Acceptance Criteria", "Guardrails", "Open Questions"}
+_TERMINAL_SECTIONS_REQUIRED = {
+    "Programmatic Acceptance",
+    "User Acceptance",
+    "Guardrails",
+    "Open Questions",
+}
 _COMPASS_EXTRA_SECTIONS = {"Compass", "Constraints", "Success Criteria"}
 
 _EXAMPLE_FILES = {"SCREEN-Example.md", "FEATURE-Example.md", "UI-Component-Example.md"}

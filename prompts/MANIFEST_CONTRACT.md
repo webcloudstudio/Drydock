@@ -20,29 +20,12 @@ The Manifest manages the full product lifecycle:
 
 ---
 
-## Lifecycle States
-
-The Manifest itself has one lifecycle state:
-
-| State | Meaning |
-|-------|---------|
-| `draft` | Planning Session is active; no work is runnable |
-| `approved` | Product owner accepted the complete plan; runnable frontier is exposed |
-| `closed` | All required work and acceptance gates are closed |
-
-A draft plan has no runnable frontier. QuarterDeck whole-plan approval establishes the executable
-baseline and exposes the runnable frontier. Ordinary QuarterDeck review controls never approve a
-plan; only the `plan_decision` page applies approval.
-
----
-
 ## Plan Header
 
 ```markdown
 # MANIFEST: {ProjectName}
 updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
-state:       draft
 applied_specs: |
   DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
 ```
@@ -75,8 +58,8 @@ state:   pending
 
 ### Story
 
-A story builds something. It is an enriched unit of work with states, dependencies, child AC
-blocks, and prompt-assembly fields.
+A story builds something. It is an enriched unit of work with states, dependencies, Blueprint
+acceptance, and prompt-assembly fields.
 
 ```markdown
 ## story N: {Name}
@@ -203,8 +186,8 @@ All four block types use the same four states:
 
 ## Execution Rules
 
-A block runs only when the plan is `approved` and everything in `depends:` is `closed/verified`.
-Features are never directly executable.
+A block runs only when everything in `depends:` is `closed/verified`. Features are never directly
+executable.
 
 An `ac` runs only after its `parent` is `implemented`. Feature-level `ac` blocks are the
 exception: they become runnable after all executable child stories and spikes are
@@ -218,20 +201,21 @@ If an `ac` becomes `closed/failed`, the parent does not close and later dependen
 blocked.
 
 `closed/failed` is not terminal. The product owner reopens failed work from the QuarterDeck —
-revising instructions, acceptance criteria, or scope interactively — and the decision writer
+revising instructions, acceptance, or scope interactively — and the decision writer
 returns it to `pending` with the revision recorded. Recovery never requires hand-editing the
 Manifest.
 
-Guardrails and Acceptance Criteria embedded in Blueprint Specification files — not in the plan as
-`ac` blocks — must also pass before a `story` is marked `closed/verified`.
+Guardrails and `Programmatic Acceptance` assertions embedded in Blueprint Specification files run
+after each successful story build. Failing programmatic acceptance marks the story `closed/failed`
+and blocks dependent work. `User Acceptance` entries are Commander review signals and do not block
+ordinary downstream build unless modeled as explicit dependencies.
 
 ---
 
 ## Plan State Writer
 
-The **decision writer** is the only mutator of Manifest state. It is invoked by:
+The **decision writer** is the only mutator of Manifest block state. It is invoked by:
 
-- the QuarterDeck `plan_decision` page (whole-plan approval)
 - the QuarterDeck review controls (approve, revise, reject, add defect on individual blocks)
 - the `drydock build` engine (state transitions during execution)
 

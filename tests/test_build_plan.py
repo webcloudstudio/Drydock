@@ -266,7 +266,7 @@ def test_invalid_state_raises(tmp_path: Path):
         parse_build_plan(path)
 
 
-def test_draft_plan_has_no_runnable_frontier(tmp_path: Path):
+def test_runnable_frontier_ignores_legacy_plan_state(tmp_path: Path):
     path = write_plan(
         tmp_path / "MANIFEST.md",
         """# MANIFEST: Example
@@ -281,12 +281,11 @@ state: pending
 
     plan = parse_build_plan(path)
 
-    assert plan.state == "draft"
     assert plan.blocks[0].scope == "target"
-    assert plan.runnable_frontier() == ()
+    assert [block.block_id for block in plan.runnable_frontier()] == ["work"]
 
 
-def test_plan_approval_exposes_frontier(tmp_path: Path):
+def test_set_plan_state_preserves_legacy_compatibility(tmp_path: Path):
     path = write_plan(
         tmp_path / "MANIFEST.md",
         """# MANIFEST: Example
@@ -306,7 +305,7 @@ state: pending
     plan = set_plan_state(path, "approved")
 
     assert plan.state == "approved"
-    assert [block.block_id for block in plan.runnable_frontier()] == ["work"]
+    assert plan.by_id()["work"].state == "pending"
 
 
 def test_non_executable_feature_closes_after_all_children(tmp_path: Path):

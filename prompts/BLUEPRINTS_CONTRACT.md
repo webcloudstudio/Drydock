@@ -23,8 +23,8 @@ project is, what it must do, and how it is built.
 | `README.md` | One-line description and `## Intent` section | Yes |
 | `DATABASE.md` | Persistence contract: access patterns, typed interfaces, all stores, schemas, migrations | If has persistent state |
 | `UI-GENERAL.md` | Shared UI patterns across screens | If has UI |
-| `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, acceptance criteria | If has UI |
-| `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, AC, guardrails | As needed |
+| `SCREEN-{Name}.md` | Per-screen: route, layout, interactions, programmatic and user acceptance | If has UI |
+| `FEATURE-{Name}.md` | Per-feature: purpose, status, trigger, sequence, routes, reads, writes, acceptance, guardrails | As needed |
 | `ARCHITECTURE_compact.md` | Compact architecture derivative for downstream build-step injection | Optional |
 | `DATABASE_compact.md` | Compact persistence derivative for downstream build-step injection | Optional |
 | `HOMEPAGE.md` | Portfolio homepage: branding, contact, bio | If publishes a portfolio |
@@ -33,8 +33,8 @@ project is, what it must do, and how it is built.
 | `*-AC.md` / `AC-*.md` / `*-AC-*.md` | Acceptance criteria — any file where `AC` is a whole word in the filename | As needed |
 | `changes/TICKET-NNN-{Name}.md` | Post-baseline change, defect, or spike request | As needed |
 
-Every authored Specification file ends with `## Acceptance Criteria`, `## Guardrails`, and
-`## Open Questions`. Use `- None.` when no entries apply.
+Every authored Specification file ends with `## Programmatic Acceptance`, `## User Acceptance`,
+`## Guardrails`, and `## Open Questions`. Use `- None.` when no entries apply.
 
 `ARCHITECTURE_compact.md` is a compact derivative of `ARCHITECTURE.md` produced by
 `drydock rigging compact`. Drydock uses filename-selected compaction algorithms rather than
@@ -105,7 +105,11 @@ are not authored Specification files.
 Every authored Specification file ends with these sections, using `- None.` when no entries apply:
 
 ```markdown
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 
@@ -118,9 +122,33 @@ Every authored Specification file ends with these sections, using `- None.` when
 - None.
 ```
 
+`Programmatic Acceptance` contains executable Python assertion snippets. Each check uses a stable
+`### {check-id}` heading, a short intent sentence, and one fenced `python` block that can run from
+the build directory after the story implementing the file completes.
+
+````markdown
+## Programmatic Acceptance
+
+### health-check
+The health endpoint returns an OK response.
+
+```python
+from app import create_app
+
+client = create_app().test_client()
+response = client.get("/health")
+assert response.status_code == 200
+assert response.get_json()["status"] == "ok"
+```
+````
+
+`User Acceptance` contains only Commander-observed checks that cannot be honestly automated,
+such as look-and-feel or subjective workflow acceptance. Do not place deterministic behavior in
+`User Acceptance`.
+
 `COMPASS.md` uses `## Compass`, `## Constraints`, and `## Guardrails` as its body sections.
-Success criteria belong in `SEA_TRIALS.md`; acceptance criteria in `SOUNDINGS.md`;
-open questions in spike questionnaires. Do not add those sections to `COMPASS.md`.
+Success criteria belong in `SEA_TRIALS.md`; open questions in spike questionnaires. Do not add
+those sections to `COMPASS.md`.
 
 ---
 

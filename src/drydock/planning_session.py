@@ -82,11 +82,16 @@ _STORY_CAP = 100
 
 _FEEDBACK_FILENAME = "PLAN_COMPASS.md"
 _REUSE_PROMPT_NAME = "plan_reuse"
-_TERMINAL_SECTIONS = ("Acceptance Criteria", "Guardrails", "Open Questions")
+_TERMINAL_SECTIONS = (
+    "Programmatic Acceptance",
+    "User Acceptance",
+    "Guardrails",
+    "Open Questions",
+)
 _TYPED_HEADING_RE = re.compile(r"^#\s+(?P<kind>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*(?P<name>.+?)\s*$")
 _HEADER_ROW_RE = re.compile(r"^\|\s*(?P<field>[^|]+?)\s*\|\s*(?P<value>.*?)\s*\|$")
 _TERMINAL_SECTION_RE = re.compile(
-    r"^## (?P<heading>Acceptance Criteria|Guardrails|Open Questions)\s*$"
+    r"^## (?P<heading>Programmatic Acceptance|User Acceptance|Guardrails|Open Questions)\s*$"
     r".*?(?=^## |\Z)",
     re.MULTILINE | re.DOTALL,
 )
@@ -1255,7 +1260,6 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     )
     (quarterdeck / "planning-session.md").write_text(
         f"# Planning Session: {plan.project}\n\n"
-        f"Plan state: **{plan.state}**\n\n"
         "Review the proposed decomposition, build order, and acceptance gates on the Kanban Board. "
         "The Planning Session shows the manifest build tree for execution review.\n",
         encoding="utf-8",

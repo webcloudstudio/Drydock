@@ -143,10 +143,12 @@ class TestNonSpecBlueprintFiles:
         result = validate_specification("TestProject", target_dir)
         messages = [f.message for f in result.findings]
 
-        assert "ARCHITECTURE_compact.md missing ## Acceptance Criteria" not in messages
+        assert "ARCHITECTURE_compact.md missing ## Programmatic Acceptance" not in messages
+        assert "ARCHITECTURE_compact.md missing ## User Acceptance" not in messages
         assert "ARCHITECTURE_compact.md missing ## Guardrails" not in messages
         assert "ARCHITECTURE_compact.md missing ## Open Questions" not in messages
-        assert "DATABASE_compact.md missing ## Acceptance Criteria" not in messages
+        assert "DATABASE_compact.md missing ## Programmatic Acceptance" not in messages
+        assert "DATABASE_compact.md missing ## User Acceptance" not in messages
         assert "DATABASE_compact.md missing ## Guardrails" not in messages
         assert "DATABASE_compact.md missing ## Open Questions" not in messages
 

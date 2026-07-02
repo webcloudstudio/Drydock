@@ -178,7 +178,6 @@ Manifest rules:
   `depends:` is topologically consistent: a later block never supplies a dependency to an earlier
   block.
 - All blocks start `state: pending`.
-- Plan header state is `draft`.
 
 ---
 
@@ -222,7 +221,11 @@ Required rules:
 Every authored Specification file ends with these sections:
 
 ```markdown
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 
@@ -248,6 +251,9 @@ Additional body guidance:
 - `FEATURE-*.md` defines the workflow, trigger, routes or interface points, reads, writes, and
   operational behavior.
 - `SCREEN-*.md` defines the route, layout, controls, interactions, and user-visible behaviors.
+- `Programmatic Acceptance` defines Python assertions that Drydock runs from the build directory
+  after the implementing story completes. Prefer concrete executable assertions over prose.
+- `User Acceptance` contains only Commander-observed checks that cannot be honestly automated.
 ---
 
 ## Manifest Construction Rules
@@ -280,10 +286,10 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - Spikes precede dependent stories and appear in those stories' `depends:`.
 
 **Acceptance check blocks**
-- Every story should normally have 1-3 child `ac` blocks.
-- Use `kind: smoke` for executable checks.
-- Use `kind: assertion` for behavioral or review checks.
-- Feature-level `ac` blocks are allowed when they verify a workflow after child stories complete.
+- Store durable acceptance in the implemented Blueprint specs, not in `MANIFEST.md`.
+- Do not emit child `ac` blocks for checks that can live in `Programmatic Acceptance`.
+- Use feature-level or story-level `ac` blocks only for exceptional build orchestration checks that
+  cannot be represented in the Blueprint spec.
 
 **Ordering**
 - Emit blocks in dependency order.
@@ -380,7 +386,8 @@ Required action:
   authored spec file that already exists in the input Blueprint.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
-  header table and end with `## Acceptance Criteria`, `## Guardrails`, and `## Open Questions`.
+  header table and end with `## Programmatic Acceptance`, `## User Acceptance`, `## Guardrails`,
+  and `## Open Questions`.
 - `Depends On`, `Provides`, `Consumes`, and `Phase` must be internally consistent across the full
   emitted Blueprint.
 - Do not invent interfaces, routes, datasets, commands, or capabilities that the sources and

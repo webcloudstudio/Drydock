@@ -80,7 +80,11 @@ After the header, organize the ticket content into these sections:
 
 {One paragraph describing what this change does and why.}
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - {Testable statement of what must be true when this ticket is complete.}
 

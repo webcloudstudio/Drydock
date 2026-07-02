@@ -365,7 +365,6 @@ Implement the Blueprint using the Manifest
 
 * The Manifest exposes the phases with `drydock build status <Target>`.
 * Iterate through the build phases with `drydock build <Target>`.
-* Mark Steps Completed (if they meet the AC) with `drydock build verify <Target> <step-name>`.
 * Measure delivery health with `drydock build score`.
 * The rigging implements company standards and branding.
 
@@ -375,8 +374,6 @@ Implement the Blueprint using the Manifest
 drydock build <Target>
 drydock build <Target> --step <STEP>
 drydock build <Target> --step <STEP> --force
-drydock build verify <Target>
-drydock build verify <Target> <STEP>
 drydock build status <Target>
 drydock build score <Target>
 
@@ -403,7 +400,7 @@ In the planning session you review the build plan in the Manifest.   The manifes
 to reduce your context and will set the stories up in a meaningful implementaton plan of Foundation -> Data and Persistence -> Features -> User Interface.  Each step will display its estimated counts and the Commander can:
 * reorder stories so important/testable steps are done first
 * re group stories so they can be run by a single agent
-* Check / Review Acceptance Criteria
+* review Blueprint programmatic and user acceptance
 
 If you do not story plan, you accept the LLM's default order of stories.
 
@@ -415,9 +412,8 @@ The general order for operations is a loop:
     while <STEPS REMAIN TO BE DONE>
       drydock build <Target>
       drydock build status <Target>
-      drydock build verify <Target> <step-id>
 
-Once you verify a step is completed, it unlocks the next set of operations to run
+Passing programmatic acceptance unlocks the next set of dependent operations.
 
 ### drydock build
 
@@ -460,7 +456,7 @@ flowchart LR
 | `evidence/` | Target root | Reviewable build evidence written for completed work |
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
-`drydock build <Target>` executes the approved frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
+`drydock build <Target>` executes the dependency-ready frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 Before executing any agent, `drydock build` compares every previously applied Blueprint
 Specification in the Manifest's `applied_specs` registry against the current Blueprint file
 content. A changed or missing previously applied Specification blocks the build and reports the
@@ -472,9 +468,9 @@ Specification files do not block build.
   ```pseudocode
   states:
     pending = not built
-    implemented = built, awaiting review
-    closed/verified = accepted, unlocks dependents
-    closed/failed = failed/rejected
+    implemented = legacy built state awaiting review
+    closed/verified = built and programmatic acceptance passed
+    closed/failed = build or programmatic acceptance failed
 
   status_labels:
     pending -> [pending]
@@ -496,17 +492,10 @@ Specification files do not block build.
     run_agent(step)
     if agent_failed or no_files_written:
       step.state = closed/failed
-    else if step.has_child_acs:
-      step.state = implemented
+    else if programmatic_acceptance_fails(step.implements):
+      step.state = closed/failed
     else:
       step.state = closed/verified
-
-  verify(step):
-    if step.state == closed/verified: return already_done
-    if step.state != implemented: error
-    for ac in step.child_acs:
-      ac.state = closed/verified
-    step.state = closed/verified
 
   force_rebuild(step):
     step.state = pending
@@ -514,14 +503,6 @@ Specification files do not block build.
       ac.state = pending
     build(step)
 ```
-
-### drydock build verify
-
-  - Requires <step-id> to be a story or spike.
-  - Requires that step to be in state: implemented.
-  - Marks the step state: closed/verified.
-  - Marks all child ac blocks state: closed/verified.
-  - This unblocks dependent build steps for the next drydock build.
 
 ### Agile Build Review with drydock run quarterdeck
 
@@ -835,15 +816,10 @@ Each Manifest contains four block types:
 
 - `feature` optionally groups substantial workflows and owns feature-level acceptance
 - `story` builds something. A Drydock story is an enriched Spec Kit task: it has states,
-  `depends:`, child ACs that can block it, and prompt-assembly fields.
+  `depends:`, Blueprint acceptance, and prompt-assembly fields.
 - `spike` answers a question. Results feed future iterations
-- `ac` checks that something works. A failed AC blocks plan progress.
-
-The Manifest itself has one lifecycle state:
-
-- `draft` — the Planning Session is active and no work is runnable
-- `approved` — the product owner accepted the complete plan and the frontier is runnable
-- `closed` — all required work and acceptance gates are closed
+- `ac` is a legacy block type retained for existing Manifests. Durable acceptance lives in the
+  Blueprint.
 
 ### Plan Header
 
@@ -851,7 +827,6 @@ The Manifest itself has one lifecycle state:
 # MANIFEST: {ProjectName}
 updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
-state:       draft
 applied_specs: |
   DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
 ```
@@ -924,7 +899,8 @@ state:        pending
 evidence:     evidence/<id>.md
 ```
 
-`kind: smoke` runs a command. `kind: assertion` checks a behavior from evidence or review.
+`ac` blocks are supported for legacy Manifests and exceptional orchestration checks. Blueprint
+`Programmatic Acceptance` is the normal source of durable acceptance.
 
 ### Block States
 
@@ -933,37 +909,30 @@ All four block types use the same four states:
 | State | Meaning |
 |---|---|
 | `pending` | Not run yet |
-| `implemented` | Work done, waiting to be accepted |
+| `implemented` | Legacy work done state, waiting to be reconciled |
 | `closed/verified` | Passed or accepted |
 | `closed/failed` | Failed or rejected |
 
 ### Execution Rules
 
-A block can run only when the plan is `approved` and everything in `depends:` is
-`closed/verified`. Features are never directly executable.
+A block can run only when everything in `depends:` is `closed/verified`. Features are never
+directly executable.
 
-An `ac` can run only after its `parent` is `implemented`.
-Feature-level `ac` blocks are the exception: they become runnable after all executable child
-stories and spikes are `closed/verified`, because features are non-executable parents.
+Legacy `ac` blocks are reconciled by the build engine or QuarterDeck. They are not the normal
+acceptance authority for new plans.
 
-A `story` or `spike` cannot become `closed/verified` until its child `ac` blocks are
-`closed/verified`.
-
-If a `story` or `spike` has no child `ac` blocks, it may be closed automatically when it reaches
-`implemented`.
-
-If an `ac` becomes `closed/failed`, the parent does not close and later dependent work stays
-blocked.
+A `story` or `spike` becomes `closed/verified` after the build agent succeeds, files are written,
+and Blueprint `Programmatic Acceptance` passes.
 
 `closed/failed` is not terminal. The product owner reopens failed work from the QuarterDeck —
-revising the block's instructions, acceptance criteria, or scope interactively — and the decision
-writer returns it to `pending` with the revision recorded. The decision writer is the only mutator
-of plan state; recovery never requires hand-editing `MANIFEST.md`.
+revising the block's instructions, acceptance, or scope interactively — and the decision writer
+returns it to `pending` with the revision recorded. The decision writer is the only mutator of
+Manifest block state; recovery never requires hand-editing `MANIFEST.md`.
 
-Guardrails and Acceptance Criteria embedded in the Specification files — not in the plan as `ac`
-blocks — must also pass before a `story` is marked `closed/verified`. A story that satisfies its
-implementation but violates a Specification guardrail remains `implemented` until the violation
-is resolved.
+Guardrails and `Programmatic Acceptance` embedded in the Specification files run after each
+successful story build. A story that satisfies its implementation but fails programmatic
+acceptance becomes `closed/failed` until rebuilt. `User Acceptance` entries are Commander review
+signals and do not block ordinary downstream build unless modeled as explicit dependencies.
 
 ### Worked Example
 
@@ -1432,8 +1401,11 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 
 {body sections specific to the file type}
 
-## Acceptance Criteria
-← Positive, testable outcomes. State as bullet assertions.
+## Programmatic Acceptance
+← Executable Python assertions. Each check has a stable heading, intent text, and a fenced `python` block.
+
+## User Acceptance
+← Commander-observed checks that cannot be honestly automated.
 
 ## Guardrails
 ← Permanent negative assertions. Guard against model hallucination, not spec omission.

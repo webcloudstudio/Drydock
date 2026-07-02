@@ -49,7 +49,6 @@ class BuildStatus:
     """The full build-status report for one Target plan."""
 
     project: str
-    plan_state: str
     groups: tuple[FeatureStatus, ...]
     buildable_ids: tuple[str, ...]
 
@@ -130,7 +129,6 @@ def build_status(plan: BuildPlan) -> BuildStatus:
 
     return BuildStatus(
         project=plan.project,
-        plan_state=plan.state,
         groups=tuple(groups),
         buildable_ids=buildable_ids,
     )
