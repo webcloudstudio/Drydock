@@ -1,5 +1,7 @@
 # Python
-logs/
+# Ignore runtime execution artifacts, but keep the canonical Ship's Log tracked.
+logs/*
+!logs/ships_log.jsonl
 __pycache__/
 *.py[cod]
 *.pyo
