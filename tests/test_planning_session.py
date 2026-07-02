@@ -221,6 +221,7 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         encoding="utf-8",
     )
     prompt_texts: list[str] = []
+    progress: list[str] = []
     manifest = _manifest(implements="ARCHITECTURE.md").replace(
         "## story 1: Deliver Status\n"
         "id: story-status\n"
@@ -257,9 +258,13 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         prompt_texts.append(prompt_text)
         return FakeRun(text=f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n")
 
-    result = create_plan("Example", "Example", tmp_path, runner=runner)
+    result = create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
 
     assert result.plan.state == "draft"
+    assert progress[0].startswith(
+        "[plan] mode=reuse-manifest-first prompt=plan_reuse existing_specs=2 imported_sources=1"
+    )
+    assert "reuse-mode: preserving existing Blueprint specs" in "".join(progress)
     assert "# Request" not in prompt_texts[0]
     assert "Preserve this architecture body." in prompt_texts[0]
     assert "Preserve this feature body." in prompt_texts[0]
@@ -339,6 +344,19 @@ def test_cli_overrides_are_passed_to_runner(tmp_path):
     assert result.plan.state == "draft"
     assert calls[0]["model"] == "gpt-5.4"
     assert calls[0]["llm"] == "codex"
+
+
+def test_full_rewrite_mode_reports_prompt_and_inventory(tmp_path):
+    _make_target(tmp_path)
+    progress: list[str] = []
+
+    create_plan(
+        "Example", "Example", tmp_path, runner=_fake(_llm_output()), on_text=progress.append
+    )
+
+    assert progress[0].startswith(
+        "[plan] mode=full-rewrite prompt=plan_create existing_specs=0 imported_sources=1"
+    )
 
 
 def _manifest_with_applied(story_state: str, spec_name: str, sha256: str, story_id: str) -> str:

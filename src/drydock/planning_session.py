@@ -1372,8 +1372,18 @@ def create_plan(
         blueprint_dir, excluded_filenames=load_excluded_filenames(target_dir)
     )
     reuse_mode = _is_reuse_candidate(existing_specs)
+    imported_source_paths = _collect_sources(
+        blueprint_dir, excluded_filenames=load_excluded_filenames(target_dir)
+    )
     reusable_spec_paths: list[Path] | None = None
     normalized_existing: list[Path] = []
+    prompt_name = _REUSE_PROMPT_NAME if reuse_mode else PROMPT_NAME
+    plan_mode = "reuse-manifest-first" if reuse_mode else "full-rewrite"
+    if on_text is not None:
+        on_text(
+            f"[plan] mode={plan_mode} prompt={prompt_name} "
+            f"existing_specs={len(existing_specs)} imported_sources={len(imported_source_paths)}\n"
+        )
     if reuse_mode:
         reusable_spec_paths, normalized_existing = _normalize_existing_specs(
             existing_specs, today=today
@@ -1384,7 +1394,6 @@ def create_plan(
                 "and generating MANIFEST.md plus any missing files.\n"
             )
 
-    prompt_name = _REUSE_PROMPT_NAME if reuse_mode else PROMPT_NAME
     prompt = load_prompt(prompt_name)
     prompt_assembly = _assemble_prompt_assembly(
         prompt.body,
