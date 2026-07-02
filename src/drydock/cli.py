@@ -1088,6 +1088,8 @@ def cmd_build(args: argparse.Namespace) -> int:
             for step_id, name in reviewable:
                 print(f"    drydock build verify {args.Target} {step_id}  # {name}")
     print(f"Build directory: {result.build_dir}")
+    if result.readme_path:
+        print(f"README: {result.readme_path}")
     print(f"RESULT: {len(result.built())} built, {len(result.failed())} failed")
     return result.exit_code()
 

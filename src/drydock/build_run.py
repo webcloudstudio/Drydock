@@ -237,6 +237,7 @@ class BuildResult:
     git_commit: str | None = None
     git_commit_message: str | None = None
     drydock_commit_skipped_after_build: bool = False
+    readme_path: Path | None = None
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -677,10 +678,14 @@ def build_target(
 
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
+    readme_path: Path | None = None
     if any(step.status in {"built", "implemented"} for step in steps):
         set_build_state(target_dir, "built")
         set_sub_state(target_dir, "complete")
         stamp_last(target_dir, "built")
+        from drydock.readme_generate import generate_readme
+
+        readme_path = generate_readme(target_dir, resolved_build_dir)
 
     _refresh_chair(target_dir)
 
@@ -692,4 +697,5 @@ def build_target(
         git_commit=git_commit,
         git_commit_message=git_commit_message,
         drydock_commit_skipped_after_build=drydock_commit_skipped_after_build,
+        readme_path=readme_path,
     )
