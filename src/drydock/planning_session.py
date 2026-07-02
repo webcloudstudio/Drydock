@@ -81,6 +81,29 @@ _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 _STORY_CAP = 100
 
 _FEEDBACK_FILENAME = "PLAN_COMPASS.md"
+_REUSE_PROMPT_NAME = "plan_reuse"
+_TERMINAL_SECTIONS = ("Acceptance Criteria", "Guardrails", "Open Questions")
+_TYPED_HEADING_RE = re.compile(r"^#\s+(?P<kind>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*(?P<name>.+?)\s*$")
+_HEADER_ROW_RE = re.compile(r"^\|\s*(?P<field>[^|]+?)\s*\|\s*(?P<value>.*?)\s*\|$")
+_TERMINAL_SECTION_RE = re.compile(
+    r"^## (?P<heading>Acceptance Criteria|Guardrails|Open Questions)\s*$"
+    r".*?(?=^## |\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+
+_ROOT_TYPED_SPEC_FILES = frozenset({
+    "ARCHITECTURE.md",
+    "DATABASE.md",
+    "UI-GENERAL.md",
+    "HOMEPAGE.md",
+})
+_IGNORE_TYPED_SPEC_FILES = frozenset({
+    "AGENTS.md",
+    "ARCHITECTURE_compact.md",
+    "ARCHITECTURE_compact.skip.md",
+    "DATABASE_compact.md",
+    "DATABASE_compact.skip.md",
+})
 
 
 class CompletedRun(Protocol):
@@ -105,6 +128,17 @@ class PlanCreateResult:
     authored_files: tuple[Path, ...] = ()
     warnings: tuple[str, ...] = ()
     execution_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ExistingSpec:
+    path: Path
+    filename: str
+    file_type: str
+    object_name: str
+    header_fields: dict[str, str]
+    body: str
+    reusable: bool
 
 
 # ── Parsing ──────────────────────────────────────────────────────────────────────
@@ -448,6 +482,230 @@ def _collect_changes(
     )
 
 
+def _is_typed_blueprint_filename(name: str) -> bool:
+    if name in _IGNORE_TYPED_SPEC_FILES or "_compact." in name:
+        return False
+    if name in _ROOT_TYPED_SPEC_FILES:
+        return True
+    return bool(
+        name.startswith("FEATURE-")
+        or name.startswith("SCREEN-")
+        or name.startswith("AC-")
+        or "-AC.md" in name
+        or "-AC-" in name
+    )
+
+
+def _default_file_type(name: str) -> str | None:
+    if name in _ROOT_TYPED_SPEC_FILES:
+        return name.removesuffix(".md")
+    if name.startswith("FEATURE-"):
+        return "FEATURE"
+    if name.startswith("SCREEN-"):
+        return "SCREEN"
+    if name.startswith("AC-") or "-AC.md" in name or "-AC-" in name:
+        return "AC"
+    return None
+
+
+def _default_object_name(name: str) -> str:
+    if name == "ARCHITECTURE.md":
+        return "Architecture"
+    if name == "DATABASE.md":
+        return "Database"
+    if name == "UI-GENERAL.md":
+        return "Shared UI"
+    if name == "HOMEPAGE.md":
+        return "Homepage"
+    stem = name.removesuffix(".md")
+    for prefix in ("FEATURE-", "SCREEN-", "AC-"):
+        if stem.startswith(prefix):
+            stem = stem[len(prefix) :]
+            break
+    stem = stem.replace("-AC", "").replace("AC-", "")
+    return stem.replace("-", " ").strip() or stem
+
+
+def _split_spec_structure(text: str) -> tuple[str | None, dict[str, str], str]:
+    lines = text.splitlines()
+    heading: str | None = None
+    start = 0
+    for idx, line in enumerate(lines):
+        if line.startswith("# "):
+            heading = line.strip()
+            start = idx + 1
+            break
+    if heading is None:
+        return None, {}, text.strip()
+
+    header_fields: dict[str, str] = {}
+    body_start = len(lines)
+    for idx in range(start, len(lines)):
+        line = lines[idx]
+        if line.startswith("## "):
+            body_start = idx
+            break
+        match = _HEADER_ROW_RE.match(line.strip())
+        if match:
+            header_fields[match.group("field").strip()] = match.group("value").strip()
+    body = "\n".join(lines[body_start:]).strip()
+    return heading, header_fields, body
+
+
+def _parse_existing_spec(path: Path) -> ExistingSpec:
+    text = path.read_text(encoding="utf-8")
+    heading, header_fields, body = _split_spec_structure(text)
+    match = _TYPED_HEADING_RE.match(heading or "")
+    file_type = (
+        match.group("kind") if match else (_default_file_type(path.name) or "FEATURE")
+    ).strip()
+    object_name = match.group("name").strip() if match else _default_object_name(path.name)
+    reusable = bool(
+        match
+        or header_fields
+        or any(f"## {section}" in text for section in _TERMINAL_SECTIONS)
+        or body.startswith("## ")
+        or text.strip()
+    )
+    return ExistingSpec(
+        path=path,
+        filename=path.name,
+        file_type=file_type,
+        object_name=object_name,
+        header_fields=header_fields,
+        body=body,
+        reusable=reusable,
+    )
+
+
+def _collect_existing_typed_specs(
+    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
+) -> list[ExistingSpec]:
+    specs: list[ExistingSpec] = []
+    for path in sorted(blueprint_dir.glob("*.md")):
+        if path.name in excluded_filenames or not _is_typed_blueprint_filename(path.name):
+            continue
+        specs.append(_parse_existing_spec(path))
+    return specs
+
+
+def _is_reuse_candidate(specs: list[ExistingSpec]) -> bool:
+    if not specs:
+        return False
+    reusable = sum(1 for spec in specs if spec.reusable)
+    if reusable == 0:
+        return False
+    if any(spec.filename in {"ARCHITECTURE.md", "DATABASE.md", "UI-GENERAL.md"} for spec in specs):
+        return True
+    return reusable >= 2
+
+
+def _normalize_version(existing: str, today: str) -> str:
+    today_compact = today.replace("-", "")
+    match = re.fullmatch(r"(?P<date>\d{8})\s+V(?P<rev>\d+)", existing.strip())
+    if match and match.group("date") == today_compact:
+        return f"{today_compact} V{int(match.group('rev')) + 1}"
+    return f"{today_compact} V1"
+
+
+def _normalize_description(value: str | None, object_name: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        text = f"{object_name} specification."
+    if text[-1:] not in ".!?":
+        text += "."
+    return text
+
+
+def _default_phase(spec: ExistingSpec) -> str:
+    if spec.filename in {"ARCHITECTURE.md", "DATABASE.md"}:
+        return "1"
+    if spec.filename == "UI-GENERAL.md" or spec.file_type == "FEATURE":
+        return "2"
+    if spec.file_type == "SCREEN":
+        return "3"
+    return spec.header_fields.get("Phase", "").strip()
+
+
+def _render_terminal_section(heading: str, content: str | None) -> str:
+    body = (content or "").strip() or "- None."
+    return f"## {heading}\n\n{body.strip()}\n"
+
+
+def _extract_terminal_section(text: str, heading: str) -> str | None:
+    match = re.search(
+        rf"^## {re.escape(heading)}\s*$.*?(?=^## |\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if match is None:
+        return None
+    lines = match.group(0).splitlines()
+    return "\n".join(lines[1:]).strip()
+
+
+def _strip_terminal_sections(text: str) -> str:
+    return _TERMINAL_SECTION_RE.sub("", text).strip()
+
+
+def _render_normalized_spec(spec: ExistingSpec, *, today: str, ui_general_exists: bool) -> str:
+    fields = dict(spec.header_fields)
+    fields["Version"] = _normalize_version(fields.get("Version", ""), today)
+    fields["Description"] = _normalize_description(fields.get("Description"), spec.object_name)
+    depends_on = fields.get("Depends On", "").strip()
+    if spec.file_type == "SCREEN" and ui_general_exists and not depends_on:
+        depends_on = "UI-GENERAL.md"
+    fields["Depends On"] = depends_on
+    fields["Provides"] = fields.get("Provides", "").strip()
+    phase = fields.get("Phase", "").strip() or _default_phase(spec)
+    fields["Phase"] = phase
+
+    header_lines = [
+        f"# {spec.file_type}: {spec.object_name}",
+        "",
+        "| Field       | Value |",
+        "|-------------|-------|",
+        f"| Version     | {fields['Version']} |",
+        f"| Description | {fields['Description']} |",
+        f"| Depends On  | {fields['Depends On']} |",
+        f"| Provides    | {fields['Provides']} |",
+        f"| Phase       | {fields['Phase']} |",
+    ]
+
+    if spec.file_type == "SCREEN":
+        for extra in ("Route", "Parent", "Main Menu", "Sub Menu", "Tab Order", "Consumes"):
+            if extra in fields:
+                header_lines.append(f"| {extra:<11} | {fields[extra]} |")
+
+    body = _strip_terminal_sections(spec.body)
+    sections = {
+        heading: _extract_terminal_section(spec.body, heading) for heading in _TERMINAL_SECTIONS
+    }
+    rendered = "\n".join(header_lines).rstrip()
+    if body:
+        rendered += "\n\n" + body.strip()
+    for heading in _TERMINAL_SECTIONS:
+        rendered += "\n\n" + _render_terminal_section(heading, sections[heading]).rstrip()
+    return rendered.rstrip() + "\n"
+
+
+def _normalize_existing_specs(
+    specs: list[ExistingSpec], *, today: str
+) -> tuple[list[Path], list[Path]]:
+    changed: list[Path] = []
+    normalized_paths: list[Path] = []
+    ui_general_exists = any(spec.filename == "UI-GENERAL.md" for spec in specs)
+    for spec in specs:
+        if not spec.reusable:
+            continue
+        normalized = _render_normalized_spec(spec, today=today, ui_general_exists=ui_general_exists)
+        normalized_paths.append(spec.path)
+        if spec.path.read_text(encoding="utf-8") != normalized:
+            _write_text(spec.path, normalized)
+            changed.append(spec.path)
+    return normalized_paths, changed
+
+
 def _collect_discoveries(target_dir: Path) -> list[Path]:
     qd = target_dir / "QuarterDeck" / "questionnaires"
     if not qd.is_dir():
@@ -568,6 +826,7 @@ def _assemble_prompt(
     *,
     feedback_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
+    typed_spec_paths: list[Path] | None = None,
 ) -> str:
     return _assemble_prompt_assembly(
         body,
@@ -578,6 +837,7 @@ def _assemble_prompt(
         feedback_text=feedback_text,
         input_tokens=input_tokens,
         excluded_filenames=load_excluded_filenames(target_dir),
+        typed_spec_paths=typed_spec_paths,
     ).rendered_text
 
 
@@ -591,6 +851,7 @@ def _assemble_prompt_assembly(
     feedback_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
     excluded_filenames: frozenset[str] = frozenset(),
+    typed_spec_paths: list[Path] | None = None,
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -694,7 +955,10 @@ def _assemble_prompt_assembly(
                 "Imported source file header", ["## Imported source files", ""], kind="section"
             )
         ]
-        for path_obj in _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames):
+        source_paths = typed_spec_paths
+        if source_paths is None:
+            source_paths = _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames)
+        for path_obj in source_paths:
             label = path_obj.relative_to(blueprint_dir).as_posix()
             parts_list.extend(
                 contextual_markdown_parts(
@@ -705,7 +969,9 @@ def _assemble_prompt_assembly(
                     path=path_obj,
                 )
             )
-        change_files = _collect_changes(blueprint_dir, excluded_filenames=excluded_filenames)
+        change_files = []
+        if typed_spec_paths is None:
+            change_files = _collect_changes(blueprint_dir, excluded_filenames=excluded_filenames)
         if change_files:
             parts_list.append(
                 lines_part(
@@ -1097,8 +1363,25 @@ def create_plan(
     )
 
     run = runner if runner is not None else run_prompt
-    prompt = load_prompt(PROMPT_NAME)
     today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
+    existing_specs = _collect_existing_typed_specs(
+        blueprint_dir, excluded_filenames=load_excluded_filenames(target_dir)
+    )
+    reuse_mode = _is_reuse_candidate(existing_specs)
+    reusable_spec_paths: list[Path] | None = None
+    normalized_existing: list[Path] = []
+    if reuse_mode:
+        reusable_spec_paths, normalized_existing = _normalize_existing_specs(
+            existing_specs, today=today
+        )
+        if on_text is not None:
+            on_text(
+                "[plan] reuse-mode: preserving existing Blueprint specs, normalizing headers, "
+                "and generating MANIFEST.md plus any missing files.\n"
+            )
+
+    prompt_name = _REUSE_PROMPT_NAME if reuse_mode else PROMPT_NAME
+    prompt = load_prompt(prompt_name)
     prompt_assembly = _assemble_prompt_assembly(
         prompt.body,
         target_dir,
@@ -1108,6 +1391,7 @@ def create_plan(
         feedback_text=feedback_for_prompt,
         input_tokens=prompt.input_tokens,
         excluded_filenames=load_excluded_filenames(target_dir),
+        typed_spec_paths=reusable_spec_paths,
     )
 
     result = run(
@@ -1196,7 +1480,7 @@ def create_plan(
         target_dir=target_dir,
         quarterdeck_dir=quarterdeck,
         changed=changed,
-        authored_files=tuple(sorted(authored)),
+        authored_files=tuple(sorted({*authored, *normalized_existing})),
         warnings=tuple(warnings),
         execution_id=exec_id,
     )

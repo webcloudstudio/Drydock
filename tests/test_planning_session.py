@@ -6,6 +6,7 @@ A fake runner supplies canned delimited-block output; no API credits are spent.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -182,6 +183,136 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     planning = (target_dir / "QuarterDeck" / "planning-session.md").read_text(encoding="utf-8")
     assert "manifest build tree" in planning
     assert "Approve the complete plan" not in planning
+
+
+def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    architecture = blueprint_dir / "ARCHITECTURE.md"
+    feature = blueprint_dir / "FEATURE-Status.md"
+    architecture.write_text(
+        "# ARCHITECTURE: Example\n\n"
+        "| Field       | Value |\n"
+        "|-------------|-------|\n"
+        "| Version     | 20260630 V1 |\n"
+        "| Description | Existing architecture |\n"
+        "| Depends On  | |\n"
+        "| Provides    | |\n"
+        "| Phase       | 1 |\n\n"
+        "## Modules\n\n"
+        "- Preserve this architecture body.\n",
+        encoding="utf-8",
+    )
+    feature.write_text(
+        "# FEATURE: Status\n\n"
+        "| Field       | Value |\n"
+        "|-------------|-------|\n"
+        "| Version     | 20260630 V1 |\n"
+        "| Description | Existing status feature |\n"
+        "| Depends On  | ARCHITECTURE.md |\n"
+        "| Provides    | drydock status |\n"
+        "| Phase       | 2 |\n\n"
+        "## Trigger\n\n"
+        "- Preserve this feature body.\n",
+        encoding="utf-8",
+    )
+    prompt_texts: list[str] = []
+    manifest = _manifest(implements="ARCHITECTURE.md").replace(
+        "## story 1: Deliver Status\n"
+        "id: story-status\n"
+        "parent: feature-status\n"
+        "summary: Build the status command.\n"
+        "implements: ARCHITECTURE.md\n"
+        "scope: both\n"
+        "state: pending\n",
+        "## story 1: Architecture Foundation\n"
+        "id: foundation\n"
+        "parent: feature-status\n"
+        "summary: Keep the architecture specification as the foundation.\n"
+        "implements: ARCHITECTURE.md\n"
+        "scope: both\n"
+        "state: pending\n"
+        "\n"
+        "## ac 1: Architecture foundation exists\n"
+        "id: ac-foundation\n"
+        "parent: foundation\n"
+        "kind: assertion\n"
+        "state: pending\n"
+        "\n"
+        "## story 2: Deliver Status\n"
+        "id: story-status\n"
+        "parent: feature-status\n"
+        "summary: Build the status command.\n"
+        "implements: FEATURE-Status.md\n"
+        "scope: both\n"
+        "depends: foundation\n"
+        "state: pending\n",
+    )
+
+    def runner(prompt_text, *a, **k):
+        prompt_texts.append(prompt_text)
+        return FakeRun(text=f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n")
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert result.plan.state == "draft"
+    assert "# Request" not in prompt_texts[0]
+    assert "Preserve this architecture body." in prompt_texts[0]
+    assert "Preserve this feature body." in prompt_texts[0]
+    assert "Do not emit any existing conformant Blueprint file again." in prompt_texts[0]
+    assert "## Acceptance Criteria" in architecture.read_text(encoding="utf-8")
+    assert "## Guardrails" in feature.read_text(encoding="utf-8")
+    assert "Preserve this architecture body." in architecture.read_text(encoding="utf-8")
+    assert "Preserve this feature body." in feature.read_text(encoding="utf-8")
+
+
+def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    architecture = blueprint_dir / "ARCHITECTURE.md"
+    architecture.write_text("Architecture overview only.\n", encoding="utf-8")
+    feature = blueprint_dir / "FEATURE-Status.md"
+    feature.write_text(
+        "# FEATURE: Status\n\n## Trigger\n\n- Existing feature content.\n",
+        encoding="utf-8",
+    )
+    manifest = (
+        "# MANIFEST: Example\n"
+        "updated: 2026-06-16\n"
+        "plan_hash: test\n"
+        "state: draft\n\n"
+        "## feature 1: Status\n"
+        "id: feature-status\n"
+        "summary: Deliver the status command.\n"
+        "state: pending\n\n"
+        "## story 1: Deliver Status\n"
+        "id: story-status\n"
+        "parent: feature-status\n"
+        "summary: Build the status command.\n"
+        "implements: FEATURE-Status.md\n"
+        "scope: both\n"
+        "state: pending\n\n"
+        "## ac 1: Status command exits successfully\n"
+        "id: ac-status-exits\n"
+        "parent: story-status\n"
+        "kind: assertion\n"
+        "state: pending\n"
+    )
+
+    create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=_fake(f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"),
+    )
+
+    arch_text = architecture.read_text(encoding="utf-8")
+    feature_text = feature.read_text(encoding="utf-8")
+    assert arch_text.startswith("# ARCHITECTURE: Architecture")
+    assert re.search(r"\| Version\s+\|\s+\d{8} V1 \|", arch_text)
+    assert "## Acceptance Criteria" in arch_text
+    assert feature_text.startswith("# FEATURE: Status")
+    assert "## Open Questions" in feature_text
 
 
 def test_cli_overrides_are_passed_to_runner(tmp_path):
