@@ -96,16 +96,16 @@ def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:  # n
 
 def render_console(target: str, *, plan_path: Path | None = None) -> str:
     """Return the target QuarterDeck config with standard artifacts in canonical order."""
-    planning_item = ""
     build_compass_item = ""
     if plan_path is not None:
-        planning_item = (
-            '\n  - { id: planning_session, label: "Planning Session", section: plan, '
-            f"type: plan_decision, plan_path: {json.dumps(str(plan_path))} }}\n"
+        build_compass_help = (
+            "The Build Compass is the live MANIFEST.md work graph: feature groups, "
+            "story-point cost, per-step lifecycle state (buildable now, review, done, "
+            "failed with reason), and constrained reorder/regroup/rename/split editing."
         )
         build_compass_item = (
             '\n  - { id: build_compass, label: "Build Compass", section: build, '
-            "type: compass, path: ../MANIFEST.md, order: 1 }\n"
+            f"type: compass, path: ../MANIFEST.md, order: 1, help_text: {json.dumps(build_compass_help)} }}\n"
         )
     slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-") or "target"
     docs_by_item = {doc.item_id: doc for doc in prompt_headers()}
@@ -142,7 +142,7 @@ items:
   - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 6, help_text: {json.dumps(sea_trials_help)} }}
   - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 7, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
   - {{ id: exclude_files, label: "Exclude Files", section: analyze, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 8, help_text: {json.dumps(exclude_files.help_text)}, prompt_text: {json.dumps(exclude_files.prompt_text)} }}
-{planning_item}  - {{ id: board, label: "Kanban Board", section: plan, type: kanban, path: tickets.json, order: 1 }}
+  - {{ id: board, label: "Kanban Board", section: plan, type: kanban, path: tickets.json, order: 1 }}
   - {{ id: plan_compass, label: "Plan Compass", section: plan, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 2, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
 {build_compass_item}
 

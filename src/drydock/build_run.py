@@ -18,6 +18,7 @@ so no credits or network are used.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -354,31 +355,21 @@ def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> None:
     )
 
 
-def _parse_build_report(summary: str) -> tuple[str | None, tuple[str, ...] | None]:
-    """Extract ``RESULT`` and ``FILES CHANGED`` from the final build report."""
-    lines = summary.splitlines()
-    result: str | None = None
-    files: list[str] = []
-    in_files = False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if in_files:
-                in_files = False
-            continue
-        if stripped.startswith("RESULT:"):
-            result = stripped.partition(":")[2].strip().upper()
-            in_files = False
-            continue
-        if stripped == "FILES CHANGED:":
-            in_files = True
-            continue
-        if stripped.endswith(":") and stripped != "FILES CHANGED:":
-            in_files = False
-            continue
-        if in_files and stripped.startswith("- "):
-            files.append(stripped[2:].strip())
-    return result, tuple(files) if files else None
+_RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)
+
+
+def _reported_result(summary: str) -> str | None:
+    """Return the agent's self-reported RESULT token, or ``None`` if absent.
+
+    The report contract asks the agent to end with ``RESULT: SUCCESS|FAILURE``. Streaming can
+    concatenate output without line breaks, so the token is matched anywhere in the text, not
+    only at the start of a line. A missing token is not treated as failure — the observed file
+    delta and programmatic acceptance are the authority for whether a step succeeded.
+    """
+    match = _RESULT_RE.search(summary)
+    if not match:
+        return None
+    return "FAILURE" if match.group(1).upper() in {"FAILURE", "FAIL", "ERROR"} else "SUCCESS"
 
 
 def _build_outcome(
@@ -387,20 +378,57 @@ def _build_outcome(
     ok: bool,
     wrote_files: tuple[str, ...],
 ) -> tuple[str, str, str | None]:
-    """Map provider result + report contract + file delta to manifest outcome."""
+    """Map provider result + observed file delta + optional self-report to an outcome.
+
+    Authority order: a non-zero provider exit or empty output fails; an explicit
+    ``RESULT: FAILURE`` fails; a run that wrote no files fails. Otherwise the step succeeds.
+    A missing or unparsable report no longer fails the step: the filesystem delta already
+    records what changed, and programmatic acceptance is the real gate.
+    """
     if not ok:
         return "closed/failed", "failed", "LLM execution failed"
     if not summary.strip():
         return "closed/failed", "failed", "empty output"
-
-    result, reported_files = _parse_build_report(summary)
-    if result is None or reported_files is None:
-        return "closed/failed", "failed", "missing structured build report"
-    if result != "SUCCESS":
+    if _reported_result(summary) == "FAILURE":
         return "closed/failed", "failed", "build agent reported failure"
     if not wrote_files:
         return "closed/failed", "failed", "no build files written"
     return "", "", None
+
+
+def _clip(text: str, limit: int = 240) -> str:
+    """Collapse whitespace to a single line and truncate to ``limit`` characters."""
+    collapsed = " ".join(text.split())
+    return collapsed if len(collapsed) <= limit else collapsed[: limit - 1].rstrip() + "…"
+
+
+def _failure_finding(
+    status: str,
+    error: str | None,
+    result: object,
+    acceptance: tuple[AcceptanceRunResult, ...],
+) -> str | None:
+    """Build a single-line failure reason to persist on a failed block's ``finding:`` field.
+
+    The concise ``error`` classifies the failure; a trailing detail is appended from the first
+    failing acceptance check, or from the provider's stderr tail for an execution failure, so
+    the compass can surface *why* a step failed without opening the evidence file.
+    """
+    if status != "failed":
+        return None
+    reason = error or "build failed"
+    detail = ""
+    failed = [check for check in acceptance if not check.passed]
+    if failed:
+        first = failed[0]
+        detail = (first.error or first.stderr or first.stdout or "").strip()
+    elif not bool(getattr(result, "ok", False)):
+        detail = str(getattr(result, "stderr", "") or "").strip()
+    if detail:
+        lines = [line for line in detail.splitlines() if line.strip()]
+        if lines:
+            reason = f"{reason}: {lines[-1].strip()}"
+    return _clip(reason)
 
 
 def _write_evidence(
@@ -660,12 +688,18 @@ def build_target(
             acceptance=acceptance,
             today=today,
         )
-        set_block_fields(
-            manifest_path,
-            block.block_id,
-            state=state,
-            evidence=_rel(evidence_path, target_dir),
-        )
+        block_fields: dict[str, str | None] = {
+            "state": state,
+            "evidence": _rel(evidence_path, target_dir),
+        }
+        finding = _failure_finding(status, error, result, acceptance)
+        if finding is not None:
+            block_fields["finding"] = finding
+        elif block.block_type != "spike":
+            # Clear any stale failure reason when a story succeeds; a spike's
+            # ``finding:`` records research output and is never cleared here.
+            block_fields["finding"] = None
+        set_block_fields(manifest_path, block.block_id, **block_fields)
         if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
             for child_id in _child_ac_ids(plan.blocks, block.block_id):
                 set_block_fields(manifest_path, child_id, state="closed/verified")

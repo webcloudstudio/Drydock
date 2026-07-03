@@ -7,7 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 
@@ -239,51 +238,6 @@ def test_drydock_console_core_artifact_order():
         "ships_log",
         "board",
     ]
-
-
-def test_plan_decision_renders_manifest_tree_without_controls(tmp_path, monkeypatch):
-    quarterdeck = _load_quarterdeck()
-    plan_path = tmp_path / "MANIFEST.md"
-    plan_path.write_text(
-        "# MANIFEST: Example\nstate: draft\n\n"
-        "## feature 1: Core\nid: core\nstate: pending\n\n"
-        "## story 1: Work\nid: work\nparent: core\nstate: pending\n\n"
-        "## ac 2: Check\nid: check\nparent: work\nkind: assertion\nstate: pending\n",
-        encoding="utf-8",
-    )
-    item = {
-        "id": "planning_session",
-        "label": "Planning Session",
-        "section": "core",
-        "type": "plan_decision",
-        "plan_path": str(plan_path),
-    }
-    monkeypatch.setattr(quarterdeck, "CONFIG", {"items": [item]})
-    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
-
-    rendered = quarterdeck.render_plan_decision(item)
-    assert "Plan state" in rendered
-    assert "Buildable now" in rendered
-    assert "# Core" in rendered
-    assert "Work" in rendered
-    assert "Check" in rendered
-    assert "Approve plan" not in rendered
-
-
-def test_plan_decision_api_is_read_only(tmp_path, monkeypatch):
-    quarterdeck = _load_quarterdeck()
-    plan_path = tmp_path / "MANIFEST.md"
-    plan_path.write_text(
-        "# MANIFEST: Example\nstate: draft\n\n## story 1: Work\nid: work\nstate: pending\n",
-        encoding="utf-8",
-    )
-    item = {"type": "plan_decision", "plan_path": str(plan_path)}
-    monkeypatch.setattr(quarterdeck, "find_item", lambda _item_id: item)
-
-    with pytest.raises(quarterdeck.HTTPException, match="read-only"):
-        quarterdeck.api_plan_decision(
-            "planning_session", quarterdeck.PlanDecision(decision="approve")
-        )
 
 
 # ── document type renderer ────────────────────────────────────────────────────
@@ -857,20 +811,20 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
     assert "collapse-arrow" not in rendered
 
 
-def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
+def test_render_nav_includes_build_flag_and_static_sections(monkeypatch):
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(
         quarterdeck,
         "CONFIG",
         {
             "sections": [
-                {"id": "build_plan", "label": "Build Compass", "dot": "#d97706"},
+                {"id": "build", "label": "Build Compass", "dot": "#d97706"},
             ],
             "items": [
                 {
                     "id": "plan",
                     "label": "Plan",
-                    "section": "build_plan",
+                    "section": "build",
                     "type": "markdown",
                     "path": "plan.md",
                 },
@@ -882,7 +836,8 @@ def test_render_nav_includes_build_plan_flag_and_static_sections(monkeypatch):
 
     rendered = quarterdeck.render_nav()
 
-    assert "Build Compass" in rendered
+    # The build phase renders its label uppercased alongside the section flag.
+    assert "BUILD COMPASS" in rendered
     assert "sec-flag" in rendered
     assert "onclick='toggleSection" not in rendered
     assert "collapse-arrow" not in rendered

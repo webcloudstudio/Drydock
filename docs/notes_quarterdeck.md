@@ -134,3 +134,45 @@ every delta, shredding words across lines (`test su` / `ite`, `I` / `'ll wait`).
 `cli._stream_stdout`, which writes each delta verbatim and flushes — preserving the model's own line
 breaks and the explicit content-block boundary the runner injects (`llm.py` `content_block_start`).
 Applied to `build`, `refit`, and `document`/Ship's Log streaming.
+
+## Unified Build Compass — plan_decision and build_plan retired — 2026-07-03
+
+Three renderers over one `MANIFEST.md` had accreted: `plan_decision` (state marks + `buildable
+now`, read-only), `compass` (cost + full editing, no state), and an orphan `build_plan` (cost +
+state, partial editing, wired to no console). Each surfaced a different subset of the same work
+graph; none was a superset. The Planning Session's only unique *function* — plan approval — was
+already gone (`api_plan_decision` returned read-only), leaving it a dead twin of the compass.
+
+**Decision: one renderer.** `render_compass` is now the single Build Compass: the live work graph
+with (a) a rollup header (project, plan state, verified/review/pending/failed counts, total SP,
+buildable-now summary), (b) a per-step lifecycle chip — `buildable now` (green, wins over plain
+`pending`), `review`, `✓ done`, `failed` — (c) the failure reason inline under a failed step and in
+the chip tooltip, (d) done tint + group verified counts + a loud group-complete check, and (e) the
+existing editing controls plus click-to-rename on the group title. `render_plan_decision`,
+`render_build_plan`, the `plan_decision`/`build_plan` TYPES, the `/api/plan/{id}/decision` endpoint,
+the `PlanDecision` model, and the `bp-stats-sentinel` header path were deleted.
+`standard_artifacts.render_console` no longer emits `planning_session`; the Build Compass carries a
+help_text describing the unified view.
+
+**Group rename discoverability.** The `✎` group-rename button existed (added 2026-07-03 am) but was
+easy to miss; the group title is now itself click-to-rename (`.cmp-gname-edit`), resolving the "no
+way to rename a group" report. The bare `✎` stays as a secondary affordance.
+
+## Build-outcome trusts observed reality, not report formatting — 2026-07-03
+
+A build step was marked `closed/failed` unless the agent's final text contained the exact
+`RESULT:`/`FILES CHANGED:` contract at line starts. Streaming concatenates deltas, so a successful
+step whose `RESULT: SUCCESS` landed mid-line (`…temp DB file.RESULT: SUCCESS`) was falsely failed —
+and because a failed frontier blocks all dependents, two such false negatives dammed the entire
+Marina graph while tests passed and files were written.
+
+**Decision:** the filesystem delta (already snapshotted before/after each step) and programmatic
+acceptance are the authority. `_build_outcome` now fails only on a non-zero provider exit, empty
+output, an explicit `RESULT: FAILURE`, or a run that wrote no files. `RESULT` is matched anywhere in
+the text, not only at a line start. A missing/unparsable report no longer fails a step.
+
+**Failure reasons persist.** On `closed/failed`, `build_run` writes a single-line `finding:` to the
+block: the concise cause plus a trailing detail (first failing acceptance check, or the provider
+stderr tail for an execution failure). Stories clear a stale `finding:` on success; a spike's
+`finding:` (its research output) is never cleared here. The Build Compass reads `finding:` for the
+failed-step reason line and tooltip, so *why* a step failed is visible without opening evidence.

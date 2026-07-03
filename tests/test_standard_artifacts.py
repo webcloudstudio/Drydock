@@ -10,7 +10,9 @@ def test_render_console_places_sea_trials_before_soundings(tmp_path):
     config = render_console("Example", plan_path=tmp_path / "MANIFEST.md")
 
     assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
-    assert 'label: "Planning Session"' in config
+    # The Planning Session is retired; the Build Compass is the single work-graph view.
+    assert 'label: "Planning Session"' not in config
+    assert 'label: "Build Compass"' in config
     assert "command_status" not in config
 
 

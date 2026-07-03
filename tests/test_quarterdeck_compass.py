@@ -1,6 +1,7 @@
-"""Tests for the QuarterDeck ``compass`` type — the read-only MANIFEST.md build
-view: feature groups, assembled per-step prompt cost, folded acceptance checks,
-and the context warn flag."""
+"""Tests for the QuarterDeck ``compass`` type — the unified Build Compass: the live
+MANIFEST.md work graph with feature groups, assembled per-step prompt cost, folded
+acceptance checks, the context warn flag, per-step lifecycle state chips (buildable
+now / review / done / failed with reason), a rollup header, and editing controls."""
 
 from __future__ import annotations
 
@@ -109,10 +110,10 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         # compass 200 + arch 4000 + db 400 + common 40 = 4640 bytes -> 1160 SP,
         # plus instructions text. Cost must exceed the bare spec-file total (1100).
-        assert "Total Story Points = <strong>" in out
+        assert "Total SP " in out
         import re
 
-        total = int(re.search(r"Total Story Points = <strong>(\d+)</strong>", out).group(1))
+        total = int(re.search(r"Total SP (\d+)", out).group(1))
         assert total > 1100
 
     def test_missing_context_file_flagged(self, tmp_path, monkeypatch):
@@ -221,11 +222,55 @@ state: closed/verified""",
 )
 
 
-class TestBuildPlan:
-    def test_verified_step_shows_loud_check_and_combined_label(self, tmp_path, monkeypatch):
+_MANIFEST_FAILED = _MANIFEST.replace(
+    """  Build the core.
+state: pending""",
+    """  Build the core.
+state: closed/failed
+finding: acceptance failed ac-core: assertion returned non-zero""",
+)
+
+
+class TestState:
+    def test_header_rollup_present(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "Build Compass — " in out
+        assert "Plan:" in out
+        assert "Buildable now:" in out
+        assert "steps ·" in out and "verified" in out
+
+    def test_buildable_step_shows_chip(self, tmp_path, monkeypatch):
+        # `core` is pending with no unmet depends, so it is buildable now.
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "cmp-buildable" in out
+        assert "buildable now" in out
+
+    def test_verified_step_shows_done_and_group_check(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_VERIFIED)
-        out = quarterdeck.render_build_plan(_ITEM)
-        assert "bp-check" in out  # loud green checkbox on completed items
-        assert "Combined Story Points:" in out
-        assert "move_step" not in out  # per-story reorder removed here too
+        out = quarterdeck.render_compass(_ITEM)
+        assert "bp-done" in out  # ✓ done chip on the verified step
+        assert "bp-check" in out  # loud green check on the fully-verified group
+        assert "Combined Story Points =" in out
+        assert "move_step" not in out
+
+    def test_failed_step_shows_failed_chip_and_reason(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_FAILED)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "bp-failed" in out
+        assert "cmp-fail-reason" in out
+        assert "assertion returned non-zero" in out
+        # A failed frontier blocks the graph: nothing is buildable.
+        assert "blocked by" in out
+
+    def test_group_title_is_click_to_rename(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "cmp-gname-edit" in out
+        assert "compassRename(" in out

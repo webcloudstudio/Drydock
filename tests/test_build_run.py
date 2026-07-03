@@ -53,10 +53,11 @@ state: pending
 
 
 class FakeResult:
-    def __init__(self, ok=True, text="Built it. Created app.py.", execution_id="exec-1"):
+    def __init__(self, ok=True, text="Built it. Created app.py.", execution_id="exec-1", stderr=""):
         self.ok = ok
         self.text = text
         self.execution_id = execution_id
+        self.stderr = stderr
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +77,7 @@ def _success_report(*, changed: tuple[str, ...], summary: str = "Built it.") -> 
     )
 
 
-def make_runner(*, ok=True, text: str | None = None, write_files=True):
+def make_runner(*, ok=True, text: str | None = None, write_files=True, stderr=""):
     calls: list[dict] = []
 
     def runner(prompt, working_directory, **kwargs):
@@ -88,10 +89,15 @@ def make_runner(*, ok=True, text: str | None = None, write_files=True):
                 f"built {step_id}\n", encoding="utf-8"
             )
         calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
-        return FakeResult(ok=ok, text=text or _success_report(changed=changed))
+        return FakeResult(ok=ok, text=text or _success_report(changed=changed), stderr=stderr)
 
     runner.calls = calls  # type: ignore[attr-defined]
     return runner
+
+
+def _finding(target_dir, block_id):
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    return plan.by_id()[block_id].fields.get("finding")
 
 
 def _setup(tmp_path, manifest=_TWO_STORIES):
@@ -430,7 +436,9 @@ def test_text_without_file_delta_marks_failed(tmp_path):
     assert result.git_commit is None
 
 
-def test_missing_structured_report_marks_failed(tmp_path):
+def test_unstructured_report_with_files_succeeds(tmp_path):
+    # A run that wrote files but never emitted the RESULT/FILES contract is no longer
+    # failed: the observed file delta and acceptance are the authority, not report format.
     target_dir, build_dir = _setup(tmp_path)
     result = build_target(
         "Demo",
@@ -439,10 +447,54 @@ def test_missing_structured_report_marks_failed(tmp_path):
         runner=make_runner(text="Built it."),
     )
 
-    assert result.steps[0].status == "failed"
-    assert result.steps[0].error == "missing structured build report"
-    assert _state(target_dir, "foundation") == "closed/failed"
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _finding(target_dir, "foundation") is None
     assert result.git_commit is not None
+
+
+def test_result_token_found_mid_line_is_not_a_failure(tmp_path):
+    # Streaming can concatenate output; RESULT: SUCCESS jammed after a sentence still counts.
+    target_dir, build_dir = _setup(tmp_path)
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(text="Cleaning up the temp DB file.RESULT: SUCCESS"),
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+
+
+def test_explicit_failure_report_persists_finding(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(text="Could not resolve imports. RESULT: FAILURE"),
+    )
+
+    assert result.steps[0].status == "failed"
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert _finding(target_dir, "foundation") == "build agent reported failure"
+
+
+def test_execution_failure_traps_stderr_into_finding(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(ok=False, text="", stderr="boom\nTraceback: provider crashed"),
+    )
+
+    assert result.steps[0].status == "failed"
+    finding = _finding(target_dir, "foundation")
+    assert finding is not None
+    assert finding.startswith("LLM execution failed")
+    assert "provider crashed" in finding
 
 
 _WITH_STACK = """# MANIFEST: Demo

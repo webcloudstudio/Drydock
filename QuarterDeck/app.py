@@ -19,7 +19,8 @@ Page types (one Python renderer each, in TYPES):
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
   - command_status derive acceptance readiness and consistency from configured Core Docs
-  - plan_decision review the authoritative Drydock MANIFEST.md build tree
+  - compass       the Build Compass: the live MANIFEST.md work graph — grouped, costed,
+                  state-badged, and editable (reorder/regroup/rename/split)
 
 console.yaml also accepts:
   sources:   list of {glob, section, type, ...} rules that auto-discover files as items.
@@ -129,13 +130,6 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect x="4" y="3" width="8" height="6" fill="#fff"/>'
         "</svg>"
     ),
-    "build_plan": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#ffffff"/>'
-        '<rect x="0" y="0" width="8" height="6" fill="#1d4ed8"/>'
-        '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
-        "</svg>"
-    ),
     "docs": (
         '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
         '<rect y="0" width="16" height="4" fill="#eab308"/>'
@@ -154,14 +148,6 @@ _SECTION_FLAGS: dict[str, str] = {
 
 _ITEM_FLAGS: dict[str, str] = {
     "build_compass": (
-        '<svg class="item-flag" width="14" height="10" viewBox="0 0 16 12" '
-        "aria-hidden='true'>"
-        '<rect width="16" height="12" fill="#ffffff"/>'
-        '<rect x="0" y="0" width="8" height="6" fill="#1d4ed8"/>'
-        '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
-        "</svg>"
-    ),
-    "build_plan": (
         '<svg class="item-flag" width="14" height="10" viewBox="0 0 16 12" '
         "aria-hidden='true'>"
         '<rect width="16" height="12" fill="#ffffff"/>'
@@ -465,17 +451,9 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
     item_type = item.get("type", "")
     if item_type in _UNTRACKED_TYPES:
         return True
-    if item_type in ("compass", "build_plan"):
+    if item_type == "compass":
         # Always visible: the renderer offers to seed when the file is absent.
         return True
-    if item_type == "plan_decision":
-        path_val = item.get("plan_path")
-        if not path_val:
-            return True
-        try:
-            return (base_dir / path_val).resolve().exists()
-        except Exception:
-            return True
     if item_type == "document":
         for key in ("path_html", "path_md", "path_pdf"):
             path_val = item.get(key)
@@ -726,75 +704,6 @@ def render_document_item(item: dict[str, Any]) -> str:
     return helper + "<p class='subtle'>No files found for this document.</p>"
 
 
-def render_plan_decision(item: dict[str, Any]) -> str:
-    from drydock.build_plan import parse_build_plan
-    from drydock.build_status import build_status
-
-    plan = parse_build_plan(Path(item["plan_path"]))
-    report = build_status(plan)
-
-    def _state_mark(state: str) -> str:
-        return {
-            "closed/verified": "[done]",
-            "implemented": "[review]",
-            "pending": "[pending]",
-            "closed/failed": "[failed]",
-        }.get(state, f"[{state}]")
-
-    groups: list[str] = []
-    for group in report.groups:
-        feature_acs = "".join(
-            f"<li class='cmp-ac'>{_state_mark(ac.state)} {html.escape(ac.name)}</li>"
-            for ac in group.feature_acs
-        )
-        feature_acs_html = f"<ul class='cmp-acs'>{feature_acs}</ul>" if feature_acs else ""
-
-        steps = []
-        for step in group.steps:
-            next_mark = " <span class='cmp-warn'>buildable now</span>" if step.buildable else ""
-            acs = "".join(
-                f"<li class='cmp-ac'>{_state_mark(ac.state)} {html.escape(ac.name)}</li>"
-                for ac in step.acs
-            )
-            acs_html = f"<ul class='cmp-acs'>{acs}</ul>" if acs else ""
-            steps.append(
-                "<div class='cmp-step'>"
-                "<div class='cmp-shead'>"
-                f"<span class='cmp-stype'>{_state_mark(step.block.state)}</span>"
-                f"<span class='cmp-sname'>{html.escape(step.block.name)}</span>"
-                f"<span class='cmp-gsp'>{html.escape(step.block.block_type)}</span>{next_mark}"
-                "</div>"
-                f"{acs_html}"
-                "</div>"
-            )
-
-        groups.append(
-            "<div class='cmp-group'>"
-            "<div class='cmp-ghead'>"
-            f"<span class='cmp-gname'># {html.escape(group.name)}</span>"
-            f"<span class='cmp-gsp'>{group.verified}/{group.total} verified</span>"
-            "</div>"
-            f"{feature_acs_html}" + "".join(steps) + "</div>"
-        )
-
-    buildable = ", ".join(report.buildable_ids) or "(none)"
-    counts = (
-        f"{report.steps_verified} verified · "
-        f"{report.steps_implemented} in review · "
-        f"{report.steps_pending} pending · "
-        f"{report.steps_failed} failed"
-    )
-    return (
-        f"<h1>{html.escape(item.get('label', 'Planning Session'))}</h1>"
-        f"<p>Plan state: <strong>{html.escape(plan.state)}</strong></p>"
-        f"<p>{len(plan.blocks)} manifest objects. {report.steps_total} executable steps.</p>"
-        f"<p>{html.escape(counts)}</p>"
-        f"<p>Buildable now: <strong>{html.escape(buildable)}</strong></p>"
-        "<p class='subtle'>Legend: [pending] not yet built · [review] built and awaiting acceptance checks · [done] verified · [failed] failed.</p>"
-        + "".join(groups)
-    )
-
-
 # ── Compass (MANIFEST.md step order/grouping + live prompt-stack cost) ────────────
 
 # The compass is a live, read-only view of the Manifest work graph: feature
@@ -885,6 +794,7 @@ def render_compass(item: dict[str, Any]) -> str:
     """
     from drydock.build import assemble_steps, group_steps
     from drydock.build_plan import parse_build_plan
+    from drydock.build_status import build_status
     from drydock.errors import SpecificationError
 
     project_root = _current_project_root()
@@ -898,6 +808,8 @@ def render_compass(item: dict[str, Any]) -> str:
     if not steps:
         return _render_compass_empty()
     groups = group_steps(plan, steps)
+    status = build_status(plan)
+    buildable = set(status.buildable_ids)
 
     item_id = html.escape(item.get("id", ""))
     by_id = plan.by_id()
@@ -905,6 +817,19 @@ def render_compass(item: dict[str, Any]) -> str:
     for block in plan.blocks:
         if block.block_type == "ac" and block.parent:
             acs_by_parent.setdefault(block.parent, []).append(block)
+
+    def _state_chip(block_id: str) -> str:
+        """The lifecycle chip for one step. ``buildable now`` wins over plain ``pending``."""
+        if block_id in buildable:
+            return "<span class='cmp-buildable'>buildable now</span>"
+        state = by_id[block_id].state if block_id in by_id else "pending"
+        if state == "closed/verified":
+            return "<span class='bp-state bp-done'>✓ done</span>"
+        if state == "implemented":
+            return "<span class='bp-state bp-review'>review</span>"
+        if state == "closed/failed":
+            return "<span class='bp-state bp-failed'>failed</span>"
+        return "<span class='bp-state bp-pending'>pending</span>"
 
     def step_controls(step) -> str:
         # Story order within a group is irrelevant (the group is built as a unit),
@@ -951,152 +876,48 @@ def render_compass(item: dict[str, Any]) -> str:
         if warn_n
         else ""
     )
+
+    if status.buildable_ids:
+        buildable_txt = ", ".join(status.buildable_ids)
+    elif status.steps_failed:
+        failed_ids = ", ".join(b.block_id for b in plan.blocks if b.state == "closed/failed")
+        buildable_txt = f"(none — blocked by {status.steps_failed} failed step(s): {failed_ids})"
+    else:
+        buildable_txt = "(none)"
+
+    header = (
+        "<div class='cmp-hdr'>"
+        f"<div class='cmp-hdr-title'>Build Compass — {html.escape(status.project)}"
+        f"<span class='cmp-plan-state'>Plan: {html.escape(plan.state)}</span></div>"
+        "<div class='cmp-hdr-counts'>"
+        f"{status.steps_total} steps · {status.steps_verified} verified · "
+        f"{status.steps_implemented} review · {status.steps_pending} pending · "
+        f"{status.steps_failed} failed · Total SP {total_sp}</div>"
+        f"<div class='cmp-hdr-buildable'>Buildable now: <strong>{html.escape(buildable_txt)}</strong>"
+        f"</div></div>"
+    )
+
     parts = [
+        header,
         "<div class='cmp-toolbar'>"
         f"<button class='cmp-newgroup' onclick=\"compassAddFeature('{item_id}')\">"
         "+ New group</button>"
+        f"<span class='cmp-total'>{len(steps)} steps{warn_html}</span>"
         "</div>",
-        f"<div class='cmp-total'>Total Story Points = <strong>{total_sp}</strong>"
-        f" · {len(steps)} steps{warn_html}</div>",
     ]
 
     for group in groups:
         step_cards = []
-        for step in group.steps:
-            warn = (
-                f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
-                if step.over_warn
-                else ""
-            )
-            ac_lines = "".join(
-                f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
-                f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"
-                for ac in acs_by_parent.get(step.block_id, [])
-            )
-            ac_html = f"<ul class='cmp-acs'>{ac_lines}</ul>" if ac_lines else ""
-            step_cards.append(
-                "<div class='cmp-step'>"
-                "<div class='cmp-shead'>"
-                f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
-                f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
-                f"<span class='cmp-gsp'>Story Points = {step.total_story_points}</span>{warn}"
-                f"{step_controls(step)}"
-                "</div>"
-                f"{_render_step_files(step)}"
-                f"{ac_html}"
-                "</div>"
-            )
-        gname = group.name
-        if group.feature_id and group.feature_id in by_id:
-            gname = by_id[group.feature_id].name
-        parts.append(
-            "<div class='cmp-group'>"
-            "<div class='cmp-ghead'>"
-            f"<span class='cmp-gname'># {html.escape(gname)}</span>"
-            f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points}</span>"
-            f"{feature_controls(group.feature_id, len(group.steps))}"
-            "</div>"
-            f"{''.join(step_cards)}"
-            "</div>"
-        )
-    return "".join(parts)
-
-
-def render_build_plan(item: dict[str, Any]) -> str:
-    """Render MANIFEST.md as Build Plan: groups, steps with state badges and SP cost.
-
-    Merges the Build Compass format (story-point cost, collapsible file breakdown,
-    reorder controls) with per-step build state from MANIFEST block state fields.
-    Done steps are tinted green; state badges show the current lifecycle position.
-    """
-    from drydock.build import StepAssembly, assemble_steps, group_steps
-    from drydock.build_plan import parse_build_plan
-    from drydock.errors import SpecificationError
-
-    project_root = _current_project_root()
-
-    try:
-        plan = parse_build_plan(project_root / "MANIFEST.md")
-    except SpecificationError:
-        return _render_compass_empty()
-
-    steps = assemble_steps(plan, _step_roots())
-    if not steps:
-        return _render_compass_empty()
-
-    groups = group_steps(plan, steps)
-    by_id = plan.by_id()
-    acs_by_parent: dict[str, list] = {}
-    for block in plan.blocks:
-        if block.block_type == "ac" and block.parent:
-            acs_by_parent.setdefault(block.parent, []).append(block)
-
-    item_id = html.escape(item.get("id", ""))
-
-    def _state_badge(state: str) -> str:
-        if state == "closed/verified":
-            return "<span class='bp-state bp-done'>✓ done</span>"
-        if state == "implemented":
-            return "<span class='bp-state bp-review'>review</span>"
-        if state == "closed/failed":
-            return "<span class='bp-state bp-failed'>failed</span>"
-        return "<span class='bp-state bp-pending'>pending</span>"
-
-    def _step_controls(step: StepAssembly) -> str:
-        # Story order within a group is irrelevant (the group is built as a unit),
-        # so a story exposes only a change-group control, not up/down reordering.
-        bid = html.escape(step.block_id)
-        return (
-            "<span class='cmp-move'>"
-            f"<select class='cmp-regroup' title='Move story to another group' "
-            f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
-            f"{_feature_options(plan, step.parent)}</select>"
-            "</span>"
-        )
-
-    def _feature_controls(feature_id: str | None) -> str:
-        if not feature_id:
-            return ""
-        fid = html.escape(feature_id)
-        return (
-            "<span class='cmp-move'>"
-            f"<button class='cmp-mbtn' title='Move feature up' "
-            f"onclick=\"compassMove('{item_id}','move_feature','{fid}','up')\">▲</button>"
-            f"<button class='cmp-mbtn' title='Move feature down' "
-            f"onclick=\"compassMove('{item_id}','move_feature','{fid}','down')\">▼</button>"
-            "</span>"
-        )
-
-    steps_verified = sum(
-        1 for s in steps if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
-    )
-    steps_total = len(steps)
-    total_sp = sum(s.total_story_points for s in steps)
-    warn_n = sum(1 for s in steps if s.over_warn)
-    warn_html = (
-        f"<div class='cmp-warn-bar'>{warn_n} step(s) over {_fmt_sp(steps[0].warn_tokens)} SP</div>"
-        if warn_n
-        else ""
-    )
-
-    parts = [
-        f"<div class='bp-stats-sentinel' data-sp='{total_sp}' "
-        f"data-verified='{steps_verified}' data-total='{steps_total}'></div>" + warn_html
-    ]
-
-    for group in groups:
+        group_total = len(group.steps)
         group_verified = sum(
             1
             for s in group.steps
             if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
         )
-        group_total = len(group.steps)
-        step_cards = []
         for step in group.steps:
             state = by_id[step.block_id].state if step.block_id in by_id else "pending"
             is_done = state == "closed/verified"
             done_cls = " bp-step-done" if is_done else ""
-            check = "<span class='bp-check' title='Completed'>&#10003;</span>" if is_done else ""
             warn = (
                 f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
                 if step.over_warn
@@ -1108,21 +929,31 @@ def render_build_plan(item: dict[str, Any]) -> str:
                 for ac in acs_by_parent.get(step.block_id, [])
             )
             ac_html = f"<ul class='cmp-acs'>{ac_lines}</ul>" if ac_lines else ""
+            finding = (
+                str(by_id[step.block_id].fields.get("finding") or "")
+                if step.block_id in by_id
+                else ""
+            )
+            fail_html = (
+                f"<div class='cmp-fail-reason' title='{html.escape(finding, quote=True)}'>"
+                f"⚠ {html.escape(finding)}</div>"
+                if state == "closed/failed" and finding
+                else ""
+            )
             step_cards.append(
                 f"<div class='cmp-step{done_cls}'>"
                 "<div class='cmp-shead'>"
-                f"{check}"
-                f"{_state_badge(state)}"
+                f"{_state_chip(step.block_id)}"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
-                f"<span class='cmp-gsp'>Story Points: {step.total_story_points}</span>{warn}"
-                f"{_step_controls(step)}"
+                f"<span class='cmp-gsp'>Story Points = {step.total_story_points}</span>{warn}"
+                f"{step_controls(step)}"
                 "</div>"
+                f"{fail_html}"
                 f"{_render_step_files(step)}"
                 f"{ac_html}"
                 "</div>"
             )
-
         gname = group.name
         if group.feature_id and group.feature_id in by_id:
             gname = by_id[group.feature_id].name
@@ -1131,19 +962,26 @@ def render_build_plan(item: dict[str, Any]) -> str:
             "<span class='bp-check' title='Group complete'>&#10003;</span>" if group_done else ""
         )
         gdone_cls = " cmp-group-done" if group_done else ""
+        if group.feature_id:
+            fid = html.escape(group.feature_id)
+            fname = html.escape(gname, quote=True)
+            title_html = (
+                f"<span class='cmp-gname cmp-gname-edit' title='Click to rename group' "
+                f"onclick=\"compassRename('{item_id}','{fid}','{fname}')\"># {html.escape(gname)}</span>"
+            )
+        else:
+            title_html = f"<span class='cmp-gname'># {html.escape(gname)}</span>"
         parts.append(
             f"<div class='cmp-group{gdone_cls}'>"
             "<div class='cmp-ghead'>"
-            f"{gcheck}"
-            f"<span class='cmp-gname'># {html.escape(gname)}</span>"
-            f"<span class='cmp-gsp'>Combined Story Points: {group.total_story_points}</span>"
-            f"<span class='cmp-gsp'>{group_verified}/{group_total} Verified</span>"
-            f"{_feature_controls(group.feature_id)}"
+            f"{gcheck}{title_html}"
+            f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points}</span>"
+            f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
+            f"{feature_controls(group.feature_id, len(group.steps))}"
             "</div>"
             f"{''.join(step_cards)}"
             "</div>"
         )
-
     return "".join(parts)
 
 
@@ -1606,9 +1444,7 @@ TYPES: dict[str, TypeDef] = {
     "questionnaire": TypeDef(("path",), render_questionnaire),
     "link": TypeDef(("href",), render_link_item),
     "command_status": TypeDef((), render_command_status),
-    "plan_decision": TypeDef(("plan_path",), render_plan_decision),
     "compass": TypeDef(("path",), render_compass),
-    "build_plan": TypeDef((), render_build_plan),
 }
 
 
@@ -1652,7 +1488,7 @@ def _q_path_for(item_id: str) -> Path | None:
 def item_pending(item: dict[str, Any]) -> bool:
     """Return True when this item has an outstanding action requiring user input."""
     t = item.get("type", "")
-    if t in _UNTRACKED_TYPES or t in ("command_status", "compass", "build_plan"):
+    if t in _UNTRACKED_TYPES or t in ("command_status", "compass"):
         return False
     if t == "questionnaire":
         path = item.get("path")
@@ -1672,12 +1508,6 @@ def item_pending(item: dict[str, Any]) -> bool:
 # ── Page header (title row + action buttons + divider) ──────────────────────────
 
 _H1_RE = re.compile(r"^\s*<h1[^>]*>.*?</h1>\s*", re.DOTALL | re.IGNORECASE)
-_BP_STATS_RE = re.compile(
-    r'<div class=[\'"]bp-stats-sentinel[\'"] '
-    r'data-sp=[\'"]([^\'"]*)[\'"] '
-    r'data-verified=[\'"]([^\'"]*)[\'"] '
-    r'data-total=[\'"]([^\'"]*)[\'"]></div>'
-)
 
 
 def _wrap_page(item: dict[str, Any], body: str) -> str:
@@ -1688,29 +1518,6 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
     label = html.escape(item.get("label", ""))
     iid = html.escape(item["id"])
     t = item.get("type", "")
-
-    if t == "build_plan":
-        m = _BP_STATS_RE.search(body)
-        body = _BP_STATS_RE.sub("", body, count=1)
-        body = _H1_RE.sub("", body, count=1)
-        if m:
-            sp, verified, total = m.group(1), m.group(2), m.group(3)
-            stats_html = (
-                f"<span class='bp-ph-sp'>Story Points: <strong>{html.escape(sp)}</strong></span>"
-                f"<span class='bp-ph-sep'>·</span>"
-                f"<span class='bp-ph-ver'>{html.escape(verified)}/{html.escape(total)} Verified</span>"
-            )
-        else:
-            stats_html = ""
-        return (
-            f"<div class='page-header'>"
-            f"<div class='ph-title-row ph-title-row-bp'>"
-            f"<h1 class='ph-title'>{label}</h1>"
-            f"<div class='bp-ph-stats'>{stats_html}</div>"
-            f"</div>"
-            f"<hr class='ph-divider'>"
-            f"</div>" + body
-        )
 
     fname = ""
     for key in ("path", "path_md", "path_html", "path_pdf", "href"):
@@ -1795,10 +1602,6 @@ class SourceUpdate(BaseModel):
     content: str
 
 
-class PlanDecision(BaseModel):
-    decision: str
-
-
 class CompassMove(BaseModel):
     kind: str
     block_id: str
@@ -1864,20 +1667,6 @@ def api_set_source(item_id: str, update: SourceUpdate, request: Request = None) 
         return {"ok": True, "item_id": item_id}
 
 
-@app.post("/api/plan/{item_id}/decision")
-def api_plan_decision(
-    item_id: str, update: PlanDecision, request: Request = None
-) -> dict[str, Any]:
-    with _request_context(request):
-        item = find_item(item_id)
-        if item.get("type") != "plan_decision":
-            raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a plan decision")
-        raise HTTPException(
-            status_code=400,
-            detail="Planning Session is read-only; plan approval is no longer supported.",
-        )
-
-
 @app.post("/api/compass/{item_id}/move")
 def api_compass_move(item_id: str, move: CompassMove, request: Request = None) -> dict[str, Any]:
     from drydock.errors import SpecificationError
@@ -1885,7 +1674,7 @@ def api_compass_move(item_id: str, move: CompassMove, request: Request = None) -
 
     with _request_context(request):
         item = find_item(item_id)
-        if item.get("type") not in ("compass", "build_plan"):
+        if item.get("type") != "compass":
             raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
         try:
             apply_move(
@@ -1907,7 +1696,7 @@ def api_compass_edit(item_id: str, edit: CompassEdit, request: Request = None) -
 
     with _request_context(request):
         item = find_item(item_id)
-        if item.get("type") not in ("compass", "build_plan"):
+        if item.get("type") != "compass":
             raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
         try:
             result = apply_edit(
@@ -2008,7 +1797,7 @@ _NAV_STATUS_HTML: dict[str, str] = {
 def item_nav_status(item: dict[str, Any]) -> str | None:
     """Return 'pending', 'done', or None (no icon) for the nav status box."""
     t = item.get("type", "")
-    if t in _UNTRACKED_TYPES or t in ("command_status", "compass", "build_plan"):
+    if t in _UNTRACKED_TYPES or t in ("command_status", "compass"):
         return None
     if item_pending(item):
         return "pending"
@@ -2303,12 +2092,16 @@ _STYLE = """
   .bp-pending { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
   .bp-failed  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
   .bp-complete { color:#166534; font-weight:700; }
-  .ph-title-row-bp { justify-content:center; gap:20px; flex-wrap:wrap; }
-  .bp-ph-stats { display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; color:#475569; }
-  .bp-ph-sep { color:#cbd5e1; }
-  .bp-ph-sp strong { color:#0f172a; }
-  .bp-ph-ver { color:#166534; }
   .cmp-warn-bar { font-size:13px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 14px; border-radius:6px; margin:0 0 12px; display:inline-block; }
+  .cmp-hdr { border:1px solid #d7dde5; border-radius:8px; padding:12px 16px; margin:0 0 14px; background:#f8fafc; }
+  .cmp-hdr-title { font-size:16px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .cmp-plan-state { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#1e3a8a; background:#dbeafe; border:1px solid #93c5fd; padding:1px 8px; border-radius:10px; }
+  .cmp-hdr-counts { font-size:13px; font-weight:600; color:#475569; margin-top:5px; }
+  .cmp-hdr-buildable { font-size:13px; color:#475569; margin-top:3px; }
+  .cmp-buildable { font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#166534; background:#dcfce7; border:1px solid #4ade80; padding:1px 9px; border-radius:10px; flex:none; margin-right:4px; }
+  .cmp-fail-reason { font-size:12px; color:#991b1b; background:#fef2f2; border-left:3px solid #f87171; padding:5px 10px; margin:4px 0 6px; border-radius:0 4px 4px 0; }
+  .cmp-gname-edit { cursor:pointer; }
+  .cmp-gname-edit:hover { text-decoration:underline; text-decoration-style:dotted; }
   .tk-kind { font-size:10px; font-weight:700; letter-spacing:.04em; padding:1px 6px; border-radius:3px; margin-right:4px; text-transform:uppercase; }
   .tk-kind-feature { background:#ede9fe; color:#5b21b6; }
   .tk-kind-story   { background:#dbeafe; color:#1e40af; }
@@ -2419,17 +2212,6 @@ def index(request: Request = None) -> str:
       e.querySelector('.doc-edit').style.display = 'block';
     }}
     function cancelDoc(itemId) {{ loadDoc(itemId); }}
-    async function submitPlanDecision(itemId, decision) {{
-      const r = await fetch(`/api/plan/${{itemId}}/decision`, {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{decision}})
-      }});
-      if (r.ok) loadDoc(itemId);
-      else {{
-        const d = await r.json().catch(() => ({{}}));
-        alert('Could not decide plan: ' + (d.detail || r.status));
-      }}
-    }}
     async function compassMove(itemId, kind, blockId, direction) {{
       const r = await fetch(`/api/compass/${{itemId}}/move`, {{
         method: 'POST', headers: {{'Content-Type': 'application/json'}},
