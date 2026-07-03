@@ -714,7 +714,9 @@ flowchart LR
 
 TODO: The refit can roll the change tickets into the primary specification files.
 
-## Artifact I/O Matrix - What drydock operations read/write
+## Artifact I/O Matrix 
+
+What drydock operations read/write
 
 | Artifact | Location | analyze | plan | build | build score | refit |
 |---|---|---|---|---|---|---|
@@ -800,7 +802,7 @@ $DRYDOCK_BUILD_DIRECTORY/
 ```
 
 
-## The Manifest — a Simple Graph Database / Build Plan
+## The Manifest — (a Graph Build Plan)
 
 `MANIFEST.md` is the single generated execution view of the Blueprint. It determines order,
 selects only required context, keeps work within useful context limits, identifies stale work, and
@@ -1163,7 +1165,7 @@ drydock rigging verify <Target>
 project's `AGENTS.md` in an idempotent manner. `drydock rigging verify` checks target compliance
 with the Rigging contract.
 
-## drydock document - Generate Project Documentation
+## Drydock Document - Project Documentation
 
 Generates project documentation from a Blueprint's Typed Specification files in two phases. The AI
 phase writes `DOC-*.md` summaries per Specification section; the assembly phase renders them into a
