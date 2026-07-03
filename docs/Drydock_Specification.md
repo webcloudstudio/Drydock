@@ -396,7 +396,7 @@ Review `MANIFEST.md` in the QuarterDeck to understand the build process and to u
 
 The first step is Story Planning, which is the agile step where your work is prioritized and assigned to a developer. It lives in QuarterDeck before build execution and produces `BUILD_COMPASS.md`.
 
-In the planning session you review the build plan in the Manifest.   The manifest will group similar steps
+In the Build Compass you review the build plan in the Manifest.   The manifest will group similar steps
 to reduce your context and will set the stories up in a meaningful implementaton plan of Foundation -> Data and Persistence -> Features -> User Interface.  Each step will display its estimated counts and the Commander can:
 * reorder stories so important/testable steps are done first
 * re group stories so they can be run by a single agent
@@ -931,8 +931,10 @@ Manifest block state; recovery never requires hand-editing `MANIFEST.md`.
 
 Guardrails and `Programmatic Acceptance` embedded in the Specification files run after each
 successful story build. A story that satisfies its implementation but fails programmatic
-acceptance becomes `closed/failed` until rebuilt. `User Acceptance` entries are Commander review
-signals and do not block ordinary downstream build unless modeled as explicit dependencies.
+acceptance becomes `closed/failed` until rebuilt. A story that fails build records a single-line
+`finding:` with the failure reason, surfaced on the Build Compass. `User Acceptance` entries are
+Commander review signals and do not block ordinary downstream build unless modeled as explicit
+dependencies.
 
 ### Worked Example
 
@@ -998,7 +1000,7 @@ reference, page-type schemas, and API surface are documented in `QuarterDeck/REA
 | `questionnaire` | Form backed by a JSON file; saves answers in SQLite and writes them back to the source file. |
 | `link` | External URL or local file; opens in a new tab. |
 | `command_status` | Derived read-only acceptance-readiness view from Core Docs. |
-| `plan_decision` | Whole-plan approval for a `MANIFEST.md`. |
+| `compass` | The Build Compass: the live `MANIFEST.md` work graph — grouped, costed, state-badged (buildable now / review / done / failed with reason), and editable (reorder/regroup/rename/split). |
 
 **Standard artifacts.** Every Drydock QuarterDeck carries three pinned source-of-truth artifacts
 in Drydock Core, shown by file existence:
@@ -1013,8 +1015,9 @@ in Drydock Core, shown by file existence:
 preserves them and projects acceptance gates into Soundings by stable ID.
 
 **Decisions write back.** Review decisions made in the QuarterDeck are written to `MANIFEST.md` by
-the same decision writer used by the CLI. The `plan_decision` page runs the Planning Session and
-applies whole-plan approval. The QuarterDeck renders plan state and records decisions; it does not
+the same decision writer used by the CLI. The `compass` page is the Build Compass — the live work
+graph with per-step lifecycle state and constrained structure editing. The QuarterDeck renders plan
+state and records decisions; it does not
 replace the Blueprint, `MANIFEST.md`, or build engine.
 
 **Blockers.** `drydock analyze` emits `BLOCKERS.md` only when questions prevent planning; a healthy
