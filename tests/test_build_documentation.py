@@ -226,6 +226,8 @@ Second body.
     assert "toc-index" not in landing
     assert "First Long H2 Section<br>Title That Can Wrap" in landing
     assert 'href="paper_sections/product.html"' in landing
+    assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in landing
+    assert '<article id="content"></article>' in landing
     assert "Copyright &copy; 2026 Ed Studio. All rights reserved." in landing
     intro_page = section_paths[0].read_text(encoding="utf-8")
     assert "## Introduction" in intro_page
@@ -234,6 +236,7 @@ Second body.
     assert 'class="active" href="first-long-h2-section-title-that-can-wrap.html"' in first_page
     assert "## First Long H2 Section -- Title That Can Wrap" in first_page
     assert "marked.parse(BODY)" in first_page
+    assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in first_page
 
 
 def test_build_flattened_documentation_publishes_frontmatter_ideas_in_introduction(

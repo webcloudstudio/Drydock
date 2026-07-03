@@ -214,6 +214,10 @@ def render_page(
     *,
     theme: str | None = None,
     logo_data_uri: str | None = None,
+    navigation_html: str = "",
+    extra_style: str = "",
+    footer_html: str | None = None,
+    include_ideas: bool = True,
 ) -> str:
     """Render parsed Blueprint content into a self-contained HTML document."""
     selected_theme = _resolve_theme(metadata, theme)
@@ -225,9 +229,10 @@ def render_page(
     studio = html.escape(str(metadata.get("studio", "")))
     year = html.escape(str(metadata.get("year", "")))
     copyright_text = html.escape(str(metadata.get("copyright", "")))
-    ideas = _render_ideas(metadata)
+    ideas = _render_ideas(metadata) if include_ideas else ""
     body_json = _json_for_script(body)
     title_sub_html = f'<span class="h1-sub">{title_sub}</span>' if title_sub else ""
+    footer = footer_html if footer_html is not None else f"{author} · {studio} · {year}"
     logo_html = (
         f'<div class="cover-logo"><img src="{logo_data_uri}" alt="Drydock"></div>'
         if logo_data_uri
@@ -361,10 +366,12 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
   #content pre, #content blockquote {{ break-inside: avoid; }}
   #content h2, #content h3 {{ break-after: avoid; }}
 }}
+{extra_style}
 </style>
 </head>
 <body class="theme-{selected_theme}">
 <header><strong>Drydock</strong><span>{copyright_text}</span></header>
+{navigation_html}
 <main>
 <section class="cover">
   <div class="cover-grid">
@@ -379,7 +386,7 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
 {ideas}
 <article id="content"></article>
 </main>
-<footer>{author} · {studio} · {year}</footer>
+<footer>{footer}</footer>
 <script>
 const BODY = {body_json};
 marked.setOptions({{ gfm: true, breaks: false }});
@@ -507,67 +514,100 @@ def _with_frontmatter_intro(
     )
 
 
-def _flat_theme_css() -> str:
+def _flat_navigation_css() -> str:
     return """
-:root {
-  --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
-  --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
+body {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
 }
-body.theme-slate {
-  --ink: #26313d; --muted: #647180; --paper: #f4f6f8; --panel: #ffffff;
-  --navy: #17212b; --green: #2cb67d; --line: #d7dee5; --code: #e8edf2; --pre-bg: #202a34;
+header, footer {
+  grid-column: 1 / -1;
 }
-body.theme-paper {
-  --ink: #2e312d; --muted: #6a6f68; --paper: #fbfbf8; --panel: #ffffff;
-  --navy: #2f3430; --green: #427a5b; --line: #dfe3dd; --code: #eceee9; --pre-bg: #f0f2ed;
+.flat-sidebar {
+  position: sticky;
+  top: 0;
+  min-height: calc(100vh - 38px);
+  background: var(--navy);
+  color: white;
+  padding: 24px 20px;
+  border-right: 6px solid var(--green);
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--paper); color: var(--ink);
-  font: 15px/1.55 "Segoe UI", Arial, sans-serif; }
-.shell { min-height: 100vh; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
-.side { background: var(--navy); color: white; padding: 28px 24px; border-right: 6px solid var(--green); }
-.brand { margin-bottom: 28px; }
-.brand img { display: block; max-width: 220px; height: auto; margin-bottom: 14px; }
-.brand-title { font-size: 1.35rem; font-weight: 800; line-height: 1.1; }
-.brand-subtitle { color: #c8d6df; margin-top: 8px; font-size: .92rem; }
-.toc-title { color: #91e1bd; font-size: .76rem; font-weight: 800; letter-spacing: .14em;
-  text-transform: uppercase; margin-bottom: 10px; }
-.toc { display: grid; gap: 8px; }
-.toc a { color: white; text-decoration: none; display: block; border: 1px solid rgba(255,255,255,.18);
-  border-left: 4px solid rgba(145,225,189,.7); padding: 9px 10px; line-height: 1.18;
-  overflow-wrap: anywhere; background: rgba(255,255,255,.06); }
-.toc a:hover, .toc a.active { background: rgba(145,225,189,.16); border-left-color: #91e1bd; }
-.content { padding: 38px min(7vw, 78px) 70px; }
-.mast { background: var(--panel); border-top: 5px solid var(--green); border-bottom: 1px solid var(--line);
-  padding: 24px 30px; margin-bottom: 22px; }
-.eyebrow { color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.05; margin: 7px 0 8px; color: var(--navy); }
-.subtitle, .meta { color: var(--muted); }
-.meta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; font-size: .82rem; }
-.cards { display: grid; gap: 12px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--green);
-  color: var(--ink); display: block; padding: 16px 18px; text-decoration: none; }
-.card strong { color: var(--navy); display: block; font-size: 1.1rem; line-height: 1.2; }
-#content { background: var(--panel); border: 1px solid var(--line); padding: 28px 32px; }
-#content h1 { font-size: clamp(1.9rem, 3.2vw, 2.8rem); border-bottom: 3px solid var(--green); padding-bottom: 8px; }
-#content h2 { border-bottom: 2px solid var(--green); padding-bottom: 4px; margin-top: 28px; }
-#content h3 { color: var(--green); margin-top: 18px; margin-bottom: 6px; }
-#content table { border-collapse: collapse; display: block; overflow-x: auto; width: 100%; margin: 8px 0; }
-#content th, #content td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
-#content th { background: var(--pre-bg); color: var(--ink); font-size: 13px; }
-#content code { background: var(--code); border-radius: 3px; padding: 1px 4px; font-size: 13px; }
-#content pre { background: var(--pre-bg); color: var(--ink); overflow-x: auto;
-  padding: 10px 14px; margin: 6px 0 12px; border-left: 3px solid var(--line); font-size: 13px; }
-#content pre code { background: transparent; padding: 0; font-size: inherit; }
-#content blockquote { border-left: 4px solid var(--green); background: var(--paper);
-  color: var(--muted); font-style: italic; margin: 14px 0 14px 18px; padding: 10px 18px; }
-.diagram { background: white; border: 1px solid var(--line); overflow-x: auto; padding: 14px; margin: 8px 0; }
-footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+.flat-brand {
+  margin-bottom: 22px;
+}
+.flat-brand img {
+  display: block;
+  max-width: 220px;
+  height: auto;
+  margin-bottom: 14px;
+}
+.flat-brand-title {
+  font-size: 1.18rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.flat-brand-subtitle {
+  color: #c8d6df;
+  margin-top: 8px;
+  font-size: .86rem;
+}
+.flat-toc-title {
+  color: #91e1bd;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.flat-toc {
+  display: grid;
+  gap: 8px;
+}
+.flat-toc a {
+  color: white;
+  text-decoration: none;
+  display: block;
+  border: 1px solid rgba(255,255,255,.18);
+  border-left: 4px solid rgba(145,225,189,.7);
+  padding: 9px 10px;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+  background: rgba(255,255,255,.06);
+}
+.flat-toc a:hover, .flat-toc a.active {
+  background: rgba(145,225,189,.16);
+  border-left-color: #91e1bd;
+}
+.flat-cards {
+  display: grid;
+  gap: 12px;
+}
+.flat-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--green);
+  color: var(--ink);
+  display: block;
+  padding: 16px 18px;
+  text-decoration: none;
+}
+.flat-card strong {
+  color: var(--navy);
+  display: block;
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
 @media (max-width: 780px) {
-  .shell { display: block; }
-  .side { border-right: 0; border-bottom: 6px solid var(--green); }
-  .content { padding: 20px 14px 42px; }
-  #content, .mast { padding: 18px; }
+  body {
+    display: block;
+  }
+  .flat-sidebar {
+    position: static;
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 6px solid var(--green);
+  }
 }
 """
 
@@ -602,11 +642,7 @@ def _flat_sidebar(
 ) -> str:
     title = html.escape(str(metadata.get("title", "Drydock")))
     subtitle = html.escape(str(metadata.get("subtitle", "")))
-    logo_html = (
-        f'<img src="{logo_data_uri}" alt="{title} logo">'
-        if logo_data_uri
-        else f'<div class="brand-title">{title}</div>'
-    )
+    logo_html = f'<img src="{logo_data_uri}" alt="{title} logo">' if logo_data_uri else ""
     links = []
     for section in sections:
         active = ' class="active"' if section.slug == current_slug else ""
@@ -615,38 +651,16 @@ def _flat_sidebar(
             f'<a{active} href="{html.escape(href)}">{_render_breakable_text(section.title)}</a>'
         )
     return "\n".join([
-        '<aside class="side">',
-        '<div class="brand">',
+        '<aside class="flat-sidebar">',
+        '<div class="flat-brand">',
         logo_html,
-        f'<div class="brand-subtitle">{subtitle}</div>',
+        f'<div class="flat-brand-title">{title}</div>',
+        f'<div class="flat-brand-subtitle">{subtitle}</div>',
         "</div>",
-        '<div class="toc-title">Table of Contents</div>',
-        f'<nav class="toc">{"".join(links)}</nav>',
+        '<div class="flat-toc-title">Table of Contents</div>',
+        f'<nav class="flat-toc">{"".join(links)}</nav>',
         "</aside>",
     ])
-
-
-def _flat_script(markdown: str) -> str:
-    body_json = _json_for_script(markdown)
-    return f"""
-<script>
-const BODY = {body_json};
-marked.setOptions({{ gfm: true, breaks: false }});
-const content = document.getElementById("content");
-content.innerHTML = marked.parse(BODY);
-content.querySelectorAll("pre > code.language-mermaid").forEach((code) => {{
-  const wrapper = document.createElement("div");
-  wrapper.className = "diagram";
-  const diagram = document.createElement("div");
-  diagram.className = "mermaid";
-  diagram.textContent = code.textContent;
-  wrapper.appendChild(diagram);
-  code.parentNode.replaceWith(wrapper);
-}});
-mermaid.initialize({{ startOnLoad: false, theme: "neutral" }});
-mermaid.run({{ nodes: content.querySelectorAll(".mermaid") }});
-</script>
-"""
 
 
 def render_flat_landing_page(
@@ -657,16 +671,8 @@ def render_flat_landing_page(
     logo_data_uri: str | None = None,
     section_href_prefix: str,
 ) -> str:
-    selected_theme = _resolve_theme(metadata, theme)
-    title = html.escape(str(metadata.get("title", "Drydock")))
-    eyebrow = html.escape(str(metadata.get("eyebrow", "")))
-    subtitle = html.escape(str(metadata.get("subtitle", "")))
-    author = html.escape(str(metadata.get("author", "")))
-    studio = html.escape(str(metadata.get("studio", "")))
-    year = html.escape(str(metadata.get("year", "")))
-    footer = _flat_footer(metadata)
     cards = "\n".join(
-        f'<a class="card" href="{html.escape(section_href_prefix + section.slug + ".html")}">'
+        f'<a class="flat-card" href="{html.escape(section_href_prefix + section.slug + ".html")}">'
         f"<strong>{_render_breakable_text(section.title)}</strong></a>"
         for section in sections
     )
@@ -677,31 +683,16 @@ def render_flat_landing_page(
         current_slug=None,
         href_prefix=section_href_prefix,
     )
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-<style>{_flat_theme_css()}</style>
-</head>
-<body class="theme-{selected_theme}">
-<div class="shell">
-{sidebar}
-<main class="content">
-<section class="mast">
-  <div class="eyebrow">{eyebrow}</div>
-  <h1>{title}</h1>
-  <div class="subtitle">{subtitle}</div>
-  <div class="meta"><span>{author}</span><span>{studio}</span><span>{year}</span></div>
-</section>
-<section class="cards">{cards}</section>
-<footer>{footer}</footer>
-</main>
-</div>
-</body>
-</html>
-"""
+    return render_page(
+        metadata,
+        f'<div class="flat-cards">{cards}</div>',
+        theme=theme,
+        logo_data_uri=logo_data_uri,
+        navigation_html=sidebar,
+        extra_style=_flat_navigation_css(),
+        footer_html=_flat_footer(metadata),
+        include_ideas=False,
+    )
 
 
 def render_flat_section_page(
@@ -712,10 +703,6 @@ def render_flat_section_page(
     theme: str | None = None,
     logo_data_uri: str | None = None,
 ) -> str:
-    selected_theme = _resolve_theme(metadata, theme)
-    doc_title = html.escape(str(metadata.get("title", "Drydock")))
-    section_title = html.escape(section.title)
-    footer = _flat_footer(metadata)
     sidebar = _flat_sidebar(
         metadata,
         sections,
@@ -723,28 +710,16 @@ def render_flat_section_page(
         current_slug=section.slug,
         href_prefix="",
     )
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{section_title} - {doc_title}</title>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<style>{_flat_theme_css()}</style>
-</head>
-<body class="theme-{selected_theme}">
-<div class="shell">
-{sidebar}
-<main class="content">
-<article id="content"></article>
-<footer>{footer}</footer>
-</main>
-</div>
-{_flat_script(section.markdown)}
-</body>
-</html>
-"""
+    return render_page(
+        metadata,
+        section.markdown,
+        theme=theme,
+        logo_data_uri=logo_data_uri,
+        navigation_html=sidebar,
+        extra_style=_flat_navigation_css(),
+        footer_html=_flat_footer(metadata),
+        include_ideas=section.slug == "introduction",
+    )
 
 
 def build_flattened_documentation(
