@@ -10,9 +10,9 @@ def test_render_console_places_sea_trials_before_soundings(tmp_path):
     config = render_console("Example", plan_path=tmp_path / "MANIFEST.md")
 
     assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
-    # The Planning Session is retired; the Build Compass is the single work-graph view.
+    # The Planning Session is retired; MANIFEST is the single work-graph view.
     assert 'label: "Planning Session"' not in config
-    assert 'label: "Build Compass"' in config
+    assert 'label: "MANIFEST"' in config
     assert "command_status" not in config
 
 
@@ -76,7 +76,7 @@ def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
     parsed = yaml.safe_load(config)
     items = {item["id"]: item for item in parsed["items"]}
 
-    assert items["build_compass"]["label"] == "Build Compass"
+    assert items["build_compass"]["label"] == "MANIFEST"
     assert items["build_compass"]["section"] == "build"
     assert items["build_compass"]["path"] == "../MANIFEST.md"
 

@@ -912,7 +912,8 @@ def test_render_nav_includes_build_compass_item_flag(monkeypatch):
 
     rendered = quarterdeck.render_nav()
 
-    assert "Build Compass" in rendered
+    assert "MANIFEST" in rendered
+    assert "Build Compass" not in rendered
     assert 'class="item-flag"' in rendered or "class='item-flag'" in rendered
 
 

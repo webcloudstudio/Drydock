@@ -64,7 +64,7 @@ _ITEM = {
     "id": "build_compass",
     "type": "compass",
     "path": "../MANIFEST.md",
-    "label": "Build Compass",
+    "label": "MANIFEST",
 }
 
 
@@ -101,7 +101,8 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         assert "# Foundation" in out
         assert "Core" in out
-        assert "story" in out
+        assert "STORY" in out
+        assert "cmp-stype-story" in out
         assert "STEP " not in out
 
     def test_step_cost_includes_full_stack(self, tmp_path, monkeypatch):
@@ -195,12 +196,15 @@ class TestRender:
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         assert "compassSplit(" not in out
+        assert "compassUngroup(" not in out
 
-    def test_multi_story_group_shows_split(self, tmp_path, monkeypatch):
+    def test_multi_story_group_shows_split_and_ungroup(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_TWO_STORIES)
         out = quarterdeck.render_compass(_ITEM)
         assert "compassSplit(" in out
+        assert "compassUngroup(" in out
+        assert "Ungroup" in out
 
 
 _MANIFEST_VERIFIED = _MANIFEST.replace(

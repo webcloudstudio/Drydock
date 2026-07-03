@@ -99,12 +99,12 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     build_compass_item = ""
     if plan_path is not None:
         build_compass_help = (
-            "The Build Compass is the live MANIFEST.md work graph: feature groups, "
+            "MANIFEST is the live work graph: feature groups, "
             "story-point cost, per-step lifecycle state (buildable now, review, done, "
             "failed with reason), and constrained reorder/regroup/rename/split editing."
         )
         build_compass_item = (
-            '\n  - { id: build_compass, label: "Build Compass", section: build, '
+            '\n  - { id: build_compass, label: "MANIFEST", section: build, '
             f"type: compass, path: ../MANIFEST.md, order: 1, help_text: {json.dumps(build_compass_help)} }}\n"
         )
     slug = re.sub(r"[^a-z0-9]+", "-", target.lower()).strip("-") or "target"

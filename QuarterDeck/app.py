@@ -480,6 +480,13 @@ def find_item(item_id: str) -> dict[str, Any]:
     raise HTTPException(status_code=404, detail=f"No item {item_id!r}")
 
 
+def _item_label(item: dict[str, Any]) -> str:
+    """Return the displayed item label, including compatibility overrides."""
+    if item.get("id") == "build_compass":
+        return "MANIFEST"
+    return str(item.get("label", item.get("id", "")))
+
+
 def nav_model() -> list[dict[str, Any]]:
     """Group items into sidebar sections, config order first.
 
@@ -871,16 +878,23 @@ def render_compass(item: dict[str, Any]) -> str:
             if dep in by_id and by_id[dep].state != "closed/verified"
         ]
 
-    def step_controls(step) -> str:
+    def step_controls(step, group_step_count: int) -> str:
         # Story order within a group is irrelevant (the group is built as a unit),
-        # so a story exposes a change-group control plus a rename button.
+        # so a story exposes change-group controls plus a rename button.
         bid = html.escape(step.block_id)
         name_js = html.escape(step.name, quote=True)
+        ungroup_btn = (
+            f"<button class='cmp-mbtn cmp-ungroup' title='Ungroup story' "
+            f"onclick=\"compassUngroup('{item_id}','{bid}')\">Ungroup</button>"
+            if group_step_count > 1 and step.parent
+            else ""
+        )
         return (
             "<span class='cmp-move'>"
             f"<select class='cmp-regroup' title='Move story to another group' "
             f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
             f"{_feature_options(plan, step.parent)}</select>"
+            f"{ungroup_btn}"
             f"<button class='cmp-mbtn' title='Rename story' "
             f"onclick=\"compassRename('{item_id}','{bid}','{name_js}')\">✎</button>"
             "</span>"
@@ -1018,11 +1032,12 @@ def render_compass(item: dict[str, Any]) -> str:
                 "<div class='cmp-shead'>"
                 f"{done_check}"
                 f"{_KIND_CHIP[kind]}"
-                f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
+                f"<span class='cmp-stype cmp-stype-{html.escape(step.block_type)}'>"
+                f"{html.escape(step.block_type.upper())}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
                 f"<span class='cmp-gsp'>Story Points = {step.total_story_points:,} "
                 f"(overhead {step.overhead_story_points:,})</span>{warn}"
-                f"{step_controls(step)}"
+                f"{step_controls(step, group_total)}"
                 "</div>"
                 f"{fail_html}"
                 f"{blocked_html}"
@@ -1595,7 +1610,7 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
     if item.get("id") == "commanders_chair":
         return body
 
-    label = html.escape(item.get("label", ""))
+    label = html.escape(_item_label(item))
     iid = html.escape(item["id"])
     t = item.get("type", "")
 
@@ -1923,7 +1938,7 @@ def render_nav() -> str:
         if section["items"]:
             item_htmls = []
             for item in section["items"]:
-                lbl = html.escape(item.get("label", item["id"]))
+                lbl = html.escape(_item_label(item))
                 iid = html.escape(item["id"])
                 icon = _NAV_STATUS_HTML.get(item_nav_status(item) or "", "")
                 item_flag = _ITEM_FLAGS.get(item["id"], "")
@@ -2139,7 +2154,8 @@ _STYLE = """
   .cmp-step:last-child { border-bottom:none; }
   .cmp-shead { display:flex; align-items:center; gap:10px; }
   .cmp-snum { font-size:11px; font-weight:700; color:#1e3a8a; background:#dbeafe; padding:1px 7px; border-radius:3px; }
-  .cmp-stype { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
+  .cmp-stype { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
+  .cmp-stype-story { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#7c2d12; background:#fff7ed; border-color:#fdba74; transform:rotate(-2deg); box-shadow:1px 1px 0 #fed7aa; }
   .cmp-sname { font-weight:600; font-size:13px; }
   .cmp-warn { font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:3px 10px; border-radius:6px; white-space:nowrap; }
   .cmp-detail { margin:6px 0 0; }
@@ -2150,6 +2166,7 @@ _STYLE = """
   .cmp-move { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
+  .cmp-ungroup { font-weight:700; color:#334155; }
   .cmp-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 10px; }
   .cmp-newgroup { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #2563eb; background:#2563eb; color:#fff; border-radius:7px; cursor:pointer; box-shadow:0 1px 2px rgba(37,99,235,.25); transition:background .12s, box-shadow .12s; }
   .cmp-newgroup:hover { background:#1d4ed8; border-color:#1d4ed8; box-shadow:0 2px 5px rgba(37,99,235,.32); }
@@ -2325,6 +2342,9 @@ def index(request: Request = None) -> str:
       }});
       if (r.ok) loadDoc(itemId);
       else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Move failed'); loadDoc(itemId); }}
+    }}
+    function compassUngroup(itemId, blockId) {{
+      compassRegroup(itemId, blockId, '');
     }}
     async function compassEdit(itemId, payload) {{
       const r = await fetch(`/api/compass/${{itemId}}/edit`, {{
