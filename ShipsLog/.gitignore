@@ -1,0 +1,14 @@
+blog/material/*
+!blog/material/.gitkeep
+blog/material/.ships_log_cursor.json
+blog/drafts/
+blog/private/
+blog/posts/*.html
+blog/posts/index.html
+blog/rendered/
+public/
+
+# Editor / OS noise
+__pycache__/
+*.swp
+.DS_Store
