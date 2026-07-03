@@ -141,3 +141,50 @@ class TestRender:
         assert "compassRegroup(" in out
         assert "move_feature" in out
         assert "reorder is locked" not in out
+
+    def test_group_rollup_labelled_combined(self, tmp_path, monkeypatch):
+        # The group figure is a rollup of per-step assembled cost (shared context
+        # re-injected per step), so it is not the arithmetic sum of its stories.
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "Combined Story Points =" in out
+
+    def test_story_has_no_up_down_reorder(self, tmp_path, monkeypatch):
+        # Order within a group is meaningless; a story keeps only its change-group
+        # control. move_step (per-story up/down) is gone; move_feature remains.
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "move_step" not in out
+        assert "move_feature" in out
+
+
+_MANIFEST_VERIFIED = _MANIFEST.replace(
+    """id: core
+parent: feat-foundation
+implements: ARCHITECTURE.md, DATABASE.md
+context: missing-ctx.md
+stack: common.md
+instructions: |
+  Build the core.
+state: pending""",
+    """id: core
+parent: feat-foundation
+implements: ARCHITECTURE.md, DATABASE.md
+context: missing-ctx.md
+stack: common.md
+instructions: |
+  Build the core.
+state: closed/verified""",
+)
+
+
+class TestBuildPlan:
+    def test_verified_step_shows_loud_check_and_combined_label(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_VERIFIED)
+        out = quarterdeck.render_build_plan(_ITEM)
+        assert "bp-check" in out  # loud green checkbox on completed items
+        assert "Combined Story Points:" in out
+        assert "move_step" not in out  # per-story reorder removed here too

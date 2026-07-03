@@ -62,3 +62,56 @@ Per-command `inputs:` (matrix-derived):
 
 `build`/`build score`/`refit` rows above are recorded for when those prompts are authored; their
 assemblers adopt the same `render_inputs` pattern.
+
+## Build Compass — cost semantics and 2026-07-02 visualization pass
+
+**Story Points = assembled build-prompt tokens.** `story_points_for(bytes) = ceil(bytes / 4)`
+(`src/drydock/build.py`). A step's SP is the token estimate of its *full* assembled build prompt:
+`COMPASS.md` + every `implements`/`context` spec + the stack files. It is not the size of the
+story text alone.
+
+**"over 50K" is a per-step ceiling, not a group sum.** `PROMPT_WARN_KB = 50`;
+`over_warn = total_bytes > 50 * 1024`. A single step whose assembled prompt exceeds 50 KB
+(≈ 12800 SP) is flagged. So a feature like Report Ingest shows "over 50K" because one of its
+stories individually stacks more than 50 KB of context — adding the group's stories together is
+not how the flag is computed.
+
+**Why the group figure is not the arithmetic sum of its stories.** Every step re-injects the
+shared context it needs (COMPASS, sibling FEATURE files, ARCHITECTURE/DATABASE), so the same
+bytes are counted in multiple stories; you cannot add two stories' SP to get a group cost.
+`assemble_steps` already compacts stack files after their first appearance in build order
+(`compact_stack=frozenset(files_seen)`), so the per-step costs are partially de-duplicated in
+sequence. The group header is therefore labelled **"Combined Story Points"** (was "Story Points")
+to stop implying addition. `group.total_story_points` remains `sum(step costs)`; a genuinely
+de-duplicated single-build estimate (shared context injected once for the whole group) is a
+`group_steps` change deferred pending Ed's decision.
+
+**Visualization changes applied (`render_compass`, `render_build_plan`, CSS).**
+- Per-story ▲▼ reorder removed. Order within a group is meaningless (the group builds as a unit),
+  so a story keeps only its change-group `<select>`. Group ▲▼ (`move_feature`) is retained.
+- Group rollup relabelled "Combined Story Points".
+- `Missing` / `over NNK` render as bordered uppercase tags (`.cmp-miss`, `.cmp-warn`,
+  `.cmp-warn-bar`) — larger and clearer; original colours kept.
+- Completed items are loud: a solid green check badge (`.bp-check`) sits before verified steps and
+  fully-verified groups, with a green left-rail on the step (`.bp-step-done`) and group
+  (`.cmp-group-done`).
+
+**Deferred (need backend endpoints that mutate MANIFEST.md — the authoritative Blueprint — so they
+await Ed's review).**
+- Split a group into one group per story.
+- Rename a feature/group (touches the MANIFEST heading, the `FEATURE-*.md` filename, and every
+  `implements`/`context` reference).
+- "New step" button (top-right) to create a step, add stories, and expose it in the regroup
+  dropdown.
+- Move the Build Compass item one level down into the BUILD section — this is per-target
+  `console.yaml` nav state (wiped with the target), so the durable fix belongs in the console.yaml
+  generator, not `app.py`.
+
+## `drydock build` console streaming — 2026-07-02
+
+The provider streams model output as many small `text_delta` events; `llm.py` calls
+`on_text(delta)` once per event. `cli.py` passed `on_text=print`, and `print` appends a newline to
+every delta, shredding words across lines (`test su` / `ite`, `I` / `'ll wait`). Fixed by
+`cli._stream_stdout`, which writes each delta verbatim and flushes — preserving the model's own line
+breaks and the explicit content-block boundary the runner injects (`llm.py` `content_block_start`).
+Applied to `build`, `refit`, and `document`/Ship's Log streaming.

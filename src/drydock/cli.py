@@ -30,6 +30,19 @@ class DrydockArgumentParser(argparse.ArgumentParser):
 
 _SEVERITY_ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗"}
 
+
+def _stream_stdout(text: str) -> None:
+    """Write streamed LLM text verbatim to stdout.
+
+    The provider delivers model output as many small text deltas. ``print``
+    appends a newline to every delta, which shreds words and sentences across
+    lines (``test su``/``ite``). Writing the raw delta preserves the model's own
+    line breaks (and the explicit content-block boundary the runner injects).
+    """
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
 # Post-command "Next step:" hints, centralized in one place because the workflow is still
 # evolving. Keyed by command; value is a template formatted with the resolved target.
 _NEXT_STEP_HINTS: dict[str, str] = {
@@ -308,7 +321,7 @@ def cmd_refit(args: argparse.Namespace) -> int:
         log_dir=log_dir,
         model=model,
         llm_provider=llm_provider,
-        on_text=print,
+        on_text=_stream_stdout,
     )
 
     for item in result.items:
@@ -861,7 +874,7 @@ def cmd_shipslog(args: argparse.Namespace) -> int:
     result = shipslog.generate(
         package_dir,
         dry_run=bool(getattr(args, "dry_run", False)),
-        on_text=print,
+        on_text=_stream_stdout,
     )
     for week in result.weeks:
         mark = _SHIPSLOG_STATUS_MARK.get(week.status, week.status)
@@ -1144,7 +1157,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         model=model,
         llm_provider=llm_provider,
         log_dir=log_dir,
-        on_text=print,
+        on_text=_stream_stdout,
         on_step=report,
         step_id=getattr(args, "step", None),
         force=bool(getattr(args, "force", False)),

@@ -898,14 +898,12 @@ def render_compass(item: dict[str, Any]) -> str:
             acs_by_parent.setdefault(block.parent, []).append(block)
 
     def step_controls(step) -> str:
+        # Story order within a group is irrelevant (the group is built as a unit),
+        # so a story exposes only a change-group control, not up/down reordering.
         bid = html.escape(step.block_id)
         return (
             "<span class='cmp-move'>"
-            f"<button class='cmp-mbtn' title='Move up' "
-            f"onclick=\"compassMove('{item_id}','move_step','{bid}','up')\">▲</button>"
-            f"<button class='cmp-mbtn' title='Move down' "
-            f"onclick=\"compassMove('{item_id}','move_step','{bid}','down')\">▼</button>"
-            f"<select class='cmp-regroup' title='Move to feature' "
+            f"<select class='cmp-regroup' title='Move story to another group' "
             f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
             f"{_feature_options(plan, step.parent)}</select>"
             "</span>"
@@ -965,7 +963,7 @@ def render_compass(item: dict[str, Any]) -> str:
             "<div class='cmp-group'>"
             "<div class='cmp-ghead'>"
             f"<span class='cmp-gname'># {html.escape(gname)}</span>"
-            f"<span class='cmp-gsp'>Story Points = {group.total_story_points}</span>"
+            f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points}</span>"
             f"{feature_controls(group.feature_id)}"
             "</div>"
             f"{''.join(step_cards)}"
@@ -1015,14 +1013,12 @@ def render_build_plan(item: dict[str, Any]) -> str:
         return "<span class='bp-state bp-pending'>pending</span>"
 
     def _step_controls(step: StepAssembly) -> str:
+        # Story order within a group is irrelevant (the group is built as a unit),
+        # so a story exposes only a change-group control, not up/down reordering.
         bid = html.escape(step.block_id)
         return (
             "<span class='cmp-move'>"
-            f"<button class='cmp-mbtn' title='Move up' "
-            f"onclick=\"compassMove('{item_id}','move_step','{bid}','up')\">▲</button>"
-            f"<button class='cmp-mbtn' title='Move down' "
-            f"onclick=\"compassMove('{item_id}','move_step','{bid}','down')\">▼</button>"
-            f"<select class='cmp-regroup' title='Move to feature' "
+            f"<select class='cmp-regroup' title='Move story to another group' "
             f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
             f"{_feature_options(plan, step.parent)}</select>"
             "</span>"
@@ -1068,7 +1064,9 @@ def render_build_plan(item: dict[str, Any]) -> str:
         step_cards = []
         for step in group.steps:
             state = by_id[step.block_id].state if step.block_id in by_id else "pending"
-            done_cls = " bp-step-done" if state == "closed/verified" else ""
+            is_done = state == "closed/verified"
+            done_cls = " bp-step-done" if is_done else ""
+            check = "<span class='bp-check' title='Completed'>&#10003;</span>" if is_done else ""
             warn = f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
             ac_lines = "".join(
                 f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
@@ -1079,6 +1077,7 @@ def render_build_plan(item: dict[str, Any]) -> str:
             step_cards.append(
                 f"<div class='cmp-step{done_cls}'>"
                 "<div class='cmp-shead'>"
+                f"{check}"
                 f"{_state_badge(state)}"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
@@ -1093,11 +1092,17 @@ def render_build_plan(item: dict[str, Any]) -> str:
         gname = group.name
         if group.feature_id and group.feature_id in by_id:
             gname = by_id[group.feature_id].name
+        group_done = group_total > 0 and group_verified == group_total
+        gcheck = (
+            "<span class='bp-check' title='Group complete'>&#10003;</span>" if group_done else ""
+        )
+        gdone_cls = " cmp-group-done" if group_done else ""
         parts.append(
-            "<div class='cmp-group'>"
+            f"<div class='cmp-group{gdone_cls}'>"
             "<div class='cmp-ghead'>"
+            f"{gcheck}"
             f"<span class='cmp-gname'># {html.escape(gname)}</span>"
-            f"<span class='cmp-gsp'>Story Points: {group.total_story_points}</span>"
+            f"<span class='cmp-gsp'>Combined Story Points: {group.total_story_points}</span>"
             f"<span class='cmp-gsp'>{group_verified}/{group_total} Verified</span>"
             f"{_feature_controls(group.feature_id)}"
             "</div>"
@@ -2198,7 +2203,7 @@ _STYLE = """
   .cmp-file:last-child { border-bottom:none; }
   .cmp-fname { font-family:ui-monospace,Consolas,monospace; font-size:13px; }
   .cmp-fsp { font-size:12px; color:#64748b; margin-left:auto; white-space:nowrap; }
-  .cmp-miss { font-size:11px; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 6px; border-radius:10px; }
+  .cmp-miss { font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#b91c1c; background:#fee2e2; border:1px solid #fca5a5; padding:3px 10px; border-radius:6px; white-space:nowrap; }
   .cmp-role { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#64748b; background:#eef2f7; padding:1px 6px; border-radius:3px; min-width:74px; text-align:center; }
   .cmp-step { padding:8px 12px; border-bottom:1px solid #eef2f7; }
   .cmp-step:last-child { border-bottom:none; }
@@ -2206,7 +2211,7 @@ _STYLE = """
   .cmp-snum { font-size:11px; font-weight:700; color:#1e3a8a; background:#dbeafe; padding:1px 7px; border-radius:3px; }
   .cmp-stype { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
   .cmp-sname { font-weight:600; font-size:13px; }
-  .cmp-warn { font-size:11px; font-weight:700; color:#92400e; background:#fef3c7; padding:1px 7px; border-radius:10px; }
+  .cmp-warn { font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:3px 10px; border-radius:6px; white-space:nowrap; }
   .cmp-detail { margin:6px 0 0; }
   .cmp-detail summary { cursor:pointer; font-size:11px; color:#64748b; }
   .cmp-acs { list-style:none; margin:6px 0 0; padding:0 0 0 18px; }
@@ -2222,7 +2227,12 @@ _STYLE = """
     article { padding:20px 18px; }
     .target-btn-stack { flex-direction:row; }
   }
-  .bp-step-done { background:#f0fdf4; }
+  .bp-step-done { background:#f0fdf4; border-left:4px solid #22c55e; }
+  .cmp-group-done { border-color:#86efac; box-shadow:inset 3px 0 0 #22c55e; }
+  .cmp-group-done > .cmp-ghead { background:#f0fdf4; }
+  .bp-check { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+              flex:none; font-size:15px; font-weight:900; color:#fff; background:#22c55e;
+              border-radius:5px; box-shadow:0 1px 2px rgba(22,101,52,.3); }
   .bp-state { font-size:11px; font-weight:700; padding:1px 8px; border-radius:10px; flex:none; margin-right:4px; }
   .bp-done    { background:#dcfce7; color:#166534; border:1px solid #86efac; }
   .bp-review  { background:#dbeafe; color:#1e3a8a; border:1px solid #93c5fd; }
@@ -2234,7 +2244,7 @@ _STYLE = """
   .bp-ph-sep { color:#cbd5e1; }
   .bp-ph-sp strong { color:#0f172a; }
   .bp-ph-ver { color:#166534; }
-  .cmp-warn-bar { font-size:11px; font-weight:700; color:#92400e; background:#fef3c7; padding:4px 10px; border-radius:4px; margin:0 0 12px; display:inline-block; }
+  .cmp-warn-bar { font-size:13px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 14px; border-radius:6px; margin:0 0 12px; display:inline-block; }
   .tk-kind { font-size:10px; font-weight:700; letter-spacing:.04em; padding:1px 6px; border-radius:3px; margin-right:4px; text-transform:uppercase; }
   .tk-kind-feature { background:#ede9fe; color:#5b21b6; }
   .tk-kind-story   { background:#dbeafe; color:#1e40af; }
