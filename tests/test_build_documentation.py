@@ -26,6 +26,7 @@ subtitle: Example subtitle
 author: Ed
 studio: Studio
 year: 2026
+copyright: Copyright 2026 Example Studio. All rights reserved.
 ideas_title: Adds
 ideas:
   - title: First **idea**
@@ -199,7 +200,7 @@ year: 2026
 
 Product body.
 
-## First Long H2 Section Title That Can Wrap
+## First Long H2 Section -- Title That Can Wrap
 
 First body.
 
@@ -214,6 +215,7 @@ Second body.
 
     assert html_path == output
     assert section_paths == (
+        tmp_path / "site" / "paper_sections" / "introduction.html",
         tmp_path / "site" / "paper_sections" / "product.html",
         tmp_path / "site" / "paper_sections" / "first-long-h2-section-title-that-can-wrap.html",
         tmp_path / "site" / "paper_sections" / "second-section.html",
@@ -221,11 +223,32 @@ Second body.
     landing = output.read_text(encoding="utf-8")
     assert 'body class="theme-slate"' in landing
     assert "Table of Contents" in landing
+    assert "toc-index" not in landing
+    assert "First Long H2 Section<br>Title That Can Wrap" in landing
     assert 'href="paper_sections/product.html"' in landing
-    first_page = section_paths[1].read_text(encoding="utf-8")
+    assert "Copyright &copy; 2026 Ed Studio. All rights reserved." in landing
+    intro_page = section_paths[0].read_text(encoding="utf-8")
+    assert "## Introduction" in intro_page
+    assert "**Subtitle:** Example subtitle" in intro_page
+    first_page = section_paths[2].read_text(encoding="utf-8")
     assert 'class="active" href="first-long-h2-section-title-that-can-wrap.html"' in first_page
-    assert "## First Long H2 Section Title That Can Wrap" in first_page
+    assert "## First Long H2 Section -- Title That Can Wrap" in first_page
     assert "marked.parse(BODY)" in first_page
+
+
+def test_build_flattened_documentation_publishes_frontmatter_ideas_in_introduction(
+    tmp_path: Path,
+):
+    source = tmp_path / "spec.md"
+    output = tmp_path / "site" / "paper.html"
+    source.write_text(SAIL_SOURCE, encoding="utf-8")
+
+    _html_path, section_paths = build_flattened_documentation(source, output)
+
+    intro = section_paths[0].read_text(encoding="utf-8")
+    assert "### The SAIL Method" in intro
+    assert "Your Compass (constitution/intent) guides your build" in intro
+    assert "Setup and Install Drydock" in intro
 
 
 def test_publish_document_flatten_returns_section_paths(tmp_path: Path):
@@ -236,7 +259,13 @@ def test_publish_document_flatten_returns_section_paths(tmp_path: Path):
     result = publish_document(source, output, flatten=True)
 
     assert result.html_path == output
-    assert result.section_paths == (tmp_path / "site" / "paper_sections" / "product.html",)
+    assert result.section_paths == (
+        tmp_path / "site" / "paper_sections" / "introduction.html",
+        tmp_path / "site" / "paper_sections" / "product.html",
+    )
+    assert "Copyright 2026 Example Studio. All rights reserved." in output.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_publish_document_writes_pdf_with_injected_renderer(tmp_path: Path):

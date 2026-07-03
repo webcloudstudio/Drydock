@@ -451,6 +451,62 @@ def split_publish_sections(body: str) -> tuple[FlattenedSection, ...]:
     return tuple(flattened)
 
 
+def _frontmatter_intro_markdown(metadata: dict[str, object]) -> str:
+    lines: list[str] = ["## Introduction", ""]
+    for key in ("eyebrow", "subtitle", "author", "studio", "year", "copyright"):
+        value = str(metadata.get(key, "")).strip()
+        if value:
+            label = key.replace("_", " ").title()
+            lines.append(f"**{label}:** {value}")
+            lines.append("")
+
+    ideas_title = str(metadata.get("ideas_title", "")).strip()
+    ideas = metadata.get("ideas", [])
+    sail_lead = metadata.get("sail_lead", [])
+    if ideas_title:
+        lines.append(f"### {ideas_title}")
+        lines.append("")
+    if isinstance(sail_lead, list):
+        for item in sail_lead:
+            lines.append(str(item))
+            lines.append("")
+    if isinstance(ideas, list):
+        for item in ideas:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title", "")).strip()
+            if title:
+                lines.append(f"#### {title}")
+                lines.append("")
+            sub_list = item.get("sub_list", [])
+            if isinstance(sub_list, list):
+                for value in sub_list:
+                    lines.append(f"- {value}")
+                if sub_list:
+                    lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _with_frontmatter_intro(
+    metadata: dict[str, object],
+    sections: tuple[FlattenedSection, ...],
+) -> tuple[FlattenedSection, ...]:
+    intro = _frontmatter_intro_markdown(metadata)
+    if not intro:
+        return sections
+    if sections and sections[0].slug == "introduction":
+        merged = FlattenedSection(
+            title=sections[0].title,
+            slug=sections[0].slug,
+            markdown=f"{intro}\n\n{sections[0].markdown}".strip(),
+        )
+        return (merged, *sections[1:])
+    return (
+        FlattenedSection(title="Introduction", slug="introduction", markdown=intro),
+        *sections,
+    )
+
+
 def _flat_theme_css() -> str:
     return """
 :root {
@@ -481,7 +537,6 @@ body { margin: 0; background: var(--paper); color: var(--ink);
   border-left: 4px solid rgba(145,225,189,.7); padding: 9px 10px; line-height: 1.18;
   overflow-wrap: anywhere; background: rgba(255,255,255,.06); }
 .toc a:hover, .toc a.active { background: rgba(145,225,189,.16); border-left-color: #91e1bd; }
-.toc-index { color: #91e1bd; font-size: .78rem; font-weight: 800; display: block; margin-bottom: 2px; }
 .content { padding: 38px min(7vw, 78px) 70px; }
 .mast { background: var(--panel); border-top: 5px solid var(--green); border-bottom: 1px solid var(--line);
   padding: 24px 30px; margin-bottom: 22px; }
@@ -517,6 +572,26 @@ footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
 """
 
 
+def _render_breakable_text(value: str) -> str:
+    parts = [part.strip() for part in value.split("--")]
+    return "<br>".join(html.escape(part) for part in parts if part)
+
+
+def _flat_footer(metadata: dict[str, object]) -> str:
+    copyright_text = str(metadata.get("copyright", "")).strip()
+    if copyright_text:
+        return html.escape(copyright_text)
+    author = html.escape(str(metadata.get("author", "")))
+    studio = html.escape(str(metadata.get("studio", "")))
+    year = html.escape(str(metadata.get("year", "")))
+    owner = " ".join(part for part in (author, studio) if part)
+    if year and owner:
+        return f"Copyright &copy; {year} {owner}. All rights reserved."
+    if owner:
+        return f"Copyright &copy; {owner}. All rights reserved."
+    return ""
+
+
 def _flat_sidebar(
     metadata: dict[str, object],
     sections: tuple[FlattenedSection, ...],
@@ -533,12 +608,11 @@ def _flat_sidebar(
         else f'<div class="brand-title">{title}</div>'
     )
     links = []
-    for index, section in enumerate(sections, start=1):
+    for section in sections:
         active = ' class="active"' if section.slug == current_slug else ""
         href = f"{href_prefix}{section.slug}.html"
         links.append(
-            f'<a{active} href="{html.escape(href)}">'
-            f'<span class="toc-index">{index:02d}</span>{html.escape(section.title)}</a>'
+            f'<a{active} href="{html.escape(href)}">{_render_breakable_text(section.title)}</a>'
         )
     return "\n".join([
         '<aside class="side">',
@@ -590,9 +664,10 @@ def render_flat_landing_page(
     author = html.escape(str(metadata.get("author", "")))
     studio = html.escape(str(metadata.get("studio", "")))
     year = html.escape(str(metadata.get("year", "")))
+    footer = _flat_footer(metadata)
     cards = "\n".join(
         f'<a class="card" href="{html.escape(section_href_prefix + section.slug + ".html")}">'
-        f"<strong>{html.escape(section.title)}</strong></a>"
+        f"<strong>{_render_breakable_text(section.title)}</strong></a>"
         for section in sections
     )
     sidebar = _flat_sidebar(
@@ -621,7 +696,7 @@ def render_flat_landing_page(
   <div class="meta"><span>{author}</span><span>{studio}</span><span>{year}</span></div>
 </section>
 <section class="cards">{cards}</section>
-<footer>{author} · {studio} · {year}</footer>
+<footer>{footer}</footer>
 </main>
 </div>
 </body>
@@ -640,9 +715,7 @@ def render_flat_section_page(
     selected_theme = _resolve_theme(metadata, theme)
     doc_title = html.escape(str(metadata.get("title", "Drydock")))
     section_title = html.escape(section.title)
-    author = html.escape(str(metadata.get("author", "")))
-    studio = html.escape(str(metadata.get("studio", "")))
-    year = html.escape(str(metadata.get("year", "")))
+    footer = _flat_footer(metadata)
     sidebar = _flat_sidebar(
         metadata,
         sections,
@@ -665,7 +738,7 @@ def render_flat_section_page(
 {sidebar}
 <main class="content">
 <article id="content"></article>
-<footer>{author} · {studio} · {year}</footer>
+<footer>{footer}</footer>
 </main>
 </div>
 {_flat_script(section.markdown)}
@@ -683,7 +756,7 @@ def build_flattened_documentation(
     """Read Markdown and write a landing page plus one page per H1/H2 section."""
     metadata, body = parse_source(source.read_text(encoding="utf-8"))
     selected_theme = _resolve_theme(metadata, theme)
-    sections = split_publish_sections(body)
+    sections = _with_frontmatter_intro(metadata, split_publish_sections(body))
     logo_data_uri = _logo_data_uri(source, metadata)
     section_dir = output.parent / f"{output.stem}_sections"
     output.parent.mkdir(parents=True, exist_ok=True)
