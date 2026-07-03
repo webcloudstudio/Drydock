@@ -200,7 +200,7 @@ year: 2026
 
 Product body.
 
-## First Long H2 Section -- Title That Can Wrap
+## First Long H2 Section - Title That Can Wrap
 
 First body.
 
@@ -225,6 +225,7 @@ Second body.
     assert "Table of Contents" in landing
     assert "toc-index" not in landing
     assert "First Long H2 Section<br>Title That Can Wrap" in landing
+    assert "First Long H2 Section - Title That Can Wrap" in landing
     assert 'href="paper_sections/product.html"' in landing
     assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in landing
     assert '<article id="content"></article>' in landing
@@ -234,7 +235,7 @@ Second body.
     assert "**Subtitle:** Example subtitle" in intro_page
     first_page = section_paths[2].read_text(encoding="utf-8")
     assert 'class="active" href="first-long-h2-section-title-that-can-wrap.html"' in first_page
-    assert "## First Long H2 Section -- Title That Can Wrap" in first_page
+    assert "## First Long H2 Section - Title That Can Wrap" in first_page
     assert "marked.parse(BODY)" in first_page
     assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in first_page
 

@@ -612,8 +612,8 @@ header, footer {
 """
 
 
-def _render_breakable_text(value: str) -> str:
-    parts = [part.strip() for part in value.split("--")]
+def _render_toc_label(value: str) -> str:
+    parts = [part.strip() for part in value.split("-")]
     return "<br>".join(html.escape(part) for part in parts if part)
 
 
@@ -648,7 +648,7 @@ def _flat_sidebar(
         active = ' class="active"' if section.slug == current_slug else ""
         href = f"{href_prefix}{section.slug}.html"
         links.append(
-            f'<a{active} href="{html.escape(href)}">{_render_breakable_text(section.title)}</a>'
+            f'<a{active} href="{html.escape(href)}">{_render_toc_label(section.title)}</a>'
         )
     return "\n".join([
         '<aside class="flat-sidebar">',
@@ -673,7 +673,7 @@ def render_flat_landing_page(
 ) -> str:
     cards = "\n".join(
         f'<a class="flat-card" href="{html.escape(section_href_prefix + section.slug + ".html")}">'
-        f"<strong>{_render_breakable_text(section.title)}</strong></a>"
+        f"<strong>{html.escape(section.title)}</strong></a>"
         for section in sections
     )
     sidebar = _flat_sidebar(
