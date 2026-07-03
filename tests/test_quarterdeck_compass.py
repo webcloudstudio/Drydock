@@ -250,10 +250,14 @@ class TestState:
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
-        assert "Build Compass — " in out
-        assert "Plan:" in out
+        # The header rolls up one count per story state plus total cost.
+        assert "steps</span>" in out
+        assert "built</span>" in out
+        assert "ready to build</span>" in out
+        assert "blocked</span>" in out
+        assert "failed</span>" in out
+        assert "Total SP " in out
         assert "Buildable now:" in out
-        assert "steps ·" in out and "verified" in out
 
     def test_buildable_step_shows_chip(self, tmp_path, monkeypatch):
         # `core` is pending with no unmet depends, so it is ready to build.
