@@ -744,7 +744,7 @@ def _render_step_files(step) -> str:
             "<li class='cmp-file'>"
             f"<span class='cmp-role'>{html.escape(fc.role)}</span>"
             f"<span class='cmp-fname'>{html.escape(fc.name)}</span>"
-            f"<span class='cmp-fsp'>SP {fc.story_points}</span>{miss}"
+            f"<span class='cmp-fsp'>SP {fc.story_points:,}</span>{miss}"
             "</li>"
         )
     if step.instructions_story_points:
@@ -752,7 +752,7 @@ def _render_step_files(step) -> str:
             "<li class='cmp-file'>"
             "<span class='cmp-role'>instructions</span>"
             "<span class='cmp-fname'>(task text)</span>"
-            f"<span class='cmp-fsp'>SP {step.instructions_story_points}</span>"
+            f"<span class='cmp-fsp'>SP {step.instructions_story_points:,}</span>"
             "</li>"
         )
     return (
@@ -946,8 +946,8 @@ def render_compass(item: dict[str, Any]) -> str:
                 for ac in acs_by_parent.get(step.block_id, [])
             )
             dod_html = (
-                "<details class='cmp-detail cmp-dod'>"
-                "<summary>Definition of Done</summary>"
+                "<details class='cmp-detail'>"
+                "<summary>definition of done</summary>"
                 f"<ul class='cmp-acs'>{dod_rows}</ul></details>"
                 if dod_rows
                 else ""
@@ -975,8 +975,8 @@ def render_compass(item: dict[str, Any]) -> str:
                 f"{_state_chip(step.block_id)}"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
-                f"<span class='cmp-gsp'>Story Points = {step.total_story_points} "
-                f"(overhead {step.overhead_story_points})</span>{warn}"
+                f"<span class='cmp-gsp'>Story Points = {step.total_story_points:,} "
+                f"(overhead {step.overhead_story_points:,})</span>{warn}"
                 f"{step_controls(step)}"
                 "</div>"
                 f"{fail_html}"
@@ -1005,7 +1005,7 @@ def render_compass(item: dict[str, Any]) -> str:
             f"<div class='cmp-group{gdone_cls}'>"
             "<div class='cmp-ghead'>"
             f"{gcheck}{title_html}"
-            f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points}</span>"
+            f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points:,}</span>"
             f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
             f"{feature_controls(group.feature_id, len(group.steps))}"
             "</div>"
@@ -2106,9 +2106,6 @@ _STYLE = """
   .cmp-normalize { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:7px; cursor:pointer; margin-left:auto; box-shadow:0 1px 2px rgba(15,23,42,.06); transition:background .12s, border-color .12s; }
   .cmp-normalize:hover { background:#f1f5f9; border-color:#94a3b8; }
   .cmp-btn-ico { font-size:15px; line-height:1; font-weight:800; }
-  .cmp-dod { margin:8px 0 2px; padding:6px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; }
-  .cmp-dod > summary { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#475569; }
-  .cmp-dod[open] > summary { margin-bottom:4px; }
   .cmp-acname { font-size:12px; color:#334155; }
   .cmp-accheck { font-size:11px; color:#475569; background:#eef2f7; padding:1px 6px; border-radius:3px; font-family:ui-monospace,Consolas,monospace; }
   .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }

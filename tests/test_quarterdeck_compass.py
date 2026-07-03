@@ -127,7 +127,7 @@ class TestRender:
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
-        assert "Definition of Done" in out
+        assert "definition of done" in out
         assert "Core Works" in out
         # The ac is folded under its step, not rendered as its own step.
         assert "STEP " not in out
