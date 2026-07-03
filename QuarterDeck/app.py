@@ -908,26 +908,39 @@ def render_compass(item: dict[str, Any]) -> str:
 
     def step_controls(step) -> str:
         # Story order within a group is irrelevant (the group is built as a unit),
-        # so a story exposes only a change-group control, not up/down reordering.
+        # so a story exposes a change-group control plus a rename button.
         bid = html.escape(step.block_id)
+        name_js = html.escape(step.name, quote=True)
         return (
             "<span class='cmp-move'>"
             f"<select class='cmp-regroup' title='Move story to another group' "
             f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
             f"{_feature_options(plan, step.parent)}</select>"
+            f"<button class='cmp-mbtn' title='Rename story' "
+            f"onclick=\"compassRename('{item_id}','{bid}','{name_js}')\">✎</button>"
             "</span>"
         )
 
-    def feature_controls(feature_id: str | None) -> str:
+    def feature_controls(feature_id: str | None, step_count: int = 0) -> str:
         if not feature_id:
             return ""
         fid = html.escape(feature_id)
+        fname = html.escape(by_id[feature_id].name if feature_id in by_id else "", quote=True)
+        split_btn = (
+            f"<button class='cmp-mbtn' title='Split into one group per story' "
+            f"onclick=\"compassSplit('{item_id}','{fid}')\">⑃ split</button>"
+            if step_count > 1
+            else ""
+        )
         return (
             "<span class='cmp-move'>"
-            f"<button class='cmp-mbtn' title='Move feature up' "
+            f"<button class='cmp-mbtn' title='Move group up' "
             f"onclick=\"compassMove('{item_id}','move_feature','{fid}','up')\">▲</button>"
-            f"<button class='cmp-mbtn' title='Move feature down' "
+            f"<button class='cmp-mbtn' title='Move group down' "
             f"onclick=\"compassMove('{item_id}','move_feature','{fid}','down')\">▼</button>"
+            f"<button class='cmp-mbtn' title='Rename group' "
+            f"onclick=\"compassRename('{item_id}','{fid}','{fname}')\">✎</button>"
+            f"{split_btn}"
             "</span>"
         )
 
@@ -939,8 +952,12 @@ def render_compass(item: dict[str, Any]) -> str:
         else ""
     )
     parts = [
+        "<div class='cmp-toolbar'>"
+        f"<button class='cmp-newgroup' onclick=\"compassAddFeature('{item_id}')\">"
+        "+ New group</button>"
+        "</div>",
         f"<div class='cmp-total'>Total Story Points = <strong>{total_sp}</strong>"
-        f" · {len(steps)} steps{warn_html}</div>"
+        f" · {len(steps)} steps{warn_html}</div>",
     ]
 
     for group in groups:
@@ -977,7 +994,7 @@ def render_compass(item: dict[str, Any]) -> str:
             "<div class='cmp-ghead'>"
             f"<span class='cmp-gname'># {html.escape(gname)}</span>"
             f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points}</span>"
-            f"{feature_controls(group.feature_id)}"
+            f"{feature_controls(group.feature_id, len(group.steps))}"
             "</div>"
             f"{''.join(step_cards)}"
             "</div>"
@@ -1789,6 +1806,12 @@ class CompassMove(BaseModel):
     feature: str = ""
 
 
+class CompassEdit(BaseModel):
+    kind: str  # rename | add_feature | split_group
+    block_id: str = ""
+    name: str = ""
+
+
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -1875,6 +1898,27 @@ def api_compass_move(item_id: str, move: CompassMove, request: Request = None) -
         except SpecificationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True}
+
+
+@app.post("/api/compass/{item_id}/edit")
+def api_compass_edit(item_id: str, edit: CompassEdit, request: Request = None) -> dict[str, Any]:
+    from drydock.errors import SpecificationError
+    from drydock.manifest_edit import apply_edit
+
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") not in ("compass", "build_plan"):
+            raise HTTPException(status_code=400, detail=f"Item {item_id!r} is not a compass")
+        try:
+            result = apply_edit(
+                _current_project_root() / "MANIFEST.md",
+                edit.kind,
+                block_id=edit.block_id,
+                name=edit.name,
+            )
+        except SpecificationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, **result}
 
 
 @app.get("/raw/{item_id}")
@@ -2237,6 +2281,9 @@ _STYLE = """
   .cmp-move { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
+  .cmp-toolbar { display:flex; justify-content:flex-end; margin:0 0 10px; }
+  .cmp-newgroup { font-size:13px; font-weight:700; padding:6px 14px; border:1px solid #2563eb; background:#2563eb; color:#fff; border-radius:6px; cursor:pointer; }
+  .cmp-newgroup:hover { background:#1d4ed8; border-color:#1d4ed8; }
   .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
   @media (max-width: 900px) {
     main { grid-template-columns:1fr; }
@@ -2398,6 +2445,30 @@ def index(request: Request = None) -> str:
       }});
       if (r.ok) loadDoc(itemId);
       else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Move failed'); loadDoc(itemId); }}
+    }}
+    async function compassEdit(itemId, payload) {{
+      const r = await fetch(`/api/compass/${{itemId}}/edit`, {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify(payload)
+      }});
+      if (r.ok) loadDoc(itemId);
+      else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Edit failed'); }}
+    }}
+    function compassRename(itemId, blockId, current) {{
+      const name = prompt('Rename to:', current);
+      if (name === null) return;
+      if (!name.trim()) {{ alert('Name must not be empty'); return; }}
+      compassEdit(itemId, {{kind: 'rename', block_id: blockId, name: name.trim()}});
+    }}
+    function compassAddFeature(itemId) {{
+      const name = prompt('New group name:');
+      if (name === null) return;
+      if (!name.trim()) {{ alert('Name must not be empty'); return; }}
+      compassEdit(itemId, {{kind: 'add_feature', name: name.trim()}});
+    }}
+    function compassSplit(itemId, featureId) {{
+      if (!confirm('Split this group into one group per story?')) return;
+      compassEdit(itemId, {{kind: 'split_group', block_id: featureId}});
     }}
     async function saveDoc(itemId) {{
       const e = _editable(itemId); if (!e) return;

@@ -295,6 +295,139 @@ def _reject_if_invalid(doc: ManifestDoc) -> None:
         )
 
 
+# ── Structure edits (rename, add group, split) ───────────────────────────────
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slug(text: str) -> str:
+    return _SLUG_RE.sub("-", text.lower()).strip("-") or "feature"
+
+
+def _unique_id(base: str, existing: set[str]) -> str:
+    candidate, n = base, 2
+    while candidate in existing:
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _next_ordinal(doc: ManifestDoc) -> int:
+    highest = 0
+    for block in doc.blocks:
+        match = _HEADER_RE.match(block.lines[0]) if block.lines else None
+        if match:
+            highest = max(highest, int(match.group(2)))
+    return highest + 1
+
+
+def _set_header_name(block: RawBlock, new_name: str) -> None:
+    """Rewrite a block's ``## <type> <ordinal>: <name>`` header, keeping type/ordinal."""
+    match = _HEADER_RE.match(block.lines[0]) if block.lines else None
+    if not match:
+        raise SpecificationError(f"{block.block_id} has no parsable header line")
+    block.lines[0] = f"## {match.group(1)} {match.group(2)}: {new_name}"
+
+
+def rename_block(doc: ManifestDoc, block_id: str, new_name: str) -> None:
+    """Rename a feature or step: rewrite only its header label.
+
+    The block ``id:`` is untouched, so every ``parent:``/``depends:`` reference
+    and the work graph remain intact; the name is a display label only.
+    """
+    name = (new_name or "").strip()
+    if not name or "\n" in name:
+        raise SpecificationError("New name must be a non-empty single line")
+    block = doc.by_id().get(block_id)
+    if block is None:
+        raise SpecificationError(f"{block_id} not found")
+    if block.block_type not in ("feature", *_STEP_TYPES):
+        raise SpecificationError(f"{block_id} is not a renamable feature or step")
+    _set_header_name(block, name)
+
+
+def add_feature(doc: ManifestDoc, name: str) -> str:
+    """Append a new, empty feature group. Returns its generated id.
+
+    The group carries no steps; the product owner moves stories into it with the
+    regroup control. It appears in the compass and the regroup dropdown at once.
+    """
+    label = (name or "").strip()
+    if not label or "\n" in label:
+        raise SpecificationError("Feature name must be a non-empty single line")
+    existing = {b.block_id for b in doc.blocks}
+    feature_id = _unique_id(f"feat-{_slug(label)}", existing)
+    doc.blocks.append(
+        RawBlock(
+            block_id=feature_id,
+            block_type="feature",
+            parent=None,
+            depends=(),
+            lines=[
+                f"## feature {_next_ordinal(doc)}: {label}",
+                f"id: {feature_id}",
+                f"summary: {label}",
+                "state: pending",
+            ],
+        )
+    )
+    doc.blocks[:] = _flatten(doc)
+    _require_unique_ids(doc)
+    return feature_id
+
+
+def split_group(doc: ManifestDoc, feature_id: str) -> list[str]:
+    """Split a feature into one feature per story. Returns the resulting feature ids.
+
+    The original feature is reused for its first story (renamed to that story);
+    each remaining story gets a new feature named after it, and is reparented.
+    """
+    if not _is_feature(doc, feature_id):
+        raise SpecificationError(f"{feature_id} is not a feature")
+    steps = _steps_by_feature(doc).get(feature_id, [])
+    if len(steps) < 2:
+        raise SpecificationError(f"{feature_id} needs at least two stories to split")
+    by_id = doc.by_id()
+    existing = {b.block_id for b in doc.blocks}
+    result: list[str] = []
+    # New features are inserted immediately after the original so the split
+    # stories keep their build position; a story that a later group depends on
+    # must not be pushed behind that group.
+    insert_at = next(i for i, b in enumerate(doc.blocks) if b.block_id == feature_id) + 1
+    for position, step_id in enumerate(steps):
+        step = by_id[step_id]
+        header = _HEADER_RE.match(step.lines[0]) if step.lines else None
+        story_name = header.group(3) if header else step_id
+        if position == 0:
+            _set_header_name(by_id[feature_id], story_name)
+            result.append(feature_id)
+            continue
+        new_id = _unique_id(f"feat-{_slug(story_name)}", existing)
+        existing.add(new_id)
+        doc.blocks.insert(
+            insert_at,
+            RawBlock(
+                block_id=new_id,
+                block_type="feature",
+                parent=None,
+                depends=(),
+                lines=[
+                    f"## feature {_next_ordinal(doc)}: {story_name}",
+                    f"id: {new_id}",
+                    f"summary: {story_name}",
+                    "state: pending",
+                ],
+            ),
+        )
+        insert_at += 1
+        _set_parent_line(step, new_id)
+        result.append(new_id)
+    doc.blocks[:] = _flatten(doc)
+    _require_unique_ids(doc)
+    _reject_if_invalid(doc)
+    return result
+
+
 # ── Serialization ────────────────────────────────────────────────────────────
 
 
@@ -401,3 +534,25 @@ def apply_move(
     else:
         raise SpecificationError(f"Unknown move kind {kind!r}")
     write_manifest(doc)
+
+
+def apply_edit(path: Path, kind: str, *, block_id: str = "", name: str = "") -> dict[str, object]:
+    """Load, apply one structure edit, validate, and write MANIFEST.md.
+
+    ``kind`` is ``rename`` (a feature or step, by ``block_id`` and ``name``),
+    ``add_feature`` (a new empty group named ``name``), or ``split_group`` (the
+    feature ``block_id`` into one group per story). Raises SpecificationError
+    (without writing) if the edit is illegal.
+    """
+    doc = split_manifest(path)
+    result: dict[str, object] = {}
+    if kind == "rename":
+        rename_block(doc, block_id, name)
+    elif kind == "add_feature":
+        result["feature_id"] = add_feature(doc, name)
+    elif kind == "split_group":
+        result["features"] = split_group(doc, block_id)
+    else:
+        raise SpecificationError(f"Unknown edit kind {kind!r}")
+    write_manifest(doc)
+    return result

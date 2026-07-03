@@ -103,16 +103,28 @@ de-duplicated single-build estimate (shared context injected once for the whole 
   fully-verified groups, with a green left-rail on the step (`.bp-step-done`) and group
   (`.cmp-group-done`).
 
-**Deferred (need backend endpoints that mutate MANIFEST.md — the authoritative Blueprint — so they
-await Ed's review).**
-- Split a group into one group per story.
-- Rename a feature/group (touches the MANIFEST heading, the `FEATURE-*.md` filename, and every
-  `implements`/`context` reference).
-- "New step" button (top-right) to create a step, add stories, and expose it in the regroup
-  dropdown.
-- Move the Build Compass item one level down into the BUILD section — this is per-target
-  `console.yaml` nav state (wiped with the target), so the durable fix belongs in the console.yaml
-  generator, not `app.py`.
+**Structure editing implemented (2026-07-03).** `manifest_edit.apply_edit(path, kind, ...)` plus the
+`POST /api/compass/{item}/edit` endpoint mutate MANIFEST.md for three edits, each unit-tested and
+topology-validated before write:
+- **Rename** a feature or story — rewrites only the `## <type> <ordinal>: <name>` header label. The
+  block `id:` is untouched, so every `parent:`/`depends:` reference and the work graph stay intact.
+  Renaming a feature/story is a display-label change only; it does not touch `FEATURE-*.md` files or
+  `implements`/`context` (those name blueprint files, not manifest block labels). The earlier
+  deferral over-estimated the coupling.
+- **New group** — the top-right "+ New group" button appends an empty feature; it appears in the
+  compass and the regroup dropdown at once, and stories are moved into it with the existing regroup
+  control. (No net-new story blocks are fabricated — a story needs `instructions`/`implements` to be
+  buildable, which is a planning act, not a compass edit.)
+- **Split group** — a multi-story feature becomes one feature per story; the original is reused
+  (renamed) for its first story, each other story gets a new adjacent feature. New features are
+  inserted immediately after the original so a depended-on story is not pushed behind its consumer.
+
+Story per-order up/down stays removed; group up/down (`move_feature`) stays. Rename/split controls
+render in `render_compass`; the endpoint accepts both `compass` and `build_plan` item types.
+
+**Build Compass moved to the BUILD section.** The durable fix is in the console.yaml generator:
+`standard_artifacts.render_console` now emits `build_compass` with `section: build, order: 1` (was
+`section: plan, order: 4`).
 
 ## `drydock build` console streaming — 2026-07-02
 

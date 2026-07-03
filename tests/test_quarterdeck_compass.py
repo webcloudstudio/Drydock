@@ -45,6 +45,20 @@ check: true
 state: pending
 """
 
+_MANIFEST_TWO_STORIES = _MANIFEST.replace(
+    """## ac 3: Core Works""",
+    """## story 4: Extra
+id: extra
+parent: feat-foundation
+implements: ARCHITECTURE.md
+stack: common.md
+instructions: |
+  Build the extra.
+state: pending
+
+## ac 3: Core Works""",
+)
+
 _ITEM = {
     "id": "build_compass",
     "type": "compass",
@@ -159,6 +173,32 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         assert "move_step" not in out
         assert "move_feature" in out
+
+    def test_toolbar_has_new_group_button(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "compassAddFeature(" in out
+        assert "New group" in out
+
+    def test_story_and_feature_have_rename_buttons(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "compassRename(" in out
+
+    def test_single_story_group_has_no_split(self, tmp_path, monkeypatch):
+        # The one-story Foundation group cannot be split.
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "compassSplit(" not in out
+
+    def test_multi_story_group_shows_split(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_TWO_STORIES)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "compassSplit(" in out
 
 
 _MANIFEST_VERIFIED = _MANIFEST.replace(

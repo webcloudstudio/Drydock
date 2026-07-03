@@ -6,12 +6,16 @@ import pytest
 
 from drydock.errors import SpecificationError
 from drydock.manifest_edit import (
+    add_feature,
+    apply_edit,
     apply_move,
     batch_set_block_fields,
     move_feature,
     move_step,
     regroup_step,
+    rename_block,
     render_manifest,
+    split_group,
     split_manifest,
     validate_order,
 )
@@ -200,3 +204,110 @@ def test_batch_set_block_fields_no_op_when_empty(tmp_path):
     before = path.read_text(encoding="utf-8")
     batch_set_block_fields(path, {})
     assert path.read_text(encoding="utf-8") == before
+
+
+# ── Structure edits ──────────────────────────────────────────────────────────
+
+
+def test_rename_feature_changes_label_only(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    rename_block(doc, "feature-core", "Platform Core")
+    core = doc.by_id()["feature-core"]
+    assert core.lines[0] == "## feature 1: Platform Core"
+    assert core.block_id == "feature-core"  # id untouched
+    # Child steps still reference the unchanged id.
+    assert doc.by_id()["foundation"].parent == "feature-core"
+
+
+def test_rename_step_changes_label_only(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    rename_block(doc, "foundation", "Persistence Layer")
+    assert doc.by_id()["foundation"].lines[0] == "## story 1: Persistence Layer"
+
+
+def test_rename_rejects_empty_name(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    with pytest.raises(SpecificationError, match="non-empty"):
+        rename_block(doc, "feature-core", "   ")
+
+
+def test_add_feature_appends_empty_group(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    new_id = add_feature(doc, "Reporting")
+    assert new_id == "feat-reporting"
+    block = doc.by_id()[new_id]
+    assert block.block_type == "feature"
+    assert block.lines[0].endswith(": Reporting")
+    # No steps parented to it yet.
+    assert not any(b.parent == new_id for b in doc.blocks)
+
+
+def test_add_feature_ids_are_unique(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    first = add_feature(doc, "Reporting")
+    second = add_feature(doc, "Reporting")
+    assert first != second
+    assert second == "feat-reporting-2"
+
+
+def test_split_group_makes_one_feature_per_story(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    features = split_group(doc, "feature-core")
+    # feature-core had two stories: foundation, service.
+    assert len(features) == 2
+    assert features[0] == "feature-core"  # reused for the first story
+    # First story stays under the (renamed) original feature.
+    assert doc.by_id()["feature-core"].lines[0] == "## feature 1: Foundation"
+    assert doc.by_id()["foundation"].parent == "feature-core"
+    # Second story is reparented to its own new feature.
+    assert doc.by_id()["service"].parent == features[1]
+    assert doc.by_id()[features[1]].block_type == "feature"
+
+
+def test_split_group_rejects_single_story(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    with pytest.raises(SpecificationError, match="at least two"):
+        split_group(doc, "feature-screens")
+
+
+def test_split_group_rejects_non_feature(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    with pytest.raises(SpecificationError, match="not a feature"):
+        split_group(doc, "foundation")
+
+
+def test_apply_edit_rename_persists(tmp_path):
+    path = _write(tmp_path)
+    apply_edit(path, "rename", block_id="feature-core", name="Platform Core")
+    doc = split_manifest(path)
+    assert doc.by_id()["feature-core"].lines[0] == "## feature 1: Platform Core"
+
+
+def test_apply_edit_add_feature_persists_and_returns_id(tmp_path):
+    path = _write(tmp_path)
+    result = apply_edit(path, "add_feature", name="Reporting")
+    assert result["feature_id"] == "feat-reporting"
+    doc = split_manifest(path)
+    assert "feat-reporting" in doc.by_id()
+
+
+def test_apply_edit_split_group_persists(tmp_path):
+    path = _write(tmp_path)
+    result = apply_edit(path, "split_group", block_id="feature-core")
+    assert len(result["features"]) == 2
+    doc = split_manifest(path)
+    assert doc.by_id()["service"].parent != "feature-core"
+
+
+def test_apply_edit_does_not_write_on_failure(tmp_path):
+    path = _write(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(SpecificationError):
+        apply_edit(path, "split_group", block_id="feature-screens")
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_apply_edit_unknown_kind_raises(tmp_path):
+    path = _write(tmp_path)
+    with pytest.raises(SpecificationError, match="Unknown edit kind"):
+        apply_edit(path, "frobnicate", block_id="feature-core")
