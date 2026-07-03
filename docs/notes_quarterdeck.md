@@ -6,7 +6,7 @@
 | Route | quarterdeck |
 | Status | Working notes — not canonical specification |
 | Description | QuarterDeck nav, section routing, icon model, page header, blocker artifact, tabbed-render type, the Artifact Feed Matrix, the buttonless questionnaire model, and the Build Compass ordering/acceptance model. |
-| Pending spec | 3 approved items |
+| Pending spec | 1 approved item |
 | Pending impl | 0 unimplemented sections |
 
 ## Goal
@@ -163,7 +163,7 @@ dependency names, which is why the rejection cited items the Commander cannot se
 as each story's Definition of Done (below) closes this.
 
 ## Acceptance — deterministic Python tests, self-contained, out of ordering — 2026-07-03
-`2026-07-03` · `spec:approved` · `impl:implemented`
+`2026-07-03` · `spec:applied` · `impl:implemented`
 
 **What an `ac` is.** A small, self-contained test that the just-built story works — a few port
 pings, a guard grep, or a scripted checkout of a page. Deterministic, independently runnable.
@@ -186,7 +186,7 @@ pings, a guard grep, or a scripted checkout of a page. Deterministic, independen
 self-only-depends at generation time, so an invalid edge can never enter the manifest.
 
 ## Story and its tests built in one step; blueprint owns "done" — 2026-07-03
-`2026-07-03` · `spec:approved` · `impl:implemented`
+`2026-07-03` · `spec:applied` · `impl:implemented`
 
 **One act.** The story and its deterministic Python tests are written in the **same LLM build
 step** — the model wears the TDD-master hat and writes the tests as it builds ("if you were a TDD

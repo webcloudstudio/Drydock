@@ -23,6 +23,14 @@ class PublishedDocument:
     html_path: Path
     pdf_path: Path | None
     theme: str
+    section_paths: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
+class FlattenedSection:
+    title: str
+    slug: str
+    markdown: str
 
 
 def _unquote_yaml(value: str) -> str:

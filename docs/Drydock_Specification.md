@@ -902,6 +902,10 @@ evidence:     evidence/<id>.md
 `ac` blocks are supported for legacy Manifests and exceptional orchestration checks. Blueprint
 `Programmatic Acceptance` is the normal source of durable acceptance.
 
+An `ac` block's `depends:` may name its own parent story only; the build engine drops any
+cross-story `ac` dependency on read. Acceptance checks are out of the build-ordering stream:
+they are never positioned among steps, only run after their parent story builds.
+
 ### Block States
 
 All four block types use the same four states:
@@ -924,14 +928,21 @@ acceptance authority for new plans.
 A `story` or `spike` becomes `closed/verified` after the build agent succeeds, files are written,
 and Blueprint `Programmatic Acceptance` passes.
 
+The story and the deterministic tests that prove its acceptance are written in the same build
+step. The Blueprint's `Programmatic Acceptance` is the story's Definition of Done — declared
+before the build and human-owned. The build authors the executable tests that satisfy it and may
+add finer coverage, but never removes or weakens a declared acceptance assertion.
+
 `closed/failed` is not terminal. The product owner reopens failed work from the QuarterDeck —
 revising the block's instructions, acceptance, or scope interactively — and the decision writer
 returns it to `pending` with the revision recorded. The decision writer is the only mutator of
 Manifest block state; recovery never requires hand-editing `MANIFEST.md`.
 
 Guardrails and `Programmatic Acceptance` embedded in the Specification files run after each
-successful story build. A story that satisfies its implementation but fails programmatic
-acceptance becomes `closed/failed` until rebuilt. A story that fails build records a single-line
+successful story build. `Programmatic Acceptance` is deterministic and non-agentic: each check is
+a Python invocation run as a post-build hook, so verification consumes no model context and cannot
+self-report. A story that satisfies its implementation but fails programmatic acceptance becomes
+`closed/failed` until rebuilt. A story that fails build records a single-line
 `finding:` with the failure reason, surfaced on the Build Compass. `User Acceptance` entries are
 Commander review signals and do not block ordinary downstream build unless modeled as explicit
 dependencies.
