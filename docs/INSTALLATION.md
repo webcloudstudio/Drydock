@@ -129,7 +129,7 @@ The configurable values are:
 | `drydock_build_directory` | `DRYDOCK_BUILD_DIRECTORY` | Root containing generated application directories |
 | `drydock_model` | `DRYDOCK_MODEL` | Model selection for supported LLM-assisted commands |
 | `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
-| `prompt_warn_kb` | `PROMPT_WARN_KB` | Prompt-size warning threshold in KiB |
+| `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` | Prompt-size warning threshold in tokens (story points) |
 | `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
 
 ## What installation provides

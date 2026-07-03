@@ -865,6 +865,15 @@ def _feature_options(plan, selected: str | None) -> str:
     return "".join(opts)
 
 
+def _fmt_sp(tokens: int) -> str:
+    """Render a story-point (token) count compactly: 50000 -> ``50K``."""
+    if tokens >= 1000 and tokens % 1000 == 0:
+        return f"{tokens // 1000}K"
+    if tokens >= 1000:
+        return f"{tokens / 1000:.1f}K".replace(".0K", "K")
+    return str(tokens)
+
+
 def render_compass(item: dict[str, Any]) -> str:
     """Render MANIFEST.md as the build compass: grouped, costed, editable steps.
 
@@ -925,7 +934,7 @@ def render_compass(item: dict[str, Any]) -> str:
     total_sp = sum(s.total_story_points for s in steps)
     warn_n = sum(1 for s in steps if s.over_warn)
     warn_html = (
-        f" <span class='cmp-warn'>{warn_n} step(s) over {steps[0].warn_kb}KB</span>"
+        f" <span class='cmp-warn'>{warn_n} step(s) over {_fmt_sp(steps[0].warn_tokens)} SP</span>"
         if warn_n
         else ""
     )
@@ -937,7 +946,11 @@ def render_compass(item: dict[str, Any]) -> str:
     for group in groups:
         step_cards = []
         for step in group.steps:
-            warn = f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
+            warn = (
+                f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
+                if step.over_warn
+                else ""
+            )
             ac_lines = "".join(
                 f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
                 f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"
@@ -1044,7 +1057,7 @@ def render_build_plan(item: dict[str, Any]) -> str:
     total_sp = sum(s.total_story_points for s in steps)
     warn_n = sum(1 for s in steps if s.over_warn)
     warn_html = (
-        f"<div class='cmp-warn-bar'>{warn_n} step(s) over {steps[0].warn_kb}KB</div>"
+        f"<div class='cmp-warn-bar'>{warn_n} step(s) over {_fmt_sp(steps[0].warn_tokens)} SP</div>"
         if warn_n
         else ""
     )
@@ -1067,7 +1080,11 @@ def render_build_plan(item: dict[str, Any]) -> str:
             is_done = state == "closed/verified"
             done_cls = " bp-step-done" if is_done else ""
             check = "<span class='bp-check' title='Completed'>&#10003;</span>" if is_done else ""
-            warn = f" <span class='cmp-warn'>over {step.warn_kb}KB</span>" if step.over_warn else ""
+            warn = (
+                f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
+                if step.over_warn
+                else ""
+            )
             ac_lines = "".join(
                 f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
                 f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"

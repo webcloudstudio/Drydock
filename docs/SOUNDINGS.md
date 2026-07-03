@@ -4,11 +4,11 @@
 |---|---|---|---|
 | CLI-001 | `drydock --help` shows the complete public command surface | DONE | `test_cli.py::TestHelpAndVersion` |
 | CLI-002 | `drydock --version` shows version and copyright | DONE | `test_cli.py::TestHelpAndVersion` |
-| CLI-003 | `drydock config show` displays effective configuration values and sources (7 rows: build_directory, workspace, drydock_model, llm_provider, prompt_warn_kb, quarterdeck_port, shipslog_dir) | DONE | `test_cli.py::TestConfigShow`, `test_config.py::TestConfigShow::test_show_returns_seven_rows` |
-| CLI-004 | `drydock config set <key> <value>` persists configuration; keys include drydock_workspace, drydock_build_directory, drydock_model, llm_provider, prompt_warn_kb, quarterdeck_port, shipslog_dir | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet`, `test_config.py::TestGetModel` |
+| CLI-003 | `drydock config show` displays effective configuration values and sources (7 rows: build_directory, workspace, drydock_model, llm_provider, prompt_warn_tokens, quarterdeck_port, shipslog_dir) | DONE | `test_cli.py::TestConfigShow`, `test_config.py::TestConfigShow::test_show_returns_seven_rows` |
+| CLI-004 | `drydock config set <key> <value>` persists configuration; keys include drydock_workspace, drydock_build_directory, drydock_model, llm_provider, prompt_warn_tokens, quarterdeck_port, shipslog_dir | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet`, `test_config.py::TestGetModel` |
 | CLI-005 | Targets resolve to `$DRYDOCK_WORKSPACE/targets/<Target>` (git-root/cwd default); a Target's Blueprint is its `blueprint/` subtree | DONE | `test_config.py::TestWorkspaceResolution` |
 | CLI-006 | `drydock config set llm_provider <claude\|codex>` persists a valid subscription CLI provider | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
-| CLI-007 | `drydock config set prompt_warn_kb <kb>` persists a valid prompt-size threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
+| CLI-007 | `drydock config set prompt_warn_tokens <tokens>` persists a valid prompt-size threshold | DONE | `test_cli.py::TestConfigSet`, `test_config.py::TestConfigSet` |
 | CLI-008 | `drydock config set quarterdeck_port <port>` persists a valid QuarterDeck port | DONE | `test_config.py` quarterdeck-port tests, `test_cli.py::TestRunQuarterdeck::test_run_quarterdeck_config_port_used` |
 | CLI-009 | `drydock init <Target>` creates the minimal Target scaffold (`METADATA.md` with name/display_name/short_description/stack/version fields, root Sea Trials/Soundings, `blueprint/sources/`, state-only QuarterDeck) | DONE | `test_cli.py::TestInit`, `test_init_target.py`, `test_metadata.py` |
 | CLI-010 | `drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]` serves the package runtime against a named or sole-Target in-tree console state | DONE | `test_cli.py::TestRunQuarterdeck`, `test_quarterdeck_run.py` |

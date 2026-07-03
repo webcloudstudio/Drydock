@@ -70,11 +70,18 @@ assemblers adopt the same `render_inputs` pattern.
 `COMPASS.md` + every `implements`/`context` spec + the stack files. It is not the size of the
 story text alone.
 
-**"over 50K" is a per-step ceiling, not a group sum.** `PROMPT_WARN_KB = 50`;
-`over_warn = total_bytes > 50 * 1024`. A single step whose assembled prompt exceeds 50 KB
-(≈ 12800 SP) is flagged. So a feature like Report Ingest shows "over 50K" because one of its
-stories individually stacks more than 50 KB of context — adding the group's stories together is
-not how the flag is computed.
+**"over 50K SP" is a per-step ceiling, not a group sum.** `PROMPT_WARN_TOKENS = 50_000`;
+`over_warn = total_story_points > 50_000`. A single step whose assembled prompt exceeds
+50,000 tokens (story points) is flagged. So a feature like Report Ingest shows "over 50K SP"
+because one of its stories individually stacks more than 50K tokens of context — adding the
+group's stories together is not how the flag is computed.
+
+**Unit-bug fix (2026-07-03).** The ceiling was originally `PROMPT_WARN_KB = 50` compared as
+`total_bytes > 50 * 1024` — a *byte* threshold (≈ 12,800 tokens) while every displayed cost is
+Story Points = tokens. A 12,634-SP step therefore tripped a gate labelled "over 50K," which
+reads as false (12,634 < 50,000), and the tiny real ceiling over-flagged work. The threshold is
+now token-based end to end: config key `prompt_warn_tokens` / env `PROMPT_WARN_TOKENS`, default
+50,000; `build.StepAssembly.warn_tokens`; labels rendered by `_fmt_sp` as "over 50K SP".
 
 **Why the group figure is not the arithmetic sum of its stories.** Every step re-injects the
 shared context it needs (COMPASS, sibling FEATURE files, ARCHITECTURE/DATABASE), so the same

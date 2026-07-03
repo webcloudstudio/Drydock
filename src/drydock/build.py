@@ -13,8 +13,9 @@ show each step's true token cost. Cost and build can never diverge because they
 read the same assembly.
 
 Story points are the token estimate (``ceil(bytes / 4)``), derived on demand and
-never written back. A step whose total exceeds ``PROMPT_WARN_KB`` is flagged
-``over_warn``: it stacks more context than is reliably built in one prompt.
+never written back. A step whose story-point total exceeds ``PROMPT_WARN_TOKENS``
+is flagged ``over_warn``: it stacks more context than is reliably built in one
+prompt. The ceiling and every displayed cost are the same unit — tokens.
 
 Compact substitution: stack files have ``*_compact.md`` derivatives that contain
 only the caller-facing surface (types, config, contracts). The first story to use
@@ -53,9 +54,10 @@ def story_points_for(byte_count: int) -> int:
     return math.ceil(byte_count / 4)
 
 
-# Maximum total context size for one build step before it is flagged. The
-# stacking strategy groups similar work to stay under this ceiling.
-PROMPT_WARN_KB = 50
+# Maximum assembled prompt cost, in tokens (story points), for one build step
+# before it is flagged. The stacking strategy groups similar work to stay under
+# this ceiling. Tokens, not bytes: it is the unit every cost is displayed in.
+PROMPT_WARN_TOKENS = 50_000
 
 # Manifest block types that are executable build steps. Features group; ac blocks
 # fold under their parent and are verified, not built.
@@ -130,7 +132,7 @@ class StepAssembly:
     total_byte_count: int
     total_story_points: int
     over_warn: bool
-    warn_kb: int
+    warn_tokens: int
 
     def missing_files(self) -> tuple[StepFile, ...]:
         return tuple(f for f in self.files if f.missing)
@@ -289,7 +291,7 @@ def assemble_step(
     block: PlanBlock,
     roots: StepRoots,
     *,
-    warn_kb: int = PROMPT_WARN_KB,
+    warn_tokens: int = PROMPT_WARN_TOKENS,
     compact_stack: frozenset[str] | None = None,
 ) -> StepAssembly:
     """Resolve and cost the full prompt stack for one executable build block.
@@ -332,8 +334,8 @@ def assemble_step(
         instructions_story_points=instr_points,
         total_byte_count=total_bytes,
         total_story_points=total_points,
-        over_warn=total_bytes > warn_kb * 1024,
-        warn_kb=warn_kb,
+        over_warn=total_points > warn_tokens,
+        warn_tokens=warn_tokens,
     )
 
 
@@ -341,7 +343,7 @@ def assemble_steps(
     plan: BuildPlan,
     roots: StepRoots,
     *,
-    warn_kb: int = PROMPT_WARN_KB,
+    warn_tokens: int = PROMPT_WARN_TOKENS,
 ) -> tuple[StepAssembly, ...]:
     """Assemble every executable step in the plan, in manifest order.
 
@@ -356,7 +358,9 @@ def assemble_steps(
     for block in plan.blocks:
         if block.block_type not in STEP_TYPES:
             continue
-        step = assemble_step(block, roots, warn_kb=warn_kb, compact_stack=frozenset(files_seen))
+        step = assemble_step(
+            block, roots, warn_tokens=warn_tokens, compact_stack=frozenset(files_seen)
+        )
         for role in _ROLE_ORDER:
             for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
                 files_seen.add(name)

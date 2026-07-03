@@ -170,13 +170,13 @@ class TestConfigSet:
         assert rc == 0
         assert "codex" in out
 
-    def test_config_set_prompt_warn_kb(self, isolated_config):
-        rc, out, err = run_cli("config", "set", "prompt_warn_kb", "75")
+    def test_config_set_prompt_warn_tokens(self, isolated_config):
+        rc, out, err = run_cli("config", "set", "prompt_warn_tokens", "75000")
         assert rc == 0
-        assert "75" in out
+        assert "75000" in out
 
-    def test_config_set_invalid_prompt_warn_kb_fails(self, isolated_config):
-        rc, out, err = run_cli("config", "set", "prompt_warn_kb", "fifty")
+    def test_config_set_invalid_prompt_warn_tokens_fails(self, isolated_config):
+        rc, out, err = run_cli("config", "set", "prompt_warn_tokens", "fifty")
         assert rc == 1
         assert "error" in err.lower()
 

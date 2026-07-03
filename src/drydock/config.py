@@ -17,13 +17,13 @@ _KEY_MAP = {
     "drydock_workspace": "DRYDOCK_WORKSPACE",
     "drydock_model": "DRYDOCK_MODEL",
     "llm_provider": "LLM_PROVIDER",
-    "prompt_warn_kb": "PROMPT_WARN_KB",
+    "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
     "quarterdeck_port": "QUARTERDECK_PORT",
     "shipslog_dir": "DRYDOCK_SHIPSLOG_DIR",
 }
 
 DEFAULT_MODEL = "sonnet"
-DEFAULT_PROMPT_WARN_KB = 50
+DEFAULT_PROMPT_WARN_TOKENS = 50_000
 DEFAULT_QUARTERDECK_PORT = 8080
 
 
@@ -144,17 +144,17 @@ def get_llm_provider(cli_override: str | None = None) -> str:
     return provider
 
 
-def get_prompt_warn_kb() -> int:
-    value, _source = _get("PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB))
+def get_prompt_warn_tokens() -> int:
+    value, _source = _get("PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS))
     try:
-        kb = int(value or DEFAULT_PROMPT_WARN_KB)
+        tokens = int(value or DEFAULT_PROMPT_WARN_TOKENS)
     except ValueError:
-        kb = 0
-    if kb <= 0:
+        tokens = 0
+    if tokens <= 0:
         raise ConfigurationError(
-            f"Invalid PROMPT_WARN_KB: {value!r}\n  Expected a positive integer (kilobytes)."
+            f"Invalid PROMPT_WARN_TOKENS: {value!r}\n  Expected a positive integer (tokens)."
         )
-    return kb
+    return tokens
 
 
 def get_shipslog_dir() -> Path | None:
@@ -189,7 +189,7 @@ def config_show() -> list[tuple[str, str, str]]:
     for display_key, key_upper, default in (
         ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
         ("llm_provider", "LLM_PROVIDER", "claude"),
-        ("prompt_warn_kb", "PROMPT_WARN_KB", str(DEFAULT_PROMPT_WARN_KB)),
+        ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
         ("shipslog_dir", "DRYDOCK_SHIPSLOG_DIR", ""),
     ):
@@ -245,10 +245,10 @@ def config_set(key: str, value: str) -> Path:
             raise ConfigurationError(
                 f"Invalid llm_provider: {value!r}\n  Valid values: claude, codex"
             )
-    elif upper == "PROMPT_WARN_KB":
+    elif upper == "PROMPT_WARN_TOKENS":
         if not value.isdigit() or int(value) <= 0:
             raise ConfigurationError(
-                f"Invalid prompt_warn_kb: {value!r}\n  Expected a positive integer (kilobytes)."
+                f"Invalid prompt_warn_tokens: {value!r}\n  Expected a positive integer (tokens)."
             )
         stored_value = value
     elif upper == "QUARTERDECK_PORT":

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from drydock.build import (
-    PROMPT_WARN_KB,
+    PROMPT_WARN_TOKENS,
     StepRoots,
     assemble_step,
     assemble_steps,
@@ -113,9 +113,10 @@ class TestAssembleStep:
     def test_over_warn_flag(self, tmp_path):
         plan = _plan(tmp_path)
         roots = _roots(tmp_path)
-        # Inflate one implements file past the warn ceiling.
+        # Inflate one implements file past the token warn ceiling. Story points
+        # are ceil(bytes / 4), so exceeding PROMPT_WARN_TOKENS needs > 4x bytes.
         (roots.blueprint_dir / "DATABASE.md").write_text(
-            "x" * (PROMPT_WARN_KB * 1024 + 10), encoding="utf-8"
+            "x" * (PROMPT_WARN_TOKENS * 4 + 40), encoding="utf-8"
         )
         step = assemble_step(plan.by_id()["core"], roots)
         assert step.over_warn is True

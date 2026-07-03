@@ -22,7 +22,7 @@ Positive, testable outcomes. Drydock is delivered when every box is checked.
 
 - [ ] No deferred stubs remain; every Blueprint command is implemented and tested.
 - [ ] `drydock plan create <Blueprint> <Target>` generates and maintains the target
-  `MANIFEST.md`, including cost-reducing work grouping and the `PROMPT_WARN_KB` oversize warning.
+  `MANIFEST.md`, including cost-reducing work grouping and the `PROMPT_WARN_TOKENS` oversize warning.
 - [ ] `drydock build`, `build status`, and `build score` execute the frontier, report state, and
   produce `SCORECARD.md`.
 - [ ] The QuarterDeck serves evidence, questionnaires, and the sprint board; approve, revise,

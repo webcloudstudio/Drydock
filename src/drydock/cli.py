@@ -1325,7 +1325,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock_workspace",
             "drydock_model",
             "llm_provider",
-            "prompt_warn_kb",
+            "prompt_warn_tokens",
             "quarterdeck_port",
             "shipslog_dir",
         ],

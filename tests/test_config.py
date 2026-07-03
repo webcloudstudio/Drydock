@@ -16,7 +16,7 @@ from drydock.config import (
     get_build_directory,
     get_llm_provider,
     get_model,
-    get_prompt_warn_kb,
+    get_prompt_warn_tokens,
     get_quarterdeck_port,
     get_target_directory,
     get_workspace,
@@ -66,17 +66,17 @@ class TestConfigSet:
         with pytest.raises(ConfigurationError, match="Valid values"):
             config_set("llm_provider", "other")
 
-    def test_set_prompt_warn_kb(self, isolated_config):
-        config_set("prompt_warn_kb", "75")
-        assert get_prompt_warn_kb() == 75
+    def test_set_prompt_warn_tokens(self, isolated_config):
+        config_set("prompt_warn_tokens", "75000")
+        assert get_prompt_warn_tokens() == 75000
 
-    def test_set_invalid_prompt_warn_kb_raises(self, isolated_config):
+    def test_set_invalid_prompt_warn_tokens_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="positive integer"):
-            config_set("prompt_warn_kb", "fifty")
+            config_set("prompt_warn_tokens", "fifty")
 
-    def test_set_zero_prompt_warn_kb_raises(self, isolated_config):
+    def test_set_zero_prompt_warn_tokens_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="positive integer"):
-            config_set("prompt_warn_kb", "0")
+            config_set("prompt_warn_tokens", "0")
 
 
 class TestConfigShow:
@@ -96,7 +96,7 @@ class TestConfigShow:
         assert ws_source == "default"
         assert by_name["drydock_model"][0] == "sonnet"
         assert by_name["llm_provider"][0] == "claude"
-        assert by_name["prompt_warn_kb"][0] == "50"
+        assert by_name["prompt_warn_tokens"][0] == "50000"
         assert by_name["quarterdeck_port"][0] == "8080"
 
     def test_show_reports_source_after_set(self, tmp_workspace, isolated_config):
@@ -218,18 +218,18 @@ class TestGetters:
         monkeypatch.setenv("LLM_PROVIDER", "claude")
         assert get_llm_provider("codex") == "codex"
 
-    def test_prompt_warn_kb_defaults_to_50(self, isolated_config):
-        assert get_prompt_warn_kb() == 50
+    def test_prompt_warn_tokens_defaults_to_50000(self, isolated_config):
+        assert get_prompt_warn_tokens() == 50000
 
-    def test_prompt_warn_kb_environment_overrides_file(self, isolated_config, monkeypatch):
-        config_set("prompt_warn_kb", "75")
-        monkeypatch.setenv("PROMPT_WARN_KB", "100")
-        assert get_prompt_warn_kb() == 100
+    def test_prompt_warn_tokens_environment_overrides_file(self, isolated_config, monkeypatch):
+        config_set("prompt_warn_tokens", "75000")
+        monkeypatch.setenv("PROMPT_WARN_TOKENS", "100000")
+        assert get_prompt_warn_tokens() == 100000
 
-    def test_prompt_warn_kb_invalid_environment_raises(self, isolated_config, monkeypatch):
-        monkeypatch.setenv("PROMPT_WARN_KB", "-5")
+    def test_prompt_warn_tokens_invalid_environment_raises(self, isolated_config, monkeypatch):
+        monkeypatch.setenv("PROMPT_WARN_TOKENS", "-5")
         with pytest.raises(ConfigurationError, match="positive integer"):
-            get_prompt_warn_kb()
+            get_prompt_warn_tokens()
 
     def test_quarterdeck_port_defaults_to_8080(self, isolated_config):
         assert get_quarterdeck_port() == 8080

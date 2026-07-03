@@ -119,12 +119,13 @@ class TestRender:
     def test_over_warn_flagged(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
-        from drydock.build import PROMPT_WARN_KB
+        from drydock.build import PROMPT_WARN_TOKENS
 
         big = quarterdeck._step_roots().blueprint_dir / "ARCHITECTURE.md"
-        big.write_bytes(b"x" * (PROMPT_WARN_KB * 1024 + 10))
+        # Story points are ceil(bytes / 4); exceed the token ceiling with > 4x bytes.
+        big.write_bytes(b"x" * (PROMPT_WARN_TOKENS * 4 + 40))
         out = quarterdeck.render_compass(_ITEM)
-        assert "over" in out and "KB" in out
+        assert "over" in out and "SP" in out
 
     def test_no_manifest_prompts_plan(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
