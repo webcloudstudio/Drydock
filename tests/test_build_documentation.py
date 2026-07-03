@@ -204,6 +204,10 @@ Product body.
 
 First body.
 
+## Em Dash Section — With Separator
+
+Dash body.
+
 ## Second Section
 
 Second body.
@@ -218,6 +222,7 @@ Second body.
         tmp_path / "site" / "paper_sections" / "introduction.html",
         tmp_path / "site" / "paper_sections" / "product.html",
         tmp_path / "site" / "paper_sections" / "first-long-h2-section-title-that-can-wrap.html",
+        tmp_path / "site" / "paper_sections" / "em-dash-section-with-separator.html",
         tmp_path / "site" / "paper_sections" / "second-section.html",
     )
     landing = output.read_text(encoding="utf-8")
@@ -225,7 +230,9 @@ Second body.
     assert "Table of Contents" in landing
     assert "toc-index" not in landing
     assert "First Long H2 Section<br>Title That Can Wrap" in landing
+    assert "Em Dash Section<br>With Separator" in landing
     assert "First Long H2 Section - Title That Can Wrap" in landing
+    assert "Em Dash Section \\u2014 With Separator" in landing
     assert 'href="paper_sections/product.html"' in landing
     assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in landing
     assert '<article id="content"></article>' in landing

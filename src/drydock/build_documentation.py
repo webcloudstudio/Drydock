@@ -613,7 +613,7 @@ header, footer {
 
 
 def _render_toc_label(value: str) -> str:
-    parts = [part.strip() for part in value.split("-")]
+    parts = [part.strip() for part in re.split(r"\s+(?:-|–|—)\s+", value)]
     return "<br>".join(html.escape(part) for part in parts if part)
 
 
