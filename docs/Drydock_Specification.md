@@ -107,7 +107,7 @@ options:
   --debug     Show full traceback on unexpected errors.
 ```
 
-## SAIL Phase 1 — Set Up: Laying the Keel
+## SAIL Phase 1 — Set Up: Laying the Keelx
 
 Install Drydock, configure runtime defaults, and create a workspace for a Target build.
 Process environment variables override values stored in Drydock's user-scoped `.env`.
@@ -1296,7 +1296,7 @@ Explanation:
     --model <model> selects the runtime model
     trailing - tells Codex to read the fully assembled Drydock prompt from stdin
 
-## Blueprints — Typed Specification Contract
+## Blueprints - Typed Specification Contract
 
 ### Blueprint File Inventory
 
