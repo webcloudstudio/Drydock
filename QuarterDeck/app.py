@@ -823,12 +823,13 @@ def render_compass(item: dict[str, Any]) -> str:
         if block_id in buildable:
             return "<span class='cmp-buildable'>Ready To Build</span>"
         state = by_id[block_id].state if block_id in by_id else "pending"
-        if state == "closed/verified":
+        # A story is Built once it has been executed (checksum + commit); the
+        # DoD outcome then splits Built (passed) from Failed. There is no
+        # separate review lifecycle stage.
+        if state in ("closed/verified", "implemented"):
             return "<span class='bp-state bp-done'>Built</span>"
-        if state == "implemented":
-            return "<span class='bp-state bp-review'>review</span>"
         if state == "closed/failed":
-            return "<span class='bp-state bp-failed'>failed</span>"
+            return "<span class='bp-state bp-failed'>Failed</span>"
         return "<span class='bp-state bp-pending'>pending</span>"
 
     def step_controls(step) -> str:
@@ -891,9 +892,9 @@ def render_compass(item: dict[str, Any]) -> str:
         "<div class='cmp-hdr'>"
         "<div class='cmp-hdr-counts'>"
         f"<span class='cmp-count'>{status.steps_total} steps</span>"
-        f"<span class='cmp-count cmp-count-built'>{status.steps_verified} built</span>"
+        f"<span class='cmp-count cmp-count-built'>"
+        f"{status.steps_verified + status.steps_implemented} built</span>"
         f"<span class='cmp-count cmp-count-ready'>{ready_n} ready to build</span>"
-        f"<span class='cmp-count cmp-count-review'>{status.steps_implemented} review</span>"
         f"<span class='cmp-count cmp-count-pending'>{pending_n} pending</span>"
         f"<span class='cmp-count cmp-count-failed'>{status.steps_failed} failed</span>"
         f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp}</span></div>"
@@ -2122,9 +2123,8 @@ _STYLE = """
   .bp-check { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
               flex:none; font-size:15px; font-weight:900; color:#fff; background:#22c55e;
               border-radius:5px; box-shadow:0 1px 2px rgba(22,101,52,.3); }
-  .bp-state { font-size:11px; font-weight:700; padding:1px 8px; border-radius:10px; flex:none; margin-right:4px; }
+  .bp-state { font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; padding:1px 8px; border-radius:10px; flex:none; margin-right:4px; }
   .bp-done    { background:#dcfce7; color:#166534; border:1px solid #86efac; }
-  .bp-review  { background:#dbeafe; color:#1e3a8a; border:1px solid #93c5fd; }
   .bp-pending { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
   .bp-failed  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
   .bp-complete { color:#166534; font-weight:700; }
@@ -2134,7 +2134,6 @@ _STYLE = """
   .cmp-count { padding:2px 10px; border-radius:10px; background:#eef2f7; border:1px solid #dce3ec; white-space:nowrap; }
   .cmp-count-built { color:#166534; background:#dcfce7; border-color:#86efac; }
   .cmp-count-ready { color:#8a6d2f; background:#f6efe0; border-color:#d8c191; }
-  .cmp-count-review { color:#1e3a8a; background:#dbeafe; border-color:#93c5fd; }
   .cmp-count-pending { color:#64748b; background:#f1f5f9; border-color:#cbd5e1; }
   .cmp-count-failed { color:#991b1b; background:#fee2e2; border-color:#fca5a5; }
   .cmp-count-sp { font-weight:700; color:#334155; }
