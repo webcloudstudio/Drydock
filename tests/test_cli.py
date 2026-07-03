@@ -1121,7 +1121,9 @@ Published content.
         assert output.exists()
         assert section.exists()
         assert "Published HTML:" in out
-        assert 'href="paper_sections/body.html"' in output.read_text(encoding="utf-8")
+        assert 'location.replace("paper_sections/introduction.html")' in output.read_text(
+            encoding="utf-8"
+        )
         assert "# Body" in section.read_text(encoding="utf-8")
 
     def test_publish_requires_output(self, tmp_path):

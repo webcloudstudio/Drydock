@@ -695,6 +695,28 @@ def render_flat_landing_page(
     )
 
 
+def render_flat_redirect_page(metadata: dict[str, object], target_href: str) -> str:
+    """Render the flattened main output as a redirect to the default section."""
+    title = html.escape(str(metadata.get("title") or "Documentation"))
+    href = html.escape(target_href)
+    href_json = json.dumps(target_href)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0; url={href}">
+<link rel="canonical" href="{href}">
+<title>{title}</title>
+</head>
+<body>
+<p><a href="{href}">Open documentation</a></p>
+<script>location.replace({href_json});</script>
+</body>
+</html>
+"""
+
+
 def render_flat_section_page(
     metadata: dict[str, object],
     sections: tuple[FlattenedSection, ...],
@@ -736,16 +758,6 @@ def build_flattened_documentation(
     section_dir = output.parent / f"{output.stem}_sections"
     output.parent.mkdir(parents=True, exist_ok=True)
     section_dir.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        render_flat_landing_page(
-            metadata,
-            sections,
-            theme=selected_theme,
-            logo_data_uri=logo_data_uri,
-            section_href_prefix=f"{section_dir.name}/",
-        ),
-        encoding="utf-8",
-    )
     section_paths: list[Path] = []
     for section in sections:
         section_path = section_dir / f"{section.slug}.html"
@@ -760,6 +772,11 @@ def build_flattened_documentation(
             encoding="utf-8",
         )
         section_paths.append(section_path)
+    default_href = f"{section_dir.name}/{sections[0].slug}.html"
+    output.write_text(
+        render_flat_redirect_page(metadata, default_href),
+        encoding="utf-8",
+    )
     return output, tuple(section_paths)
 
 

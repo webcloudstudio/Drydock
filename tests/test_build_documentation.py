@@ -183,7 +183,7 @@ def test_split_publish_sections_ignores_headings_inside_fenced_code():
     assert "## Not A Section" in sections[0].markdown
 
 
-def test_build_flattened_documentation_writes_toc_and_section_pages(tmp_path: Path):
+def test_build_flattened_documentation_writes_redirect_and_section_pages(tmp_path: Path):
     source = tmp_path / "spec.md"
     output = tmp_path / "site" / "paper.html"
     source.write_text(
@@ -226,22 +226,18 @@ Second body.
         tmp_path / "site" / "paper_sections" / "second-section.html",
     )
     landing = output.read_text(encoding="utf-8")
-    assert 'body class="theme-slate"' in landing
-    assert "Table of Contents" in landing
-    assert "toc-index" not in landing
-    assert "First Long H2 Section<br>Title That Can Wrap" in landing
-    assert "Em Dash Section<br>With Separator" in landing
-    assert "First Long H2 Section - Title That Can Wrap" in landing
-    assert "Em Dash Section \\u2014 With Separator" in landing
-    assert 'href="paper_sections/product.html"' in landing
-    assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in landing
-    assert '<article id="content"></article>' in landing
-    assert "Copyright &copy; 2026 Ed Studio. All rights reserved." in landing
+    assert 'http-equiv="refresh" content="0; url=paper_sections/introduction.html"' in landing
+    assert 'location.replace("paper_sections/introduction.html")' in landing
+    assert "Table of Contents" not in landing
+    assert "flat-card" not in landing
+    assert '<article id="content"></article>' not in landing
     intro_page = section_paths[0].read_text(encoding="utf-8")
     assert "## Introduction" in intro_page
     assert "**Subtitle:** Example subtitle" in intro_page
     first_page = section_paths[2].read_text(encoding="utf-8")
     assert 'class="active" href="first-long-h2-section-title-that-can-wrap.html"' in first_page
+    assert "First Long H2 Section<br>Title That Can Wrap" in first_page
+    assert "Em Dash Section<br>With Separator" in first_page
     assert "## First Long H2 Section - Title That Can Wrap" in first_page
     assert "marked.parse(BODY)" in first_page
     assert 'font: 14px/1.5 "Segoe UI", Arial, sans-serif;' in first_page
@@ -274,7 +270,7 @@ def test_publish_document_flatten_returns_section_paths(tmp_path: Path):
         tmp_path / "site" / "paper_sections" / "introduction.html",
         tmp_path / "site" / "paper_sections" / "product.html",
     )
-    assert "Copyright 2026 Example Studio. All rights reserved." in output.read_text(
+    assert 'location.replace("paper_sections/introduction.html")' in output.read_text(
         encoding="utf-8"
     )
 
