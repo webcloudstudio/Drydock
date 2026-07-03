@@ -113,7 +113,7 @@ class TestRender:
         assert "Total SP " in out
         import re
 
-        total = int(re.search(r"Total SP (\d+)", out).group(1))
+        total = int(re.search(r"Total SP ([\d,]+)", out).group(1).replace(",", ""))
         assert total > 1100
 
     def test_missing_context_file_flagged(self, tmp_path, monkeypatch):
@@ -232,6 +232,19 @@ finding: acceptance failed ac-core: assertion returned non-zero""",
 )
 
 
+# `extra` depends on the still-unbuilt `core`, so `extra` is Blocked while
+# `core` is Ready To Build. Both share one feature group.
+_MANIFEST_BLOCKED = _MANIFEST_TWO_STORIES.replace(
+    """## story 4: Extra
+id: extra
+parent: feat-foundation""",
+    """## story 4: Extra
+id: extra
+parent: feat-foundation
+depends: core""",
+)
+
+
 class TestState:
     def test_header_rollup_present(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
@@ -276,6 +289,21 @@ class TestState:
         assert "assertion returned non-zero" in out
         # A failed frontier blocks the graph: nothing is buildable.
         assert "blocked by" in out
+
+    def test_blocked_step_names_its_blocker_and_colors_group(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_BLOCKED)
+        out = quarterdeck.render_compass(_ITEM)
+        # `extra` is Blocked; `core` is Ready To Build.
+        assert "bp-blocked" in out
+        assert "cmp-step-blocked" in out
+        assert "Ready To Build" in out
+        # The blocker is named as a story.
+        assert "Blocked by story <strong>Core</strong>" in out
+        # The group takes its worst story's color (blocked) and header label.
+        assert "cmp-group-blocked" in out
+        # Header rolls the blocked story into the blocked count.
+        assert "blocked</span>" in out
 
     def test_group_title_is_click_to_rename(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()

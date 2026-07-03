@@ -783,6 +783,30 @@ def _fmt_sp(tokens: int) -> str:
     return str(tokens)
 
 
+# Story lifecycle kinds and their shared presentation. ``built`` is the best
+# state; ``failed`` the worst. A group takes the color and label of its worst
+# story (highest severity).
+_KIND_CHIP = {
+    "ready": "<span class='cmp-buildable'>Ready To Build</span>",
+    "built": "<span class='bp-state bp-done'>Built</span>",
+    "failed": "<span class='bp-state bp-failed'>Failed</span>",
+    "blocked": "<span class='bp-state bp-blocked'>Blocked</span>",
+}
+_KIND_STEP_CLS = {
+    "built": " bp-step-done",
+    "ready": " cmp-step-buildable",
+    "blocked": " cmp-step-blocked",
+    "failed": " cmp-step-failed",
+}
+_KIND_GROUP_CLS = {
+    "built": " cmp-group-done",
+    "ready": " cmp-group-buildable",
+    "blocked": " cmp-group-blocked",
+    "failed": " cmp-group-failed",
+}
+_KIND_SEVERITY = {"built": 0, "ready": 1, "blocked": 2, "failed": 3}
+
+
 def render_compass(item: dict[str, Any]) -> str:
     """Render MANIFEST.md as the build compass: grouped, costed, editable steps.
 
@@ -818,19 +842,34 @@ def render_compass(item: dict[str, Any]) -> str:
         if block.block_type == "ac" and block.parent:
             acs_by_parent.setdefault(block.parent, []).append(block)
 
-    def _state_chip(block_id: str) -> str:
-        """The lifecycle chip for one step. ``Ready To Build`` wins over plain ``pending``."""
+    def _story_kind(block_id: str) -> str:
+        """Lifecycle kind for one story: ``built`` / ``ready`` / ``failed`` / ``blocked``.
+
+        A story is Built once it has been executed (checksum + commit); the DoD
+        outcome then splits Built (passed) from Failed. Every unbuilt story is
+        either Ready To Build (all ``depends:`` verified) or Blocked (a
+        dependency story is not yet built). There is no idle pending state and no
+        separate review stage.
+        """
         if block_id in buildable:
-            return "<span class='cmp-buildable'>Ready To Build</span>"
+            return "ready"
         state = by_id[block_id].state if block_id in by_id else "pending"
-        # A story is Built once it has been executed (checksum + commit); the
-        # DoD outcome then splits Built (passed) from Failed. There is no
-        # separate review lifecycle stage.
         if state in ("closed/verified", "implemented"):
-            return "<span class='bp-state bp-done'>Built</span>"
+            return "built"
         if state == "closed/failed":
-            return "<span class='bp-state bp-failed'>Failed</span>"
-        return "<span class='bp-state bp-pending'>pending</span>"
+            return "failed"
+        return "blocked"
+
+    def _blockers(block_id: str) -> list:
+        """The unbuilt ``depends:`` stories keeping this story Blocked."""
+        block = by_id.get(block_id)
+        if not block:
+            return []
+        return [
+            by_id[dep]
+            for dep in block.depends
+            if dep in by_id and by_id[dep].state != "closed/verified"
+        ]
 
     def step_controls(step) -> str:
         # Story order within a group is irrelevant (the group is built as a unit),
@@ -895,9 +934,9 @@ def render_compass(item: dict[str, Any]) -> str:
         f"<span class='cmp-count cmp-count-built'>"
         f"{status.steps_verified + status.steps_implemented} built</span>"
         f"<span class='cmp-count cmp-count-ready'>{ready_n} ready to build</span>"
-        f"<span class='cmp-count cmp-count-pending'>{pending_n} pending</span>"
+        f"<span class='cmp-count cmp-count-blocked'>{pending_n} blocked</span>"
         f"<span class='cmp-count cmp-count-failed'>{status.steps_failed} failed</span>"
-        f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp}</span></div>"
+        f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp:,}</span></div>"
         f"<div class='cmp-hdr-buildable'>Buildable now: <strong>{html.escape(buildable_txt)}</strong>"
         f"</div></div>"
     )
@@ -923,12 +962,9 @@ def render_compass(item: dict[str, Any]) -> str:
             if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
         )
         for step in group.steps:
+            kind = _story_kind(step.block_id)
             state = by_id[step.block_id].state if step.block_id in by_id else "pending"
-            is_done = state == "closed/verified"
-            done_cls = " bp-step-done" if is_done else ""
-            buildable_cls = (
-                " cmp-step-buildable" if step.block_id in buildable and not is_done else ""
-            )
+            step_cls = _KIND_STEP_CLS.get(kind, "")
             warn = (
                 f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
                 if step.over_warn
@@ -946,8 +982,10 @@ def render_compass(item: dict[str, Any]) -> str:
                 + "</li>"
                 for ac in acs_by_parent.get(step.block_id, [])
             )
+            # A failed story opens its Definition of Done so the failed check is visible.
+            dod_open = " open" if kind == "failed" else ""
             dod_html = (
-                "<details class='cmp-detail'>"
+                f"<details class='cmp-detail'{dod_open}>"
                 "<summary>definition of done</summary>"
                 f"<ul class='cmp-acs'>{dod_rows}</ul></details>"
                 if dod_rows
@@ -964,16 +1002,22 @@ def render_compass(item: dict[str, Any]) -> str:
                 if state == "closed/failed" and finding
                 else ""
             )
-            done_check = (
-                "<span class='bp-check' title='Built and verified'>&#10003;</span>"
-                if is_done
+            blockers = _blockers(step.block_id) if kind == "blocked" else []
+            blocked_html = (
+                "<div class='cmp-blocked-by'>Blocked by story "
+                + ", ".join(f"<strong>{html.escape(b.name)}</strong>" for b in blockers)
+                + "</div>"
+                if blockers
                 else ""
             )
+            done_check = (
+                "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
+            )
             step_cards.append(
-                f"<div class='cmp-step{done_cls}{buildable_cls}'>"
+                f"<div class='cmp-step{step_cls}'>"
                 "<div class='cmp-shead'>"
                 f"{done_check}"
-                f"{_state_chip(step.block_id)}"
+                f"{_KIND_CHIP[kind]}"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
                 f"<span class='cmp-gsp'>Story Points = {step.total_story_points:,} "
@@ -981,6 +1025,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 f"{step_controls(step)}"
                 "</div>"
                 f"{fail_html}"
+                f"{blocked_html}"
                 f"{_render_step_files(step)}"
                 f"{dod_html}"
                 "</div>"
@@ -988,11 +1033,15 @@ def render_compass(item: dict[str, Any]) -> str:
         gname = group.name
         if group.feature_id and group.feature_id in by_id:
             gname = by_id[group.feature_id].name
-        group_done = group_total > 0 and group_verified == group_total
+        # A group is colored and labeled by its worst (highest-severity) story.
+        kinds = [_story_kind(s.block_id) for s in group.steps]
+        worst = max(kinds, key=lambda k: _KIND_SEVERITY[k]) if kinds else "built"
+        gdone_cls = _KIND_GROUP_CLS.get(worst, "")
         gcheck = (
-            "<span class='bp-check' title='Group complete'>&#10003;</span>" if group_done else ""
+            "<span class='bp-check' title='Group complete'>&#10003;</span>"
+            if worst == "built"
+            else _KIND_CHIP[worst]
         )
-        gdone_cls = " cmp-group-done" if group_done else ""
         if group.feature_id:
             fid = html.escape(group.feature_id)
             fname = html.escape(gname, quote=True)
@@ -2118,14 +2167,22 @@ _STYLE = """
   }
   .bp-step-done { background:#f0fdf4; border-left:4px solid #22c55e; }
   .cmp-step-buildable { background:#f6efe0; border-left:4px solid #c8a96a; }
+  .cmp-step-blocked { background:#f4f5f7; border-left:4px solid #94a3b8; }
+  .cmp-step-failed { background:#fef2f2; border-left:4px solid #ef4444; }
   .cmp-group-done { border-color:#86efac; box-shadow:inset 3px 0 0 #22c55e; }
   .cmp-group-done > .cmp-ghead { background:#f0fdf4; }
+  .cmp-group-buildable { border-color:#d8c191; box-shadow:inset 3px 0 0 #c8a96a; }
+  .cmp-group-buildable > .cmp-ghead { background:#f6efe0; }
+  .cmp-group-blocked { border-color:#cbd5e1; box-shadow:inset 3px 0 0 #94a3b8; }
+  .cmp-group-blocked > .cmp-ghead { background:#f4f5f7; }
+  .cmp-group-failed { border-color:#fca5a5; box-shadow:inset 3px 0 0 #ef4444; }
+  .cmp-group-failed > .cmp-ghead { background:#fef2f2; }
   .bp-check { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
               flex:none; font-size:15px; font-weight:900; color:#fff; background:#22c55e;
               border-radius:5px; box-shadow:0 1px 2px rgba(22,101,52,.3); }
   .bp-state { font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; padding:1px 8px; border-radius:10px; flex:none; margin-right:4px; }
   .bp-done    { background:#dcfce7; color:#166534; border:1px solid #86efac; }
-  .bp-pending { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
+  .bp-blocked { background:#e2e8f0; color:#475569; border:1px solid #cbd5e1; }
   .bp-failed  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
   .bp-complete { color:#166534; font-weight:700; }
   .cmp-warn-bar { font-size:13px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 14px; border-radius:6px; margin:0 0 12px; display:inline-block; }
@@ -2134,12 +2191,13 @@ _STYLE = """
   .cmp-count { padding:2px 10px; border-radius:10px; background:#eef2f7; border:1px solid #dce3ec; white-space:nowrap; }
   .cmp-count-built { color:#166534; background:#dcfce7; border-color:#86efac; }
   .cmp-count-ready { color:#8a6d2f; background:#f6efe0; border-color:#d8c191; }
-  .cmp-count-pending { color:#64748b; background:#f1f5f9; border-color:#cbd5e1; }
+  .cmp-count-blocked { color:#475569; background:#e2e8f0; border-color:#cbd5e1; }
   .cmp-count-failed { color:#991b1b; background:#fee2e2; border-color:#fca5a5; }
   .cmp-count-sp { font-weight:700; color:#334155; }
   .cmp-hdr-buildable { font-size:13px; color:#475569; margin-top:3px; }
   .cmp-buildable { font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#166534; background:#dcfce7; border:1px solid #4ade80; padding:1px 9px; border-radius:10px; flex:none; margin-right:4px; }
   .cmp-fail-reason { font-size:12px; color:#991b1b; background:#fef2f2; border-left:3px solid #f87171; padding:5px 10px; margin:4px 0 6px; border-radius:0 4px 4px 0; }
+  .cmp-blocked-by { font-size:12px; color:#475569; background:#f1f5f9; border-left:3px solid #94a3b8; padding:5px 10px; margin:4px 0 6px; border-radius:0 4px 4px 0; }
   .cmp-gname-edit { cursor:pointer; }
   .cmp-gname-edit:hover { text-decoration:underline; text-decoration-style:dotted; }
   .tk-kind { font-size:10px; font-weight:700; letter-spacing:.04em; padding:1px 6px; border-radius:3px; margin-right:4px; text-transform:uppercase; }
