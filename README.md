@@ -204,7 +204,7 @@ drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
 drydock document <Target> [--model <model>] [--theme <theme>]
 
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf]
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf]
 drydock survey <Target> [--run] [--import <path>] [--command <name>] [--raw]
 drydock prompt review <component>
 drydock shipslog [--dir <path>] [--dry-run]

@@ -177,6 +177,19 @@ def _json_for_script(value: str) -> str:
     return json.dumps(value).replace("</", r"<\/")
 
 
+def _logo_data_uri(source: Path, metadata: dict[str, object]) -> str | None:
+    import base64
+
+    logo_field = str(metadata.get("logo", "")).strip()
+    if not logo_field:
+        return None
+    logo_path = source.parent / logo_field
+    if not logo_path.is_file():
+        return None
+    b64 = base64.b64encode(logo_path.read_bytes()).decode()
+    return f"data:image/png;base64,{b64}"
+
+
 def _render_inline_markup(text: str) -> str:
     """Render a small inline-markup subset safely for metadata fields."""
     escaped = html.escape(text)
@@ -389,18 +402,323 @@ mermaid.run({{ nodes: content.querySelectorAll(".mermaid") }});
 """
 
 
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "section"
+
+
+def split_h1_sections(body: str) -> tuple[FlattenedSection, ...]:
+    """Split Markdown into deterministic H1-backed publish sections."""
+    sections: list[tuple[str, str]] = []
+    preamble: list[str] = []
+    current_title: str | None = None
+    current_lines: list[str] = []
+    in_fence = False
+
+    for line in body.splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            in_fence = not in_fence
+        match = None if in_fence else re.match(r"^#\s+(.+?)\s*#*\s*$", line)
+        if match:
+            if current_title is None:
+                preamble_text = "\n".join(preamble).strip()
+                if preamble_text:
+                    sections.append(("Introduction", preamble_text))
+            else:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+            current_title = match.group(1).strip() or "Introduction"
+            current_lines = [line]
+            continue
+
+        if current_title is None:
+            preamble.append(line)
+        else:
+            current_lines.append(line)
+
+    if current_title is None:
+        sections.append(("Introduction", "\n".join(preamble).strip()))
+    else:
+        sections.append((current_title, "\n".join(current_lines).strip()))
+
+    used: dict[str, int] = {}
+    flattened: list[FlattenedSection] = []
+    for title, markdown in sections:
+        base = _slugify(title)
+        count = used.get(base, 0) + 1
+        used[base] = count
+        slug = base if count == 1 else f"{base}-{count}"
+        flattened.append(FlattenedSection(title=title, slug=slug, markdown=markdown))
+    return tuple(flattened)
+
+
+def _flat_theme_css() -> str:
+    return """
+:root {
+  --ink: #17212b; --muted: #5b6875; --paper: #f8fafb; --panel: #ffffff;
+  --navy: #123047; --green: #0a7650; --line: #d6dee4; --code: #eef3f5; --pre-bg: #f0f1f3;
+}
+body.theme-slate {
+  --ink: #26313d; --muted: #647180; --paper: #f4f6f8; --panel: #ffffff;
+  --navy: #17212b; --green: #2cb67d; --line: #d7dee5; --code: #e8edf2; --pre-bg: #202a34;
+}
+body.theme-paper {
+  --ink: #2e312d; --muted: #6a6f68; --paper: #fbfbf8; --panel: #ffffff;
+  --navy: #2f3430; --green: #427a5b; --line: #dfe3dd; --code: #eceee9; --pre-bg: #f0f2ed;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink);
+  font: 15px/1.55 "Segoe UI", Arial, sans-serif; }
+.shell { min-height: 100vh; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+.side { background: var(--navy); color: white; padding: 28px 24px; border-right: 6px solid var(--green); }
+.brand { margin-bottom: 28px; }
+.brand img { display: block; max-width: 220px; height: auto; margin-bottom: 14px; }
+.brand-title { font-size: 1.35rem; font-weight: 800; line-height: 1.1; }
+.brand-subtitle { color: #c8d6df; margin-top: 8px; font-size: .92rem; }
+.toc-title { color: #91e1bd; font-size: .76rem; font-weight: 800; letter-spacing: .14em;
+  text-transform: uppercase; margin-bottom: 10px; }
+.toc { display: grid; gap: 8px; }
+.toc a { color: white; text-decoration: none; display: block; border: 1px solid rgba(255,255,255,.18);
+  border-left: 4px solid rgba(145,225,189,.7); padding: 9px 10px; line-height: 1.18;
+  overflow-wrap: anywhere; background: rgba(255,255,255,.06); }
+.toc a:hover, .toc a.active { background: rgba(145,225,189,.16); border-left-color: #91e1bd; }
+.toc-index { color: #91e1bd; font-size: .78rem; font-weight: 800; display: block; margin-bottom: 2px; }
+.content { padding: 38px min(7vw, 78px) 70px; }
+.mast { background: var(--panel); border-top: 5px solid var(--green); border-bottom: 1px solid var(--line);
+  padding: 24px 30px; margin-bottom: 22px; }
+.eyebrow { color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.05; margin: 7px 0 8px; color: var(--navy); }
+.subtitle, .meta { color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; font-size: .82rem; }
+.cards { display: grid; gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--green);
+  color: var(--ink); display: block; padding: 16px 18px; text-decoration: none; }
+.card strong { color: var(--navy); display: block; font-size: 1.1rem; line-height: 1.2; }
+#content { background: var(--panel); border: 1px solid var(--line); padding: 28px 32px; }
+#content h1 { font-size: clamp(1.9rem, 3.2vw, 2.8rem); border-bottom: 3px solid var(--green); padding-bottom: 8px; }
+#content h2 { border-bottom: 2px solid var(--green); padding-bottom: 4px; margin-top: 28px; }
+#content h3 { color: var(--green); margin-top: 18px; margin-bottom: 6px; }
+#content table { border-collapse: collapse; display: block; overflow-x: auto; width: 100%; margin: 8px 0; }
+#content th, #content td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
+#content th { background: var(--pre-bg); color: var(--ink); font-size: 13px; }
+#content code { background: var(--code); border-radius: 3px; padding: 1px 4px; font-size: 13px; }
+#content pre { background: var(--pre-bg); color: var(--ink); overflow-x: auto;
+  padding: 10px 14px; margin: 6px 0 12px; border-left: 3px solid var(--line); font-size: 13px; }
+#content pre code { background: transparent; padding: 0; font-size: inherit; }
+#content blockquote { border-left: 4px solid var(--green); background: var(--paper);
+  color: var(--muted); font-style: italic; margin: 14px 0 14px 18px; padding: 10px 18px; }
+.diagram { background: white; border: 1px solid var(--line); overflow-x: auto; padding: 14px; margin: 8px 0; }
+footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+@media (max-width: 780px) {
+  .shell { display: block; }
+  .side { border-right: 0; border-bottom: 6px solid var(--green); }
+  .content { padding: 20px 14px 42px; }
+  #content, .mast { padding: 18px; }
+}
+"""
+
+
+def _flat_sidebar(
+    metadata: dict[str, object],
+    sections: tuple[FlattenedSection, ...],
+    *,
+    logo_data_uri: str | None,
+    current_slug: str | None,
+    href_prefix: str,
+) -> str:
+    title = html.escape(str(metadata.get("title", "Drydock")))
+    subtitle = html.escape(str(metadata.get("subtitle", "")))
+    logo_html = (
+        f'<img src="{logo_data_uri}" alt="{title} logo">'
+        if logo_data_uri
+        else f'<div class="brand-title">{title}</div>'
+    )
+    links = []
+    for index, section in enumerate(sections, start=1):
+        active = ' class="active"' if section.slug == current_slug else ""
+        href = f"{href_prefix}{section.slug}.html"
+        links.append(
+            f'<a{active} href="{html.escape(href)}">'
+            f'<span class="toc-index">{index:02d}</span>{html.escape(section.title)}</a>'
+        )
+    return "\n".join([
+        '<aside class="side">',
+        '<div class="brand">',
+        logo_html,
+        f'<div class="brand-subtitle">{subtitle}</div>',
+        "</div>",
+        '<div class="toc-title">Table of Contents</div>',
+        f'<nav class="toc">{"".join(links)}</nav>',
+        "</aside>",
+    ])
+
+
+def _flat_script(markdown: str) -> str:
+    body_json = _json_for_script(markdown)
+    return f"""
+<script>
+const BODY = {body_json};
+marked.setOptions({{ gfm: true, breaks: false }});
+const content = document.getElementById("content");
+content.innerHTML = marked.parse(BODY);
+content.querySelectorAll("pre > code.language-mermaid").forEach((code) => {{
+  const wrapper = document.createElement("div");
+  wrapper.className = "diagram";
+  const diagram = document.createElement("div");
+  diagram.className = "mermaid";
+  diagram.textContent = code.textContent;
+  wrapper.appendChild(diagram);
+  code.parentNode.replaceWith(wrapper);
+}});
+mermaid.initialize({{ startOnLoad: false, theme: "neutral" }});
+mermaid.run({{ nodes: content.querySelectorAll(".mermaid") }});
+</script>
+"""
+
+
+def render_flat_landing_page(
+    metadata: dict[str, object],
+    sections: tuple[FlattenedSection, ...],
+    *,
+    theme: str | None = None,
+    logo_data_uri: str | None = None,
+    section_href_prefix: str,
+) -> str:
+    selected_theme = _resolve_theme(metadata, theme)
+    title = html.escape(str(metadata.get("title", "Drydock")))
+    eyebrow = html.escape(str(metadata.get("eyebrow", "")))
+    subtitle = html.escape(str(metadata.get("subtitle", "")))
+    author = html.escape(str(metadata.get("author", "")))
+    studio = html.escape(str(metadata.get("studio", "")))
+    year = html.escape(str(metadata.get("year", "")))
+    cards = "\n".join(
+        f'<a class="card" href="{html.escape(section_href_prefix + section.slug + ".html")}">'
+        f"<strong>{html.escape(section.title)}</strong></a>"
+        for section in sections
+    )
+    sidebar = _flat_sidebar(
+        metadata,
+        sections,
+        logo_data_uri=logo_data_uri,
+        current_slug=None,
+        href_prefix=section_href_prefix,
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>{_flat_theme_css()}</style>
+</head>
+<body class="theme-{selected_theme}">
+<div class="shell">
+{sidebar}
+<main class="content">
+<section class="mast">
+  <div class="eyebrow">{eyebrow}</div>
+  <h1>{title}</h1>
+  <div class="subtitle">{subtitle}</div>
+  <div class="meta"><span>{author}</span><span>{studio}</span><span>{year}</span></div>
+</section>
+<section class="cards">{cards}</section>
+<footer>{author} · {studio} · {year}</footer>
+</main>
+</div>
+</body>
+</html>
+"""
+
+
+def render_flat_section_page(
+    metadata: dict[str, object],
+    sections: tuple[FlattenedSection, ...],
+    section: FlattenedSection,
+    *,
+    theme: str | None = None,
+    logo_data_uri: str | None = None,
+) -> str:
+    selected_theme = _resolve_theme(metadata, theme)
+    doc_title = html.escape(str(metadata.get("title", "Drydock")))
+    section_title = html.escape(section.title)
+    author = html.escape(str(metadata.get("author", "")))
+    studio = html.escape(str(metadata.get("studio", "")))
+    year = html.escape(str(metadata.get("year", "")))
+    sidebar = _flat_sidebar(
+        metadata,
+        sections,
+        logo_data_uri=logo_data_uri,
+        current_slug=section.slug,
+        href_prefix="",
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{section_title} - {doc_title}</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>{_flat_theme_css()}</style>
+</head>
+<body class="theme-{selected_theme}">
+<div class="shell">
+{sidebar}
+<main class="content">
+<article id="content"></article>
+<footer>{author} · {studio} · {year}</footer>
+</main>
+</div>
+{_flat_script(section.markdown)}
+</body>
+</html>
+"""
+
+
+def build_flattened_documentation(
+    source: Path,
+    output: Path,
+    *,
+    theme: str | None = None,
+) -> tuple[Path, tuple[Path, ...]]:
+    """Read Markdown and write a landing page plus one page per H1 section."""
+    metadata, body = parse_source(source.read_text(encoding="utf-8"))
+    selected_theme = _resolve_theme(metadata, theme)
+    sections = split_h1_sections(body)
+    logo_data_uri = _logo_data_uri(source, metadata)
+    section_dir = output.parent / f"{output.stem}_sections"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    section_dir.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        render_flat_landing_page(
+            metadata,
+            sections,
+            theme=selected_theme,
+            logo_data_uri=logo_data_uri,
+            section_href_prefix=f"{section_dir.name}/",
+        ),
+        encoding="utf-8",
+    )
+    section_paths: list[Path] = []
+    for section in sections:
+        section_path = section_dir / f"{section.slug}.html"
+        section_path.write_text(
+            render_flat_section_page(
+                metadata,
+                sections,
+                section,
+                theme=selected_theme,
+                logo_data_uri=logo_data_uri,
+            ),
+            encoding="utf-8",
+        )
+        section_paths.append(section_path)
+    return output, tuple(section_paths)
+
+
 def build_documentation(source: Path, output: Path, *, theme: str | None = None) -> Path:
     """Read a conformed Blueprint and write its assembled documentation page."""
-    import base64
-
     metadata, body = parse_source(source.read_text(encoding="utf-8"))
-    logo_data_uri: str | None = None
-    logo_field = str(metadata.get("logo", "")).strip()
-    if logo_field:
-        logo_path = source.parent / logo_field
-        if logo_path.is_file():
-            b64 = base64.b64encode(logo_path.read_bytes()).decode()
-            logo_data_uri = f"data:image/png;base64,{b64}"
+    logo_data_uri = _logo_data_uri(source, metadata)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         render_page(metadata, body, theme=theme, logo_data_uri=logo_data_uri),
@@ -438,19 +756,33 @@ def publish_document(
     output: Path,
     *,
     theme: str | None = None,
+    flatten: bool = False,
     pdf: bool = False,
     pdf_output: Path | None = None,
     pdf_renderer: PdfRenderer | None = None,
 ) -> PublishedDocument:
     metadata, _body = parse_source(source.read_text(encoding="utf-8"))
     selected_theme = _resolve_theme(metadata, theme)
-    html_path = build_documentation(source, output, theme=selected_theme)
+    section_paths: tuple[Path, ...] = ()
+    if flatten:
+        html_path, section_paths = build_flattened_documentation(
+            source,
+            output,
+            theme=selected_theme,
+        )
+    else:
+        html_path = build_documentation(source, output, theme=selected_theme)
     rendered_pdf: Path | None = None
     if pdf:
         rendered_pdf = pdf_output or default_pdf_path(html_path)
         renderer = pdf_renderer or render_pdf_with_playwright
         rendered_pdf = renderer(html_path, rendered_pdf)
-    return PublishedDocument(html_path=html_path, pdf_path=rendered_pdf, theme=selected_theme)
+    return PublishedDocument(
+        html_path=html_path,
+        pdf_path=rendered_pdf,
+        theme=selected_theme,
+        section_paths=section_paths,
+    )
 
 
 def _repository_root() -> Path:
@@ -466,6 +798,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", type=Path, help="conformed Markdown source")
     parser.add_argument("--output", type=Path, help="HTML output path")
     parser.add_argument("--theme", choices=SUPPORTED_THEMES, default=None, help="publish theme")
+    parser.add_argument(
+        "--flatten", action="store_true", help="publish H1 sections as separate pages"
+    )
     parser.add_argument("--pdf", action="store_true", help="also render a PDF")
     parser.add_argument("--pdf-output", type=Path, help="PDF output path")
     args = parser.parse_args(argv)
@@ -477,6 +812,7 @@ def main(argv: list[str] | None = None) -> int:
         source,
         output,
         theme=args.theme,
+        flatten=args.flatten,
         pdf=args.pdf,
         pdf_output=args.pdf_output,
     )

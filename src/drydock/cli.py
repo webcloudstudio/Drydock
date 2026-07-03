@@ -713,6 +713,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
             args.Source,
             args.output,
             theme=args.theme,
+            flatten=args.flatten,
             pdf=args.pdf,
             pdf_output=args.pdf_output,
         )
@@ -1398,7 +1399,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Render frontmatter Markdown into publishable HTML.",
         description=(
             "drydock publish <Source.md> --output <Output.html>\n"
-            "drydock publish <Source.md> --output <Output.html> --pdf"
+            "drydock publish <Source.md> --output <Output.html> [--flatten] [--pdf]"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1416,6 +1417,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<theme>",
         help="Override the frontmatter theme.",
+    )
+    p_publish.add_argument(
+        "--flatten",
+        action="store_true",
+        help="Publish H1 sections as separate HTML pages with table-of-contents navigation.",
     )
     p_publish.add_argument(
         "--pdf",

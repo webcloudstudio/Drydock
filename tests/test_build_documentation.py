@@ -10,11 +10,13 @@ from drydock.build_documentation import (
     DEFAULT_SPECIFICATION,
     _default_source,
     build_documentation,
+    build_flattened_documentation,
     default_pdf_path,
     main,
     parse_source,
     publish_document,
     render_page,
+    split_h1_sections,
 )
 
 SOURCE = """---
@@ -146,6 +148,88 @@ def test_publish_document_writes_html_with_theme(tmp_path: Path):
     assert result.pdf_path is None
     assert result.theme == "paper"
     assert 'body class="theme-paper"' in output.read_text(encoding="utf-8")
+
+
+def test_split_h1_sections_uses_introduction_for_leading_content():
+    sections = split_h1_sections(
+        "Lead paragraph.\n\n# Long First Section\nBody\n\n# Long First Section\nMore"
+    )
+
+    assert [section.title for section in sections] == [
+        "Introduction",
+        "Long First Section",
+        "Long First Section",
+    ]
+    assert [section.slug for section in sections] == [
+        "introduction",
+        "long-first-section",
+        "long-first-section-2",
+    ]
+    assert sections[0].markdown == "Lead paragraph."
+
+
+def test_split_h1_sections_ignores_headings_inside_fenced_code():
+    sections = split_h1_sections("# Real\n\n```md\n# Not A Section\n```\n\nBody")
+
+    assert [section.title for section in sections] == ["Real"]
+    assert "# Not A Section" in sections[0].markdown
+
+
+def test_build_flattened_documentation_writes_toc_and_section_pages(tmp_path: Path):
+    source = tmp_path / "spec.md"
+    output = tmp_path / "site" / "paper.html"
+    source.write_text(
+        """---
+title: Example
+eyebrow: Blueprint
+subtitle: Example subtitle
+author: Ed
+studio: Studio
+year: 2026
+---
+
+# Product
+
+Product body.
+
+# First Long H1 Section Title That Can Wrap
+
+First body.
+
+# Second Section
+
+Second body.
+""",
+        encoding="utf-8",
+    )
+
+    html_path, section_paths = build_flattened_documentation(source, output, theme="slate")
+
+    assert html_path == output
+    assert section_paths == (
+        tmp_path / "site" / "paper_sections" / "product.html",
+        tmp_path / "site" / "paper_sections" / "first-long-h1-section-title-that-can-wrap.html",
+        tmp_path / "site" / "paper_sections" / "second-section.html",
+    )
+    landing = output.read_text(encoding="utf-8")
+    assert 'body class="theme-slate"' in landing
+    assert "Table of Contents" in landing
+    assert 'href="paper_sections/product.html"' in landing
+    first_page = section_paths[1].read_text(encoding="utf-8")
+    assert 'class="active" href="first-long-h1-section-title-that-can-wrap.html"' in first_page
+    assert "# First Long H1 Section Title That Can Wrap" in first_page
+    assert "marked.parse(BODY)" in first_page
+
+
+def test_publish_document_flatten_returns_section_paths(tmp_path: Path):
+    source = tmp_path / "spec.md"
+    output = tmp_path / "site" / "paper.html"
+    source.write_text(SOURCE, encoding="utf-8")
+
+    result = publish_document(source, output, flatten=True)
+
+    assert result.html_path == output
+    assert result.section_paths == (tmp_path / "site" / "paper_sections" / "introduction.html",)
 
 
 def test_publish_document_writes_pdf_with_injected_renderer(tmp_path: Path):

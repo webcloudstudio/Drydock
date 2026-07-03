@@ -381,7 +381,7 @@ drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
 drydock document <Target> [--model <model>] [--theme <theme>]
 
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf] [--pdf-output <Output.pdf>]
 
 drydock validate <Target> [--verbose]
 
@@ -650,10 +650,12 @@ Drydock publish enables you to convert arbitrary markdown into html or pdfs.  Us
 artifacts.  Your markdown should have appropriate frontmatter.
 
 ```text
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf] [--pdf-output <Output.pdf>]
 ```
 
-`drydock publish` deterministically renders a frontmatter Markdown document into publishable HTML.  It uses document frontmatter for title, author, studio, cover text, theme, and other formatting.  It does not call an LLM. Supported themes are `sail`, `slate`, and `paper`.
+`drydock publish` deterministically renders a frontmatter Markdown document into publishable HTML. It uses document frontmatter for title, author, studio, cover text, theme, and other formatting. It does not call an LLM. Supported themes are `sail`, `slate`, and `paper`.
+
+`--flatten` renders the output as a deterministic multi-page HTML site. The requested output path is the landing page. Drydock writes one page for each Markdown H1 section under an output-specific section subdirectory. Content before the first H1 becomes an `Introduction` section. A document with no H1 sections becomes a single `Introduction` section. The landing page and section pages include a logo/table-of-contents navigation column whose links open the generated section pages.
 
 `--pdf` also renders a PDF from the generated HTML using the local browser renderer.
 

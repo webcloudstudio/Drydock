@@ -1109,6 +1109,21 @@ Published content.
         assert "Theme: slate" in out
         assert 'body class="theme-slate"' in output.read_text(encoding="utf-8")
 
+    def test_publish_flatten_writes_section_pages(self, tmp_path):
+        source = tmp_path / "paper.md"
+        output = tmp_path / "site" / "paper.html"
+        source.write_text(self.SOURCE.replace("## Body", "# Body"), encoding="utf-8")
+
+        rc, out, err = run_cli("publish", str(source), "--output", str(output), "--flatten")
+
+        section = tmp_path / "site" / "paper_sections" / "body.html"
+        assert rc == 0
+        assert output.exists()
+        assert section.exists()
+        assert "Published HTML:" in out
+        assert 'href="paper_sections/body.html"' in output.read_text(encoding="utf-8")
+        assert "# Body" in section.read_text(encoding="utf-8")
+
     def test_publish_requires_output(self, tmp_path):
         source = tmp_path / "paper.md"
         source.write_text(self.SOURCE, encoding="utf-8")
