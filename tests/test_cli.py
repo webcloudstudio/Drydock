@@ -1112,7 +1112,7 @@ Published content.
     def test_publish_flatten_writes_section_pages(self, tmp_path):
         source = tmp_path / "paper.md"
         output = tmp_path / "site" / "paper.html"
-        source.write_text(self.SOURCE.replace("## Body", "# Body"), encoding="utf-8")
+        source.write_text(self.SOURCE, encoding="utf-8")
 
         rc, out, err = run_cli("publish", str(source), "--output", str(output), "--flatten")
 

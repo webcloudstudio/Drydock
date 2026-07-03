@@ -16,7 +16,7 @@ from drydock.build_documentation import (
     parse_source,
     publish_document,
     render_page,
-    split_h1_sections,
+    split_publish_sections,
 )
 
 SOURCE = """---
@@ -150,9 +150,9 @@ def test_publish_document_writes_html_with_theme(tmp_path: Path):
     assert 'body class="theme-paper"' in output.read_text(encoding="utf-8")
 
 
-def test_split_h1_sections_uses_introduction_for_leading_content():
-    sections = split_h1_sections(
-        "Lead paragraph.\n\n# Long First Section\nBody\n\n# Long First Section\nMore"
+def test_split_publish_sections_uses_introduction_for_leading_content():
+    sections = split_publish_sections(
+        "Lead paragraph.\n\n## Long First Section\nBody\n\n## Long First Section\nMore"
     )
 
     assert [section.title for section in sections] == [
@@ -168,11 +168,18 @@ def test_split_h1_sections_uses_introduction_for_leading_content():
     assert sections[0].markdown == "Lead paragraph."
 
 
-def test_split_h1_sections_ignores_headings_inside_fenced_code():
-    sections = split_h1_sections("# Real\n\n```md\n# Not A Section\n```\n\nBody")
+def test_split_publish_sections_accepts_h1_and_h2_boundaries():
+    sections = split_publish_sections("# H1\nBody\n\n## H2\nBody")
+
+    assert [section.title for section in sections] == ["H1", "H2"]
+    assert [section.slug for section in sections] == ["h1", "h2"]
+
+
+def test_split_publish_sections_ignores_headings_inside_fenced_code():
+    sections = split_publish_sections("## Real\n\n```md\n## Not A Section\n```\n\nBody")
 
     assert [section.title for section in sections] == ["Real"]
-    assert "# Not A Section" in sections[0].markdown
+    assert "## Not A Section" in sections[0].markdown
 
 
 def test_build_flattened_documentation_writes_toc_and_section_pages(tmp_path: Path):
@@ -188,15 +195,15 @@ studio: Studio
 year: 2026
 ---
 
-# Product
+## Product
 
 Product body.
 
-# First Long H1 Section Title That Can Wrap
+## First Long H2 Section Title That Can Wrap
 
 First body.
 
-# Second Section
+## Second Section
 
 Second body.
 """,
@@ -208,7 +215,7 @@ Second body.
     assert html_path == output
     assert section_paths == (
         tmp_path / "site" / "paper_sections" / "product.html",
-        tmp_path / "site" / "paper_sections" / "first-long-h1-section-title-that-can-wrap.html",
+        tmp_path / "site" / "paper_sections" / "first-long-h2-section-title-that-can-wrap.html",
         tmp_path / "site" / "paper_sections" / "second-section.html",
     )
     landing = output.read_text(encoding="utf-8")
@@ -216,8 +223,8 @@ Second body.
     assert "Table of Contents" in landing
     assert 'href="paper_sections/product.html"' in landing
     first_page = section_paths[1].read_text(encoding="utf-8")
-    assert 'class="active" href="first-long-h1-section-title-that-can-wrap.html"' in first_page
-    assert "# First Long H1 Section Title That Can Wrap" in first_page
+    assert 'class="active" href="first-long-h2-section-title-that-can-wrap.html"' in first_page
+    assert "## First Long H2 Section Title That Can Wrap" in first_page
     assert "marked.parse(BODY)" in first_page
 
 
@@ -229,7 +236,7 @@ def test_publish_document_flatten_returns_section_paths(tmp_path: Path):
     result = publish_document(source, output, flatten=True)
 
     assert result.html_path == output
-    assert result.section_paths == (tmp_path / "site" / "paper_sections" / "introduction.html",)
+    assert result.section_paths == (tmp_path / "site" / "paper_sections" / "product.html",)
 
 
 def test_publish_document_writes_pdf_with_injected_renderer(tmp_path: Path):

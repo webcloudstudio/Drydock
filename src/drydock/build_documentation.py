@@ -407,8 +407,8 @@ def _slugify(value: str) -> str:
     return slug or "section"
 
 
-def split_h1_sections(body: str) -> tuple[FlattenedSection, ...]:
-    """Split Markdown into deterministic H1-backed publish sections."""
+def split_publish_sections(body: str) -> tuple[FlattenedSection, ...]:
+    """Split Markdown into deterministic H1/H2-backed publish sections."""
     sections: list[tuple[str, str]] = []
     preamble: list[str] = []
     current_title: str | None = None
@@ -418,7 +418,7 @@ def split_h1_sections(body: str) -> tuple[FlattenedSection, ...]:
     for line in body.splitlines():
         if re.match(r"^\s*(```|~~~)", line):
             in_fence = not in_fence
-        match = None if in_fence else re.match(r"^#\s+(.+?)\s*#*\s*$", line)
+        match = None if in_fence else re.match(r"^#{1,2}\s+(.+?)\s*#*\s*$", line)
         if match:
             if current_title is None:
                 preamble_text = "\n".join(preamble).strip()
@@ -680,10 +680,10 @@ def build_flattened_documentation(
     *,
     theme: str | None = None,
 ) -> tuple[Path, tuple[Path, ...]]:
-    """Read Markdown and write a landing page plus one page per H1 section."""
+    """Read Markdown and write a landing page plus one page per H1/H2 section."""
     metadata, body = parse_source(source.read_text(encoding="utf-8"))
     selected_theme = _resolve_theme(metadata, theme)
-    sections = split_h1_sections(body)
+    sections = split_publish_sections(body)
     logo_data_uri = _logo_data_uri(source, metadata)
     section_dir = output.parent / f"{output.stem}_sections"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -799,7 +799,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, help="HTML output path")
     parser.add_argument("--theme", choices=SUPPORTED_THEMES, default=None, help="publish theme")
     parser.add_argument(
-        "--flatten", action="store_true", help="publish H1 sections as separate pages"
+        "--flatten", action="store_true", help="publish H1/H2 sections as separate pages"
     )
     parser.add_argument("--pdf", action="store_true", help="also render a PDF")
     parser.add_argument("--pdf-output", type=Path, help="PDF output path")

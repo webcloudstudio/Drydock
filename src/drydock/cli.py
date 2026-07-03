@@ -1421,7 +1421,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_publish.add_argument(
         "--flatten",
         action="store_true",
-        help="Publish H1 sections as separate HTML pages with table-of-contents navigation.",
+        help="Publish H1/H2 sections as separate HTML pages with table-of-contents navigation.",
     )
     p_publish.add_argument(
         "--pdf",
