@@ -885,14 +885,18 @@ def render_compass(item: dict[str, Any]) -> str:
     else:
         buildable_txt = "(none)"
 
+    ready_n = len(status.buildable_ids)
+    pending_n = status.steps_pending - ready_n
     header = (
         "<div class='cmp-hdr'>"
-        f"<div class='cmp-hdr-title'>Build Compass — {html.escape(status.project)}"
-        f"<span class='cmp-plan-state'>Plan: {html.escape(plan.state)}</span></div>"
         "<div class='cmp-hdr-counts'>"
-        f"{status.steps_total} steps · {status.steps_verified} verified · "
-        f"{status.steps_implemented} review · {status.steps_pending} pending · "
-        f"{status.steps_failed} failed · Total SP {total_sp}</div>"
+        f"<span class='cmp-count'>{status.steps_total} steps</span>"
+        f"<span class='cmp-count cmp-count-built'>{status.steps_verified} built</span>"
+        f"<span class='cmp-count cmp-count-ready'>{ready_n} ready to build</span>"
+        f"<span class='cmp-count cmp-count-review'>{status.steps_implemented} review</span>"
+        f"<span class='cmp-count cmp-count-pending'>{pending_n} pending</span>"
+        f"<span class='cmp-count cmp-count-failed'>{status.steps_failed} failed</span>"
+        f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp}</span></div>"
         f"<div class='cmp-hdr-buildable'>Buildable now: <strong>{html.escape(buildable_txt)}</strong>"
         f"</div></div>"
     )
@@ -902,9 +906,10 @@ def render_compass(item: dict[str, Any]) -> str:
         "<div class='cmp-toolbar'>"
         f"<span class='cmp-total'>{len(steps)} steps{warn_html}</span>"
         f"<button class='cmp-normalize' title='Reorder groups into canonical "
-        f"layer-band order' onclick=\"compassNormalize('{item_id}')\">Normalize order</button>"
+        f"layer-band order' onclick=\"compassNormalize('{item_id}')\">"
+        "<span class='cmp-btn-ico'>⇅</span> Normalize order</button>"
         f"<button class='cmp-newgroup' onclick=\"compassAddFeature('{item_id}')\">"
-        "+ New group</button>"
+        "<span class='cmp-btn-ico'>+</span> New group</button>"
         "</div>",
     ]
 
@@ -920,6 +925,9 @@ def render_compass(item: dict[str, Any]) -> str:
             state = by_id[step.block_id].state if step.block_id in by_id else "pending"
             is_done = state == "closed/verified"
             done_cls = " bp-step-done" if is_done else ""
+            buildable_cls = (
+                " cmp-step-buildable" if step.block_id in buildable and not is_done else ""
+            )
             warn = (
                 f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
                 if step.over_warn
@@ -938,8 +946,9 @@ def render_compass(item: dict[str, Any]) -> str:
                 for ac in acs_by_parent.get(step.block_id, [])
             )
             dod_html = (
-                "<div class='cmp-dod'><div class='cmp-dod-title'>Definition of Done</div>"
-                f"<ul class='cmp-acs'>{dod_rows}</ul></div>"
+                "<details class='cmp-detail cmp-dod'>"
+                "<summary>Definition of Done</summary>"
+                f"<ul class='cmp-acs'>{dod_rows}</ul></details>"
                 if dod_rows
                 else ""
             )
@@ -960,7 +969,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 else ""
             )
             step_cards.append(
-                f"<div class='cmp-step{done_cls}'>"
+                f"<div class='cmp-step{done_cls}{buildable_cls}'>"
                 "<div class='cmp-shead'>"
                 f"{done_check}"
                 f"{_state_chip(step.block_id)}"
@@ -2092,12 +2101,14 @@ _STYLE = """
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
   .cmp-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 10px; }
-  .cmp-newgroup { font-size:13px; font-weight:700; padding:6px 14px; border:1px solid #2563eb; background:#2563eb; color:#fff; border-radius:6px; cursor:pointer; }
-  .cmp-newgroup:hover { background:#1d4ed8; border-color:#1d4ed8; }
-  .cmp-normalize { font-size:13px; font-weight:700; padding:6px 14px; border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:6px; cursor:pointer; margin-left:auto; }
-  .cmp-normalize:hover { background:#eef2f7; }
+  .cmp-newgroup { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #2563eb; background:#2563eb; color:#fff; border-radius:7px; cursor:pointer; box-shadow:0 1px 2px rgba(37,99,235,.25); transition:background .12s, box-shadow .12s; }
+  .cmp-newgroup:hover { background:#1d4ed8; border-color:#1d4ed8; box-shadow:0 2px 5px rgba(37,99,235,.32); }
+  .cmp-normalize { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:7px; cursor:pointer; margin-left:auto; box-shadow:0 1px 2px rgba(15,23,42,.06); transition:background .12s, border-color .12s; }
+  .cmp-normalize:hover { background:#f1f5f9; border-color:#94a3b8; }
+  .cmp-btn-ico { font-size:15px; line-height:1; font-weight:800; }
   .cmp-dod { margin:8px 0 2px; padding:6px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; }
-  .cmp-dod-title { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#475569; margin-bottom:3px; }
+  .cmp-dod > summary { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#475569; }
+  .cmp-dod[open] > summary { margin-bottom:4px; }
   .cmp-acname { font-size:12px; color:#334155; }
   .cmp-accheck { font-size:11px; color:#475569; background:#eef2f7; padding:1px 6px; border-radius:3px; font-family:ui-monospace,Consolas,monospace; }
   .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
@@ -2108,6 +2119,7 @@ _STYLE = """
     .target-btn-stack { flex-direction:row; }
   }
   .bp-step-done { background:#f0fdf4; border-left:4px solid #22c55e; }
+  .cmp-step-buildable { background:#f6efe0; border-left:4px solid #c8a96a; }
   .cmp-group-done { border-color:#86efac; box-shadow:inset 3px 0 0 #22c55e; }
   .cmp-group-done > .cmp-ghead { background:#f0fdf4; }
   .bp-check { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
@@ -2121,9 +2133,14 @@ _STYLE = """
   .bp-complete { color:#166534; font-weight:700; }
   .cmp-warn-bar { font-size:13px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 14px; border-radius:6px; margin:0 0 12px; display:inline-block; }
   .cmp-hdr { border:1px solid #d7dde5; border-radius:8px; padding:12px 16px; margin:0 0 14px; background:#f8fafc; }
-  .cmp-hdr-title { font-size:16px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-  .cmp-plan-state { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#1e3a8a; background:#dbeafe; border:1px solid #93c5fd; padding:1px 8px; border-radius:10px; }
-  .cmp-hdr-counts { font-size:13px; font-weight:600; color:#475569; margin-top:5px; }
+  .cmp-hdr-counts { display:flex; flex-wrap:wrap; gap:6px; font-size:13px; font-weight:600; color:#475569; }
+  .cmp-count { padding:2px 10px; border-radius:10px; background:#eef2f7; border:1px solid #dce3ec; white-space:nowrap; }
+  .cmp-count-built { color:#166534; background:#dcfce7; border-color:#86efac; }
+  .cmp-count-ready { color:#8a6d2f; background:#f6efe0; border-color:#d8c191; }
+  .cmp-count-review { color:#1e3a8a; background:#dbeafe; border-color:#93c5fd; }
+  .cmp-count-pending { color:#64748b; background:#f1f5f9; border-color:#cbd5e1; }
+  .cmp-count-failed { color:#991b1b; background:#fee2e2; border-color:#fca5a5; }
+  .cmp-count-sp { font-weight:700; color:#334155; }
   .cmp-hdr-buildable { font-size:13px; color:#475569; margin-top:3px; }
   .cmp-buildable { font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#166534; background:#dcfce7; border:1px solid #4ade80; padding:1px 9px; border-radius:10px; flex:none; margin-right:4px; }
   .cmp-fail-reason { font-size:12px; color:#991b1b; background:#fef2f2; border-left:3px solid #f87171; padding:5px 10px; margin:4px 0 6px; border-radius:0 4px 4px 0; }
