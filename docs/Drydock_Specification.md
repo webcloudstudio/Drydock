@@ -322,7 +322,7 @@ The headers of the blueprints are structured as a dependency graph and the runna
 The plan contains Acceptance Criteria, Spikes and Specification Tickets for features, screens, and scaffolding.
 
 One major goal of the decomposition is for MANIFEST.md to contain a graph database of your work.  The configuration variable
-`PROMPT_WARN_KB` (default 50KB) sets a maximum total context size for each build.  Each step stacks
+`PROMPT_WARN_KB` (default 50KB tokens) sets a maximum total context size for each build.  Each step stacks
 multiple files into a prompt for execution — including `COMPASS.md`, the applicable subsets of the stack, and
 the task instructions.  Similar tasks are grouped together to save context.
 
