@@ -97,21 +97,33 @@ def test_split_preserves_blocks_and_block_scalars(tmp_path):
     assert doc.by_id()["service"].depends == ("foundation",)
 
 
-def test_validate_order_flags_dependency_before_provider(tmp_path):
+def test_validate_order_flags_band_out_of_order(tmp_path):
     doc = split_manifest(_write(tmp_path))
-    # Force service ahead of foundation.
+    # Force service (Features band) ahead of foundation (Data/Persistence band).
     blocks = list(doc.blocks)
     fi = next(i for i, b in enumerate(blocks) if b.block_id == "foundation")
     si = next(i for i, b in enumerate(blocks) if b.block_id == "service")
     blocks[fi], blocks[si] = blocks[si], blocks[fi]
     errors = validate_order(blocks)
-    assert any("service" in e and "foundation" in e for e in errors)
+    assert any("foundation" in e and "Features/Screens" in e for e in errors)
 
 
-def test_move_step_down_within_feature(tmp_path):
+def test_validate_order_ignores_depends_within_band(tmp_path):
+    # service depends on foundation but both moves that keep bands non-decreasing
+    # are legal; depends no longer constrains order. welcome and service are one
+    # band, so any order between them is valid.
     doc = split_manifest(_write(tmp_path))
-    # foundation and service are both under feature-core; depends blocks the swap.
-    with pytest.raises(SpecificationError, match="break the build topology"):
+    blocks = list(doc.blocks)
+    wi = next(i for i, b in enumerate(blocks) if b.block_id == "welcome")
+    si = next(i for i, b in enumerate(blocks) if b.block_id == "service")
+    blocks[wi], blocks[si] = blocks[si], blocks[wi]
+    assert validate_order(blocks) == []
+
+
+def test_move_step_rejects_band_out_of_order(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    # Moving service (Features) above foundation (Data) breaks band order.
+    with pytest.raises(SpecificationError, match="break the build order"):
         move_step(doc, "service", "up")
 
 
@@ -133,19 +145,19 @@ def test_regroup_step_moves_into_other_feature(tmp_path):
     assert any(line.strip() == "parent:       feature-screens" for line in moved.lines)
 
 
-def test_regroup_step_rejects_when_it_breaks_topology(tmp_path):
-    # welcome depends on service; if welcome leaves screens to come before service
-    # via grouping, the order would break. Build a case: regroup foundation under
-    # screens (after service) so service (depends foundation) precedes it.
+def test_regroup_step_rejects_when_it_breaks_band_order(tmp_path):
+    # Regrouping foundation (Data band) under Screens drops it after the Features
+    # band steps, putting Data after Features — a band-order violation.
     doc = split_manifest(_write(tmp_path))
-    with pytest.raises(SpecificationError, match="break the build topology"):
+    with pytest.raises(SpecificationError, match="break the build order"):
         regroup_step(doc, "foundation", "feature-screens")
 
 
-def test_move_feature_reorders_groups(tmp_path):
-    # Screens depends (transitively) on Core, so moving Screens up breaks order.
+def test_move_feature_rejects_band_out_of_order(tmp_path):
+    # Screens is a Features-band group; moving it above the Core group pulls the
+    # Data-band foundation story after Features work.
     doc = split_manifest(_write(tmp_path))
-    with pytest.raises(SpecificationError, match="break the build topology"):
+    with pytest.raises(SpecificationError, match="break the build order"):
         move_feature(doc, "feature-screens", "up")
 
 
@@ -311,3 +323,95 @@ def test_apply_edit_unknown_kind_raises(tmp_path):
     path = _write(tmp_path)
     with pytest.raises(SpecificationError, match="Unknown edit kind"):
         apply_edit(path, "frobnicate", block_id="feature-core")
+
+
+# ── Layer-band ordering ──────────────────────────────────────────────────────
+
+# Two Features-band groups, one Data-band group deliberately placed last so the
+# manifest starts out of canonical band order.
+BANDS_MANIFEST = """# MANIFEST: Bands
+state: approved
+
+## feature 1: Catalog
+id: feat-catalog
+summary: Catalog feature.
+state: pending
+
+## story 1: Catalog list
+id: catalog
+parent: feat-catalog
+implements: FEATURE-CATALOG.md
+state: pending
+
+## feature 2: Reporting
+id: feat-report
+summary: Reporting feature.
+state: pending
+
+## story 2: Report page
+id: report
+parent: feat-report
+implements: FEATURE-REPORT.md
+state: pending
+
+## ac 1: report cross edge
+id: report-ac
+parent: report
+depends: catalog
+kind: smoke
+check: test -f report
+state: pending
+
+## feature 3: Persistence
+id: feat-db
+summary: Database feature.
+state: pending
+
+## story 3: Schema
+id: schema
+parent: feat-db
+implements: DATABASE.md
+state: pending
+"""
+
+
+def _write_bands(tmp_path):
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(BANDS_MANIFEST, encoding="utf-8")
+    return path
+
+
+def test_within_band_feature_move_is_free(tmp_path):
+    # Catalog and Reporting are both Features-band; reordering them is legal.
+    doc = split_manifest(_write_bands(tmp_path))
+    move_feature(doc, "feat-report", "up")
+    ids = _ids(doc)
+    assert ids.index("report") < ids.index("catalog")
+
+
+def test_validate_order_excludes_acs(tmp_path):
+    # An ac positioned out of order never produces an ordering violation; acs are
+    # out of the ordered stream entirely.
+    doc = split_manifest(_write_bands(tmp_path))
+    ac_errors = [e for e in validate_order(doc.blocks) if "report-ac" in e]
+    assert ac_errors == []
+
+
+def test_normalize_order_sorts_groups_into_band_order(tmp_path):
+    doc = split_manifest(_write_bands(tmp_path))
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+    ids = _ids(doc)
+    # Data/Persistence (schema) now precedes both Features-band groups.
+    assert ids.index("schema") < ids.index("catalog")
+    assert ids.index("schema") < ids.index("report")
+    assert validate_order(doc.blocks) == []
+
+
+def test_apply_edit_normalize_persists(tmp_path):
+    path = _write_bands(tmp_path)
+    apply_edit(path, "normalize")
+    doc = split_manifest(path)
+    ids = _ids(doc)
+    assert ids.index("schema") < ids.index("catalog")

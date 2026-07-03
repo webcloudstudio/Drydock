@@ -123,12 +123,13 @@ class TestRender:
         assert "missing-ctx.md" in out
         assert "missing" in out
 
-    def test_acceptance_folded_as_post_action(self, tmp_path, monkeypatch):
+    def test_acceptance_rendered_as_definition_of_done(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
-        assert "post: Core Works" in out
-        # The ac is folded, not rendered as its own step.
+        assert "Definition of Done" in out
+        assert "Core Works" in out
+        # The ac is folded under its step, not rendered as its own step.
         assert "STEP " not in out
 
     def test_over_warn_flagged(self, tmp_path, monkeypatch):
@@ -242,19 +243,27 @@ class TestState:
         assert "steps ·" in out and "verified" in out
 
     def test_buildable_step_shows_chip(self, tmp_path, monkeypatch):
-        # `core` is pending with no unmet depends, so it is buildable now.
+        # `core` is pending with no unmet depends, so it is ready to build.
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         assert "cmp-buildable" in out
-        assert "buildable now" in out
+        assert "Ready To Build" in out
 
-    def test_verified_step_shows_done_and_group_check(self, tmp_path, monkeypatch):
+    def test_step_shows_story_points_with_overhead(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "Story Points =" in out
+        assert "(overhead " in out
+
+    def test_verified_step_shows_built_and_group_check(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_VERIFIED)
         out = quarterdeck.render_compass(_ITEM)
-        assert "bp-done" in out  # ✓ done chip on the verified step
-        assert "bp-check" in out  # loud green check on the fully-verified group
+        assert "bp-done" in out  # Built chip on the verified step
+        assert "Built" in out
+        assert "bp-check" in out  # loud green check on the built step and group
         assert "Combined Story Points =" in out
         assert "move_step" not in out
 

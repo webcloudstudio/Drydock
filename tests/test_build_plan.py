@@ -106,6 +106,63 @@ state: pending
     assert plan.by_id()["second"].depends == ("first", "third")
 
 
+def test_ac_cross_story_depends_are_dropped(tmp_path: Path):
+    # Self-only-depends hard guard: an ac may depend on its own parent story only;
+    # a cross-story edge is dropped on read so it never drags forward dependencies.
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: approved
+
+## story 1: Library
+id: marlib
+state: pending
+
+## story 2: Infra
+id: infra
+state: pending
+
+## ac 1: Marlib works
+id: ac-marlib-1
+parent: marlib
+depends: infra
+kind: smoke
+check: test -f lib
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    # The cross-story edge to infra is dropped; parent gating alone remains.
+    assert plan.by_id()["ac-marlib-1"].depends == ()
+
+
+def test_ac_depends_on_own_parent_is_kept(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: approved
+
+## story 1: Library
+id: marlib
+state: pending
+
+## ac 1: Marlib works
+id: ac-marlib-1
+parent: marlib
+depends: marlib
+kind: smoke
+check: test -f lib
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    assert plan.by_id()["ac-marlib-1"].depends == ("marlib",)
+
+
 def test_parse_build_plan_captures_block_scalar_instructions(tmp_path: Path):
     path = write_plan(
         tmp_path / "MANIFEST.md",

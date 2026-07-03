@@ -1,11 +1,13 @@
 """Constrained reorder/regroup editing of MANIFEST.md.
 
 The QuarterDeck build compass lets the product owner reorder build steps and move
-them between features. Edits are constrained: a move that would break the work
-graph's topology — a step placed before one of its ``depends:``, or an acceptance
-check before its parent — is rejected, so the displayed order is always a legal
-build order. ``depends:`` still governs actual execution; this editing only sets
-the preferred order and grouping the compass shows and the build walks.
+them between features. Edits are constrained only by coarse layer bands: steps must
+stay in non-decreasing band order (Foundation, then Data/Persistence, then the
+Features/Screens band), and a move that would newly break that order is rejected.
+Movement within a band is free. ``depends:`` does not constrain order — the build
+engine selects work at run time by walking ``depends:`` — so manifest order is
+display and priority only. Acceptance (``ac``) blocks are out of the ordered stream
+entirely. ``normalize_order`` restores canonical band order on demand.
 
 The writer preserves each block's source lines verbatim (including ``|`` block
 scalars); it only reorders blocks and rewrites a moved step's ``parent:`` line.
@@ -18,6 +20,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from drydock.build import BAND_FOUNDATION, BAND_NAMES, band_for
 from drydock.build_plan import _HEADER_RE, _split_depends
 from drydock.errors import SpecificationError
 
@@ -177,24 +180,36 @@ def _flatten(doc: ManifestDoc) -> list[RawBlock]:
 # ── Validation ───────────────────────────────────────────────────────────────
 
 
-def validate_order(blocks: list[RawBlock]) -> list[str]:
-    """Return topology violations for a flattened block order; empty means valid.
+def _raw_band(block: RawBlock) -> int:
+    """Layer band for one raw step block, derived from its ``implements:`` line."""
+    implements = _scan_field(block.lines, "implements") or ""
+    names = [name.strip() for name in implements.split(",") if name.strip()]
+    return band_for(block.block_type, names)
 
-    A block's ``depends:`` ids and an ac's parent must all appear before it.
+
+def validate_order(blocks: list[RawBlock]) -> list[str]:
+    """Return layer-band ordering violations for a flattened order; empty means valid.
+
+    Manifest order constrains only the coarse layer band: ``story``/``spike`` steps
+    must appear in non-decreasing band order (Foundation, then Data/Persistence,
+    then the Features/Screens band). Movement within a band is free, and
+    ``depends:`` does not constrain order — the build engine selects work at run
+    time by walking ``depends:``. Acceptance (``ac``) blocks are out of the ordered
+    stream entirely and are never positioned or checked.
     """
     errors: list[str] = []
-    seen: set[str] = set()
-    ids = {b.block_id for b in blocks}
+    highest = BAND_FOUNDATION
+    highest_label = BAND_NAMES[BAND_FOUNDATION]
     for block in blocks:
-        for dep in block.depends:
-            if dep in ids and dep not in seen:
-                errors.append(f"{block.block_id} is ordered before its dependency {dep}")
-        if block.block_type == "ac" and block.parent and block.parent in ids:
-            if block.parent not in seen:
-                errors.append(
-                    f"acceptance {block.block_id} is ordered before its parent {block.parent}"
-                )
-        seen.add(block.block_id)
+        if block.block_type not in _STEP_TYPES:
+            continue
+        band = _raw_band(block)
+        if band < highest:
+            errors.append(
+                f"{block.block_id} ({BAND_NAMES[band]}) is ordered after {highest_label} work"
+            )
+        else:
+            highest, highest_label = band, BAND_NAMES[band]
     return errors
 
 
@@ -249,10 +264,11 @@ def move_step(doc: ManifestDoc, step_id: str, direction: str) -> None:
         raise SpecificationError(f"{step_id} is not a movable step")
     if direction not in ("up", "down"):
         raise SpecificationError(f"Invalid direction {direction!r}")
+    before = validate_order(doc.blocks)
     siblings = _steps_by_feature(doc)[block.parent if _is_feature(doc, block.parent) else None]
     other = _neighbor(siblings, step_id, direction)
     _swap_block_positions(doc, step_id, other)
-    _reject_if_invalid(doc)
+    _reject_if_worsened(doc, before)
 
 
 def move_feature(doc: ManifestDoc, feature_id: str, direction: str) -> None:
@@ -262,10 +278,11 @@ def move_feature(doc: ManifestDoc, feature_id: str, direction: str) -> None:
         raise SpecificationError(f"{feature_id} is not a feature")
     if direction not in ("up", "down"):
         raise SpecificationError(f"Invalid direction {direction!r}")
+    before = validate_order(doc.blocks)
     order = _feature_order(doc)
     other = _neighbor(order, feature_id, direction)
     _swap_block_positions(doc, feature_id, other)
-    _reject_if_invalid(doc)
+    _reject_if_worsened(doc, before)
 
 
 def regroup_step(doc: ManifestDoc, step_id: str, feature_id: str | None) -> None:
@@ -275,9 +292,10 @@ def regroup_step(doc: ManifestDoc, step_id: str, feature_id: str | None) -> None
         raise SpecificationError(f"{step_id} is not a movable step")
     if feature_id and not _is_feature(doc, feature_id):
         raise SpecificationError(f"{feature_id} is not a feature")
+    before = validate_order(doc.blocks)
     _set_parent_line(block, feature_id)
     doc.blocks[:] = _flatten(doc)
-    _reject_if_invalid(doc)
+    _reject_if_worsened(doc, before)
 
 
 def _is_feature(doc: ManifestDoc, block_id: str | None) -> bool:
@@ -287,11 +305,17 @@ def _is_feature(doc: ManifestDoc, block_id: str | None) -> bool:
     return block is not None and block.block_type == "feature"
 
 
-def _reject_if_invalid(doc: ManifestDoc) -> None:
-    errors = validate_order(doc.blocks)
-    if errors:
+def _reject_if_worsened(doc: ManifestDoc, before: list[str]) -> None:
+    """Reject only the band-order violations a move newly introduces.
+
+    Pre-existing violations in the manifest are not the caller's doing, so the
+    message lists only the violations this edit actually causes — never the full
+    set — matching what the Commander can see on the compass.
+    """
+    new = [error for error in validate_order(doc.blocks) if error not in set(before)]
+    if new:
         raise SpecificationError(
-            "Move rejected; it would break the build topology:\n  - " + "\n  - ".join(errors)
+            "Move rejected; it would break the build order:\n  - " + "\n  - ".join(new)
         )
 
 
@@ -387,6 +411,7 @@ def split_group(doc: ManifestDoc, feature_id: str) -> list[str]:
     steps = _steps_by_feature(doc).get(feature_id, [])
     if len(steps) < 2:
         raise SpecificationError(f"{feature_id} needs at least two stories to split")
+    before = validate_order(doc.blocks)
     by_id = doc.by_id()
     existing = {b.block_id for b in doc.blocks}
     result: list[str] = []
@@ -424,8 +449,33 @@ def split_group(doc: ManifestDoc, feature_id: str) -> list[str]:
         result.append(new_id)
     doc.blocks[:] = _flatten(doc)
     _require_unique_ids(doc)
-    _reject_if_invalid(doc)
+    _reject_if_worsened(doc, before)
     return result
+
+
+def normalize_order(doc: ManifestDoc) -> None:
+    """Reorder feature groups into canonical non-decreasing layer-band order.
+
+    A stable normalization offered when a manifest is out of band order: groups
+    keep their relative order within a band and are sorted so Foundation precedes
+    Data/Persistence precedes the Features/Screens band. Steps follow their group
+    and acceptance blocks fold under their step; within-band order and grouping are
+    otherwise preserved. A group's band is the foundation-most band of its steps.
+    """
+    by_id = doc.by_id()
+    steps_by_feature = _steps_by_feature(doc)
+    feature_order = _feature_order(doc)
+    index_of = {fid: i for i, fid in enumerate(feature_order)}
+
+    def feature_band(fid: str) -> int:
+        bands = [_raw_band(by_id[sid]) for sid in steps_by_feature.get(fid, [])]
+        return min(bands) if bands else BAND_FOUNDATION + 2
+
+    ordered = sorted(feature_order, key=lambda fid: (feature_band(fid), index_of[fid]))
+    features = [by_id[fid] for fid in ordered]
+    others = [block for block in doc.blocks if block.block_type != "feature"]
+    doc.blocks[:] = features + others
+    doc.blocks[:] = _flatten(doc)
 
 
 # ── Serialization ────────────────────────────────────────────────────────────
@@ -540,9 +590,10 @@ def apply_edit(path: Path, kind: str, *, block_id: str = "", name: str = "") -> 
     """Load, apply one structure edit, validate, and write MANIFEST.md.
 
     ``kind`` is ``rename`` (a feature or step, by ``block_id`` and ``name``),
-    ``add_feature`` (a new empty group named ``name``), or ``split_group`` (the
-    feature ``block_id`` into one group per story). Raises SpecificationError
-    (without writing) if the edit is illegal.
+    ``add_feature`` (a new empty group named ``name``), ``split_group`` (the
+    feature ``block_id`` into one group per story), or ``normalize`` (reorder all
+    groups into canonical layer-band order). Raises SpecificationError (without
+    writing) if the edit is illegal.
     """
     doc = split_manifest(path)
     result: dict[str, object] = {}
@@ -552,6 +603,8 @@ def apply_edit(path: Path, kind: str, *, block_id: str = "", name: str = "") -> 
         result["feature_id"] = add_feature(doc, name)
     elif kind == "split_group":
         result["features"] = split_group(doc, block_id)
+    elif kind == "normalize":
+        normalize_order(doc)
     else:
         raise SpecificationError(f"Unknown edit kind {kind!r}")
     write_manifest(doc)

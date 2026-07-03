@@ -5,13 +5,43 @@ from __future__ import annotations
 from pathlib import Path
 
 from drydock.build import (
+    BAND_DATA,
+    BAND_FEATURES,
+    BAND_FOUNDATION,
     PROMPT_WARN_TOKENS,
     StepRoots,
     assemble_step,
     assemble_steps,
+    band_for,
+    band_of,
     group_steps,
 )
 from drydock.build_plan import parse_build_plan
+
+
+class TestBands:
+    def test_spike_is_foundation(self):
+        assert band_for("spike", ()) == BAND_FOUNDATION
+
+    def test_architecture_is_foundation(self):
+        assert band_for("story", ("ARCHITECTURE.md",)) == BAND_FOUNDATION
+
+    def test_database_is_data(self):
+        assert band_for("story", ("DATABASE.md",)) == BAND_DATA
+
+    def test_feature_and_default_are_features_band(self):
+        assert band_for("story", ("FEATURE-X.md",)) == BAND_FEATURES
+        assert band_for("story", ()) == BAND_FEATURES
+
+    def test_architecture_wins_over_database(self):
+        assert band_for("story", ("DATABASE.md", "ARCHITECTURE.md")) == BAND_FOUNDATION
+
+    def test_band_of_reads_block_implements(self, tmp_path):
+        plan = _plan(tmp_path)
+        # core implements ARCHITECTURE.md + DATABASE.md -> Foundation.
+        assert band_of(plan.by_id()["core"]) == BAND_FOUNDATION
+        assert band_of(plan.by_id()["spike-q"]) == BAND_FOUNDATION
+
 
 _MANIFEST = """# MANIFEST: Demo
 state: approved
@@ -109,6 +139,15 @@ class TestAssembleStep:
         step = assemble_step(plan.by_id()["core"], _roots(tmp_path))
         assert "Build the core." in step.instructions
         assert step.instructions_story_points > 0
+
+    def test_overhead_excludes_implements_and_instructions(self, tmp_path):
+        plan = _plan(tmp_path)
+        step = assemble_step(plan.by_id()["core"], _roots(tmp_path))
+        expected_overhead = sum(f.story_points for f in step.files if f.role != "implements")
+        implements_sp = sum(f.story_points for f in step.files if f.role == "implements")
+        assert step.overhead_story_points == expected_overhead
+        assert step.own_story_points == implements_sp + step.instructions_story_points
+        assert step.total_story_points == step.own_story_points + step.overhead_story_points
 
     def test_over_warn_flag(self, tmp_path):
         plan = _plan(tmp_path)

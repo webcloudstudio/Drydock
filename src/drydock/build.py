@@ -133,9 +133,19 @@ class StepAssembly:
     total_story_points: int
     over_warn: bool
     warn_tokens: int
+    overhead_story_points: int = 0
 
     def missing_files(self) -> tuple[StepFile, ...]:
         return tuple(f for f in self.files if f.missing)
+
+    @property
+    def own_story_points(self) -> int:
+        """The step's own cost: its ``implements`` specs plus its instructions.
+
+        ``own = total - overhead``, where overhead is the shared/injected context
+        (COMPASS, context, stack, rules) stacked into every step in the group.
+        """
+        return self.total_story_points - self.overhead_story_points
 
 
 def _measure(name: str, role: str, roots: tuple[Path, ...]) -> StepFile:
@@ -191,6 +201,46 @@ def is_screen_step(block: PlanBlock) -> bool:
         and not is_feature_step(block)
         and all(name.startswith("SCREEN-") for name in implements)
     )
+
+
+# Layer bands for build-order validation. Manifest order constrains only the
+# coarse layer a step sits in — Foundation before Data/Persistence before the
+# Features/Screens band — never a strict per-dependency order, which the engine
+# derives at run time from ``depends:``. Features and Screens share one band.
+BAND_FOUNDATION = 0
+BAND_DATA = 1
+BAND_FEATURES = 2
+BAND_NAMES = {
+    BAND_FOUNDATION: "Foundation",
+    BAND_DATA: "Data/Persistence",
+    BAND_FEATURES: "Features/Screens",
+}
+
+
+def band_for(block_type: str, implements: Iterable[str]) -> int:
+    """Return the layer band for a step given its type and implemented specs.
+
+    Spikes and steps that implement ``ARCHITECTURE.md`` are Foundation; steps that
+    implement ``DATABASE.md`` are Data/Persistence; everything else — features,
+    screens, and infrastructure that builds on them — is the Features/Screens band.
+    The single source of truth for banding, shared by the compass and the editor.
+    """
+    if block_type == "spike":
+        return BAND_FOUNDATION
+    names = tuple(implements)
+    if "ARCHITECTURE.md" in names:
+        return BAND_FOUNDATION
+    if "DATABASE.md" in names:
+        return BAND_DATA
+    return BAND_FEATURES
+
+
+def band_of(block: PlanBlock) -> int:
+    """Return the layer band a step belongs to, derived from what it implements.
+
+    Acceptance (``ac``) blocks are out of the ordered stream and are never banded.
+    """
+    return band_for(block.block_type, _implements(block))
 
 
 def auto_context_files(block: PlanBlock, blueprint_dir: Path) -> tuple[str, ...]:
@@ -323,6 +373,9 @@ def assemble_step(
 
     total_bytes = sum(f.byte_count for f in files) + instr_bytes
     total_points = sum(f.story_points for f in files) + instr_points
+    # Overhead is the shared/injected context (everything except the step's own
+    # ``implements`` specs and its instruction text): COMPASS, context, stack, rules.
+    overhead_points = sum(f.story_points for f in files if f.role != "implements")
 
     return StepAssembly(
         block_id=block.block_id,
@@ -336,6 +389,7 @@ def assemble_step(
         total_story_points=total_points,
         over_warn=total_points > warn_tokens,
         warn_tokens=warn_tokens,
+        overhead_story_points=overhead_points,
     )
 
 

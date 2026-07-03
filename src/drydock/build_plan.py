@@ -320,6 +320,12 @@ def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
         )
     if not isinstance(depends, tuple):
         depends = ()
+    if block_type == "ac":
+        # Self-only-depends hard guard: an acceptance check may depend on its own
+        # parent story only. A cross-story ``ac`` edge is a defect that would drag
+        # forward-reaching dependencies into an otherwise valid order, so it is
+        # dropped on read. The parent relationship alone gates when an ac runs.
+        depends = tuple(dep for dep in depends if dep == parent)
 
     return PlanBlock(
         block_type=block_type,

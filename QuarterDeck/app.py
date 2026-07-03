@@ -819,12 +819,12 @@ def render_compass(item: dict[str, Any]) -> str:
             acs_by_parent.setdefault(block.parent, []).append(block)
 
     def _state_chip(block_id: str) -> str:
-        """The lifecycle chip for one step. ``buildable now`` wins over plain ``pending``."""
+        """The lifecycle chip for one step. ``Ready To Build`` wins over plain ``pending``."""
         if block_id in buildable:
-            return "<span class='cmp-buildable'>buildable now</span>"
+            return "<span class='cmp-buildable'>Ready To Build</span>"
         state = by_id[block_id].state if block_id in by_id else "pending"
         if state == "closed/verified":
-            return "<span class='bp-state bp-done'>✓ done</span>"
+            return "<span class='bp-state bp-done'>Built</span>"
         if state == "implemented":
             return "<span class='bp-state bp-review'>review</span>"
         if state == "closed/failed":
@@ -900,9 +900,11 @@ def render_compass(item: dict[str, Any]) -> str:
     parts = [
         header,
         "<div class='cmp-toolbar'>"
+        f"<span class='cmp-total'>{len(steps)} steps{warn_html}</span>"
+        f"<button class='cmp-normalize' title='Reorder groups into canonical "
+        f"layer-band order' onclick=\"compassNormalize('{item_id}')\">Normalize order</button>"
         f"<button class='cmp-newgroup' onclick=\"compassAddFeature('{item_id}')\">"
         "+ New group</button>"
-        f"<span class='cmp-total'>{len(steps)} steps{warn_html}</span>"
         "</div>",
     ]
 
@@ -923,12 +925,24 @@ def render_compass(item: dict[str, Any]) -> str:
                 if step.over_warn
                 else ""
             )
-            ac_lines = "".join(
-                f"<li class='cmp-ac'>post: {html.escape(ac.name)} "
-                f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span></li>"
+            dod_rows = "".join(
+                "<li class='cmp-ac'>"
+                f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span>"
+                f"<span class='cmp-acname'>{html.escape(ac.name)}</span>"
+                + (
+                    f"<code class='cmp-accheck'>{html.escape(str(ac.fields['check']))}</code>"
+                    if ac.fields.get("check")
+                    else ""
+                )
+                + "</li>"
                 for ac in acs_by_parent.get(step.block_id, [])
             )
-            ac_html = f"<ul class='cmp-acs'>{ac_lines}</ul>" if ac_lines else ""
+            dod_html = (
+                "<div class='cmp-dod'><div class='cmp-dod-title'>Definition of Done</div>"
+                f"<ul class='cmp-acs'>{dod_rows}</ul></div>"
+                if dod_rows
+                else ""
+            )
             finding = (
                 str(by_id[step.block_id].fields.get("finding") or "")
                 if step.block_id in by_id
@@ -940,18 +954,25 @@ def render_compass(item: dict[str, Any]) -> str:
                 if state == "closed/failed" and finding
                 else ""
             )
+            done_check = (
+                "<span class='bp-check' title='Built and verified'>&#10003;</span>"
+                if is_done
+                else ""
+            )
             step_cards.append(
                 f"<div class='cmp-step{done_cls}'>"
                 "<div class='cmp-shead'>"
+                f"{done_check}"
                 f"{_state_chip(step.block_id)}"
                 f"<span class='cmp-stype'>{html.escape(step.block_type)}</span>"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
-                f"<span class='cmp-gsp'>Story Points = {step.total_story_points}</span>{warn}"
+                f"<span class='cmp-gsp'>Story Points = {step.total_story_points} "
+                f"(overhead {step.overhead_story_points})</span>{warn}"
                 f"{step_controls(step)}"
                 "</div>"
                 f"{fail_html}"
                 f"{_render_step_files(step)}"
-                f"{ac_html}"
+                f"{dod_html}"
                 "</div>"
             )
         gname = group.name
@@ -2070,9 +2091,15 @@ _STYLE = """
   .cmp-move { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
-  .cmp-toolbar { display:flex; justify-content:flex-end; margin:0 0 10px; }
+  .cmp-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 10px; }
   .cmp-newgroup { font-size:13px; font-weight:700; padding:6px 14px; border:1px solid #2563eb; background:#2563eb; color:#fff; border-radius:6px; cursor:pointer; }
   .cmp-newgroup:hover { background:#1d4ed8; border-color:#1d4ed8; }
+  .cmp-normalize { font-size:13px; font-weight:700; padding:6px 14px; border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:6px; cursor:pointer; margin-left:auto; }
+  .cmp-normalize:hover { background:#eef2f7; }
+  .cmp-dod { margin:8px 0 2px; padding:6px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; }
+  .cmp-dod-title { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#475569; margin-bottom:3px; }
+  .cmp-acname { font-size:12px; color:#334155; }
+  .cmp-accheck { font-size:11px; color:#475569; background:#eef2f7; padding:1px 6px; border-radius:3px; font-family:ui-monospace,Consolas,monospace; }
   .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
   @media (max-width: 900px) {
     main { grid-template-columns:1fr; }
@@ -2251,6 +2278,10 @@ def index(request: Request = None) -> str:
     function compassSplit(itemId, featureId) {{
       if (!confirm('Split this group into one group per story?')) return;
       compassEdit(itemId, {{kind: 'split_group', block_id: featureId}});
+    }}
+    function compassNormalize(itemId) {{
+      if (!confirm('Reorder all groups into canonical layer-band order?')) return;
+      compassEdit(itemId, {{kind: 'normalize'}});
     }}
     async function saveDoc(itemId) {{
       const e = _editable(itemId); if (!e) return;

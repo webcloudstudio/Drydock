@@ -29,14 +29,16 @@ Operating contract:
 3. Implement only this step. Use `context`, `stack`, and `rules` as constraints,
    not as additional work to perform.
 4. Follow the stack and rules for languages, structure, naming, and branding.
-5. Satisfy every guardrail and programmatic acceptance assertion stated in the
-   `implements` specifications. Create or update project tests when the
-   assertion intent requires durable test coverage. When an assertion is a static
-   or filesystem scan (import boundary, "X never appears outside Y," grep/AST
-   gate), honor the scope the specification states and never widen it: scan
-   production source only, exclude `.venv/`, `site-packages`, and vendored or
-   generated code, and do not flag test doubles or fixtures that use the guarded
-   dependency.
+5. The programmatic acceptance assertions in the `implements` specifications are
+   this step's **Definition of Done** — human-owned, declared before the build,
+   and fixed. Build the story and, in this same step, write the deterministic
+   tests that prove each declared assertion, as a TDD master would; add finer
+   tests for coverage. You may add tests but must never remove, soften, or weaken
+   a declared acceptance assertion. When an assertion is a static or filesystem
+   scan (import boundary, "X never appears outside Y," grep/AST gate), honor the
+   scope the specification states and never widen it: scan production source only,
+   exclude `.venv/`, `site-packages`, and vendored or generated code, and do not
+   flag test doubles or fixtures that use the guarded dependency.
 6. Treat `User Acceptance` entries as review evidence requirements. Implement
    the supporting behavior, but do not claim to have performed human judgment.
 7. The `implements` section is authoritative and intentionally stacked late in
