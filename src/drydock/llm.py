@@ -287,6 +287,10 @@ def _performance_summary(
 
 
 def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> list[str]:
+    if command_name == "build":
+        build_lines = _build_prompt_breakdown_summary(command_name, assembly)
+        if build_lines is not None:
+            return build_lines
     lines = [
         f"[prompt] {command_name}  parts={len(assembly.records())}  "
         f"total={assembly.total_bytes} B  est_tokens={assembly.total_tokens_estimate}"
@@ -299,6 +303,86 @@ def _prompt_breakdown_summary(command_name: str, assembly: PromptAssembly) -> li
     for record, name, tok in zip(records, names, toks):
         lines.append(f"  [{record['order']:02d}] {name:<{col_w}}  {tok:>{tok_w}}")
     lines.append(f"[prompt] total  {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok")
+    return lines
+
+
+def _pblock_body(text: str) -> str:
+    start = text.find(">\n")
+    end = text.rfind("</pblock>")
+    if start == -1 or end == -1 or end <= start:
+        return ""
+    return text[start + 2 : end].strip()
+
+
+def _build_prompt_breakdown_summary(
+    command_name: str, assembly: PromptAssembly
+) -> list[str] | None:
+    job = next((part for part in assembly.parts if part.label == "Build block job"), None)
+    stories = next((part for part in assembly.parts if part.label == "Stories in this block"), None)
+    if job is None or stories is None:
+        return None
+
+    job_fields: dict[str, str] = {}
+    for line in _pblock_body(job.text).splitlines():
+        if not line.startswith("- ") or ":" not in line:
+            continue
+        key, value = line[2:].split(":", 1)
+        job_fields[key.strip()] = value.strip()
+
+    story_lines = [
+        line.removeprefix("- ").strip()
+        for line in _pblock_body(stories.text).splitlines()
+        if line.startswith("- ")
+    ]
+    story_count = len(story_lines)
+    block = job_fields.get("FEATURE_BLOCK", "(unknown)")
+    lines = [
+        f"PROMPT BUILD BLOCK: {block}",
+        f"  stories_run={story_count}  parts={len(assembly.records())}  "
+        f"total={assembly.total_bytes} B  est_tokens={assembly.total_tokens_estimate}",
+        "",
+        "  [STORIES RUN]",
+    ]
+    lines.extend(f"    {story}" for story in story_lines)
+
+    role_labels = {
+        "compass": "COMPASS - Target Orientation",
+        "stack": "STACK - Technology HOW",
+        "context": "CONTEXT - Read-Only Support",
+        "implements": "IMPLEMENTS - Authoritative Story Specifications",
+        "rules": "RULES",
+    }
+    records = assembly.records()
+    for role in ("compass", "stack", "context", "implements", "rules"):
+        role_records = [record for record in records if record.get("role") == role]
+        if not role_records:
+            continue
+        lines.extend(["", f"  [{role_labels[role]}]"])
+        name_width = max(len(Path(str(record["label"])).name) for record in role_records)
+        role_width = max(len(str(record["role"])) for record in role_records)
+        for record in role_records:
+            name = Path(str(record["label"])).name
+            lines.append(
+                f"    {name:<{name_width}}  role={str(record['role']):<{role_width}}  "
+                f"~{record['estimated_tokens']} tok"
+            )
+
+    instruction_records = [record for record in records if record.get("kind") == "instructions"]
+    if instruction_records:
+        lines.extend(["", "  [BUILD INSTRUCTIONS]"])
+        for record in instruction_records:
+            lines.append(f"    {record['label']}  ~{record['estimated_tokens']} tok")
+
+    prompt_records = [record for record in records if record.get("kind") == "prompt-body"]
+    if prompt_records:
+        lines.extend(["", "  [AGENT TASK]"])
+        for record in prompt_records:
+            lines.append(f"    {record['label']}  ~{record['estimated_tokens']} tok")
+
+    lines.extend([
+        "",
+        f"PROMPT TOTAL: {assembly.total_bytes} B  ~{assembly.total_tokens_estimate} tok",
+    ])
     return lines
 
 

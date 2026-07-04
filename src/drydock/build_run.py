@@ -33,13 +33,17 @@ from drydock.acceptance import (
 )
 from drydock.build import (
     StepAssembly,
+    StepGroup,
     StepRoots,
     assemble_step,
+    make_step_group,
+    render_build_group_prompt_assembly,
     render_build_prompt_assembly,
     required_plan_auto_compact_sources,
 )
 from drydock.build_plan import (
     AppliedSpecRecord,
+    BuildPlan,
     PlanBlock,
     parse_build_plan,
     set_applied_registry,
@@ -261,6 +265,19 @@ class BuildResult:
         return 1 if self.failed() else 0
 
 
+@dataclass(frozen=True)
+class BuildUnit:
+    block_id: str
+    name: str
+    block_type: str
+    steps: tuple[PlanBlock, ...]
+    already_verified: tuple[PlanBlock, ...] = ()
+
+    @property
+    def is_group(self) -> bool:
+        return self.block_type == "feature"
+
+
 def _rel(path: Path, base: Path) -> str:
     try:
         return str(path.relative_to(base))
@@ -274,6 +291,82 @@ def _has_child_acs(blocks: tuple[PlanBlock, ...], block_id: str) -> bool:
 
 def _child_ac_ids(blocks: tuple[PlanBlock, ...], block_id: str) -> tuple[str, ...]:
     return tuple(b.block_id for b in blocks if b.block_type == "ac" and b.parent == block_id)
+
+
+def _is_buildable(block: PlanBlock, by_id: dict[str, PlanBlock]) -> bool:
+    def verified(block_id: str) -> bool:
+        dependency = by_id.get(block_id)
+        return dependency is not None and dependency.state == "closed/verified"
+
+    return block.state == "pending" and all(verified(dep) for dep in block.depends)
+
+
+def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None:
+    by_id = plan.by_id()
+    executable = tuple(
+        child for child in plan.children(feature.block_id) if child.block_type in {"story", "spike"}
+    )
+    if not executable:
+        return None
+    already_verified = tuple(child for child in executable if child.state == "closed/verified")
+    pending = tuple(child for child in executable if child.state == "pending")
+    if not pending:
+        return None
+    if not all(_is_buildable(child, by_id) for child in pending):
+        return None
+    return BuildUnit(
+        block_id=feature.block_id,
+        name=feature.name,
+        block_type="feature",
+        steps=pending,
+        already_verified=already_verified,
+    )
+
+
+def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None:
+    by_id = plan.by_id()
+    if step_id is not None:
+        block = by_id.get(step_id)
+        if block is None:
+            raise SpecificationError(f"Build step {step_id!r} not found in MANIFEST.md")
+        if block.block_type == "feature":
+            unit = _feature_build_unit(plan, block)
+            if unit is None:
+                raise SpecificationError(
+                    f"{step_id!r} is not buildable; state={block.state!r}, "
+                    "dependencies must be closed/verified"
+                )
+            return unit
+        if block.block_type not in {"story", "spike"} or not _is_buildable(block, by_id):
+            raise SpecificationError(
+                f"{step_id!r} is not buildable; state={block.state!r}, "
+                "dependencies must be closed/verified"
+            )
+        return BuildUnit(
+            block_id=block.block_id,
+            name=block.name,
+            block_type=block.block_type,
+            steps=(block,),
+        )
+
+    for block in plan.blocks:
+        if block.block_type == "feature":
+            unit = _feature_build_unit(plan, block)
+            if unit is not None:
+                return unit
+    for block in plan.blocks:
+        if (
+            block.block_type in {"story", "spike"}
+            and block.parent is None
+            and _is_buildable(block, by_id)
+        ):
+            return BuildUnit(
+                block_id=block.block_id,
+                name=block.name,
+                block_type=block.block_type,
+                steps=(block,),
+            )
+    return None
 
 
 def _snapshot_files(root: Path) -> dict[str, FileFingerprint]:
@@ -495,18 +588,101 @@ def _write_evidence(
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
+def _write_group_evidence(
+    path: Path,
+    unit: BuildUnit,
+    group: StepGroup,
+    *,
+    state: str,
+    execution_id: str | None,
+    summary: str,
+    written_files: tuple[str, ...],
+    acceptance: tuple[AcceptanceRunResult, ...],
+    today: str,
+) -> None:
+    lines = [
+        f"# Evidence: {unit.name} ({unit.block_id})",
+        "",
+        f"- block type: {unit.block_type}",
+        f"- date: {today}",
+        f"- resulting state: {state}",
+        f"- story points (combined assembled cost): {group.total_story_points}",
+        f"- execution id: {execution_id or '-'}",
+        "",
+        "## Stories built",
+    ]
+    lines.extend(f"- {step.name} ({step.block_id}) [{step.block_type}]" for step in group.steps)
+    lines.append("")
+    if unit.already_verified:
+        lines.append("## Stories already verified")
+        lines.extend(f"- {block.name} ({block.block_id})" for block in unit.already_verified)
+        lines.append("")
+    missing = group.missing_files()
+    if missing:
+        lines.append("## Missing context")
+        lines.extend(f"- {f.role}: {f.name}" for f in missing)
+        lines.append("")
+    lines.append("## Stacked context")
+    seen: set[tuple[str, str]] = set()
+    for step in group.steps:
+        for step_file in step.files:
+            if step_file.missing:
+                continue
+            key = (step_file.role, str(step_file.source or step_file.name))
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"- {step_file.role}: {step_file.name} (SP {step_file.story_points})")
+    lines.append("")
+    if written_files:
+        lines.append("## Build directory changes")
+        lines.extend(f"- {changed}" for changed in written_files)
+        lines.append("")
+    if acceptance:
+        lines.append("## Programmatic acceptance")
+        for check in acceptance:
+            mark = "PASS" if check.passed else "FAIL"
+            lines.append(f"- {mark}: {check.check_id} ({check.source})")
+            if check.intent:
+                lines.append(f"  intent: {check.intent}")
+            if check.return_code is not None:
+                lines.append(f"  return code: {check.return_code}")
+            if check.error:
+                lines.append(f"  error: {check.error}")
+            if check.stdout.strip():
+                lines.append("  stdout:")
+                lines.extend(f"    {line}" for line in check.stdout.strip().splitlines())
+            if check.stderr.strip():
+                lines.append("  stderr:")
+                lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
+        lines.append("")
+    lines.append("## Build summary")
+    lines.append(summary.strip() or "(no summary returned)")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+
+
 def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
-    """Reset one story/spike and its child ACs to pending before a forced rebuild."""
+    """Reset one story/spike or feature group and its child ACs to pending."""
     plan = parse_build_plan(manifest_path)
     block = plan.by_id().get(step_id)
     if block is None:
         raise SpecificationError(f"Build step {step_id!r} not found in {manifest_path}")
-    if block.block_type not in {"story", "spike"}:
-        raise SpecificationError(f"{step_id!r} is not a build step")
-    set_block_fields(manifest_path, step_id, state="pending")
-    for child in plan.children(step_id):
-        if child.block_type == "ac":
-            set_block_fields(manifest_path, child.block_id, state="pending")
+    reset_ids: list[str]
+    if block.block_type == "feature":
+        reset_ids = [
+            child.block_id
+            for child in plan.children(step_id)
+            if child.block_type in {"story", "spike"}
+        ]
+    elif block.block_type in {"story", "spike"}:
+        reset_ids = [step_id]
+    else:
+        raise SpecificationError(f"{step_id!r} is not a build step or feature block")
+    for reset_id in reset_ids:
+        set_block_fields(manifest_path, reset_id, state="pending")
+        for child in plan.children(reset_id):
+            if child.block_type == "ac":
+                set_block_fields(manifest_path, child.block_id, state="pending")
 
 
 _MANIFEST_TO_TICKET_STATUS: dict[str, str] = {
@@ -610,51 +786,66 @@ def build_target(
     guard = 0
     while True:
         plan = parse_build_plan(manifest_path)
-        frontier = plan.buildable_steps()
-        if step_id is not None:
-            selected = [block for block in frontier if block.block_id == step_id]
-            if not selected:
-                current = plan.by_id().get(step_id)
-                if current is None:
-                    raise SpecificationError(f"Build step {step_id!r} not found in {manifest_path}")
-                raise SpecificationError(
-                    f"{step_id!r} is not buildable; state={current.state!r}, "
-                    "dependencies must be closed/verified"
-                )
-            frontier = tuple(selected)
-        if not frontier:
+        unit = _select_build_unit(plan, step_id)
+        if unit is None:
             break
         guard += 1
         if guard > len(plan.blocks) + 1:  # defensive; state always advances per step
             break
 
-        block = frontier[0]
-        ready_ids = ", ".join(item.block_id for item in frontier)
+        run_ids = ", ".join(item.block_id for item in unit.steps)
         _emit(
             on_text,
-            (f"BUILD QUEUE: {len(frontier)} ready step(s): {ready_ids}; next={block.block_id}"),
+            (f"BUILD QUEUE: 1 ready block: {unit.name} ({unit.block_id}); stories={run_ids}"),
         )
         compact_stack: frozenset[str] | None = None
         if stack_head is not None:
             compact_stack = frozenset(
                 name for name, commit in plan.applied_registry.items() if commit == stack_head
             )
-        assembly = assemble_step(block, roots, compact_stack=compact_stack)
+        assemblies = tuple(
+            assemble_step(block, roots, compact_stack=compact_stack) for block in unit.steps
+        )
+        group = make_step_group(
+            feature_id=unit.block_id if unit.is_group else None,
+            name=unit.name,
+            steps=assemblies,
+        )
         _emit(
             on_text,
             (
-                f"BUILD STEP START: {block.block_id}  {block.name}  "
-                f"type={block.block_type}  SP={assembly.total_story_points}"
+                f"BUILD BLOCK START: {unit.block_id}  {unit.name}  "
+                f"type={unit.block_type}  SP={group.total_story_points}"
             ),
         )
-        _emit(on_text, f"BUILD STEP WORKDIR: {resolved_build_dir}")
-        prompt_assembly = render_build_prompt_assembly(
-            prompt.body,
-            assembly,
-            target=target,
-            build_dir=resolved_build_dir,
-            today=today,
+        _emit(
+            on_text,
+            (
+                f"BUILD BLOCK STORIES: {len(unit.steps)} run, "
+                f"{len(unit.already_verified)} already verified"
+            ),
         )
+        for verified in unit.already_verified:
+            _emit(on_text, f"  [built] {verified.name} ({verified.block_id})")
+        for assembly in assemblies:
+            _emit(on_text, f"  [run] {assembly.name} ({assembly.block_id})")
+        _emit(on_text, f"BUILD BLOCK WORKDIR: {resolved_build_dir}")
+        if unit.is_group:
+            prompt_assembly = render_build_group_prompt_assembly(
+                prompt.body,
+                group,
+                target=target,
+                build_dir=resolved_build_dir,
+                today=today,
+            )
+        else:
+            prompt_assembly = render_build_prompt_assembly(
+                prompt.body,
+                assemblies[0],
+                target=target,
+                build_dir=resolved_build_dir,
+                today=today,
+            )
         before_files = _snapshot_files(resolved_build_dir)
         result = run(
             prompt_assembly.rendered_text,
@@ -662,7 +853,11 @@ def build_target(
             llm=llm_provider,
             model=model or prompt.model,
             command_name="build",
-            parameters={"step": block.block_id, "step_type": block.block_type},
+            parameters={
+                "step": unit.block_id,
+                "step_type": unit.block_type,
+                "steps": tuple(block.block_id for block in unit.steps),
+            },
             allow_tools=True,
             log_dir=log_dir,
             target=target,
@@ -681,22 +876,26 @@ def build_target(
             execution_bits.append(f"rc={returncode}")
         if execution_id:
             execution_bits.append(f"id={execution_id}")
-        _emit(on_text, f"BUILD STEP RETURNED: {block.block_id}  " + "  ".join(execution_bits))
+        _emit(on_text, f"BUILD BLOCK RETURNED: {unit.block_id}  " + "  ".join(execution_bits))
         state, status, error = _build_outcome(summary, ok=ok, wrote_files=changed_files)
         if changed_files:
             preview = ", ".join(changed_files[:5])
             suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
             _emit(
                 on_text,
-                f"BUILD STEP FILES: {block.block_id}  {len(changed_files)} changed: {preview}{suffix}",
+                f"BUILD BLOCK FILES: {unit.block_id}  {len(changed_files)} changed: {preview}{suffix}",
             )
         else:
-            _emit(on_text, f"BUILD STEP FILES: {block.block_id}  0 changed")
+            _emit(on_text, f"BUILD BLOCK FILES: {unit.block_id}  0 changed")
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         if status != "failed":
-            checks = programmatic_acceptance_for_step(block, blueprint_dir)
+            checks = tuple(
+                check
+                for block in unit.steps
+                for check in programmatic_acceptance_for_step(block, blueprint_dir)
+            )
             if checks:
-                _emit(on_text, f"BUILD ACCEPTANCE START: {block.block_id}  {len(checks)} check(s)")
+                _emit(on_text, f"BUILD ACCEPTANCE START: {unit.block_id}  {len(checks)} check(s)")
             acceptance = run_programmatic_acceptance(
                 checks,
                 build_dir=resolved_build_dir,
@@ -715,14 +914,14 @@ def build_target(
                 passed = sum(1 for check in acceptance if check.passed)
                 _emit(
                     on_text,
-                    f"BUILD ACCEPTANCE RESULT: {block.block_id}  {passed}/{len(checks)} passed",
+                    f"BUILD ACCEPTANCE RESULT: {unit.block_id}  {passed}/{len(checks)} passed",
                 )
 
-        evidence_path = evidence_dir / f"{block.block_id}.md"
-        _write_evidence(
+        evidence_path = evidence_dir / f"{unit.block_id}.md"
+        _write_group_evidence(
             evidence_path,
-            block,
-            assembly,
+            unit,
+            group,
             state=state,
             execution_id=execution_id,
             summary=summary,
@@ -730,72 +929,91 @@ def build_target(
             acceptance=acceptance,
             today=today,
         )
-        block_fields: dict[str, str | None] = {
-            "state": state,
-            "evidence": _rel(evidence_path, target_dir),
-        }
         finding = _failure_finding(status, error, result, acceptance)
-        if finding is not None:
-            block_fields["finding"] = finding
-        elif block.block_type != "spike":
-            # Clear any stale failure reason when a story succeeds; a spike's
-            # ``finding:`` records research output and is never cleared here.
-            block_fields["finding"] = None
-        set_block_fields(manifest_path, block.block_id, **block_fields)
-        if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
-            for child_id in _child_ac_ids(plan.blocks, block.block_id):
-                set_block_fields(manifest_path, child_id, state="closed/verified")
-        _sync_ticket_status(target_dir, block.block_id, state)
+        for block in unit.steps:
+            block_fields: dict[str, str | None] = {
+                "state": state,
+                "evidence": _rel(evidence_path, target_dir),
+            }
+            if finding is not None:
+                block_fields["finding"] = finding
+            elif block.block_type != "spike":
+                # Clear any stale failure reason when a story succeeds; a spike's
+                # ``finding:`` records research output and is never cleared here.
+                block_fields["finding"] = None
+            set_block_fields(manifest_path, block.block_id, **block_fields)
+            if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
+                for child_id in _child_ac_ids(plan.blocks, block.block_id):
+                    set_block_fields(manifest_path, child_id, state="closed/verified")
+            _sync_ticket_status(target_dir, block.block_id, state)
+        if unit.is_group and status != "failed":
+            refreshed = parse_build_plan(manifest_path)
+            children = refreshed.children(unit.block_id)
+            executable_children = tuple(
+                child for child in children if child.block_type in {"story", "spike"}
+            )
+            if executable_children and all(
+                child.state == "closed/verified" for child in executable_children
+            ):
+                set_block_fields(
+                    manifest_path,
+                    unit.block_id,
+                    state="closed/verified",
+                    evidence=_rel(evidence_path, target_dir),
+                )
         if status != "failed" and stack_head is not None:
             updated_registry = dict(plan.applied_registry)
             changed = False
-            for field_key in ("stack", "rules", "context", "implements"):
-                field_val = block.fields.get(field_key, ())
-                if isinstance(field_val, tuple):
-                    for name in field_val:
-                        updated_registry[name] = stack_head
-                        changed = True
+            for block in unit.steps:
+                for field_key in ("stack", "rules", "context", "implements"):
+                    field_val = block.fields.get(field_key, ())
+                    if isinstance(field_val, tuple):
+                        for name in field_val:
+                            updated_registry[name] = stack_head
+                            changed = True
             if changed:
                 set_applied_registry(manifest_path, updated_registry)
         if status != "failed":
             applied_specs = dict(parse_build_plan(manifest_path).applied_specs)
             applied_at = datetime.now(UTC).isoformat(timespec="seconds")
             changed = False
-            for rel_path, source in _blueprint_spec_files(assembly, blueprint_dir):
-                applied_specs[rel_path] = AppliedSpecRecord(
-                    path=rel_path,
-                    sha256=_file_sha256(source),
-                    commit=_git_file_commit(source),
-                    applied_by=block.block_id,
-                    applied_at=applied_at,
-                )
-                changed = True
+            for assembly in assemblies:
+                for rel_path, source in _blueprint_spec_files(assembly, blueprint_dir):
+                    applied_specs[rel_path] = AppliedSpecRecord(
+                        path=rel_path,
+                        sha256=_file_sha256(source),
+                        commit=_git_file_commit(source),
+                        applied_by=unit.block_id,
+                        applied_at=applied_at,
+                    )
+                    changed = True
             if changed:
                 set_applied_specs(manifest_path, applied_specs)
 
-        step_result = BuildStepResult(
-            block_id=block.block_id,
-            name=block.name,
-            block_type=block.block_type,
-            status=status,
-            state=state,
-            story_points=assembly.total_story_points,
-            execution_id=execution_id,
-            evidence_path=evidence_path,
-            error=error,
-            written_files=changed_files,
-            acceptance=acceptance,
-        )
-        steps.append(step_result)
         if status == "failed":
-            _emit(on_text, f"BUILD STEP FAILED: {block.block_id}  {error or 'build failed'}")
+            _emit(on_text, f"BUILD BLOCK FAILED: {unit.block_id}  {error or 'build failed'}")
         else:
             _emit(
                 on_text,
-                f"BUILD STEP COMPLETE: {block.block_id}  state={state}  evidence={_rel(evidence_path, target_dir)}",
+                f"BUILD BLOCK COMPLETE: {unit.block_id}  state={state}  evidence={_rel(evidence_path, target_dir)}",
             )
-        if on_step is not None:
-            on_step(step_result)
+        for block, assembly in zip(unit.steps, assemblies):
+            step_result = BuildStepResult(
+                block_id=block.block_id,
+                name=block.name,
+                block_type=block.block_type,
+                status=status,
+                state=state,
+                story_points=assembly.total_story_points,
+                execution_id=execution_id,
+                evidence_path=evidence_path,
+                error=error,
+                written_files=changed_files,
+                acceptance=acceptance,
+            )
+            steps.append(step_result)
+            if on_step is not None:
+                on_step(step_result)
         if status == "failed" or step_id is not None:
             break
 

@@ -51,6 +51,31 @@ state: pending
 """
 )
 
+_FEATURE_GROUP_MANIFEST = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Catalog
+id: feature-catalog
+summary: Catalog block.
+state: pending
+
+## story 2: Foundation
+id: foundation
+parent: feature-catalog
+implements: DATABASE.md
+instructions: |
+  Build the database.
+state: pending
+
+## story 3: Service
+id: service
+parent: feature-catalog
+implements: SERVICE.md
+instructions: |
+  Build the service.
+state: pending
+"""
+
 
 class FakeResult:
     def __init__(self, ok=True, text="Built it. Created app.py.", execution_id="exec-1", stderr=""):
@@ -135,22 +160,64 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert result.git_commit_message.startswith("drydock build Demo ")
 
 
+def test_builds_feature_group_in_one_runner_call(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    runner = make_runner()
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert len(runner.calls) == 1
+    call = runner.calls[0]
+    assert call["parameters"]["step"] == "feature-catalog"
+    assert call["parameters"]["step_type"] == "feature"
+    assert call["parameters"]["steps"] == ("foundation", "service")
+    assert _state(target_dir, "feature-catalog") == "closed/verified"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/verified"
+    assert (target_dir / "evidence" / "feature-catalog.md").is_file()
+    assert result.steps[0].evidence_path == target_dir / "evidence" / "feature-catalog.md"
+
+
+def test_feature_step_selection_builds_feature_group(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    runner = make_runner()
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="feature-catalog",
+    )
+
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert len(runner.calls) == 1
+    assert runner.calls[0]["parameters"]["step"] == "feature-catalog"
+
+
 def test_build_emits_step_progress_lines(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     log: list[str] = []
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
 
-    assert any(line == "BUILD QUEUE: 1 ready step(s): foundation; next=foundation" for line in log)
     assert any(
-        line.startswith("BUILD STEP START: foundation  Foundation  type=story  SP=") for line in log
+        line == "BUILD QUEUE: 1 ready block: Foundation (foundation); stories=foundation"
+        for line in log
     )
-    assert any(line == f"BUILD STEP WORKDIR: {build_dir}" for line in log)
-    assert any(line == "BUILD STEP RETURNED: foundation  ok=True  id=exec-1" for line in log)
-    assert any(line == "BUILD STEP FILES: foundation  1 changed: foundation.txt" for line in log)
+    assert any(
+        line.startswith("BUILD BLOCK START: foundation  Foundation  type=story  SP=")
+        for line in log
+    )
+    assert any(line == "BUILD BLOCK STORIES: 1 run, 0 already verified" for line in log)
+    assert any(line == "  [run] Foundation (foundation)" for line in log)
+    assert any(line == f"BUILD BLOCK WORKDIR: {build_dir}" for line in log)
+    assert any(line == "BUILD BLOCK RETURNED: foundation  ok=True  id=exec-1" for line in log)
+    assert any(line == "BUILD BLOCK FILES: foundation  1 changed: foundation.txt" for line in log)
     assert any(
         line
-        == "BUILD STEP COMPLETE: foundation  state=closed/verified  evidence=evidence/foundation.md"
+        == "BUILD BLOCK COMPLETE: foundation  state=closed/verified  evidence=evidence/foundation.md"
         for line in log
     )
 

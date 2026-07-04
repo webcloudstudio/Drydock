@@ -14,7 +14,7 @@ import pytest
 import drydock.llm
 from drydock.errors import LlmError
 from drydock.llm import run_prompt
-from drydock.prompt_assembly import PromptAssembly, part
+from drydock.prompt_assembly import PromptAssembly, lines_part, part
 
 
 class FakeStdin(io.StringIO):
@@ -59,6 +59,44 @@ def _events(target: Path) -> list[dict]:
     return [
         json.loads(line) for line in (target / "logs" / "events.jsonl").read_text().splitlines()
     ]
+
+
+def test_build_prompt_breakdown_shows_block_and_stories():
+    assembly = PromptAssembly(
+        parts=(
+            lines_part(
+                "Build block job",
+                [
+                    "## Build block job",
+                    "- TARGET: Demo",
+                    "- FEATURE_BLOCK: Catalog (feature-catalog)",
+                    "",
+                ],
+                kind="job",
+            ),
+            lines_part(
+                "Stories in this block",
+                [
+                    "## Stories in this block",
+                    "- Report Ingest & Health Read (report-ingest) [story]",
+                    "- S3 Share Index & Access (s3-share) [story]",
+                    "",
+                ],
+            ),
+            part("COMPASS.md", "compass", kind="file", role="compass"),
+            part("FEATURE-REPORT-INGEST.md", "report", kind="file", role="implements"),
+            part("Build instructions", "instructions", kind="instructions"),
+            part("Prompt body", "body", kind="prompt-body"),
+        )
+    )
+
+    lines = drydock.llm._prompt_breakdown_summary("build", assembly)
+
+    assert lines[0] == "PROMPT BUILD BLOCK: Catalog (feature-catalog)"
+    assert "  [STORIES RUN]" in lines
+    assert any("Report Ingest & Health Read (report-ingest) [story]" in line for line in lines)
+    assert "  [IMPLEMENTS - Authoritative Story Specifications]" in lines
+    assert any("FEATURE-REPORT-INGEST.md" in line and "role=implements" in line for line in lines)
 
 
 def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monkeypatch):

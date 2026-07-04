@@ -566,6 +566,37 @@ class StepGroup:
     summed_story_points: int = field(default=0)
     story_point_savings: int = field(default=0)
 
+    def missing_files(self) -> tuple[StepFile, ...]:
+        missing: list[StepFile] = []
+        seen: set[tuple[str, str]] = set()
+        for step in self.steps:
+            for step_file in step.missing_files():
+                key = _group_file_key(step_file)
+                if key in seen:
+                    continue
+                seen.add(key)
+                missing.append(step_file)
+        return tuple(missing)
+
+
+def make_step_group(
+    *,
+    feature_id: str | None,
+    name: str,
+    steps: tuple[StepAssembly, ...],
+) -> StepGroup:
+    """Create a StepGroup with the same combined-cost semantics as QuarterDeck."""
+    summed_story_points = sum(s.total_story_points for s in steps)
+    combined_story_points = _combined_story_points(steps)
+    return StepGroup(
+        feature_id=feature_id,
+        name=name,
+        steps=steps,
+        total_story_points=combined_story_points,
+        summed_story_points=summed_story_points,
+        story_point_savings=max(0, summed_story_points - combined_story_points),
+    )
+
 
 def _group_file_key(step_file: StepFile) -> tuple[str, str]:
     """Return the identity used to count a file once in a grouped build."""
@@ -597,6 +628,142 @@ def _combined_story_points(steps: tuple[StepAssembly, ...]) -> int:
     return total
 
 
+def _unique_group_files(steps: tuple[StepAssembly, ...], role: str) -> tuple[StepFile, ...]:
+    seen: set[tuple[str, str]] = set()
+    files: list[StepFile] = []
+    for step in steps:
+        for step_file in step.files:
+            if step_file.role != role:
+                continue
+            key = _group_file_key(step_file)
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(step_file)
+    return tuple(files)
+
+
+def render_build_group_prompt_assembly(
+    body: str,
+    group: StepGroup,
+    *,
+    target: str,
+    build_dir: Path,
+    today: str,
+) -> PromptAssembly:
+    """Compose the executable build prompt for one feature/group block."""
+    block_label = group.feature_id or "ungrouped"
+    run_steps = ", ".join(f"{step.name} ({step.block_id})" for step in group.steps)
+    parts = [
+        system_preamble_part(),
+        section_heading_part("# Input Context"),
+        lines_part(
+            "Build block job",
+            [
+                "## Build block job",
+                f"- TARGET: {target}",
+                f"- BUILD_DIRECTORY: {build_dir}",
+                f"- WORKING_DIRECTORY: {build_dir}",
+                f"- FEATURE_BLOCK: {group.name} ({block_label})",
+                f"- STORIES: {run_steps}",
+                f"- DATE: {today}",
+                "- BUILD_SCOPE: exactly one MANIFEST.md feature block",
+                "- WRITE_BOUNDARY: write only inside BUILD_DIRECTORY",
+                "",
+            ],
+            kind="job",
+        ),
+        lines_part(
+            "Stories in this block",
+            [
+                "## Stories in this block",
+                *[f"- {step.name} ({step.block_id}) [{step.block_type}]" for step in group.steps],
+                "",
+            ],
+            kind="section",
+        ),
+    ]
+    missing = group.missing_files()
+    if missing:
+        parts.append(
+            lines_part(
+                "Missing context files",
+                [
+                    "Missing context files (named by the plan but not found):",
+                    *[f"- {f.role}: {f.name}" for f in missing],
+                    "",
+                ],
+                kind="section",
+            )
+        )
+    for role in _PROMPT_RENDER_ROLE_ORDER:
+        role_files = tuple(
+            step_file
+            for step_file in _unique_group_files(group.steps, role)
+            if not step_file.missing and step_file.source is not None
+        )
+        if not role_files:
+            continue
+        parts.append(section_heading_part(_ROLE_HEADINGS[role]))
+        if role == "implements":
+            parts.append(
+                lines_part(
+                    "Implementation recency anchor",
+                    [
+                        "The files in this section are the load-bearing specifications for this build block.",
+                        "Build these files exactly. Treat earlier sections as constraints and context.",
+                        "",
+                    ],
+                    kind="section",
+                )
+            )
+        for step_file in role_files:
+            try:
+                content = step_file.source.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            header = prompt_header_for_file(step_file.name)
+            if header is not None:
+                parts.extend(
+                    contextual_markdown_parts(
+                        step_file.name,
+                        content.rstrip(),
+                        filename=step_file.name,
+                        role=step_file.role,
+                        path=step_file.source,
+                    )
+                )
+                continue
+            parts.append(
+                part(
+                    step_file.name,
+                    (
+                        f'<pblock filename="{step_file.name}" role="{step_file.role}"'
+                        + (f' path="{step_file.source}"' if step_file.source else "")
+                        + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
+                    ),
+                    kind="file",
+                    role=step_file.role,
+                    path=step_file.source,
+                )
+            )
+    instruction_lines = ["### Build instructions for this block"]
+    for step in group.steps:
+        if not step.instructions.strip():
+            continue
+        instruction_lines.extend([
+            "",
+            f"#### {step.name} ({step.block_id})",
+            step.instructions.strip(),
+        ])
+    if len(instruction_lines) > 1:
+        instruction_lines.append("")
+        parts.append(lines_part("Build instructions", instruction_lines, kind="instructions"))
+    parts.append(section_heading_part("# Agent Task"))
+    parts.append(part("Prompt body", body.rstrip() + "\n\n", kind="prompt-body"))
+    return PromptAssembly(parts=tuple(parts))
+
+
 def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepGroup, ...]:
     """Group assembled steps under their parent feature, in manifest order.
 
@@ -621,16 +788,5 @@ def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepG
             name = "Ungrouped"
         else:
             name = by_id[key].name
-        summed_story_points = sum(s.total_story_points for s in steps_in)
-        combined_story_points = _combined_story_points(steps_in)
-        groups.append(
-            StepGroup(
-                feature_id=key,
-                name=name,
-                steps=steps_in,
-                total_story_points=combined_story_points,
-                summed_story_points=summed_story_points,
-                story_point_savings=max(0, summed_story_points - combined_story_points),
-            )
-        )
+        groups.append(make_step_group(feature_id=key, name=name, steps=steps_in))
     return groups
