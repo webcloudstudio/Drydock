@@ -21,7 +21,7 @@ import json
 import re
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
@@ -494,28 +494,142 @@ def _reported_result(summary: str) -> str | None:
     return "FAILURE" if match.group(1).upper() in {"FAILURE", "FAIL", "ERROR"} else "SUCCESS"
 
 
+# Signatures that classify a build failure so a rerun is informed rather than opaque.
+# The execution-environment signatures name the specific codex sandbox breakage
+# (missing ``codex-linux-sandbox`` helper invoked via ``bwrap``) so it self-identifies
+# if it ever recurs, instead of collapsing to "no build files written".
+_SANDBOX_SIGNATURES = (
+    "codex-linux-sandbox",
+    "bwrap: execvp",
+    "execvp codex",
+    "landlock",
+    "seccomp",
+    "sandbox denied",
+    "failed to spawn sandbox",
+)
+_TOKEN_SIGNATURES = (
+    "context length",
+    "maximum context",
+    "context window",
+    "token limit",
+    "prompt is too long",
+    "too many tokens",
+    "exceeds the maximum",
+    "context_length_exceeded",
+)
+
+_FAILURE_SUMMARY_RE = re.compile(r"^\s*FAILURE_SUMMARY:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+_FAILURE_DETAIL_RE = re.compile(
+    r"^\s*FAILURE_DETAIL:\s*(.+)", re.IGNORECASE | re.MULTILINE | re.DOTALL
+)
+
+
+def _parse_agent_failure(summary: str) -> tuple[str, str]:
+    """Extract the agent's structured ``FAILURE_SUMMARY`` / ``FAILURE_DETAIL`` report."""
+    summary_match = _FAILURE_SUMMARY_RE.search(summary)
+    detail_match = _FAILURE_DETAIL_RE.search(summary)
+    agent_summary = summary_match.group(1).strip() if summary_match else ""
+    agent_detail = detail_match.group(1).strip() if detail_match else ""
+    return agent_summary, agent_detail
+
+
+def _result_provider_error(result: object) -> str | None:
+    """Return the provider-level error persisted on the execution record, if any."""
+    record = getattr(result, "record", None)
+    if isinstance(record, Mapping):
+        res = record.get("result")
+        if isinstance(res, Mapping) and res.get("error"):
+            return str(res["error"]).strip()
+    return None
+
+
+def _classify_failure(
+    summary: str,
+    *,
+    ok: bool,
+    wrote_files: tuple[str, ...],
+    stderr: str = "",
+    provider_error: str | None = None,
+) -> tuple[str, str] | None:
+    """Classify a build step's failure, or return ``None`` when it succeeded.
+
+    Returns ``(category, detail)``: a concise category for the manifest ``finding:`` and a
+    fuller detail for the evidence ``## Failure`` section. Signature matching runs before the
+    coarse pass/fail authority so a run that exits cleanly but could not execute any command
+    (e.g. a missing OS sandbox helper) names the real cause instead of "no build files written".
+    """
+    text = summary or ""
+    haystack = "\n".join(part for part in (text, stderr, provider_error or "") if part).lower()
+
+    if provider_error:
+        low = provider_error.lower()
+        if "rate limit" in low:
+            return "provider rate limit", provider_error
+        if "timed out" in low:
+            return "execution timed out", provider_error
+        if "provider error" in low or "api" in low:
+            return "provider error", provider_error
+
+    if any(sig in haystack for sig in _SANDBOX_SIGNATURES):
+        detail = (
+            "The build agent could not execute commands in this environment: the codex OS "
+            "sandbox helper (codex-linux-sandbox) is unavailable. Set codex_sandbox to "
+            "'danger-full-access' (runs in the invoking shell) or install the helper, then rerun."
+        )
+        return "execution environment unavailable", detail
+
+    if any(sig in haystack for sig in _TOKEN_SIGNATURES):
+        detail = (
+            "The model reported a context or token limit. Reduce the step's stacked context "
+            "(split the block or compact its sources), then rerun."
+        )
+        return "context/token limit", detail
+
+    if not ok:
+        detail = stderr.strip() or provider_error or "The provider process exited non-zero."
+        return "LLM execution failed", detail
+
+    if not text.strip():
+        return "empty output", "The build agent returned no output."
+
+    if _reported_result(text) == "FAILURE":
+        agent_summary, agent_detail = _parse_agent_failure(text)
+        category = (
+            f"agent-reported failure: {agent_summary}"
+            if agent_summary
+            else "agent-reported failure"
+        )
+        detail = agent_detail or agent_summary or text.strip()
+        return category, detail
+
+    if not wrote_files:
+        return "no build files written", "The build agent completed but changed no files."
+
+    return None
+
+
 def _build_outcome(
     summary: str,
     *,
     ok: bool,
     wrote_files: tuple[str, ...],
-) -> tuple[str, str, str | None]:
+    stderr: str = "",
+    provider_error: str | None = None,
+) -> tuple[str, str, str | None, str]:
     """Map provider result + observed file delta + optional self-report to an outcome.
 
-    Authority order: a non-zero provider exit or empty output fails; an explicit
-    ``RESULT: FAILURE`` fails; a run that wrote no files fails. Otherwise the step succeeds.
-    A missing or unparsable report no longer fails the step: the filesystem delta already
-    records what changed, and programmatic acceptance is the real gate.
+    Returns ``(state, status, error, detail)``. ``error`` is the classified category carried
+    onto the manifest ``finding:``; ``detail`` is the fuller explanation written to the evidence
+    ``## Failure`` section. A missing or unparsable report does not fail the step: the filesystem
+    delta already records what changed, and programmatic acceptance is the real gate.
     """
-    if not ok:
-        return "closed/failed", "failed", "LLM execution failed"
-    if not summary.strip():
-        return "closed/failed", "failed", "empty output"
-    if _reported_result(summary) == "FAILURE":
-        return "closed/failed", "failed", "build agent reported failure"
-    if not wrote_files:
-        return "closed/failed", "failed", "no build files written"
-    return "", "", None
+    classified = _classify_failure(
+        summary, ok=ok, wrote_files=wrote_files, stderr=stderr, provider_error=provider_error
+    )
+    if classified is None:
+        return "", "", None, ""
+    category, detail = classified
+    return "closed/failed", "failed", category, detail
 
 
 def _clip(text: str, limit: int = 240) -> str:
@@ -623,6 +737,8 @@ def _write_group_evidence(
     written_files: tuple[str, ...],
     acceptance: tuple[AcceptanceRunResult, ...],
     today: str,
+    failure_summary: str = "",
+    failure_detail: str = "",
 ) -> None:
     lines = [
         f"# Evidence: {unit.name} ({unit.block_id})",
@@ -679,6 +795,14 @@ def _write_group_evidence(
             if check.stderr.strip():
                 lines.append("  stderr:")
                 lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
+        lines.append("")
+    if state.endswith("failed") and (failure_summary or failure_detail):
+        lines.append("## Failure")
+        if failure_summary:
+            lines.append(f"- summary: {failure_summary}")
+        if failure_detail:
+            lines.append("- detail:")
+            lines.extend(f"    {line}" for line in failure_detail.strip().splitlines())
         lines.append("")
     lines.append("## Build summary")
     lines.append(summary.strip() or "(no summary returned)")
@@ -901,7 +1025,13 @@ def build_target(
         if execution_id:
             execution_bits.append(f"id={execution_id}")
         _emit(on_text, f"BUILD BLOCK RETURNED: {unit.block_id}  " + "  ".join(execution_bits))
-        state, status, error = _build_outcome(summary, ok=ok, wrote_files=changed_files)
+        state, status, error, failure_detail = _build_outcome(
+            summary,
+            ok=ok,
+            wrote_files=changed_files,
+            stderr=str(getattr(result, "stderr", "") or ""),
+            provider_error=_result_provider_error(result),
+        )
         if changed_files:
             preview = ", ".join(changed_files[:5])
             suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
@@ -932,8 +1062,11 @@ def build_target(
                 error = "programmatic acceptance failed: " + ", ".join(
                     check.check_id for check in failed_checks
                 )
+                # Per-check errors are already rendered in the evidence acceptance section.
+                failure_detail = ""
             else:
                 state, status, error = "closed/verified", "built", None
+                failure_detail = ""
             if checks:
                 passed = sum(1 for check in acceptance if check.passed)
                 _emit(
@@ -952,6 +1085,8 @@ def build_target(
             written_files=changed_files,
             acceptance=acceptance,
             today=today,
+            failure_summary=error or "",
+            failure_detail=failure_detail,
         )
         finding = _failure_finding(status, error, result, acceptance)
         for block in unit.steps:

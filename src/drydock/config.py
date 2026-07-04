@@ -17,6 +17,7 @@ _KEY_MAP = {
     "drydock_workspace": "DRYDOCK_WORKSPACE",
     "drydock_model": "DRYDOCK_MODEL",
     "llm_provider": "LLM_PROVIDER",
+    "codex_sandbox": "DRYDOCK_CODEX_SANDBOX",
     "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
     "quarterdeck_port": "QUARTERDECK_PORT",
     "shipslog_dir": "DRYDOCK_SHIPSLOG_DIR",
@@ -144,6 +145,32 @@ def get_llm_provider(cli_override: str | None = None) -> str:
     return provider
 
 
+CODEX_SANDBOX_MODES = ("read-only", "workspace-write", "danger-full-access")
+DEFAULT_CODEX_SANDBOX = "danger-full-access"
+
+
+def get_codex_sandbox(cli_override: str | None = None) -> str:
+    """Resolve the sandbox policy for the ``codex`` provider.
+
+    Resolution order: cli_override → DRYDOCK_CODEX_SANDBOX (env or config file) →
+    ``danger-full-access``. The default runs model-generated commands directly in the
+    invoking shell, so Drydock never depends on an external encapsulation layer
+    (``codex-linux-sandbox`` / ``bwrap``). Hardened deployments may opt into
+    ``workspace-write``; confinement is otherwise a deployment-layer concern.
+    """
+    if cli_override is not None:
+        value = cli_override
+    else:
+        value, _source = _get("DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX)
+    sandbox = (value or "").lower().strip()
+    if sandbox not in CODEX_SANDBOX_MODES:
+        raise ConfigurationError(
+            f"Invalid DRYDOCK_CODEX_SANDBOX: {value!r}\n"
+            f"  Valid values: {', '.join(CODEX_SANDBOX_MODES)}"
+        )
+    return sandbox
+
+
 def get_prompt_warn_tokens() -> int:
     value, _source = _get("PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS))
     try:
@@ -189,6 +216,7 @@ def config_show() -> list[tuple[str, str, str]]:
     for display_key, key_upper, default in (
         ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
         ("llm_provider", "LLM_PROVIDER", "claude"),
+        ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
         ("shipslog_dir", "DRYDOCK_SHIPSLOG_DIR", ""),
@@ -244,6 +272,13 @@ def config_set(key: str, value: str) -> Path:
         if stored_value not in {"claude", "codex"}:
             raise ConfigurationError(
                 f"Invalid llm_provider: {value!r}\n  Valid values: claude, codex"
+            )
+    elif upper == "DRYDOCK_CODEX_SANDBOX":
+        stored_value = value.lower()
+        if stored_value not in CODEX_SANDBOX_MODES:
+            raise ConfigurationError(
+                f"Invalid codex_sandbox: {value!r}\n"
+                f"  Valid values: {', '.join(CODEX_SANDBOX_MODES)}"
             )
     elif upper == "PROMPT_WARN_TOKENS":
         if not value.isdigit() or int(value) <= 0:

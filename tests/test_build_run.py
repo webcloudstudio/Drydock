@@ -566,12 +566,22 @@ def test_explicit_failure_report_persists_finding(tmp_path):
         "Demo",
         target_dir,
         build_dir=build_dir,
-        runner=make_runner(text="Could not resolve imports. RESULT: FAILURE"),
+        runner=make_runner(
+            text=(
+                "RESULT: FAILURE\n"
+                "FAILURE_SUMMARY: could not resolve imports\n"
+                "FAILURE_DETAIL: the requests package is not vendored; add it and rerun.\n"
+            )
+        ),
     )
 
     assert result.steps[0].status == "failed"
     assert _state(target_dir, "foundation") == "closed/failed"
-    assert _finding(target_dir, "foundation") == "build agent reported failure"
+    assert _finding(target_dir, "foundation") == "agent-reported failure: could not resolve imports"
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "## Failure" in evidence
+    assert "could not resolve imports" in evidence
+    assert "add it and rerun" in evidence
 
 
 def test_execution_failure_traps_stderr_into_finding(tmp_path):
@@ -588,6 +598,65 @@ def test_execution_failure_traps_stderr_into_finding(tmp_path):
     assert finding is not None
     assert finding.startswith("LLM execution failed")
     assert "provider crashed" in finding
+
+
+class TestClassifyFailure:
+    def _classify(self, **kwargs):
+        from drydock.build_run import _classify_failure
+
+        base = {"ok": True, "wrote_files": ("app.py",)}
+        base.update(kwargs)
+        return _classify_failure(base.pop("summary", ""), **base)
+
+    def test_success_returns_none(self):
+        assert self._classify(summary="Done. RESULT: SUCCESS") is None
+
+    def test_sandbox_signature_even_when_process_exits_clean(self):
+        category, detail = self._classify(
+            summary="bwrap: execvp codex-linux-sandbox: No such file or directory",
+            wrote_files=(),
+        )
+        assert category == "execution environment unavailable"
+        assert "danger-full-access" in detail
+
+    def test_token_limit_signature(self):
+        category, _ = self._classify(summary="Error: prompt is too long for the context window")
+        assert category == "context/token limit"
+
+    def test_provider_rate_limit(self):
+        category, detail = self._classify(
+            ok=False, summary="", provider_error="provider rate limit 429: session limit"
+        )
+        assert category == "provider rate limit"
+        assert "429" in detail
+
+    def test_non_zero_exit_uses_stderr_detail(self):
+        category, detail = self._classify(ok=False, summary="", stderr="boom\nsegfault")
+        assert category == "LLM execution failed"
+        assert "segfault" in detail
+
+    def test_empty_output(self):
+        category, _ = self._classify(summary="   ")
+        assert category == "empty output"
+
+    def test_agent_reported_failure_parses_structured_block(self):
+        summary = (
+            "RESULT: FAILURE\n"
+            "FAILURE_SUMMARY: missing DATABASE.md input\n"
+            "FAILURE_DETAIL: the implements file was not provided; supply it and rerun.\n"
+        )
+        category, detail = self._classify(summary=summary)
+        assert category == "agent-reported failure: missing DATABASE.md input"
+        assert "supply it and rerun" in detail
+
+    def test_agent_reported_failure_without_structured_block(self):
+        category, detail = self._classify(summary="Could not resolve imports. RESULT: FAILURE")
+        assert category == "agent-reported failure"
+        assert "Could not resolve imports" in detail
+
+    def test_no_files_written(self):
+        category, _ = self._classify(summary="All good, nothing to do.", wrote_files=())
+        assert category == "no build files written"
 
 
 _WITH_STACK = """# MANIFEST: Demo

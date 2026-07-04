@@ -14,6 +14,7 @@ from drydock.config import (
     config_set,
     config_show,
     get_build_directory,
+    get_codex_sandbox,
     get_llm_provider,
     get_model,
     get_prompt_warn_tokens,
@@ -66,6 +67,17 @@ class TestConfigSet:
         with pytest.raises(ConfigurationError, match="Valid values"):
             config_set("llm_provider", "other")
 
+    def test_codex_sandbox_defaults_to_danger_full_access(self, isolated_config):
+        assert get_codex_sandbox() == "danger-full-access"
+
+    def test_set_codex_sandbox(self, isolated_config):
+        config_set("codex_sandbox", "workspace-write")
+        assert get_codex_sandbox() == "workspace-write"
+
+    def test_set_invalid_codex_sandbox_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="Valid values"):
+            config_set("codex_sandbox", "docker")
+
     def test_set_prompt_warn_tokens(self, isolated_config):
         config_set("prompt_warn_tokens", "75000")
         assert get_prompt_warn_tokens() == 75000
@@ -80,9 +92,13 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_seven_rows(self, isolated_config):
+    def test_show_returns_eight_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 7
+        assert len(rows) == 8
+
+    def test_show_includes_codex_sandbox(self, isolated_config):
+        keys = {row[0] for row in config_show()}
+        assert "codex_sandbox" in keys
 
     def test_show_defaults_when_empty(self, isolated_config, tmp_path, monkeypatch):
         default_build_root = tmp_path / "projects"

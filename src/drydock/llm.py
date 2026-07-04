@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from drydock.config import get_llm_provider
+from drydock.config import get_codex_sandbox, get_llm_provider
 from drydock.errors import LlmConfigurationError, LlmError
 from drydock.execution import (
     ExecutionArtifacts,
@@ -73,6 +73,7 @@ def _command(
     artifacts: ExecutionArtifacts,
     model: str | None,
     allow_tools: bool = False,
+    codex_sandbox: str = "danger-full-access",
 ) -> tuple[str, ...]:
     if llm == "claude":
         command = [
@@ -110,7 +111,7 @@ def _command(
             "--ignore-rules",
             "--ephemeral",
             "--sandbox",
-            "workspace-write",
+            codex_sandbox,
             "--cd",
             str(working_directory),
             "--json",
@@ -152,6 +153,28 @@ def _isolate_claude_env(process_env: dict[str, str]) -> None:
 
     process_env["HOME"] = str(build_home)
     process_env["CLAUDE_CONFIG_DIR"] = str(build_home)
+
+
+def _preflight_codex_sandbox(sandbox: str) -> None:
+    """Fail fast when a selected codex OS sandbox cannot be enforced on this host.
+
+    ``danger-full-access`` runs commands directly in the invoking shell and needs no
+    helper. On Linux, ``read-only`` / ``workspace-write`` are enforced by the separate
+    ``codex-linux-sandbox`` helper (invoked via ``bwrap``); when it is absent every
+    model-generated command fails mid-build with an opaque error. Detect that here and
+    raise a clear, classified error instead. macOS uses the built-in Seatbelt sandbox,
+    so no helper check applies there.
+    """
+    if sandbox == "danger-full-access":
+        return
+    if sys.platform == "linux" and shutil.which("codex-linux-sandbox") is None:
+        raise LlmConfigurationError(
+            f"execution environment unavailable: codex sandbox {sandbox!r} requires the "
+            "'codex-linux-sandbox' helper, which is not installed on this host.\n"
+            "  Install the helper, or set codex_sandbox to 'danger-full-access' "
+            "(runs in the invoking shell).\n"
+            "  Configure with: drydock config set codex_sandbox danger-full-access"
+        )
 
 
 def _isolate_codex_env(process_env: dict[str, str]) -> Path:
@@ -711,6 +734,7 @@ def run_prompt(
     *,
     llm: str | None = None,
     model: str | None = None,
+    codex_sandbox: str | None = None,
     command_name: str = "prompt",
     parameters: Mapping[str, Any] | None = None,
     debug: bool = False,
@@ -736,6 +760,10 @@ def run_prompt(
     if not working_directory.is_dir():
         raise LlmConfigurationError(f"Working directory does not exist: {working_directory}")
 
+    sandbox = get_codex_sandbox(codex_sandbox) if selected == "codex" else "danger-full-access"
+    if selected == "codex":
+        _preflight_codex_sandbox(sandbox)
+
     assembly = prompt_assembly or PromptAssembly.single_prompt(prompt)
     prompt = assembly.rendered_text
 
@@ -744,7 +772,9 @@ def run_prompt(
     )
     prompt_bytes = prompt.encode("utf-8")
     artifacts.prompt_file.write_bytes(prompt_bytes)
-    command = _command(selected, working_directory, artifacts, model, allow_tools)
+    command = _command(
+        selected, working_directory, artifacts, model, allow_tools, codex_sandbox=sandbox
+    )
     job_parameters = dict(parameters or {})
     logger = create_execution_logger(artifacts.execution_id, artifacts.log_file, debug=debug)
     started_at = utc_now()

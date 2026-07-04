@@ -67,3 +67,14 @@ BLOCKERS:
 
 11. `FILES CHANGED` must list only files actually written in the build working
    directory. If no files were written, use `RESULT: FAILED`.
+12. On `RESULT: FAILED`, append two additional lines so the failure is actionable
+   without opening logs. `FAILURE_SUMMARY` is one line naming the cause;
+   `FAILURE_DETAIL` states what happened, why, and what to change before a rerun.
+   Name concrete conditions when they apply: token or context limit exceeded,
+   could not execute commands in this environment, a required input was missing,
+   or a specific tool or command failed.
+
+```text
+FAILURE_SUMMARY: <one line naming the cause>
+FAILURE_DETAIL: <what happened, why, and what to change before rerunning>
+```

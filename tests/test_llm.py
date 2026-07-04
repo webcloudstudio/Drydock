@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 import drydock.llm
-from drydock.errors import LlmError
+from drydock.errors import LlmConfigurationError, LlmError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import PromptAssembly, lines_part, part
 
@@ -345,9 +345,64 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
     assert "--ignore-user-config" in result.command
     assert "--ignore-rules" in result.command
     assert "--ephemeral" in result.command
-    assert result.command[result.command.index("--sandbox") + 1] == "workspace-write"
+    assert result.command[result.command.index("--sandbox") + 1] == "danger-full-access"
     assert result.stats.model == "codex-test"
     assert chunks == ["CODEX READY"]
+
+
+def test_run_codex_sandbox_override_passes_through(tmp_path, monkeypatch):
+    raw = json.dumps({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "OK"},
+        "model": "codex-test",
+    })
+
+    def fake_popen(command, **kwargs):
+        Path(command[command.index("--output-last-message") + 1]).write_text("OK")
+        return FakePopen(command, stdout_text=raw + "\n", **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    # workspace-write triggers the Linux helper preflight; make the helper resolvable.
+    monkeypatch.setattr(drydock.llm.shutil, "which", lambda name: "/usr/bin/codex-linux-sandbox")
+
+    result = run_prompt(
+        "Work", tmp_path, llm="codex", command_name="build", codex_sandbox="workspace-write"
+    )
+
+    assert result.command[result.command.index("--sandbox") + 1] == "workspace-write"
+
+
+def test_run_codex_workspace_write_fails_fast_when_helper_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(drydock.llm.sys, "platform", "linux")
+    monkeypatch.setattr(drydock.llm.shutil, "which", lambda name: None)
+
+    with pytest.raises(LlmConfigurationError) as excinfo:
+        run_prompt(
+            "Work", tmp_path, llm="codex", command_name="build", codex_sandbox="workspace-write"
+        )
+
+    message = str(excinfo.value)
+    assert "execution environment unavailable" in message
+    assert "codex-linux-sandbox" in message
+
+
+def test_run_codex_danger_full_access_skips_helper_preflight(tmp_path, monkeypatch):
+    raw = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "OK"}})
+
+    def fake_popen(command, **kwargs):
+        Path(command[command.index("--output-last-message") + 1]).write_text("OK")
+        return FakePopen(command, stdout_text=raw + "\n", **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(drydock.llm.sys, "platform", "linux")
+    # Helper absent, but danger-full-access needs none: must not raise.
+    monkeypatch.setattr(drydock.llm.shutil, "which", lambda name: None)
+
+    result = run_prompt(
+        "Work", tmp_path, llm="codex", command_name="build", codex_sandbox="danger-full-access"
+    )
+
+    assert result.command[result.command.index("--sandbox") + 1] == "danger-full-access"
 
 
 def _claude_result_raw(text: str = "READY") -> str:
@@ -482,7 +537,7 @@ def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False: (
+        lambda llm, working_directory, artifacts, model, allow_tools=False, codex_sandbox="danger-full-access": (
             sys.executable,
             "-u",
             "-c",
@@ -511,7 +566,7 @@ def test_timeout_terminates_process_and_writes_failed_record(tmp_path, monkeypat
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False: (
+        lambda llm, working_directory, artifacts, model, allow_tools=False, codex_sandbox="danger-full-access": (
             sys.executable,
             "-u",
             "-c",
