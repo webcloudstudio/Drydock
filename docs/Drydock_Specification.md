@@ -1271,32 +1271,30 @@ Drydock invokes the Claude CLI as a non-interactive build agent inside an isolat
 
 ### Codex Implementation
 
-Drydock encapsulates the llm when codex is chosen via:
+When the provider is codex, Drydock isolates Codex's configuration and identity — not its command execution. 
 
-    Drydock runs Codex in a clean room with
+ CODEX_HOME=/tmp/drydock-codex-home-XXXX codex exec \
+     --ignore-user-config \
+     --ignore-rules \
+     --ephemeral \
+     --sandbox <codex_sandbox> \
+     --cd <build_dir> \
+     --json \
+     --output-last-message <output_file> \
+     --model <model> -
 
-    CODEX_HOME=/tmp/drydock-codex-home-XXXX codex exec \
-        --ignore-user-config
-        --ignore-rules \
-        --ephemeral \
-        --sandbox workspace-write \
-        --cd <build_dir> \
-        --json
-        --output-last-message <output_file> \
-        --model <model> -;
+ - CODEX_HOME=<dir> — a temporary home seeded only with auth.json, so Codex inherits none of the user's config, rules, memories, or session history.
+ - --ignore-user-config — disables $CODEX_HOME/config.toml.
+ - --ignore-rules — disables user and project .rules.
+ - --ephemeral — disables persisted session state.
+ - --sandbox <codex_sandbox> — the OS execution-sandbox policy, resolved from codex_sandbox (default danger-full-access).
+ - --cd <build_dir> — sets the working root.
+ - --json — structured event output.
+ - --output-last-message <output_file> — captures the final agent message deterministically.
+ - --model <model> — selects the runtime model.
+ - trailing - — Codex reads the fully assembled Drydock prompt from stdin.
 
-Explanation:
-
-    CODEX_HOME=<dir> points Codex at a temporary home seeded only with auth.json,
-    --ignore-user-config disables $CODEX_HOME/config.toml,
-    --ignore-rules disables user/project .rules,
-    --ephemeral disables persisted session state,
-    --sandbox workspace-write constrains tool execution to the workspace sandbox,
-    --cd <build_dir> sets the working root,
-    --json enables structured event output,
-    --output-last-message <output_file> captures the final agent message deterministically,
-    --model <model> selects the runtime model
-    trailing - tells Codex to read the fully assembled Drydock prompt from stdin
+Execution sandbox. The codex provider executes model-generated commands in the invoking shell. codex_sandbox selects the OS sandbox policy: danger-full-access (default, no OS confinement), workspace-write, or read-only. Non-default modes require the platform sandbox helper (codex-linux-sandbox on Linux) and fail fast when it is absent. Drydock does not require an external encapsulation layer; hardened deployments confine execution by running Drydock inside a container that exposes only the workspace and target directories.
 
 ## Blueprints - Typed Specification Contract
 
