@@ -202,17 +202,13 @@ def test_build_emits_step_progress_lines(tmp_path):
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
 
+    assert any(line == "BUILD QUEUE: 1 ready block" for line in log)
     assert any(
-        line == "BUILD QUEUE: 1 ready block: Foundation (foundation); stories=foundation"
-        for line in log
+        line.startswith("BUILD BLOCK: Foundation (foundation)  type=story  SP=") for line in log
     )
-    assert any(
-        line.startswith("BUILD BLOCK START: foundation  Foundation  type=story  SP=")
-        for line in log
-    )
-    assert any(line == "BUILD BLOCK STORIES: 1 run, 0 already verified" for line in log)
+    assert any(line == "BUILD STORIES: 1 run, 0 already verified" for line in log)
+    assert any(line == f"BUILD WORKDIR: {build_dir}" for line in log)
     assert any(line == "  [run] Foundation (foundation)" for line in log)
-    assert any(line == f"BUILD BLOCK WORKDIR: {build_dir}" for line in log)
     assert any(line == "BUILD BLOCK RETURNED: foundation  ok=True  id=exec-1" for line in log)
     assert any(line == "BUILD BLOCK FILES: foundation  1 changed: foundation.txt" for line in log)
     assert any(

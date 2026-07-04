@@ -793,11 +793,7 @@ def build_target(
         if guard > len(plan.blocks) + 1:  # defensive; state always advances per step
             break
 
-        run_ids = ", ".join(item.block_id for item in unit.steps)
-        _emit(
-            on_text,
-            (f"BUILD QUEUE: 1 ready block: {unit.name} ({unit.block_id}); stories={run_ids}"),
-        )
+        _emit(on_text, "BUILD QUEUE: 1 ready block")
         compact_stack: frozenset[str] | None = None
         if stack_head is not None:
             compact_stack = frozenset(
@@ -814,22 +810,22 @@ def build_target(
         _emit(
             on_text,
             (
-                f"BUILD BLOCK START: {unit.block_id}  {unit.name}  "
+                f"BUILD BLOCK: {unit.name} ({unit.block_id})  "
                 f"type={unit.block_type}  SP={group.total_story_points}"
             ),
         )
         _emit(
             on_text,
             (
-                f"BUILD BLOCK STORIES: {len(unit.steps)} run, "
+                f"BUILD STORIES: {len(unit.steps)} run, "
                 f"{len(unit.already_verified)} already verified"
             ),
         )
+        _emit(on_text, f"BUILD WORKDIR: {resolved_build_dir}")
         for verified in unit.already_verified:
             _emit(on_text, f"  [built] {verified.name} ({verified.block_id})")
         for assembly in assemblies:
             _emit(on_text, f"  [run] {assembly.name} ({assembly.block_id})")
-        _emit(on_text, f"BUILD BLOCK WORKDIR: {resolved_build_dir}")
         if unit.is_group:
             prompt_assembly = render_build_group_prompt_assembly(
                 prompt.body,

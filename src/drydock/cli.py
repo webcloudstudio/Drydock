@@ -32,13 +32,28 @@ _SEVERITY_ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗"}
 
 
 def _stream_stdout(text: str) -> None:
-    """Write streamed LLM text verbatim to stdout.
+    """Write streamed text to stdout while keeping status messages readable.
 
     The provider delivers model output as many small text deltas. ``print``
     appends a newline to every delta, which shreds words and sentences across
     lines (``test su``/``ite``). Writing the raw delta preserves the model's own
-    line breaks (and the explicit content-block boundary the runner injects).
+    line breaks. Drydock progress callbacks send whole status lines, so those
+    are newline-terminated here to avoid concatenated build headers.
     """
+    if (
+        text
+        and not text.endswith(("\n", "\r"))
+        and (
+            text.startswith((
+                "AUTO-COMPACT:",
+                "BUILD ",
+                "PROMPT ",
+                "  [",
+                "    ",
+            ))
+        )
+    ):
+        text += "\n"
     sys.stdout.write(text)
     sys.stdout.flush()
 

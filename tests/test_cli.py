@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from drydock import __copyright__, __version__
-from drydock.cli import main
+from drydock.cli import _stream_stdout, main
 
 
 def run_cli(*args: str) -> tuple[int, str, str]:
@@ -29,6 +29,18 @@ def run_cli(*args: str) -> tuple[int, str, str]:
 
 
 class TestHelpAndVersion:
+    def test_stream_stdout_newline_terminates_status_messages(self, capsys):
+        _stream_stdout("AUTO-COMPACT: fresh")
+        _stream_stdout("BUILD QUEUE: 1 ready block")
+
+        assert capsys.readouterr().out == "AUTO-COMPACT: fresh\nBUILD QUEUE: 1 ready block\n"
+
+    def test_stream_stdout_preserves_model_text_delta(self, capsys):
+        _stream_stdout("partial")
+        _stream_stdout(" word")
+
+        assert capsys.readouterr().out == "partial word"
+
     def test_help_shows_copyright(self):
         rc, out, err = run_cli("--help")
         assert rc == 0
