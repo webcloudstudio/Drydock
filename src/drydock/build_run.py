@@ -59,6 +59,11 @@ RunnerFn = Callable[..., object]
 TextCallback = Callable[[str], None]
 
 
+def _emit(on_text: TextCallback | None, message: str = "") -> None:
+    if on_text is not None:
+        on_text(message)
+
+
 @dataclass(frozen=True)
 class FileFingerprint:
     size: int
@@ -624,12 +629,25 @@ def build_target(
             break
 
         block = frontier[0]
+        ready_ids = ", ".join(item.block_id for item in frontier)
+        _emit(
+            on_text,
+            (f"BUILD QUEUE: {len(frontier)} ready step(s): {ready_ids}; next={block.block_id}"),
+        )
         compact_stack: frozenset[str] | None = None
         if stack_head is not None:
             compact_stack = frozenset(
                 name for name, commit in plan.applied_registry.items() if commit == stack_head
             )
         assembly = assemble_step(block, roots, compact_stack=compact_stack)
+        _emit(
+            on_text,
+            (
+                f"BUILD STEP START: {block.block_id}  {block.name}  "
+                f"type={block.block_type}  SP={assembly.total_story_points}"
+            ),
+        )
+        _emit(on_text, f"BUILD STEP WORKDIR: {resolved_build_dir}")
         prompt_assembly = render_build_prompt_assembly(
             prompt.body,
             assembly,
@@ -657,10 +675,28 @@ def build_target(
         ok = bool(getattr(result, "ok", False))
         summary = str(getattr(result, "text", "") or "")
         execution_id = getattr(result, "execution_id", None)
+        returncode = getattr(result, "returncode", None)
+        execution_bits = [f"ok={ok}"]
+        if returncode is not None:
+            execution_bits.append(f"rc={returncode}")
+        if execution_id:
+            execution_bits.append(f"id={execution_id}")
+        _emit(on_text, f"BUILD STEP RETURNED: {block.block_id}  " + "  ".join(execution_bits))
         state, status, error = _build_outcome(summary, ok=ok, wrote_files=changed_files)
+        if changed_files:
+            preview = ", ".join(changed_files[:5])
+            suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
+            _emit(
+                on_text,
+                f"BUILD STEP FILES: {block.block_id}  {len(changed_files)} changed: {preview}{suffix}",
+            )
+        else:
+            _emit(on_text, f"BUILD STEP FILES: {block.block_id}  0 changed")
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         if status != "failed":
             checks = programmatic_acceptance_for_step(block, blueprint_dir)
+            if checks:
+                _emit(on_text, f"BUILD ACCEPTANCE START: {block.block_id}  {len(checks)} check(s)")
             acceptance = run_programmatic_acceptance(
                 checks,
                 build_dir=resolved_build_dir,
@@ -675,6 +711,12 @@ def build_target(
                 )
             else:
                 state, status, error = "closed/verified", "built", None
+            if checks:
+                passed = sum(1 for check in acceptance if check.passed)
+                _emit(
+                    on_text,
+                    f"BUILD ACCEPTANCE RESULT: {block.block_id}  {passed}/{len(checks)} passed",
+                )
 
         evidence_path = evidence_dir / f"{block.block_id}.md"
         _write_evidence(
@@ -745,6 +787,13 @@ def build_target(
             acceptance=acceptance,
         )
         steps.append(step_result)
+        if status == "failed":
+            _emit(on_text, f"BUILD STEP FAILED: {block.block_id}  {error or 'build failed'}")
+        else:
+            _emit(
+                on_text,
+                f"BUILD STEP COMPLETE: {block.block_id}  state={state}  evidence={_rel(evidence_path, target_dir)}",
+            )
         if on_step is not None:
             on_step(step_result)
         if status == "failed" or step_id is not None:

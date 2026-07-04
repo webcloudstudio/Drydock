@@ -1141,6 +1141,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         mark = _marks.get(step.status, f"[{step.status}]")
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
         print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
+        if step.evidence_path is not None:
+            print(f"      evidence: {step.evidence_path}")
+        print(f"      files changed: {len(step.written_files)}")
         for check in step.acceptance:
             check_mark = "OK" if check.passed else "X"
             detail = f"  {check.error}" if check.error else ""

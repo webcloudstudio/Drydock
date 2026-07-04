@@ -135,6 +135,26 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert result.git_commit_message.startswith("drydock build Demo ")
 
 
+def test_build_emits_step_progress_lines(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    log: list[str] = []
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
+
+    assert any(line == "BUILD QUEUE: 1 ready step(s): foundation; next=foundation" for line in log)
+    assert any(
+        line.startswith("BUILD STEP START: foundation  Foundation  type=story  SP=") for line in log
+    )
+    assert any(line == f"BUILD STEP WORKDIR: {build_dir}" for line in log)
+    assert any(line == "BUILD STEP RETURNED: foundation  ok=True  id=exec-1" for line in log)
+    assert any(line == "BUILD STEP FILES: foundation  1 changed: foundation.txt" for line in log)
+    assert any(
+        line
+        == "BUILD STEP COMPLETE: foundation  state=closed/verified  evidence=evidence/foundation.md"
+        for line in log
+    )
+
+
 def test_feature_step_auto_compacts_and_injects_compact_context(tmp_path):
     manifest = """# MANIFEST: Demo
 state: draft
