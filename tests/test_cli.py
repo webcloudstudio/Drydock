@@ -30,16 +30,25 @@ def run_cli(*args: str) -> tuple[int, str, str]:
 
 class TestHelpAndVersion:
     def test_stream_stdout_newline_terminates_status_messages(self, capsys):
+        _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
         _stream_stdout("AUTO-COMPACT: fresh")
         _stream_stdout("BUILD QUEUE: 1 ready block")
 
         assert capsys.readouterr().out == "AUTO-COMPACT: fresh\nBUILD QUEUE: 1 ready block\n"
 
     def test_stream_stdout_preserves_model_text_delta(self, capsys):
+        _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
         _stream_stdout("partial")
         _stream_stdout(" word")
 
         assert capsys.readouterr().out == "partial word"
+
+    def test_stream_stdout_separates_status_after_model_delta(self, capsys):
+        _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
+        _stream_stdout("partial")
+        _stream_stdout("BUILD QUEUE: 1 ready block")
+
+        assert capsys.readouterr().out == "partial\nBUILD QUEUE: 1 ready block\n"
 
     def test_help_shows_copyright(self):
         rc, out, err = run_cli("--help")
@@ -639,6 +648,15 @@ state: pending
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 0, err
+        assert re.search(
+            r"BUILD COMMAND START: ExampleTarget  started=\d{4}-\d{2}-\d{2} ",
+            out,
+        )
+        assert re.search(
+            r"BUILD COMMAND COMPLETE: ExampleTarget  completed=\d{4}-\d{2}-\d{2} "
+            r".*elapsed=\d",
+            out,
+        )
         assert "[built]" in out
         assert "foundation" in out
         assert "Setting up git directory in" in out

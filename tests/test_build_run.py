@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -204,7 +205,12 @@ def test_build_emits_step_progress_lines(tmp_path):
 
     assert any(line == "BUILD QUEUE: 1 ready block" for line in log)
     assert any(
-        line.startswith("BUILD BLOCK: Foundation (foundation)  type=story  SP=") for line in log
+        re.match(
+            r"BUILD BLOCK START: foundation  Foundation  type=story  SP=\d+  "
+            r"started=\d{4}-\d{2}-\d{2} ",
+            line,
+        )
+        for line in log
     )
     assert any(line == "BUILD STORIES: 1 run, 0 already verified" for line in log)
     assert any(line == f"BUILD WORKDIR: {build_dir}" for line in log)
@@ -212,8 +218,12 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(line == "BUILD BLOCK RETURNED: foundation  ok=True  id=exec-1" for line in log)
     assert any(line == "BUILD BLOCK FILES: foundation  1 changed: foundation.txt" for line in log)
     assert any(
-        line
-        == "BUILD BLOCK COMPLETE: foundation  state=closed/verified  evidence=evidence/foundation.md"
+        re.match(
+            r"BUILD BLOCK COMPLETE: foundation  state=closed/verified  "
+            r"completed=\d{4}-\d{2}-\d{2} .*elapsed=.* "
+            r"evidence=evidence/foundation.md",
+            line,
+        )
         for line in log
     )
 

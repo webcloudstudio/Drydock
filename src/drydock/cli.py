@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 from drydock import __copyright__, __version__
@@ -31,6 +33,15 @@ class DrydockArgumentParser(argparse.ArgumentParser):
 _SEVERITY_ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗"}
 
 
+_STREAM_STATUS_PREFIXES = (
+    "AUTO-COMPACT:",
+    "BUILD ",
+    "PROMPT ",
+    "  [",
+    "    ",
+)
+
+
 def _stream_stdout(text: str) -> None:
     """Write streamed text to stdout while keeping status messages readable.
 
@@ -40,22 +51,39 @@ def _stream_stdout(text: str) -> None:
     line breaks. Drydock progress callbacks send whole status lines, so those
     are newline-terminated here to avoid concatenated build headers.
     """
-    if (
-        text
-        and not text.endswith(("\n", "\r"))
-        and (
-            text.startswith((
-                "AUTO-COMPACT:",
-                "BUILD ",
-                "PROMPT ",
-                "  [",
-                "    ",
-            ))
-        )
-    ):
+    if not text:
+        return
+
+    is_status = text.startswith(_STREAM_STATUS_PREFIXES)
+    at_line_start = bool(getattr(_stream_stdout, "_at_line_start", True))
+    if is_status and not at_line_start:
+        text = "\n" + text
+    if is_status and not text.endswith(("\n", "\r")):
         text += "\n"
     sys.stdout.write(text)
     sys.stdout.flush()
+    _stream_stdout._at_line_start = text.endswith(("\n", "\r"))  # type: ignore[attr-defined]
+
+
+def _wall_time() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _elapsed_text(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    if seconds < 1:
+        return f"{seconds:.1f} seconds"
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    if secs or not parts:
+        parts.append(f"{secs} second{'s' if secs != 1 else ''}")
+    return " ".join(parts)
 
 
 # Post-command "Next step:" hints, centralized in one place because the workflow is still
@@ -1164,7 +1192,9 @@ def cmd_build(args: argparse.Namespace) -> int:
             detail = f"  {check.error}" if check.error else ""
             print(f"      [{check_mark}] ac {check.check_id}  {check.intent}{detail}")
 
+    build_started = time.monotonic()
     print(f"Building Target: {args.Target}")
+    print(f"BUILD COMMAND START: {args.Target}  started={_wall_time()}")
     if getattr(args, "step", None):
         print(f"Building step: {args.step}")
     if getattr(args, "force", False):
@@ -1180,6 +1210,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         on_step=report,
         step_id=getattr(args, "step", None),
         force=bool(getattr(args, "force", False)),
+    )
+    print()
+    print(
+        f"BUILD COMMAND COMPLETE: {args.Target}  completed={_wall_time()}  "
+        f"elapsed={_elapsed_text(time.monotonic() - build_started)}"
     )
     print()
     if result.git_initialized:

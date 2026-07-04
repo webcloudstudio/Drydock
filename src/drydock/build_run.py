@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -66,6 +67,27 @@ TextCallback = Callable[[str], None]
 def _emit(on_text: TextCallback | None, message: str = "") -> None:
     if on_text is not None:
         on_text(message)
+
+
+def _wall_time() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _elapsed_text(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    if seconds < 1:
+        return f"{seconds:.1f} seconds"
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    if secs or not parts:
+        parts.append(f"{secs} second{'s' if secs != 1 else ''}")
+    return " ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -793,6 +815,9 @@ def build_target(
         if guard > len(plan.blocks) + 1:  # defensive; state always advances per step
             break
 
+        block_started = time.monotonic()
+        block_started_at = _wall_time()
+        _emit(on_text, "\n")
         _emit(on_text, "BUILD QUEUE: 1 ready block")
         compact_stack: frozenset[str] | None = None
         if stack_head is not None:
@@ -810,8 +835,9 @@ def build_target(
         _emit(
             on_text,
             (
-                f"BUILD BLOCK: {unit.name} ({unit.block_id})  "
-                f"type={unit.block_type}  SP={group.total_story_points}"
+                f"BUILD BLOCK START: {unit.block_id}  {unit.name}  "
+                f"type={unit.block_type}  SP={group.total_story_points}  "
+                f"started={block_started_at}"
             ),
         )
         _emit(
@@ -987,11 +1013,24 @@ def build_target(
                 set_applied_specs(manifest_path, applied_specs)
 
         if status == "failed":
-            _emit(on_text, f"BUILD BLOCK FAILED: {unit.block_id}  {error or 'build failed'}")
+            _emit(
+                on_text,
+                (
+                    f"BUILD BLOCK FAILED: {unit.block_id}  "
+                    f"completed={_wall_time()}  "
+                    f"elapsed={_elapsed_text(time.monotonic() - block_started)}  "
+                    f"{error or 'build failed'}"
+                ),
+            )
         else:
             _emit(
                 on_text,
-                f"BUILD BLOCK COMPLETE: {unit.block_id}  state={state}  evidence={_rel(evidence_path, target_dir)}",
+                (
+                    f"BUILD BLOCK COMPLETE: {unit.block_id}  state={state}  "
+                    f"completed={_wall_time()}  "
+                    f"elapsed={_elapsed_text(time.monotonic() - block_started)}  "
+                    f"evidence={_rel(evidence_path, target_dir)}"
+                ),
             )
         for block, assembly in zip(unit.steps, assemblies):
             step_result = BuildStepResult(
