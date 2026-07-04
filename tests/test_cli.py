@@ -663,6 +663,41 @@ state: pending
         assert "Ran git commit to commit changes" in out
         assert (target / "evidence" / "foundation.md").is_file()
 
+    def test_build_failure_prints_force_hint(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _run(*a, **k):
+            return SimpleNamespace(
+                ok=False,
+                text="",
+                stderr="provider crashed",
+                execution_id="exec-fake",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
+
+        rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
+
+        assert rc == 1
+        assert "[failed]" in out
+        assert "LLM execution failed" in out
+        assert "rerun drydock build with --force to override errors" in out
+
     def test_build_step_force_rebuilds_selected_step(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

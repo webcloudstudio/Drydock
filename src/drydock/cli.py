@@ -1166,7 +1166,7 @@ def cmd_status_current() -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    from drydock.build_run import BuildStepResult, build_target
+    from drydock.build_run import BUILD_FAILURE_FORCE_HINT, BuildStepResult, build_target
     from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
 
     target_dir = get_target_directory() / args.Target
@@ -1184,6 +1184,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         mark = _marks.get(step.status, f"[{step.status}]")
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
         print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
+        if step.status == "failed":
+            print(f"      {BUILD_FAILURE_FORCE_HINT}")
         if step.evidence_path is not None:
             print(f"      evidence: {step.evidence_path}")
         print(f"      files changed: {len(step.written_files)}")

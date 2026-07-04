@@ -75,6 +75,7 @@ PROJECT_ROOT = (
 CONFIG_PATH = BASE_DIR / "console.yaml"
 WORKSPACE_ROOT = PROJECT_ROOT.parent.parent  # $DRYDOCK_WORKSPACE/targets/<Target> → workspace root
 ACTIVE_TARGET_COOKIE = "quarterdeck_target"
+BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to override errors"
 TARGET_BUTTON_PALETTE = (
     ("#0f766e", "#5eead4"),
     ("#b45309", "#fbbf24"),
@@ -1030,6 +1031,7 @@ def render_compass(item: dict[str, Any]) -> str:
             fail_html = (
                 f"<div class='cmp-fail-reason' title='{html.escape(finding, quote=True)}'>"
                 f"⚠ {html.escape(finding)}</div>"
+                f"<div class='cmp-fail-action'>{html.escape(BUILD_FAILURE_FORCE_HINT)}</div>"
                 if state == "closed/failed" and finding
                 else ""
             )
