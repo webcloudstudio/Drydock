@@ -811,20 +811,20 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
     assert "collapse-arrow" not in rendered
 
 
-def test_render_nav_includes_build_flag_and_static_sections(monkeypatch):
+def test_render_nav_includes_implement_flag_and_static_sections(monkeypatch):
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(
         quarterdeck,
         "CONFIG",
         {
             "sections": [
-                {"id": "build", "label": "Build Compass", "dot": "#d97706"},
+                {"id": "plan", "label": "Implement", "dot": "#2563eb"},
             ],
             "items": [
                 {
                     "id": "plan",
                     "label": "Plan",
-                    "section": "build",
+                    "section": "plan",
                     "type": "markdown",
                     "path": "plan.md",
                 },
@@ -836,8 +836,8 @@ def test_render_nav_includes_build_flag_and_static_sections(monkeypatch):
 
     rendered = quarterdeck.render_nav()
 
-    # The build phase renders its label uppercased alongside the section flag.
-    assert "BUILD COMPASS" in rendered
+    # The implement phase renders its label uppercased alongside the section flag.
+    assert "IMPLEMENT" in rendered
     assert "sec-flag" in rendered
     assert "onclick='toggleSection" not in rendered
     assert "collapse-arrow" not in rendered
@@ -851,11 +851,18 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
         "CONFIG",
         {
             "sections": [
+                {"id": "setup", "label": "Setup", "dot": "#64748b", "pinned": True},
                 {"id": "analyze", "label": "Analysis", "dot": "#0d9488", "pinned": True},
-                {"id": "plan", "label": "Plan", "dot": "#2563eb"},
-                {"id": "build", "label": "Build", "dot": "#d97706"},
+                {"id": "plan", "label": "Implement", "dot": "#2563eb"},
             ],
             "items": [
+                {
+                    "id": "commanders_chair",
+                    "label": "Commanders Chair",
+                    "section": "setup",
+                    "type": "markdown",
+                    "path": "overview.md",
+                },
                 {
                     "id": "analysis",
                     "label": "Analysis",
@@ -868,7 +875,7 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
                     "label": "Kanban Board",
                     "section": "plan",
                     "type": "kanban",
-                    "path": "tickets.json",
+                    "path": "../MANIFEST.md",
                 },
             ],
         },
@@ -880,11 +887,10 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
 
     assert "section-head-phase" in rendered
     assert "<span class='section-target-name'>STIM</span>" in rendered
+    assert "<span class='section-phase-name'>SETUP</span>" in rendered
     assert "<span class='section-phase-name'>ANALYSIS</span>" in rendered
-    assert "<span class='section-phase-name'>PLAN</span>" in rendered
-    assert "<span class='section-phase-name'>BUILD</span>" in rendered
-    assert "data-sec='build'" in rendered
-    assert "section-empty" in rendered
+    assert "<span class='section-phase-name'>IMPLEMENT</span>" in rendered
+    assert "data-sec='plan'" in rendered
 
 
 def test_render_nav_includes_build_compass_item_flag(monkeypatch):
@@ -1009,4 +1015,5 @@ def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):
 
     html = quarterdeck.index(request)
 
-    assert 'loadDoc("commanders_chair");' in html
+    assert "new URLSearchParams(window.location.search).get('item')" in html
+    assert "localStorage.getItem(lastItemKey)" in html

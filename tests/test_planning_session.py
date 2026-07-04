@@ -182,7 +182,7 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     assert {p.name for p in result.authored_files} == {"ARCHITECTURE.md", "FEATURE-Status.md"}
     assert result.warnings == ()
     # QuarterDeck projection written.
-    assert (target_dir / "QuarterDeck" / "tickets.json").is_file()
+    assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
     assert (target_dir / "QuarterDeck" / "console.yaml").is_file()
     planning = (target_dir / "QuarterDeck" / "planning-session.md").read_text(encoding="utf-8")
     assert "manifest build tree" in planning

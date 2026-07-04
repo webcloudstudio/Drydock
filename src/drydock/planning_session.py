@@ -1256,15 +1256,6 @@ def _validate_plan_output(
 # ── QuarterDeck projection ──────────────────────────────────────────────────────────
 
 
-def _ticket_status(state: str) -> str:
-    return {
-        "pending": "backlog",
-        "implemented": "review",
-        "closed/verified": "done",
-        "closed/failed": "review",
-    }.get(state, "backlog")
-
-
 def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck = target_dir / "QuarterDeck"
     quarterdeck.mkdir(parents=True, exist_ok=True)
@@ -1272,30 +1263,6 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     sync_plan_soundings(plan, target_dir)
     # The QuarterDeck runtime is served from the package; only console state is
     # written into the Target (see quarterdeck_run.run_quarterdeck).
-
-    ac_by_parent: dict[str, list[str]] = {}
-    for block in plan.blocks:
-        if block.block_type == "ac" and block.parent:
-            ac_by_parent.setdefault(block.parent, []).append(block.name)
-    tickets = []
-    for block in plan.blocks:
-        if block.block_type == "ac":
-            continue
-        ticket = {
-            "id": block.block_id,
-            "title": block.name,
-            "kind": block.block_type,
-            "status": _ticket_status(block.state),
-            "body": str(block.fields.get("summary", "")),
-        }
-        if block.parent:
-            ticket["parent"] = block.parent
-        if ac_by_parent.get(block.block_id):
-            ticket["ac"] = ac_by_parent[block.block_id]
-        tickets.append(ticket)
-    (quarterdeck / "tickets.json").write_text(
-        json.dumps({"tickets": tickets}, indent=2) + "\n", encoding="utf-8"
-    )
     (quarterdeck / "planning-session.md").write_text(
         f"# Planning Session: {plan.project}\n\n"
         "Review the proposed decomposition, build order, and acceptance gates on the Kanban Board. "

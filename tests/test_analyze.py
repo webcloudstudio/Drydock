@@ -750,12 +750,25 @@ class TestParseOutput:
         with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(truncated)
 
-    def test_missing_soundings_raises(self):
-        truncated = _VALID_LLM_OUTPUT.replace("=== SOUNDINGS.md ===", "").replace(
-            "=== END SOUNDINGS.md ===", ""
-        )
-        with pytest.raises(Exception, match="Text appeared outside"):
-            _parse_output(truncated)
+    def test_missing_soundings_is_derived_from_analysis(self):
+        analysis = """# Blueprint Analysis: TestProject
+
+## Story List
+
+| ID | Story | High-level AC |
+|---|---|---|
+| STORY-001 | Start | Start works |
+
+## Analysis Notes
+
+Quality: Ready
+"""
+        output = "\n".join([
+            f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
+            f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
+        ])
+        _, _, soundings, _, _, _, _, _ = _parse_output(output)
+        assert "| STORY-001 | Start works | NOT STARTED |  |" in soundings
 
     def test_no_spikes_is_tolerated(self):
         # Spikes are emitted dynamically; an analysis with nothing open is valid.

@@ -178,9 +178,10 @@ question in `ANALYSIS.md`.
 - Group all stories under `### Feature: {Feature Name}` headings. Do not use Screens as a
   separate grouping; screens are stories.
 
-**5. Derive SOUNDINGS milestones from the story list.**
+**5. Derive test criteria from the story list.**
 - *Consumes:* the story list (and any explicit acceptance criteria stated in the sources).
-- *Emits:* SOUNDINGS.md rows. See the SOUNDINGS precedence rule in Output Format.
+- *Emits:* high-level acceptance criteria in `ANALYSIS.md` Story List rows. Drydock projects
+  these criteria into `SOUNDINGS.md` deterministically; do not emit `SOUNDINGS.md`.
 
 **6. Derive SEA_TRIALS objectives.**
 - *Consumes:* the story list + the COMPASS (existing file or the COMPASS you will emit in step 9).
@@ -253,25 +254,6 @@ Strategic objectives at product level. Derived from COMPASS and spec. 3–7 rows
 {Add more rows as warranted.}
 === END SEA_TRIALS.md ===
 
-=== SOUNDINGS.md ===
-# Soundings
-
-Acceptance milestones derived from the imported sources and the story list.
-
-| ID | Acceptance Criterion | State | Evidence |
-|---|---|---|---|
-{Precedence: where a source states explicit acceptance criteria, use them. Otherwise synthesize
-one milestone per feature area / screen / persistence area from the project shape and story list.
-Format: | ac-{feature-slug}-{n} | {Criterion text} | NOT STARTED | |}
-
-**Scan-gate scope rule.** When a criterion is a static or filesystem scan — "X never appears" or
-"Y is never imported outside Z," or any grep/AST/boundary gate — the criterion text must define its
-own scope, or it is not executable. State: the scan root (production source, e.g. `src/`); explicit
-exclusions (`.venv/`, `**/site-packages/**`, vendored or generated code, build artifacts); and
-permitted exceptions (test doubles or fixtures that legitimately use the guarded dependency, such as
-mock backends). A scan gate with no stated scope is a defect to fix here, not a scope decision to
-defer to the build agent.
-=== END SOUNDINGS.md ===
 ```
 
 **BLOCKERS.md block (conditional):** Emit only when one or more blockers exist. When there are no

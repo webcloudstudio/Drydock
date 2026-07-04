@@ -38,8 +38,8 @@ def test_render_console_declares_tabbed_analysis_item():
     assert analysis["type"] == "markdown"
     assert analysis["tabs"] is True
     assert analysis["path"] == "../ANALYSIS.md"
-    # Commanders Chair stays first; Analysis follows it.
-    assert items["commanders_chair"]["order"] < analysis["order"]
+    # Setup owns orientation; Analysis owns review outputs.
+    assert items["commanders_chair"]["section"] == "setup"
     assert analysis["order"] < items["sea_trials"]["order"]
 
 
@@ -77,7 +77,7 @@ def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
     items = {item["id"]: item for item in parsed["items"]}
 
     assert items["build_compass"]["label"] == "MANIFEST"
-    assert items["build_compass"]["section"] == "build"
+    assert items["build_compass"]["section"] == "plan"
     assert items["build_compass"]["path"] == "../MANIFEST.md"
 
 
@@ -89,7 +89,7 @@ def test_render_console_places_exclude_files_in_analyze(tmp_path):
     items = {item["id"]: item for item in parsed["items"]}
 
     assert items["exclude_files"]["label"] == "Exclude Files"
-    assert items["exclude_files"]["section"] == "analyze"
+    assert items["exclude_files"]["section"] == "setup"
     assert items["exclude_files"]["path"] == "../EXCLUDE_FILES.md"
     assert "help_text" in items["exclude_files"]
     assert "prompt_text" in items["exclude_files"]
@@ -111,14 +111,14 @@ def test_render_console_groups_artifacts_by_phase():
 
     parsed = yaml.safe_load(config)
     section_ids = [s["id"] for s in parsed["sections"]]
-    assert section_ids == ["analyze", "plan", "build"]
+    assert section_ids == ["setup", "analyze", "plan"]
     items = {item["id"]: item for item in parsed["items"]}
     assert "blockers_doc" in items
-    assert items["blockers_doc"]["section"] == "analyze"
+    assert items["blockers_doc"]["section"] == "setup"
     assert items["blockers_doc"]["type"] == "editable_markdown"
     assert "help_text" in items["blockers_doc"]
     assert "prompt_text" in items["blockers_doc"]
-    assert items["commanders_chair"]["section"] == "analyze"
+    assert items["commanders_chair"]["section"] == "setup"
     assert items["sea_trials"]["section"] == "analyze"
     assert items["soundings"]["section"] == "analyze"
     assert items["board"]["section"] == "plan"

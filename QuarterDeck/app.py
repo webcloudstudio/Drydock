@@ -15,7 +15,7 @@ Page types (one Python renderer each, in TYPES):
   - markdown      render a markdown file as HTML
   - document      render md/html/pdf variants as tabs (path_md / path_html / path_pdf)
   - jsonl         render append-only JSON records as a read-only table
-  - kanban        render a tickets JSON file as a board (read-only work tracking)
+  - kanban        render MANIFEST.md as a board (read-only work tracking)
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
   - command_status derive acceptance readiness and consistency from configured Core Docs
@@ -28,8 +28,8 @@ console.yaml also accepts:
   overrides: list of {match: <path-relative-to-project-root>, <field overrides>} applied
              to source-generated items before they are added.
 
-Tickets (the kanban's work items) live in a separate JSON file the framework writes;
-the QuarterDeck renders them read-only. Contract: QuarterDeck/README.md
+The Kanban board is derived from MANIFEST.md; the QuarterDeck renders it read-only.
+Contract: QuarterDeck/README.md
 """
 
 from __future__ import annotations
@@ -103,6 +103,13 @@ _SECTION_FLAGS: dict[str, str] = {
         '<rect width="16" height="12" fill="#0f766e"/>'
         '<rect x="0" y="0" width="8" height="6" fill="#ffffff"/>'
         '<rect x="8" y="6" width="8" height="6" fill="#ffffff"/>'
+        "</svg>"
+    ),
+    "setup": (
+        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
+        '<rect width="16" height="12" fill="#ffffff"/>'
+        '<rect x="0" y="0" width="16" height="4" fill="#0f766e"/>'
+        '<rect x="0" y="8" width="16" height="4" fill="#0f766e"/>'
         "</svg>"
     ),
     "plan": (
@@ -510,7 +517,7 @@ def nav_model() -> list[dict[str, Any]]:
         by_section[sid].append(item)
 
     config_ids = [s["id"] for s in config_sections]
-    always_visible = {"analyze", "plan", "build"}
+    always_visible = {"setup", "analyze", "plan"}
     ordered_ids = [sid for sid in config_ids if sid in by_section or sid in always_visible]
     ordered_ids += [sid for sid in order if sid not in config_ids]
 
@@ -636,6 +643,10 @@ def render_markdown_item(item: dict[str, Any]) -> str:
         _strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8"))
     )
     helper = _render_help_note(item)
+    if item.get("id") == "analysis":
+        text = re.sub(r"(?m)^\|\s*ID\s*\|\s*Story\s*\|", "| Story ID | Story |", text)
+        rendered = _render_markdown_tabbed(item, text) if item.get("tabs") else _md(text)
+        return helper + f"<div class='analysis-doc'>{rendered}</div>"
     if item.get("tabs"):
         return helper + _render_markdown_tabbed(item, text)
     return helper + _md(text)
@@ -1407,12 +1418,47 @@ def render_questionnaire(item: dict[str, Any]) -> str:
     return body
 
 
-# ── Kanban (tickets-backed, read-only) ──────────────────────────────────────────
+# ── Kanban (MANIFEST-backed, read-only) ─────────────────────────────────────────
 
 
 def load_tickets(item: dict[str, Any]) -> list[dict[str, Any]]:
-    data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
-    return data.get("tickets", [])
+    from drydock.build_plan import parse_build_plan
+
+    project_root = _current_project_root()
+    manifest_path = project_root / "MANIFEST.md"
+    if not manifest_path.is_file() and item.get("path"):
+        manifest_path = resolve_path(item["path"])
+    plan = parse_build_plan(manifest_path)
+    ac_by_parent: dict[str, list[str]] = {}
+    for block in plan.blocks:
+        if block.block_type == "ac" and block.parent:
+            ac_by_parent.setdefault(block.parent, []).append(block.name)
+    tickets = []
+    for block in plan.blocks:
+        if block.block_type == "ac":
+            continue
+        ticket = {
+            "id": block.block_id,
+            "title": block.name,
+            "kind": block.block_type,
+            "status": _ticket_status(block.state),
+            "body": str(block.fields.get("summary", "")),
+        }
+        if block.parent:
+            ticket["parent"] = block.parent
+        if ac_by_parent.get(block.block_id):
+            ticket["ac"] = ac_by_parent[block.block_id]
+        tickets.append(ticket)
+    return tickets
+
+
+def _ticket_status(state: str) -> str:
+    return {
+        "pending": "backlog",
+        "implemented": "review",
+        "closed/verified": "done",
+        "closed/failed": "review",
+    }.get(state, "backlog")
 
 
 def _ticket_badges(t: dict[str, Any]) -> str:
@@ -1574,6 +1620,8 @@ def validate_item(item: dict[str, Any]) -> str | None:
 
 
 def render_item(item: dict[str, Any]) -> str:
+    from drydock.errors import SpecificationError
+
     err = validate_item(item)
     if err:
         return f"<div class='item-error'>{html.escape(err)}</div>"
@@ -1581,7 +1629,7 @@ def render_item(item: dict[str, Any]) -> str:
         out = TYPES[item["type"]].render(item)
     except HTTPException as exc:
         return f"<div class='item-error'>{html.escape(str(exc.detail))}</div>"
-    except (OSError, json.JSONDecodeError, KeyError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, SpecificationError) as exc:
         return f"<div class='item-error'>{html.escape(str(exc))}</div>"
     return _wrap_page(item, out)
 
@@ -1986,8 +2034,10 @@ def render_nav() -> str:
         )
         target_cls = " section-head-target" if section["id"] == "core" else ""
         flag = _SECTION_FLAGS.get(section["id"], "")
-        if section["id"] in {"analyze", "plan", "build"}:
-            target = html.escape(_current_project_name().upper())
+        if section["id"] in {"setup", "analyze", "plan"}:
+            target = (
+                "" if section["id"] == "setup" else html.escape(_current_project_name().upper())
+            )
             phase = html.escape(section["label"].upper())
             heading = (
                 f"<span class='section-target-name'>{target}</span>"
@@ -2102,6 +2152,7 @@ _STYLE = """
   .ticket-detail:empty { display:none; }
   .ticket-detail-inner { border-top:2px solid #d7dde5; margin-top:18px; padding-top:14px; }
   .ticket-detail-inner h2 { margin:0 0 8px; font-size:17px; }
+  .analysis-doc table th:first-child, .analysis-doc table td:first-child { white-space:nowrap; min-width:92px; }
   .blocked-note { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:8px 10px;
                   border-radius:4px; margin:8px 0; font-size:13px; }
   .link-list { margin:4px 0 0; padding-left:18px; }
@@ -2276,13 +2327,6 @@ def index(request: Request = None) -> str:
 
         all_items = items()
         default_id = console.get("default_item") or (all_items[0]["id"] if all_items else "")
-        requested_id = request.query_params.get("item") if request else None
-        requested = next((i for i in all_items if i["id"] == requested_id), None)
-        init = requested or next(
-            (i for i in all_items if i["id"] == default_id), all_items[0] if all_items else None
-        )
-        init_js = f'loadDoc("{init["id"]}");' if init else ""
-
         help_btn = (
             '<a class="help-btn" href="/help" target="_blank" rel="noopener" title="Open Drydock">'
             'Drydock <span class="flyout">↗</span></a>'
@@ -2307,6 +2351,9 @@ def index(request: Request = None) -> str:
   <script>
     const contentEl = document.getElementById('content');
     const navEl = document.querySelector('nav');
+    const defaultItemId = {json.dumps(default_id)};
+    const activeTarget = {json.dumps(_current_active_target())};
+    const lastItemKey = `quarterdeck:last-item:${{activeTarget}}`;
 
     function setActive(itemId) {{
       document.querySelectorAll('.doc-btn').forEach(b =>
@@ -2330,6 +2377,7 @@ def index(request: Request = None) -> str:
       const res = await fetch(`/api/document/${{itemId}}`);
       const data = await res.json();
       if (!res.ok) {{ contentEl.innerHTML = `<p style="color:#991b1b">${{data.detail || 'Error'}}</p>`; return; }}
+      localStorage.setItem(lastItemKey, itemId);
       contentEl.innerHTML = data.html;
       const form = contentEl.querySelector('form[data-questionnaire]');
       if (form) wireAutosave(form);
@@ -2454,7 +2502,9 @@ def index(request: Request = None) -> str:
       t.querySelectorAll('.md-tab-pane').forEach((p, i) => p.classList.toggle('active', i === index));
     }}
     bindNavButtons();
-    {init_js}
+    const requestedItem = new URLSearchParams(window.location.search).get('item');
+    const initialItem = requestedItem || localStorage.getItem(lastItemKey) || defaultItemId;
+    loadDoc(initialItem || defaultItemId);
   </script>
 </body></html>"""
 

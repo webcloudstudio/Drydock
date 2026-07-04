@@ -17,7 +17,6 @@ so no credits or network are used.
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 import time
@@ -833,35 +832,6 @@ def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
                 set_block_fields(manifest_path, child.block_id, state="pending")
 
 
-_MANIFEST_TO_TICKET_STATUS: dict[str, str] = {
-    "closed/verified": "done",
-    "implemented": "review",
-    "closed/failed": "in_progress",
-}
-
-
-def _sync_ticket_status(target_dir: Path, block_id: str, manifest_state: str) -> None:
-    """Update tickets.json status for the ticket whose id matches block_id, if present."""
-    new_status = _MANIFEST_TO_TICKET_STATUS.get(manifest_state)
-    if new_status is None:
-        return
-    tickets_path = target_dir / "QuarterDeck" / "tickets.json"
-    if not tickets_path.is_file():
-        return
-    try:
-        data = json.loads(tickets_path.read_text(encoding="utf-8"))
-        changed = False
-        for ticket in data.get("tickets", []):
-            if ticket.get("id") == block_id:
-                ticket["status"] = new_status
-                changed = True
-                break
-        if changed:
-            tickets_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    except (OSError, json.JSONDecodeError):
-        pass
-
-
 def build_target(
     target: str,
     target_dir: Path,
@@ -1104,7 +1074,6 @@ def build_target(
             if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
                 for child_id in _child_ac_ids(plan.blocks, block.block_id):
                     set_block_fields(manifest_path, child_id, state="closed/verified")
-            _sync_ticket_status(target_dir, block.block_id, state)
         if unit.is_group and status != "failed":
             refreshed = parse_build_plan(manifest_path)
             children = refreshed.children(unit.block_id)

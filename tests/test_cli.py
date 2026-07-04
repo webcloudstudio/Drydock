@@ -848,7 +848,7 @@ class TestPlanningSession:
         assert "story-status" in plan_path.read_text(encoding="utf-8")
         quarterdeck = tmp_target_root / "ExampleTarget" / "QuarterDeck"
         assert (quarterdeck / "console.yaml").is_file()
-        assert (quarterdeck / "tickets.json").is_file()
+        assert not (quarterdeck / "tickets.json").exists()
         assert not (quarterdeck / "app.py").exists()
         config = (quarterdeck / "console.yaml").read_text(encoding="utf-8")
         assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')

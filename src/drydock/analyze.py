@@ -47,6 +47,7 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
+from drydock.standard_artifacts import Sounding, render_soundings
 
 PROMPT_NAME = "analyze"
 
@@ -586,6 +587,45 @@ def _normalize_discovery(name: str, data: dict) -> dict:
     return normalized
 
 
+def _normalize_cell(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _split_markdown_row(line: str) -> list[str]:
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    return [_normalize_cell(cell.replace(r"\|", "|")) for cell in re.split(r"(?<!\\)\|", text)]
+
+
+def _soundings_from_analysis(analysis_text: str) -> str:
+    rows: list[Sounding] = []
+    lines = analysis_text.splitlines()
+    for index, line in enumerate(lines):
+        cells = _split_markdown_row(line) if "|" in line else []
+        normalized = [cell.lower() for cell in cells]
+        if normalized[:3] != ["id", "story", "high-level ac"]:
+            continue
+        cursor = index + 2
+        while cursor < len(lines):
+            row_line = lines[cursor]
+            if not row_line.strip() or row_line.startswith("## "):
+                break
+            row = _split_markdown_row(row_line) if "|" in row_line else []
+            if len(row) >= 3 and row[0] and row[2]:
+                rows.append(Sounding(row[0], row[2], "NOT STARTED", ""))
+            cursor += 1
+    if not rows:
+        rows.append(
+            Sounding(
+                "analysis-acceptance", "Acceptance criteria are identified.", "NOT STARTED", ""
+            )
+        )
+    return render_soundings(rows)
+
+
 def _parse_output(
     text: str,
 ) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
@@ -604,7 +644,7 @@ def _parse_output(
         allowed_prefixes=("discovery-",),
     )
 
-    for required in ("ANALYSIS.md", "SEA_TRIALS.md", "SOUNDINGS.md"):
+    for required in ("ANALYSIS.md", "SEA_TRIALS.md"):
         if required not in blocks:
             raise ValueError(f"LLM output missing === {required} === block")
 
@@ -629,7 +669,7 @@ def _parse_output(
     return (
         analysis_text,
         blocks["SEA_TRIALS.md"],
-        blocks["SOUNDINGS.md"],
+        _soundings_from_analysis(analysis_text),
         compass_content,
         blockers_content,
         discoveries,
