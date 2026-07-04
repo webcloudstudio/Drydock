@@ -233,11 +233,15 @@ class TestGroupSteps:
         assert groups[0].feature_id == "feat-foundation"
         assert {s.block_id for s in groups[0].steps} == {"core", "spike-q"}
 
-    def test_rollup_sums_step_points(self, tmp_path):
+    def test_group_cost_counts_duplicate_files_once(self, tmp_path):
         plan = _plan(tmp_path)
         steps = assemble_steps(plan, _roots(tmp_path))
         groups = group_steps(plan, steps)
-        assert groups[0].total_story_points == sum(s.total_story_points for s in steps)
+        summed = sum(s.total_story_points for s in steps)
+        duplicate_points = 150  # COMPASS.md 50 SP + ARCHITECTURE.md 100 SP.
+        assert groups[0].summed_story_points == summed
+        assert groups[0].story_point_savings == duplicate_points
+        assert groups[0].total_story_points == summed - duplicate_points
 
     def test_orphan_steps_go_ungrouped(self, tmp_path):
         path = tmp_path / "MANIFEST.md"

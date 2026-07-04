@@ -288,6 +288,13 @@ class TestState:
         assert "Combined Story Points =" in out
         assert "move_step" not in out
 
+    def test_group_shows_story_point_savings(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_TWO_STORIES)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "Combined Story Points =" in out
+        assert "Story Point Savings = 1,060" in out
+
     def test_failed_step_shows_failed_chip_and_reason(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_FAILED)

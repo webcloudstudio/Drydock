@@ -563,6 +563,38 @@ class StepGroup:
     name: str
     steps: tuple[StepAssembly, ...]
     total_story_points: int = field(default=0)
+    summed_story_points: int = field(default=0)
+    story_point_savings: int = field(default=0)
+
+
+def _group_file_key(step_file: StepFile) -> tuple[str, str]:
+    """Return the identity used to count a file once in a grouped build."""
+    name = step_file.name
+    if step_file.compact_substituted and name.endswith("_compact.md"):
+        name = name.removesuffix("_compact.md") + ".md"
+    if step_file.source is not None:
+        source = step_file.source
+        if step_file.compact_substituted and source.name.endswith("_compact.md"):
+            source = source.with_name(source.name.removesuffix("_compact.md") + ".md")
+        return ("path", str(source))
+    return ("name", name)
+
+
+def _combined_story_points(steps: tuple[StepAssembly, ...]) -> int:
+    """Cost a group with each duplicate file applied once and all instructions kept."""
+    seen: set[tuple[str, str]] = set()
+    total = 0
+    for step in steps:
+        total += step.instructions_story_points
+        for step_file in step.files:
+            if step_file.missing:
+                continue
+            key = _group_file_key(step_file)
+            if key in seen:
+                continue
+            seen.add(key)
+            total += step_file.story_points
+    return total
 
 
 def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepGroup, ...]:
@@ -589,12 +621,16 @@ def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepG
             name = "Ungrouped"
         else:
             name = by_id[key].name
+        summed_story_points = sum(s.total_story_points for s in steps_in)
+        combined_story_points = _combined_story_points(steps_in)
         groups.append(
             StepGroup(
                 feature_id=key,
                 name=name,
                 steps=steps_in,
-                total_story_points=sum(s.total_story_points for s in steps_in),
+                total_story_points=combined_story_points,
+                summed_story_points=summed_story_points,
+                story_point_savings=max(0, summed_story_points - combined_story_points),
             )
         )
     return groups

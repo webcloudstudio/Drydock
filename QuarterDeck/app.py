@@ -1071,6 +1071,7 @@ def render_compass(item: dict[str, Any]) -> str:
             "<div class='cmp-ghead'>"
             f"{gcheck}{title_html}"
             f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points:,}</span>"
+            f"<span class='cmp-gsp'>Story Point Savings = {group.story_point_savings:,}</span>"
             f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
             f"{feature_controls(group.feature_id, len(group.steps))}"
             "</div>"
