@@ -274,6 +274,49 @@ def test_run_claude_prefers_streamed_text_over_corrupted_final_result(tmp_path, 
     assert result.artifacts.output_file.read_text() == expected
 
 
+def test_run_claude_surfaces_final_provider_error_with_streamed_text(tmp_path, monkeypatch):
+    raw = "\n".join([
+        json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Work before failure."},
+            },
+        }),
+        json.dumps({
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "rejected",
+                "rateLimitType": "five_hour",
+                "overageDisabledReason": "out_of_credits",
+            },
+        }),
+        json.dumps({
+            "type": "result",
+            "is_error": True,
+            "api_error_status": 429,
+            "result": "You've hit your session limit",
+        }),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=raw + "\n",
+            returncode=1,
+            **kwargs,
+        ),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude", command_name="build")
+
+    assert not result.ok
+    assert result.text == "Work before failure."
+    assert result.stderr == "provider rate limit 429: You've hit your session limit"
+    assert _records(tmp_path)[0]["result"]["error"] == result.stderr
+
+
 def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, monkeypatch):
     raw = json.dumps({
         "type": "item.completed",

@@ -450,6 +450,33 @@ def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[st
     return text, stats
 
 
+def _provider_error(llm: str, raw: str) -> str | None:
+    """Return a concise provider error from the raw stream when one is present."""
+    events = _events(raw)
+    final = next((event for event in reversed(events) if event.get("type") == "result"), {})
+    if final.get("is_error") or final.get("api_error_status"):
+        message = str(final.get("result") or final.get("error") or "").strip()
+        status = final.get("api_error_status")
+        if status == 429:
+            return f"provider rate limit 429: {message or 'rate limit exceeded'}"
+        if status is not None:
+            return f"provider error {status}: {message or 'execution failed'}"
+        if message:
+            return f"provider error: {message}"
+
+    rate_limit = next(
+        (event for event in reversed(events) if event.get("type") == "rate_limit_event"), None
+    )
+    if isinstance(rate_limit, dict):
+        info = rate_limit.get("rate_limit_info")
+        if isinstance(info, dict):
+            limit_type = str(info.get("rateLimitType") or "rate limit")
+            status = str(info.get("status") or "rejected")
+            return f"provider rate limit: {limit_type} {status}"
+        return "provider rate limit"
+    return None
+
+
 def _record(
     *,
     artifacts: ExecutionArtifacts,
@@ -780,13 +807,18 @@ def run_prompt(
             on_event=on_event,
         )
         text, stats = _parse_result(selected, raw_output, artifacts)
+        provider_error = _provider_error(selected, raw_output)
         if selected == "claude":
             artifacts.output_file.write_text(text, encoding="utf-8", newline="\n")
         completed_at = utc_now()
         elapsed_ms = _elapsed_ms(started_at, completed_at)
         stats = LlmStats(**{**asdict(stats), "elapsed_ms": elapsed_ms})
         error = (
-            (stderr.strip() or ("execution timed out" if timed_out else None))
+            (
+                stderr.strip()
+                or ("execution timed out" if timed_out else None)
+                or (provider_error if returncode else None)
+            )
             if returncode
             else None
         )
@@ -848,7 +880,7 @@ def run_prompt(
             working_directory=working_directory,
             returncode=returncode,
             text=text,
-            stderr=stderr,
+            stderr=stderr or provider_error or "",
             stats=stats,
             artifacts=artifacts,
             record=record,
