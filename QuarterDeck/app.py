@@ -923,10 +923,22 @@ def render_compass(item: dict[str, Any]) -> str:
             "</span>"
         )
 
+    def count_label(count: int, singular: str, plural: str) -> str:
+        label = singular if count == 1 else plural
+        return f"{count} {label}"
+
     total_sp = sum(s.total_story_points for s in steps)
+    total_savings = sum(group.story_point_savings for group in groups)
+    story_n = sum(1 for block in plan.blocks if block.block_type == "story")
+    spike_n = sum(1 for block in plan.blocks if block.block_type == "spike")
+    spike_html = (
+        f"<span class='cmp-count'>{count_label(spike_n, 'spike', 'spikes')}</span>"
+        if spike_n
+        else ""
+    )
     warn_n = sum(1 for s in steps if s.over_warn)
     warn_html = (
-        f" <span class='cmp-warn'>{warn_n} step(s) over {_fmt_sp(steps[0].warn_tokens)} SP</span>"
+        f" <span class='cmp-warn'>{warn_n} story block(s) over {_fmt_sp(steps[0].warn_tokens)} SP</span>"
         if warn_n
         else ""
     )
@@ -935,7 +947,9 @@ def render_compass(item: dict[str, Any]) -> str:
         buildable_txt = ", ".join(status.buildable_ids)
     elif status.steps_failed:
         failed_ids = ", ".join(b.block_id for b in plan.blocks if b.state == "closed/failed")
-        buildable_txt = f"(none — blocked by {status.steps_failed} failed step(s): {failed_ids})"
+        buildable_txt = (
+            f"(none — blocked by {status.steps_failed} failed story block(s): {failed_ids})"
+        )
     else:
         buildable_txt = "(none)"
 
@@ -944,13 +958,16 @@ def render_compass(item: dict[str, Any]) -> str:
     header = (
         "<div class='cmp-hdr'>"
         "<div class='cmp-hdr-counts'>"
-        f"<span class='cmp-count'>{status.steps_total} steps</span>"
+        f"<span class='cmp-count'>{count_label(len(plan.blocks), 'block', 'blocks')}</span>"
+        f"<span class='cmp-count'>{count_label(story_n, 'story', 'stories')}</span>"
+        f"{spike_html}"
         f"<span class='cmp-count cmp-count-built'>"
         f"{status.steps_verified + status.steps_implemented} built</span>"
         f"<span class='cmp-count cmp-count-ready'>{ready_n} ready to build</span>"
         f"<span class='cmp-count cmp-count-blocked'>{pending_n} blocked</span>"
         f"<span class='cmp-count cmp-count-failed'>{status.steps_failed} failed</span>"
-        f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp:,}</span></div>"
+        f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp:,}</span>"
+        f"<span class='cmp-count cmp-count-sp'>Total Savings {total_savings:,}</span></div>"
         f"<div class='cmp-hdr-buildable'>Buildable now: <strong>{html.escape(buildable_txt)}</strong>"
         f"</div></div>"
     )
@@ -958,7 +975,7 @@ def render_compass(item: dict[str, Any]) -> str:
     parts = [
         header,
         "<div class='cmp-toolbar'>"
-        f"<span class='cmp-total'>{len(steps)} steps{warn_html}</span>"
+        f"<span class='cmp-total'>{warn_html}</span>"
         f"<button class='cmp-normalize' title='Reorder groups into canonical "
         f"layer-band order' onclick=\"compassNormalize('{item_id}')\">"
         "<span class='cmp-btn-ico'>⇅</span> Normalize order</button>"

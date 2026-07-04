@@ -255,13 +255,25 @@ class TestState:
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         # The header rolls up one count per story state plus total cost.
-        assert "steps</span>" in out
+        assert "3 blocks</span>" in out
+        assert "1 story</span>" in out
         assert "built</span>" in out
         assert "ready to build</span>" in out
         assert "blocked</span>" in out
         assert "failed</span>" in out
         assert "Total SP " in out
+        assert "Total Savings " in out
         assert "Buildable now:" in out
+        assert "steps</span>" not in out
+
+    def test_toolbar_omits_step_count(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_TWO_STORIES)
+        out = quarterdeck.render_compass(_ITEM)
+        toolbar = out.split("<div class='cmp-toolbar'>", 1)[1].split("</div>", 1)[0]
+        assert "steps" not in toolbar
+        assert "Normalize order" in toolbar
+        assert "New group" in toolbar
 
     def test_buildable_step_shows_chip(self, tmp_path, monkeypatch):
         # `core` is pending with no unmet depends, so it is ready to build.
