@@ -80,8 +80,32 @@ drydock --version
 drydock --help
 ```
 
+PDF publishing (`drydock publish --pdf`) is optional and requires the `pdf` extra plus a
+local Chromium download:
+
+```bash
+uv tool install "drydock-sdd[pdf]"
+playwright install chromium
+```
+
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full installation and release
 verification guide.
+
+### Optional: Claude Code skills
+
+Drydock ships two Claude Code skills that support the Loop phase: `/refit` (design
+discussion captured to a notes file in the Target directory) and `/apply-refit` (turn the
+captured decisions into change tickets). Installing them is optional:
+
+```bash
+python -c "import shutil, pathlib; from drydock.paths import get_rigging_root; \
+dest = pathlib.Path.home() / '.claude' / 'skills'; \
+[shutil.copytree(s, dest / s.name, dirs_exist_ok=True) \
+ for s in (get_rigging_root() / 'skills').iterdir()]"
+```
+
+The skills are copied from the packaged `Rigging/skills/` directory into
+`~/.claude/skills/`. See [docs/Drydock_SKILLS.md](docs/Drydock_SKILLS.md) for usage.
 
 ## Quick Start
 
@@ -158,16 +182,16 @@ Drydock is in final testing. The primary SAIL path is implemented:
   Commander review artifacts.
 - LLM-assisted planning into typed Blueprint files and `MANIFEST.md`.
 - Manifest-frontier build execution, evidence capture, and human verification.
+- Refit change-ticket conformance and applied-spec drift reconciliation.
 - QuarterDeck runtime for review and process navigation.
 - Rigging compaction, update, and verification.
 - Target documentation generation and assembly.
 - Deterministic Markdown publishing to HTML and optional PDF.
 - Survey and prompt-review tooling used to evaluate Drydock's own command quality.
 
-Two command surfaces remain visible but deferred in the current CLI:
+One command surface remains visible but deferred in the current CLI:
 
 - `drydock build score <Target>`
-- `drydock refit <Target> <BOTH|BLUEPRINT|TGT> <Scope> <Change>`
 
 Read [docs/SOUNDINGS.md](docs/SOUNDINGS.md) for the authoritative implementation
 readiness checklist and test evidence.
@@ -218,7 +242,7 @@ Configuration keys:
 | `drydock_build_directory` | `DRYDOCK_BUILD_DIRECTORY` | Root where generated applications are written |
 | `drydock_model` | `DRYDOCK_MODEL` | Default model for LLM-assisted commands |
 | `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
-| `prompt_warn_kb` | `PROMPT_WARN_KB` | Prompt-size warning threshold in KiB |
+| `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` | Prompt-size warning threshold in tokens |
 | `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
 | `shipslog_dir` | `DRYDOCK_SHIPSLOG_DIR` | Ship's Log posts package directory for `drydock shipslog` |
 

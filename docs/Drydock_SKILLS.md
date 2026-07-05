@@ -1,21 +1,25 @@
-# Ed's Skills
+# Drydock Skills
 
 Two skills form the core design-to-implementation workflow for Drydock and related projects.
+They ship in `Rigging/skills/` and install as an optional step (see the README) by copying
+into `~/.claude/skills/`.
 
 ---
 
-## `/thinkthrough <subject>`
+## `/refit <feature>`
 
-**Purpose:** Didactic, subtractive design discussion. Think through a command or topic
-conversationally — at your altitude — without any code edits, spec changes, or plans
-being produced unasked.
+**Purpose:** Didactic, subtractive design discussion. Think through a feature, command, or
+topic conversationally — at your altitude — without any code edits, spec changes, or plans
+being produced unasked. `/thinkthrough <subject>` invokes the same skill.
 
 **When to use:** You want to reason through a design before building it. You're not sure
 what you want yet. You want a collaborator who asks one question at a time and doesn't
 run ahead.
 
-**What it produces:** A structured notes file at `docs/notes_<subject>.md` with decisions
-captured automatically as they're made. Sections are tagged with:
+**What it produces:** A structured notes file with decisions captured as they're made. For a
+feature of a Drydock-managed project, the notes file is saved within the project's Target
+directory as `targets/<Target>/notes_<feature>.md`; otherwise it resolves to
+`docs/notes_<subject>.md`. Sections are tagged with:
 
 - `spec:approved` — this decision changes a behavioral contract; needs to go into the spec
 - `spec:na` — design decision, no spec change needed
@@ -23,25 +27,27 @@ captured automatically as they're made. Sections are tagged with:
 - `impl:unimplemented` — code needs to be written
 - `impl:implemented` — already built
 
-**Workflow:** `/thinkthrough analyze` → discuss → decisions auto-captured → Close Out
-compacts the session → `/apply-notes analyze` to implement.
+**Workflow:** `/refit analyze` → discuss → decisions auto-captured → Close Out
+compacts the session → `/apply-refit analyze` to implement.
 
 **Commands:**
 
-- `/thinkthrough <subject>` — start or continue a session
-- `"close out"` or `/thinkthrough close` — compact and finish the session
-- `"halt"` or `/thinkthrough stop` — close out and exit
+- `/refit <feature>` (or `/thinkthrough <subject>`) — start or continue a session
+- `"close out"` or `/refit close` — compact and finish the session
+- `"halt"` or `/refit stop` — close out and exit
 
 ---
 
-## `/apply-notes <subject>`
+## `/apply-refit <subject>`
 
 **Purpose:** Surface all flagged items from a notes file as a numbered selectable list,
 then implement the ones you choose.
 
-**When to use:** After a `/thinkthrough` session, when you're ready to build. You want to
+**When to use:** After a `/refit` session, when you're ready to build. You want to
 see all the pending code changes and spec changes, pick which to implement, and have them
-done in one pass.
+done in one pass. When the notes file lives in a Drydock Target directory, selected items
+become change tickets under the Target's `blueprint/changes/` for `drydock refit` to
+conform, instead of direct code edits.
 
 **What it surfaces:**
 
@@ -65,11 +71,11 @@ done in one pass.
 ## The workflow
 
 ```
-/thinkthrough <subject>   ← design conversation, decisions captured
+/refit <feature>          ← design conversation, decisions captured
        ↓
    close out              ← compact session to notes file
        ↓
-/apply-notes <subject>    ← select and implement
+/apply-refit <feature>    ← select and implement (or create change tickets)
        ↓
    /clear                 ← start fresh for next topic
 ```
