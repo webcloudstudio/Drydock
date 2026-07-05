@@ -212,7 +212,7 @@ showing its validation state, plan progress, and current runnable frontier.
 | `DRYDOCK_WORKSPACE` | Home directory for the drydock |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `PROMPT_WARN_TOKENS` | Build-block prompt-size warning threshold in tokens |
-| `MODEL` | LLM model - gpt-6.4, gpt-5.5, sonnet, opus  |
+| `MODEL` | LLM model - gpt-5.4, gpt-5.5, sonnet, opus  |
 | `QUARTERDECK_PORT` | Default QuarterDeck service port |
 
 ### drydock init
@@ -226,7 +226,7 @@ The Analyze phase turns imported source material into an Analysis for review, th
 1. `drydock import` brings source material under Drydock control.
 2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions
 3. `drydock run quarterdeck` lets the product owner review, approve, and answer questions
-4. `drydock plan` consumes the reviewed analysis and creates Blueprint files, the Manifest, and tickets.json.
+4. `drydock plan` consumes the reviewed analysis and creates Blueprint files and the Manifest.
 
 > **Definition — Compass**
 >
@@ -259,7 +259,6 @@ flowchart LR
   QUARTERDECK --> PLANCREATE["plan"]:::script
   PCOMPASS{{"PLAN_COMPASS.md"}}:::md --> PLANCREATE
   PLANCREATE --> BLUEPRINT("Blueprint"):::dir
-  PLANCREATE --> BCOMPASS{{"tickets.json"}}:::md
   PLANCREATE --> MANIFEST{{"MANIFEST.md"}}:::md
 ```
 
@@ -361,7 +360,6 @@ the task instructions.  Similar tasks are grouped together to save context.
 | `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input for `drydock build` |
 | `MANIFEST.md` | Target root | The executable build plan |
 | `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
-| `tickets.json` | Target root | Target ticketing system projection |
 
 **Replan behavior**
 
@@ -451,7 +449,6 @@ flowchart LR
   SPEC(["Blueprint"]):::dir --> BUILD["build"]:::script
   BP{{"MANIFEST.md"}}:::md --> BUILD["build"]:::script
   BCOMPASS{{"BUILD_COMPASS.md"}}:::md --> BUILD
-  TICKETS{{"tickets.json"}}:::md --> BUILD
   BUILD --> EV{{"Evidence"}}:::md
   BUILD --> TARGET(["Working Software"]):::dir
 ```
@@ -463,7 +460,6 @@ flowchart LR
 | `COMPASS.md` | Target root | Always Injected |
 | `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input |
 | `MANIFEST.md` | Target root | Executable build plan and dependency graph |
-| `tickets.json` | Target root | Target ticketing system projection consumed during build execution |
 | `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, <br>`SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
 
 **Output files**
@@ -765,7 +761,6 @@ What drydock operations read/write
 | SOUNDINGS.md | Target root | O | O/I | O | I | · |
 | changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
 | sources/* | blueprint/sources/ | I | I | · | · | · |
-| tickets.json | Target root | · | O | I | I | I |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
@@ -798,7 +793,6 @@ $DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock
         ├── SCORECARD.md                  # seven-dimension quality + drift scores
         ├── SEA_TRIALS.md                 # Project AC — project-level acceptance criteria
         ├── SOUNDINGS.md                  # AC — calculated acceptance/readiness ledger
-        ├── tickets.json                  # target ticketing system / board projection
         │
         ├── BUILD_COMPASS.md              # story-planning grouping and build-order input
         │
@@ -1452,11 +1446,6 @@ build and review actions.
 - **`<Target>/QuarterDeck/console.yaml`** — console index; defines project identity, the
   default view, the sidebar section taxonomy, and all renderable navigation items
   - Created and updated: `drydock init`
-
-- **`<Target>/tickets.json`** — Target ticketing system projection; features, spikes, and stories
-  projected as tickets with acceptance criteria folded under their parent
-  - Created and updated: `drydock build` from `MANIFEST.md`
-  - Drydock follows feature/story best practices with acceptance criteria embedded
 
 ### Specification File Format
 
