@@ -2098,9 +2098,12 @@ def render_target_switcher() -> str:
         "<button class='fleet-btn' onclick='fleetToggle(event)' "
         "aria-haspopup='true' title='Muster the fleet'>"
         f"{_ics_flag(active_target[:1], 'fleet-flag', 20)}"
+        "<span class='fleet-btn-text'>"
+        "<span class='fleet-btn-label'>QuarterDeck:</span>"
         f"<span class='fleet-btn-name'>{html.escape(active_target)}</span>"
+        "</span>"
         f"<span class='fleet-btn-count'>{len(targets)} "
-        f"{'ship' if len(targets) == 1 else 'ships'} &#9656;</span>"
+        f"{'Keel' if len(targets) == 1 else 'Keels'} Built &#9656;</span>"
         "</button>"
         "<div class='fleet-popout' hidden>"
         "<div class='fleet-popout-title'>The Fleet</div>"
@@ -2141,7 +2144,7 @@ def render_nav() -> str:
         blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
         phase_cls = (
             " section-head-target section-head-phase"
-            if section["id"] in {"analyze", "implement", "refit", "plan", "build"}
+            if section["id"] in {"setup", "analyze", "implement", "refit", "plan", "build"}
             else ""
         )
         target_cls = " section-head-target" if section["id"] == "core" else ""
@@ -2203,11 +2206,13 @@ _STYLE = """
   .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-top:0; }
   .target-dock { padding:0 8px 12px; }
   .fleet { position:relative; margin:2px 0 8px; }
-  .fleet-btn { width:100%; display:flex; align-items:center; gap:9px; padding:9px 11px; box-sizing:border-box;
+  .fleet-btn { width:100%; display:flex; align-items:center; gap:9px; padding:13px 11px; box-sizing:border-box;
     border:1px solid #d7dde5; border-radius:9px; background:#fff; cursor:pointer; font-size:13px;
     font-weight:800; color:#1b2430; transition:border-color .12s, background .12s; }
   .fleet-btn:hover { border-color:#2CB67D; background:#f2faf6; }
-  .fleet-btn-name { flex:1; text-align:left; }
+  .fleet-btn-text { flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:1px; min-width:0; }
+  .fleet-btn-label { font-size:9px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#8A8F9A; }
+  .fleet-btn-name { text-align:left; }
   .fleet-btn-count { font-size:11px; color:#64748b; font-weight:700; white-space:nowrap; }
   .fleet-flag { display:inline-flex; flex:none; border:1px solid rgba(15,23,42,.18); border-radius:2px; }
   .fleet-popout { position:absolute; z-index:60; top:calc(100% + 6px); left:0; right:-14px; min-width:220px;
