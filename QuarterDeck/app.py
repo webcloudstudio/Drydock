@@ -2102,8 +2102,7 @@ def render_target_switcher() -> str:
         "<span class='fleet-btn-label'>QuarterDeck:</span>"
         f"<span class='fleet-btn-name'>{html.escape(active_target)}</span>"
         "</span>"
-        f"<span class='fleet-btn-count'>{len(targets)} "
-        f"{'Keel' if len(targets) == 1 else 'Keels'} Built &#9656;</span>"
+        "<span class='fleet-btn-arrow'>&#9656;</span>"
         "</button>"
         "<div class='fleet-popout' hidden>"
         "<div class='fleet-popout-title'>The Fleet</div>"
@@ -2213,7 +2212,7 @@ _STYLE = """
   .fleet-btn-text { flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:1px; min-width:0; }
   .fleet-btn-label { font-size:9px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#8A8F9A; }
   .fleet-btn-name { text-align:left; }
-  .fleet-btn-count { font-size:11px; color:#64748b; font-weight:700; white-space:nowrap; }
+  .fleet-btn-arrow { font-size:11px; color:#64748b; font-weight:700; white-space:nowrap; }
   .fleet-flag { display:inline-flex; flex:none; border:1px solid rgba(15,23,42,.18); border-radius:2px; }
   .fleet-popout { position:absolute; z-index:60; top:calc(100% + 6px); left:0; right:-14px; min-width:220px;
     background:#fff; border:1px solid #d7dde5; border-radius:12px; padding:10px;
