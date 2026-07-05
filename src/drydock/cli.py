@@ -306,6 +306,8 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
             )
         elif item.status == "skipped-fresh":
             print(f"  [fresh]      {src} {routing} → {dst}  (compact is newer; use --force)")
+        elif item.status == "skipped-unchanged":
+            print(f"  [unchanged]  {src} {routing} → {dst}  (no structural change)")
         elif item.status == "no-surface":
             print(f"  [no-surface] {src} {routing}: {item.error}")
         else:
@@ -334,6 +336,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
     print(
         f"RESULT: {len(result.compacted())} compacted, "
         f"{len(result.skipped())} fresh, "
+        f"{len(result.unchanged())} unchanged, "
         f"{len(result.no_surface())} no-surface, "
         f"{len(result.failed())} failed"
     )
@@ -370,14 +373,24 @@ def cmd_refit(args: argparse.Namespace) -> int:
     for item in result.items:
         report(item)
 
-    if not result.items:
-        print("  No change tickets found in blueprint/changes/ — nothing to do.")
+    for reset in result.resets:
+        tag = "foundational" if reset.foundational else "drift"
+        blocks = ", ".join(reset.reset_ids)
+        print(f"  [reset:{tag}]  {reset.path}: {len(reset.reset_ids)} blocks -> pending ({blocks})")
+
+    for error in result.drift_errors:
+        print(f"  [blocked]         {error}")
+
+    if not result.items and not result.resets and not result.drift_errors:
+        print("  No change tickets or specification drift found — nothing to do.")
 
     print()
     print(
         f"RESULT: {len(result.conformed())} conformed, "
         f"{len(result.skipped())} skipped, "
-        f"{len(result.failed())} failed"
+        f"{len(result.failed())} failed, "
+        f"{len(result.resets)} reset, "
+        f"{len(result.drift_errors)} blocked"
     )
     return result.exit_code()
 

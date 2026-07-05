@@ -45,9 +45,11 @@ from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
     PlanBlock,
+    foundational_source,
     parse_build_plan,
     set_applied_registry,
     set_applied_specs,
+    stale_applied_specs,
 )
 from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
@@ -445,35 +447,43 @@ def _blueprint_spec_files(
 
 def _stale_applied_specs(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...]:
     plan = parse_build_plan(plan_path)
-    stale: list[str] = []
-    for rel_path, record in sorted(plan.applied_specs.items()):
-        source = blueprint_dir / rel_path
-        if not source.is_file():
-            stale.append(
-                f"{rel_path}: missing (applied_by={record.applied_by}, "
-                f"recorded_commit={record.commit})"
+    details: list[str] = []
+    for spec in stale_applied_specs(plan, blueprint_dir):
+        if spec.reason == "missing":
+            details.append(
+                f"{spec.rel_path}: missing (applied_by={spec.record.applied_by}, "
+                f"recorded_commit={spec.record.commit})"
             )
             continue
-        current_hash = _file_sha256(source)
-        if current_hash == record.sha256:
-            continue
-        current_commit = _git_file_commit(source)
-        stale.append(
-            f"{rel_path}: recorded_commit={record.commit}, current_commit={current_commit}, "
-            f"recorded_sha256={record.sha256[:12]}, current_sha256={current_hash[:12]}"
+        current_commit = _git_file_commit(blueprint_dir / spec.rel_path)
+        details.append(
+            f"{spec.rel_path}: recorded_commit={spec.record.commit}, "
+            f"current_commit={current_commit}, "
+            f"recorded_sha256={spec.record.sha256[:12]}, "
+            f"current_sha256={spec.current_sha256[:12]}"
         )
-    return tuple(stale)
+    return tuple(details)
 
 
 def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> None:
-    stale = _stale_applied_specs(plan_path, blueprint_dir)
+    plan = parse_build_plan(plan_path)
+    stale = stale_applied_specs(plan, blueprint_dir)
     if not stale:
         return
-    raise SpecificationError(
-        "Build blocked: previously applied Blueprint specifications changed.\n"
-        "Run the appropriate refit or planning workflow before continuing.\n"
-        + "\n".join(f"  - {line}" for line in stale)
-    )
+    foundational = sorted({
+        name for spec in stale if (name := foundational_source(spec.rel_path)) is not None
+    })
+    lines = ["Build blocked: previously applied Blueprint specifications changed."]
+    for name in foundational:
+        lines.append(
+            f"{name} is a sealed foundational specification. Create a change ticket in "
+            f"blueprint/changes/ (Amends: {name}) and run 'drydock refit'. Foundational "
+            "changes rebuild all dependent blocks."
+        )
+    if any(foundational_source(spec.rel_path) is None for spec in stale):
+        lines.append("Run 'drydock refit' to reset the affected blocks for rebuild.")
+    lines.extend(f"  - {detail}" for detail in _stale_applied_specs(plan_path, blueprint_dir))
+    raise SpecificationError("\n".join(lines))
 
 
 _RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)

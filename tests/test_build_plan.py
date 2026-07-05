@@ -11,11 +11,16 @@ from drydock.build_plan import (
     CompactRecommendation,
     _format_applied_registry,
     _parse_applied_registry,
+    cascade_reset_ids,
     compact_recommendations,
+    compact_source,
+    foundational_source,
     parse_build_plan,
     set_applied_registry,
     set_applied_specs,
     set_plan_state,
+    spec_name_variants,
+    stale_applied_specs,
 )
 from drydock.errors import SpecificationError
 
@@ -615,3 +620,114 @@ context: RARE.md
         plan = self._plan(tmp_path)
         recs = compact_recommendations(plan)
         assert all(isinstance(r, CompactRecommendation) for r in recs)
+
+
+class TestSpecNameHelpers:
+    def test_compact_source_maps_derivatives(self):
+        assert compact_source("DATABASE_compact.md") == "DATABASE.md"
+        assert compact_source("DATABASE_compact.skip.md") == "DATABASE.md"
+        assert compact_source("DATABASE.md") == "DATABASE.md"
+        assert compact_source("sub/UI-GENERAL_compact.md") == "sub/UI-GENERAL.md"
+
+    def test_spec_name_variants_covers_all_siblings(self):
+        variants = spec_name_variants("ARCHITECTURE_compact.md")
+        assert variants == frozenset({
+            "ARCHITECTURE.md",
+            "ARCHITECTURE_compact.md",
+            "ARCHITECTURE_compact.skip.md",
+        })
+
+    def test_foundational_source_recognizes_sealed_files_and_derivatives(self):
+        assert foundational_source("DATABASE.md") == "DATABASE.md"
+        assert foundational_source("UI-GENERAL_compact.md") == "UI-GENERAL.md"
+        assert foundational_source("ARCHITECTURE_compact.skip.md") == "ARCHITECTURE.md"
+        assert foundational_source("SCREEN-SETUP.md") is None
+        assert foundational_source("FEATURE-X_compact.md") is None
+
+
+_CASCADE_PLAN = """# MANIFEST: Cascade
+state: approved
+applied_specs: |
+  DATABASE.md sha256={db_hash} commit=- applied_by=foundation applied_at=2026-07-01
+  SCREEN-A.md sha256={screen_hash} commit=- applied_by=screen-a applied_at=2026-07-01
+
+## feature 1: Core
+id: feat-core
+state: closed/verified
+
+## story 1: Foundation
+id: foundation
+parent: feat-core
+implements: DATABASE.md
+state: closed/verified
+
+## ac 1: DB smoke
+id: ac-db
+parent: foundation
+state: closed/verified
+
+## story 2: Screen A
+id: screen-a
+parent: feat-core
+implements: SCREEN-A.md
+context: DATABASE_compact.md
+depends: foundation
+state: closed/verified
+
+## story 3: Screen B
+id: screen-b
+depends: screen-a
+state: closed/verified
+
+## story 4: Unrelated
+id: unrelated
+implements: OTHER.md
+state: closed/verified
+"""
+
+
+class TestStaleAndCascade:
+    def _plan(self, tmp_path, db_content: str = "db\n", screen_content: str = "screen\n"):
+        import hashlib
+
+        blueprint = tmp_path / "blueprint"
+        blueprint.mkdir(exist_ok=True)
+        (blueprint / "DATABASE.md").write_text(db_content, encoding="utf-8")
+        (blueprint / "SCREEN-A.md").write_text(screen_content, encoding="utf-8")
+        db_hash = hashlib.sha256(b"db\n").hexdigest()
+        screen_hash = hashlib.sha256(b"screen\n").hexdigest()
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(
+            _CASCADE_PLAN.format(db_hash=db_hash, screen_hash=screen_hash), encoding="utf-8"
+        )
+        return parse_build_plan(path), blueprint
+
+    def test_stale_applied_specs_clean_when_content_matches(self, tmp_path):
+        plan, blueprint = self._plan(tmp_path)
+        assert stale_applied_specs(plan, blueprint) == ()
+
+    def test_stale_applied_specs_reports_changed_and_missing(self, tmp_path):
+        plan, blueprint = self._plan(tmp_path, db_content="db changed\n")
+        (blueprint / "SCREEN-A.md").unlink()
+        stale = {s.rel_path: s.reason for s in stale_applied_specs(plan, blueprint)}
+        assert stale == {"DATABASE.md": "changed", "SCREEN-A.md": "missing"}
+
+    def test_cascade_resets_consumers_dependents_children_and_parent_feature(self, tmp_path):
+        plan, _ = self._plan(tmp_path)
+        reset = cascade_reset_ids(plan, ["DATABASE.md"])
+        # foundation implements it; screen-a consumes the compact derivative and
+        # depends on foundation; screen-b depends on screen-a; ac-db is a child of
+        # foundation; feat-core is the parent feature. unrelated stays untouched.
+        assert set(reset) == {"feat-core", "foundation", "ac-db", "screen-a", "screen-b"}
+        assert "unrelated" not in reset
+
+    def test_cascade_small_radius_for_leaf_spec(self, tmp_path):
+        plan, _ = self._plan(tmp_path)
+        reset = cascade_reset_ids(plan, ["SCREEN-A.md"])
+        assert set(reset) == {"feat-core", "screen-a", "screen-b"}
+
+    def test_cascade_matches_compact_derivative_path(self, tmp_path):
+        plan, _ = self._plan(tmp_path)
+        assert set(cascade_reset_ids(plan, ["DATABASE_compact.md"])) == set(
+            cascade_reset_ids(plan, ["DATABASE.md"])
+        )

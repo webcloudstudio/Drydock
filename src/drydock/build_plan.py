@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tempfile
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from drydock.errors import SpecificationError
 
 BLOCK_TYPES = ("feature", "story", "spike", "ac")
+
+# Sealed foundational Blueprint specifications: once applied, a direct edit blocks the
+# build and the change must arrive as a change ticket processed by ``drydock refit``.
+FOUNDATIONAL_SPECS = frozenset({"ARCHITECTURE.md", "DATABASE.md", "UI-GENERAL.md"})
 STATES = ("pending", "implemented", "closed/verified", "closed/failed")
 PLAN_STATES = ("draft", "approved", "closed")
 SCOPES = ("blueprint", "target", "both")
@@ -460,6 +466,109 @@ def compact_recommendations(plan: BuildPlan, *, threshold: int = 2) -> list[Comp
             )
     recs.sort(key=lambda r: r.context_count, reverse=True)
     return recs
+
+
+_COMPACT_DERIVATIVE_RE = re.compile(r"^(?P<stem>.+?)_compact(?:\.skip)?\.md$")
+
+
+def compact_source(rel_path: str) -> str:
+    """Map a compact derivative path to its source path; identity for non-derivatives."""
+    p = PurePosixPath(rel_path)
+    m = _COMPACT_DERIVATIVE_RE.match(p.name)
+    if not m:
+        return rel_path
+    return str(p.with_name(m.group("stem") + ".md"))
+
+
+def spec_name_variants(rel_path: str) -> frozenset[str]:
+    """The source path plus its compact-derivative siblings, as one match set."""
+    source = compact_source(rel_path)
+    p = PurePosixPath(source)
+    stem = p.name[: -len(".md")] if p.name.endswith(".md") else p.name
+    return frozenset({
+        source,
+        str(p.with_name(f"{stem}_compact.md")),
+        str(p.with_name(f"{stem}_compact.skip.md")),
+    })
+
+
+def foundational_source(rel_path: str) -> str | None:
+    """Return the foundational source name for a file or its compact derivative, else None."""
+    name = PurePosixPath(compact_source(rel_path)).name
+    return name if name in FOUNDATIONAL_SPECS else None
+
+
+@dataclass(frozen=True)
+class StaleSpec:
+    """One applied Blueprint file whose current content no longer matches its record."""
+
+    rel_path: str
+    record: AppliedSpecRecord
+    # "changed" | "missing"
+    reason: str
+    current_sha256: str = ""
+
+
+def stale_applied_specs(plan: BuildPlan, blueprint_dir: Path) -> tuple[StaleSpec, ...]:
+    """Applied Blueprint files that changed or disappeared since they were stamped."""
+    stale: list[StaleSpec] = []
+    for rel_path, record in sorted(plan.applied_specs.items()):
+        source = blueprint_dir / rel_path
+        if not source.is_file():
+            stale.append(StaleSpec(rel_path=rel_path, record=record, reason="missing"))
+            continue
+        current = hashlib.sha256(source.read_bytes()).hexdigest()
+        if current != record.sha256:
+            stale.append(
+                StaleSpec(
+                    rel_path=rel_path, record=record, reason="changed", current_sha256=current
+                )
+            )
+    return tuple(stale)
+
+
+def cascade_reset_ids(plan: BuildPlan, changed_files: Iterable[str]) -> tuple[str, ...]:
+    """Block ids to reset to pending after the given Blueprint files changed.
+
+    Seeds are blocks whose ``implements:`` or ``context:`` reference a changed file or
+    any of its compact-derivative variants. The closure then adds transitive dependents
+    (blocks that ``depends:`` on a reset block), children of reset blocks (stories of a
+    reset feature, acceptance checks of a reset story), and the parent feature of any
+    reset step so the feature can close again after rebuild. Returned in manifest order.
+    """
+    variants: set[str] = set()
+    for changed in changed_files:
+        variants |= spec_name_variants(changed)
+
+    reset: set[str] = set()
+    for block in plan.blocks:
+        refs = set(block.fields.get("implements", ())) | set(block.fields.get("context", ()))
+        if refs & variants:
+            reset.add(block.block_id)
+
+    changed_pass = True
+    while changed_pass:
+        changed_pass = False
+        for block in plan.blocks:
+            if block.block_id in reset:
+                continue
+            if any(dep in reset for dep in block.depends) or (block.parent in reset):
+                reset.add(block.block_id)
+                changed_pass = True
+
+    # Reopen the parent feature of every reset step so the feature can close again
+    # after rebuild. This is bookkeeping only: it does not pull the feature's other
+    # children (or its dependents) into the reset.
+    reopen = {
+        block.block_id
+        for block in plan.blocks
+        if block.block_type == "feature"
+        and block.block_id not in reset
+        and any(child.block_id in reset for child in plan.children(block.block_id))
+    }
+    reset |= reopen
+
+    return tuple(block.block_id for block in plan.blocks if block.block_id in reset)
 
 
 def load_target_plan(target: str, target_directory: Path) -> BuildPlan:

@@ -463,6 +463,12 @@ content. A changed or missing previously applied Specification blocks the build 
 stale file, recorded commit, current commit, recorded hash, and current hash. New unapplied
 Specification files do not block build.
 
+`ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` are sealed foundational Specifications;
+their compact derivatives carry the same sealing. When a sealed foundational Specification is
+stale, the block message names it and instructs the Commander to create a change ticket in
+`blueprint/changes/` with `Amends: <file>` and run `drydock refit`. For a stale ordinary
+Specification, the block message instructs the Commander to run `drydock refit`.
+
 ### drydock build - PseudoCode State Machine
 
   ```pseudocode
@@ -696,7 +702,7 @@ flowchart LR
 ```
 ### drydock refit
 
-`drydock refit` conforms change tickets in `blueprint/changes/` to the Drydock build process. The Commander (or an external ticketing system) places `TICKET-NNN-{Name}.md` files in that directory. Refit normalizes each ticket's typed spec header, generates or refines stories and acceptance criteria, and patches `MANIFEST.md` with new story rows for those tickets. Applied manifest rows are never touched.
+`drydock refit` conforms change tickets in `blueprint/changes/` to the Drydock build process. The Commander (or an external ticketing system) places `TICKET-NNN-{Name}.md` files in that directory. Refit normalizes each ticket's typed spec header, generates or refines stories and acceptance criteria, and patches `MANIFEST.md` with new story rows for those tickets. The ticket pass never touches applied manifest rows; only the drift reconciliation pass resets them.
 
 **Change ticket format.** A change ticket is a Typed Specification file with FileType `CHANGE`. It carries an `Amends:` header field that names the parent Blueprint spec the ticket modifies (e.g. `Amends: FEATURE-Copy.md`). `drydock refit` reads this field to resolve dependency inheritance and to inject the parent spec as context.
 
@@ -704,13 +710,17 @@ flowchart LR
 
 **Role boundary.** `drydock refit` is a targeted patch: it processes only tickets in `blueprint/changes/` and inserts or replaces pending manifest rows for those tickets. `drydock plan create` is a full regeneration: it reads all Blueprint inputs and rewrites `MANIFEST.md` with state-preserving merge. Run `drydock plan create` after `drydock refit` when the full plan graph must be recomputed.
 
-**Behavior.** Scans `blueprint/changes/*.md`. For each ticket: reads `Amends:`, resolves parent spec dependencies, runs one LLM call to normalize the ticket header and generate manifest rows, writes the updated ticket, and patches `MANIFEST.md`. Tickets without an `Amends:` field are skipped with a warning. Exits 0 when no tickets are found.
+**Behavior.** Scans `blueprint/changes/*.md`. For each ticket: reads `Amends:`, resolves parent spec dependencies, runs one LLM call to normalize the ticket header and generate manifest rows, writes the updated ticket, and patches `MANIFEST.md`. Tickets without an `Amends:` field are skipped with a warning. After the ticket pass, refit runs a deterministic drift reconciliation over the Manifest's `applied_specs` registry.
 
-**Input files.** `blueprint/changes/*.md`, `blueprint/<parent-spec>.md`, `MANIFEST.md`, `COMPASS.md`, `MANIFEST_CONTRACT.md`.
+**Drift reconciliation.** Refit compares every `applied_specs` record against the current Blueprint file content. For each drifted file, refit computes the reset cascade: every block whose `implements:` or `context:` references the file or one of its compact derivatives, every transitive dependent of those blocks through `depends:`, and every child of a reset block. Refit sets each cascaded block's `state:` to `pending`, reopens the parent feature of each reset step, removes the drifted file's `applied_specs` records, and removes every record stamped by a reset block. The next `drydock build` rebuilds the reset blocks in dependency order.
 
-**Output files.** Updated `blueprint/changes/*.md` (headers normalized); patched `MANIFEST.md`.
+**Sealed foundational Specifications.** A drifted `ARCHITECTURE.md`, `DATABASE.md`, or `UI-GENERAL.md` (or a compact derivative of one) resets its cascade only when a ticket in the same refit run amends it. Without such a ticket, refit reports the file as blocked with the instruction to create a change ticket carrying `Amends: <file>`, leaves its blocks and records untouched, and exits 1. A foundational reset cascades to every dependent block; a foundational change rebuilds the application.
 
-**Exit codes.** `0` success or no-op; `1` operational failure; `2` usage error.
+**Input files.** `blueprint/changes/*.md`, `blueprint/<parent-spec>.md`, `blueprint/*.md` (drift comparison), `MANIFEST.md`, `COMPASS.md`, `MANIFEST_CONTRACT.md`.
+
+**Output files.** Updated `blueprint/changes/*.md` (headers normalized); patched `MANIFEST.md` (ticket rows, cascaded `state:` resets, pruned `applied_specs` records).
+
+**Exit codes.** `0` success or no-op; `1` operational failure or unticketed foundational drift; `2` usage error.
 
 TODO: The refit can roll the change tickets into the primary specification files.
 
@@ -1140,6 +1150,13 @@ Do not recompact Rigging files unless the governing source actually changed.
 
 Files without callable surface are classified by the compaction agent and skipped (`no-surface`).
 `_compact.md` files are never treated as sources.
+
+**Compact stability.** When a compact derivative already exists, the compaction prompt receives
+it alongside the source and reproduces it verbatim unless the source contains a structural change
+to the extracted contract. When the regenerated body matches the existing derivative, compaction
+keeps the existing file bytes, refreshes its modification time, and reports the file as
+`skipped-unchanged`. An unchanged derivative keeps its `applied_specs` hash and triggers no
+rebuild cascade.
 
 `rigging compact` runs in three forms - the ARCHITECTURE.md role, the DATABASE.md role, and the evrything else role  The ARCHITECTURE and DATABASE components are repeatedly reinjected and should be special compaction when they are created is our solution.
 

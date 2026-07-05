@@ -885,3 +885,39 @@ state: pending
             build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
         assert len(runner.calls) == 0
+
+    def test_drift_error_message_distinguishes_foundational_and_ordinary(self, tmp_path):
+        import hashlib
+
+        from drydock.build_run import _ensure_applied_specs_current
+        from drydock.errors import SpecificationError
+
+        blueprint = tmp_path / "blueprint"
+        blueprint.mkdir()
+        (blueprint / "DATABASE.md").write_text("db changed\n", encoding="utf-8")
+        (blueprint / "SCREEN-A.md").write_text("screen changed\n", encoding="utf-8")
+        stale_hash = hashlib.sha256(b"original\n").hexdigest()
+        manifest = tmp_path / "MANIFEST.md"
+        manifest.write_text(
+            "# MANIFEST: Demo\n"
+            "state: approved\n"
+            "applied_specs: |\n"
+            f"  DATABASE.md sha256={stale_hash} commit=- "
+            "applied_by=foundation applied_at=2026-07-01\n"
+            f"  SCREEN-A.md sha256={stale_hash} commit=- "
+            "applied_by=screen-a applied_at=2026-07-01\n"
+            "\n"
+            "## story 1: Foundation\n"
+            "id: foundation\n"
+            "state: closed/verified\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SpecificationError) as excinfo:
+            _ensure_applied_specs_current(manifest, blueprint)
+
+        message = str(excinfo.value)
+        assert "sealed foundational specification" in message
+        assert "Amends: DATABASE.md" in message
+        assert "drydock refit" in message
+        assert "SCREEN-A.md" in message

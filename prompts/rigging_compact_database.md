@@ -1,7 +1,7 @@
 ---
 name: rigging_compact_database
 description: Extract the builder-facing persistence contract of a database file into compact prompt-injection form.
-version: 1
+version: 2
 intent: Produce a compact database API contract that preserves stores, reads, writes, schemas, interfaces, and persistence guardrails needed by downstream build steps.
 command: drydock rigging compact
 model: sonnet
@@ -47,6 +47,11 @@ persistence unit. Include input tables and returned data shapes where present.
 - Do not invent store operations, schema fields, or constraints not present in the source.
 - Do not wrap the whole response in a code fence.
 - Do not add commentary about what you compacted.
+- When an existing compact derivative is provided in the input context, output it VERBATIM
+  unless the source contains a structural change to the persistence contract (stores,
+  operations, schemas, access rules, or constraints) that makes it inaccurate. DO NOT rewrite
+  for wording, ordering, spacing, formatting, or style — an unchanged contract must produce
+  byte-identical output.
 
 ## Output format
 

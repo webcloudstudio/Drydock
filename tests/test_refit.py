@@ -452,3 +452,147 @@ class TestRefitTarget:
         result = refit_target(target, runner=_fake_runner(error_response))
         assert result.exit_code() == 1
         assert result.items[0].status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# drift reconciliation
+# ---------------------------------------------------------------------------
+
+
+def _drift_manifest(db_hash: str, screen_hash: str) -> str:
+    return f"""# MANIFEST: TestProject
+state: approved
+applied_specs: |
+  DATABASE.md sha256={db_hash} commit=- applied_by=foundation applied_at=2026-07-01
+  SCREEN-A.md sha256={screen_hash} commit=- applied_by=screen-a applied_at=2026-07-01
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+state: closed/verified
+
+## story 2: Screen A
+id: screen-a
+implements: SCREEN-A.md
+context: DATABASE_compact.md
+depends: foundation
+state: closed/verified
+
+## story 3: Unrelated
+id: unrelated
+implements: OTHER.md
+state: closed/verified
+"""
+
+
+def _make_drift_target(
+    tmp_path: Path,
+    *,
+    db_content: str = "db\n",
+    screen_content: str = "screen\n",
+    tickets: dict[str, str] | None = None,
+) -> Path:
+    import hashlib
+
+    target = _make_target(
+        tmp_path,
+        tickets=tickets or {},
+        parent_specs={"DATABASE.md": db_content, "SCREEN-A.md": screen_content},
+    )
+    db_hash = hashlib.sha256(b"db\n").hexdigest()
+    screen_hash = hashlib.sha256(b"screen\n").hexdigest()
+    (target / "MANIFEST.md").write_text(_drift_manifest(db_hash, screen_hash), encoding="utf-8")
+    return target
+
+
+class TestDriftReconciliation:
+    def test_no_drift_leaves_manifest_untouched(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = _make_drift_target(tmp_path)
+        original = (target / "MANIFEST.md").read_text(encoding="utf-8")
+
+        result = refit_target(target, runner=_fake_runner(""))
+        assert result.resets == []
+        assert result.drift_errors == []
+        assert result.exit_code() == 0
+        assert (target / "MANIFEST.md").read_text(encoding="utf-8") == original
+
+    def test_ordinary_drift_resets_cascade_without_ticket(self, tmp_path, monkeypatch):
+        from drydock.build_plan import parse_build_plan
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = _make_drift_target(tmp_path, screen_content="screen changed\n")
+
+        result = refit_target(target, runner=_fake_runner(""))
+        assert result.exit_code() == 0
+        assert result.drift_errors == []
+        assert len(result.resets) == 1
+        reset = result.resets[0]
+        assert reset.path == "SCREEN-A.md"
+        assert not reset.foundational
+        assert set(reset.reset_ids) == {"screen-a"}
+
+        plan = parse_build_plan(target / "MANIFEST.md")
+        states = {b.block_id: b.state for b in plan.blocks}
+        assert states["screen-a"] == "pending"
+        assert states["foundation"] == "closed/verified"
+        assert states["unrelated"] == "closed/verified"
+        assert "SCREEN-A.md" not in plan.applied_specs
+        assert "DATABASE.md" in plan.applied_specs
+
+    def test_foundational_drift_without_ticket_is_blocked(self, tmp_path, monkeypatch):
+        from drydock.build_plan import parse_build_plan
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        target = _make_drift_target(tmp_path, db_content="db changed\n")
+
+        result = refit_target(target, runner=_fake_runner(""))
+        assert result.exit_code() == 1
+        assert result.resets == []
+        assert len(result.drift_errors) == 1
+        assert "Amends: DATABASE.md" in result.drift_errors[0]
+        assert "change ticket" in result.drift_errors[0]
+
+        plan = parse_build_plan(target / "MANIFEST.md")
+        assert all(b.state == "closed/verified" for b in plan.blocks)
+        assert "DATABASE.md" in plan.applied_specs
+
+    def test_foundational_drift_with_ticket_cascades_reset(self, tmp_path, monkeypatch):
+        from drydock.build_plan import parse_build_plan
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_path))
+        ticket_content = "Amends: DATABASE.md\n\nAllow null in a column."
+        target = _make_drift_target(
+            tmp_path,
+            db_content="db changed\n",
+            tickets={"TICKET-001-NullColumn.md": ticket_content},
+        )
+        manifest_rows = (
+            "## story 4: Null column change\n"
+            "id: ticket-001-null-column\n"
+            "implements: changes/TICKET-001-NullColumn.md\n"
+            "state: pending\n"
+        )
+        runner = _fake_runner(
+            _make_response("TICKET-001-NullColumn.md", ticket_content, manifest_rows)
+        )
+
+        result = refit_target(target, runner=runner)
+        assert result.exit_code() == 0
+        assert result.drift_errors == []
+        assert result.items[0].status == "conformed"
+        assert len(result.resets) == 1
+        reset = result.resets[0]
+        assert reset.path == "DATABASE.md"
+        assert reset.foundational
+        assert set(reset.reset_ids) == {"foundation", "screen-a"}
+
+        plan = parse_build_plan(target / "MANIFEST.md")
+        states = {b.block_id: b.state for b in plan.blocks}
+        assert states["foundation"] == "pending"
+        assert states["screen-a"] == "pending"
+        assert states["unrelated"] == "closed/verified"
+        assert "ticket-001-null-column" in states
+        assert "DATABASE.md" not in plan.applied_specs
+        # SCREEN-A.md was stamped by the reset screen-a block, so it is dropped too.
+        assert "SCREEN-A.md" not in plan.applied_specs

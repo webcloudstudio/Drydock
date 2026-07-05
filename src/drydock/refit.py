@@ -2,21 +2,35 @@
 
 Each ``TICKET-NNN-{Name}.md`` file is read, its typed spec header is normalized (``Amends:``,
 ``Depends On:``, ``Version:``), stories and ACs are generated or refined, and MANIFEST.md is
-patched with new story rows for those tickets. Applied manifest rows are never touched. Tests
-inject a fake runner instead of spending API credits.
+patched with new story rows for those tickets. After the ticket pass, a deterministic drift
+reconciliation compares every ``applied_specs`` record against the current Blueprint content:
+each drifted file resets its consumer blocks and their transitive dependents to ``pending``
+and drops the stale provenance records, so the next ``drydock build`` rebuilds them in
+dependency order. Sealed foundational specifications (``FOUNDATIONAL_SPECS``) may only drift
+under a change ticket that amends them; unticketed foundational drift is reported and left
+untouched. Tests inject a fake runner instead of spending API credits.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Protocol
 
+from drydock.build_plan import (
+    cascade_reset_ids,
+    compact_source,
+    foundational_source,
+    parse_build_plan,
+    set_applied_specs,
+    stale_applied_specs,
+)
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
+from drydock.manifest_edit import batch_set_block_fields
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_markdown_parts,
@@ -59,9 +73,20 @@ class RefitItem:
 
 
 @dataclass(frozen=True)
+class RefitReset:
+    """One drifted Blueprint file and the manifest blocks reset for its rebuild."""
+
+    path: str
+    foundational: bool
+    reset_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RefitResult:
     target_dir: Path
     items: list[RefitItem]
+    resets: list[RefitReset] = field(default_factory=list)
+    drift_errors: list[str] = field(default_factory=list)
 
     def conformed(self) -> list[RefitItem]:
         return [i for i in self.items if i.status == "conformed"]
@@ -73,7 +98,7 @@ class RefitResult:
         return [i for i in self.items if i.status == "failed"]
 
     def exit_code(self) -> int:
-        return 1 if self.failed() else 0
+        return 1 if self.failed() or self.drift_errors else 0
 
 
 def _parse_amends(ticket_text: str) -> str | None:
@@ -242,6 +267,71 @@ def _patch_manifest(manifest_path: Path, new_rows: str) -> None:
     manifest_path.write_text(manifest_text, encoding="utf-8", newline="\n")
 
 
+def _reconcile_drift(
+    manifest_path: Path,
+    blueprint_dir: Path,
+    amended_sources: set[str],
+) -> tuple[list[RefitReset], list[str]]:
+    """Reset consumer blocks for drifted applied specs; gate foundational drift on tickets.
+
+    ``amended_sources`` are the source filenames named by this run's ticket ``Amends:``
+    fields. A drifted foundational file not covered by one is reported as a drift error
+    and left untouched. Every other drifted file resets its cascade to ``pending`` and
+    its ``applied_specs`` records (and those stamped by reset blocks) are removed.
+    """
+    if not manifest_path.is_file():
+        return [], []
+
+    plan = parse_build_plan(manifest_path)
+    stale = stale_applied_specs(plan, blueprint_dir)
+    if not stale:
+        return [], []
+
+    errors: list[str] = []
+    resettable = []
+    for spec in stale:
+        sealed = foundational_source(spec.rel_path)
+        if sealed is not None and sealed not in amended_sources:
+            errors.append(
+                f"{spec.rel_path}: sealed foundational specification changed without a "
+                f"change ticket. Create blueprint/changes/TICKET-NNN-<Name>.md with "
+                f"'Amends: {sealed}' and rerun 'drydock refit'."
+            )
+            continue
+        resettable.append(spec)
+
+    if not resettable:
+        return [], errors
+
+    all_ids = cascade_reset_ids(plan, [spec.rel_path for spec in resettable])
+    by_id = plan.by_id()
+    updates = {
+        block_id: {"state": "pending"} for block_id in all_ids if by_id[block_id].state != "pending"
+    }
+    if updates:
+        batch_set_block_fields(manifest_path, updates)
+
+    reset_set = set(all_ids)
+    reset_paths = {spec.rel_path for spec in resettable}
+    remaining = {
+        rel_path: record
+        for rel_path, record in plan.applied_specs.items()
+        if rel_path not in reset_paths and record.applied_by not in reset_set
+    }
+    if remaining != plan.applied_specs:
+        set_applied_specs(manifest_path, remaining)
+
+    resets = [
+        RefitReset(
+            path=spec.rel_path,
+            foundational=foundational_source(spec.rel_path) is not None,
+            reset_ids=cascade_reset_ids(plan, [spec.rel_path]),
+        )
+        for spec in resettable
+    ]
+    return resets, errors
+
+
 def refit_target(
     target_dir: Path,
     *,
@@ -263,18 +353,17 @@ def refit_target(
     changes_dir = blueprint_dir / "changes"
     manifest_path = target_dir / "MANIFEST.md"
 
-    if not changes_dir.is_dir():
-        return RefitResult(target_dir=target_dir, items=[])
+    tickets = (
+        sorted(p for p in changes_dir.glob("*.md") if p.is_file()) if changes_dir.is_dir() else []
+    )
 
-    tickets = sorted(p for p in changes_dir.glob("*.md") if p.is_file())
-    if not tickets:
-        return RefitResult(target_dir=target_dir, items=[])
-
-    prompt = load_prompt(PROMPT_NAME)
+    prompt = load_prompt(PROMPT_NAME) if tickets else None
     today = date.today().isoformat()
     items: list[RefitItem] = []
+    amended_sources: set[str] = set()
 
     for ticket_path in tickets:
+        assert prompt is not None
         ticket_text = ticket_path.read_text(encoding="utf-8")
         amends = _parse_amends(ticket_text)
 
@@ -288,6 +377,7 @@ def refit_target(
             )
             continue
 
+        amended_sources.add(Path(compact_source(amends)).name)
         resolved_deps = _resolve_ticket_deps(amends, blueprint_dir)
         parent_path = blueprint_dir / amends
         parent_text = parent_path.read_text(encoding="utf-8") if parent_path.is_file() else ""
@@ -355,4 +445,6 @@ def refit_target(
             )
         )
 
-    return RefitResult(target_dir=target_dir, items=items)
+    resets, drift_errors = _reconcile_drift(manifest_path, blueprint_dir, amended_sources)
+
+    return RefitResult(target_dir=target_dir, items=items, resets=resets, drift_errors=drift_errors)

@@ -9,6 +9,7 @@ credits.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -110,7 +111,7 @@ class CompactItem:
     compact: Path
     role: str
     prompt_name: str
-    # status: compacted | skipped-fresh | no-surface | failed
+    # status: compacted | skipped-fresh | skipped-unchanged | no-surface | failed
     status: str
     source_bytes: int | None = None
     compact_bytes: int | None = None
@@ -134,6 +135,9 @@ class CompactResult:
 
     def skipped(self) -> list[CompactItem]:
         return [i for i in self.items if i.status == "skipped-fresh"]
+
+    def unchanged(self) -> list[CompactItem]:
+        return [i for i in self.items if i.status == "skipped-unchanged"]
 
     def no_surface(self) -> list[CompactItem]:
         return [i for i in self.items if i.status == "no-surface"]
@@ -186,6 +190,8 @@ def ensure_compact_files(
             detail = f"{item.compact.name} refreshed from {item.source.name}"
         elif item.status == "skipped-fresh":
             detail = f"{item.compact.name} already fresh for {item.source.name}"
+        elif item.status == "skipped-unchanged":
+            detail = f"{item.compact.name} unchanged for {item.source.name} (no structural change)"
         elif item.status == "no-surface":
             detail = f"{item.source.name} rejected: {item.error}"
         else:
@@ -313,8 +319,24 @@ def _assemble_prompt(
 
 
 def _assemble_prompt_assembly(
-    body: str, *, rel_source: str, today: str, objective: str, source_text: str
+    body: str,
+    *,
+    rel_source: str,
+    today: str,
+    objective: str,
+    source_text: str,
+    existing_compact: str | None = None,
 ) -> PromptAssembly:
+    existing_parts = (
+        contextual_markdown_parts(
+            f"{Path(rel_source).stem}{COMPACT_SUFFIX}.md",
+            existing_compact,
+            filename=f"{Path(rel_source).stem}{COMPACT_SUFFIX}.md",
+            role="existing compact derivative",
+        )
+        if existing_compact
+        else ()
+    )
     return PromptAssembly(
         parts=(
             system_preamble_part(),
@@ -335,6 +357,7 @@ def _assemble_prompt_assembly(
                 filename=Path(rel_source).name,
                 role="source file",
             ),
+            *existing_parts,
             section_heading_part("# Agent Task"),
             part("Prompt body", body + "\n\n", kind="prompt-body"),
         )
@@ -357,6 +380,11 @@ def _provenance(rel_source: str, today: str) -> str:
         f"<!-- Compacted from {rel_source} on {today} by drydock rigging compact — "
         "regenerate with: drydock rigging compact --include-file {rel_source} -->"
     )
+
+
+def _strip_provenance(text: str) -> str:
+    """Drop the dated provenance header so regenerated bodies compare content-only."""
+    return _LEADING_PROVENANCE.sub("", text.strip()).strip()
 
 
 def _finalize(text: str, *, rel_source: str, today: str) -> str:
@@ -439,12 +467,16 @@ def compact(
         rel_source = _rel(source, spec_dir)
         source_text = source.read_text(encoding="utf-8")
         source_bytes = len(source_text.encode("utf-8"))
+        existing_compact = (
+            compact_path.read_text(encoding="utf-8") if compact_path.is_file() else None
+        )
         prompt_assembly = _assemble_prompt_assembly(
             prompt.body,
             rel_source=rel_source,
             today=today,
             objective=role.objective,
             source_text=source_text,
+            existing_compact=existing_compact,
         )
         result = run(
             prompt_assembly.rendered_text,
@@ -501,6 +533,25 @@ def compact(
             continue
 
         finalized = _finalize(result.text, rel_source=rel_source, today=today)
+        if existing_compact is not None and _strip_provenance(finalized) == _strip_provenance(
+            existing_compact
+        ):
+            # The regenerated body is identical: keep the existing bytes (and their
+            # sha256 provenance) and refresh mtime so staleness stops re-triggering.
+            os.utime(compact_path)
+            record(
+                CompactItem(
+                    source,
+                    compact_path,
+                    role.label,
+                    role.prompt_name,
+                    "skipped-unchanged",
+                    source_bytes=source_bytes,
+                    compact_bytes=len(existing_compact.encode("utf-8")),
+                    execution_id=result.execution_id,
+                )
+            )
+            continue
         compact_path.write_text(finalized, encoding="utf-8", newline="\n")
         record(
             CompactItem(

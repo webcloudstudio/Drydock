@@ -1,7 +1,7 @@
 ---
 name: rigging_compact_contracts
 description: Extract the consumer-facing contract surface of a specification file into compact prompt-injection form.
-version: 1
+version: 2
 intent: Produce a contract compact for files whose downstream consumers mainly need routes, callable units, schemas, and integration constraints.
 command: drydock rigging compact
 model: sonnet
@@ -63,6 +63,11 @@ units belong to one domain, omit grouping.
 - Do not invent sections, parameters, response fields, or rules not present in the source.
 - Do not wrap the whole response in a code fence.
 - Do not add commentary about what you compacted.
+- When an existing compact derivative is provided in the input context, output it VERBATIM
+  unless the source contains a structural change to the contract surface (routes, callable
+  units, schemas, configuration, or rules) that makes it inaccurate. DO NOT rewrite for
+  wording, ordering, spacing, formatting, or style — an unchanged contract must produce
+  byte-identical output.
 
 ## Output format
 

@@ -1,7 +1,7 @@
 ---
 name: rigging_compact_architecture
 description: Extract the builder-facing structural contract of an architecture file into compact prompt-injection form.
-version: 1
+version: 2
 intent: Produce an architecture compact that preserves module boundaries, ownership rules, wiring shape, and technical constraints needed by downstream build steps.
 command: drydock rigging compact
 model: sonnet
@@ -56,6 +56,11 @@ source commentary or implementation examples.
 - Do not invent modules, boundaries, or constraints not present in the source.
 - Do not wrap the whole response in a code fence.
 - Do not add commentary about what you compacted.
+- When an existing compact derivative is provided in the input context, output it VERBATIM
+  unless the source contains a structural change to the contract (module layout, boundaries,
+  wiring, constraints, or required interfaces) that makes it inaccurate. DO NOT rewrite for
+  wording, ordering, spacing, formatting, or style — an unchanged contract must produce
+  byte-identical output.
 
 ## Output format
 

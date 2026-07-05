@@ -170,8 +170,45 @@ class TestCompact:
         again = compact(name, root / name, runner=fake_runner())
         assert [i.status for i in again.items] == ["skipped-fresh"]
 
+        # Force re-runs the LLM; an identical body keeps the existing bytes.
         forced = compact(name, root / name, force=True, runner=fake_runner())
-        assert [i.status for i in forced.items] == ["compacted"]
+        assert [i.status for i in forced.items] == ["skipped-unchanged"]
+
+        def changed(prompt, wd, **kwargs):
+            return FakeRun(text="# DB — Persistence Contract\n\n### new_store.read\n")
+
+        rewritten = compact(name, root / name, force=True, runner=changed)
+        assert [i.status for i in rewritten.items] == ["compacted"]
+
+    def test_unchanged_body_keeps_bytes_and_bumps_mtime(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
+        compact(name, root / name, runner=fake_runner())
+        compact_file = root / name / "DATABASE_compact.md"
+        original_bytes = compact_file.read_bytes()
+        past = compact_file.stat().st_mtime - 1000
+        os.utime(compact_file, (past, past))
+        # Source newer than compact → regeneration runs; identical body → no rewrite.
+        source = root / name / "DATABASE.md"
+        os.utime(source, (past + 500, past + 500))
+
+        result = compact(name, root / name, runner=fake_runner())
+        assert [i.status for i in result.items] == ["skipped-unchanged"]
+        assert compact_file.read_bytes() == original_bytes
+        assert compact_file.stat().st_mtime > past + 500
+        assert result.exit_code() == 0
+
+    def test_existing_compact_is_injected_into_prompt(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
+        compact(name, root / name, runner=fake_runner())
+        compact_file = root / name / "DATABASE_compact.md"
+        past = compact_file.stat().st_mtime - 1000
+        os.utime(compact_file, (past, past))
+
+        runner = fake_runner()
+        compact(name, root / name, runner=runner)
+        prompt = runner.seen[0]  # type: ignore[attr-defined]
+        assert "existing compact derivative" in prompt
+        assert "DATABASE_compact.md" in prompt
 
     def test_failed_runner_marks_failed_and_exit_one(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
