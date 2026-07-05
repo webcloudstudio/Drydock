@@ -255,7 +255,7 @@ class TestState:
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         # The header rolls up one count per story state plus total cost.
-        assert "3 blocks</span>" in out
+        assert "1 group</span>" in out
         assert "1 story</span>" in out
         assert "built</span>" in out
         assert "ready to build</span>" in out

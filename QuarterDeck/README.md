@@ -1,40 +1,45 @@
 # QuarterDeck
 
 **A communication surface between LLM agents and the people they work for.** When an agent
-needs a human in the loop — to answer a question, review code, sign off on a product increment,
+needs a human in the loop — to answer a question, review a plan, sign off on a product increment,
 watch a demo, or track work on a board — it writes a small artifact and the QuarterDeck renders it
 as a clean, navigable web page. People read, answer, and decide; the agent reads their answers
-back. The QuarterDeck is how an agent runs questionnaires, code reviews, product reviews, demos,
-and other agile ceremonies with a human, without anyone hand-building a UI.
+back. The QuarterDeck is how an agent runs questionnaires, reviews, demos, and other agile
+ceremonies with a human, without anyone hand-building a UI.
 
 The artifacts are **easy to customize**: each is a plain file (markdown, a small JSON
-questionnaire, or a tickets list) named in one `console.yaml`. The agent — or a person — writes
-those files; the QuarterDeck only navigates and renders them. It owns no project state and makes no
-decisions of its own, which keeps it safe for an agent to drive.
+questionnaire, a JSONL log, or `MANIFEST.md`) named in one `console.yaml`. The agent — or a
+person — writes those files; the QuarterDeck only navigates and renders them. It owns no project
+state and makes no decisions of its own, which keeps it safe for an agent to drive.
 
-**Stack:** Python / FastAPI / Uvicorn / SQLite / PyYAML. Single process, no auth, no external
-services, no build step. What it persists is small: questionnaire answers and edited document source.
+**Stack:** Python / FastAPI / Uvicorn / PyYAML / Markdown. Single process, no auth, no database,
+no external services, no build step. Everything it persists is written back into the plain files
+it renders: questionnaire answers, edited document source, and constrained `MANIFEST.md`
+structure edits.
 
 ### What it renders
 
 | Artifact | Page type | Used for |
 |----------|-----------|----------|
-| Markdown document | `markdown` | Code reviews, product reviews, demo write-ups, intent/spec pages, release notes |
-| Editable document | `editable_markdown` | Source-of-truth docs the human and agent co-edit (intent, spec) |
-| Questionnaire | `questionnaire` | Asking the human structured questions; answers are saved and read back |
-| Work board | `kanban` | Sprint/backlog tracking from a tickets file: features own stories, with priority/urgency/blocked flags and acceptance-criteria checklists |
-| Hyperlink | `link` | Pointing at an external or local resource |
-| Build Compass | `compass` | The live `MANIFEST.md` work graph: grouped, costed, state-badged (buildable now / review / done / failed with reason), and editable (reorder/regroup/rename/split) |
-| Sign-off | `"review": true` on any item | Approve · revise · reject a demo, review, or doc, with feedback recorded |
+| Markdown document | `markdown` | Analyses, reviews, demo write-ups, release notes; `tabs: true` splits `##` headings into tabs |
+| Editable document | `editable_markdown` | Steering docs the human and agent co-edit (`COMPASS.md`, `BLOCKERS.md`, per-command compasses) |
+| Multi-format document | `document` | One artifact with `path_md` / `path_html` / `path_pdf` variants; best available format wins |
+| Questionnaire | `questionnaire` | Asking the human structured questions; answers are saved into the JSON and read back |
+| JSONL log | `jsonl` | Append-only records (the Ship's Log) as a read-only, badge-colored table |
+| Work board | `kanban` | `MANIFEST.md` features/stories/spikes as a read-only four-column board |
+| Build Compass | `compass` | The live `MANIFEST.md` work graph: grouped, costed, state-badged, and editable (reorder / regroup / rename / split) |
+| Acceptance status | `command_status` | Readiness rollup derived from the Core Doc Soundings table |
+| Hyperlink | `link` | Pointing at an external URL or a local file |
 
-Every artifact is filed under a **section** (Drydock Core, Build Plan, Action Items, Project Pages,
-Archive) that reflects its role. The Archive section is collapsed by default.
+Every artifact is filed under a **section**. The canonical target sections are
+**Analyze · Plan · Build**; any section ids may be declared. `BLOCKERS.md` conventionally
+lives in a `blockers` section, which renders first and in red.
 
-> **This is an intended, primary channel for agent↔User dialog.** The developer built the Console
-> so that an agent has a deliberate place to talk to the User — to ask a question, request a
-> review, surface a decision, or show a demo. **When you (an agent) want a dialog with the User,
-> use this interface** rather than burying the exchange in chat, a commit message, or a log. Put the
-> artifact in the Console and let the User respond there.
+> **This is an intended, primary channel for agent↔User dialog.** The developer built the
+> QuarterDeck so that an agent has a deliberate place to talk to the User — to ask a question,
+> request a review, surface a decision, or show a demo. **When you (an agent) want a dialog with
+> the User, use this interface** rather than burying the exchange in chat, a commit message, or a
+> log. Put the artifact in the QuarterDeck and let the User respond there.
 
 ---
 
@@ -46,54 +51,56 @@ drydock run quarterdeck <Target>              # named target under configured ta
 drydock run quarterdeck <Target> --port 9000  # custom port
 ```
 
+The runtime is served from the installed package (or this source tree); only the Target's console
+*state* — `console.yaml`, questionnaires, and the files items point at — lives under
+`<Target>/QuarterDeck/`. `QUARTERDECK_DIR` and `QUARTERDECK_PROJECT_ROOT` point the runtime at
+that state.
+
 `QuarterDeck/console.yaml` must exist. The QuarterDeck never generates it. If it is missing, the
 UI shows a configuration page and the API returns HTTP 503. `console.yaml.sample` is the
 documented template to copy from.
+
+When the workspace holds several targets, a **target switcher** appears at the top of the sidebar:
+one button per target that has a `QuarterDeck/console.yaml`, each flying the International Code of
+Signals flag for the target's initial. Switching sets a cookie and reloads the console against
+that target.
 
 ---
 
 ## Files & Storage
 
-`console.yaml` is only the **index**. Each item names a `path`; the artifact's data lives in
-that separate file. Markdown items are `.md`; questionnaires and tickets are `.json`.
-
-```text
-QuarterDeck/
-├── console.yaml            Index: sections + items → paths (the contract)
-├── console.yaml.sample     Documented template to copy from
-├── app.py                  The viewer (FastAPI)
-├── sample/                 The shipped test fixture's artifacts:
-│   ├── intent.md           editable_markdown item data (Edit/Save in the UI)
-│   ├── guide.md            markdown item data
-│   ├── review.md           markdown item with "review": true (sign-off bar)
-│   ├── tickets.json        kanban data + acceptance criteria (read-only)
-│   ├── kickoff.json        questionnaire data (questions + answers)
-│   └── archived-note.md    markdown item data
-└── data/
-    └── console_state.sqlite  Saved questionnaire state (auto-created)
-```
+`console.yaml` is only the **index**. Each item names a `path`; the artifact's data lives in that
+separate file. Markdown items are `.md`; questionnaires are `.json`; the board and the compass
+read `MANIFEST.md`.
 
 All `path` values are relative to `QuarterDeck/` and must resolve **inside the project** (the
-directory that contains `QuarterDeck/`), so siblings such as `../evidence/STEP_1.md` are reachable
-while paths outside the project are rejected; a `link` `href` may be any URL.
+directory that contains `QuarterDeck/`), so siblings such as `../ANALYSIS.md` or
+`../evidence/STEP_1.md` are reachable while paths outside the project are rejected; a `link`
+`href` may be any URL.
 
-**What the QuarterDeck writes.** Two things. (1) **Questionnaire answers** — saved both back
-into the questionnaire `.json` file (each question gains an `answer`, plus `state: "done"` and
-`answered_at`, so the next agent reads questions and answers as one plain file) and into the
-`document_state` table in `data/console_state.sqlite` (keyed `questionnaire.<id>`). (2)
-**`editable_markdown` source** — Save writes the edited markdown straight back to its `.md`.
-Everything else is read-only: tickets and plain markdown are edited by the framework, not the
-QuarterDeck. `console.yaml` is never rewritten at runtime.
+**What the QuarterDeck writes.** Three things, all back into plain files:
+
+1. **Questionnaire answers** — each answered question gains an `answer` field; the file's `state`
+   becomes `answered` when every question is answered (else it stays `open`) and `answered_at` is
+   stamped. The next agent run reads questions and answers as one plain input file.
+2. **`editable_markdown` source** — Save writes the edited markdown straight back to its `.md`
+   (creating the file if absent).
+3. **Compass structure edits** — reorder / regroup / rename / split operations rewrite
+   `MANIFEST.md` through the same constrained editor the CLI uses; a move that would break the
+   build topology is rejected.
+
+Everything else is read-only. `console.yaml` is never rewritten at runtime.
+
+**Item visibility follows file existence.** An item whose backing file does not exist is hidden
+from the sidebar and reappears automatically when the file is created — no `console.yaml` rewrite
+needed. This is how `BLOCKERS.md` surfaces only when blockers exist.
 
 ---
 
 ## The Contract
 
-The QuarterDeck reads exactly one file, `QuarterDeck/console.yaml`, with four blocks:
-`console`, `project`, `sections`, and `items`. All `path` / `href` values are relative to
-`QuarterDeck/` and must resolve **inside the project** (the directory containing
-`QuarterDeck/`) for file reads, so siblings such as `../docs/` are reachable (a `link` may
-point at any URL).
+The QuarterDeck reads exactly one file, `QuarterDeck/console.yaml`, with these blocks:
+`console`, `project`, `sections`, `items`, and optional `sources` / `overrides`.
 
 ### `console` — application identity
 
@@ -101,14 +108,14 @@ point at any URL).
 console:
   name: Project QuarterDeck
   default_item: commanders_chair
-  state_db: data/console_state.sqlite
+  app_help_file_location: docs/index.html
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Display name in the header |
-| `default_item` | No | Item `id` to open on load; defaults to the first item |
-| `state_db` | No | SQLite path relative to `QuarterDeck/`; defaults to `data/console_state.sqlite` |
+| `name` | Yes | FastAPI application title |
+| `default_item` | No | Item `id` to open on first load; defaults to the first item. The console remembers the last-viewed item per target |
+| `app_help_file_location` | No | HTML file, relative to the workspace root, served at `/help`; enables the header's Drydock button |
 
 ### `project` — informational identity
 
@@ -117,74 +124,105 @@ project:
   id: PROJECT
   name: Project Name
   description: "One line."
+  copyright: "Copyright (c) 2026 ..."
 ```
 
-`description` is shown in the header. All fields are informational.
+`copyright` overrides the Drydock copyright notice shown in the bar under the header. The page
+title and sidebar headings use the **target directory name**, not `project.name`.
 
 ### `sections` — sidebar taxonomy
 
 ```yaml
 sections:
-  - { id: core,          label: "Drydock Core",  dot: "#0d9488", pinned: true }
-  - { id: build_plan,    label: "Build Plan",     dot: "#d97706" }
-  - { id: actions,       label: "Action Items",   dot: "#dc2626" }
-  - { id: project_pages, label: "Project Pages",  dot: "#2563eb" }
-  - { id: archive,       label: "Archive",        dot: "#94a3b8", collapsed: true }
+  - { id: analyze, label: "Analysis", dot: "#0d9488", pinned: true }
+  - { id: plan,    label: "Plan",     dot: "#2563eb" }
+  - { id: build,   label: "Build",    dot: "#d97706" }
 ```
 
 | Section field | Description |
 |---------------|-------------|
 | `id` | Unique section id — items reference this |
 | `label` | Sidebar heading text |
-| `dot` | CSS colour for the section dot |
-| `collapsed` | If `true`, the section starts collapsed in the sidebar (toggle-able by click) |
-| `pinned` | If `true`, items in this section cannot be archived (reserved for future archive/unarchive control) |
+| `dot` | CSS colour for the section dot (non-phase sections) |
+| `collapsed` / `pinned` | Accepted and carried through the nav model; reserved — no current rendering effect |
 
 Sections render in the order listed. An item whose `section` id is not in the list gets a
-title-cased label and grey dot, appended after the configured sections.
+title-cased label and grey dot, appended after the configured sections. The `setup`, `analyze`,
+and `plan` sections render as phase headers (target name + phase) and stay visible even when
+empty; `blockers` renders first, in red. Known sections fly a fixed ICS signal flag (Blockers
+flies **U** — *you are running into danger*; Plan flies **P**, the Blue Peter).
 
 ### `items` — a flat list of things
 
-Each **item** is one thing and one navigation entry (1:1 — no containers, no nesting). An
-item carries **navigation properties** (`label`, `section`) and **type properties** (`type`
-plus the fields that type needs).
+Each **item** is one thing and one navigation entry (1:1 — no containers, no nesting). An item
+carries **navigation properties** (`label`, `section`) and **type properties** (`type` plus the
+fields that type needs).
 
 ```yaml
 items:
-  - { id: guide,   label: "Guide",  section: project_pages, type: markdown, path: sample/guide.md }
-  - { id: board,   label: "Kanban", section: build_plan,    type: kanban,   path: sample/tickets.json }
-  - { id: kickoff, label: "Kickoff Questionnaire", section: actions, type: questionnaire, path: sample/kickoff.json }
+  - { id: analysis, label: "Analysis", section: analyze, type: markdown, tabs: true, path: ../ANALYSIS.md }
+  - { id: board,    label: "Kanban Board", section: plan, type: kanban, path: ../MANIFEST.md }
+  - { id: build_compass, label: "Build Compass", section: build, type: compass, path: ../MANIFEST.md }
 ```
 
 | Item field | Required | Description |
 |------------|----------|-------------|
-| `id` | Yes | Unique item id (stable; used in routes and `state_key`s) |
+| `id` | Yes | Unique item id (stable; used in routes) |
 | `label` | Yes | Sidebar button text |
 | `section` | Yes | Section id from the `sections` block |
-| `type` | Yes | `markdown` \| `editable_markdown` \| `jsonl` \| `kanban` \| `questionnaire` \| `link` \| `command_status` \| `compass` |
+| `type` | Yes | One of the types below |
 | `order` | No | Sort order within its section (default config order) |
-| `review` | No | `true` adds an Approve · Revise · Reject sign-off bar to the item (see Decisions below) |
+| `help_text` | No | Short explanation rendered as a note at the top of the page |
+| `tabs` | No | `markdown` only: `true` splits `##` headings into clickable tabs |
 | `path` | For file types | File path relative to `QuarterDeck/` |
+| `path_md` / `path_html` / `path_pdf` | For `document` | Format variants; html > pdf > md priority |
 | `href` | For `link` | URL, or local path relative to `QuarterDeck/` |
+
+Additional fields (for example `prompt_text`) are ignored by the QuarterDeck and may be used by
+the framework that assembles prompts from the same files.
+
+### `sources` — auto-discovered items
+
+```yaml
+sources:
+  - glob: "QuarterDeck/questionnaires/discovery-*.json"
+    section: analyze
+    type: questionnaire
+    order: 99
+
+overrides:
+  - match: "docs/SPECIAL.md"
+    label: "The Special Doc"
+    tabs: true
+```
+
+Each rule globs files under the **project root** and generates one item per file: the id is a
+slug of the filename, the label a title-cased form of it, and the rule's remaining fields become
+item defaults (`section` defaults to `project_pages`, `type` to `markdown`). Explicit `items:`
+take priority — a generated item is dropped when its id or its path is already covered.
+`overrides` adjust individual source-generated items by project-root-relative path before they
+are added.
 
 ### Per-type schema
 
-Each type declares its required fields. Validation is **lenient**: if an item's `type` is
-unknown or a required field is missing, that item's pane shows a clear error and the rest of
-the Console keeps working.
+Each type declares its required fields. Validation is **lenient**: if an item's `type` is unknown
+or a required field is missing, that item's pane shows a clear error and the rest of the console
+keeps working.
 
 | type | required (beyond `id`/`label`/`section`/`type`) |
 |------|--------------------------------------------------|
 | `markdown` | `path` |
 | `editable_markdown` | `path` |
+| `document` | — (`path_md` / `path_html` / `path_pdf` optional) |
 | `jsonl` | `path` |
-| `kanban` | `path` (→ a tickets JSON file) |
+| `kanban` | `path` (rendered from `MANIFEST.md`) |
 | `questionnaire` | `path` |
 | `link` | `href` |
 | `command_status` | — |
+| `compass` | `path` (`MANIFEST.md`) |
 
-Each type maps to one Python renderer in the `TYPES` registry in `app.py`. **Adding a type
-= one `TypeDef` (required fields + render function).**
+Each type maps to one Python renderer in the `TYPES` registry in `app.py`. **Adding a type = one
+`TypeDef` (required fields + render function).**
 
 ---
 
@@ -192,82 +230,66 @@ Each type maps to one Python renderer in the `TYPES` registry in `app.py`. **Add
 
 ### `markdown`
 
-Renders a markdown file as HTML (tables, fenced code, sane lists supported). This is the
-default — if an artifact only needs to be read, make it markdown.
+Renders a markdown file as HTML (tables, fenced code, sane lists). YAML frontmatter and a leading
+`# H1` are stripped — the page header supplies the title. `tabs: true` renders each `##` section
+as a clickable tab. This is the default — if an artifact only needs to be read, make it markdown.
 
 ### `editable_markdown`
 
-Same rendering as `markdown`, plus an **Edit** button. Edit toggles the rendered view to a
-textarea holding the raw markdown; **Save** writes the edited source straight back to the
-file (`POST /api/document/{item_id}/source`, write-confined to `Console/`). Use it for
-source-of-truth docs a human and the agent co-edit — typically an intent/spec doc in the
-**Core Docs** section. It is the only type besides `questionnaire` that writes a file; plain
-`markdown`, `jsonl`, `kanban`, and `link` stay read-only.
+Same rendering as `markdown`, plus an **Edit** button in the page header. Edit toggles the
+rendered view to a textarea holding the raw markdown; **Save** writes the edited source straight
+back to the file (`POST /api/document/{item_id}/source`, write-confined to the project). If the
+file does not exist yet, the page offers to create it on first save. Use it for steering docs a
+human and the agent co-edit — `COMPASS.md`, `BLOCKERS.md`, per-command compass files.
+
+### `document`
+
+Renders one artifact that exists in multiple formats. Priority: `path_html` (rendered
+full-pane in an iframe) > `path_pdf` (open button) > `path_md` (inline). Missing variants are
+skipped silently.
 
 ### `jsonl`
 
-Renders an append-only JSONL file as a read-only table. Configure `fields` with dotted field names,
-`sort` with a dotted field name, `sort_direction` as `asc` or `desc`, and optional exact-match
-`filters`. Each malformed line is reported without preventing valid records from rendering. A
-missing file renders as an empty view, allowing a console to expose a log before its first event.
-
-### `command_status`
-
-Derives a read-only command-readiness report from configured Core Docs using Python only. It finds
-exactly one Markdown table under a `Command Acceptance` heading, treats that table as the
-authoritative status source, recomputes state totals, and reports deterministic structural
-inconsistencies. Other Core Docs contribute command-reference coverage context only. The renderer
-does not inspect non-Core items, source code, tests, or plan artifacts, and writes no derived file.
+Renders an append-only JSONL file as a read-only table. Configure `fields` with dotted field
+names, `sort` / `sort_direction`, optional exact-match `filters`, `date_fields` (trimmed to the
+date), and `badge_field` + `badge_colors` for a colored leading badge (the Ship's Log uses this
+for `event_type`). Each malformed line is reported without hiding valid records. A missing file
+renders as an empty view.
 
 ### `kanban`
 
-Renders a **tickets JSON file** (`path`) as a read-only work board. Tickets are written by
-the framework (or a person); the Console never edits them. Columns are fixed by status —
-**Backlog · In Progress · Review · Done** — and each ticket sits in its status column.
-Clicking a card opens a ticket detail panel below the board.
+Renders `MANIFEST.md` as a **read-only** work board. Features, stories, and spikes become cards;
+acceptance (`ac`) blocks are folded into their parent. Columns are fixed — **Backlog · In
+Progress · Review · Done** — and a block's `state` selects its column: `pending` → Backlog,
+`implemented` and `closed/failed` → Review, `closed/verified` → Done. Clicking a card opens a
+detail panel with parent/children navigation. The board is a projection; work tracking truth
+stays in `MANIFEST.md`.
 
-Tickets file format (`tickets.json`):
+### `compass`
 
-```json
-{
-  "tickets": [
-    { "id": "FEAT-1", "title": "Importer", "kind": "feature", "status": "in_progress",
-      "priority": true, "urgency": false, "body": "Pull and normalize prices." },
-    { "id": "STORY-3", "title": "Retry policy", "parent": "FEAT-1", "status": "review",
-      "priority": false, "urgency": true, "blocked": true,
-      "blocked_reason": "How should retry/backoff behave?", "links": ["kickoff"],
-      "body": "Decide retry/backoff and close." }
-  ]
-}
-```
+The **Build Compass**: the live `MANIFEST.md` work graph. Feature groups carry story-point
+rollups and savings; each story/spike shows its assembled prompt cost with a collapsible per-file
+stack breakdown and its Definition of Done folded beneath. The header rolls up groups, stories,
+and per-lifecycle counts (built / ready to build / blocked / failed) plus total SP, and names the
+stories buildable now. Constrained editing — reorder groups, regroup/ungroup stories, rename,
+split, normalize order — rewrites `MANIFEST.md` through the same editor the CLI uses; a move that
+would break the build topology is rejected. A failed story opens its Definition of Done and shows
+the finding.
 
-| Ticket field | Required | Meaning |
-|--------------|----------|---------|
-| `id` | Yes | Ticket id (`FEAT-1`, `STORY-3`), unique in the file |
-| `title` | Yes | Card title |
-| `status` | No | Column: `backlog` \| `in_progress` \| `review` \| `done` (default `backlog`) |
-| `parent` | No | Ticket id of the owning feature — shown as a `↳ parent` chip; the parent's detail lists its children |
-| `kind` | No | `feature` \| `story` \| `task` (display hint) |
-| `priority` | No | bool → `PRIORITY` badge |
-| `urgency` | No | bool → `URGENT` badge |
-| `blocked` | No | bool → red `BLOCKED` badge (stays in its status column; `blocked_reason` on hover) |
-| `blocked_reason` | No | The question/blocker, shown in the ticket detail |
-| `links` | No | List of console item `id`s the ticket relates to (e.g. the questionnaire that answers a blocker); rendered as openable links in the detail |
-| `ac` | No | List of acceptance-criteria strings — rendered as a verify/fail/reset checklist in the detail, with an `AC verified/total` chip on the card |
-| `body` | No | Markdown detail shown in the ticket panel |
+### `command_status`
 
-A ticket missing `id` or `title` is skipped, with a count shown under the board (lenient).
-`parent` expresses feature→story ownership; `blocked` is a flag, never a column. The `ac`
-list is the assertions; the human's verify/fail marks are stored in SQLite (the ticket file
-stays read-only) — see Decisions & Acceptance below.
+Derives a read-only acceptance-readiness report from the configured Core Docs (items in the
+`core` section) using Python only. It requires exactly one Markdown table under a `Soundings`
+heading with the columns `ID | Acceptance Criterion | State | Evidence`, recomputes state totals
+(`DONE` / `IMPLEMENTED` / `STUBBED` / `NOT STARTED`), and reports deterministic structural
+inconsistencies (duplicate ids, unknown states, `DONE` rows without evidence). It writes no
+derived file.
 
 ### `questionnaire`
 
-Renders a questionnaire JSON file as a form and **stores answers**. On save, answers are
-written to SQLite *and* back into the questionnaire JSON file, so the next build step can
-read questions and answers together as one plain input file.
-
-Questionnaire file format:
+Renders a questionnaire JSON file as a form and **writes answers back into the same file**, so
+the next agent run reads questions and answers together as one plain input. Answers save
+automatically when a field loses focus; unanswered questions are simply skipped.
 
 ```json
 {
@@ -280,8 +302,8 @@ Questionnaire file format:
       "id": "field_id",
       "label": "Short Label",
       "prompt": "Full question text?",
-      "input": "text | textarea | select | multiselect | number | slider",
-      "options": ["only for select / multiselect"],
+      "input": "text | textarea | select | multiselect | checkbox_grid | number | slider",
+      "options": ["only for select / multiselect / checkbox_grid"],
       "min": 0,
       "max": 10
     }
@@ -295,40 +317,20 @@ Questionnaire file format:
 | `textarea` | multi-line text |
 | `select` | single choice |
 | `multiselect` | multiple choice (answers comma-joined) |
+| `checkbox_grid` | checkbox grid over `options` (answers comma-joined) |
 | `number` | numeric input |
 | `slider` | range with `min` / `max` |
 
-After save: `state` becomes `"done"`, `answered_at` is stamped, and each answered
-question gains an `"answer"` field.
+After save: each answered question gains an `answer` field, `answered_at` is stamped, and
+`state` becomes `"answered"` once every question has an answer (otherwise it stays `"open"`).
+An open questionnaire shows a red ✗ in the sidebar; an answered one shows a green ✓ — these
+status icons appear **only** on questionnaires, so an unanswered item is always visible at a
+glance.
 
 ### `link`
 
-Renders a hyperlink. An external `http(s)` URL opens directly; a local path is served
-through `/raw/{item_id}`.
-
----
-
-## Decisions & Acceptance
-
-Two lightweight controls turn the Console from "render and ask" into a sign-off surface. Both
-store the human's input in SQLite, so the underlying files (markdown, tickets) stay read-only.
-
-### Decision / sign-off (`"review": true`)
-
-Add `"review": true` to **any** item. A coloured bar appears at the bottom of its page —
-**Approve** (green) · **Revise** (amber) · **Reject** (red) — with an optional feedback field.
-Recording a decision shows a coloured banner with the outcome and feedback, and can be changed.
-Use it to sign off a demo, a code/product-review write-up, an editable spec, or a board.
-
-Stored under state key `decision.<item_id>` as `{ state: approved|revise|rejected,
-payload: { feedback } }`.
-
-### Acceptance criteria (ticket `ac`)
-
-Give a ticket an `ac` list of assertion strings. The ticket detail renders them as a checklist
-with **Verify** (✓ green) · **Fail** (✗ red) · **Reset** (○) per line, and the card shows an
-`AC verified/total` chip (green when all pass, red if any fail). The assertions live in the
-read-only `tickets.json`; the verify/fail marks are stored under `ac.<item_id>.<ticket_id>`.
+Renders a hyperlink. An external `http(s)` URL opens directly in a new tab; a local path is
+served through `/raw/{item_id}`.
 
 ---
 
@@ -338,70 +340,63 @@ read-only `tickets.json`; the verify/fail marks are stored under `ac.<item_id>.<
 |--------|------|-------------|
 | `GET` | `/` | QuarterDeck UI (HTML) |
 | `GET` | `/health` | Health check → `{"status":"ok"}` (503 if config missing) |
-| `GET` | `/api/config` | Full loaded config |
+| `GET` | `/help` | Serves the configured `app_help_file_location` HTML |
+| `GET` | `/logo.png` | Drydock logo asset for the header |
+| `GET` | `/api/config` | Full loaded config (sources expanded) |
 | `GET` | `/api/items` | Flat item list |
+| `GET` | `/api/nav` | Rendered sidebar HTML (re-fetched after saves) |
 | `GET` | `/api/document/{item_id}` | Rendered HTML + type for an item |
-| `POST` | `/api/document/{item_id}/source` | Write raw source back (editable_markdown items only) |
+| `POST` | `/api/document/{item_id}/source` | Write raw source back (`editable_markdown` only) |
 | `POST` | `/api/compass/{item_id}/move` | Constrained reorder/regroup of a Build Compass step or group |
-| `POST` | `/api/compass/{item_id}/edit` | Structure edit of the Build Compass: rename, add group, split group |
+| `POST` | `/api/compass/{item_id}/edit` | Structure edit of the Build Compass: rename, add group, split group, normalize |
 | `GET` | `/api/ticket/{item_id}/{ticket_id}` | Rendered ticket detail (kanban items) |
-| `GET` | `/raw/{item_id}` | Raw file download |
-| `GET` | `/api/state/{key}` | Stored state record by key (`questionnaire.*`, `decision.*`, `ac.*`) |
-| `POST` | `/api/state/{key}` | Upsert state; `questionnaire.*` keys also write back to the JSON file |
+| `GET` | `/raw/{item_id}` | Raw file download (`?variant=html\|pdf` for `document` items) |
+| `POST` | `/api/state/questionnaire.{id}` | Save questionnaire answers (written back into the JSON file) |
+| `GET` | `/switch-target/{target}` | Switch the active workspace target (sets cookie, redirects) |
 
-That is the entire surface. **File writes** are limited to two things — questionnaire answers and
-`editable_markdown` source. `console.yaml` is never rewritten at runtime. Everything else the human
-does (decisions, AC verify/fail) is **state** in SQLite via `/api/state`, keyed
-`decision.<item>` and `ac.<item>.<ticket>`; the tickets file and plain markdown are never
-modified by the QuarterDeck.
+That is the entire surface. **File writes** are limited to three things — questionnaire answers,
+`editable_markdown` source, and constrained `MANIFEST.md` compass edits. `console.yaml` is never
+rewritten at runtime.
 
 ---
 
 ## Use Cases
 
-How an LLM agent uses the Console to communicate with a human. This section is living — we
+How an LLM agent uses the QuarterDeck to communicate with a human. This section is living — we
 add a row each time we use the tool on a real problem and learn how it should work.
 
 | Communication | Artifact(s) | Section | Status |
 |---------------|-------------|---------|--------|
-| **Doc review** — drop N documents for the human to read | `markdown` per doc | Pages / Core | ✅ works today |
-| **Core reference** — keep the intent/spec where it is always visible, co-edited by human + agent | `editable_markdown` | Core Docs | ✅ shown **and edited** in place |
-| **Open Questions** — ask the human to resolve unknowns | `questionnaire` | Action Items | ✅ works (answers captured + read back) |
-| **Code / product review** — present a change or increment for sign-off | `markdown` + `"review": true` | Pages | ✅ approve/revise/reject recorded |
-| **Demo** — write up what was built; sign off on it | `markdown` (+ `link`) + `"review": true` | Pages | ✅ works |
-| **Acceptance criteria** — verify a story meets its AC | ticket `ac` checklist | Plan | ✅ verify/fail per AC, rolled up on the card |
-| **Evidence** — show results/output backing a claim | `markdown` (+ `link`) | Pages / Archive | ✅ works |
-| **Sprint / backlog** — track features and stories | `kanban` → `tickets.json` | Plan | ✅ works (priority/urgency/blocked, parent ownership) |
-| **Unblock a ticket** — tie a blocked story to the question that frees it | ticket `blocked` + `links:[questionnaire]` | Plan ↔ Action Items | ✅ works |
-
-### Conventions emerging from use
-- One **section per intent**: `core` for must-always-see source-of-truth docs, `build_plan`
-  for the kanban board, `actions` for anything needing a human response, `project_pages` for
-  supporting documentation and derived views, `archive` for closed items.
-- A human response is only captured when it goes through a **questionnaire** — markdown,
-  links, and tickets are read-only to the human.
+| **Doc review** — drop N documents for the human to read | `markdown` per doc | any | ✅ works today |
+| **Steering** — keep intent/guardrail docs visible and co-edited by human + agent | `editable_markdown` (`COMPASS.md` etc.) | Analyze | ✅ shown **and edited** in place |
+| **Blockers** — surface questions that gate planning | `editable_markdown` → `BLOCKERS.md` | Blockers | ✅ appears only while the file exists |
+| **Open questions** — ask the human to resolve unknowns | `questionnaire` | Analyze | ✅ answers captured + read back on the next run |
+| **Sprint / backlog** — track features and stories | `kanban` ← `MANIFEST.md` | Plan | ✅ read-only projection of plan state |
+| **Story planning** — group, cost, and order the build | `compass` ← `MANIFEST.md` | Build | ✅ constrained editing writes back to the manifest |
+| **Decision history** — show material decisions and milestones | `jsonl` ← `ships_log.jsonl` | Docs | ✅ works (badges, sort, filters) |
+| **Evidence / demo** — show results backing a claim | `markdown` / `document` (+ `link`) | any | ✅ works |
+| **Acceptance readiness** — roll up the Soundings checklist | `command_status` | Docs | ✅ derived, read-only |
 
 ### Known gaps (the near-term roadmap for agent communication)
-1. **Spike** — a first-class investigation artifact (question → options → evidence → recorded
-   decision), instead of faking it with a questionnaire.
-2. **Retrospective** — needs a structured artifact and renderer contract.
-3. **Metrics / burndown** — needs a chart or table type (start as mermaid/markdown).
 
-*(Done: edit-in-place via `editable_markdown`; JSONL decision-log views; decision sign-off via
-`"review": true`; acceptance criteria via ticket `ac`.)*
+1. **Review sign-off** — a first-class Approve · Revise · Reject decision bar whose outcome is
+   written back to `MANIFEST.md` by the same decision writer the CLI uses.
+2. **Spike** — a first-class investigation artifact (question → options → evidence → recorded
+   decision), instead of faking it with a questionnaire.
+3. **Retrospective** — needs a structured artifact and renderer contract.
+4. **Metrics / burndown** — needs a chart or table type (start as mermaid/markdown).
 
 ---
 
-## Extending the Console
+## Extending the QuarterDeck
 
-The Console is built to grow. A page type is one `TypeDef` (required fields + a Python
-renderer) in the `TYPES` registry in `app.py`; adding a type touches nothing else. New page
-types and new agile ceremonies are expected — the current set is a starting point, not a
-ceiling.
+The QuarterDeck is built to grow. A page type is one `TypeDef` (required fields + a Python
+renderer) in the `TYPES` registry in `app.py`; adding a type touches nothing else. New page types
+and new agile ceremonies are expected — the current set is a starting point, not a ceiling.
 
 **If you (an agent) need a way to communicate with the User that the existing types do not
 support, do not work around it.** Do not bury the exchange in chat or invent an ad-hoc file the
-Console cannot render. Instead, **raise it as a suggestion for improvement and discuss it**:
+QuarterDeck cannot render. Instead, **raise it as a suggestion for improvement and discuss it**:
 describe the communication need, who must respond, and the artifact that would serve it. The
 intent is that this interface keeps absorbing new ways for an agent and the User to talk —
 proposing one is the correct move, not an exception.
@@ -411,21 +406,11 @@ proposing one is the correct move, not an exception.
 ## Authoring Guidance (for Drydock agents)
 
 - Default to `markdown`. Use a `questionnaire` only when an answer must be captured.
-- File each item into the section that matches its role: `core` (source-of-truth docs),
-  `build_plan` (the Kanban), `actions` (questionnaires awaiting input), `project_pages`
-  (supporting or generated documentation), `archive` (done/retired).
-- For the board, write a `tickets.json` with `id`/`title`/`status` per ticket; use `parent`
-  so a feature owns its stories, `priority`/`urgency`/`blocked` flags for triage, and `links`
-  to point a blocked ticket at the questionnaire that answers it.
-- Keep `id`s stable; navigation, `state_key`s, and ticket `parent`/`links` assume durable ids.
+- File each item into the section that matches its phase: `analyze` for analysis outputs and
+  steering docs, `plan` for the board and plan steering, `build` for the Build Compass; add
+  `docs` or other sections for supporting material.
+- Give every item a one-line `help_text` — it renders as the page's orientation note.
+- Keep `id`s stable; navigation and saved-answer routing assume durable ids.
 - The QuarterDeck renders whatever you create — it will not invent content or config. To roll
   out a QuarterDeck for a project, author a `console.yaml` (copy `console.yaml.sample`) and the
-  files it references. Nothing auto-generates them.
-
----
-
-## Populating the QuarterDeck
-
-**Authored (any project).** Write `console.yaml` by hand (copy `console.yaml.sample`) and point
-its items at your own files. This is the path for any project — a CLI tool, a service, a doc
-set. The contract above is everything you need; nothing else is required.
+  files it references; `drydock init <Target>` seeds the standard set.

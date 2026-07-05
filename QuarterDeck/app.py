@@ -88,81 +88,103 @@ TARGET_BUTTON_PALETTE = (
 _DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 _DEFAULT_DOT = "#94a3b8"
 
-# Nautical ICS signal flag SVGs — one per section ID (U/A/P/D/N mapping).
+# International Code of Signals letter flags, drawn to a 16x12 viewBox. Flags are
+# always deterministic: a section flies the flag assigned to it below, and a target
+# button flies the flag of the target's initial. Hovering a flag shows its signal
+# meaning, so the nautical dressing stays honest.
+_W, _R, _B, _Y, _K = "#f8fafc", "#dc2626", "#1d4ed8", "#eab308", "#111827"
+
+_ICS_SHAPES: dict[str, str] = {
+    "A": f'<rect width="16" height="12" fill="{_W}"/><polygon points="8,0 16,0 12,6 16,12 8,12" fill="{_B}"/>',
+    "B": f'<rect width="16" height="12" fill="{_W}"/><polygon points="0,0 16,0 12,6 16,12 0,12" fill="{_R}"/>',
+    "C": f'<rect width="16" height="12" fill="{_W}"/><rect width="16" height="2.4" fill="{_B}"/><rect y="4.8" width="16" height="2.4" fill="{_R}"/><rect y="9.6" width="16" height="2.4" fill="{_B}"/>',
+    "D": f'<rect width="16" height="12" fill="{_Y}"/><rect y="3" width="16" height="6" fill="{_B}"/>',
+    "E": f'<rect width="16" height="6" fill="{_B}"/><rect y="6" width="16" height="6" fill="{_R}"/>',
+    "F": f'<rect width="16" height="12" fill="{_W}"/><polygon points="8,0 16,6 8,12 0,6" fill="{_R}"/>',
+    "G": f'<rect width="16" height="12" fill="{_Y}"/><rect x="2.67" width="2.67" height="12" fill="{_B}"/><rect x="8" width="2.67" height="12" fill="{_B}"/><rect x="13.33" width="2.67" height="12" fill="{_B}"/>',
+    "H": f'<rect width="8" height="12" fill="{_W}"/><rect x="8" width="8" height="12" fill="{_R}"/>',
+    "I": f'<rect width="16" height="12" fill="{_Y}"/><circle cx="8" cy="6" r="3" fill="{_K}"/>',
+    "J": f'<rect width="16" height="12" fill="{_B}"/><rect y="4" width="16" height="4" fill="{_W}"/>',
+    "K": f'<rect width="8" height="12" fill="{_Y}"/><rect x="8" width="8" height="12" fill="{_B}"/>',
+    "L": f'<rect width="16" height="12" fill="{_Y}"/><rect x="8" width="8" height="6" fill="{_K}"/><rect y="6" width="8" height="6" fill="{_K}"/>',
+    "M": f'<rect width="16" height="12" fill="{_B}"/><path d="M0 0 L16 12 M16 0 L0 12" stroke="{_W}" stroke-width="2.4"/>',
+    "N": f'<rect width="16" height="12" fill="{_W}"/><rect width="4" height="3" fill="{_B}"/><rect x="8" width="4" height="3" fill="{_B}"/><rect x="4" y="3" width="4" height="3" fill="{_B}"/><rect x="12" y="3" width="4" height="3" fill="{_B}"/><rect y="6" width="4" height="3" fill="{_B}"/><rect x="8" y="6" width="4" height="3" fill="{_B}"/><rect x="4" y="9" width="4" height="3" fill="{_B}"/><rect x="12" y="9" width="4" height="3" fill="{_B}"/>',
+    "O": f'<rect width="16" height="12" fill="{_Y}"/><polygon points="0,0 16,0 0,12" fill="{_R}"/>',
+    "P": f'<rect width="16" height="12" fill="{_B}"/><rect x="4" y="3" width="8" height="6" fill="{_W}"/>',
+    "Q": f'<rect width="16" height="12" fill="{_Y}"/>',
+    "R": f'<rect width="16" height="12" fill="{_R}"/><rect y="4.5" width="16" height="3" fill="{_Y}"/><rect x="6.5" width="3" height="12" fill="{_Y}"/>',
+    "S": f'<rect width="16" height="12" fill="{_W}"/><rect x="4" y="3" width="8" height="6" fill="{_B}"/>',
+    "T": f'<rect width="5.33" height="12" fill="{_R}"/><rect x="5.33" width="5.33" height="12" fill="{_W}"/><rect x="10.67" width="5.33" height="12" fill="{_B}"/>',
+    "U": f'<rect width="16" height="12" fill="{_W}"/><rect width="8" height="6" fill="{_R}"/><rect x="8" y="6" width="8" height="6" fill="{_R}"/>',
+    "V": f'<rect width="16" height="12" fill="{_W}"/><path d="M0 0 L16 12 M16 0 L0 12" stroke="{_R}" stroke-width="2.4"/>',
+    "W": f'<rect width="16" height="12" fill="{_B}"/><rect x="2.5" y="2" width="11" height="8" fill="{_W}"/><rect x="5" y="4" width="6" height="4" fill="{_R}"/>',
+    "X": f'<rect width="16" height="12" fill="{_W}"/><rect y="4.5" width="16" height="3" fill="{_B}"/><rect x="6.5" width="3" height="12" fill="{_B}"/>',
+    "Y": f'<rect width="16" height="12" fill="{_Y}"/><path d="M0 5 L7 0 M0 11 L15 0 M6 12 L16 4.5 M14 12 L16 10.5" stroke="{_R}" stroke-width="2"/>',
+    "Z": f'<polygon points="0,0 16,0 8,6" fill="{_Y}"/><polygon points="0,0 8,6 0,12" fill="{_K}"/><polygon points="16,0 16,12 8,6" fill="{_R}"/><polygon points="0,12 16,12 8,6" fill="{_B}"/>',
+}
+
+_ICS_MEANINGS: dict[str, str] = {
+    "A": "diver down; keep well clear",
+    "B": "taking in dangerous cargo",
+    "C": "affirmative",
+    "D": "keep clear; maneuvering with difficulty",
+    "E": "altering course to starboard",
+    "F": "disabled; communicate with me",
+    "G": "I require a pilot",
+    "H": "pilot on board",
+    "I": "altering course to port",
+    "J": "on fire; keep well clear",
+    "K": "I wish to communicate with you",
+    "L": "stop your vessel instantly",
+    "M": "my vessel is stopped",
+    "N": "negative",
+    "O": "man overboard",
+    "P": "about to proceed to sea",
+    "Q": "vessel is healthy; request free pratique",
+    "R": "received",
+    "S": "engines going astern",
+    "T": "keep clear of me",
+    "U": "you are running into danger",
+    "V": "I require assistance",
+    "W": "I require medical assistance",
+    "X": "stop your intentions and watch for my signals",
+    "Y": "I am dragging my anchor",
+    "Z": "I require a tug",
+}
+
+
+def _ics_flag(letter: str, css_class: str = "sec-flag", size: int = 14) -> str:
+    """One ICS letter flag as inline SVG with its signal meaning as tooltip."""
+    letter = (letter or "").strip()[:1].upper()
+    shape = _ICS_SHAPES.get(letter)
+    if not shape:
+        return ""
+    meaning = _ICS_MEANINGS.get(letter, "")
+    height = round(size * 12 / 16)
+    return (
+        f'<svg class="{css_class}" width="{size}" height="{height}" viewBox="0 0 16 12" '
+        f'role="img"><title>Signal flag {letter} — {meaning}</title>{shape}</svg>'
+    )
+
+
+# Each section flies one fixed signal flag; the letter is chosen for its meaning.
+_SECTION_FLAG_LETTERS: dict[str, str] = {
+    "blockers": "U",  # you are running into danger
+    "analyze": "A",
+    "setup": "S",
+    "plan": "P",  # the Blue Peter — about to proceed to sea
+    "build": "B",
+    "core": "C",
+    "actions": "V",  # I require assistance
+    "docs": "D",
+    "project_pages": "D",
+}
 _SECTION_FLAGS: dict[str, str] = {
-    "blockers": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect x="0" y="0" width="8" height="6" fill="#dc2626"/>'
-        '<rect x="8" y="0" width="8" height="6" fill="#eab308"/>'
-        '<rect x="0" y="6" width="8" height="6" fill="#eab308"/>'
-        '<rect x="8" y="6" width="8" height="6" fill="#dc2626"/>'
-        "</svg>"
-    ),
-    "analyze": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#0f766e"/>'
-        '<rect x="0" y="0" width="8" height="6" fill="#ffffff"/>'
-        '<rect x="8" y="6" width="8" height="6" fill="#ffffff"/>'
-        "</svg>"
-    ),
-    "setup": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#ffffff"/>'
-        '<rect x="0" y="0" width="16" height="4" fill="#0f766e"/>'
-        '<rect x="0" y="8" width="16" height="4" fill="#0f766e"/>'
-        "</svg>"
-    ),
-    "plan": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#1d4ed8"/>'
-        '<rect x="4" width="4" height="12" fill="#ffffff"/>'
-        '<rect y="4" width="16" height="4" fill="#ffffff"/>'
-        "</svg>"
-    ),
-    "build": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#ffffff"/>'
-        '<rect x="0" y="0" width="8" height="6" fill="#d97706"/>'
-        '<rect x="8" y="6" width="8" height="6" fill="#d97706"/>'
-        "</svg>"
-    ),
-    "core": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#1d4ed8"/>'
-        '<rect width="8" height="12" fill="#fff"/>'
-        "</svg>"
-    ),
-    "actions": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect width="16" height="12" fill="#1d4ed8"/>'
-        '<rect x="4" y="3" width="8" height="6" fill="#fff"/>'
-        "</svg>"
-    ),
-    "docs": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect y="0" width="16" height="4" fill="#eab308"/>'
-        '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
-        '<rect y="8" width="16" height="4" fill="#eab308"/>'
-        "</svg>"
-    ),
-    "project_pages": (
-        '<svg class="sec-flag" width="14" height="10" viewBox="0 0 16 12">'
-        '<rect y="0" width="16" height="4" fill="#eab308"/>'
-        '<rect y="4" width="16" height="4" fill="#1d4ed8"/>'
-        '<rect y="8" width="16" height="4" fill="#eab308"/>'
-        "</svg>"
-    ),
+    sid: _ics_flag(letter) for sid, letter in _SECTION_FLAG_LETTERS.items()
 }
 
 _ITEM_FLAGS: dict[str, str] = {
-    "build_compass": (
-        '<svg class="item-flag" width="14" height="10" viewBox="0 0 16 12" '
-        "aria-hidden='true'>"
-        '<rect width="16" height="12" fill="#ffffff"/>'
-        '<rect x="0" y="0" width="8" height="6" fill="#1d4ed8"/>'
-        '<rect x="8" y="6" width="8" height="6" fill="#1d4ed8"/>'
-        "</svg>"
-    ),
+    "build_compass": _ics_flag("C", "item-flag"),
 }
 
 # Kanban status columns. A ticket's `status` selects its column (default backlog).
@@ -970,7 +992,7 @@ def render_compass(item: dict[str, Any]) -> str:
     header = (
         "<div class='cmp-hdr'>"
         "<div class='cmp-hdr-counts'>"
-        f"<span class='cmp-count'>{count_label(len(plan.blocks), 'block', 'blocks')}</span>"
+        f"<span class='cmp-count'>{count_label(len(groups), 'group', 'groups')}</span>"
         f"<span class='cmp-count'>{count_label(story_n, 'story', 'stories')}</span>"
         f"{spike_html}"
         f"<span class='cmp-count cmp-count-built'>"
@@ -1894,6 +1916,14 @@ def raw_document(item_id: str, variant: str | None = Query(None), request: Reque
         return FileResponse(resolve_path(path_value))
 
 
+@app.get("/logo.png")
+def logo():
+    path = _RUNTIME_DIR / "static" / "drydock_logo.png"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Logo asset not installed")
+    return FileResponse(path)
+
+
 @app.get("/switch-target/{target}")
 def switch_target(target: str, request: Request = None):
     with _request_context(request):
@@ -1958,13 +1988,15 @@ _NAV_STATUS_HTML: dict[str, str] = {
 
 
 def item_nav_status(item: dict[str, Any]) -> str | None:
-    """Return 'pending', 'done', or None (no icon) for the nav status box."""
-    t = item.get("type", "")
-    if t in _UNTRACKED_TYPES or t in ("command_status", "compass"):
+    """Return 'pending', 'done', or None (no icon) for the nav status box.
+
+    Only actionable items carry a status icon. Reference pages (markdown,
+    documents, boards, logs, links) are labels, not action items — flagging
+    them all as done buries the few things that genuinely need attention.
+    """
+    if item.get("type", "") != "questionnaire":
         return None
-    if item_pending(item):
-        return "pending"
-    return "done"
+    return "pending" if item_pending(item) else "done"
 
 
 def render_target_switcher() -> str:
@@ -1983,8 +2015,7 @@ def render_target_switcher() -> str:
             f"{active_attr}>"
             "<span class='target-btn-main'>"
             "<span class='target-btn-flags'>"
-            "<span class='target-flag flag-a'></span>"
-            "<span class='target-flag flag-b'></span>"
+            f"{_ics_flag(target.target[:1], 'target-flag', 18)}"
             "</span>"
             f"<span class='target-btn-name'>{html.escape(target.target)}</span>"
             "</span>"
@@ -2068,8 +2099,11 @@ def render_nav() -> str:
 
 _STYLE = """
   body { margin:0; font-family:'Segoe UI',Arial,sans-serif; color:#1b2430; background:#f6f7f9; }
-  header { padding:12px 22px; background:#111827; color:#fff; display:flex; align-items:center; gap:14px; }
+  header { padding:9px 22px; background:#1A1D23; color:#fff; display:flex; align-items:center; gap:14px; }
   header strong { font-size:15px; }
+  .brand { display:inline-flex; align-items:center; padding:3px 10px; background:#FAFAF8;
+           border-radius:6px; text-decoration:none; }
+  .brand img { display:block; height:26px; width:auto; }
   header .header-actions { margin-left:auto; display:flex; align-items:center; gap:10px; }
   header .help-btn { padding:7px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.34);
     background:rgba(255,255,255,.08); color:#fff; font-size:12px; font-weight:800; letter-spacing:.04em; cursor:pointer; display:inline-flex;
@@ -2092,13 +2126,8 @@ _STYLE = """
   .target-btn.active { background:linear-gradient(135deg, var(--target-accent) 0%, color-mix(in srgb, var(--target-accent) 78%, black) 100%); color:#fff; border-color:transparent; box-shadow:0 14px 26px rgba(15,23,42,.18); }
   .target-btn-main { display:flex; align-items:center; gap:10px; min-width:0; }
   .target-btn-flags { display:flex; gap:4px; flex:none; }
-  .target-flag { display:inline-block; width:14px; height:10px; border-radius:2px; border:1px solid rgba(15,23,42,.16); box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
+  .target-flag { display:inline-flex; border-radius:2px; border:1px solid rgba(15,23,42,.16); }
   .target-btn.active .target-flag { border-color:rgba(255,255,255,.35); }
-  .flag-a { background:linear-gradient(180deg, #fff 0 33%, var(--target-accent-soft) 33% 66%, var(--target-accent) 66% 100%); }
-  .flag-b { background:
-    linear-gradient(90deg, transparent 0 50%, rgba(255,255,255,.88) 50% 54%, transparent 54% 100%),
-    linear-gradient(180deg, rgba(255,255,255,.9) 0 48%, transparent 48% 52%, rgba(255,255,255,.9) 52% 100%),
-    linear-gradient(135deg, color-mix(in srgb, var(--target-accent) 88%, black) 0%, var(--target-accent) 100%); }
   .target-btn-name { font-weight:800; font-size:13px; line-height:1.15; }
   .nav-section { margin-bottom:16px; }
   .section-head { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;
@@ -2337,12 +2366,17 @@ def index(request: Request = None) -> str:
             '<a class="help-btn" href="https://webcloudstudio.com" target="_blank" rel="noopener" '
             'title="Open Drydock Home">Drydock Home <span class="flyout">↗</span></a>'
         )
+        brand = (
+            '<a class="brand" href="/" title="Drydock"><img src="/logo.png" alt="Drydock"></a>'
+            if (_RUNTIME_DIR / "static" / "drydock_logo.png").is_file()
+            else "<strong>Drydock</strong>"
+        )
 
         return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
-  <header><strong>The Drydock</strong><div class="header-actions">{home_btn}{help_btn}</div></header>
+  <header>{brand}<div class="header-actions">{home_btn}{help_btn}</div></header>
   <div class="copyright-bar">{html.escape(copyright_notice)}</div>
   <main>
     <nav>{nav}</nav>
