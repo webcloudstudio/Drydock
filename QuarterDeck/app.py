@@ -167,13 +167,16 @@ def _ics_flag(letter: str, css_class: str = "sec-flag", size: int = 14) -> str:
     )
 
 
-# Each section flies one fixed signal flag; the letter is chosen for its meaning.
+# Each section flies one fixed signal flag. The canonical target sections spell
+# the SAIL methodology down the sidebar: Setup · Analyze · Implement · refit(L).
 _SECTION_FLAG_LETTERS: dict[str, str] = {
     "blockers": "U",  # you are running into danger
-    "analyze": "A",
     "setup": "S",
-    "plan": "P",  # the Blue Peter — about to proceed to sea
-    "build": "B",
+    "analyze": "A",
+    "implement": "I",
+    "refit": "L",
+    "plan": "P",  # legacy configs — the Blue Peter
+    "build": "B",  # legacy configs
     "core": "C",
     "actions": "V",  # I require assistance
     "docs": "D",
@@ -539,7 +542,7 @@ def nav_model() -> list[dict[str, Any]]:
         by_section[sid].append(item)
 
     config_ids = [s["id"] for s in config_sections]
-    always_visible = {"setup", "analyze", "plan"}
+    always_visible = {"setup", "analyze", "implement", "refit", "plan"}
     ordered_ids = [sid for sid in config_ids if sid in by_section or sid in always_visible]
     ordered_ids += [sid for sid in order if sid not in config_ids]
 
@@ -1133,6 +1136,74 @@ def render_compass(item: dict[str, Any]) -> str:
     return "".join(parts)
 
 
+# ── Refit watch (blueprints changed or added since they were applied) ──────────
+
+_APPLIED_SPEC_RE = re.compile(r"^\s*(\S+)\s+sha256=([0-9a-f]{64})", re.MULTILINE)
+
+
+def _applied_spec_hashes(manifest_path: Path) -> dict[str, str]:
+    """Blueprint name → sha256 recorded in the MANIFEST ``applied_specs`` block."""
+    text = manifest_path.read_text(encoding="utf-8")
+    match = re.search(r"^applied_specs:\s*\|\n((?:[ \t]+\S.*\n?)+)", text, re.MULTILINE)
+    if not match:
+        return {}
+    return {name: digest for name, digest in _APPLIED_SPEC_RE.findall(match.group(1))}
+
+
+def render_refit(item: dict[str, Any]) -> str:
+    """Show blueprints that drifted from the Manifest: new files, or files
+    touched since their content was applied. The QuarterDeck only reports;
+    ``drydock refit`` does the work."""
+    import hashlib
+
+    project_root = _current_project_root()
+    manifest_path = project_root / "MANIFEST.md"
+    blueprint_dir = project_root / "blueprint"
+    helper = _render_help_note(item)
+
+    if not manifest_path.is_file():
+        return helper + (
+            "<p class='subtle'>No <code>MANIFEST.md</code> yet — the refit watch starts "
+            "once <code>drydock plan</code> has built one.</p>"
+        )
+    if not blueprint_dir.is_dir():
+        return helper + "<p class='subtle'>No <code>blueprint/</code> directory yet.</p>"
+
+    applied = _applied_spec_hashes(manifest_path)
+    new_files: list[str] = []
+    changed_files: list[str] = []
+    for path in sorted(blueprint_dir.glob("*.md")):
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.name not in applied:
+            new_files.append(path.name)
+        elif applied[path.name] != digest:
+            changed_files.append(path.name)
+
+    if not new_files and not changed_files:
+        return helper + (
+            "<div class='refit-clear'>&#9875; All blueprints are applied to the Manifest. "
+            "Nothing to refit — steady as she goes.</div>"
+        )
+
+    def _file_rows(names: list[str], badge: str, badge_cls: str) -> str:
+        return "".join(
+            f"<li class='refit-file'><span class='refit-badge {badge_cls}'>{badge}</span>"
+            f"<code>blueprint/{html.escape(name)}</code></li>"
+            for name in names
+        )
+
+    rows = _file_rows(new_files, "new", "refit-new") + _file_rows(
+        changed_files, "changed", "refit-changed"
+    )
+    count = len(new_files) + len(changed_files)
+    noun = "blueprint" if count == 1 else "blueprints"
+    return helper + (
+        f"<div class='refit-callout'>&#9888; {count} {noun} adrift from the Manifest. "
+        "Run <code>drydock refit</code> to include these files in your Manifest!</div>"
+        f"<ul class='refit-files'>{rows}</ul>"
+    )
+
+
 COMMAND_STATES = ("DONE", "IMPLEMENTED", "STUBBED", "NOT STARTED")
 
 
@@ -1628,6 +1699,7 @@ TYPES: dict[str, TypeDef] = {
     "link": TypeDef(("href",), render_link_item),
     "command_status": TypeDef((), render_command_status),
     "compass": TypeDef(("path",), render_compass),
+    "refit": TypeDef((), render_refit),
 }
 
 
@@ -2000,39 +2072,48 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
 
 
 def render_target_switcher() -> str:
+    """The Fleet: the active target plus a popout muster of every project in the
+    workspace, each flying the signal flag of its initial. Lives under SETUP."""
     targets = _current_switchable_targets()
     if not targets:
         return ""
     active_target = _current_active_target()
 
-    buttons = []
+    cards = []
     for target in targets:
-        active_cls = " active" if target.target == active_target else ""
-        active_attr = " aria-current='page'" if target.target == active_target else ""
-        buttons.append(
-            f"<a class='target-btn{active_cls}' href='/switch-target/{html.escape(target.target)}' "
-            f"style='--target-accent:{html.escape(target.accent)};--target-accent-soft:{html.escape(target.accent_soft)}'"
-            f"{active_attr}>"
-            "<span class='target-btn-main'>"
-            "<span class='target-btn-flags'>"
-            f"{_ics_flag(target.target[:1], 'target-flag', 18)}"
-            "</span>"
-            f"<span class='target-btn-name'>{html.escape(target.target)}</span>"
-            "</span>"
-            "</a>"
+        active = target.target == active_target
+        active_cls = " active" if active else ""
+        active_attr = " aria-current='page'" if active else ""
+        aboard = "<span class='fleet-card-here'>aboard</span>" if active else ""
+        cards.append(
+            f"<a class='fleet-card{active_cls}' "
+            f"href='/switch-target/{html.escape(target.target)}'{active_attr}>"
+            f"{_ics_flag(target.target[:1], 'fleet-flag', 24)}"
+            f"<span class='fleet-card-name'>{html.escape(target.target)}</span>"
+            f"{aboard}</a>"
         )
-    buttons_html = "".join(buttons)
 
     return (
-        "<div class='target-dock-break'></div>"
-        f"<div class='target-btn-stack'>{buttons_html}</div>"
-        "<div class='target-dock-tail'></div>"
+        "<div class='fleet'>"
+        "<button class='fleet-btn' onclick='fleetToggle(event)' "
+        "aria-haspopup='true' title='Muster the fleet'>"
+        f"{_ics_flag(active_target[:1], 'fleet-flag', 20)}"
+        f"<span class='fleet-btn-name'>{html.escape(active_target)}</span>"
+        f"<span class='fleet-btn-count'>{len(targets)} "
+        f"{'ship' if len(targets) == 1 else 'ships'} &#9656;</span>"
+        "</button>"
+        "<div class='fleet-popout' hidden>"
+        "<div class='fleet-popout-title'>The Fleet</div>"
+        f"<div class='fleet-grid'>{''.join(cards)}</div>"
+        "</div></div>"
     )
 
 
 def render_nav() -> str:
     """Render the sidebar from the current on-disk item state."""
     nav_parts = []
+    fleet_html = render_target_switcher()
+    fleet_placed = False
     for section in nav_model():
         if section["items"]:
             item_htmls = []
@@ -2060,12 +2141,12 @@ def render_nav() -> str:
         blockers_cls = " sec-blockers" if section["id"] == "blockers" else ""
         phase_cls = (
             " section-head-target section-head-phase"
-            if section["id"] in {"analyze", "plan", "build"}
+            if section["id"] in {"analyze", "implement", "refit", "plan", "build"}
             else ""
         )
         target_cls = " section-head-target" if section["id"] == "core" else ""
         flag = _SECTION_FLAGS.get(section["id"], "")
-        if section["id"] in {"setup", "analyze", "plan"}:
+        if section["id"] in {"setup", "analyze", "implement", "refit", "plan"}:
             target = (
                 "" if section["id"] == "setup" else html.escape(_current_project_name().upper())
             )
@@ -2081,6 +2162,10 @@ def render_nav() -> str:
                 f"<span class='dot' style='background:{section['dot']}'></span>"
                 f"<span class='section-label'>{html.escape(section['label'])}</span>"
             )
+        # The fleet musters under SETUP — the workspace's projects live there.
+        if section["id"] == "setup" and fleet_html:
+            btns = fleet_html + (btns if section["items"] else "")
+            fleet_placed = True
         nav_parts.append(
             f"<div class='nav-section{blockers_cls}' "
             f"data-sec='{html.escape(section['id'])}'>"
@@ -2089,46 +2174,56 @@ def render_nav() -> str:
             "</div>"
             f"{btns}</div>"
         )
-    return (
-        f"<div class='target-dock'>{render_target_switcher()}</div>"
-        f"<div class='nav-scroll'>{''.join(nav_parts)}</div>"
+    prefix = (
+        f"<div class='target-dock'>{fleet_html}</div>" if fleet_html and not fleet_placed else ""
     )
+    return f"{prefix}<div class='nav-scroll'>{''.join(nav_parts)}</div>"
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────────
 
 _STYLE = """
-  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; color:#1b2430; background:#f6f7f9; }
-  header { padding:9px 22px; background:#1A1D23; color:#fff; display:flex; align-items:center; gap:14px; }
-  header strong { font-size:15px; }
-  .brand { display:inline-flex; align-items:center; padding:3px 10px; background:#FAFAF8;
-           border-radius:6px; text-decoration:none; }
-  .brand img { display:block; height:26px; width:auto; }
-  header .header-actions { margin-left:auto; display:flex; align-items:center; gap:10px; }
-  header .help-btn { padding:7px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.34);
-    background:rgba(255,255,255,.08); color:#fff; font-size:12px; font-weight:800; letter-spacing:.04em; cursor:pointer; display:inline-flex;
-    align-items:center; justify-content:center; text-decoration:none; gap:6px; opacity:.9; flex-shrink:0; text-transform:uppercase; }
-  header .help-btn:hover { opacity:1; border-color:#fff; background:rgba(255,255,255,.14); }
+  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; color:#1b2430; background:#FAFAF8; }
+  header { padding:10px 22px; background:#1A1D23; color:#fff; display:flex; align-items:center; gap:18px;
+           border-bottom:2px solid #2CB67D; }
+  header strong { font-size:16px; }
+  .brand { display:inline-flex; align-items:center; padding:4px 14px; background:#FAFAF8;
+           border-radius:8px; text-decoration:none; }
+  .brand img { display:block; height:52px; width:auto; }
+  .header-right { margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:7px; }
+  header .header-actions { display:flex; align-items:center; gap:10px; }
+  header .help-btn { padding:6px 12px; border-radius:999px; border:1px solid rgba(44,182,125,.5);
+    background:rgba(44,182,125,.08); color:#2CB67D; font-size:12px; font-weight:800; letter-spacing:.04em; cursor:pointer; display:inline-flex;
+    align-items:center; justify-content:center; text-decoration:none; gap:6px; flex-shrink:0; text-transform:uppercase; }
+  header .help-btn:hover { border-color:#2CB67D; background:rgba(44,182,125,.18); }
   header .help-btn .flyout { font-size:11px; opacity:.88; }
-  .copyright-bar { padding:8px 22px; background:#e2e8f0; color:#334155; font-size:11px; font-weight:600; border-bottom:1px solid #cbd5e1; }
-  main { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 82px); }
+  .header-copy { color:#8A8F9A; font-size:11px; font-weight:600; }
+  main { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 86px); }
   nav { padding:14px 8px 10px; border-right:1px solid #d7dde5; background:#fff; display:flex; flex-direction:column; min-height:0; }
   .nav-scroll { flex:1 1 auto; overflow-y:auto; padding-top:0; }
   .target-dock { padding:0 8px 12px; }
-  .target-dock-break { border-top:1px solid #eef2f7; margin:6px 0 10px; }
-  .target-dock-tail { border-top:1px solid #eef2f7; margin:10px 0 0; }
-  .target-btn-stack { display:flex; gap:8px; flex-wrap:wrap; flex-direction:column; }
-  .target-btn { --target-accent:#1d4ed8; --target-accent-soft:#93c5fd; display:flex; align-items:center; justify-content:space-between; gap:10px;
-    width:100%; box-sizing:border-box; padding:10px 12px; border-radius:12px; text-decoration:none; border:1px solid color-mix(in srgb, var(--target-accent) 30%, white);
-    background:linear-gradient(135deg, color-mix(in srgb, var(--target-accent) 16%, white) 0%, color-mix(in srgb, var(--target-accent-soft) 32%, white) 100%);
-    color:#102033; box-shadow:0 10px 20px rgba(15,23,42,.06); transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
-  .target-btn:hover { transform:translateY(-1px); box-shadow:0 12px 22px rgba(15,23,42,.12); border-color:var(--target-accent); }
-  .target-btn.active { background:linear-gradient(135deg, var(--target-accent) 0%, color-mix(in srgb, var(--target-accent) 78%, black) 100%); color:#fff; border-color:transparent; box-shadow:0 14px 26px rgba(15,23,42,.18); }
-  .target-btn-main { display:flex; align-items:center; gap:10px; min-width:0; }
-  .target-btn-flags { display:flex; gap:4px; flex:none; }
-  .target-flag { display:inline-flex; border-radius:2px; border:1px solid rgba(15,23,42,.16); }
-  .target-btn.active .target-flag { border-color:rgba(255,255,255,.35); }
-  .target-btn-name { font-weight:800; font-size:13px; line-height:1.15; }
+  .fleet { position:relative; margin:2px 0 8px; }
+  .fleet-btn { width:100%; display:flex; align-items:center; gap:9px; padding:9px 11px; box-sizing:border-box;
+    border:1px solid #d7dde5; border-radius:9px; background:#fff; cursor:pointer; font-size:13px;
+    font-weight:800; color:#1b2430; transition:border-color .12s, background .12s; }
+  .fleet-btn:hover { border-color:#2CB67D; background:#f2faf6; }
+  .fleet-btn-name { flex:1; text-align:left; }
+  .fleet-btn-count { font-size:11px; color:#64748b; font-weight:700; white-space:nowrap; }
+  .fleet-flag { display:inline-flex; flex:none; border:1px solid rgba(15,23,42,.18); border-radius:2px; }
+  .fleet-popout { position:absolute; z-index:60; top:calc(100% + 6px); left:0; right:-14px; min-width:220px;
+    background:#fff; border:1px solid #d7dde5; border-radius:12px; padding:10px;
+    box-shadow:0 18px 44px rgba(15,23,42,.22); }
+  .fleet-popout-title { font-size:10px; font-weight:800; letter-spacing:.14em; text-transform:uppercase;
+    color:#8A8F9A; padding:0 4px 8px; }
+  .fleet-grid { display:grid; gap:6px; }
+  .fleet-card { display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid #eef2f7;
+    border-radius:9px; text-decoration:none; color:#1b2430; font-size:13px; font-weight:700;
+    transition:border-color .12s, background .12s, transform .12s; }
+  .fleet-card:hover { border-color:#2CB67D; background:#f2faf6; transform:translateX(2px); }
+  .fleet-card.active { border-color:#2CB67D; background:#e9f7f0; }
+  .fleet-card-name { flex:1; }
+  .fleet-card-here { font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+    color:#166534; background:#d2f0e2; padding:2px 7px; border-radius:8px; }
   .nav-section { margin-bottom:16px; }
   .section-head { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700;
                   text-transform:uppercase; letter-spacing:.06em; color:#475569; padding:0 8px 5px;
@@ -2143,7 +2238,7 @@ _STYLE = """
              background:#fff; text-align:left; cursor:pointer; font-size:13px; color:#1b2430; border-radius:3px;
              display:flex; align-items:center; }
   .doc-btn:hover { background:#eef2f7; }
-  .doc-btn.active { background:#111827; color:#fff; }
+  .doc-btn.active { background:#1F7A55; color:#fff; }
   .section-empty { padding:4px 24px; font-size:12px; color:#cbd5e1; }
   article { padding:24px 32px; max-width:1100px; overflow-x:auto; }
   article h1 { line-height:1.2; margin-top:0; }
@@ -2268,8 +2363,8 @@ _STYLE = """
   .cmp-mbtn:hover { background:#eef2f7; }
   .cmp-ungroup { font-weight:700; color:#334155; }
   .cmp-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 10px; }
-  .cmp-newgroup { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #2563eb; background:#2563eb; color:#fff; border-radius:7px; cursor:pointer; box-shadow:0 1px 2px rgba(37,99,235,.25); transition:background .12s, box-shadow .12s; }
-  .cmp-newgroup:hover { background:#1d4ed8; border-color:#1d4ed8; box-shadow:0 2px 5px rgba(37,99,235,.32); }
+  .cmp-newgroup { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #1F7A55; background:#1F7A55; color:#fff; border-radius:7px; cursor:pointer; box-shadow:0 1px 2px rgba(31,122,85,.25); transition:background .12s, box-shadow .12s; }
+  .cmp-newgroup:hover { background:#186A49; border-color:#186A49; box-shadow:0 2px 5px rgba(31,122,85,.32); }
   .cmp-normalize { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:7px; cursor:pointer; margin-left:auto; box-shadow:0 1px 2px rgba(15,23,42,.06); transition:background .12s, border-color .12s; }
   .cmp-normalize:hover { background:#f1f5f9; border-color:#94a3b8; }
   .cmp-btn-ico { font-size:15px; line-height:1; font-weight:800; }
@@ -2324,6 +2419,17 @@ _STYLE = """
   .tk-kind-task    { background:#f0fdf4; color:#166534; }
   .tk-kind-bug     { background:#fee2e2; color:#991b1b; }
   .tk-kind-other   { background:#f1f5f9; color:#475569; }
+  .refit-clear { background:#e9f7f0; border:1px solid #9fd8bd; color:#166534; padding:12px 16px;
+                 border-radius:8px; font-size:14px; font-weight:600; margin:4px 0 12px; }
+  .refit-callout { background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:12px 16px;
+                   border-radius:8px; font-size:14px; font-weight:700; margin:4px 0 14px; }
+  .refit-files { list-style:none; margin:0; padding:0; }
+  .refit-file { display:flex; align-items:center; gap:10px; padding:7px 4px; border-bottom:1px solid #eef2f7; }
+  .refit-file:last-child { border-bottom:none; }
+  .refit-badge { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase;
+                 padding:2px 9px; border-radius:9px; flex:none; }
+  .refit-new { background:#e9f7f0; color:#166534; border:1px solid #9fd8bd; }
+  .refit-changed { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
 """
 
 
@@ -2356,15 +2462,15 @@ def index(request: Request = None) -> str:
 
         all_items = items()
         default_id = console.get("default_item") or (all_items[0]["id"] if all_items else "")
-        help_btn = (
-            '<a class="help-btn" href="/help" target="_blank" rel="noopener" title="Open Drydock">'
-            'Drydock <span class="flyout">↗</span></a>'
-            if console.get("app_help_file_location")
-            else ""
-        )
         home_btn = (
-            '<a class="help-btn" href="https://webcloudstudio.com" target="_blank" rel="noopener" '
-            'title="Open Drydock Home">Drydock Home <span class="flyout">↗</span></a>'
+            '<a class="help-btn" href="https://webcloudstudio.net" target="_blank" rel="noopener" '
+            'title="Web Cloud Studio">Web Cloud Studio <span class="flyout">↗</span></a>'
+        )
+        help_btn = (
+            '<a class="help-btn" '
+            'href="https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.html" '
+            'target="_blank" rel="noopener" title="Drydock documentation">'
+            'Help <span class="flyout">↗</span></a>'
         )
         brand = (
             '<a class="brand" href="/" title="Drydock"><img src="/logo.png" alt="Drydock"></a>'
@@ -2376,8 +2482,10 @@ def index(request: Request = None) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
-  <header>{brand}<div class="header-actions">{home_btn}{help_btn}</div></header>
-  <div class="copyright-bar">{html.escape(copyright_notice)}</div>
+  <header>{brand}<div class="header-right">
+    <div class="header-actions">{home_btn}{help_btn}</div>
+    <div class="header-copy">{html.escape(copyright_notice)}</div>
+  </div></header>
   <main>
     <nav>{nav}</nav>
     <article id="content">Loading…</article>
@@ -2530,6 +2638,20 @@ def index(request: Request = None) -> str:
         if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio') el.addEventListener('change', save);
       }});
     }}
+    function fleetToggle(ev) {{
+      ev.stopPropagation();
+      const p = document.querySelector('.fleet-popout');
+      if (p) p.hidden = !p.hidden;
+    }}
+    document.addEventListener('click', (e) => {{
+      const p = document.querySelector('.fleet-popout');
+      if (p && !p.hidden && !e.target.closest('.fleet')) p.hidden = true;
+    }});
+    document.addEventListener('keydown', (e) => {{
+      if (e.key !== 'Escape') return;
+      const p = document.querySelector('.fleet-popout');
+      if (p) p.hidden = true;
+    }});
     function mdTab(btn, index) {{
       const t = btn.closest('.md-tabs');
       t.querySelectorAll('.md-tab-btn').forEach((b, i) => b.classList.toggle('active', i === index));

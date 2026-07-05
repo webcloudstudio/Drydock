@@ -798,12 +798,12 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
 
     rendered = quarterdeck.api_nav(_RequestStub())["html"]
-    assert "target-dock" in rendered
+    assert "fleet-btn" in rendered
+    assert "fleet-popout" in rendered
     assert "Targets" not in rendered
     assert "/switch-target/Alpha" in rendered
     assert "/switch-target/Beta" in rendered
-    assert "target-btn active" in rendered
-    assert "target-btn-id" not in rendered
+    assert "fleet-card active" in rendered
     assert ">Alpha</span>" in rendered
     assert ">Beta</span>" in rendered
     assert "Workspace target" not in rendered
@@ -965,9 +965,12 @@ def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatc
     )
     assert "Workspace target" not in html
     assert "Copyright (c) 2026 Beta Studio. All rights reserved." in html
-    assert 'Drydock <span class="flyout">↗</span>' in html
-    assert 'Drydock Home <span class="flyout">↗</span>' in html
-    assert 'href="https://webcloudstudio.com"' in html
+    assert 'Web Cloud Studio <span class="flyout">↗</span>' in html
+    assert 'Help <span class="flyout">↗</span>' in html
+    assert 'href="https://webcloudstudio.net"' in html
+    assert (
+        'href="https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.html"' in html
+    )
 
 
 def test_target_identity_uses_slug_not_project_name(tmp_path, monkeypatch):
@@ -1020,3 +1023,54 @@ def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):
 
     assert "new URLSearchParams(window.location.search).get('item')" in html
     assert "localStorage.getItem(lastItemKey)" in html
+
+
+def test_render_refit_reports_new_and_changed_blueprints(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "targets" / "Alpha"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    (blueprint / "APPLIED.md").write_text("applied content\n", encoding="utf-8")
+    (blueprint / "TOUCHED.md").write_text("edited after apply\n", encoding="utf-8")
+    (blueprint / "NEW.md").write_text("never applied\n", encoding="utf-8")
+    import hashlib
+
+    applied_hash = hashlib.sha256(b"applied content\n").hexdigest()
+    stale_hash = hashlib.sha256(b"original content\n").hexdigest()
+    (target / "MANIFEST.md").write_text(
+        "# MANIFEST: Alpha\n\n"
+        "applied_specs: |\n"
+        f"  APPLIED.md sha256={applied_hash} commit=- applied_by=x applied_at=now\n"
+        f"  TOUCHED.md sha256={stale_hash} commit=- applied_by=x applied_at=now\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target)
+
+    out = quarterdeck.render_refit({"id": "refit_status", "type": "refit"})
+
+    assert "drydock refit" in out
+    assert "NEW.md" in out
+    assert "TOUCHED.md" in out
+    assert "APPLIED.md" not in out
+    assert "2 blueprints adrift" in out
+
+
+def test_render_refit_all_applied_is_clear(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "targets" / "Alpha"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    (blueprint / "APPLIED.md").write_text("applied content\n", encoding="utf-8")
+    import hashlib
+
+    applied_hash = hashlib.sha256(b"applied content\n").hexdigest()
+    (target / "MANIFEST.md").write_text(
+        f"applied_specs: |\n  APPLIED.md sha256={applied_hash} commit=-\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target)
+
+    out = quarterdeck.render_refit({"id": "refit_status", "type": "refit"})
+
+    assert "steady as she goes" in out
+    assert "drydock refit" not in out

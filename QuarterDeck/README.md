@@ -28,12 +28,14 @@ structure edits.
 | JSONL log | `jsonl` | Append-only records (the Ship's Log) as a read-only, badge-colored table |
 | Work board | `kanban` | `MANIFEST.md` features/stories/spikes as a read-only four-column board |
 | Build Compass | `compass` | The live `MANIFEST.md` work graph: grouped, costed, state-badged, and editable (reorder / regroup / rename / split) |
+| Refit watch | `refit` | Blueprints added or touched since they were applied to the Manifest — the prompt to run `drydock refit` |
 | Acceptance status | `command_status` | Readiness rollup derived from the Core Doc Soundings table |
 | Hyperlink | `link` | Pointing at an external URL or a local file |
 
-Every artifact is filed under a **section**. The canonical target sections are
-**Analyze · Plan · Build**; any section ids may be declared. `BLOCKERS.md` conventionally
-lives in a `blockers` section, which renders first and in red.
+Every artifact is filed under a **section**. The canonical target sections spell the **SAIL**
+methodology down the sidebar — **Setup · Analyze · Implement · refit(L)** — and each flies its
+matching ICS signal flag. Any section ids may be declared. `BLOCKERS.md` conventionally lives in
+a `blockers` section, which renders first and in red.
 
 > **This is an intended, primary channel for agent↔User dialog.** The developer built the
 > QuarterDeck so that an agent has a deliberate place to talk to the User — to ask a question,
@@ -134,9 +136,10 @@ title and sidebar headings use the **target directory name**, not `project.name`
 
 ```yaml
 sections:
-  - { id: analyze, label: "Analysis", dot: "#0d9488", pinned: true }
-  - { id: plan,    label: "Plan",     dot: "#2563eb" }
-  - { id: build,   label: "Build",    dot: "#d97706" }
+  - { id: setup,     label: "Setup",     dot: "#64748b", pinned: true }
+  - { id: analyze,   label: "Analysis",  dot: "#0d9488", pinned: true }
+  - { id: implement, label: "Implement", dot: "#2CB67D" }
+  - { id: refit,     label: "Refit",     dot: "#d97706" }
 ```
 
 | Section field | Description |
@@ -147,10 +150,11 @@ sections:
 | `collapsed` / `pinned` | Accepted and carried through the nav model; reserved — no current rendering effect |
 
 Sections render in the order listed. An item whose `section` id is not in the list gets a
-title-cased label and grey dot, appended after the configured sections. The `setup`, `analyze`,
-and `plan` sections render as phase headers (target name + phase) and stay visible even when
-empty; `blockers` renders first, in red. Known sections fly a fixed ICS signal flag (Blockers
-flies **U** — *you are running into danger*; Plan flies **P**, the Blue Peter).
+title-cased label and grey dot, appended after the configured sections. The SAIL sections
+(`setup`, `analyze`, `implement`, `refit`) render as phase headers (target name + phase) and stay
+visible even when empty; `blockers` renders first, in red. Known sections fly a fixed ICS signal
+flag — the SAIL sections fly **S · A · I · L**, and Blockers flies **U** (*you are running into
+danger*). The Fleet — the workspace's target switcher popout — musters under **Setup**.
 
 ### `items` — a flat list of things
 
@@ -220,6 +224,7 @@ keeps working.
 | `link` | `href` |
 | `command_status` | — |
 | `compass` | `path` (`MANIFEST.md`) |
+| `refit` | — (reads `blueprint/` and `MANIFEST.md`) |
 
 Each type maps to one Python renderer in the `TYPES` registry in `app.py`. **Adding a type = one
 `TypeDef` (required fields + render function).**
@@ -275,6 +280,15 @@ stories buildable now. Constrained editing — reorder groups, regroup/ungroup s
 split, normalize order — rewrites `MANIFEST.md` through the same editor the CLI uses; a move that
 would break the build topology is rejected. A failed story opens its Definition of Done and shows
 the finding.
+
+### `refit`
+
+The **refit watch**. Compares every `blueprint/*.md` against the `applied_specs` hashes recorded
+in `MANIFEST.md` and lists blueprints that are **new** (never applied) or **changed** (touched
+since their content was applied). When anything is adrift, the page says so and tells the
+Commander to run `drydock refit` to include those files in the Manifest; when everything is
+applied, it reports steady as she goes. Read-only — the QuarterDeck reports, `drydock refit`
+does the work.
 
 ### `command_status`
 

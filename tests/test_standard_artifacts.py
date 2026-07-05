@@ -77,7 +77,7 @@ def test_render_console_includes_build_compass_only_when_plan_exists(tmp_path):
     items = {item["id"]: item for item in parsed["items"]}
 
     assert items["build_compass"]["label"] == "MANIFEST"
-    assert items["build_compass"]["section"] == "plan"
+    assert items["build_compass"]["section"] == "implement"
     assert items["build_compass"]["path"] == "../MANIFEST.md"
 
 
@@ -111,7 +111,7 @@ def test_render_console_groups_artifacts_by_phase():
 
     parsed = yaml.safe_load(config)
     section_ids = [s["id"] for s in parsed["sections"]]
-    assert section_ids == ["setup", "analyze", "plan"]
+    assert section_ids == ["setup", "analyze", "implement", "refit"]
     items = {item["id"]: item for item in parsed["items"]}
     assert "blockers_doc" in items
     assert items["blockers_doc"]["section"] == "setup"
@@ -121,8 +121,10 @@ def test_render_console_groups_artifacts_by_phase():
     assert items["commanders_chair"]["section"] == "setup"
     assert items["sea_trials"]["section"] == "analyze"
     assert items["soundings"]["section"] == "analyze"
-    assert items["board"]["section"] == "plan"
-    assert items["plan_compass"]["section"] == "plan"
+    assert items["board"]["section"] == "implement"
+    assert items["plan_compass"]["section"] == "implement"
+    assert items["refit_status"]["section"] == "refit"
+    assert items["refit_status"]["type"] == "refit"
 
 
 def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):
