@@ -56,15 +56,6 @@ wheels = [
 ]
 
 [[package]]
-name = "chromium"
-version = "0.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/48/b8/978b9d6f5769ec65fa5b43216c63e9859400c44c1ce8ca990b98c75a7bb1/chromium-0.0.0.tar.gz", hash = "sha256:dfed04f56ab56721c1e05c77a97a79ad1b88be44c222eb1f7ffbd6fff54e1e72", size = 2032, upload-time = "2024-02-04T00:16:48.706Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/fc/deb79d0922036b9d295eda0b30aa769b595ac5f2a1fbaab58816b87702b1/chromium-0.0.0-py3-none-any.whl", hash = "sha256:a789163f8c17a5007259cc58fd77eff13ca4b7e2cd74ea79ba7bdef2daa2d853", size = 2380, upload-time = "2024-02-04T00:16:46.864Z" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -190,32 +181,34 @@ wheels = [
 name = "drydock-sdd"
 source = { editable = "." }
 dependencies = [
-    { name = "chromium" },
-    { name = "playwright" },
     { name = "python-dotenv" },
 ]
 
 [package.optional-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "playwright" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+pdf = [
+    { name = "playwright" },
+]
 
 [package.metadata]
 requires-dist = [
-    { name = "chromium", specifier = ">=0.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "playwright", specifier = ">=1.61.0" },
+    { name = "playwright", marker = "extra == 'dev'", specifier = ">=1.61.0" },
+    { name = "playwright", marker = "extra == 'pdf'", specifier = ">=1.61.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "pdf"]
 
 [[package]]
 name = "filelock"
