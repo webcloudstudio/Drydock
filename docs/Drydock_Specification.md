@@ -70,6 +70,23 @@ flowchart LR
   LOOP -.-> ANALYZE
 ```
 
+### Glossary
+
+| Drydock term | Meaning |
+|---|---|
+| Commander | The operator; the Agile Product Owner. |
+| Target | The named project under `$DRYDOCK_WORKSPACE/targets/<Target>`. |
+| Blueprint | The Typed Specification files that define the product; the source of truth. |
+| Manifest | The executable build plan and dependency graph, `MANIFEST.md`. |
+| Frontier | The set of Manifest blocks that are runnable now. |
+| QuarterDeck | The web review console between the Commander and the LLM process. |
+| Compass | Persistent Commander intent injected into command prompts. |
+| Rigging | Shared branding, stack rules, templates, and compact context derivatives. |
+| Soundings | The acceptance checklist and implementation evidence ledger. |
+| Sea Trials | Product-level objectives and proof-of-delivery criteria. |
+| Ship's Log | The append-only ledger of material decisions and milestones. |
+| Refit | The Loop-phase change process that keeps the Blueprint and the software aligned. |
+
 ## The drydock CLI
 
 ```text
@@ -107,7 +124,7 @@ options:
   --debug     Show full traceback on unexpected errors.
 ```
 
-## SAIL Phase 1 — Set Up: Laying the Keelx
+## SAIL Phase 1 — Set Up: Laying the Keel
 
 Install Drydock, configure runtime defaults, and create a workspace for a Target build.
 Process environment variables override values stored in Drydock's user-scoped `.env`.
@@ -194,7 +211,7 @@ showing its validation state, plan progress, and current runnable frontier.
 | `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
 | `DRYDOCK_WORKSPACE` | Home directory for the drydock |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
-| `PROMPT_WARN_KB` | Build-block prompt-size warning threshold |
+| `PROMPT_WARN_TOKENS` | Build-block prompt-size warning threshold in tokens |
 | `MODEL` | LLM model - gpt-6.4, gpt-5.5, sonnet, opus  |
 | `QUARTERDECK_PORT` | Default QuarterDeck service port |
 
@@ -322,7 +339,7 @@ The headers of the blueprints are structured as a dependency graph and the runna
 The plan contains Acceptance Criteria, Spikes and Specification Tickets for features, screens, and scaffolding.
 
 One major goal of the decomposition is for MANIFEST.md to contain a graph database of your work.  The configuration variable
-`PROMPT_WARN_KB` (default 50KB tokens) sets a maximum total context size for each build.  Each step stacks
+`PROMPT_WARN_TOKENS` (default 50,000 tokens) sets a maximum total context size for each build.  Each step stacks
 multiple files into a prompt for execution — including `COMPASS.md`, the applicable subsets of the stack, and
 the task instructions.  Similar tasks are grouped together to save context.
 
