@@ -1179,24 +1179,33 @@ def render_refit(item: dict[str, Any]) -> str:
         elif applied[path.name] != digest:
             changed_files.append(path.name)
 
-    if not new_files and not changed_files:
+    changes_dir = blueprint_dir / "changes"
+    tickets = (
+        [p.name for p in sorted(changes_dir.glob("*.md")) if p.is_file()]
+        if changes_dir.is_dir()
+        else []
+    )
+
+    if not new_files and not changed_files and not tickets:
         return helper + (
-            "<div class='refit-clear'>&#9875; All blueprints are applied to the Manifest. "
-            "Nothing to refit — steady as she goes.</div>"
+            "<div class='refit-clear'>&#9875; All blueprints are applied to the Manifest and "
+            "no change tickets are waiting. Nothing to refit — steady as she goes.</div>"
         )
 
-    def _file_rows(names: list[str], badge: str, badge_cls: str) -> str:
+    def _file_rows(names: list[str], badge: str, badge_cls: str, prefix: str = "blueprint") -> str:
         return "".join(
             f"<li class='refit-file'><span class='refit-badge {badge_cls}'>{badge}</span>"
-            f"<code>blueprint/{html.escape(name)}</code></li>"
+            f"<code>{prefix}/{html.escape(name)}</code></li>"
             for name in names
         )
 
-    rows = _file_rows(new_files, "new", "refit-new") + _file_rows(
-        changed_files, "changed", "refit-changed"
+    rows = (
+        _file_rows(new_files, "new", "refit-new")
+        + _file_rows(changed_files, "changed", "refit-changed")
+        + _file_rows(tickets, "ticket", "refit-ticket", prefix="blueprint/changes")
     )
-    count = len(new_files) + len(changed_files)
-    noun = "blueprint" if count == 1 else "blueprints"
+    count = len(new_files) + len(changed_files) + len(tickets)
+    noun = "item" if count == 1 else "items"
     return helper + (
         f"<div class='refit-callout'>&#9888; {count} {noun} adrift from the Manifest. "
         "Run <code>drydock refit</code> to include these files in your Manifest!</div>"
@@ -2434,6 +2443,7 @@ _STYLE = """
                  padding:2px 9px; border-radius:9px; flex:none; }
   .refit-new { background:#e9f7f0; color:#166534; border:1px solid #9fd8bd; }
   .refit-changed { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+  .refit-ticket { background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; }
 """
 
 

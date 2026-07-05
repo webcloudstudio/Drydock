@@ -1052,7 +1052,32 @@ def test_render_refit_reports_new_and_changed_blueprints(tmp_path, monkeypatch):
     assert "NEW.md" in out
     assert "TOUCHED.md" in out
     assert "APPLIED.md" not in out
-    assert "2 blueprints adrift" in out
+    assert "2 items adrift" in out
+
+
+def test_render_refit_reports_change_tickets(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "targets" / "Alpha"
+    blueprint = target / "blueprint"
+    changes = blueprint / "changes"
+    changes.mkdir(parents=True)
+    (blueprint / "APPLIED.md").write_text("applied content\n", encoding="utf-8")
+    (changes / "TICKET-001-Fix.md").write_text("Amends: APPLIED.md\n", encoding="utf-8")
+    import hashlib
+
+    applied_hash = hashlib.sha256(b"applied content\n").hexdigest()
+    (target / "MANIFEST.md").write_text(
+        f"applied_specs: |\n  APPLIED.md sha256={applied_hash} commit=-\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target)
+
+    out = quarterdeck.render_refit({"id": "refit_status", "type": "refit"})
+
+    assert "TICKET-001-Fix.md" in out
+    assert "blueprint/changes/TICKET-001-Fix.md" in out
+    assert "1 item adrift" in out
+    assert "steady as she goes" not in out
 
 
 def test_render_refit_all_applied_is_clear(tmp_path, monkeypatch):
