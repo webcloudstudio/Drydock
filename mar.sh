@@ -1,7 +1,7 @@
 set -x
-PROJECT=Marina2
-SOURCE=/mnt/c/Users/barlo/projects/Specifications/Marina
-#OPTS="--llm-provider codex --model gpt-5.4"
+export PROJECT=Marina2
+export SOURCE=/mnt/c/Users/barlo/projects/Specifications/Marina
+export OPTS="--llm-provider codex --model gpt-5.4"
 
 # On WSL/DrvFs, a directory can enter a zombie state where stat returns ENOENT
 # but mkdir returns EEXIST.  cmd.exe rmdir resolves it when plain rm cannot.
