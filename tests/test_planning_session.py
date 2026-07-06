@@ -276,6 +276,52 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
     assert "Preserve this feature body." in feature.read_text(encoding="utf-8")
 
 
+def test_overwrite_forces_full_rewrite_over_existing_specs(tmp_path):
+    # Existing conformant specs would normally select reuse mode; --overwrite must
+    # force a full rewrite and regenerate them from the analysis instead.
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    (blueprint_dir / "ARCHITECTURE.md").write_text(
+        "# ARCHITECTURE: Example\n\n"
+        "| Field       | Value |\n|-------------|-------|\n"
+        "| Version     | 20260630 V1 |\n| Description | Existing architecture |\n"
+        "| Depends On  | |\n| Provides    | |\n| Phase       | 1 |\n\n"
+        "## Modules\n\n- Old architecture body.\n",
+        encoding="utf-8",
+    )
+    (blueprint_dir / "FEATURE-Status.md").write_text(
+        "# FEATURE: Status\n\n"
+        "| Field       | Value |\n|-------------|-------|\n"
+        "| Version     | 20260630 V1 |\n| Description | Existing status feature |\n"
+        "| Depends On  | ARCHITECTURE.md |\n| Provides    | drydock status |\n| Phase       | 2 |\n\n"
+        "## Trigger\n\n- Old feature body.\n",
+        encoding="utf-8",
+    )
+    progress: list[str] = []
+    prompt_texts: list[str] = []
+
+    def runner(prompt_text, *a, **k):
+        prompt_texts.append(prompt_text)
+        return FakeRun(text=_llm_output())
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        overwrite=True,
+        runner=runner,
+        on_text=progress.append,
+    )
+
+    assert result.plan_mode == "full-rewrite"
+    assert any("OVERWRITE mode" in line for line in progress)
+    # The full-rewrite prompt (not plan_reuse) ran, and the regenerated body replaced the old one.
+    assert "Do not emit any existing conformant Blueprint file again." not in "".join(prompt_texts)
+    assert "Old feature body." not in (blueprint_dir / "FEATURE-Status.md").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"

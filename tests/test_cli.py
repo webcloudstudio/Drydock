@@ -507,6 +507,7 @@ class TestLlmOverrideFlags:
                 authored_files=(),
                 target_dir=target_dir,
                 warnings=(),
+                plan_mode="full-rewrite",
             )
 
         monkeypatch.setattr("drydock.planning_session.create_plan", fake_create_plan)

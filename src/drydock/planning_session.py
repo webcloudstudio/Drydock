@@ -83,6 +83,11 @@ _STORY_CAP = 100
 
 _FEEDBACK_FILENAME = "PLAN_COMPASS.md"
 _REUSE_PROMPT_NAME = "plan_reuse"
+_PLAN_MODE_LABELS = {
+    "reuse-manifest-first": "REUSE mode: preserving existing Blueprint specs, regenerating MANIFEST.md",
+    "full-rewrite": "OVERWRITE mode: regenerating Blueprint specs and MANIFEST.md from the analysis",
+    "speckit-translate": "SPEC-KIT mode: translating imported Spec Kit sources into the Blueprint",
+}
 _SPECKIT_PROMPT_NAME = "plan_create_speckit"
 _TERMINAL_SECTIONS = (
     "Programmatic Acceptance",
@@ -135,6 +140,7 @@ class PlanCreateResult:
     authored_files: tuple[Path, ...] = ()
     warnings: tuple[str, ...] = ()
     execution_id: str | None = None
+    plan_mode: str = ""
 
 
 @dataclass(frozen=True)
@@ -1437,6 +1443,7 @@ def create_plan(
     target: str,
     target_directory: Path,
     *,
+    overwrite: bool = False,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     model: str | None = None,
@@ -1472,6 +1479,10 @@ def create_plan(
     plan_path = target_dir / "MANIFEST.md"
     prior_manifest = _read_if(plan_path)
     prior_applied_specs, prior_block_states = _load_prior_plan_state(plan_path)
+    # In overwrite mode nothing is protected: every regenerated spec is written so the
+    # rewrite (e.g. freshly authored programmatic acceptance) actually lands on disk.
+    if overwrite:
+        prior_applied_specs = ()
 
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
@@ -1504,8 +1515,10 @@ def create_plan(
             existing_specs = _collect_existing_typed_specs(
                 blueprint_dir, excluded_filenames=excluded_filenames
             )
-    reuse_mode = _is_reuse_candidate(existing_specs)
-    speckit_mode = not reuse_mode and _is_speckit_source(blueprint_dir)
+    # `--overwrite` forces a full rewrite: ignore existing specs for mode selection so
+    # the Blueprint is regenerated from the analysis rather than preserved.
+    reuse_mode = not overwrite and _is_reuse_candidate(existing_specs)
+    speckit_mode = not overwrite and not reuse_mode and _is_speckit_source(blueprint_dir)
     imported_source_paths = _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames)
     reusable_spec_paths: list[Path] | None = None
     normalized_existing: list[Path] = []
@@ -1518,11 +1531,14 @@ def create_plan(
     else:
         prompt_name = PROMPT_NAME
         plan_mode = "full-rewrite"
+    mode_label = _PLAN_MODE_LABELS.get(plan_mode, plan_mode)
     if on_text is not None:
         on_text(
             f"[plan] mode={plan_mode} prompt={prompt_name} "
             f"existing_specs={len(existing_specs)} imported_sources={len(imported_source_paths)}\n"
         )
+        forced = " (forced by --overwrite)" if overwrite else ""
+        on_text(f"[plan] {mode_label}{forced}\n")
         if adopted_source_specs:
             on_text(
                 f"[plan] adopted {len(adopted_source_specs)} typed spec file(s) from "
@@ -1640,4 +1656,5 @@ def create_plan(
         authored_files=tuple(sorted({*authored, *normalized_existing, *adopted_source_specs})),
         warnings=tuple(warnings),
         execution_id=exec_id,
+        plan_mode=plan_mode,
     )
