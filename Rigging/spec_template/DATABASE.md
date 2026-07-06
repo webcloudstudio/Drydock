@@ -4,6 +4,9 @@
 |-------|-------|
 | Version | __TODAY__ V1 |
 | Description | Persistence stores and typed interfaces for __PROJECT_NAME__. |
+| Depends On | ARCHITECTURE.md |
+| Provides | |
+| Build Order | |
 
 <!-- Store interfaces first. Schema details follow the public persistence boundary. -->
 <!-- Delete this file if the project has no database. -->
@@ -66,7 +69,11 @@
 | Library | Ownership | Distribution | Consumer Contract |
 |---------|-----------|--------------|-------------------|
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 

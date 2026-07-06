@@ -3,12 +3,13 @@
 | Field | Value |
 |-------|-------|
 | Version | __TODAY__ V1 |
-| Route | `GET /example` |
-| Parent | — |
-| Main Menu | — |
-| Sub Menu | — |
-| Tab Order | — |
 | Description | Template: per-screen spec — route, layout, columns, and interactions |
+| Route | GET /example |
+| Consumes | |
+| Nav Order | |
+| Depends On | |
+| Provides | |
+| Build Order | |
 
 <!-- One file per screen. Rename to match nav bar label: SCREEN-Dashboard.md -->
 <!-- Delete this template after creating real screen files. -->
@@ -27,7 +28,11 @@
 |--------|---------|--------|
 | | | |
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 

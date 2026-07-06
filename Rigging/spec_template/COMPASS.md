@@ -4,6 +4,9 @@
 |-------------|-------|
 | Version     | __TODAY__ V1 |
 | Description | <!-- One sentence — reused as METADATA.short_description --> |
+| Depends On  | |
+| Provides    | |
+| Build Order | |
 
 ## Compass
 
@@ -19,7 +22,11 @@
 
 - None.
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 

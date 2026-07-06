@@ -4,6 +4,9 @@
 |-------|-------|
 | Version | __TODAY__ V1 |
 | Description | Example reusable UI component. |
+| Depends On | UI.md |
+| Provides | |
+| Build Order | |
 
 <!-- One file per reusable UI component. Examples: UI-NavBar.md, UI-FilterBar.md, UI-StatusBadge.md -->
 
@@ -25,7 +28,11 @@ What this component does. One sentence.
 
 <!-- Any interactive behavior: click, hover, HTMX swap targets -->
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 

@@ -4,6 +4,9 @@
 |-------|-------|
 | Version | __TODAY__ V1 |
 | Description | Modules, routes, and directory layout for __PROJECT_NAME__. |
+| Depends On | |
+| Provides | |
+| Build Order | |
 
 <!-- Code organization: modules, entry point, routes, directory layout. -->
 
@@ -34,7 +37,11 @@
 __PROJECT_SLUG__/
 ```
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 

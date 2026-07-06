@@ -4,6 +4,9 @@
 |-------|-------|
 | Version | __TODAY__ V1 |
 | Description | Portfolio homepage branding, contact details, and bio content for the Publisher screen. |
+| Depends On | |
+| Provides | |
+| Build Order | |
 
 <!-- Optional file. Delete if this project does not publish a portfolio homepage. -->
 <!-- Used by the Publisher (bin/build_documentation.sh / publisher.py) to generate the static site. -->
@@ -30,7 +33,11 @@ phone_e164:
 
 <!-- Free-form markdown. Rendered as the homepage introduction above the project card grid. -->
 
-## Acceptance Criteria
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
 
 - None.
 
