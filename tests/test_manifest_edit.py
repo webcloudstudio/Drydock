@@ -17,6 +17,7 @@ from drydock.manifest_edit import (
     render_manifest,
     split_group,
     split_manifest,
+    split_step,
     validate_order,
 )
 
@@ -286,6 +287,46 @@ def test_split_group_rejects_non_feature(tmp_path):
     doc = split_manifest(_write(tmp_path))
     with pytest.raises(SpecificationError, match="not a feature"):
         split_group(doc, "foundation")
+
+
+def test_split_step_places_new_group_above_when_that_keeps_order(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    new_id = split_step(doc, "foundation")
+    assert new_id == "feat-foundation"
+    features = _feature_order_for_test(doc)
+    assert features == ["feat-foundation", "feature-core", "feature-screens"]
+    assert doc.by_id()["foundation"].parent == "feat-foundation"
+    assert doc.by_id()["service"].parent == "feature-core"
+    assert doc.by_id()["feat-foundation"].lines[0] == "## feature 4: Foundation"
+
+
+def test_split_step_falls_back_below_when_above_breaks_order(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    new_id = split_step(doc, "service")
+    assert new_id == "feat-service"
+    features = _feature_order_for_test(doc)
+    assert features == ["feature-core", "feat-service", "feature-screens"]
+    assert doc.by_id()["service"].parent == "feat-service"
+    assert doc.by_id()["foundation"].parent == "feature-core"
+    assert validate_order(doc.blocks) == []
+
+
+def test_split_step_rejects_non_step(tmp_path):
+    doc = split_manifest(_write(tmp_path))
+    with pytest.raises(SpecificationError, match="not a movable step"):
+        split_step(doc, "feature-core")
+
+
+def test_apply_edit_split_step_persists(tmp_path):
+    path = _write(tmp_path)
+    result = apply_edit(path, "split_step", block_id="service")
+    assert result["feature_id"] == "feat-service"
+    doc = split_manifest(path)
+    assert doc.by_id()["service"].parent == "feat-service"
+
+
+def _feature_order_for_test(doc):
+    return [b.block_id for b in doc.blocks if b.block_type == "feature"]
 
 
 def test_apply_edit_rename_persists(tmp_path):

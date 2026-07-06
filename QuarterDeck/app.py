@@ -920,9 +920,9 @@ def render_compass(item: dict[str, Any]) -> str:
         # so a story exposes change-group controls plus a rename button.
         bid = html.escape(step.block_id)
         name_js = html.escape(step.name, quote=True)
-        ungroup_btn = (
-            f"<button class='cmp-mbtn cmp-ungroup' title='Ungroup story' "
-            f"onclick=\"compassUngroup('{item_id}','{bid}')\">Ungroup</button>"
+        split_step_btn = (
+            f"<button class='cmp-mbtn cmp-split-step' title='Split into its own group' "
+            f"onclick=\"compassSplitStep('{item_id}','{bid}')\">⑃ split</button>"
             if group_step_count > 1 and step.parent
             else ""
         )
@@ -931,7 +931,7 @@ def render_compass(item: dict[str, Any]) -> str:
             f"<select class='cmp-regroup' title='Move story to another group' "
             f"onchange=\"compassRegroup('{item_id}','{bid}',this.value)\">"
             f"{_feature_options(plan, step.parent)}</select>"
-            f"{ungroup_btn}"
+            f"{split_step_btn}"
             f"<button class='cmp-mbtn' title='Rename story' "
             f"onclick=\"compassRename('{item_id}','{bid}','{name_js}')\">✎</button>"
             "</span>"
@@ -2373,7 +2373,7 @@ _STYLE = """
   .cmp-move { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
-  .cmp-ungroup { font-weight:700; color:#334155; }
+  .cmp-split-step { font-weight:700; color:#334155; }
   .cmp-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 10px; }
   .cmp-newgroup { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:7px 16px; border:1px solid #1F7A55; background:#1F7A55; color:#fff; border-radius:7px; cursor:pointer; box-shadow:0 1px 2px rgba(31,122,85,.25); transition:background .12s, box-shadow .12s; }
   .cmp-newgroup:hover { background:#186A49; border-color:#186A49; box-shadow:0 2px 5px rgba(31,122,85,.32); }
@@ -2565,8 +2565,8 @@ def index(request: Request = None) -> str:
       if (r.ok) loadDoc(itemId);
       else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Move failed'); loadDoc(itemId); }}
     }}
-    function compassUngroup(itemId, blockId) {{
-      compassRegroup(itemId, blockId, '');
+    function compassSplitStep(itemId, blockId) {{
+      compassEdit(itemId, {{kind: 'split_step', block_id: blockId}});
     }}
     async function compassEdit(itemId, payload) {{
       const r = await fetch(`/api/compass/${{itemId}}/edit`, {{

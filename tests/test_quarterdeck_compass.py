@@ -196,15 +196,15 @@ class TestRender:
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         assert "compassSplit(" not in out
-        assert "compassUngroup(" not in out
+        assert "compassSplitStep(" not in out
 
-    def test_multi_story_group_shows_split_and_ungroup(self, tmp_path, monkeypatch):
+    def test_multi_story_group_shows_split_group_and_split_step(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_TWO_STORIES)
         out = quarterdeck.render_compass(_ITEM)
         assert "compassSplit(" in out
-        assert "compassUngroup(" in out
-        assert "Ungroup" in out
+        assert "compassSplitStep(" in out
+        assert "cmp-split-step" in out
 
 
 _MANIFEST_VERIFIED = _MANIFEST.replace(

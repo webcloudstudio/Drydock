@@ -276,10 +276,10 @@ The **Build Compass**: the live `MANIFEST.md` work graph. Feature groups carry s
 rollups and savings; each story/spike shows its assembled prompt cost with a collapsible per-file
 stack breakdown and its Definition of Done folded beneath. The header rolls up groups, stories,
 and per-lifecycle counts (built / ready to build / blocked / failed) plus total SP, and names the
-stories buildable now. Constrained editing — reorder groups, regroup/ungroup stories, rename,
-split, normalize order — rewrites `MANIFEST.md` through the same editor the CLI uses; a move that
-would break the build topology is rejected. A failed story opens its Definition of Done and shows
-the finding.
+stories buildable now. Constrained editing — reorder groups, regroup stories, rename, split a group
+into one group per story, split a single story into its own new group, normalize order — rewrites
+`MANIFEST.md` through the same editor the CLI uses; a move that would break the build topology is
+rejected. A failed story opens its Definition of Done and shows the finding.
 
 ### `refit`
 

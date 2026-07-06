@@ -453,6 +453,70 @@ def split_group(doc: ManifestDoc, feature_id: str) -> list[str]:
     return result
 
 
+def split_step(doc: ManifestDoc, step_id: str) -> str:
+    """Move one story out of its group into a new feature named after the story.
+
+    The new feature is inserted immediately above the story's current feature, or
+    immediately below it when above would break build order. Returns the new
+    feature's id.
+    """
+    by_id = doc.by_id()
+    step = by_id.get(step_id)
+    if step is None or step.block_type not in _STEP_TYPES:
+        raise SpecificationError(f"{step_id} is not a movable step")
+    old_feature_id = step.parent if _is_feature(doc, step.parent) else None
+    before = validate_order(doc.blocks)
+    header = _HEADER_RE.match(step.lines[0]) if step.lines else None
+    story_name = header.group(3) if header else step_id
+    existing = {b.block_id for b in doc.blocks}
+    new_id = _unique_id(f"feat-{_slug(story_name)}", existing)
+    ordinal = _next_ordinal(doc)
+
+    saved_blocks = list(doc.blocks)
+    saved_lines = list(step.lines)
+    anchor = (
+        next(i for i, b in enumerate(saved_blocks) if b.block_id == old_feature_id)
+        if old_feature_id
+        else len(saved_blocks)
+    )
+
+    def attempt(position: int) -> bool:
+        doc.blocks[:] = list(saved_blocks)
+        step.lines = list(saved_lines)
+        doc.blocks.insert(
+            position,
+            RawBlock(
+                block_id=new_id,
+                block_type="feature",
+                parent=None,
+                depends=(),
+                lines=[
+                    f"## feature {ordinal}: {story_name}",
+                    f"id: {new_id}",
+                    f"summary: {story_name}",
+                    "state: pending",
+                ],
+            ),
+        )
+        _set_parent_line(step, new_id)
+        doc.blocks[:] = _flatten(doc)
+        try:
+            _reject_if_worsened(doc, before)
+            return True
+        except SpecificationError:
+            return False
+
+    if attempt(anchor) or attempt(anchor + 1):
+        return new_id
+
+    doc.blocks[:] = saved_blocks
+    step.lines = saved_lines
+    raise SpecificationError(
+        f"Splitting {step_id} into its own group would break the build order "
+        "whether placed above or below its current group."
+    )
+
+
 def normalize_order(doc: ManifestDoc) -> None:
     """Reorder feature groups into canonical non-decreasing layer-band order.
 
@@ -591,9 +655,10 @@ def apply_edit(path: Path, kind: str, *, block_id: str = "", name: str = "") -> 
 
     ``kind`` is ``rename`` (a feature or step, by ``block_id`` and ``name``),
     ``add_feature`` (a new empty group named ``name``), ``split_group`` (the
-    feature ``block_id`` into one group per story), or ``normalize`` (reorder all
-    groups into canonical layer-band order). Raises SpecificationError (without
-    writing) if the edit is illegal.
+    feature ``block_id`` into one group per story), ``split_step`` (the story
+    ``block_id`` into its own new group), or ``normalize`` (reorder all groups
+    into canonical layer-band order). Raises SpecificationError (without writing)
+    if the edit is illegal.
     """
     doc = split_manifest(path)
     result: dict[str, object] = {}
@@ -603,6 +668,8 @@ def apply_edit(path: Path, kind: str, *, block_id: str = "", name: str = "") -> 
         result["feature_id"] = add_feature(doc, name)
     elif kind == "split_group":
         result["features"] = split_group(doc, block_id)
+    elif kind == "split_step":
+        result["feature_id"] = split_step(doc, block_id)
     elif kind == "normalize":
         normalize_order(doc)
     else:
