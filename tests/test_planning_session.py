@@ -878,9 +878,25 @@ def test_missing_required_block_explains_required_response_contract(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
 
-def test_text_outside_blocks_refuses_without_writes(tmp_path):
+def test_leading_preamble_is_stripped_and_recovered(tmp_path):
+    # A benign narration sentence before the first delimiter (common in reuse mode)
+    # is discarded rather than failing an otherwise-complete plan.
     target_dir = _make_target(tmp_path)
-    out = "Here is the plan:\n" + _llm_output()
+    out = "Blueprint already contains all required specs, so I'm emitting MANIFEST.md.\n\n"
+    out += _llm_output()
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert (target_dir / "MANIFEST.md").exists()
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").exists()
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+
+
+def test_preamble_containing_delimiter_fragment_still_refuses(tmp_path):
+    # Protection preserved: a stray `===` in the leading text signals a malformed or
+    # partial block, so the strict parser must still reject it without writing.
+    target_dir = _make_target(tmp_path)
+    out = "Note: I use === delimiters below.\n\n" + _llm_output()
 
     with pytest.raises(SpecificationError, match="Text appeared outside"):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))

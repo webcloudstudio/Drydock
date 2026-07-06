@@ -186,6 +186,25 @@ def _repair_missing_leading_delimiter(text: str) -> str | None:
     return repaired
 
 
+def _strip_leading_preamble(text: str) -> str:
+    """Discard benign narration emitted before the first artifact delimiter.
+
+    The model occasionally prefixes the artifact stream with a sentence explaining
+    what it is about to emit (common in reuse mode, e.g. "Blueprint already contains
+    all required specs, so I'm emitting only MANIFEST.md."). When a valid opening
+    delimiter follows and nothing before it looks like a delimiter, drop the preamble
+    rather than failing an otherwise-complete plan. A ``===`` anywhere in the leading
+    text is left intact so the strict parser still rejects malformed or partial blocks.
+    """
+    first_open = _OPEN_BLOCK_LINE_RE.search(text)
+    if first_open is None:
+        return text
+    leading = text[: first_open.start()]
+    if not leading.strip() or "===" in leading:
+        return text
+    return text[first_open.start() :]
+
+
 def _execution_output_path(result: CompletedRun) -> str | None:
     artifacts = getattr(result, "artifacts", None)
     output_file = getattr(artifacts, "output_file", None)
@@ -223,6 +242,7 @@ def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
     repaired = _repair_missing_leading_delimiter(text)
     if repaired is not None:
         text = repaired
+    text = _strip_leading_preamble(text)
     return _parse_strict_blocks_by_line(text, result)
 
 
