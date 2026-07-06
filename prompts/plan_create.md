@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260622 V6
+version: 20260706 V7
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -37,6 +37,14 @@ The primary outputs are:
   `DATABASE.md`, `UI-GENERAL.md`, and AC files where warranted.
 - `MANIFEST.md` — the executable build plan containing features, stories, spikes, and `ac` blocks;
   the single work graph that determines build order and grouping.
+
+**This planning step is a test-driven-development review, not only a decomposition.** Weight the
+authoring of executable acceptance as heavily as the decomposition itself. Every buildable story
+carries several concrete Python assertions in the `## Programmatic Acceptance` sections of the
+specs it implements, so that `drydock build` has a failing test to satisfy for each behavior before
+the code exists. A plan that decomposes cleanly but ships specs with empty acceptance has failed
+this step. Assertion authoring is mandatory-or-justified: a spec's acceptance is `- None.` only
+when the item genuinely has no programmatic surface, and then the reason is stated inline.
 
 This step must produce **decomposed specifications with solid header relationships**:
 
@@ -137,7 +145,33 @@ Rules:
 Each authored file must be build-usable. Write concrete sections, not placeholders, unless the
 source material genuinely leaves an item open; then put it under `## Open Questions`.
 
-**5. Compute header relationships.**
+**5. Author programmatic acceptance (test-driven).**
+- *Consumes:* each authored spec's routes, interfaces, reads, writes, guardrails, and any tests
+  carried in the imported source material.
+- *Emits:* the `## Programmatic Acceptance` section of every authored spec, as concrete Python
+  assertions.
+
+Rules:
+
+- Treat this as writing the failing tests first. For every story, the specs it implements together
+  carry **several** executable assertions — generally one per distinct observable behavior, route,
+  invariant, or error mode described in that spec. A single assertion for a multi-behavior spec is
+  insufficient.
+- Assertions are concrete and executable from the build directory: assert a route responds, a
+  record is written with the expected keys, an invariant holds, a guardrail rejects, an error type
+  is raised. Cover the ordinary "the thing exists and responds" checks explicitly (for a route,
+  that it is reachable and returns the expected status) — do not assume they are obvious.
+- Imported test material is **input, not output**. If the source carries tests, test scripts, or a
+  prose `## Test` section, review it and re-express the intended checks as Drydock Programmatic
+  Acceptance assertions in the spec. Do not trust its format, copy it verbatim, or point at an
+  external script in place of authoring assertions here — conform it even when it already looks
+  correct.
+- Write `- None.` only when the item genuinely has no programmatic surface (pure visual/manual
+  UI, or a Commander-observed check). State the reason on the same line, e.g.
+  `- None. Visual-only screen; behavior covered by its backing FEATURE spec.` Bare `- None.` on a
+  spec that declares any `Provides` entry is a defect.
+
+**6. Compute header relationships.**
 - *Consumes:* the authored spec set as a whole.
 - *Emits:* `Depends On`, `Provides`, `Phase`, and optional SCREEN `Consumes`.
 
@@ -152,7 +186,7 @@ Rules:
 - A SCREEN route must be backed by a provider in some FEATURE or service definition.
 - Do not leave relationship fields contradictory across files.
 
-**6. Build the executable plan.**
+**7. Build the executable plan.**
 - *Consumes:* authored spec files, their computed `Phase`/`Depends On` relationships, open
   questions, and stack decisions.
 - *Emits:* `MANIFEST.md` — the single work graph. It carries build order (block order plus
@@ -176,7 +210,11 @@ Manifest rules:
   help work until the core user path works.
 - Dependencies must reference earlier-emitted ids and form a runnable, acyclic build order.
   `depends:` is topologically consistent: a later block never supplies a dependency to an earlier
-  block.
+  block, and every id in a `depends:` list has already appeared above the block that names it.
+- The initial runnable frontier is never empty: **at least one `story` or `spike` has an empty
+  `depends:`** and can build immediately. Do not gate the first executable block on another block,
+  and never place a story ahead of the block it depends on. A `depends:` entry expresses a genuine
+  input requirement, not decoration; a block with no real prerequisite carries an empty `depends:`.
 - All blocks start `state: pending`.
 
 ---
@@ -238,7 +276,8 @@ Every authored Specification file ends with these sections:
 - None.
 ```
 
-Use `- None.` only when that section is truly empty.
+Use `- None.` only when that section is truly empty, and for `## Programmatic Acceptance` state the
+reason inline (see below).
 
 Additional body guidance:
 
@@ -252,7 +291,12 @@ Additional body guidance:
   operational behavior.
 - `SCREEN-*.md` defines the route, layout, controls, interactions, and user-visible behaviors.
 - `Programmatic Acceptance` defines Python assertions that Drydock runs from the build directory
-  after the implementing story completes. Prefer concrete executable assertions over prose.
+  after the implementing story completes. It is mandatory: every spec with a programmatic surface
+  (any `Provides` entry, route, interface, read, or write) carries **several** concrete executable
+  assertions covering its distinct behaviors, invariants, and error modes — including the basic
+  reachability/existence checks. This is the test-driven contract the build must satisfy. Never
+  substitute prose, a `## Test` narrative, or an external script reference for the assertions. Emit
+  `- None.` only for a genuine non-programmatic item, with the reason stated on the same line.
 - `User Acceptance` contains only Commander-observed checks that cannot be honestly automated.
 ---
 
@@ -292,7 +336,10 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   cannot be represented in the Blueprint spec.
 
 **Ordering**
-- Emit blocks in dependency order.
+- Emit blocks in dependency order: every `depends:` id appears above the block that names it, and no
+  block depends on a block emitted later. The order in the file matches the build order.
+- At least one `story` or `spike` has an empty `depends:` so the initial frontier can run. Never
+  emit a plan whose first executable block is blocked by a block that appears after it.
 - Foundation and architecture work precede downstream features.
 - Persistence foundations precede features that depend on state.
 - Backend/provider stories precede UI consumer stories.
@@ -393,6 +440,11 @@ Required action:
 - Do not invent interfaces, routes, datasets, commands, or capabilities that the sources and
   analysis do not support.
 - Do not leave user-facing screens without backing providers.
+- Every spec that declares a `Provides` entry (or any route, interface, read, or write) must carry
+  several concrete Python assertions under `## Programmatic Acceptance`. `- None.` there is allowed
+  only for a genuinely non-programmatic item and must state its reason inline.
+- The Manifest has a non-empty initial runnable frontier: at least one `story` or `spike` with an
+  empty `depends:`. Emit blocks in topological order with no forward-referencing `depends:`.
 - Do not emit placeholder phrases like `TBD`, `fill later`, `to be determined`, or
   `implementation details here`; unresolved items belong in `## Open Questions`.
 - Do not emit empty authored files.

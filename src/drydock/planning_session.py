@@ -1101,26 +1101,85 @@ def _has_cycle(edges: dict[str, set[str]]) -> bool:
     return any(color[node] == WHITE and visit(node) for node in edges)
 
 
+_PROVIDES_RE = re.compile(r"^\|\s*Provides\s*\|(.*)\|\s*$", re.MULTILINE)
+
+
+def _spec_provides(text: str) -> str:
+    """Return the trimmed `| Provides |` header value, or '' when absent/empty."""
+    match = _PROVIDES_RE.search(text)
+    return match.group(1).strip() if match else ""
+
+
+def _acceptance_status(text: str) -> tuple[int, bool]:
+    """Inspect a spec's Programmatic Acceptance section.
+
+    Returns (assertion_count, justified_none): the number of concrete assertion
+    bullets, and whether an empty section carries an inline justification
+    (``- None. <reason>``) rather than a bare ``- None.``.
+    """
+    section = _extract_terminal_section(text, "Programmatic Acceptance")
+    count = 0
+    justified_none = False
+    for line in (section or "").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        body = stripped[2:].strip()
+        first, _, remainder = body.partition(" ")
+        if first.rstrip(".,:").lower() == "none":
+            if remainder.strip(" .,:"):
+                justified_none = True
+            continue
+        count += 1
+    return count, justified_none
+
+
+# A programmatic story should carry at least this many assertions before it stops
+# drawing a test-driven-acceptance warning.
+_MIN_ASSERTIONS_PER_STORY = 2
+
+
 def _integrity_check(
-    plan: BuildPlan, blueprint_dir: Path, *, available_specs: frozenset[str] = frozenset()
+    plan: BuildPlan,
+    blueprint_dir: Path,
+    *,
+    available_specs: frozenset[str] = frozenset(),
+    emitted_files: dict[str, str] | None = None,
 ) -> list[str]:
     """Fatal issues raise SpecificationError; non-fatal issues return as warnings."""
     ids = {block.block_id for block in plan.blocks}
+    emitted_files = emitted_files or {}
     fatal: list[str] = []
     warnings: list[str] = []
 
     edges: dict[str, set[str]] = {}
+    position = {block.block_id: index for index, block in enumerate(plan.blocks)}
     for block in plan.blocks:
         edges[block.block_id] = set(block.depends)
         for dep in block.depends:
             if dep not in ids:
                 fatal.append(f"{block.block_id}: depends on unknown id {dep!r}")
+            elif position.get(dep, -1) > position[block.block_id]:
+                # Consistent order: a dependency must be emitted above its dependent.
+                warnings.append(
+                    f"{block.block_id}: depends on {dep!r}, which is emitted later; "
+                    "blocks should appear in dependency order"
+                )
 
     if _has_cycle(edges):
         fatal.append("dependency graph contains a cycle")
 
+    def spec_text(name: str) -> str | None:
+        if name in emitted_files:
+            return emitted_files[name]
+        path = blueprint_dir / name
+        return path.read_text(encoding="utf-8") if path.is_file() else None
+
     story_count = 0
+    executable_with_empty_depends = False
     for block in plan.blocks:
+        if block.block_type in ("story", "spike") and not block.depends:
+            executable_with_empty_depends = True
         if block.block_type != "story":
             continue
         story_count += 1
@@ -1134,9 +1193,40 @@ def _integrity_check(
         if not has_ac:
             fatal.append(f"{block.block_id}: story has no acceptance check")
 
+        # Test-driven-acceptance coverage — a soft warning. A story whose implemented
+        # specs declare a programmatic surface should carry several concrete Python
+        # assertions unless an inline-justified `- None.` explains the absence.
+        surface = False
+        justified = False
+        assertions = 0
+        for name in targets:
+            text = spec_text(name) if name else None
+            if text is None:
+                continue
+            if _spec_provides(text):
+                surface = True
+            count, none_reason = _acceptance_status(text)
+            assertions += count
+            justified = justified or none_reason
+        if surface and not justified and assertions < _MIN_ASSERTIONS_PER_STORY:
+            warnings.append(
+                f"{block.block_id}: {assertions} Programmatic Acceptance assertion(s) across "
+                "its implemented spec(s), which declare a programmatic surface; author several "
+                "concrete Python assertions (test-driven acceptance) or justify `- None.` inline"
+            )
+
     # Reject an over-decomposed plan.
     if story_count > _STORY_CAP:
         fatal.append(f"story count {story_count} exceeds the ~{_STORY_CAP}-story cap")
+
+    # Initial runnable frontier — a soft warning. At least one executable block must
+    # start with an empty `depends:` or the build has nothing it can run first.
+    has_executable = any(b.block_type in ("story", "spike") for b in plan.blocks)
+    if has_executable and not executable_with_empty_depends:
+        warnings.append(
+            "no story or spike has an empty depends: — the initial runnable frontier is empty "
+            "and the build cannot start"
+        )
 
     if fatal:
         raise SpecificationError("Plan integrity check failed:\n  " + "\n  ".join(fatal))
@@ -1249,7 +1339,15 @@ def _validate_plan_output(
             )
         )
 
-    warnings = tuple(_integrity_check(plan, blueprint_dir, available_specs=emitted_specs))
+    emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
+    warnings = tuple(
+        _integrity_check(
+            plan,
+            blueprint_dir,
+            available_specs=emitted_specs,
+            emitted_files=emitted_files,
+        )
+    )
     return plan, warnings
 
 

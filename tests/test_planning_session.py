@@ -84,7 +84,8 @@ _SPEC_HEADER = """# {ftype}: {name}
 
 ## Programmatic Acceptance
 
-- None.
+- assert the {name} route responds with HTTP 200.
+- assert the {name} handler returns the documented payload keys.
 
 ## User Acceptance
 
@@ -776,6 +777,89 @@ def test_story_without_acceptance_is_fatal(tmp_path):
     manifest = _manifest().split("## ac 1:")[0].rstrip() + "\n"
     with pytest.raises(SpecificationError, match="no acceptance check"):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+
+def test_missing_programmatic_acceptance_warns(tmp_path):
+    _make_target(tmp_path)
+    # A programmatic-surface spec (Provides: drydock status) shipped with bare `- None.`
+    # acceptance is a soft warning, not fatal — the plan still writes.
+    bare = _SPEC_HEADER.replace(
+        "- assert the {name} route responds with HTTP 200.\n"
+        "- assert the {name} handler returns the documented payload keys.",
+        "- None.",
+    )
+    arch = bare.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = bare.format(ftype="FEATURE", name="Status", ac="Status command exits successfully.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert any("Programmatic Acceptance assertion" in w for w in result.warnings)
+
+
+def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
+    _make_target(tmp_path)
+    justified = _SPEC_HEADER.replace(
+        "- assert the {name} route responds with HTTP 200.\n"
+        "- assert the {name} handler returns the documented payload keys.",
+        "- None. Visual-only surface; behavior covered by its backing feature.",
+    )
+    arch = justified.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = justified.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    )
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+
+
+def test_empty_initial_frontier_warns(tmp_path):
+    _make_target(tmp_path)
+    # The only empty-depends block is the (non-executable) feature; the sole story
+    # gates on it, so no story or spike can run first. Acyclic, but no frontier.
+    manifest = _manifest().replace(
+        "implements: FEATURE-Status.md\nscope: both\nstate: pending",
+        "implements: FEATURE-Status.md\nscope: both\ndepends: feature-status\nstate: pending",
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert any("initial runnable frontier is empty" in w for w in result.warnings)
+
+
+def test_forward_dependency_order_warns(tmp_path):
+    _make_target(tmp_path)
+    # story-status depends on a follow-up story emitted below it — out of dependency order.
+    manifest = _manifest().replace(
+        "implements: FEATURE-Status.md\nscope: both\nstate: pending",
+        "implements: FEATURE-Status.md\nscope: both\ndepends: story-later\nstate: pending",
+    )
+    manifest += (
+        "\n## story 2: Later\n"
+        "id: story-later\n"
+        "parent: feature-status\n"
+        "summary: Emitted after the block that depends on it.\n"
+        "implements: FEATURE-Status.md\n"
+        "scope: both\n"
+        "state: pending\n"
+        "\n## ac 2: Later exits\n"
+        "id: ac-later\n"
+        "parent: story-later\n"
+        "kind: assertion\n"
+        "state: pending\n"
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert any("emitted later" in w for w in result.warnings)
 
 
 def test_missing_manifest_block_refuses(tmp_path):
