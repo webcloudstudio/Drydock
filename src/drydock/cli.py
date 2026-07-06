@@ -1298,9 +1298,6 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         print("  No build steps in the plan.")
     for group in report.groups:
         print(f"Feature: {group.name}  [{group.verified}/{group.total} done]")
-        for ac in group.feature_acs:
-            mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
-            print(f"    {mark:<9} ac    {ac.block_id}  {ac.name}")
         for step in group.steps:
             mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
             arrow = " <- next" if step.buildable else ""
@@ -1310,6 +1307,9 @@ def cmd_build_status(blueprint: str, target: str) -> int:
             for ac in step.acs:
                 ac_mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
                 print(f"      {ac_mark:<9} ac    {ac.block_id}  {ac.name}")
+        for ac in group.feature_acs:
+            mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
+            print(f"    {mark:<9} ac    {ac.block_id}  {ac.name}")
         print()
 
     print(
