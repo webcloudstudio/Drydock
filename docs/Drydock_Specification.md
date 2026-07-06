@@ -334,10 +334,6 @@ The QuarterDeck calls out blockers and action items.  It also enables the Comman
 analysis.  This step creates Typed Specification files under `blueprint/`, writes `BUILD_COMPASS.md`, and drafts `MANIFEST.md`.
 
 The headers of the blueprints are structured as a dependency graph and the runnable frontier is established.
-At least one story or spike has an empty `depends:` and is immediately runnable; the initial frontier is never
-empty. A story or spike carries `depends:` only for a genuine input requirement on another block's output; plan
-generation never chains a block to the block before it merely to impose an order. Blocks without a genuine
-dependency are siblings in the graph and build in parallel.
 
 The plan contains Acceptance Criteria, Spikes and Specification Tickets for features, screens, and scaffolding.
 
