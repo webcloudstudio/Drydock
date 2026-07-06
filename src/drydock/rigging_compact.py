@@ -327,16 +327,7 @@ def _assemble_prompt_assembly(
     source_text: str,
     existing_compact: str | None = None,
 ) -> PromptAssembly:
-    existing_parts = (
-        contextual_markdown_parts(
-            f"{Path(rel_source).stem}{COMPACT_SUFFIX}.md",
-            existing_compact,
-            filename=f"{Path(rel_source).stem}{COMPACT_SUFFIX}.md",
-            role="existing compact derivative",
-        )
-        if existing_compact
-        else ()
-    )
+    _ = existing_compact
     return PromptAssembly(
         parts=(
             system_preamble_part(),
@@ -357,7 +348,6 @@ def _assemble_prompt_assembly(
                 filename=Path(rel_source).name,
                 role="source file",
             ),
-            *existing_parts,
             section_heading_part("# Agent Task"),
             part("Prompt body", body + "\n\n", kind="prompt-body"),
         )

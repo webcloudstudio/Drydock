@@ -197,7 +197,7 @@ class TestCompact:
         assert compact_file.stat().st_mtime > past + 500
         assert result.exit_code() == 0
 
-    def test_existing_compact_is_injected_into_prompt(self, tmp_path):
+    def test_existing_compact_is_not_injected_into_prompt(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
         compact(name, root / name, runner=fake_runner())
         compact_file = root / name / "DATABASE_compact.md"
@@ -207,8 +207,8 @@ class TestCompact:
         runner = fake_runner()
         compact(name, root / name, runner=runner)
         prompt = runner.seen[0]  # type: ignore[attr-defined]
-        assert "existing compact derivative" in prompt
-        assert "DATABASE_compact.md" in prompt
+        assert 'filename="DATABASE_compact.md"' not in prompt
+        assert 'filename="DATABASE.md"' in prompt
 
     def test_failed_runner_marks_failed_and_exit_one(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
