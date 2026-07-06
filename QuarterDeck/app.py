@@ -1151,9 +1151,11 @@ def _applied_spec_hashes(manifest_path: Path) -> dict[str, str]:
 
 
 def render_refit(item: dict[str, Any]) -> str:
-    """Show blueprints that drifted from the Manifest: new files, or files
-    touched since their content was applied. The QuarterDeck only reports;
-    ``drydock refit`` does the work."""
+    """Show only what ``drydock refit`` acts on: blueprints that drifted since
+    their content was applied to the Manifest, plus waiting change tickets. A
+    blueprint that has never been applied is a build item, not a refit item —
+    it enters through ``drydock plan``/``drydock build``, so it is not reported
+    here. The QuarterDeck only reports; ``drydock refit`` does the work."""
     import hashlib
 
     project_root = _current_project_root()
@@ -1170,13 +1172,12 @@ def render_refit(item: dict[str, Any]) -> str:
         return helper + "<p class='subtle'>No <code>blueprint/</code> directory yet.</p>"
 
     applied = _applied_spec_hashes(manifest_path)
-    new_files: list[str] = []
     changed_files: list[str] = []
     for path in sorted(blueprint_dir.glob("*.md")):
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         if path.name not in applied:
-            new_files.append(path.name)
-        elif applied[path.name] != digest:
+            continue  # never applied — a build item, not a refit item
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if applied[path.name] != digest:
             changed_files.append(path.name)
 
     changes_dir = blueprint_dir / "changes"
@@ -1186,9 +1187,9 @@ def render_refit(item: dict[str, Any]) -> str:
         else []
     )
 
-    if not new_files and not changed_files and not tickets:
+    if not changed_files and not tickets:
         return helper + (
-            "<div class='refit-clear'>&#9875; All blueprints are applied to the Manifest and "
+            "<div class='refit-clear'>&#9875; Every applied blueprint matches the Manifest and "
             "no change tickets are waiting. Nothing to refit — steady as she goes.</div>"
         )
 
@@ -1199,12 +1200,10 @@ def render_refit(item: dict[str, Any]) -> str:
             for name in names
         )
 
-    rows = (
-        _file_rows(new_files, "new", "refit-new")
-        + _file_rows(changed_files, "changed", "refit-changed")
-        + _file_rows(tickets, "ticket", "refit-ticket", prefix="blueprint/changes")
+    rows = _file_rows(changed_files, "changed", "refit-changed") + _file_rows(
+        tickets, "ticket", "refit-ticket", prefix="blueprint/changes"
     )
-    count = len(new_files) + len(changed_files) + len(tickets)
+    count = len(changed_files) + len(tickets)
     noun = "item" if count == 1 else "items"
     return helper + (
         f"<div class='refit-callout'>&#9888; {count} {noun} adrift from the Manifest. "
@@ -2441,7 +2440,6 @@ _STYLE = """
   .refit-file:last-child { border-bottom:none; }
   .refit-badge { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase;
                  padding:2px 9px; border-radius:9px; flex:none; }
-  .refit-new { background:#e9f7f0; color:#166534; border:1px solid #9fd8bd; }
   .refit-changed { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
   .refit-ticket { background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; }
 """

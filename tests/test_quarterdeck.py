@@ -1025,7 +1025,7 @@ def test_index_respects_requested_item_query_parameter(tmp_path, monkeypatch):
     assert "localStorage.getItem(lastItemKey)" in html
 
 
-def test_render_refit_reports_new_and_changed_blueprints(tmp_path, monkeypatch):
+def test_render_refit_reports_only_changed_not_never_applied(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     target = tmp_path / "targets" / "Alpha"
     blueprint = target / "blueprint"
@@ -1049,10 +1049,12 @@ def test_render_refit_reports_new_and_changed_blueprints(tmp_path, monkeypatch):
     out = quarterdeck.render_refit({"id": "refit_status", "type": "refit"})
 
     assert "drydock refit" in out
-    assert "NEW.md" in out
+    # Never-applied blueprints are build items, not refit items.
+    assert "NEW.md" not in out
+    # Only the drifted (previously applied, now changed) blueprint is reported.
     assert "TOUCHED.md" in out
     assert "APPLIED.md" not in out
-    assert "2 items adrift" in out
+    assert "1 item adrift" in out
 
 
 def test_render_refit_reports_change_tickets(tmp_path, monkeypatch):
@@ -1098,4 +1100,26 @@ def test_render_refit_all_applied_is_clear(tmp_path, monkeypatch):
     out = quarterdeck.render_refit({"id": "refit_status", "type": "refit"})
 
     assert "steady as she goes" in out
+    assert "drydock refit" not in out
+
+
+def test_render_refit_never_built_target_is_clear(tmp_path, monkeypatch):
+    # A drafted-but-never-built target has an empty applied_specs registry and
+    # many pending blueprints. Nothing has been applied, so nothing is adrift.
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "targets" / "Alpha"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    for name in ("A.md", "B.md", "C.md"):
+        (blueprint / name).write_text(f"{name} content\n", encoding="utf-8")
+    (target / "MANIFEST.md").write_text(
+        "# MANIFEST: Alpha\nstate: draft\napplied_specs: |\n\n## feature 1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target)
+
+    out = quarterdeck.render_refit({"id": "refit_status", "type": "refit"})
+
+    assert "steady as she goes" in out
+    assert "A.md" not in out
     assert "drydock refit" not in out
