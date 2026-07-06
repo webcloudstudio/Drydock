@@ -522,6 +522,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         args.Target,
         get_target_directory(),
         overwrite=getattr(args, "overwrite", False),
+        conform=not getattr(args, "no_conform", False),
         model=model,
         llm_provider=llm_provider,
         log_dir=log_dir,
@@ -534,6 +535,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "speckit-translate": "SPEC-KIT (imported Spec Kit sources translated)",
     }.get(result.plan_mode, result.plan_mode or "unknown")
     print(f"Mode: {mode_label}")
+    if result.conformed_files:
+        print(
+            f"Conformed {len(result.conformed_files)} imported spec(s) into Drydock format "
+            "with authored Programmatic Acceptance."
+        )
     print(f"Blueprint: {result.plan.project}")
     print(f"Plan: {result.plan.path}")
     print(f"Planning Session: {result.quarterdeck_dir}")
@@ -1575,6 +1581,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Regenerate the Blueprint specs and MANIFEST.md from the analysis, discarding the "
         "existing specs, instead of reusing them.",
+    )
+    p_plan.add_argument(
+        "--no-conform",
+        action="store_true",
+        help="In reuse mode, skip the LLM conform pass that authors Programmatic Acceptance "
+        "assertions for imported specs whose acceptance is empty.",
     )
     p_plan.add_argument("Target", metavar="<Target>")
 

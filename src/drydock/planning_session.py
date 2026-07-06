@@ -89,6 +89,7 @@ _PLAN_MODE_LABELS = {
     "speckit-translate": "SPEC-KIT mode: translating imported Spec Kit sources into the Blueprint",
 }
 _SPECKIT_PROMPT_NAME = "plan_create_speckit"
+_CONFORM_PROMPT_NAME = "plan_conform"
 _TERMINAL_SECTIONS = (
     "Programmatic Acceptance",
     "User Acceptance",
@@ -141,6 +142,7 @@ class PlanCreateResult:
     warnings: tuple[str, ...] = ()
     execution_id: str | None = None
     plan_mode: str = ""
+    conformed_files: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1165,6 +1167,138 @@ def _acceptance_status(text: str) -> tuple[int, bool]:
 _MIN_ASSERTIONS_PER_STORY = 2
 
 
+def _spec_is_conformant(text: str) -> bool:
+    """True when a typed spec needs no conform pass.
+
+    Conformant means the spec carries a typed ``# Kind: Name`` heading and its
+    ``## Programmatic Acceptance`` is non-empty: at least one concrete assertion, or an
+    explicit justified ``- None. <reason>``. A bare ``- None.`` is non-conformant.
+    """
+    heading, _, _ = _split_spec_structure(text)
+    if heading is None or not _TYPED_HEADING_RE.match(heading):
+        return False
+    count, justified_none = _acceptance_status(text)
+    return count >= 1 or justified_none
+
+
+def _assemble_conform_prompt(
+    body: str, *, spec: ExistingSpec, today: str, source_text: str
+) -> PromptAssembly:
+    """Assemble a single-spec conform prompt: job block + the spec verbatim + task body."""
+    return PromptAssembly(
+        parts=(
+            system_preamble_part(),
+            section_heading_part("# Input Context"),
+            lines_part(
+                "Conform job",
+                [
+                    "## Conform job",
+                    "",
+                    f"- SPEC_FILE: {spec.filename}",
+                    f"- SPEC_TYPE: {spec.file_type}",
+                    f"- OBJECT: {spec.object_name}",
+                    f"- DATE: {today}",
+                    "",
+                ],
+                kind="job",
+            ),
+            *contextual_markdown_parts(
+                spec.filename,
+                source_text,
+                filename=spec.filename,
+                role="imported spec to conform",
+            ),
+            section_heading_part("# Agent Task"),
+            part("Prompt body", body + "\n\n", kind="prompt-body"),
+        )
+    )
+
+
+def _extract_conformed_spec(text: str, filename: str) -> str | None:
+    """Return the body of the ``=== <filename> ===`` artifact block, or None if absent."""
+    for match in _BLOCK_RE.finditer(text):
+        if match.group(1).strip() == filename:
+            return match.group(2).strip()
+    return None
+
+
+def conform_specs(
+    specs: list[ExistingSpec],
+    blueprint_dir: Path,
+    *,
+    today: str,
+    target: str = "",
+    runner: RunnerFn | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
+    log_dir: Path | None = None,
+    on_text: TextCallback | None = None,
+) -> tuple[list[Path], list[str]]:
+    """LLM-conform each reusable spec whose Programmatic Acceptance is empty.
+
+    Reads each non-conformant spec, keeps its substance, restructures it into the Drydock
+    header plus the four terminal sections, and authors several Python-testable
+    Programmatic Acceptance assertions (conforming any imported ``## Test`` prose). The
+    module writes files; the model only emits text. A spec that returns empty, without its
+    artifact block, or still non-conformant is left unchanged and reported as a warning.
+    Returns ``(written_paths, warnings)``. Tests inject a fake runner.
+    """
+    run = runner if runner is not None else run_prompt
+    pending = [
+        spec
+        for spec in specs
+        if spec.reusable and not _spec_is_conformant(spec.path.read_text(encoding="utf-8"))
+    ]
+    if not pending:
+        return [], []
+    if on_text is not None:
+        on_text(
+            f"[plan] conforming {len(pending)} spec(s) with empty Programmatic Acceptance "
+            "into Drydock format with authored assertions\n"
+        )
+    prompt = load_prompt(_CONFORM_PROMPT_NAME)
+    written: list[Path] = []
+    warnings: list[str] = []
+    for spec in pending:
+        source_text = spec.path.read_text(encoding="utf-8")
+        prompt_assembly = _assemble_conform_prompt(
+            prompt.body, spec=spec, today=today, source_text=source_text
+        )
+        result = run(
+            prompt_assembly.rendered_text,
+            blueprint_dir,
+            llm=llm_provider,
+            model=model or prompt.model,
+            command_name="plan conform",
+            parameters={"spec": spec.filename, "prompt": _CONFORM_PROMPT_NAME},
+            log_dir=log_dir,
+            target=target,
+            on_text=on_text,
+            prompt_assembly=prompt_assembly,
+        )
+        if not result.ok or not result.text.strip():
+            warnings.append(
+                f"conform: {spec.filename} — LLM produced no output; spec left unchanged"
+            )
+            continue
+        conformed = _extract_conformed_spec(result.text, spec.filename)
+        if conformed is None:
+            warnings.append(
+                f"conform: {spec.filename} — response had no `{spec.filename}` artifact block; "
+                "spec left unchanged"
+            )
+            continue
+        if not _spec_is_conformant(conformed):
+            warnings.append(
+                f"conform: {spec.filename} — conformed spec still lacks Programmatic Acceptance "
+                "assertions; spec left unchanged"
+            )
+            continue
+        _write_text(spec.path, conformed if conformed.endswith("\n") else conformed + "\n")
+        written.append(spec.path)
+    return written, warnings
+
+
 def _integrity_check(
     plan: BuildPlan,
     blueprint_dir: Path,
@@ -1444,6 +1578,7 @@ def create_plan(
     target_directory: Path,
     *,
     overwrite: bool = False,
+    conform: bool = True,
     runner: RunnerFn | None = None,
     on_text: TextCallback | None = None,
     model: str | None = None,
@@ -1544,7 +1679,29 @@ def create_plan(
                 f"[plan] adopted {len(adopted_source_specs)} typed spec file(s) from "
                 "blueprint/sources into blueprint/\n"
             )
+    conformed_specs: list[Path] = []
+    conform_warnings: list[str] = []
     if reuse_mode:
+        # Conform any reusable spec whose Programmatic Acceptance is empty: keep its
+        # substance, restructure into the Drydock header + four sections, and author
+        # test-driven assertions. Runs before normalization so the reuse prompt and the
+        # MANIFEST are built from already-conformed specs.
+        if conform:
+            conformed_specs, conform_warnings = conform_specs(
+                existing_specs,
+                blueprint_dir,
+                today=today,
+                target=target,
+                runner=runner,
+                model=model,
+                llm_provider=llm_provider,
+                log_dir=log_dir,
+                on_text=on_text,
+            )
+            if conformed_specs:
+                existing_specs = _collect_existing_typed_specs(
+                    blueprint_dir, excluded_filenames=excluded_filenames
+                )
         reusable_spec_paths, normalized_existing = _normalize_existing_specs(
             existing_specs, today=today
         )
@@ -1653,8 +1810,11 @@ def create_plan(
         target_dir=target_dir,
         quarterdeck_dir=quarterdeck,
         changed=changed,
-        authored_files=tuple(sorted({*authored, *normalized_existing, *adopted_source_specs})),
-        warnings=tuple(warnings),
+        authored_files=tuple(
+            sorted({*authored, *normalized_existing, *adopted_source_specs, *conformed_specs})
+        ),
+        warnings=tuple([*conform_warnings, *warnings]),
         execution_id=exec_id,
         plan_mode=plan_mode,
+        conformed_files=tuple(conformed_specs),
     )

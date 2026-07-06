@@ -20,6 +20,7 @@ from drydock.planning_session import (
     _load_prior_plan_state,
     _parse_blocks,
     _repair_missing_leading_delimiter,
+    _spec_is_conformant,
     _spec_is_dirty,
     create_plan,
     ensure_feedback_file,
@@ -140,6 +141,106 @@ def _llm_output(manifest: str | None = None) -> str:
     )
 
 
+# ── Conform-pass fixtures ─────────────────────────────────────────────────────
+# A conformant ARCHITECTURE.md (carries assertions) plus a non-conformant FEATURE
+# whose Programmatic Acceptance is a bare ``- None.`` and which still carries an
+# imported ``## Test`` prose section. Reuse mode selects because ARCHITECTURE.md exists.
+
+_ARCH_CONFORMANT = (
+    "# ARCHITECTURE: Example\n\n"
+    "| Field       | Value |\n|-------------|-------|\n"
+    "| Version     | 20260630 V1 |\n| Description | Existing architecture |\n"
+    "| Depends On  | |\n| Provides    | |\n| Phase       | 1 |\n\n"
+    "## Modules\n\n- Architecture body.\n\n"
+    "## Programmatic Acceptance\n\n- assert the architecture package imports cleanly.\n\n"
+    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+)
+
+_FEATURE_EMPTY_ACCEPTANCE = (
+    "# FEATURE: Status\n\n"
+    "| Field       | Value |\n|-------------|-------|\n"
+    "| Version     | 20260528 V1 |\n| Description | Status feature. |\n"
+    "| Depends On  | ARCHITECTURE.md |\n| Provides    | drydock status |\n| Phase       | 2 |\n\n"
+    "## Trigger\n\n- User runs drydock status.\n\n"
+    "## Test\n\n- Verify status prints the build state.\n\n"
+    "## Programmatic Acceptance\n\n- None.\n\n"
+    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+)
+
+_FEATURE_CONFORMED_BODY = (
+    "# FEATURE: Status\n\n"
+    "| Field       | Value |\n|-------------|-------|\n"
+    "| Version     | 20260706 V1 |\n| Description | Status feature. |\n"
+    "| Depends On  | ARCHITECTURE.md |\n| Provides    | drydock status |\n| Phase       | 2 |\n\n"
+    "## Trigger\n\n- User runs drydock status.\n\n"
+    "## Programmatic Acceptance\n\n"
+    "- assert the status command exits with code 0.\n"
+    "- assert the status output names the current build state.\n\n"
+    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+)
+
+_REUSE_TWO_STORY_MANIFEST = (
+    "# MANIFEST: Example\n"
+    "updated: 2026-06-16\n"
+    "plan_hash: test\n"
+    "state: draft\n\n"
+    "## feature 1: Status\n"
+    "id: feature-status\n"
+    "summary: Deliver the status command.\n"
+    "state: pending\n\n"
+    "## story 1: Architecture Foundation\n"
+    "id: foundation\n"
+    "parent: feature-status\n"
+    "summary: Keep the architecture specification as the foundation.\n"
+    "implements: ARCHITECTURE.md\n"
+    "scope: both\n"
+    "state: pending\n\n"
+    "## ac 1: Architecture foundation exists\n"
+    "id: ac-foundation\n"
+    "parent: foundation\n"
+    "kind: assertion\n"
+    "state: pending\n\n"
+    "## story 2: Deliver Status\n"
+    "id: story-status\n"
+    "parent: feature-status\n"
+    "summary: Build the status command.\n"
+    "implements: FEATURE-Status.md\n"
+    "scope: both\n"
+    "depends: foundation\n"
+    "state: pending\n\n"
+    "## ac 2: Status command exits successfully\n"
+    "id: ac-status-exits\n"
+    "parent: story-status\n"
+    "kind: assertion\n"
+    "state: pending\n"
+)
+
+
+def _seed_conform_target(tmp_path: Path, *, feature_text: str) -> tuple[Path, Path]:
+    """Create a reuse-mode target with a conformant ARCHITECTURE and the given FEATURE."""
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    (blueprint_dir / "ARCHITECTURE.md").write_text(_ARCH_CONFORMANT, encoding="utf-8")
+    feature = blueprint_dir / "FEATURE-Status.md"
+    feature.write_text(feature_text, encoding="utf-8")
+    return target_dir, feature
+
+
+def _conform_runner(conform_text: str, *, seen: list[str] | None = None):
+    """Fake runner: return ``conform_text`` for a conform call, else the reuse manifest."""
+
+    def runner(prompt_text, *a, **k):
+        if "## Conform job" in prompt_text:
+            if seen is not None:
+                seen.append(prompt_text)
+            return FakeRun(text=conform_text)
+        return FakeRun(
+            text=f"=== MANIFEST.md ===\n{_REUSE_TWO_STORY_MANIFEST}\n=== END MANIFEST.md ===\n"
+        )
+
+    return runner
+
+
 @dataclass
 class FakeRun:
     ok: bool = True
@@ -205,7 +306,9 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "| Provides    | |\n"
         "| Phase       | 1 |\n\n"
         "## Modules\n\n"
-        "- Preserve this architecture body.\n",
+        "- Preserve this architecture body.\n\n"
+        "## Programmatic Acceptance\n\n"
+        "- assert the architecture package imports cleanly.\n",
         encoding="utf-8",
     )
     feature.write_text(
@@ -218,7 +321,9 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "| Provides    | drydock status |\n"
         "| Phase       | 2 |\n\n"
         "## Trigger\n\n"
-        "- Preserve this feature body.\n",
+        "- Preserve this feature body.\n\n"
+        "## Programmatic Acceptance\n\n"
+        "- assert the status route responds with HTTP 200.\n",
         encoding="utf-8",
     )
     prompt_texts: list[str] = []
@@ -320,6 +425,112 @@ def test_overwrite_forces_full_rewrite_over_existing_specs(tmp_path):
     assert "Old feature body." not in (blueprint_dir / "FEATURE-Status.md").read_text(
         encoding="utf-8"
     )
+
+
+def test_spec_is_conformant_predicate():
+    # Real assertion → conformant.
+    assert _spec_is_conformant(_ARCH_CONFORMANT)
+    # Bare ``- None.`` acceptance → non-conformant.
+    assert not _spec_is_conformant(_FEATURE_EMPTY_ACCEPTANCE)
+    # Justified ``- None. <reason>`` → conformant.
+    justified = _FEATURE_EMPTY_ACCEPTANCE.replace(
+        "## Programmatic Acceptance\n\n- None.\n",
+        "## Programmatic Acceptance\n\n- None. Pure manual visual check.\n",
+    )
+    assert _spec_is_conformant(justified)
+    # No typed heading → non-conformant regardless of acceptance.
+    assert not _spec_is_conformant("Just prose, no heading.\n")
+
+
+def test_conform_authors_acceptance_for_empty_imported_spec(tmp_path):
+    target_dir, feature = _seed_conform_target(tmp_path, feature_text=_FEATURE_EMPTY_ACCEPTANCE)
+    conform_block = (
+        f"=== FEATURE-Status.md ===\n{_FEATURE_CONFORMED_BODY}\n=== END FEATURE-Status.md ===\n"
+    )
+    seen: list[str] = []
+    progress: list[str] = []
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=_conform_runner(conform_block, seen=seen),
+        on_text=progress.append,
+    )
+
+    assert result.plan_mode == "reuse-manifest-first"
+    # Only the non-conformant FEATURE was conformed; the conformant ARCHITECTURE was skipped.
+    assert len(seen) == 1
+    assert "FEATURE-Status.md" in seen[0]
+    assert result.conformed_files == (feature,)
+    assert result.warnings == ()
+    assert "conforming 1 spec(s)" in "".join(progress)
+
+    feature_text = feature.read_text(encoding="utf-8")
+    assert "assert the status command exits with code 0." in feature_text
+    assert "User runs drydock status." in feature_text  # imported substance preserved
+    assert "## Test" not in feature_text  # imported test prose folded into acceptance
+
+
+def test_conform_skips_already_conformant_spec(tmp_path):
+    conformant_feature = _FEATURE_EMPTY_ACCEPTANCE.replace(
+        "## Programmatic Acceptance\n\n- None.\n",
+        "## Programmatic Acceptance\n\n- assert the status route responds with HTTP 200.\n",
+    )
+    _seed_conform_target(tmp_path, feature_text=conformant_feature)
+    seen: list[str] = []
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=_conform_runner("unused", seen=seen),
+    )
+
+    assert seen == []  # no conform call issued
+    assert result.conformed_files == ()
+
+
+def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
+    target_dir, feature = _seed_conform_target(tmp_path, feature_text=_FEATURE_EMPTY_ACCEPTANCE)
+    # The model returns the spec but leaves Programmatic Acceptance empty.
+    still_empty = _FEATURE_CONFORMED_BODY.replace(
+        "## Programmatic Acceptance\n\n"
+        "- assert the status command exits with code 0.\n"
+        "- assert the status output names the current build state.\n",
+        "## Programmatic Acceptance\n\n- None.\n",
+    )
+    block = f"=== FEATURE-Status.md ===\n{still_empty}\n=== END FEATURE-Status.md ===\n"
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=_conform_runner(block),
+    )
+
+    assert result.conformed_files == ()
+    assert any("still lacks Programmatic Acceptance" in w for w in result.warnings)
+    # Original imported content is left intact when conform fails to author acceptance.
+    assert "Verify status prints the build state." in feature.read_text(encoding="utf-8")
+
+
+def test_no_conform_flag_skips_conform_pass(tmp_path):
+    target_dir, feature = _seed_conform_target(tmp_path, feature_text=_FEATURE_EMPTY_ACCEPTANCE)
+    seen: list[str] = []
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        conform=False,
+        runner=_conform_runner("unused", seen=seen),
+    )
+
+    assert seen == []  # conform pass suppressed
+    assert result.conformed_files == ()
+    # Normalization still runs, so the section exists but stays the bare skeleton.
+    assert "assert the status command" not in feature.read_text(encoding="utf-8")
 
 
 def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):

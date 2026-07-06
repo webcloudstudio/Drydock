@@ -508,6 +508,7 @@ class TestLlmOverrideFlags:
                 target_dir=target_dir,
                 warnings=(),
                 plan_mode="full-rewrite",
+                conformed_files=(),
             )
 
         monkeypatch.setattr("drydock.planning_session.create_plan", fake_create_plan)
@@ -526,6 +527,12 @@ class TestLlmOverrideFlags:
         assert seen["kwargs"]["model"] == "gpt-5.4"
         assert callable(seen["kwargs"]["on_text"])
         assert seen["kwargs"]["on_text"] is not print
+        # Conform pass is on by default and suppressed by --no-conform.
+        assert seen["kwargs"]["conform"] is True
+
+        rc, out, err = run_cli("plan", "Proj", "--no-conform")
+        assert rc == 0, err
+        assert seen["kwargs"]["conform"] is False
 
 
 class TestPlanInspection:
