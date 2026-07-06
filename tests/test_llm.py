@@ -661,6 +661,6 @@ def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeyp
     assert "[prompt]" in log_text
     stderr = capsys.readouterr().err
     assert "parameters=" not in stderr
-    assert "parts=" in stderr
+    assert "parts=" not in stderr
     assert "[llm]" in stderr
     assert "elapsed=" in stderr

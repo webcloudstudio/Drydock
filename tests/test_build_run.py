@@ -77,6 +77,32 @@ instructions: |
 state: pending
 """
 
+_CHAINED_FEATURE_MANIFEST = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Catalog
+id: feature-catalog
+summary: Catalog block.
+state: pending
+
+## story 2: Foundation
+id: foundation
+parent: feature-catalog
+implements: DATABASE.md
+instructions: |
+  Build the database.
+state: pending
+
+## story 3: Service
+id: service
+parent: feature-catalog
+implements: SERVICE.md
+depends: foundation
+instructions: |
+  Build the service.
+state: pending
+"""
+
 
 class FakeResult:
     def __init__(self, ok=True, text="Built it. Created app.py.", execution_id="exec-1", stderr=""):
@@ -195,6 +221,26 @@ def test_feature_step_selection_builds_feature_group(tmp_path):
     assert [s.block_id for s in result.steps] == ["foundation", "service"]
     assert len(runner.calls) == 1
     assert runner.calls[0]["parameters"]["step"] == "feature-catalog"
+
+
+def test_chained_feature_starts_with_first_buildable_story(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_CHAINED_FEATURE_MANIFEST)
+    runner = make_runner()
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert runner.calls[0]["parameters"]["step"] == "foundation"
+
+
+def test_build_suppresses_raw_model_stream(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    log: list[str] = []
+    runner = make_runner()
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
+
+    assert runner.calls[0]["on_text"] is None
 
 
 def test_build_emits_step_progress_lines(tmp_path):

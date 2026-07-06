@@ -262,6 +262,19 @@ class TestCompact:
         assert kwargs["parameters"]["role"] == "architecture"
         assert kwargs["parameters"]["prompt"] == "rigging_compact_architecture"
 
+    def test_runner_does_not_stream_raw_model_text(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"ARCHITECTURE.md": "module layout\n"})
+        runner = fake_runner()
+        compact(
+            name,
+            root / name,
+            include_files=[root / name / "ARCHITECTURE.md"],
+            runner=runner,
+            on_text=lambda _text: None,
+        )
+        kwargs = runner.seen_kwargs[0]  # type: ignore[attr-defined]
+        assert kwargs["on_text"] is None
+
     def test_unknown_blueprint_raises(self, tmp_path):
         root = tmp_path / "specs"
         root.mkdir()

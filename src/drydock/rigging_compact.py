@@ -482,7 +482,7 @@ def compact(
             },
             log_dir=log_dir,
             target=target,
-            on_text=on_text,
+            on_text=None,
             prompt_assembly=prompt_assembly,
         )
 

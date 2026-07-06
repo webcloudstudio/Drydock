@@ -790,7 +790,8 @@ def run_prompt(
     logger.debug("argv=%r parameters=%r artifacts=%r", command, job_parameters, artifacts.paths())
     for line in _prompt_breakdown_summary(command_name, assembly):
         logger.info("%s", line)
-    _print_prompt_breakdown(command_name, assembly)
+    if debug:
+        _print_prompt_breakdown(command_name, assembly)
     _emit_event(
         artifacts,
         _structured_event(

@@ -380,11 +380,7 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
             if unit is not None:
                 return unit
     for block in plan.blocks:
-        if (
-            block.block_type in {"story", "spike"}
-            and block.parent is None
-            and _is_buildable(block, by_id)
-        ):
+        if block.block_type in {"story", "spike"} and _is_buildable(block, by_id):
             return BuildUnit(
                 block_id=block.block_id,
                 name=block.name,
@@ -989,7 +985,7 @@ def build_target(
             allow_tools=True,
             log_dir=log_dir,
             target=target,
-            on_text=on_text,
+            on_text=None,
             prompt_assembly=prompt_assembly,
         )
         after_files = _snapshot_files(resolved_build_dir)
