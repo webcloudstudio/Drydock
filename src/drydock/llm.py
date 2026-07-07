@@ -249,6 +249,18 @@ def _first(mapping: Mapping[str, Any], *keys: str) -> Any:
     return None
 
 
+def _wall_time() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _print_run_header(*, llm: str, command_name: str, model: str | None) -> None:
+    print(
+        f"[llm] START {command_name} {llm}/{model or '-'}  started={_wall_time()}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _elapsed_ms(started_at: datetime, completed_at: datetime) -> int:
     return max(0, int((completed_at - started_at).total_seconds() * 1000))
 
@@ -283,7 +295,7 @@ def _performance_summary(
     model = stats.model or "-"
     elapsed = _format_ms(stats.elapsed_ms) or "-"
     parts = [
-        f"[llm] {command_name} {llm}/{model}",
+        f"[llm] DONE {command_name} {llm}/{model}",
         f"rc={returncode}",
         f"elapsed={elapsed}",
     ]
@@ -306,6 +318,7 @@ def _performance_summary(
     if cost is not None:
         parts.append(f"cost={cost}")
     parts.append(f"id={execution_id}")
+    parts.append(f"completed={_wall_time()}")
     return "  ".join(parts)
 
 
@@ -780,6 +793,7 @@ def run_prompt(
     job_parameters = dict(parameters or {})
     logger = create_execution_logger(artifacts.execution_id, artifacts.log_file, debug=debug)
     started_at = utc_now()
+    _print_run_header(llm=selected, command_name=command_name, model=model)
     logger.info(
         "execution started id=%s command=%s llm=%s cwd=%s prompt_sha256=%s prompt_bytes=%d",
         artifacts.execution_id,

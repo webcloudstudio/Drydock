@@ -919,8 +919,6 @@ def build_target(
 
         block_started = time.monotonic()
         block_started_at = _wall_time()
-        _emit(on_text, "\n")
-        _emit(on_text, "BUILD QUEUE: 1 ready block")
         compact_stack: frozenset[str] | None = None
         if stack_head is not None:
             compact_stack = frozenset(
@@ -934,22 +932,26 @@ def build_target(
             name=unit.name,
             steps=assemblies,
         )
+        story_points_line = f"  Combined Story Points: {group.total_story_points}"
+        if group.story_point_savings:
+            story_points_line += (
+                f"  (summed {group.summed_story_points}, saved {group.story_point_savings})"
+            )
+        _emit(on_text, "")
+        _emit(on_text, "=" * 80)
+        _emit(on_text, f"BUILD BLOCK: {unit.block_id} — {unit.name}")
+        _emit(on_text, f"  Type: {unit.block_type}")
         _emit(
             on_text,
             (
-                f"BUILD BLOCK START: {unit.block_id}  {unit.name}  "
-                f"type={unit.block_type}  SP={group.total_story_points}  "
-                f"started={block_started_at}"
-            ),
-        )
-        _emit(
-            on_text,
-            (
-                f"BUILD STORIES: {len(unit.steps)} run, "
+                f"  Stories Included: {len(unit.steps)} run, "
                 f"{len(unit.already_verified)} already verified"
             ),
         )
-        _emit(on_text, f"BUILD WORKDIR: {resolved_build_dir}")
+        _emit(on_text, story_points_line)
+        _emit(on_text, f"  Started: {block_started_at}")
+        _emit(on_text, "-" * 80)
+        _emit(on_text, f"Workdir: {resolved_build_dir}")
         for verified in unit.already_verified:
             _emit(on_text, f"  [built] {verified.name} ({verified.block_id})")
         for assembly in assemblies:
@@ -1025,7 +1027,8 @@ def build_target(
                 for check in programmatic_acceptance_for_step(block, blueprint_dir)
             )
             if checks:
-                _emit(on_text, f"BUILD ACCEPTANCE START: {unit.block_id}  {len(checks)} check(s)")
+                _emit(on_text, "")
+                _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
             acceptance = run_programmatic_acceptance(
                 checks,
                 build_dir=resolved_build_dir,
@@ -1045,10 +1048,12 @@ def build_target(
                 failure_detail = ""
             if checks:
                 passed = sum(1 for check in acceptance if check.passed)
-                _emit(
-                    on_text,
-                    f"BUILD ACCEPTANCE RESULT: {unit.block_id}  {passed}/{len(checks)} passed",
-                )
+                _emit(on_text, f"  {passed}/{len(checks)} Unit Tests passed")
+                if failed_checks:
+                    _emit(
+                        on_text,
+                        "  FAILED: " + ", ".join(check.check_id for check in failed_checks),
+                    )
 
         evidence_path = evidence_dir / f"{unit.block_id}.md"
         _write_group_evidence(
@@ -1124,26 +1129,19 @@ def build_target(
             if changed:
                 set_applied_specs(manifest_path, applied_specs)
 
+        _emit(on_text, "-" * 80)
         if status == "failed":
-            _emit(
-                on_text,
-                (
-                    f"BUILD BLOCK FAILED: {unit.block_id}  "
-                    f"completed={_wall_time()}  "
-                    f"elapsed={_elapsed_text(time.monotonic() - block_started)}  "
-                    f"{error or 'build failed'}"
-                ),
-            )
+            _emit(on_text, f"BUILD BLOCK FAILED: {unit.block_id}")
+            _emit(on_text, f"  Completed: {_wall_time()}")
+            _emit(on_text, f"  Elapsed: {_elapsed_text(time.monotonic() - block_started)}")
+            _emit(on_text, f"  Error: {error or 'build failed'}")
         else:
-            _emit(
-                on_text,
-                (
-                    f"BUILD BLOCK COMPLETE: {unit.block_id}  state={state}  "
-                    f"completed={_wall_time()}  "
-                    f"elapsed={_elapsed_text(time.monotonic() - block_started)}  "
-                    f"evidence={_rel(evidence_path, target_dir)}"
-                ),
-            )
+            _emit(on_text, f"BUILD BLOCK COMPLETE: {unit.block_id}")
+            _emit(on_text, f"  State: {state}")
+            _emit(on_text, f"  Completed: {_wall_time()}")
+            _emit(on_text, f"  Elapsed: {_elapsed_text(time.monotonic() - block_started)}")
+            _emit(on_text, f"  Evidence: {_rel(evidence_path, target_dir)}")
+        _emit(on_text, "=" * 80)
         for block, assembly in zip(unit.steps, assemblies):
             step_result = BuildStepResult(
                 block_id=block.block_id,
