@@ -1204,7 +1204,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
     log_dir = get_workspace() / "logs"
 
-    _marks = {"built": "[built]", "implemented": "[review]", "failed": "[failed]"}
+    _marks = {
+        "built": "[built]",
+        "implemented": "[review]",
+        "failed": "[failed]",
+        "dry-run": "[dry-run]",
+    }
 
     def report(step: BuildStepResult) -> None:
         mark = _marks.get(step.status, f"[{step.status}]")
@@ -1227,6 +1232,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"Building step: {args.step}")
     if getattr(args, "force", False):
         print(f"Force rebuild: resetting {args.step} and child ACs to pending")
+    if getattr(args, "dry_run", False):
+        print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")
     result = build_target(
         args.Target,
         target_dir,
@@ -1238,6 +1245,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         on_step=report,
         step_id=getattr(args, "step", None),
         force=bool(getattr(args, "force", False)),
+        dry_run=bool(getattr(args, "dry_run", False)),
     )
     print()
     print(
@@ -1245,11 +1253,13 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"elapsed={_elapsed_text(time.monotonic() - build_started)}"
     )
     print()
-    if result.git_initialized:
+    if result.dry_run:
+        print("DRY RUN: skipped git setup and commit.")
+    elif result.git_initialized:
         print(f"Setting up git directory in {result.build_dir}")
     if result.git_commit:
         print(f"Ran git commit to commit changes ({result.git_commit})")
-    else:
+    elif not result.dry_run:
         print("No git changes to commit.")
         if result.drydock_commit_skipped_after_build:
             print(
@@ -1264,7 +1274,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     print(f"Build directory: {result.build_dir}")
     if result.readme_path:
         print(f"README: {result.readme_path}")
-    print(f"RESULT: {len(result.built())} built, {len(result.failed())} failed")
+    label = "DRY RUN RESULT" if result.dry_run else "RESULT"
+    print(f"{label}: {len(result.built())} built, {len(result.failed())} failed")
     return result.exit_code()
 
 
@@ -1806,6 +1817,12 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         "--force",
         action="store_true",
         help="With --step, reset the step and child ACs to pending before rebuilding.",
+    )
+    p.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="Assemble and print the next build prompt without invoking the LLM or writing files.",
     )
     p.add_argument(
         "--model",

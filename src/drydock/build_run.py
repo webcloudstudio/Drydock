@@ -259,7 +259,7 @@ class BuildStepResult:
     block_id: str
     name: str
     block_type: str
-    status: str  # built | implemented | failed
+    status: str  # built | implemented | failed | dry-run
     state: str  # resulting manifest block state
     story_points: int
     execution_id: str | None = None
@@ -267,6 +267,7 @@ class BuildStepResult:
     error: str | None = None
     written_files: tuple[str, ...] = ()
     acceptance: tuple[AcceptanceRunResult, ...] = ()
+    prompt: str | None = None
 
 
 @dataclass(frozen=True)
@@ -279,6 +280,7 @@ class BuildResult:
     git_commit_message: str | None = None
     drydock_commit_skipped_after_build: bool = False
     readme_path: Path | None = None
+    dry_run: bool = False
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -920,6 +922,7 @@ def build_target(
     log_dir: Path | None = None,
     step_id: str | None = None,
     force: bool = False,
+    dry_run: bool = False,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
@@ -932,10 +935,14 @@ def build_target(
         )
 
     resolved_build_dir = build_dir or build_dir_for(target)
-    resolved_build_dir.mkdir(parents=True, exist_ok=True)
-    git_initialized = _ensure_git_repo(resolved_build_dir)
-    evidence_dir = target_dir / "evidence"
-    evidence_dir.mkdir(parents=True, exist_ok=True)
+    git_initialized = False
+    if not dry_run:
+        resolved_build_dir.mkdir(parents=True, exist_ok=True)
+        git_initialized = _ensure_git_repo(resolved_build_dir)
+        evidence_dir = target_dir / "evidence"
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        evidence_dir = target_dir / "evidence"
 
     stack_dir = get_stack_dir()
     blueprint_dir = blueprint_dir_for(target_dir)
@@ -953,27 +960,34 @@ def build_target(
             "Commit or stash changes before building."
         )
     plan = parse_build_plan(manifest_path)
-    ensure_compact_files(
-        blueprint_dir,
-        sources=list(required_plan_auto_compact_sources(plan.blocks, blueprint_dir)),
-        reason="pre-build context refresh",
-        log_dir=log_dir,
-        target=target,
-        on_text=on_text,
-        model=model,
-        llm_provider=llm_provider,
-    )
+    if dry_run:
+        _emit(on_text, "DRY RUN: skipping pre-build compact refresh")
+    else:
+        ensure_compact_files(
+            blueprint_dir,
+            sources=list(required_plan_auto_compact_sources(plan.blocks, blueprint_dir)),
+            reason="pre-build context refresh",
+            log_dir=log_dir,
+            target=target,
+            on_text=on_text,
+            model=model,
+            llm_provider=llm_provider,
+        )
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()
-    set_build_state(target_dir, "building")
-    set_sub_state(target_dir, "running")
+    if not dry_run:
+        set_build_state(target_dir, "building")
+        set_sub_state(target_dir, "running")
 
     if force and step_id is None:
         raise SpecificationError("--force requires --step <step-id>")
     if force and step_id is not None:
-        _reset_step_for_rebuild(manifest_path, step_id)
+        if dry_run:
+            _emit(on_text, f"DRY RUN: would reset {step_id} and child ACs to pending")
+        else:
+            _reset_step_for_rebuild(manifest_path, step_id)
 
     steps: list[BuildStepResult] = []
     guard = 0
@@ -1041,6 +1055,28 @@ def build_target(
                 build_dir=resolved_build_dir,
                 today=today,
             )
+        if dry_run:
+            _emit(on_text, "-" * 80)
+            _emit(on_text, f"DRY RUN: LLM execution skipped for {unit.block_id}")
+            _emit(on_text, "DRY RUN PROMPT BEGIN")
+            _emit(on_text, prompt_assembly.rendered_text.rstrip())
+            _emit(on_text, "DRY RUN PROMPT END")
+            _emit(on_text, f"BUILD BLOCK DRY-RUN COMPLETE: {unit.block_id}")
+            _emit(on_text, "=" * 80)
+            for block, assembly in zip(unit.steps, assemblies):
+                step_result = BuildStepResult(
+                    block_id=block.block_id,
+                    name=block.name,
+                    block_type=block.block_type,
+                    status="dry-run",
+                    state=block.state,
+                    story_points=assembly.total_story_points,
+                    prompt=prompt_assembly.rendered_text,
+                )
+                steps.append(step_result)
+                if on_step is not None:
+                    on_step(step_result)
+            break
         before_files = _snapshot_files(resolved_build_dir)
         result = run(
             prompt_assembly.rendered_text,
@@ -1231,7 +1267,9 @@ def build_target(
         if status == "failed" or step_id is not None:
             break
 
-    git_commit, git_commit_message = _commit_build_dir(resolved_build_dir, target, today)
+    git_commit, git_commit_message = (
+        (None, None) if dry_run else _commit_build_dir(resolved_build_dir, target, today)
+    )
     drydock_commit_skipped_after_build = git_commit is None and any(
         step.status in {"built", "implemented"} and step.written_files for step in steps
     )
@@ -1239,7 +1277,7 @@ def build_target(
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
     readme_path: Path | None = None
-    if any(step.status in {"built", "implemented"} for step in steps):
+    if not dry_run and any(step.status in {"built", "implemented"} for step in steps):
         set_build_state(target_dir, "built")
         set_sub_state(target_dir, "complete")
         stamp_last(target_dir, "built")
@@ -1247,7 +1285,8 @@ def build_target(
 
         readme_path = generate_readme(target_dir, resolved_build_dir)
 
-    _refresh_chair(target_dir)
+    if not dry_run:
+        _refresh_chair(target_dir)
 
     return BuildResult(
         target=target,
@@ -1258,4 +1297,5 @@ def build_target(
         git_commit_message=git_commit_message,
         drydock_commit_skipped_after_build=drydock_commit_skipped_after_build,
         readme_path=readme_path,
+        dry_run=dry_run,
     )

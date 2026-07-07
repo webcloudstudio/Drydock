@@ -470,6 +470,10 @@ flowchart LR
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
 `drydock build <Target>` executes the dependency-ready frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
+`drydock build <Target> --dry-run` resolves the same build block, assembles the same prompt,
+prints the build diagnostics and full prompt, and exits without compact refresh, LLM execution,
+file writes, evidence writes, Manifest state changes, QuarterDeck refresh, README generation, or
+git initialization/commit.
 Before executing any agent, `drydock build` compares every previously applied Blueprint
 Specification in the Manifest's `applied_specs` registry against the current Blueprint file
 content. A changed or missing previously applied Specification blocks the build and reports the

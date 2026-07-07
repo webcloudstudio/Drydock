@@ -298,6 +298,34 @@ def test_build_suppresses_raw_model_stream(tmp_path):
     assert runner.calls[0]["on_text"] is None
 
 
+def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    original_manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    log: list[str] = []
+    runner = make_runner()
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=log.append,
+        dry_run=True,
+    )
+
+    assert result.dry_run is True
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert all(s.status == "dry-run" for s in result.steps)
+    assert len(runner.calls) == 0
+    assert not build_dir.exists()
+    assert not (target_dir / "evidence").exists()
+    assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
+    assert "DRY RUN PROMPT BEGIN" in log
+    assert "DRY RUN PROMPT END" in log
+    assert any("- BUILD_BLOCK: Catalog (feature-catalog)" in line for line in log)
+    assert result.steps[0].prompt is not None
+
+
 def test_build_emits_step_progress_lines(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     log: list[str] = []

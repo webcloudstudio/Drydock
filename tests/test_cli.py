@@ -706,6 +706,47 @@ state: pending
         assert "LLM execution failed" in out
         assert "rerun drydock build with --force to override errors" in out
 
+    def test_build_dry_run_prints_prompt_without_writes(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        manifest = (
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n"
+        )
+        (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
+        (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+
+        def _run(*a, **k):
+            raise AssertionError("dry-run must not invoke the LLM runner")
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        build_dir = tmp_path / "out"
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--build-dir",
+            str(build_dir),
+            "--dry-run",
+        )
+
+        assert rc == 0, err
+        assert "DRY RUN: no LLM call" in out
+        assert "DRY RUN PROMPT BEGIN" in out
+        assert "DRY RUN PROMPT END" in out
+        assert "- BUILD_SCOPE: exactly one MANIFEST.md step" in out
+        assert "[dry-run]" in out
+        assert "DRY RUN RESULT: 0 built, 0 failed" in out
+        assert not build_dir.exists()
+        assert not (target / "evidence").exists()
+        assert (target / "MANIFEST.md").read_text(encoding="utf-8") == manifest
+
     def test_build_step_force_rebuilds_selected_step(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
@@ -753,7 +794,7 @@ state: pending
         assert "foundation" in out
         assert "RESULT: 1 built, 0 failed" in out
 
-    def test_build_with_legacy_implemented_step_does_not_print_verify_command(
+    def test_build_with_blocked_pending_step_reports_external_dependency(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         target = tmp_target_root / "ExampleTarget"
@@ -769,10 +810,9 @@ state: pending
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
-        assert rc == 0, err
-        assert "Review required before more build work can run" not in out
+        assert rc == 1
+        assert "unverified external dependencies: awaiting-checks" in err
         assert "drydock build verify ExampleTarget awaiting-checks" not in out
-        assert "Legacy implemented steps remain" in out
 
 
 class TestPlanningSession:
@@ -862,10 +902,10 @@ class TestPlanningSession:
         assert config.index('label: "Sea Trials"') < config.index('label: "Soundings"')
 
         # Build readiness is not gated by plan state — running is the approval.
-        # A pending story with no unmet dependencies is buildable immediately.
+        # A pending grouped block with no unmet external dependencies is buildable immediately.
         rc, out, err = run_cli("build", "status", "ExampleTarget")
         assert rc == 0, err
-        assert "Buildable now: story-status" in out
+        assert "Buildable now: feature-status" in out
 
     def test_plan_invalid_llm_output_prints_clear_failure(
         self, tmp_target_root, isolated_config, monkeypatch
