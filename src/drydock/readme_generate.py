@@ -134,16 +134,20 @@ def _stack_label(stack_str: str) -> str:
 def _setup_and_run(build_dir: Path, stack_str: str) -> tuple[str, str, str]:
     """Return (install_cmd, run_cmd, access_url) from build_dir inspection."""
     # Install command
-    if (build_dir / "requirements.txt").exists():
+    if (build_dir / "uv.lock").exists():
+        install = "uv sync"
+    elif (build_dir / "requirements.txt").exists():
         install = "pip install -r requirements.txt"
     elif (build_dir / "pyproject.toml").exists():
         install = "pip install -e ."
     else:
         install = ""
 
-    # Run command: prefer explicit run.py, then app/main.py, then manage.py
+    # Run command: prefer an explicit project start script, then common Python entry points.
     run_cmd = ""
-    if (build_dir / "run.py").exists():
+    if (build_dir / "bin" / "start.sh").exists():
+        run_cmd = "bash bin/start.sh"
+    elif (build_dir / "run.py").exists():
         run_cmd = "python run.py"
     elif (build_dir / "app" / "main.py").exists():
         run_cmd = "python app/main.py"
@@ -154,7 +158,10 @@ def _setup_and_run(build_dir: Path, stack_str: str) -> tuple[str, str, str]:
     port = "8000"
     main_py = build_dir / "app" / "main.py"
     if main_py.exists():
-        m = re.search(r"APP_PORT[^,)\"']*[,\"']\s*(\d{4,5})", main_py.read_text(encoding="utf-8"))
+        main_text = main_py.read_text(encoding="utf-8")
+        m = re.search(r"APP_PORT[^,)\"']*[,\"']\s*(\d{4,5})", main_text)
+        if not m:
+            m = re.search(r"APP_PORT[^,\n]+,\s*[\"'](\d{4,5})[\"']", main_text)
         if m:
             port = m.group(1)
 
@@ -164,6 +171,40 @@ def _setup_and_run(build_dir: Path, stack_str: str) -> tuple[str, str, str]:
     access_url = f"http://127.0.0.1:{port}" if stack_parts & web_stacks else ""
 
     return install, run_cmd, access_url
+
+
+def _first_run_steps(build_dir: Path) -> list[str]:
+    """Return deterministic first-run checks based on files present in the build output."""
+    steps: list[str] = []
+    if (build_dir / ".env.example").exists():
+        steps.append("Copy `.env.example` to `.env` and fill in local values before starting.")
+    elif (build_dir / ".env").exists():
+        steps.append("Review `.env` before starting; local credentials and endpoints live there.")
+
+    steps.extend([
+        "Confirm the repository has the expected remote with `git remote -v`; add `origin` if the startup guard requires it.",
+        "Run `git status --short` and commit or intentionally stash local changes before deployment-oriented runs.",
+    ])
+    return steps
+
+
+def _test_command(build_dir: Path) -> str:
+    if (build_dir / "bin" / "test.sh").exists():
+        return "bash bin/test.sh"
+    if (build_dir / "pyproject.toml").exists():
+        return "python -m pytest"
+    return ""
+
+
+def _next_steps(run_cmd: str, access_url: str, test_cmd: str) -> list[str]:
+    steps = ["Complete the first-run checks above."]
+    if run_cmd:
+        steps.append(f"Start the application with `{run_cmd}`.")
+    if access_url:
+        steps.append(f"Open `{access_url}` and verify the primary workflow.")
+    if test_cmd:
+        steps.append(f"Run `{test_cmd}` before making release or deployment changes.")
+    return steps
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +225,9 @@ def _render(
     install: str,
     run_cmd: str,
     access_url: str,
+    first_run_steps: list[str],
+    test_cmd: str,
+    next_steps: list[str],
 ) -> str:
     lines: list[str] = []
 
@@ -233,6 +277,12 @@ def _render(
     if install or run_cmd:
         lines.append("## Setup and Running")
         blank()
+        if first_run_steps:
+            lines.append("**Before first run:**")
+            blank()
+            for step in first_run_steps:
+                lines.append(f"- {step}")
+            blank()
         if install:
             lines.append("**Install dependencies:**")
             blank()
@@ -253,6 +303,21 @@ def _render(
                 blank()
                 lines.append(f"Interactive API documentation is available at {access_url}/docs")
             blank()
+
+    if test_cmd:
+        lines.append("## Verification")
+        blank()
+        lines.append("```bash")
+        lines.append(test_cmd)
+        lines.append("```")
+        blank()
+
+    if next_steps:
+        lines.append("## Next Steps")
+        blank()
+        for step in next_steps:
+            lines.append(f"- {step}")
+        blank()
 
     return "\n".join(lines)
 
@@ -293,6 +358,9 @@ def generate_readme(target_dir: Path, build_dir: Path) -> Path | None:
         short_description = get_field(fields, "short_description") or ""
         stack_str = get_field(fields, "stack") or ""
 
+        install, run_cmd, access_url = _setup_and_run(build_dir, stack_str)
+        test_cmd = _test_command(build_dir)
+
         content = _render(
             display_name=display_name,
             short_description=short_description,
@@ -302,7 +370,12 @@ def generate_readme(target_dir: Path, build_dir: Path) -> Path | None:
             screen_descs=_screens(blueprint_dir) if has_blueprint else [],
             modules=_modules(blueprint_dir) if has_blueprint else [],
             routes=_routes(blueprint_dir) if has_blueprint else [],
-            **dict(zip(("install", "run_cmd", "access_url"), _setup_and_run(build_dir, stack_str))),
+            install=install,
+            run_cmd=run_cmd,
+            access_url=access_url,
+            first_run_steps=_first_run_steps(build_dir),
+            test_cmd=test_cmd,
+            next_steps=_next_steps(run_cmd, access_url, test_cmd),
         )
 
         readme_path = build_dir / "README.md"
