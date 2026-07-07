@@ -465,7 +465,9 @@ def _parse_result(llm: str, raw: str, artifacts: ExecutionArtifacts) -> tuple[st
         duration_ms=duration_ms,
         turns=turns,
         input_tokens=_first(usage, "input_tokens", "prompt_tokens"),
-        cached_input_tokens=_first(usage, "cache_read_input_tokens", "cached_tokens"),
+        cached_input_tokens=_first(
+            usage, "cache_read_input_tokens", "cached_input_tokens", "cached_tokens"
+        ),
         cache_creation_input_tokens=_first(usage, "cache_creation_input_tokens", "cache_write"),
         output_tokens=_first(usage, "output_tokens", "completion_tokens"),
         cost_usd=cost_usd,

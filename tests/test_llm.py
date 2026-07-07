@@ -322,7 +322,7 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
         "type": "item.completed",
         "item": {"type": "agent_message", "text": "CODEX READY"},
         "model": "codex-test",
-        "usage": {"input_tokens": 8, "output_tokens": 2},
+        "usage": {"input_tokens": 8, "cached_input_tokens": 5, "output_tokens": 2},
     })
 
     def fake_popen(command, **kwargs):
@@ -347,6 +347,9 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
     assert "--ephemeral" in result.command
     assert result.command[result.command.index("--sandbox") + 1] == "danger-full-access"
     assert result.stats.model == "codex-test"
+    assert result.stats.input_tokens == 8
+    assert result.stats.cached_input_tokens == 5
+    assert result.stats.output_tokens == 2
     assert chunks == ["CODEX READY"]
 
 
