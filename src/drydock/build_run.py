@@ -326,6 +326,32 @@ def _is_buildable(block: PlanBlock, by_id: dict[str, PlanBlock]) -> bool:
     return block.state == "pending" and all(verified(dep) for dep in block.depends)
 
 
+def _verified_dependency(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
+    dependency = by_id.get(block_id)
+    return dependency is not None and dependency.state == "closed/verified"
+
+
+def _external_unverified_dependencies(
+    feature: PlanBlock,
+    pending: tuple[PlanBlock, ...],
+    executable: tuple[PlanBlock, ...],
+    by_id: dict[str, PlanBlock],
+) -> tuple[str, ...]:
+    """Return dependencies outside this block that are not yet verified.
+
+    Dependencies between children of the same block are internal sequencing for
+    the build agent. They do not split the block or make it unbuildable.
+    """
+    internal_ids = {child.block_id for child in executable}
+    dependency_ids: list[str] = []
+    dependency_ids.extend(dep for dep in feature.depends if dep not in internal_ids)
+    for child in pending:
+        dependency_ids.extend(dep for dep in child.depends if dep not in internal_ids)
+    return tuple(
+        dict.fromkeys(dep for dep in dependency_ids if not _verified_dependency(dep, by_id))
+    )
+
+
 def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None:
     by_id = plan.by_id()
     executable = tuple(
@@ -337,7 +363,7 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
     pending = tuple(child for child in executable if child.state == "pending")
     if not pending:
         return None
-    if not all(_is_buildable(child, by_id) for child in pending):
+    if _external_unverified_dependencies(feature, pending, executable, by_id):
         return None
     return BuildUnit(
         block_id=feature.block_id,
@@ -346,6 +372,33 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
         steps=pending,
         already_verified=already_verified,
     )
+
+
+def _blocked_block_message(plan: BuildPlan, feature: PlanBlock) -> str:
+    by_id = plan.by_id()
+    executable = tuple(
+        child for child in plan.children(feature.block_id) if child.block_type in {"story", "spike"}
+    )
+    pending = tuple(child for child in executable if child.state == "pending")
+    blockers = _external_unverified_dependencies(feature, pending, executable, by_id)
+    if blockers:
+        return (
+            f"Build block {feature.block_id!r} is blocked by unverified external dependencies: "
+            + ", ".join(blockers)
+        )
+    return (
+        f"{feature.block_id!r} is not buildable; state={feature.state!r}, "
+        "dependencies must be closed/verified"
+    )
+
+
+def _containing_feature(block: PlanBlock, by_id: dict[str, PlanBlock]) -> PlanBlock | None:
+    if not block.parent:
+        return None
+    parent = by_id.get(block.parent)
+    if parent is None or parent.block_type != "feature":
+        return None
+    return parent
 
 
 def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None:
@@ -357,10 +410,13 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
         if block.block_type == "feature":
             unit = _feature_build_unit(plan, block)
             if unit is None:
-                raise SpecificationError(
-                    f"{step_id!r} is not buildable; state={block.state!r}, "
-                    "dependencies must be closed/verified"
-                )
+                raise SpecificationError(_blocked_block_message(plan, block))
+            return unit
+        parent = _containing_feature(block, by_id)
+        if parent is not None:
+            unit = _feature_build_unit(plan, parent)
+            if unit is None:
+                raise SpecificationError(_blocked_block_message(plan, parent))
             return unit
         if block.block_type not in {"story", "spike"} or not _is_buildable(block, by_id):
             raise SpecificationError(
@@ -379,8 +435,21 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
             unit = _feature_build_unit(plan, block)
             if unit is not None:
                 return unit
-    for block in plan.blocks:
-        if block.block_type in {"story", "spike"} and _is_buildable(block, by_id):
+            if any(
+                child.block_type in {"story", "spike"} and child.state == "pending"
+                for child in plan.children(block.block_id)
+            ):
+                raise SpecificationError(_blocked_block_message(plan, block))
+        if (
+            block.block_type in {"story", "spike"}
+            and _containing_feature(block, by_id) is None
+            and block.state == "pending"
+        ):
+            if not _is_buildable(block, by_id):
+                raise SpecificationError(
+                    f"Build block {block.block_id!r} is blocked by unverified external dependencies: "
+                    + ", ".join(block.depends)
+                )
             return BuildUnit(
                 block_id=block.block_id,
                 name=block.name,

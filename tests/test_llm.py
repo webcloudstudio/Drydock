@@ -69,7 +69,7 @@ def test_build_prompt_breakdown_shows_block_and_stories():
                 [
                     "## Build block job",
                     "- TARGET: Demo",
-                    "- FEATURE_BLOCK: Catalog (feature-catalog)",
+                    "- BUILD_BLOCK: Catalog (feature-catalog)",
                     "",
                 ],
                 kind="job",

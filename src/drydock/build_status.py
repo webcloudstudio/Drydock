@@ -1,4 +1,4 @@
-"""Build-status reporting — plan vs. implementation, grouped by feature.
+"""Build-status reporting — plan vs. implementation, grouped by block.
 
 ``drydock build status`` answers one question: how far has the build progressed
 against the plan? The MANIFEST.md is the plan; each block's ``state`` is the
@@ -82,10 +82,10 @@ class BuildStatus:
 
 
 def build_status(plan: BuildPlan) -> BuildStatus:
-    """Shape a parsed plan into a feature-grouped build-status report."""
+    """Shape a parsed plan into a block-grouped build-status report."""
     by_id = plan.by_id()
-    buildable_ids = tuple(block.block_id for block in plan.buildable_steps())
-    buildable = set(buildable_ids)
+    buildable_ids, buildable_steps = _buildable_blocks(plan)
+    buildable = set(buildable_steps)
 
     acs_by_parent: dict[str, list[PlanBlock]] = {}
     for block in plan.blocks:
@@ -132,3 +132,56 @@ def build_status(plan: BuildPlan) -> BuildStatus:
         groups=tuple(groups),
         buildable_ids=buildable_ids,
     )
+
+
+def _verified(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
+    dependency = by_id.get(block_id)
+    return dependency is not None and dependency.state == "closed/verified"
+
+
+def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return runnable build block ids and the child step ids marked runnable in UI.
+
+    A grouped block is runnable when all dependencies outside the group are
+    verified. Dependencies between stories/spikes in the same group are internal
+    sequencing and do not split the build unit.
+    """
+    by_id = plan.by_id()
+    buildable_blocks: list[str] = []
+    buildable_steps: list[str] = []
+    grouped_children: set[str] = set()
+
+    for block in plan.blocks:
+        if block.block_type != "feature":
+            continue
+        executable = tuple(
+            child for child in plan.children(block.block_id) if child.block_type in STEP_TYPES
+        )
+        grouped_children.update(child.block_id for child in executable)
+        pending = tuple(child for child in executable if child.state == "pending")
+        if not pending:
+            continue
+        internal_ids = {child.block_id for child in executable}
+        external_deps = [
+            dep for dep in block.depends if dep not in internal_ids and not _verified(dep, by_id)
+        ]
+        for child in pending:
+            external_deps.extend(
+                dep
+                for dep in child.depends
+                if dep not in internal_ids and not _verified(dep, by_id)
+            )
+        if external_deps:
+            continue
+        buildable_blocks.append(block.block_id)
+        buildable_steps.extend(child.block_id for child in pending)
+
+    for block in plan.blocks:
+        if block.block_type not in STEP_TYPES or block.block_id in grouped_children:
+            continue
+        if block.state != "pending" or not all(_verified(dep, by_id) for dep in block.depends):
+            continue
+        buildable_blocks.append(block.block_id)
+        buildable_steps.append(block.block_id)
+
+    return tuple(buildable_blocks), tuple(buildable_steps)

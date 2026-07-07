@@ -10,6 +10,7 @@ import pytest
 
 from drydock.build_plan import parse_build_plan
 from drydock.build_run import build_target
+from drydock.errors import SpecificationError
 
 
 @pytest.fixture(autouse=True)
@@ -223,14 +224,68 @@ def test_feature_step_selection_builds_feature_group(tmp_path):
     assert runner.calls[0]["parameters"]["step"] == "feature-catalog"
 
 
-def test_chained_feature_starts_with_first_buildable_story(tmp_path):
+def test_chained_feature_builds_self_dependent_block_in_one_call(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_CHAINED_FEATURE_MANIFEST)
     runner = make_runner()
 
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
     assert [s.block_id for s in result.steps] == ["foundation", "service"]
-    assert runner.calls[0]["parameters"]["step"] == "foundation"
+    assert len(runner.calls) == 1
+    assert runner.calls[0]["parameters"]["step"] == "feature-catalog"
+    assert runner.calls[0]["parameters"]["step_type"] == "feature"
+    assert runner.calls[0]["parameters"]["steps"] == ("foundation", "service")
+
+
+def test_child_step_selection_builds_containing_block(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_CHAINED_FEATURE_MANIFEST)
+    runner = make_runner()
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="service",
+    )
+
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert len(runner.calls) == 1
+    assert runner.calls[0]["parameters"]["step"] == "feature-catalog"
+
+
+def test_grouped_block_with_unverified_external_dependency_stops_build(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Catalog
+id: feature-catalog
+summary: Catalog block.
+state: pending
+
+## story 2: Foundation
+id: foundation
+parent: feature-catalog
+implements: DATABASE.md
+depends: external-foundation
+instructions: |
+  Build the database.
+state: pending
+
+## story 3: External
+id: external-foundation
+implements: SERVICE.md
+instructions: |
+  Build the external dependency.
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError, match="unverified external dependencies"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert len(runner.calls) == 0
 
 
 def test_build_suppresses_raw_model_stream(tmp_path):

@@ -72,11 +72,35 @@ def test_ungrouped_holds_steps_without_a_feature_parent(tmp_path):
 
 def test_buildable_marks_pending_steps_with_verified_depends(tmp_path):
     report = _report(tmp_path)
-    # service depends on a verified foundation -> buildable; loose has no
-    # depends -> buildable; reports depends on unbuilt service -> not yet.
-    assert set(report.buildable_ids) == {"service", "loose"}
+    # The Core block is buildable even though service depends on foundation
+    # inside the same block; loose is an ungrouped one-story block.
+    assert set(report.buildable_ids) == {"core", "loose"}
     service = report.groups[0].steps[1]
     assert service.buildable is True
+
+
+def test_self_dependent_group_is_buildable_as_one_block(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Core
+id: core
+
+## story 2: Foundation
+id: foundation
+parent: core
+state: pending
+
+## story 3: Service
+id: service
+parent: core
+depends: foundation
+state: pending
+"""
+    report = _report(tmp_path, manifest=manifest)
+
+    assert report.buildable_ids == ("core",)
+    assert [step.buildable for step in report.groups[0].steps] == [True, True]
 
 
 def test_rollup_counts_and_percent(tmp_path):

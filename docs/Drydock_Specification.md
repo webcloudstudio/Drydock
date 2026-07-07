@@ -497,30 +497,39 @@ Specification, the block message instructs the Commander to run `drydock refit`.
     closed/verified -> [done]
     closed/failed -> [FAILED]
 
-  next_buildable_step:
-    for feature in manifest:
-      for step in feature.stories_and_spikes:
-        if step.state != pending: continue
-        if any(dep.state != closed/verified for dep in step.depends): continue
-        return step
+  next_buildable_block:
+    for block in manifest:
+      if block has child stories_or_spikes:
+        pending_children = child stories_or_spikes where child.state == pending
+        if pending_children is empty: continue
+        if any(external dep.state != closed/verified for dep in block.depends): stop blocked
+        if any(external dep.state != closed/verified for dep in pending_children.depends): stop blocked
+        return block with pending_children
+      if block is story_or_spike and block.state == pending:
+        if any(dep.state != closed/verified for dep in block.depends): stop blocked
+        return block
     return none
 
   build:
-    step = selected_step or next_buildable_step()
-    if step is none: stop
-    run_agent(step)
+    block = selected_block or next_buildable_block()
+    if block is none: stop
+    run_agent(block)
     if agent_failed or no_files_written:
-      step.state = closed/failed
-    else if programmatic_acceptance_fails(step.implements):
-      step.state = closed/failed
+      block.pending_children.state = closed/failed
+    else if programmatic_acceptance_fails(block.pending_children.implements):
+      block.pending_children.state = closed/failed
     else:
-      step.state = closed/verified
+      block.pending_children.state = closed/verified
+      if all block child stories_or_spikes are closed/verified:
+        block.state = closed/verified
 
-  force_rebuild(step):
-    step.state = pending
-    for ac in step.child_acs:
+  force_rebuild(block):
+    block.state = pending
+    for child in block.child_stories_or_spikes:
+      child.state = pending
+    for ac in block.child_acs:
       ac.state = pending
-    build(step)
+    build(block)
 ```
 
 ### Agile Build Review with drydock run quarterdeck
@@ -889,9 +898,12 @@ software, or both.
 
 ### Feature Blocks
 
-A feature is an optional non-executable parent ticket. Small plans do not require features. A
-feature closes only after all required child stories, spikes, and feature-level `ac` blocks are
-`closed/verified`.
+A feature is an optional grouping block. Small plans do not require features. Build execution uses
+the grouping block as the atomic build unit: if a pending child story or spike depends on another
+child story or spike inside the same feature, that dependency is internal sequencing and does not
+block the feature from running. A feature can run only when every dependency outside the feature is
+`closed/verified`. A feature closes only after all required child stories, spikes, and feature-level
+`ac` blocks are `closed/verified`.
 
 ### Spike Blocks
 
@@ -942,8 +954,12 @@ All four block types use the same four states:
 
 ### Execution Rules
 
-A block can run only when everything in `depends:` is `closed/verified`. Features are never
-directly executable.
+A build block can run only when every external dependency in `depends:` is `closed/verified`.
+Dependencies between stories or spikes inside the same grouping block are internal build-agent
+sequencing and do not split the build block. A standalone `story` or `spike` is a one-step build
+block. A grouped feature is a multi-step build block containing its pending child stories and
+spikes. A build block with an unverified external dependency blocks build execution and reports the
+blocking dependency.
 
 Legacy `ac` blocks are reconciled by the build engine or QuarterDeck. They are not the normal
 acceptance authority for new plans.

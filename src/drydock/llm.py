@@ -371,7 +371,7 @@ def _build_prompt_breakdown_summary(
         if line.startswith("- ")
     ]
     story_count = len(story_lines)
-    block = job_fields.get("FEATURE_BLOCK", "(unknown)")
+    block = job_fields.get("BUILD_BLOCK") or job_fields.get("FEATURE_BLOCK", "(unknown)")
     lines = [
         f"PROMPT BUILD BLOCK: {block}",
         f"  stories_run={story_count}  parts={len(assembly.records())}  "

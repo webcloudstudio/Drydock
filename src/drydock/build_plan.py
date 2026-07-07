@@ -105,10 +105,12 @@ class BuildPlan:
         return tuple(runnable)
 
     def buildable_steps(self) -> tuple[PlanBlock, ...]:
-        """Story/spike blocks ready to build now: pending with verified depends.
+        """Build blocks ready to build now.
 
         Running ``drydock build`` is the approval, so this is not gated by plan
-        state; ``depends:`` and block state alone determine readiness.
+        state. Grouped blocks are ready when all external dependencies are
+        verified; dependencies between children of the same block are internal
+        sequencing and do not split the build unit.
         """
         by_id = self.by_id()
 
@@ -116,13 +118,41 @@ class BuildPlan:
             dependency = by_id.get(block_id)
             return dependency is not None and dependency.state == "closed/verified"
 
-        return tuple(
+        grouped_children: set[str] = set()
+        buildable: list[PlanBlock] = []
+        for block in self.blocks:
+            if block.block_type != "feature":
+                continue
+            executable = tuple(
+                child
+                for child in self.children(block.block_id)
+                if child.block_type in {"story", "spike"}
+            )
+            grouped_children.update(child.block_id for child in executable)
+            pending = tuple(child for child in executable if child.state == "pending")
+            if not pending:
+                continue
+            internal_ids = {child.block_id for child in executable}
+            external_deps = [
+                dep for dep in block.depends if dep not in internal_ids and not verified(dep)
+            ]
+            for child in pending:
+                external_deps.extend(
+                    dep for dep in child.depends if dep not in internal_ids and not verified(dep)
+                )
+            if external_deps:
+                continue
+            buildable.append(block)
+
+        buildable.extend(
             block
             for block in self.blocks
             if block.block_type in ("story", "spike")
+            and block.block_id not in grouped_children
             and block.state == "pending"
             and all(verified(dep) for dep in block.depends)
         )
+        return tuple(buildable)
 
     def children(self, parent_id: str) -> tuple[PlanBlock, ...]:
         return tuple(block for block in self.blocks if block.parent == parent_id)
