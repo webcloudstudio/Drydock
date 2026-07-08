@@ -208,8 +208,8 @@ showing its validation state, plan progress, and current runnable frontier.
 
 | Variable | Purpose |
 |---|---|
-| `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`. |
-| `DRYDOCK_WORKSPACE` | Home directory for the drydock |
+| `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`; defaults to `$DRYDOCK_WORKSPACE/build`. |
+| `DRYDOCK_WORKSPACE` | Drydock workspace root; set explicitly or resolved from the Git top-level. Required — commands error when neither is available. |
 | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `PROMPT_WARN_TOKENS` | Build-block prompt-size warning threshold in tokens |
 | `MODEL` | LLM model - gpt-5.4, gpt-5.5, sonnet, opus  |
@@ -217,7 +217,7 @@ showing its validation state, plan progress, and current runnable frontier.
 
 ### drydock init
 
-`drydock init <Target>` creates the temporary workspace for the <target> under targets/.  It populates the artifacts such that you can proceed with the workflow.
+`drydock init <Target>` creates the temporary workspace for the <target> under targets/.  It populates the artifacts such that you can proceed with the workflow. `drydock init` creates `$DRYDOCK_WORKSPACE` when it does not exist. Target-consuming commands require an initialized Target and direct the Commander to `drydock init <Target>` otherwise.
 
 ## SAIL Phase 2 — Agile Analyze: Charting the Course
 
@@ -789,7 +789,7 @@ Human-authored feedback artifacts (`ANALYZE_COMPASS.md`, `PLAN_COMPASS.md`, answ
 Drydock stores its own state under `$DRYDOCK_WORKSPACE/targets/<Target>`. The built application lives under `$DRYDOCK_BUILD_DIRECTORY/<Target>`. The QuarterDeck is configuration driven and uses files from the Drydock-managed Target tree.
 
 ```text
-$DRYDOCK_WORKSPACE/                       # Git top-level or cwd — the Drydock project
+$DRYDOCK_WORKSPACE/                       # explicit config/env or Git top-level — required
 ├── logs/
 │   ├── ships_log.jsonl                   # workspace product/design decision ledger
 │   ├── history.jsonl                     # append-only command-invocation log
