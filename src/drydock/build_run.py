@@ -21,7 +21,7 @@ import re
 import subprocess
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -909,6 +909,68 @@ def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
                 set_block_fields(manifest_path, child.block_id, state="pending")
 
 
+def _preview_force_reset(plan: BuildPlan, step_id: str) -> BuildPlan:
+    """Return an in-memory plan with the same reset semantics as ``--force``."""
+    block = plan.by_id().get(step_id)
+    if block is None:
+        raise SpecificationError(f"Build step {step_id!r} not found in {plan.path}")
+
+    reset_ids: set[str]
+    if block.block_type == "feature":
+        reset_ids = {
+            child.block_id
+            for child in plan.children(step_id)
+            if child.block_type in {"story", "spike"}
+        }
+        reset_ids.add(step_id)
+    elif block.block_type in {"story", "spike"}:
+        reset_ids = {step_id}
+    else:
+        raise SpecificationError(f"{step_id!r} is not a build step or feature block")
+
+    for reset_id in tuple(reset_ids):
+        for child in plan.children(reset_id):
+            if child.block_type == "ac":
+                reset_ids.add(child.block_id)
+
+    return replace(
+        plan,
+        blocks=tuple(
+            replace(block, state="pending") if block.block_id in reset_ids else block
+            for block in plan.blocks
+        ),
+    )
+
+
+def _emit_dry_run_file_list(on_text: TextCallback | None, group: StepGroup) -> None:
+    seen: set[tuple[str, str, str | None]] = set()
+    files = []
+    for assembly in group.steps:
+        for step_file in assembly.files:
+            key = (
+                step_file.role,
+                step_file.name,
+                str(step_file.source) if step_file.source else None,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(step_file)
+
+    _emit(on_text, "DRY RUN ASSEMBLED FILES:")
+    if not files:
+        _emit(on_text, "  (none)")
+        return
+    for step_file in files:
+        status = "MISSING" if step_file.missing else f"SP {step_file.story_points}"
+        compact = " compact" if step_file.compact_substituted else ""
+        source = f" path={step_file.source}" if step_file.source is not None else ""
+        _emit(
+            on_text,
+            f"  - {step_file.role}: {step_file.name}{compact}  {status}{source}",
+        )
+
+
 def build_target(
     target: str,
     target_dir: Path,
@@ -981,18 +1043,20 @@ def build_target(
         set_build_state(target_dir, "building")
         set_sub_state(target_dir, "running")
 
+    preview_plan: BuildPlan | None = None
     if force and step_id is None:
         raise SpecificationError("--force requires --step <step-id>")
     if force and step_id is not None:
         if dry_run:
             _emit(on_text, f"DRY RUN: would reset {step_id} and child ACs to pending")
+            preview_plan = _preview_force_reset(parse_build_plan(manifest_path), step_id)
         else:
             _reset_step_for_rebuild(manifest_path, step_id)
 
     steps: list[BuildStepResult] = []
     guard = 0
     while True:
-        plan = parse_build_plan(manifest_path)
+        plan = preview_plan if preview_plan is not None else parse_build_plan(manifest_path)
         unit = _select_build_unit(plan, step_id)
         if unit is None:
             break
@@ -1056,6 +1120,8 @@ def build_target(
                 today=today,
             )
         if dry_run:
+            _emit(on_text, "-" * 80)
+            _emit_dry_run_file_list(on_text, group)
             _emit(on_text, "-" * 80)
             _emit(on_text, f"DRY RUN: LLM execution skipped for {unit.block_id}")
             _emit(on_text, "DRY RUN PROMPT BEGIN")

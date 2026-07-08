@@ -1230,7 +1230,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     print(f"BUILD COMMAND START: {args.Target}  started={_wall_time()}")
     if getattr(args, "step", None):
         print(f"Building step: {args.step}")
-    if getattr(args, "force", False):
+    if getattr(args, "force", False) and getattr(args, "dry_run", False):
+        print(f"Force rebuild dry run: would reset {args.step} and child ACs to pending")
+    elif getattr(args, "force", False):
         print(f"Force rebuild: resetting {args.step} and child ACs to pending")
     if getattr(args, "dry_run", False):
         print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")

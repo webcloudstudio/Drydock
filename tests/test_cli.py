@@ -738,6 +738,8 @@ state: pending
 
         assert rc == 0, err
         assert "DRY RUN: no LLM call" in out
+        assert "DRY RUN ASSEMBLED FILES:" in out
+        assert "implements: DATABASE.md" in out
         assert "DRY RUN PROMPT BEGIN" in out
         assert "DRY RUN PROMPT END" in out
         assert "- BUILD_SCOPE: exactly one MANIFEST.md step" in out

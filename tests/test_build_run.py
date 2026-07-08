@@ -322,8 +322,36 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
     assert "DRY RUN PROMPT BEGIN" in log
     assert "DRY RUN PROMPT END" in log
+    assert "DRY RUN ASSEMBLED FILES:" in log
+    assert any("implements: DATABASE.md" in line for line in log)
     assert any("- BUILD_BLOCK: Catalog (feature-catalog)" in line for line in log)
     assert result.steps[0].prompt is not None
+
+
+def test_force_dry_run_previews_reset_without_manifest_write(tmp_path):
+    manifest = _FEATURE_GROUP_MANIFEST.replace("state: pending", "state: closed/verified")
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    original_manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    log: list[str] = []
+    runner = make_runner()
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=log.append,
+        step_id="service",
+        force=True,
+        dry_run=True,
+    )
+
+    assert [s.block_id for s in result.steps] == ["service"]
+    assert result.steps[0].status == "dry-run"
+    assert len(runner.calls) == 0
+    assert "DRY RUN: would reset service and child ACs to pending" in log
+    assert any(line == "  [run] Service (service)" for line in log)
+    assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
 
 
 def test_build_emits_step_progress_lines(tmp_path):
