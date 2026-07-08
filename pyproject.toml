@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "drydock-sdd"
 description = "Governed Blueprint-driven software delivery."
 readme = "README.md"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Ed Barlow", email = "edward.m.barlow@gmail.com" }]
@@ -23,7 +23,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
@@ -78,6 +78,7 @@ include = [
     "prompts/",
     "QuarterDeck/",
     "LICENSE",
+    "NOTICE",
     "README.md",
     "pyproject.toml",
 ]

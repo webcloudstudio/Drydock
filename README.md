@@ -319,7 +319,8 @@ current provider execution contracts.
 
 ## License
 
-Proprietary - Web Cloud Studio. See [LICENSE](LICENSE).
+MIT - Copyright (c) 2026 Web Cloud Studio. See [LICENSE](LICENSE).
 
-Possession of a copy does not grant a license or right to use the software or
-documentation. Use requires explicit written permission from Web Cloud Studio.
+"Drydock" is a trademark of Web Cloud Studio; see [NOTICE](NOTICE) for use
+of the name in forks and derivative works. See [CONTRIBUTORS.md](CONTRIBUTORS.md)
+for the project's contributors.
