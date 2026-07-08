@@ -740,14 +740,49 @@ state: pending
         assert "DRY RUN: no LLM call" in out
         assert "DRY RUN ASSEMBLED FILES:" in out
         assert "implements: DATABASE.md" in out
-        assert "DRY RUN PROMPT BEGIN" in out
-        assert "DRY RUN PROMPT END" in out
-        assert "- BUILD_SCOPE: exactly one MANIFEST.md step" in out
+        assert "DRY RUN PROMPT: assembled" in out
+        assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in out
+        assert "DRY RUN PROMPT BEGIN" not in out
+        assert "DRY RUN PROMPT END" not in out
+        assert "- BUILD_SCOPE: exactly one MANIFEST.md step" not in out
+        assert "DB." not in out
         assert "[dry-run]" in out
         assert "DRY RUN RESULT: 0 built, 0 failed" in out
         assert not build_dir.exists()
         assert not (target / "evidence").exists()
         assert (target / "MANIFEST.md").read_text(encoding="utf-8") == manifest
+
+    def test_build_dry_run_show_prompt_prints_full_prompt(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--build-dir",
+            str(tmp_path / "out"),
+            "--dry-run",
+            "--show-prompt",
+        )
+
+        assert rc == 0, err
+        assert "DRY RUN: full prompt output enabled by --show-prompt" in out
+        assert "DRY RUN PROMPT BEGIN" in out
+        assert "DRY RUN PROMPT END" in out
+        assert "- BUILD_SCOPE: exactly one MANIFEST.md step" in out
+        assert "DB." in out
 
     def test_build_step_force_rebuilds_selected_step(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

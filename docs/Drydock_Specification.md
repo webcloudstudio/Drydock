@@ -471,9 +471,11 @@ flowchart LR
 
 `drydock build <Target>` executes the dependency-ready frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 `drydock build <Target> --dry-run` resolves the same build block, assembles the same prompt,
-prints the build diagnostics and full prompt, and exits without compact refresh, LLM execution,
-file writes, evidence writes, Manifest state changes, QuarterDeck refresh, README generation, or
-git initialization/commit.
+prints build diagnostics, assembled-file names, prompt size, and estimated tokens, and exits without
+compact refresh, LLM execution, file writes, evidence writes, Manifest state changes, QuarterDeck
+refresh, README generation, or git initialization/commit. `--dry-run` does not print file contents
+or the full prompt by default. `--show-prompt` prints the full assembled prompt only when explicitly
+combined with `--dry-run`.
 Before executing any agent, `drydock build` compares every previously applied Blueprint
 Specification in the Manifest's `applied_specs` registry against the current Blueprint file
 content. A changed or missing previously applied Specification blocks the build and reports the

@@ -985,6 +985,7 @@ def build_target(
     step_id: str | None = None,
     force: bool = False,
     dry_run: bool = False,
+    show_prompt: bool = False,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
@@ -1124,9 +1125,21 @@ def build_target(
             _emit_dry_run_file_list(on_text, group)
             _emit(on_text, "-" * 80)
             _emit(on_text, f"DRY RUN: LLM execution skipped for {unit.block_id}")
-            _emit(on_text, "DRY RUN PROMPT BEGIN")
-            _emit(on_text, prompt_assembly.rendered_text.rstrip())
-            _emit(on_text, "DRY RUN PROMPT END")
+            _emit(
+                on_text,
+                (
+                    "DRY RUN PROMPT: assembled "
+                    f"{prompt_assembly.total_bytes} B  "
+                    f"~{prompt_assembly.total_tokens_estimate} tok  "
+                    f"parts={len(prompt_assembly.records())}"
+                ),
+            )
+            if show_prompt:
+                _emit(on_text, "DRY RUN PROMPT BEGIN")
+                _emit(on_text, prompt_assembly.rendered_text.rstrip())
+                _emit(on_text, "DRY RUN PROMPT END")
+            else:
+                _emit(on_text, "DRY RUN PROMPT: hidden; use --show-prompt to print it")
             _emit(on_text, f"BUILD BLOCK DRY-RUN COMPLETE: {unit.block_id}")
             _emit(on_text, "=" * 80)
             for block, assembly in zip(unit.steps, assemblies):

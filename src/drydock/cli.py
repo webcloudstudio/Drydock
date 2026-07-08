@@ -1236,6 +1236,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"Force rebuild: resetting {args.step} and child ACs to pending")
     if getattr(args, "dry_run", False):
         print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")
+        if getattr(args, "show_prompt", False):
+            print("DRY RUN: full prompt output enabled by --show-prompt")
     result = build_target(
         args.Target,
         target_dir,
@@ -1248,6 +1250,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         step_id=getattr(args, "step", None),
         force=bool(getattr(args, "force", False)),
         dry_run=bool(getattr(args, "dry_run", False)),
+        show_prompt=bool(getattr(args, "show_prompt", False)),
     )
     print()
     print(
@@ -1824,7 +1827,13 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         "--dry-run",
         dest="dry_run",
         action="store_true",
-        help="Assemble and print the next build prompt without invoking the LLM or writing files.",
+        help="Preview the next build block without invoking the LLM or writing files.",
+    )
+    p.add_argument(
+        "--show-prompt",
+        dest="show_prompt",
+        action="store_true",
+        help="With --dry-run, print the full assembled prompt including file contents.",
     )
     p.add_argument(
         "--model",

@@ -320,12 +320,33 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert not build_dir.exists()
     assert not (target_dir / "evidence").exists()
     assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
-    assert "DRY RUN PROMPT BEGIN" in log
-    assert "DRY RUN PROMPT END" in log
     assert "DRY RUN ASSEMBLED FILES:" in log
     assert any("implements: DATABASE.md" in line for line in log)
-    assert any("- BUILD_BLOCK: Catalog (feature-catalog)" in line for line in log)
+    assert any(line == "BUILD BLOCK: feature-catalog — Catalog" for line in log)
+    assert any(line.startswith("DRY RUN PROMPT: assembled") for line in log)
+    assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in log
+    assert "DRY RUN PROMPT BEGIN" not in log
+    assert not any("DB SPEC CONTENT" in line for line in log)
     assert result.steps[0].prompt is not None
+
+
+def test_dry_run_show_prompt_prints_full_prompt(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    log: list[str] = []
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        on_text=log.append,
+        dry_run=True,
+        show_prompt=True,
+    )
+
+    assert "DRY RUN PROMPT BEGIN" in log
+    assert "DRY RUN PROMPT END" in log
+    assert any("DB SPEC CONTENT" in line for line in log)
 
 
 def test_force_dry_run_previews_reset_without_manifest_write(tmp_path):
