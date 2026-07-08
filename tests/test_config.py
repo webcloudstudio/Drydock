@@ -139,14 +139,11 @@ class TestWorkspaceResolution:
         monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(other))
         assert get_build_directory() == other.resolve()
 
-    def test_build_directory_defaults_to_parent_of_drydock_root(
-        self, tmp_path, isolated_config, monkeypatch
+    def test_build_directory_defaults_to_workspace_build(
+        self, tmp_workspace, isolated_config, monkeypatch
     ):
-        projects_root = tmp_path / "projects"
-        drydock_root = projects_root / "Drydock"
-        drydock_root.mkdir(parents=True)
-        monkeypatch.setattr(config, "_default_build_directory", lambda: drydock_root.parent)
-        assert get_build_directory() == projects_root
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        assert get_build_directory() == (tmp_workspace / "build").resolve()
 
     def test_build_directory_env_is_created_when_missing(
         self, tmp_path, isolated_config, monkeypatch
@@ -185,10 +182,30 @@ class TestWorkspaceResolution:
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
         assert get_target_directory() == tmp_workspace / "targets"
 
-    def test_workspace_defaults_when_unset(self, isolated_config, tmp_path, monkeypatch):
-        # No DRYDOCK_WORKSPACE: falls back to the Git top-level of cwd, else cwd.
+    def test_workspace_falls_back_to_git_toplevel(self, isolated_config, tmp_path, monkeypatch):
+        # No DRYDOCK_WORKSPACE: falls back to the Git top-level of cwd.
+        monkeypatch.setattr(config, "_git_toplevel", lambda _p: tmp_path)
+        assert get_workspace() == tmp_path
+
+    def test_workspace_unset_and_no_git_raises(self, isolated_config, tmp_path, monkeypatch):
+        # No DRYDOCK_WORKSPACE and no Git repo: refuse rather than guess a directory.
         monkeypatch.chdir(tmp_path)
-        assert isinstance(get_workspace(), Path)
+        monkeypatch.setattr(config, "_git_toplevel", lambda _p: None)
+        with pytest.raises(ConfigurationError):
+            get_workspace()
+
+    def test_require_target_dir_returns_existing(self, tmp_workspace, isolated_config, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        target_dir = tmp_workspace / "targets" / "Demo"
+        target_dir.mkdir(parents=True)
+        assert config.require_target_dir("Demo") == target_dir
+
+    def test_require_target_dir_uninitialized_raises_run_init(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        with pytest.raises(ConfigurationError, match="drydock init Demo"):
+            config.require_target_dir("Demo")
 
 
 class TestGetModel:

@@ -69,24 +69,27 @@ def get_workspace() -> Path:
     """Resolve the Drydock workspace root.
 
     Precedence: ``DRYDOCK_WORKSPACE`` (environment or config file), then the Git
-    top-level of the working directory, then the working directory itself.
+    top-level of the working directory. Raises ``ConfigurationError`` when neither
+    is available so commands never silently operate on an unintended directory.
     """
     val, _source = _get("DRYDOCK_WORKSPACE")
     if val:
         return Path(val)
     top = _git_toplevel(Path.cwd())
-    return top if top is not None else Path.cwd()
+    if top is not None:
+        return top
+    raise ConfigurationError(
+        "DRYDOCK_WORKSPACE is not set and the current directory is not a Git "
+        "repository.\n"
+        "  Set a workspace:  drydock config set drydock_workspace <path>\n"
+        "  or export DRYDOCK_WORKSPACE=<path>\n"
+        "  then initialize a Target:  drydock init <Target>"
+    )
 
 
 def _default_build_directory() -> Path:
-    """Default builds beside the Drydock source/install directory."""
-    try:
-        from drydock.paths import get_repo_root
-
-        return get_repo_root().parent
-    except FileNotFoundError:
-        # Installed package fallback: one level above the package directory.
-        return Path(__file__).resolve().parent.parent
+    """Default build root lives inside the workspace: ``$DRYDOCK_WORKSPACE/build``."""
+    return get_workspace() / "build"
 
 
 def get_build_directory() -> Path:
@@ -111,6 +114,22 @@ def build_dir_for(target: str) -> Path:
 def get_target_directory() -> Path:
     """Root holding all Targets: ``$DRYDOCK_WORKSPACE/targets``."""
     return get_workspace() / "targets"
+
+
+def require_target_dir(target: str) -> Path:
+    """Resolve an initialized Target directory or raise a run-init error.
+
+    Gates Target-consuming commands so an unset workspace or an uninitialized
+    Target produces an actionable message instead of an opaque downstream failure.
+    """
+    targets_root = get_target_directory()
+    target_dir = targets_root / target
+    if not target_dir.is_dir():
+        raise ConfigurationError(
+            f"Target '{target}' is not initialized under {targets_root}.\n"
+            f"  Run: drydock init {target}"
+        )
+    return target_dir
 
 
 def blueprint_dir_for(target_dir: Path) -> Path:
@@ -205,13 +224,19 @@ def get_quarterdeck_port() -> int:
 
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
-    build_value, build_source = _get("DRYDOCK_BUILD_DIRECTORY")
-    if not build_value:
-        build_value, build_source = str(get_build_directory()), "default"
-    rows.append(("drydock_build_directory", build_value or "(not set)", build_source))
     ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
     if not ws_value:
-        ws_value, ws_source = str(get_workspace()), "default"
+        try:
+            ws_value, ws_source = str(get_workspace()), "default"
+        except ConfigurationError:
+            ws_value, ws_source = "(not set)", "default"
+    build_value, build_source = _get("DRYDOCK_BUILD_DIRECTORY")
+    if not build_value:
+        try:
+            build_value, build_source = str(get_build_directory()), "default"
+        except ConfigurationError:
+            build_value, build_source = "(not set)", "default"
+    rows.append(("drydock_build_directory", build_value or "(not set)", build_source))
     rows.append(("drydock_workspace", ws_value, ws_source))
     for display_key, key_upper, default in (
         ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),

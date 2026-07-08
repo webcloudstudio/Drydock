@@ -256,10 +256,10 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from drydock.config import get_target_directory
+    from drydock.config import require_target_dir
     from drydock.validate_specification import validate_specification
 
-    target_dir = get_target_directory() / args.Target
+    target_dir = require_target_dir(args.Target)
     result = validate_specification(args.Target, target_dir, verbose=args.verbose)
 
     print(f"Validating Blueprint: {args.Target}  ({result.spec_dir})")
@@ -272,8 +272,8 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         blueprint_dir_for,
         get_llm_provider,
         get_model,
-        get_target_directory,
         get_workspace,
+        require_target_dir,
     )
     from drydock.rigging_compact import CompactItem, compact
 
@@ -294,7 +294,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
-        target_dir = get_target_directory() / args.Target
+        target_dir = require_target_dir(args.Target)
         spec_dir = blueprint_dir_for(target_dir)
         label = args.Target
         compact_target = args.Target
@@ -353,10 +353,10 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
 
 
 def cmd_refit(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
+    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
     from drydock.refit import RefitItem, refit_target
 
-    target_dir = get_target_directory() / args.Target
+    target_dir = require_target_dir(args.Target)
     log_dir = get_workspace() / "logs"
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
@@ -441,9 +441,9 @@ def cmd_rigging_verify(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
-    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
+    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
 
-    target_dir = get_target_directory() / args.Target
+    target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     log_dir = get_workspace() / "logs"
@@ -572,7 +572,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 def cmd_survey(args: argparse.Namespace) -> int:
     from pathlib import Path as _Path
 
-    from drydock.config import get_llm_provider, get_model, get_target_directory
+    from drydock.config import get_llm_provider, get_model, require_target_dir
     from drydock.errors import UsageError
     from drydock.survey import (
         import_specs,
@@ -582,7 +582,7 @@ def cmd_survey(args: argparse.Namespace) -> int:
         survey_dir_for,
     )
 
-    target_dir = get_target_directory() / args.Target
+    target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     if not target_dir.is_dir():
@@ -1202,12 +1202,9 @@ def cmd_status_current() -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     from drydock.build_run import BUILD_FAILURE_FORCE_HINT, BuildStepResult, build_target
-    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
+    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
 
-    target_dir = get_target_directory() / args.Target
-    if not target_dir.is_dir():
-        print(f"Error: Target not found: {target_dir}", file=sys.stderr)
-        return 1
+    target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
@@ -1315,10 +1312,10 @@ _BUILD_STATE_MARK = {
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
     from drydock.build_status import build_status
-    from drydock.config import get_target_directory
+    from drydock.config import get_target_directory, require_target_dir
 
+    target_path = require_target_dir(target)
     plan = load_target_plan(target, get_target_directory())
-    target_path = get_target_directory() / target
     report = build_status(plan)
 
     reviewable = _reviewable_build_steps(target_path)
@@ -1364,10 +1361,10 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 
 def cmd_build_verify(target: str, step_id: str) -> int:
     from drydock.build_review import verify_build_step
-    from drydock.config import get_target_directory
+    from drydock.config import require_target_dir
     from drydock.quarterdeck_state import refresh_commanders_chair
 
-    target_dir = get_target_directory() / target
+    target_dir = require_target_dir(target)
     result = verify_build_step(target_dir / "MANIFEST.md", step_id)
     if result.already_verified:
         print(f"Already verified: {result.step_id}  {result.step_name}")
