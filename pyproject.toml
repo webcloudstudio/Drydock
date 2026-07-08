@@ -70,6 +70,7 @@ packages = ["src/drydock"]
 "QuarterDeck/requirements.txt" = "drydock/resources/QuarterDeck/requirements.txt"
 "QuarterDeck/templates" = "drydock/resources/QuarterDeck/templates"
 "QuarterDeck/static" = "drydock/resources/QuarterDeck/static"
+"docs/Drydock_Specification.md" = "drydock/resources/docs/Drydock_Specification.md"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -77,6 +78,7 @@ include = [
     "Rigging/",
     "prompts/",
     "QuarterDeck/",
+    "docs/Drydock_Specification.md",
     "LICENSE",
     "NOTICE",
     "README.md",

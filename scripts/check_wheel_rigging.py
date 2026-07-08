@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Verify the wheel-embedded Rigging matches the source ``Rigging/`` tree.
+"""Verify wheel-embedded release resources.
 
 The wheel ships a copy of Rigging at ``drydock/resources/Rigging/`` via Hatchling ``force-include``.
 That copy must stay byte-for-byte identical to the root ``Rigging/`` so ``drydock init`` and
 ``drydock validate`` behave identically from an installed wheel and from the source tree.
+
+The wheel also ships the canonical product specification at
+``drydock/resources/docs/Drydock_Specification.md`` so installed releases have the same read-only
+product authority as a source checkout.
 
 This check needs only the built wheel in ``dist/`` — no Prototyper checkout — so it is safe to run
 in CI. Build first (``uv build``), then run this script.
@@ -20,8 +24,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SOURCE_RIGGING = REPO_ROOT / "Rigging"
+SOURCE_SPECIFICATION = REPO_ROOT / "docs" / "Drydock_Specification.md"
 DIST = REPO_ROOT / "dist"
 WHEEL_PREFIX = "drydock/resources/Rigging/"
+SPECIFICATION_WHEEL_PATH = "drydock/resources/docs/Drydock_Specification.md"
 
 EXCLUDED_DIR_NAMES = {".ruff_cache", "__pycache__", ".pytest_cache", ".mypy_cache"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
@@ -71,6 +77,7 @@ def main() -> int:
     wheel = wheels[-1]
     source = _source_files()
     embedded = _wheel_files(wheel)
+    errors: list[str] = []
 
     only_source = sorted(set(source) - set(embedded))
     only_wheel = sorted(set(embedded) - set(source))
@@ -78,18 +85,31 @@ def main() -> int:
         rel for rel in set(source) & set(embedded) if _digest(source[rel]) != _digest(embedded[rel])
     )
 
-    if not (only_source or only_wheel or differing):
-        print(f"wheel-rigging: OK — {len(source)} files identical ({wheel.name}).")
-        return 0
+    if only_source or only_wheel or differing:
+        errors.append(f"wheel-rigging: DRIFT between source Rigging/ and {wheel.name}:")
+        for rel in only_source:
+            errors.append(f"  missing from wheel: {rel}")
+        for rel in only_wheel:
+            errors.append(f"  extra in wheel:     {rel}")
+        for rel in differing:
+            errors.append(f"  content differs:    {rel}")
 
-    print(f"wheel-rigging: DRIFT between source Rigging/ and {wheel.name}:", file=sys.stderr)
-    for rel in only_source:
-        print(f"  missing from wheel: {rel}", file=sys.stderr)
-    for rel in only_wheel:
-        print(f"  extra in wheel:     {rel}", file=sys.stderr)
-    for rel in differing:
-        print(f"  content differs:    {rel}", file=sys.stderr)
-    return 1
+    with zipfile.ZipFile(wheel) as zf:
+        names = set(zf.namelist())
+        if SPECIFICATION_WHEEL_PATH not in names:
+            errors.append(f"wheel-specification: missing {SPECIFICATION_WHEEL_PATH}")
+        elif _digest(SOURCE_SPECIFICATION.read_bytes()) != _digest(
+            zf.read(SPECIFICATION_WHEEL_PATH)
+        ):
+            errors.append(f"wheel-specification: content differs: {SPECIFICATION_WHEEL_PATH}")
+
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        return 1
+
+    print(f"wheel-rigging: OK — {len(source)} files identical ({wheel.name}).")
+    print(f"wheel-specification: OK — {SPECIFICATION_WHEEL_PATH} ({wheel.name}).")
+    return 0
 
 
 if __name__ == "__main__":

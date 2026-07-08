@@ -174,7 +174,9 @@ Drydock's job is to make that relationship explicit, reviewable, and repeatable.
 
 ## Current Release Status
 
-Drydock is in final testing. The primary SAIL path is implemented:
+Drydock `0.1.1` is an alpha release. The primary SAIL path is implemented, but
+the command surface and Typed Specification contracts remain unstable during
+the `0.x` series:
 
 - Workspace configuration and Target initialization.
 - Markdown, source tree, Spec Kit, and Compass import.
@@ -192,6 +194,9 @@ Drydock is in final testing. The primary SAIL path is implemented:
 One command surface remains visible but deferred in the current CLI:
 
 - `drydock build score <Target>`
+
+The installed wheel includes Drydock's canonical product specification as a
+read-only package resource at `drydock/resources/docs/Drydock_Specification.md`.
 
 Read [docs/SOUNDINGS.md](docs/SOUNDINGS.md) for the authoritative implementation
 readiness checklist and test evidence.

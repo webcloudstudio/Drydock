@@ -8,6 +8,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.1.1] — 2026-07-08
+
 ### Added
 
 - Drydock Blueprint Methodology vocabulary across the product specification, documentation, and CLI.
@@ -22,6 +26,8 @@ command surface and Typed Specification contract are unstable and may change bet
 - Contributor guide and this changelog.
 - `drydock rigging compact` — the first LLM-assisted command and general compaction entry point —
   with a versioned prompt contract (`prompts/<command>_<subcommand>.md` + required YAML frontmatter).
+- Canonical product specification packaged in the wheel at
+  `drydock/resources/docs/Drydock_Specification.md`.
 
 ### Changed
 
@@ -37,6 +43,13 @@ command surface and Typed Specification contract are unstable and may change bet
   legacy specification-directory names remain accepted as deprecated migration aliases.
 - Renamed the public CLI project argument from `<Spec>` to `<Blueprint>` and the iterate-side mode
   from `SPEC` to `BLUEPRINT`; `SPEC` remains accepted as a deprecated migration alias.
+
+### Known Limitations
+
+- This is an alpha release. Command contracts and Typed Specification contracts may change during
+  the `0.x` series.
+- `drydock build score <Target>` is visible in the command surface but remains deferred.
+- LLM-assisted commands require an authenticated local `claude` or `codex` CLI.
 
 ## [0.1.0] — Unreleased
 

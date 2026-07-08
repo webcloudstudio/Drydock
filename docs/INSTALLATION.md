@@ -158,18 +158,12 @@ workspace and are not rewritten by installation or upgrade.
 
 ## Canonical product specification release status
 
-The canonical Drydock product specification is intended to be a versioned,
-read-only resource of the Drydock release. It is distinct from a user's
-Blueprint.
+The canonical Drydock product specification is a versioned, read-only resource
+of the Drydock release. It is distinct from a user's Blueprint.
 
-The current wheel configuration packages Rigging, prompts, and QuarterDeck, but
-does **not** package `docs/Drydock_Specification.md`. An installed release
-therefore cannot yet load that specification from package resources. Until the
-wheel includes it and `paths.py` resolves it in installed mode, operations that
-require the product specification require a source checkout.
-
-Release engineering must add the specification to the wheel and validate the
-installed-wheel path before documenting it as available to `drydock` users.
+The wheel packages `docs/Drydock_Specification.md` at
+`drydock/resources/docs/Drydock_Specification.md`. Installed releases therefore
+carry the same canonical product authority as a source checkout.
 
 ## Upgrade and removal
 
@@ -195,8 +189,7 @@ unzip -l dist/drydock_sdd-*.whl
 ```
 
 The wheel must contain the `drydock` package, `drydock/resources/Rigging/`,
-`drydock/resources/prompts/`, `drydock/resources/QuarterDeck/`, and, once the
-canonical-specification release work is complete,
+`drydock/resources/prompts/`, `drydock/resources/QuarterDeck/`, and
 `drydock/resources/docs/Drydock_Specification.md`.
 
 Install the wheel into an isolated environment and run `drydock --version`,

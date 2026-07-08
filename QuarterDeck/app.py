@@ -877,10 +877,19 @@ def render_compass(item: dict[str, Any]) -> str:
         return _render_compass_empty()
     groups = group_steps(plan, steps)
     status = build_status(plan)
-    buildable = set(status.buildable_ids)
+    by_id = plan.by_id()
+    buildable = {
+        block.block_id
+        for block in plan.blocks
+        if block.block_type in {"story", "spike"}
+        and block.state == "pending"
+        and all(
+            by_id.get(dep) is not None and by_id[dep].state == "closed/verified"
+            for dep in block.depends
+        )
+    }
 
     item_id = html.escape(item.get("id", ""))
-    by_id = plan.by_id()
     acs_by_parent: dict[str, list] = {}
     for block in plan.blocks:
         if block.block_type == "ac" and block.parent:
@@ -990,7 +999,7 @@ def render_compass(item: dict[str, Any]) -> str:
     else:
         buildable_txt = "(none)"
 
-    ready_n = len(status.buildable_ids)
+    ready_n = len(buildable)
     pending_n = status.steps_pending - ready_n
     header = (
         "<div class='cmp-hdr'>"

@@ -41,6 +41,14 @@ def _source_tree_quarterdeck() -> Path | None:
     return None
 
 
+def _source_tree_product_specification() -> Path | None:
+    for candidate in _repo_root_candidates():
+        specification = candidate / "docs" / "Drydock_Specification.md"
+        if specification.is_file():
+            return specification
+    return None
+
+
 def _source_tree_repo_root() -> Path | None:
     """Return the repository root when running from the source tree."""
     for candidate in _repo_root_candidates():
@@ -117,6 +125,24 @@ def get_quarterdeck_root() -> Path:
 def get_quarterdeck_template_dir() -> Path:
     """Return the QuarterDeck template directory."""
     return get_quarterdeck_root() / "templates"
+
+
+def get_product_specification_path() -> Path:
+    """Return the canonical Drydock product specification."""
+    src = _source_tree_product_specification()
+    if src is not None:
+        return src
+    try:
+        pkg_file = (
+            importlib.resources.files("drydock") / "resources" / "docs" / "Drydock_Specification.md"
+        )
+        with importlib.resources.as_file(pkg_file) as path:
+            return Path(path)
+    except (FileNotFoundError, TypeError) as exc:
+        raise FileNotFoundError(
+            "Drydock product specification resource not found. Reinstall drydock or run from "
+            "the source tree."
+        ) from exc
 
 
 def get_spec_template_dir() -> Path:
