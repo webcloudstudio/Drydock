@@ -320,8 +320,9 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert not build_dir.exists()
     assert not (target_dir / "evidence").exists()
     assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
-    assert "DRY RUN ASSEMBLED FILES:" in log
-    assert any("implements: DATABASE.md" in line for line in log)
+    assert "DRY RUN ASSEMBLED FILES" in log
+    assert any(line.startswith("  Role") for line in log)
+    assert any("implements" in line and "DATABASE.md" in line for line in log)
     assert any(line == "BUILD BLOCK: feature-catalog — Catalog" for line in log)
     assert any(line.startswith("DRY RUN PROMPT: assembled") for line in log)
     assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in log

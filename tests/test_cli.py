@@ -738,8 +738,10 @@ state: pending
 
         assert rc == 0, err
         assert "DRY RUN: no LLM call" in out
-        assert "DRY RUN ASSEMBLED FILES:" in out
-        assert "implements: DATABASE.md" in out
+        assert "\nDRY RUN: skipping pre-build compact refresh\n" in out
+        assert "\nDRY RUN ASSEMBLED FILES\n" in out
+        assert "Role       File" in out
+        assert "implements DATABASE.md" in out
         assert "DRY RUN PROMPT: assembled" in out
         assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in out
         assert "DRY RUN PROMPT BEGIN" not in out
@@ -748,6 +750,8 @@ state: pending
         assert "DB." not in out
         assert "[dry-run]" in out
         assert "DRY RUN RESULT: 0 built, 0 failed" in out
+        assert "refreshDRY RUN" not in out
+        assert "FILES  -" not in out
         assert not build_dir.exists()
         assert not (target / "evidence").exists()
         assert (target / "MANIFEST.md").read_text(encoding="utf-8") == manifest

@@ -36,8 +36,12 @@ _SEVERITY_ICON = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗"}
 _STREAM_STATUS_PREFIXES = (
     "AUTO-COMPACT:",
     "BUILD ",
+    "DRY RUN",
     "PROMPT ",
-    "  [",
+    "Workdir:",
+    "=",
+    "-",
+    "  ",
     "    ",
 )
 
@@ -51,6 +55,11 @@ def _stream_stdout(text: str) -> None:
     line breaks. Drydock progress callbacks send whole status lines, so those
     are newline-terminated here to avoid concatenated build headers.
     """
+    if text == "":
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
+        return
     if not text:
         return
 

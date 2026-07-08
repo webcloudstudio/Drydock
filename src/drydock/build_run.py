@@ -957,18 +957,29 @@ def _emit_dry_run_file_list(on_text: TextCallback | None, group: StepGroup) -> N
             seen.add(key)
             files.append(step_file)
 
-    _emit(on_text, "DRY RUN ASSEMBLED FILES:")
+    _emit(on_text, "DRY RUN ASSEMBLED FILES")
     if not files:
         _emit(on_text, "  (none)")
         return
+    _emit(on_text, f"  {'Role':<10} {'File':<34} {'Cost':>8}  Source")
+    _emit(on_text, f"  {'-' * 10} {'-' * 34} {'-' * 8}  {'-' * 40}")
     for step_file in files:
-        status = "MISSING" if step_file.missing else f"SP {step_file.story_points}"
-        compact = " compact" if step_file.compact_substituted else ""
-        source = f" path={step_file.source}" if step_file.source is not None else ""
+        cost = "MISSING" if step_file.missing else f"SP {step_file.story_points}"
+        name = f"{step_file.name}*" if step_file.compact_substituted else step_file.name
+        source = _dry_run_display_path(step_file.source) if step_file.source is not None else "-"
         _emit(
             on_text,
-            f"  - {step_file.role}: {step_file.name}{compact}  {status}{source}",
+            f"  {step_file.role:<10} {name:<34} {cost:>8}  {source}",
         )
+    if any(step_file.compact_substituted for step_file in files):
+        _emit(on_text, "  * compact substitute")
+
+
+def _dry_run_display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(get_repo_root()))
+    except (FileNotFoundError, ValueError):
+        return str(path)
 
 
 def build_target(
