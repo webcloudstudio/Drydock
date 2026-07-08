@@ -101,7 +101,13 @@ def init_target(
 
     try:
         _mkdir(target_dir)
-        for directory in ("blueprint/sources", "evidence", "logs", "QuarterDeck/data"):
+        for directory in (
+            "blueprint/sources",
+            "blueprint/changes",
+            "evidence",
+            "logs",
+            "QuarterDeck/data",
+        ):
             path = target_dir / directory
             _mkdir(path)
             keep = path / ".gitkeep"

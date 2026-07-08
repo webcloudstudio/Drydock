@@ -9,24 +9,29 @@ Target: ~10 minutes at 145 words per minute. On-screen bullets are spoken as wri
 
 ## SLIDE 1 — Title
 
-Ahoy, Commander.
+Ahoy, Commanders
 
 I am pleased to announce the release of Drydock.
 
 Drydock is specification-driven delivery.
+
 It repeatably builds working software from specifications.
 
 ( pause )
 
-It has an embedded Agile methodology.
-It has embedded test-driven development.
-It is a process to deliver reproducible results.
+Drydock Features
 
-For two years, AI has written code faster than anyone imagined.
-Speed was never the problem.
-The problem is that you cannot reproduce the result.
+    Built around The Agile methodology.
 
-Drydock fixes that — with a real process.
+    Built around test-driven development.
+
+    Engineering Process to Minimize Context and Deliver Reproducible Results.
+
+For two years, AI has written code faster than anyone imagined.  Speed was never the problem.
+
+    The problem is that you cannot reproduce the result.
+
+    Drydock fixes that — with the same process used by ALL professional software enginnering organizations.
 
 >> ADVANCE
 
@@ -34,45 +39,65 @@ Drydock fixes that — with a real process.
 
 First, thirty seconds of background for anyone new to specification-driven design.
 
-Instead of prompting an AI one request at a time, you write a specification — a document that says what the software must do — and an agent builds the software from it.
+Instead of prompting an AI one request at a time, you write a specification —
+
+That specification dfines what the software must do — and an agent builds the software from it.
+
+There are many approaches to crating specifications including simply asking your llm to create one.
+
 The spec is the source of truth. That is the whole idea.
 
-It works. But it has two gaps, and they are both on this slide.
+It works and you can build applications . But the process has two gaps
 
-Gap one: specification size.
-S-D-D quality is related to prompt size and complexity.
-Small spec, great result. Big spec — the model drowns, and quality falls off a cliff.
+The first is specification size.
+
+    Spec Driven is related to prompt size and complexity.
+
+If you hae a Small spec, great result. But if you have Big spec — software quality falls off a cliff.
+
+The solution of course is to build the software in smaller chunks.
 
 Gap two: the reproducibility problem.
-We have twenty-five years of best practices — Agile, and test-driven development — and today's spec-driven tools quietly threw them away.
 
-Without process, you cannot reproduce your builds.
+Frontier Models producing code for large specifications are getting better but my experiments have shown
+that larger specifications diverge - they drift
+
+The solution to me was to use software development best practices
+
+For 25 years - quality has been driven by Agile and test-driven development
+
+Agile is a communication process whereby the team agrees on the steps to deliver the product owners vision
+
+Test driven development is a process where we ask what does the software need to do exactly up front and test
+all the conditions.  TDD is a HUGE quality gate for reproducabile builds...
+
+These Two Well established  processes will enable your builds to  be reproducible
 
 ( pause )
 
 Working software you cannot reproduce is not working software.
 
+Drydock lets you reproduce working software from specifications
+
 >> ADVANCE
 
 ## SLIDE 3 — The Insight
 
-So what does "best practice" actually mean here?
-
-It means the process we need already exists. We did not have to invent it.
-
 Welcome, Commander.
 
-You are the Commander — the Agile Product Owner.
-And the LLM is your Agile Best Practices Team.
+You are the Commander — the Agile Product Owner.  And the LLM is your Agile Best Practices Team.
 
-That team runs Agile: the way developers ship at every major company.
-Discovery, decomposition, planning, Kanban, review.
-Stories, spikes, acceptance criteria, and a definition of done.
+Your team natively runs Agile and Test First Development methedologies
 
-And it runs test-driven development.
-Tests, acceptance criteria, and guardrails are written up front — in Python — before the code exists.
+    Agile means - Discovery, decomposition, planning, Kanban, review.
+    Agile means Stories, spikes, acceptance criteria, and a definition of done.
+    Test Driven Development means pythonic assertions for each project story
 
-You decide. The team develops. That is the insight.
+Your team natively understands your business rules - your Branding, your standards, and your development preferences - these are your Rigging
+
+Rigging is automatic and needs only be defined once for all your projects
+
+You Are the Commander - You Decide - You guide but the team develops. That is the insight.
 
 >> ADVANCE
 
@@ -81,6 +106,7 @@ You decide. The team develops. That is the insight.
 Drydock is governed, Blueprint-driven delivery — an installable Python CLI.
 
 The process is called SAIL.
+
 Set up. Analyze. Implement. Loop.
 
 SAIL is an Agile-process, test-driven-development software development life cycle.
@@ -90,8 +116,10 @@ Analyze decomposes the work into stories, spikes, and dependencies.
 Implement builds working software with optimized context.
 Loop and Refit with change tickets or specification edits.
 
-SAIL also creates your project documentation.
-And Rigging builds every project with your common stack rules and branding.
+drydock document can create your project documentation.
+The ships log tracks milestones and decisions
+
+Rigging builds every project with your common stack rules and branding.
 
 Let me walk you through it.
 
@@ -99,20 +127,21 @@ Let me walk you through it.
 
 ## SLIDE 5 — You Are the Commander
 
-Drydock changed your role.
-
 You are the Commander. The Commander steers the course.
-In Agile terms, you are the Product Owner — and the LLM is your Agile Best Practices Team.
 
-Four artifacts keep you in command.
+These artifacts keep you in command.
+
+The analyze phase surfaces questions such as stack preferences from the llm and surfaces
+any blockers or mandatory feedback the Commander must apply
 
 The Compass files define guardrails and intent.
-COMPASS dot M-D holds the project's intent.
-BUILD COMPASS supports drydock analyze.
-PLAN COMPASS supports drydock plan.
+    COMPASS.md holds the project's intent.
+    BUILD COMPASS.md supports drydock analyze.
+    PLAN COMPASS.md supports drydock plan.
 
-The QuarterDeck is your web interface to the team.
-And MANIFEST dot M-D is the graph-database build plan — you edit it inside the QuarterDeck.
+The MANIFEST.md is the graph-database build plan — you edit it inside the QuarterDeck.
+
+The QuarterDeck is your web interface to the team. You do not need to edit or read any markdown
 
 You are not prompting a chatbot. You are directing a team.
 
@@ -127,10 +156,13 @@ Pipx install drydock-S-D-D.
 Drydock config set.
 Drydock init MyApp.
 
-Drydock runs on a subscription to an LLM service — I recommend Sonnet on Claude, or GPT five-point-four on Codex.
+Drydock runs on a subscription to an LLM service
+
 No API keys. No per-token billing.
 
-All you need is a subscription and an idea.
+I use Claude Sonnet and Codex 5.4. Have not needed more advanced models for building.
+
+Summary : All you need is a subscription and an idea.
 
 >> ADVANCE
 
@@ -138,16 +170,16 @@ All you need is a subscription and an idea.
 
 Phase two: Analyze. Charting the course.
 
-Follow the pipeline across the slide: sources, import, analyze, ANALYSIS, plan, MANIFEST.
+*** Follow the pipeline across the slide: sources, import, analyze, ANALYSIS, plan, MANIFEST.
 
 Drydock import takes markdown, source code, Spec Kit projects, or loose notes.
 Drydock analyze decomposes your Epic into stories, acceptance criteria, blockers, and questions.
 
 And here is the governance: when the team hits a blocker, it stops and asks you.
 
-ANALYSIS dot M-D contains the proposed features, stories, and acceptance criteria — for your review. Nothing is committed until you approve.
+ANALYSIS.md contains the proposed features, stories, and acceptance criteria — for your review. Nothing is committed until you approve.
 
-Then drydock plan creates the Blueprints and MANIFEST dot M-D.
+Then drydock plan creates the Blueprints and MANIFEST.md.
 The Manifest is the authoritative build graph.
 
 >> ADVANCE
@@ -251,8 +283,6 @@ Pipx install drydock-S-D-D.
 Drydock init MyApp — and chart your course.
 
 The spec is open. The methodology is open. And I am looking for alpha Commanders.
-
-Report your voyage — feedback and issues at github dot com, slash webcloudstudio, slash drydock, slash issues.
 
 ( pause )
 
