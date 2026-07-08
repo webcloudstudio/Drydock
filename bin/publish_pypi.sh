@@ -20,16 +20,27 @@ if [[ -z "$PYPI_TOKEN" ]]; then
 fi
 
 cd "$BDIR"
+
+VERSION="$(python3 - <<'PY'
+import re, pathlib
+text = pathlib.Path("src/drydock/__init__.py").read_text()
+print(re.search(r'__version__\s*=\s*"([^"]+)"', text).group(1))
+PY
+)"
+TAG="v$VERSION"
+echo "Publishing Drydock $VERSION (tag $TAG)"
+
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "error: tag $TAG already exists; bump __version__ in src/drydock/__init__.py" >&2
+  exit 2
+fi
+
 rm -rf dist/
 uv build
 unzip -l dist/drydock_sdd-*.whl
 python3 scripts/check_wheel_rigging.py
-# uv publish --token "$PYPI_TOKEN" dist/*
 uv publish --skip-existing --token "$PYPI_TOKEN" dist/*
 
-#git status
-#git tag -a v0.1.1 -m "Drydock 0.1.1 alpha"
-#git push origin main
-#git push origin v0.1.1
-#bash bin/test_publish_pypi.sh
-#bash bin/publish_pypi.sh
+git tag -a "$TAG" -m "Drydock $VERSION alpha"
+git push origin main
+git push origin "$TAG"
