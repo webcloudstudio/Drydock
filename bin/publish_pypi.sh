@@ -25,3 +25,10 @@ uv build
 unzip -l dist/drydock_sdd-*.whl
 python3 scripts/check_wheel_rigging.py
 uv publish --token "$PYPI_TOKEN" dist/*
+
+#git status
+#git tag -a v0.1.1 -m "Drydock 0.1.1 alpha"
+#git push origin main
+#git push origin v0.1.1
+#bash bin/test_publish_pypi.sh
+#bash bin/publish_pypi.sh
