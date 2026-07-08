@@ -51,3 +51,7 @@ QuarterDeck/tickets.json
 
 # Local project config
 .env
+
+# Too Large
+Drydock_Video.mp4
+*.mp4
