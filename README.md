@@ -9,7 +9,7 @@ the QuarterDeck, plan a dependency graph, build one context-optimized frontier a
 time, verify evidence, and keep the Blueprint and software aligned as the product
 changes.
 
-Copyright (c) 2026 Web Cloud Studio. All rights reserved. See [LICENSE](LICENSE).
+Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENSE](LICENSE).
 
 ## What Drydock Is
 
