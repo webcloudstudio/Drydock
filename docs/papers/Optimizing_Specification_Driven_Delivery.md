@@ -201,8 +201,8 @@ as long as its specification lives.
 for Governed Software Delivery.* Web Cloud Studio, 2026.
 https://github.com/webcloudstudio/Drydock
 
-[2] E. Barlow. *Guaranteed Step Accuracy: Combining Agile Decomposition and Test-Driven
-Development in LLM Software Delivery.* Web Cloud Studio, 2026.
+[2] E. Barlow. *Improving Step Accuracy in Specification-Driven Development.* Web Cloud
+Studio, 2026.
 
 [3] K. Beck et al. *Manifesto for Agile Software Development.* 2001. https://agilemanifesto.org
 

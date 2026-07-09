@@ -187,7 +187,7 @@ Three separate Zenodo records, each with its own versioned DOI:
 | Record | Source | Zenodo resource type |
 |---|---|---|
 | Paper 1 — *Optimizing Specification-Driven Delivery* | `docs/papers/Optimizing_Specification_Driven_Delivery.pdf` | Publication / Preprint |
-| Paper 2 — *Guaranteed Step Accuracy* | `docs/papers/Guaranteed_Step_Accuracy_TDD_Agile.pdf` | Publication / Preprint |
+| Paper 2 — *Improving Step Accuracy in Specification-Driven Development* | `docs/papers/Improving_Step_Accuracy_in_SDD.pdf` | Publication / Preprint |
 | Drydock Specification | `docs/Drydock_Specification.pdf` | Publication / Technical note |
 
 Rebuild the PDFs with `bin/build_documentation.sh` (spec) and `drydock publish` (papers) before
