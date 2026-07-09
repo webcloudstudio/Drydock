@@ -1,7 +1,8 @@
 # Contributing to Drydock
 
-Drydock is the installable V2 successor to Prototyper. Development happens in this repository against
-a Drydock Blueprint, its Typed Specification, and a strict source-precedence contract.
+Drydock is an installable Python CLI for governed, Blueprint-driven software delivery. Development
+happens in this repository against a Drydock Blueprint, its Typed Specification, and a strict
+source-precedence contract.
 
 ## Before you start
 
@@ -24,11 +25,10 @@ Run `uv run pre-commit run --all-files` explicitly when needed.
 
 ## Working agreements
 
-- **Source precedence.** When the Blueprint and V1 disagree, implement the Blueprint. Record
-  intentional incompatibilities in tests or documentation rather than silently reproducing V1.
-- **Specification approval.** Obtain Ed's approval before changing `docs/Drydock_Specification.md`;
-  approved behavior changes and specification updates land together. Only one active writer edits
-  the specification; other agents propose exact replacement text.
+- **Source precedence.** When the Blueprint and the implementation disagree, implement the
+  Blueprint. Record intentional deviations in tests or documentation.
+- **Specification approval.** Obtain the author's explicit approval before changing
+  `docs/Drydock_Specification.md`; approved behavior changes and specification updates land together.
 - **Concurrent sessions.** Before committing, preserve other writers' changes and commit only the
   active task. If Git state changed, reread affected files, resolve conflicts preserving both
   intents, and retry. Never restore, reset, delete, stage, or commit another writer's changes.
@@ -36,10 +36,8 @@ Run `uv run pre-commit run --all-files` explicitly when needed.
   capability complete.
 - **Ship's Log.** Record material decisions and milestones through `python bin/ships_log.py record`,
   then perform the required final capture review before completing the task.
-- **Rigging.** `Rigging/` began as a one-time copy of Prototyper `RulesEngine/` and is now
-  Drydock's own source of shared rules and templates. It evolves independently — there is no mirror
-  to keep in sync. Prototyper is frozen, read-only V1 (defect fixes only); all rule/template changes
-  go to `Rigging/`.
+- **Rigging.** `Rigging/` is Drydock's own source of shared rules and templates. All rule and
+  template changes go to `Rigging/`.
 - **Architecture.** Business logic lives in importable `src/drydock/` modules. `bin/` contains
   launchers only. Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - **No API-key LLM providers.** Use the subscription-authenticated `claude`/`codex` CLI through the

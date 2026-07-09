@@ -4,31 +4,19 @@ Drydock is a specification-driven software design and delivery methodology imple
 installable Python CLI. It plans, builds, tests, reviews, and evolves software from Blueprints
 expressed as Typed Specifications.
 
-The predecessor is Prototyper at `/mnt/c/Users/barlo/projects/Prototyper`. Read it for reference;
-never modify it.
-
 ## Authority: `docs/Drydock_Specification.md`
 
 `docs/Drydock_Specification.md` is the sole authoritative product specification and the
 target architecture. It defines intended behavior, scope, and contracts. Treat it as canonical.
 
-**Editing protocol**
-- Obtain Ed's approval before editing. One active writer at a time; unassigned agents propose
-exact replacement text and do not edit.
-- Re-read immediately before editing; never edit from a read taken earlier in the session.
-- Run `git diff -- docs/Drydock_Specification.md` first. If it is dirty with changes you did
-not make, stop and reconcile.
-- Edit surgically with the Edit tool. Never use Write or shell redirection to replace the file.
-- When reading, report any divergence, inconsistency, or hand-edit error detected; do not
-silently fix it. Surface the conflict and let Ed decide.
-- TODO: is the marker used to identify items in the specification which need improvement
+**Editing protocol** — Obtain the author's explicit approval before any edits.
 
 **Content** — normative statements of intended behavior only. No rationale, reasoning, open
 questions, status, history, alternatives, or hedging ("we could / should probably / might /
 plan to"). Reasoning, questions, and options belong in `docs/notes_<command>.md`; the
 specification is the conclusion, never the deliberation. Never alter already-specified syntax
 or behavior. If the specification diverges from implemented behavior, surface the conflict and
-let Ed decide.
+let the author decide.
 
 **Voice** — present-tense, declarative, third-person ("`drydock build` executes the
 Manifest."). No future, no conditional, no first person.
@@ -54,7 +42,7 @@ At the completion of any edits, the file should be committed in git.
 Drydock/
   src/drydock/       Python package and all command behavior
   Rigging/           Human-editable rules, templates, stack guidance, and branding
-  tests/             Pytest unit, CLI, integration, and parity tests
+  tests/             Pytest unit, CLI, and integration tests
   bin/               Source-tree launchers; no business logic
   prompts/           Versioned LLM prompt contracts used by commands
   docs/              Authoritative specification, Soundings, Sea Trials, and owned documentation
@@ -67,7 +55,8 @@ only locate the environment and invoke the package entry point.
 `Rigging/` is Drydock's source of shared business rules, templates, stack guidance, and branding.
 The wheel contains an installed copy at `drydock/resources/Rigging/` via Hatchling `force-include`.
 Versioned prompts in `prompts/` are packaged the same way. Both source-tree and installed resolution
-paths must work; see `src/drydock/paths.py`.
+paths must work; see `src/drydock/paths.py`. The packaged copies under `drydock/resources/` are
+build-generated and are not independently editable sources.
 
 ### Boundaries
 
@@ -80,7 +69,7 @@ paths must work; see `src/drydock/paths.py`.
 | `src/drydock/llm.py` | Single adapter for subscription-authenticated CLI agent execution |
 | `Rigging/` | Drydock's own shared governed inputs |
 | `prompts/` | Versioned task prompts used by LLM-assisted commands |
-| `tests/` | Unit, CLI contract, integration, and parity tests |
+| `tests/` | Unit, CLI contract, and integration tests |
 
 ### Data Locations
 
@@ -94,89 +83,44 @@ paths must work; see `src/drydock/paths.py`.
 | User configuration | User-scoped configuration managed by `drydock config` |
 
 Commands must resolve `<Target>` under `$DRYDOCK_WORKSPACE/targets/` and the Blueprint as that
-Target's `blueprint/` subtree. They must not depend on the caller being in the Drydock or Prototyper
+Target's `blueprint/` subtree. They must not depend on the caller being in the Drydock
 repository.
 
 ## Development Rules
 
-- Implement one coherent capability at a time. Extract behavior; do not copy shell code, carry over
-  V1 repository assumptions, or retain shell-only coupling.
+- Implement one coherent capability at a time. Keep business logic in importable modules; do not
+  introduce shell-only coupling.
 - Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
 - Add focused unit tests and CLI contract tests for every implemented command.
 - Update `docs/SOUNDINGS.md` when a capability's implementation or verification state changes.
-- Multiple agents and Ed may edit this directory concurrently. Before committing, inspect the
+- Multiple contributors may edit this directory concurrently. Before committing, inspect the
   current diff and preserve changes made by other writers. Never stage or commit changes outside
   the active task.
 - Follow the Ship's Log process: record material decisions and milestones immediately, then review
   again before committing.
-- When constructing an agent prompt, include relevant specification sections and Prototyper
-  reference files. Do not inject the full specification unless the task is cross-cutting.
+- When constructing an agent prompt, include only the relevant specification sections. Do not
+  inject the full specification unless the task is cross-cutting.
 - Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
 - Never call an API-key-backed LLM provider. Use the subscription-authenticated `claude` CLI.
 - Do not add Typer, Click, Rich, Pydantic, databases, or application frameworks without approval.
 - Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
-
-## Prototyper Reference
-
-Prototyper is the read-only predecessor at `/mnt/c/Users/barlo/projects/Prototyper`. Read freely;
-never modify. Do not make Drydock runtime behavior depend on it being present.
-
-| Location | Evidence provided |
-|---|---|
-| `AGENTS.md` | Architecture, commands, and operating rules |
-| `bin/` | Working command implementations, shared libraries, and orchestration |
-| `prompts/` | Working prompt contracts and context assembly rules |
-| `RulesEngine/` | Governance, specification contract, templates, and stack rules |
-| `data/` and `logs/` | Build provenance and execution artifact examples |
-
-### Rigging Provenance
-
-`Rigging/` began as a one-time copy of Prototyper `RulesEngine/` and now evolves independently.
-There is no live mirror; divergence is expected. Treat `Rigging/` as the maintained V2 source.
-`RulesEngine/BRANDING_EDSVOICE.md` is a personal backup and must not be copied or referenced.
-The packaged copy at `drydock/resources/Rigging/` is not an independently editable source.
-
-### Prototyper Command Map
-
-Discovery pointers only — inspect the files needed for the capability being built.
-
-| Drydock command | Prototyper reference |
-|---|---|
-| `drydock init` | No authoritative V1 implementation |
-| `drydock status` | `bin/validate.sh`, `RulesEngine/SPECIFICATION_CONTRACT.md` |
-| `drydock plan create` | `bin/build_plan_agile.py`, `bin/lib_agile_plan.py`, `prompts/oneshot_build_rules.md` |
-| `drydock build` | `bin/oneshot.sh`, `bin/oneshot_phased.sh`, `bin/lib_prompt.sh`, `bin/lib_phases.py` |
-| `drydock build status` | `bin/build_plan_status.py`, `bin/build_plan.sh` |
-| `drydock build score` | `bin/scorecard.sh` |
-| `drydock refit` | `bin/iterate.sh`, `bin/build_spec_relationships.py` |
-| `drydock analyze` | `bin/spec_iterate.sh`, `bin/update_reference_gaps.sh` |
-| `drydock import --format source` | `bin/decompose.sh` |
-| `drydock rigging compact` | `bin/rulesengine_compact.sh`, `bin/compact_architecture.sh` |
-| `drydock rigging update` | `bin/ProjectUpdate.sh`, `bin/project_manager.py` |
-| `drydock rigging verify` | `bin/ProjectValidate.sh`, `bin/project_manager.py` |
-| `drydock document generate` | `bin/document.sh` |
-| `drydock document assemble` | `bin/build_project_docs.py` |
-| QuarterDeck evidence/review | `bin/console_sync.py`, `bin/lib_agile_plan.py` |
-| LLM process execution | `bin/run_llm_agent.sh`, `bin/stream_claude.py` |
 
 ## Implementing a Capability
 
 Implement commands as vertical slices:
 
 1. Define command syntax, inputs, outputs, side effects, and exit codes from the specification.
-2. Identify the Prototyper algorithm and observable behavior.
-3. Separate deterministic logic from filesystem operations and LLM execution.
-4. Implement deterministic logic in an importable module.
-5. Wire the module into `cli.py`.
-6. Replace the matching deferred-command stub test with behavior tests.
-7. Add integration tests for filesystem changes and failure handling.
-8. Compare output against Prototyper where parity is intended.
-9. Update `README.md` when a command moves from deferred to working.
-10. Update `docs/SOUNDINGS.md` with final state and verification evidence.
+2. Separate deterministic logic from filesystem operations and LLM execution.
+3. Implement deterministic logic in an importable module.
+4. Wire the module into `cli.py`.
+5. Replace the matching deferred-command stub test with behavior tests.
+6. Add integration tests for filesystem changes and failure handling.
+7. Update `README.md` when a command moves from deferred to working.
+8. Update `docs/SOUNDINGS.md` with final state and verification evidence.
 
-Do not collapse multiple Prototyper scripts into one module. Preserve clear contracts for path
-resolution, plan parsing, prompt assembly, process execution, and evidence.
+Preserve clear, separate contracts for path resolution, plan parsing, prompt assembly, process
+execution, and evidence; do not collapse them into a single module.
 
 ### Verification Contract
 
@@ -185,7 +129,6 @@ resolution, plan parsing, prompt assembly, process execution, and evidence.
 | Unit tests | Deterministic logic, parsing, state transitions, and error cases |
 | CLI tests | Syntax, help, output contract, and exit codes |
 | Integration tests | Real temporary Blueprint and Target directories |
-| Parity tests | Representative Prototyper behavior where compatibility is intended |
 | Regression tests | Existing working commands remain working |
 | Lint | `ruff check src/ tests/` |
 | Full suite | `python -m pytest` |

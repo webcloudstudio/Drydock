@@ -73,7 +73,7 @@ Overall PASS/FAIL. Exit 0 all pass, 1 any fail.
 ### Branding/voice injection: deferred
 `2026-06-26` · `spec:na` · `impl:unimplemented`
 
-Injecting branding/voice content (e.g. `BRANDING_EDSVOICE.md` equivalent) into the target
+Injecting branding/voice content (e.g. `BRANDING_VOICE.md` equivalent) into the target
 `AGENTS.md` is explicitly deferred. Current scope: business rules compact only.
 
 ### name and short_description collection: belongs in analyze
