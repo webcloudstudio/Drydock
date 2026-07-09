@@ -39,7 +39,8 @@ rm -rf dist/
 uv build
 unzip -l dist/drydock_sdd-*.whl
 python3 scripts/check_wheel_rigging.py
-uv publish --skip-existing --token "$PYPI_TOKEN" dist/*
+uv publish  --token "$PYPI_TOKEN" dist/*
+#uv publish --skip-existing --token "$PYPI_TOKEN" dist/*
 
 git tag -a "$TAG" -m "Drydock $VERSION alpha"
 git push origin main
