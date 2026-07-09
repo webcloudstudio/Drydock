@@ -1,8 +1,8 @@
 ---
 title: Improving Step Accuracy in Specification-Driven Development
 title_sub:
-eyebrow: Drydock White Paper Series — Paper 2
-subtitle: Agile Epic decomposition and test-driven development as an accuracy method for LLM builds
+eyebrow: Drydock White Paper Series
+subtitle: Classical engineering applied to LLM builds — decomposition, hard tests, and an optimized build graph
 logo: ../drydock_logo.png
 author: Ed Barlow
 studio: Web Cloud Studio
@@ -18,157 +18,202 @@ copyright: Copyright © 2026 Web Cloud Studio. Licensed under CC BY 4.0 for this
 ## Abstract
 
 Specification-driven development (SDD) builds software from a written specification by executing
-a sequence of LLM build steps. Sequential builds fail multiplicatively: a build of *n* steps,
-each correct with probability *p*, is correct with probability *pⁿ*. This paper describes a
-method that improves *p* and stops the decay. Agile Epic decomposition reduces the specification
-to small work items, each with acceptance criteria written before implementation. Test-driven
-development supplies the verification discipline: the acceptance criteria are executed after
-each step as deterministic checks, outside the model, so completion is measured rather than
-self-reported. Verified steps gate the steps that depend on them, so an error cannot propagate
-past a checked boundary. Two effects follow. Build correctness becomes a per-step property
-rather than a chain property, and the model capability required per step falls, because
-retention, error detection, and recovery move from the model into the process.
+a sequence of LLM build steps. Two failure modes dominate: error compounds multiplicatively
+across unverified steps, and model quality degrades as prompt context grows. This paper applies
+classical engineering to both. Break the specification into small units of work by Agile Epic
+decomposition. Put hard, executable tests on each unit. Relate the units in a graph database and
+let test results gate the graph. Stack each build prompt from delimited specification blocks,
+inject shared stack and branding rules once, and compress a specification to its contract after
+its first use. The combination bounds every step, verifies every step, and makes the build
+repeatable: the same specification produces the same working software.
 
 **Keywords:** specification-driven development, LLM code generation, test-driven development,
-Agile decomposition, acceptance criteria, verification, step accuracy
+Agile decomposition, graph database, prompt stacking, context compression
 
 ## 1. The Accuracy Problem
 
-An LLM build is a chain of dependent steps. If each step is correct with independent
-probability *p*, the chain is correct with probability *pⁿ*. At *p* = 0.95 and *n* = 40, the
-final artifact is correct less than 13% of the time. This arithmetic, not model quality,
-explains why long builds drift and why re-running a build from the same specification rarely
-reproduces the same working software.
+An LLM build is a chain of dependent steps. If each step is correct with independent probability
+*p*, the chain is correct with probability *pⁿ*. At *p* = 0.95, forty steps deliver a correct
+build less than 13% of the time.
 
-The arithmetic exposes two structural defects in current practice:
+```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
+flowchart LR
+  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
+  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
+  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
+  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
+  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
+  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-1. **Steps are too large to verify.** A step that implements many behaviors at once has no
-   checkable success condition.
-2. **Verification is self-reported.** When the model that did the work also judges the work,
-   error detection fails exactly when it is needed.
+  S1["step 1<br>0.95"]:::script --> S2["step 2<br>0.90"]:::script
+  S2 --> S3["step 3<br>0.86"]:::script --> S4["…<br>…"]:::script
+  S4 --> S40["step 40<br>0.13"]:::web --> OUT(["build<br>13% correct"]):::output
+```
+*Unverified error compounds: each step multiplies the survival probability of the whole build.*
 
-Both defects were solved for human teams decades ago. Agile decomposes work into stories with
-acceptance criteria agreed before implementation [2]. Test-driven development writes the test
-before the code, so "done" is an executable fact rather than the author's claim [3]. This paper
-states the transfer of both methods to SDD as an engineering procedure.
+The second failure mode is independent of the first. Model accuracy is not constant in context
+size. A 250,000-token specification fits inside a modern context window, but fitting is not
+comprehension: as context grows, models increasingly miss constraints, conflate similar
+sections, and weight material by position rather than relevance. The degradation is measured
+and reproducible [4]. A build step prompted with the full specification therefore starts with a
+lower *p* than the same step prompted with only the sections it needs — before any compounding
+begins.
 
-## 2. Agile Epic Decomposition
+Both failure modes yield to the same classical engineering move: break the problem into smaller
+chunks, put hard tests on each chunk, and surface missing information as questions instead of
+guesses. The remainder of this paper is that method, as a series of simplifications.
 
-The specification is treated as an Epic and decomposed by the established Agile method:
-Epic → features → stories.
+## 2. Simplification #1: Agile Epic Decomposition
 
-A story is admissible when it satisfies three conditions:
+Software engineering already owns a decomposition method with twenty-five years of practice
+behind it: the Agile Epic. The Epic decomposes into features; features decompose into stories.
+The method is thoroughly documented, and — decisively for SDD — it is thoroughly represented in
+LLM training data. The model does not need the method explained. It needs to be told to use it.
 
-| Condition | Test |
+Applied to SDD, the specification is the Epic. Decomposition continues until every story is a
+unit of work small enough to build in one bounded step. Each story carries three required
+sections:
+
+| Section | Contents |
 |---|---|
-| Bounded | Its required context — the specification sections it implements plus the interfaces it consumes — fits a declared token budget |
-| Checkable | Its acceptance criteria can be written as executable assertions before implementation |
-| Ordered | Its dependencies on other stories are explicit |
+| Behavior | What the story builds, stated against the specification |
+| Acceptance criteria | Executable assertions that define done (§3) |
+| Dependencies | The stories that must complete first (§4) |
 
-A story that fails any condition is decomposed further. A story that cannot be given honest
-acceptance criteria is, by that fact, not yet a story.
+A story that cannot be given honest acceptance criteria is not yet a story; decompose further.
 
-Two supporting practices complete the decomposition:
+Decomposition also exposes what the specification does not say. A correct decomposition method
+returns missing information to the product owner as explicit questions and blocks planning until
+a human answers. The mechanisms vary and are not specified here; the requirement is that
+ambiguity is resolved by a person before it becomes code.
 
-**Spikes.** A question the specification cannot answer — a library choice, an unproven
-integration — becomes a spike: a work item whose product is a recorded answer, not code. The
-answer is written down once and supplied as context to every dependent story. Research is never
-re-performed inside a build step.
+## 3. Simplification #2: Test-Driven Development for Story Quality
 
-**Refinement.** Ambiguity discovered during decomposition is returned to the product owner as
-an explicit question and resolved before planning completes. Every ambiguity is settled by a
-human decision before it can become code. This is the standard Agile refinement loop; the only
-change is that the questions come from an LLM instead of a development team.
+Test-driven development supplies the per-story quality discipline: write the test before the
+code, and let the test — not the author — decide when the work is done.
 
-The output is a plan in which every work item carries its own verification contract and names
-its dependencies. Decomposition quality is measurable: the fraction of stories that pass their
-acceptance on first build.
+Acceptance criteria are written at decomposition time as Pythonic, executable assertions:
+concrete checks against files, routes, return values, and observable behavior. Prose criteria
+("the import should work correctly") are not acceptance; an assertion that cannot be executed
+cannot gate a build.
 
-## 3. Using Test-Driven Development to Improve Step Quality
+The criteria enter the build prompt as the step's explicit success condition, which changes the
+task from interpreting an open-ended instruction to satisfying declared assertions — the regime
+in which model output is most reliable. After the step, the same assertions run as ordinary
+tests, outside the model. The model is never asked whether it finished. A model asked to grade
+its own work gives a sincere, unreliable answer; an executed assertion gives a true one.
 
-TDD applies to SDD at story granularity, with one inversion and two rules.
+```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
+flowchart LR
+  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
+  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
+  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
+  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
+  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
+  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-**The inversion: acceptance precedes build.** Acceptance criteria are authored during planning,
-attached to the story, and included in the build prompt as the step's success condition. The
-build's task is to make declared assertions pass — not to interpret an open-ended instruction.
-Small, fully specified, criterion-anchored tasks are the regime in which model output is most
-reliable; the criteria are what create that regime.
+  STORY(["story"]):::dir --> BUILD["build"]:::script
+  BUILD --> TEST["test"]:::script
+  TEST --> PASS{{"verified"}}:::md
+  TEST -.-> BUILD
+  PASS --> NEXT["next story"]:::script
+```
+*Each story builds, then its declared assertions execute. Failure loops back; only a verified
+story unlocks the next.*
 
-**Rule 1: verification is external and deterministic.** After each step, the declared criteria
-run as ordinary test invocations — outside the model, consuming no context. The model is never
-asked whether it finished. A model asked "did you finish?" gives a sincere, unreliable answer;
-this is the same failure TDD was designed to remove from human self-assessment, and it is
-removed the same way: the test decides.
+## 4. Simplification #3: Relate Features and Stories in a Graph Database
 
-**Rule 2: criteria are human-owned and monotonic.** The build may add finer-grained tests. It
-may never remove or weaken a declared assertion. Alongside positive criteria, the specification
-carries permanent negative assertions — behaviors the software must never exhibit — which guard
-against model hallucination rather than specification omission and persist across rebuilds.
+Stories are not a list; they are a graph. Each story's dependency section defines edges; the
+features and stories are nodes; the result is a graph database of the build, stored as plain
+text alongside the specification.
 
-Criteria that cannot be honestly automated — visual quality, workflow judgment — are declared
-as human review items rather than skipped or dishonestly mechanized. The boundary between
-automated and human acceptance is explicit in the plan.
+The graph does three jobs:
 
-## 4. Error Containment
+1. **Ordering.** The runnable frontier — stories whose dependencies have all passed their
+   tests — is computable by inspection. Build order is a property of the data, not a judgment
+   the model makes mid-run.
+2. **Gating.** A story runs only when everything it depends on has verified. A failed story
+   blocks its dependents, so a defect is caught at the step that created it and repaired
+   locally: fix one story, rerun one step.
+3. **Containment.** With a test at every edge, no chain of unverified steps ever exceeds length
+   one. The §1 arithmetic collapses from *pⁿ* to *p* per step — and §§2–3, 5–6 exist to raise
+   that per-step *p*.
 
-The decomposition graph and the verification discipline compose into a containment property:
+## 5. Stacking Specifications: Stack and Branding Rules
 
-- A step may run only when every step it depends on has passed its acceptance.
-- A step that fails acceptance blocks its dependents.
+A build prompt is assembled, not written. Each step's prompt stacks the exact files the step
+requires, each wrapped in an XML delimiter that names the file and its role:
 
-An error is therefore detected at the step that created it, and the repair is local: revise that
-story's instructions or criteria and rerun one step. Without the gate, the same defect surfaces
-many steps later, embedded in dependent code, and the repair is archaeological.
+```xml
+<pblock filename="FEATURE-Import.md" role="implements">
+  ...specification content...
+</pblock>
+<pblock filename="python.md" role="stack">
+  ...stack rules...
+</pblock>
+```
 
-The effect on the arithmetic of §1 is direct. Verification at every graph edge means no chain
-of unverified steps ever exceeds length one. Build correctness degrades from *pⁿ* to *p* per
-step, enforced *n* times — and §2 and §3 exist to raise that per-step *p*: bounded context,
-explicit criteria, resolved ambiguity.
+The delimiters give the model an unambiguous map of what each block is and why it is present,
+and they make prompt composition deterministic and auditable: the prompt for any step is a
+computed function of the graph, reproducible byte for byte.
 
-The guarantee is scoped precisely: passing acceptance proves the software satisfies its
-*declared* criteria. Criteria quality remains a human responsibility, and the method places it
-where Agile always placed it — with the product owner, at refinement time.
+Shared material stacks the same way. An organization's stack rules (language, framework, and
+platform conventions) and branding (palette, typography, document standards) are written once
+and injected as delimited blocks into every step that needs them. Every project built this way
+conforms to the same conventions with no per-project restatement — and no step ever receives
+rules irrelevant to its technology.
 
-## 5. Side Effect: Reduced Model Requirements
+## 6. Compression: Second Use Is the Contract
 
-Long unverified builds require frontier models because the model must retain constraints across
-a large context, notice its own errors, and recover without external signal. The method
-externalizes each demand:
+The first story that implements a specification file needs all of it. Every later story that
+merely uses the result needs only the contract: routes, class names, method signatures, typed
+parameters, one-line summaries. Rationale, examples, and internal design are implementation
+detail — dead weight in a consumer's context.
 
-| Demand on the model | Replaced by |
+Compression makes this mechanical. Each specification file gains a compact derivative
+containing only its callable surface. The builder step stacks the full file, once; every
+consumer step stacks the derivative. A database specification of several thousand tokens
+compresses to a class-and-signature listing a fraction of the size, and every feature built on
+top of it pays the small price, not the large one.
+
+The effect is on both failure modes of §1: total context per step falls (raising per-step
+accuracy), and the material that remains is exactly what the step consumes (removing the
+confusable bulk).
+
+## 7. Optimization: Repeatable Quality Builds
+
+The pieces compose into an optimized, repeatable build:
+
+| Piece | Contribution |
 |---|---|
-| Context retention | Small, bounded steps with complete declared context |
-| Error detection | External deterministic acceptance checks |
-| Recovery | Reopen-and-rerun of a single failed story |
+| Decomposition (§2) | Every step is small enough to be accurate |
+| Tests (§3) | Every step proves itself before anything depends on it |
+| Graph (§4) | Order is computed; errors are contained at edges |
+| Stacking (§5) | Every prompt is a deterministic function of declared files |
+| Compression (§6) | Every prompt carries contracts, not bulk |
 
-What remains is the task on which mid-tier and frontier models perform comparably: implement
-one bounded story against explicit criteria. Verification adds no model cost — it is ordinary
-test execution. Teams can reserve the strongest models for decomposition and planning, where
-judgment density is highest, and delegate story implementation to smaller models without
-weakening the correctness property, because that property never depended on the model's
-self-assessment. Verification effort, not model scale, carries the quality.
+Two optimizations fall out of the graph directly. Stories that share context — a common feature
+file, the same stack rules — group into a single step, so the shared material is injected once
+instead of once per story. And because every prompt derives from versioned files rather than
+conversation history, a change to one specification file invalidates only the stories that
+depend on it: the rebuild is the affected subgraph, not the application.
 
-## 6. Related Work and Implementation
+Repeatability is the sum. The specification, the graph, the tests, and the stacking rules fully
+determine every prompt and every acceptance decision. Run the build again and the same inputs
+produce the same verified software — which is the property that makes a specification worth
+owning.
 
-Spec Kit [4] established the specification-plus-task-list interface to coding agents; the
-method described here adds pre-declared acceptance, dependency gating, and external
-verification to that task model. Contemporary agent frameworks commonly evaluate completion by
-model self-report or by an LLM judge; the position of this paper is that deterministic,
-non-agentic verification is the only evaluation that composes across a long build. The author
-is not aware of another published SDD method combining pre-declared, human-owned acceptance
-criteria with dependency-gated deterministic verification.
+Drydock [1] is the reference implementation of this method.
 
-Drydock [1] is the reference implementation of this method; a companion paper [5] describes the
-delivery-cost optimizations that the same decomposition enables.
+## 8. Conclusion
 
-## 7. Conclusion
-
-Step accuracy in specification-driven development improves by process, not by model scale.
-Decompose the Epic until every story is bounded, checkable, and ordered. Write the acceptance
-criteria before the build and put them in the prompt. Verify every step externally and
-deterministically, and let verification gate the dependency graph. Errors stop propagating,
-correctness stops decaying with build length, and the model required for each step shrinks to
-fit the step.
+This is classical engineering applied to a new build tool. Break the specification into stories
+small enough to be accurate. Put a hard, executable test on every story. Relate the stories in
+a graph and let the tests gate it. Stack every prompt from delimited, versioned blocks;
+compress what is merely consumed; surface what is missing as questions for a human. Error stops
+compounding, context stops confusing, and the build repeats.
 
 ## References
 
@@ -180,8 +225,6 @@ https://github.com/webcloudstudio/Drydock
 
 [3] K. Beck. *Test-Driven Development: By Example.* Addison-Wesley, 2002.
 
-[4] GitHub. *Spec Kit: Toolkit for Spec-Driven Development.* 2025.
-https://github.com/github/spec-kit
-
-[5] E. Barlow. *Optimizing Specification-Driven Delivery: Atomic Decomposition, Build Graphs,
-and Context Engineering for Reproducible LLM Software Delivery.* Web Cloud Studio, 2026.
+[4] N. F. Liu, K. Lin, J. Hewitt, A. Paranjape, M. Bevilacqua, F. Petroni, and P. Liang. "Lost
+in the Middle: How Language Models Use Long Contexts." *Transactions of the Association for
+Computational Linguistics*, 12:157–173, 2024.
