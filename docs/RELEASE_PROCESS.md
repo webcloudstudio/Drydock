@@ -180,13 +180,23 @@ drydock publish docs/Drydock_Specification.md \
 
 Commit the regenerated HTML/PDF so Pages serves the current release.
 
-### B3. Mint a citable DOI for the white paper (Zenodo)
+### B3. Mint citable DOIs on Zenodo (two papers + the specification)
 
-Write the 4–8 page white paper — *the missing process in spec-driven development, and why
-it's Agile* — export to PDF, and upload to **Zenodo** for a permanent, versioned DOI.
-Mirror it as HTML on GitHub Pages and link the DOI from the README. Optionally submit the
-same paper to **SSRN** (quant/financial-engineering framing) and **arXiv `cs.SE`** (needs
-endorsement for a first submission — plan lead time).
+Three separate Zenodo records, each with its own versioned DOI:
+
+| Record | Source | Zenodo resource type |
+|---|---|---|
+| Paper 1 — *Optimizing Specification-Driven Delivery* | `docs/papers/Optimizing_Specification_Driven_Delivery.pdf` | Publication / Preprint |
+| Paper 2 — *Guaranteed Step Accuracy* | `docs/papers/Guaranteed_Step_Accuracy_TDD_Agile.pdf` | Publication / Preprint |
+| Drydock Specification | `docs/Drydock_Specification.pdf` | Publication / Technical note |
+
+Rebuild the PDFs with `bin/build_documentation.sh` (spec) and `drydock publish` (papers) before
+upload. Keep the papers and the spec as **separate records** — the papers are the citable
+argument; the spec is the versioned reference document. On each release, publish a **new
+version** of the spec record (same concept DOI) rather than a new record. Cross-link all three
+via "Related identifiers" and link each DOI badge from the README. Mirror HTML on GitHub Pages.
+Optionally submit the papers to **SSRN** and **arXiv `cs.SE`** (needs endorsement for a first
+submission — plan lead time).
 
 ### B4. Compress and post the video (YouTube)
 
