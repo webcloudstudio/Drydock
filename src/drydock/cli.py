@@ -220,9 +220,30 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sync_workspace_skills(workspace: Path) -> None:
+    """Install or upgrade Drydock's Claude Code skills under the workspace, best-effort."""
+    from drydock.skills import sync_skills
+
+    try:
+        outcome = sync_skills(workspace)
+    except Exception as exc:  # skill provisioning must never fail an init
+        logger.debug("skill sync skipped: %s", exc)
+        return
+
+    if not outcome.changed:
+        return
+    rel = outcome.dest_root
+    print(f"Skills: {rel}")
+    for name in outcome.installed:
+        print(f"  INSTALLED  {name}")
+    for name in outcome.updated:
+        print(f"  UPDATED    {name}")
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     from drydock.config import (
         get_target_directory,
+        get_workspace,
         record_activity,
     )
     from drydock.init_target import init_target
@@ -243,6 +264,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"  ({len(result.skipped)} existing baseline files preserved)")
     if not result.created:
         print("  Nothing to do — target baseline is already initialized.")
+
+    _sync_workspace_skills(get_workspace())
 
     record_activity("init", target=args.Target)
     t = args.Target
