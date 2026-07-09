@@ -19,7 +19,7 @@ run ahead.
 **What it produces:** A structured notes file with decisions captured as they're made. For a
 feature of a Drydock-managed project, the notes file is saved within the project's Target
 directory as `targets/<Target>/notes_<feature>.md`; otherwise it resolves to
-`docs/notes_<subject>.md`. Sections are tagged with:
+`notes/notes_<subject>.md`. Sections are tagged with:
 
 - `spec:approved` — this decision changes a behavioral contract; needs to go into the spec
 - `spec:na` — design decision, no spec change needed
@@ -85,7 +85,7 @@ conform, instead of direct code edits.
 ## `drydock prompt review <component>`
 
 **Purpose:** Evaluate one Drydock prompt contract against the authoritative specification,
-the matching `docs/notes_<component>.md` file, and the downstream consumer contract. This is
+the matching `notes/notes_<component>.md` file, and the downstream consumer contract. This is
 the repeatable critique loop for prompt iteration: score it, explain why, recommend fixes,
 archive the result, then revise and run again.
 
@@ -96,7 +96,7 @@ should this command do?" but "how well will this prompt do that job?"
 **What it reads:**
 
 - the prompt under review from `prompts/`
-- the matching working notes file in `docs/notes_<component>.md`
+- the matching working notes file in `notes/notes_<component>.md`
 - the relevant slice of `docs/Drydock_Specification.md`
 - the immediate consumer contract:
   - `src/drydock/analyze.py` for `analyze`

@@ -1,6 +1,6 @@
 # Proposed Specification Changes
 
-Pending reconciliation of `spec:approved` items from `docs/notes_analyze.md` into
+Pending reconciliation of `spec:approved` items from `notes/notes_analyze.md` into
 `docs/Drydock_Specification.md`. 16 items.
 
 | # | Source | Change |

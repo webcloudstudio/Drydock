@@ -1,6 +1,6 @@
 ---
 name: refit
-description: Didactic, subtractive design discussion for a feature, command, or topic, persisted to a notes file. Invoke with "/refit <feature>" (or "/thinkthrough <subject>" — same skill). For a Drydock-managed project the notes are saved in the project's Target directory; otherwise docs/notes_<subject>.md. Use when the user wants to think a design through conversationally, at their altitude, without code edits, plans, or spec changes — and have the agreed thinking captured to a markdown file at close out, not mid-discussion. Trigger: "/refit", "/thinkthrough", "refit <X>", "think through <X>", "let's think through".
+description: Didactic, subtractive design discussion for a feature, command, or topic, persisted to a notes file. Invoke with "/refit <feature>" (or "/thinkthrough <subject>" — same skill). For a Drydock-managed project the notes are saved in the project's Target directory; otherwise notes/notes_<subject>.md. Use when the user wants to think a design through conversationally, at their altitude, without code edits, plans, or spec changes — and have the agreed thinking captured to a markdown file at close out, not mid-discussion. Trigger: "/refit", "/thinkthrough", "refit <X>", "think through <X>", "let's think through".
 version: 3.0.0
 ---
 
@@ -22,9 +22,9 @@ topic. Resolve its notes file:
    directory (`$DRYDOCK_WORKSPACE/targets/<Target>/`, workspace per `drydock config show`),
    save notes **within that Target directory** as `targets/<Target>/notes_<feature>.md`. If more
    than one Target could match, ask which one.
-2. **Otherwise** (including the Drydock repository itself): resolve to `docs/notes_<subject>.md`
-   (e.g. `/refit analyze` → `docs/notes_analyze.md`). If the repo has no `docs/` directory, use
-   `notes_<subject>.md` at the repo root and tell the user.
+2. **Otherwise** (including the Drydock repository itself): resolve to `notes/notes_<subject>.md`
+   (e.g. `/refit analyze` → `notes/notes_analyze.md`). Create the `notes/` directory if it does
+   not exist and tell the user.
 
 **Fuzzy subject matching.** Before declaring "starting fresh", strip any trailing digits from the
 subject and check if `notes_<stem>.md` already exists at the resolved location (e.g.
@@ -147,9 +147,9 @@ them cleanly.
 2. Route each decision to the most specific notes file it belongs to:
    - `targets/<Target>/notes_<feature>.md` if the session covers a feature of a Drydock-managed
      project (notes stay within the Target directory)
-   - `docs/notes_<command>.md` if it relates to a specific command
-   - `docs/notes_sail_<phase>.md` if it relates to a SAIL workflow phase (setup, analyze, iterate, loop)
-   - `docs/notes_general.md` as the default
+   - `notes/notes_<command>.md` if it relates to a specific command
+   - `notes/notes_sail_<phase>.md` if it relates to a SAIL workflow phase (setup, analyze, iterate, loop)
+   - `notes/notes_general.md` as the default
 3. Write each as a tagged section (date · spec · impl) in the appropriate file.
 4. Update the `Pending spec` and `Pending impl` counts in each file's header.
 5. Print a one-paragraph summary: files written, count of `spec:approved` items pending, count

@@ -12,7 +12,7 @@ numbered list, wait for the user to choose, then implement the selected items.
 The argument after `/apply-refit` is the subject. Resolve the notes file the same way as
 `/refit`: `targets/<Target>/notes_<feature>.md` when the subject is a feature of a
 Drydock-managed project (`$DRYDOCK_WORKSPACE/targets/<Target>/`), otherwise
-`docs/notes_<subject>.md`.
+`notes/notes_<subject>.md`.
 
 **Drydock-managed projects:** when the notes file lives in a Target directory, selected CODE
 items are not implemented by direct code edits. Instead, write one change ticket per selected
@@ -23,21 +23,21 @@ build process. DOC items amend the Target's Blueprint the same way.
 
 ## On invocation (first turn only)
 
-0. **Archive terminal sections** — before surfacing any items, scan `docs/notes_<subject>.md`
+0. **Retire terminal sections** — before surfacing any items, scan `notes/notes_<subject>.md`
    for sections in terminal state: both `impl` and `spec` flags are done
    (`impl:implemented` or `impl:na`, **and** `spec:applied` or `spec:na`).
 
-   - If any terminal sections exist, move them (append) to `docs/archive_<subject>.md`,
+   - If any terminal sections exist, move them (append) to `notes/notes_<subject>_done.md`,
      preserving their full `### Section` block verbatim.
-   - Remove those sections from `docs/notes_<subject>.md`.
-   - Update the header counts (`Pending spec`, `Pending impl`) in `docs/notes_<subject>.md`
+   - Remove those sections from `notes/notes_<subject>.md`.
+   - Update the header counts (`Pending spec`, `Pending impl`) in `notes/notes_<subject>.md`
      to reflect the removals.
-   - If `docs/archive_<subject>.md` does not exist, create it with a minimal header:
-     `# ARCHIVE: <subject>` and today's date.
-   - Report how many sections were archived before proceeding (e.g. "Archived 3 terminal
-     sections to archive_<subject>.md."). If none, say nothing and continue.
+   - If `notes/notes_<subject>_done.md` does not exist, create it with a minimal header:
+     `# DONE: <subject>` and today's date.
+   - Report how many sections were retired before proceeding (e.g. "Retired 3 completed
+     sections to notes_<subject>_done.md."). If none, say nothing and continue.
 
-1. **Read** `docs/notes_<subject>.md`. If it does not exist, stop and say so.
+1. **Read** `notes/notes_<subject>.md`. If it does not exist, stop and say so.
 
 2. **Extract flagged sections** — scan every `### Section` block for its flag line
    (`` `YYYY-MM-DD` · `spec:X` · `impl:Y` ``):

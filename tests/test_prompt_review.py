@@ -81,6 +81,7 @@ def _make_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     (repo / "prompts").mkdir(parents=True)
     (repo / "docs").mkdir()
+    (repo / "notes").mkdir()
     (repo / "src" / "drydock").mkdir(parents=True)
     (repo / "prompts" / "analyze.md").write_text(
         "---\nname: analyze\ndescription: x\nversion: 1\nintent: x\n---\nbody\n", encoding="utf-8"
@@ -95,8 +96,8 @@ def _make_repo(tmp_path: Path) -> Path:
     (repo / "prompts" / "BLUEPRINTS_CONTRACT.md").write_text(
         "# Blueprints Contract\n", encoding="utf-8"
     )
-    (repo / "docs" / "notes_analyze.md").write_text("# Notes Analyze\n", encoding="utf-8")
-    (repo / "docs" / "notes_plan.md").write_text("# Notes Plan\n", encoding="utf-8")
+    (repo / "notes" / "notes_analyze.md").write_text("# Notes Analyze\n", encoding="utf-8")
+    (repo / "notes" / "notes_plan.md").write_text("# Notes Plan\n", encoding="utf-8")
     (repo / "docs" / "Drydock_Specification.md").write_text(
         "\n".join([
             "# Drydock",
@@ -191,7 +192,7 @@ class TestReviewPrompt:
 
     def test_missing_notes_file_fails(self, tmp_path, monkeypatch):
         repo = _make_repo(tmp_path)
-        (repo / "docs" / "notes_analyze.md").unlink()
+        (repo / "notes" / "notes_analyze.md").unlink()
         monkeypatch.setattr("drydock.prompt_review.get_repo_root", lambda: repo)
         monkeypatch.setattr(
             "drydock.prompt_review.load_prompt",

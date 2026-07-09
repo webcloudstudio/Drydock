@@ -13,7 +13,7 @@ target architecture. It defines intended behavior, scope, and contracts. Treat i
 
 **Content** — normative statements of intended behavior only. No rationale, reasoning, open
 questions, status, history, alternatives, or hedging ("we could / should probably / might /
-plan to"). Reasoning, questions, and options belong in `docs/notes_<command>.md`; the
+plan to"). Reasoning, questions, and options belong in `notes/notes_<command>.md`; the
 specification is the conclusion, never the deliberation. Never alter already-specified syntax
 or behavior. If the specification diverges from implemented behavior, surface the conflict and
 let the author decide.

@@ -53,4 +53,4 @@ Rules:
   file and is not represented in `inputs:`.
 
 `build`, `build score`, and `refit` receive their `inputs:` rows when their prompts are authored;
-their matrix-derived rows are recorded in `docs/notes_quarterdeck.md` (§ Config Driven Agents).
+their matrix-derived rows are recorded in `notes/notes_quarterdeck.md` (§ Config Driven Agents).
