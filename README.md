@@ -1,13 +1,37 @@
+<div align="center">
+
+<img src="docs/drydock_logo.png" alt="Drydock" width="160" />
+
 # Drydock
 
-Drydock is a governed, Blueprint-driven software delivery CLI for building working
-software from specifications with a repeatable Agile process.
+**The missing process layer for specification-driven development.**
 
-It adds the missing process layer to specification-driven development: import the
+Governed, Blueprint-driven software delivery on your existing Claude or Codex
+subscription CLI — reproducible LLM builds with a real Agile process, no API keys.
+
+[![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
+[![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
+
+[Install](#install) · [Quick Start](#quick-start) · [Why It Is Different](#why-it-is-different) · [Specification](docs/Drydock_Specification.md) · [Docs](#public-documentation)
+
+</div>
+
+---
+
+```bash
+uv tool install drydock-sdd     # then: drydock init MyApp && drydock status
+```
+
+Drydock adds the missing process layer to specification-driven development: import the
 source material, analyze it into stories and acceptance criteria, review decisions in
 the QuarterDeck, plan a dependency graph, build one context-optimized frontier at a
 time, verify evidence, and keep the Blueprint and software aligned as the product
 changes.
+
+> **You are the Commander** — the product owner. The LLM is your Agile delivery team.
+> Drydock makes that relationship explicit, reviewable, and repeatable.
 
 Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENSE](LICENSE).
 
@@ -174,7 +198,7 @@ Drydock's job is to make that relationship explicit, reviewable, and repeatable.
 
 ## Current Release Status
 
-Drydock `0.1.1` is an alpha release. The primary SAIL path is implemented, but
+Drydock `0.1.2` is an alpha release. The primary SAIL path is implemented, but
 the command surface and Typed Specification contracts remain unstable during
 the `0.x` series:
 
