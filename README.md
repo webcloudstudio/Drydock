@@ -88,8 +88,8 @@ uv tool install "drydock-sdd[pdf]"
 playwright install chromium
 ```
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full installation and release
-verification guide.
+See [docs/USER_INSTALLATION.md](docs/USER_INSTALLATION.md) for the full installation
+guide.
 
 ### Optional: Claude Code skills
 
@@ -255,7 +255,7 @@ Configuration keys:
 
 Core references:
 
-- [Install Drydock](docs/INSTALLATION.md)
+- [Install Drydock](docs/USER_INSTALLATION.md)
 - [Drydock specification](docs/Drydock_Specification.md)
 - [Rendered specification HTML](docs/Drydock_Specification.html)
 - [Rendered specification PDF](docs/Drydock_Specification.pdf)
@@ -269,6 +269,7 @@ Core references:
 Development and governance:
 
 - [Contributing](CONTRIBUTING.md)
+- [Release process (maintainer runbook)](docs/RELEASE_PROCESS.md)
 - [Drydock skills](docs/Drydock_SKILLS.md)
 - [PyPI name reservation notes](docs/PYPI_NAME_RESERVATION.md)
 - [Launch distribution plan](docs/presentation/distribution.md)
