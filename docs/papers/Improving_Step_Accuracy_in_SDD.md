@@ -21,10 +21,12 @@ Specification-driven development (SDD) builds software from a written specificat
 LLM build steps. Two failure modes dominate: error compounds across unverified steps, and model
 quality degrades as context grows. This paper applies classical engineering to both. Break the
 specification into stories by Agile decomposition. Put executable tests on each story. Relate
-the stories in a graph database and let test results gate the graph. Stack each prompt from
-delimited specification blocks, and compress a specification to its contract after its first
-use. Every step is bounded, every step is verified, and the build repeats: the same
-specification produces the same working software.
+the stories, with their prerequisite branding and enterprise stack rules, in a graph database
+and let test results gate the graph. Assemble each prompt from delimited specification blocks,
+and compress specifications to their contracts to optimize context. Every step is bounded,
+every step is verified, and the build repeats: the same specification produces the same working
+software. The method also supports change: edited specifications and change tickets enter the
+graph, and the correct build context is calculated dynamically.
 
 **Keywords:** specification-driven development, LLM code generation, test-driven development,
 Agile decomposition, graph database, prompt stacking, context compression
@@ -71,8 +73,13 @@ degrades [4]:
 A step prompted with the full specification starts with a lower *p* than the same step prompted
 with only what it needs — before any compounding begins.
 
-Both failure modes yield to the same engineering move: break the problem into smaller chunks,
-put hard tests on each chunk, and surface missing information as questions instead of guesses.
+Both failure modes yield to classical engineering:
+
+- Break the specification into stories with hard tests, and surface missing information as
+  questions instead of guesses.
+- Determine prerequisite branding and enterprise stack rules.
+- Optimize story grouping for context and quality.
+- Build reproducible software.
 
 ## 2. Simplification #1: Agile Epic Decomposition
 
@@ -93,8 +100,8 @@ A story that cannot be given Programmatic Acceptance is not yet a story; decompo
 
 Open Questions is the feedback channel. Decomposition exposes what the specification does not
 say; those gaps are written as questions and answered by a human before the story builds. The
-mechanism for collecting answers varies and is not specified here. The requirement is that
-ambiguity is resolved by a person, never guessed by the model.
+mechanism for collecting answers varies and is not specified here. Ambiguity is resolved by a
+person, never guessed by the model.
 
 ## 3. Simplification #2: Test-Driven Development for Story Quality
 
@@ -129,11 +136,18 @@ flowchart LR
 *Each story builds, then its test suite executes. Failure loops back; a verified story unlocks
 the next.*
 
-## 4. Simplification #3: Relate Features and Stories in a Graph Database
+## 4. Relating Features and Stories in a Graph Database
 
 Stories are not a list; they are a graph. Features and stories are nodes; dependencies are
-edges; the graph is stored as plain text alongside the specification. The graph does three
-jobs:
+edges; the graph is stored as plain text alongside the specification.
+
+The graph also carries the build's prerequisites. Branding files (palette, typography, document
+standards) and enterprise stack rules (language, framework, and platform conventions) are
+determined up front and related to the stories that need them. These are the rules a
+reproducible build requires: without them, two builds of the same specification diverge on
+every convention the specification does not state.
+
+The graph does three jobs:
 
 1. **Ordering.** The runnable frontier — stories whose dependencies have all passed — is
    computable by inspection. Build order is a property of the data.
@@ -142,31 +156,30 @@ jobs:
 3. **Containment.** With a test suite at every edge, no unverified chain exceeds length one.
    The §1 arithmetic collapses from *pⁿ* to *p* per step.
 
-## 5. Stacking Specifications: Stack and Branding Rules
+## 5. Stack Assembly
 
-A build prompt is assembled, not written. Each step stacks the exact files it requires, each
-wrapped in an XML delimiter naming the file and its role:
+A build prompt is assembled, not written. Each step stacks the exact files the graph relates to
+it — story specifications, branding, and stack rules — each wrapped in a unique delimiter
+naming the file and its role:
 
 ```xml
-<pblock filename="FEATURE-Import.md" role="implements">
+<unique_delimiter filename="FEATURE-Import.md" role="implements">
   ...specification content...
-</pblock>
-<pblock filename="python.md" role="stack">
+</unique_delimiter>
+<unique_delimiter filename="python.md" role="stack">
   ...stack rules...
-</pblock>
+</unique_delimiter>
 ```
 
-- The delimiters give the model an unambiguous map of what each block is and why it is present.
+- The delimiters make each block unambiguous to the LLM: what it is, and why it is present.
 - Prompt composition is deterministic: the prompt for any step is a computed function of the
   graph, reproducible byte for byte.
-- Shared stack rules (language, framework, platform conventions) and branding (palette,
-  typography, document standards) are written once and stacked into every step that needs
-  them. No step receives rules irrelevant to its technology.
+- No step receives rules irrelevant to its technology.
 
-## 6. Compression: Second Use Is the Contract
+## 6. Compression: Optimizing Context
 
-The first story that implements a specification file needs all of it. Every later story needs
-only the contract:
+Context is the scarce resource; compression optimizes it. The first story that implements a
+specification file needs all of it. Every later story needs only the contract:
 
 | Full specification | Compressed contract |
 |---|---|
@@ -186,16 +199,18 @@ The pieces compose:
 | Decomposition (§2) | Every step is small enough to be accurate |
 | Test suites (§3) | Every step proves itself before anything depends on it |
 | Graph (§4) | Order is computed; errors are contained at edges |
-| Stacking (§5) | Every prompt is a deterministic function of declared files |
+| Stack assembly (§5) | Every prompt is a deterministic function of declared files |
 | Compression (§6) | Every prompt carries contracts, not bulk |
 
-Two optimizations fall out of the graph directly:
+Optimizations fall out of the graph directly:
 
 - Stories that share context group into a single step; the shared material is injected once.
-- A change to one specification file invalidates only the stories that depend on it. The
-  rebuild is the affected subgraph, not the application.
+  Grouping is tuned for both context cost and build quality.
+- The method supports change. An edited specification or a change ticket enters the graph,
+  invalidates only the stories that depend on it, and the correct build context for the rework
+  is calculated dynamically. The rebuild is the affected subgraph, not the application.
 
-Repeatability is the sum. The specification, the graph, the test suites, and the stacking rules
+Repeatability is the sum. The specification, the graph, the test suites, and the assembly rules
 fully determine every prompt and every acceptance decision. Run the build again and the same
 inputs produce the same verified software.
 
@@ -207,9 +222,11 @@ This is classical engineering applied to a new build tool:
 
 - Break the specification into stories small enough to be accurate.
 - Put an executable test suite on every story.
-- Relate the stories in a graph and let the test suites gate it.
-- Stack every prompt from delimited, versioned blocks; compress what is merely consumed.
+- Determine prerequisite branding and enterprise stack rules.
+- Relate stories, features, and rules in a graph and let the test suites gate it.
+- Optimize story grouping for context and quality; compress what is merely consumed.
 - Surface what is missing as questions for a human.
+- Build reproducible software.
 
 Error stops compounding, context stops confusing, and the build repeats.
 

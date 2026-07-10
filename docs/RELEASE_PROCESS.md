@@ -180,22 +180,21 @@ drydock publish docs/Drydock_Specification.md \
 
 Commit the regenerated HTML/PDF so Pages serves the current release.
 
-### B3. Mint citable DOIs on Zenodo (two papers + the specification)
+### B3. Mint citable DOIs on Zenodo (the paper + the specification)
 
-Three separate Zenodo records, each with its own versioned DOI:
+Two separate Zenodo records, each with its own versioned DOI:
 
 | Record | Source | Zenodo resource type |
 |---|---|---|
-| Paper 1 — *Optimizing Specification-Driven Delivery* | `docs/papers/Optimizing_Specification_Driven_Delivery.pdf` | Publication / Preprint |
-| Paper 2 — *Improving Step Accuracy in Specification-Driven Development* | `docs/papers/Improving_Step_Accuracy_in_SDD.pdf` | Publication / Preprint |
+| Paper — *Improving Step Accuracy in Specification-Driven Development* | `docs/papers/Improving_Step_Accuracy_in_SDD.pdf` | Publication / Preprint |
 | Drydock Specification | `docs/Drydock_Specification.pdf` | Publication / Technical note |
 
-Rebuild the PDFs with `bin/build_documentation.sh` (spec) and `drydock publish` (papers) before
-upload. Keep the papers and the spec as **separate records** — the papers are the citable
+Rebuild the PDFs with `bin/build_documentation.sh` (spec) and `drydock publish` (paper) before
+upload. Keep the paper and the spec as **separate records** — the paper is the citable
 argument; the spec is the versioned reference document. On each release, publish a **new
-version** of the spec record (same concept DOI) rather than a new record. Cross-link all three
+version** of the spec record (same concept DOI) rather than a new record. Cross-link the two
 via "Related identifiers" and link each DOI badge from the README. Mirror HTML on GitHub Pages.
-Optionally submit the papers to **SSRN** and **arXiv `cs.SE`** (needs endorsement for a first
+Optionally submit the paper to **SSRN** and **arXiv `cs.SE`** (needs endorsement for a first
 submission — plan lead time).
 
 ### B4. Compress and post the video (YouTube)
