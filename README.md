@@ -15,7 +15,7 @@ evidence, and controlled change.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-[Install](#install) · [60-Second Example](#60-second-example) · [Why It Is Different](#why-it-is-different) · [Specification](https://webcloudstudio.com/project-docs/drydock/) · [Deck](https://webcloudstudio.com/drydock/) · [Paper](https://zenodo.org/records/21287574)
+[Install](#install) · [60-Second Example](#60-second-example) · [Why It Is Different](#why-it-is-different) · [Specification](https://webcloudstudio.com/project-docs/drydock/) · [Deck](https://webcloudstudio.com/drydock/) · [Paper](https://zenodo.org/records/21287574) · [Video](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4)
 
 </div>
 
@@ -304,6 +304,7 @@ Public hub and launch materials:
 - [Drydock GitHub repository](https://github.com/webcloudstudio/Drydock)
 - [Canonical Drydock specification](https://webcloudstudio.com/project-docs/drydock/)
 - [Launch deck and presentation](https://webcloudstudio.com/drydock/)
+- [Launch video](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4)
 - [Improving Step Accuracy in Specification-Driven Development](https://zenodo.org/records/21287574)
 
 Repository references:
