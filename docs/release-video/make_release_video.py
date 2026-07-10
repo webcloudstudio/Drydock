@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import math
 import multiprocessing
 import re
@@ -72,6 +73,13 @@ STEEL_DARK = (84, 103, 124)
 SENTENCE_GAP = 0.55
 PARAGRAPH_GAP = 1.05
 
+# Gantry sync. The lead input card (belt position 840) finishes converting this
+# long after its command is named, so the machine engages on the word and its
+# outputs stream out while the narrator describes them. RIDE_IN is how long a
+# dropped input rides the belt before it reaches the machine.
+CONVERT_OFFSET = 0.35
+RIDE_IN = 3.4
+
 VOICE_FALLBACK = """Meet Drydock: a complete delivery system for specification-driven developers.
 
 Drydock works with larger specifications, including multi-file specs and imports from other tools.
@@ -113,6 +121,19 @@ def voice_text() -> str:
         if text:
             return text
     return VOICE_FALLBACK
+
+
+MARKS_PATH = AUDIO / "narration_marks.json"
+
+
+def load_marks() -> dict | None:
+    """Return per-command narration timestamps written by the last synthesis."""
+    if MARKS_PATH.exists():
+        try:
+            return json.loads(MARKS_PATH.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return None
+    return None
 
 
 def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -184,35 +205,70 @@ def paste_logo(frame: Image.Image, center, size, alpha=1.0):
 class Timeline:
     """All world positions and event times, scaled to the narration length."""
 
-    def __init__(self, duration: float):
+    def __init__(self, duration: float, marks: dict | None = None):
         self.duration = duration
         s = duration / BASE_END
         self.s = s
         sc = lambda x: x * s  # noqa: E731
 
+        # Narration marks (video-time seconds) drive every machine so each
+        # command engages as it is spoken. Real marks come from voice synthesis
+        # (audio/narration_marks.json); absent that, base timing stands in.
+        fallback = {
+            "import": sc(11.5),
+            "analyze": sc(21.0),
+            "plan": sc(30.0),
+            "manifest": sc(38.0),
+            "quarterdeck": sc(48.0),
+            "build": sc(64.5),
+            "refit": sc(75.0),
+            "truths": sc(78.0),
+            "cta": sc(82.0),
+        }
+        if marks is None:
+            marks = load_marks()
+        mk = dict(fallback)
+        if marks:
+            for key, value in marks.items():
+                if key in mk and isinstance(value, (int, float)):
+                    mk[key] = float(value)
+        self.marks = mk
+        mi, ma, mp = mk["import"], mk["analyze"], mk["plan"]
+        mman, mqd = mk["manifest"], mk["quarterdeck"]
+        mb, mr = mk["build"], mk["refit"]
+        mt, mc = mk["truths"], mk["cta"]
+
+        # A gantry arrival puts its lead input (belt position 840) at the machine
+        # center; that card finishes converting CONVERT_OFFSET after the command
+        # word, so outputs stream out as the narrator describes them.
+        def arrival(mark: float) -> float:
+            return mark + CONVERT_OFFSET - (GANTRY_SX - 840) / V
+
+        t_import = arrival(mi)
+        t_analyze = arrival(ma)
+        t_plan = arrival(mp)
+        t_build = arrival(mb)
+        t_refit = arrival(mr)
+
         # Camera: locked to belt speed, then eased to a stop for the closer.
-        self.t_stop = sc(82.0)
+        self.t_stop = mc + 0.2
         self.stop_len = 3.0
         self.cam_final = V * self.t_stop + V * self.stop_len / 2
 
+        # Headlines track the marks: a section's headline rises ~2.5s before its
+        # command is named and clears as the next section begins.
         self.scenes = [
-            ("intro", 0.0, sc(5), "", ""),
-            ("import", sc(5), sc(17), "Import your Project", ""),
-            ("analyze", sc(17), sc(26), "Analyze is Agile Planning", ""),
-            ("plan", sc(26), sc(36), "Plan the reproducible build", ""),
-            ("manifest", sc(36), sc(46), "", ""),
-            ("quarterdeck", sc(46), sc(58), "", ""),
-            ("build", sc(58), sc(70), "Build with Test-Driven evidence", ""),
-            ("refit", sc(70), sc(78), "Refit change tickets", ""),
-            ("truths", sc(78), sc(82), "Built on engineering truths", ""),
-            ("cta", sc(82), duration, "", ""),
+            ("intro", 0.0, mi - 3.2, "", ""),
+            ("import", mi - 3.2, ma - 2.5, "Import your Project", ""),
+            ("analyze", ma - 2.5, mp - 2.5, "Analyze is Agile Planning", ""),
+            ("plan", mp - 2.5, mman - 0.3, "Plan the reproducible build", ""),
+            ("manifest", mman - 0.3, mqd - 2.0, "", ""),
+            ("quarterdeck", mqd - 2.0, mb - 2.5, "", ""),
+            ("build", mb - 2.5, mr - 2.5, "Build with Test-Driven evidence", ""),
+            ("refit", mr - 2.5, mt - 0.5, "Refit change tickets", ""),
+            ("truths", mt - 0.5, mc - 0.5, "Built on engineering truths", ""),
+            ("cta", mc - 0.5, duration, "", ""),
         ]
-
-        t_import = sc(12.5)
-        t_analyze = sc(22.0)
-        t_plan = sc(31.0)
-        t_build = sc(65.0)
-        t_refit = sc(75.5)
 
         def conv(t_arr: float, wx0: float) -> float:
             return t_arr + (GANTRY_SX - wx0) / V
@@ -254,15 +310,15 @@ class Timeline:
         # Every machine's outputs reuse the belt positions of the inputs they
         # replace, so each output emerges the instant its input converts —
         # no dead time inside a gantry.
-        # Inputs drop onto the belt, ride into IMPORT.
-        for label, color, wx0, td in [
-            ("Specification", BLUE2, 840, sc(5.5)),
-            ("Notes", GREEN, 520, sc(6.4)),
-            ("Material", AMBER, 200, sc(7.3)),
+        # Inputs drop onto the belt and ride RIDE_IN seconds into IMPORT.
+        for label, color, wx0 in [
+            ("Specification", BLUE2, 840),
+            ("Notes", GREEN, 520),
+            ("Material", AMBER, 200),
         ]:
-            card(
-                "card", label, color, wx0, td, c(t_import, wx0), drop=(td, td + 0.8), drop_from=390
-            )
+            cin = c(t_import, wx0)
+            td = cin - RIDE_IN
+            card("card", label, color, wx0, td, cin, drop=(td, td + 0.8), drop_from=390)
         # IMPORT output: same cards, imported, at the same positions.
         for label, color, wx0 in [
             ("Imported Specification", BLUE2, 840),
@@ -303,17 +359,10 @@ class Timeline:
         card("crate", "", GREEN, 840, c(t_build, 840), c(t_refit, 840))
         # Change tickets drop in behind the working software and follow it
         # into REFIT.
-        for wx0, td in [(580, sc(70.4)), (430, sc(71.2)), (280, sc(72.0))]:
-            card(
-                "ticket",
-                "CHANGE",
-                AMBER,
-                wx0,
-                td,
-                c(t_refit, wx0),
-                drop=(td, td + 0.7),
-                drop_from=430,
-            )
+        for wx0 in [580, 430, 280]:
+            cin = c(t_refit, wx0)
+            td = cin - 3.0
+            card("ticket", "CHANGE", AMBER, wx0, td, cin, drop=(td, td + 0.7), drop_from=430)
         # REFIT output: more working software, riding to the end of the line.
         for wx0 in [840, 600, 360]:
             card("crate", "", GREEN, wx0, c(t_refit, wx0), duration + 10)
@@ -349,10 +398,16 @@ class Timeline:
             cd["t_off"] = (self.wx_end - 40 - cd["wx0"]) / V
             cd["slot"] = (self.wx_end + dx, y_bottom)
 
-        # Wall panels above the belt.
-        self.manifest_panel = dict(wx=1920 + V * sc(36), w=1180, anim=(sc(37.0), sc(43.0)))
-        self.qd_panel = dict(wx=1920 + V * sc(46), w=1300, swap=(sc(48.0), sc(51.5)))
-        self.truths_window = (sc(78.0), sc(82.0))
+        # Wall panels above the belt, centered on screen as they are narrated.
+        mpanel_w = 1180
+        self.manifest_panel = dict(
+            wx=960 - mpanel_w / 2 + V * (mman + 2.0), w=mpanel_w, anim=(mman, mman + 5.0)
+        )
+        qd_w = 1300
+        self.qd_panel = dict(
+            wx=960 - qd_w / 2 + V * (mqd + 3.5), w=qd_w, swap=(mqd + 1.0, mqd + 4.5)
+        )
+        self.truths_window = (mt, mc - 0.4)
         self.truths = [
             ("Decompose big problems", 150, 300),
             ("Agile planning", 780, 300),
@@ -1078,6 +1133,36 @@ def _trim_silence(samples: np.ndarray, sample_rate: int, threshold: int = 260) -
     return samples[lo:hi]
 
 
+def save_marks(spoken, voice_duration: float):
+    """Write per-command narration timestamps from the synthesized sentences.
+
+    `spoken` is a list of (start_seconds, sentence_text). The video clock and the
+    voice clock share an origin, so these start times are the moments each
+    command is named — exactly what the timeline anchors machines to.
+    """
+
+    def find(phrase: str):
+        for start, text in spoken:
+            if phrase.lower() in text.lower():
+                return round(start, 3)
+        return None
+
+    marks = {
+        "import": find("drydock import"),
+        "analyze": find("drydock analyze"),
+        "plan": find("drydock plan"),
+        "manifest": find("builds the Manifest"),
+        "quarterdeck": find("QuarterDeck"),
+        "build": find("drydock build"),
+        "refit": find("drydock refit"),
+        "truths": find("engineering truths"),
+        "cta": find("Take it for a sail"),
+        "voice_duration": round(voice_duration, 3),
+    }
+    marks = {k: v for k, v in marks.items() if v is not None}
+    MARKS_PATH.write_text(json.dumps(marks, indent=2), encoding="utf-8")
+
+
 async def write_voice(path: Path):
     import edge_tts
 
@@ -1087,9 +1172,13 @@ async def write_voice(path: Path):
     tmp = path.parent / "_segments"
     tmp.mkdir(exist_ok=True)
     pieces = []
+    spoken = []  # (start_seconds, sentence_text) for each synthesized sentence
+    clock = 0.0
     for i, (kind, value) in enumerate(narration_segments(voice_text())):
         if kind == "gap":
-            pieces.append(np.zeros(int(sample_rate * value), dtype=np.int16))
+            n = int(sample_rate * value)
+            pieces.append(np.zeros(n, dtype=np.int16))
+            clock += n / sample_rate
             continue
         seg_mp3 = tmp / f"seg_{i:03d}.mp3"
         communicator = edge_tts.Communicate(
@@ -1101,7 +1190,10 @@ async def write_voice(path: Path):
             capture_output=True,
             check=True,
         )
-        pieces.append(_trim_silence(np.frombuffer(decoded.stdout, dtype=np.int16), sample_rate))
+        samples = _trim_silence(np.frombuffer(decoded.stdout, dtype=np.int16), sample_rate)
+        spoken.append((clock, value))
+        pieces.append(samples)
+        clock += len(samples) / sample_rate
     data = np.concatenate(pieces)
     subprocess.run(
         [
@@ -1125,6 +1217,7 @@ async def write_voice(path: Path):
         check=True,
     )
     shutil.rmtree(tmp)
+    save_marks(spoken, clock)
 
 
 def probe_duration(path: Path) -> float:
@@ -1231,37 +1324,21 @@ def write_stills(tl: Timeline):
     STILLS.mkdir(parents=True, exist_ok=True)
     for old in STILLS.glob("still_*.png"):
         old.unlink()
-    base_times = [
-        2.5,
-        7,
-        10,
-        13,
-        15.5,
-        20,
-        22.5,
-        25,
-        31,
-        34,
-        40,
-        44,
-        49.5,
-        52,
-        57,
-        59,
-        64,
-        66.5,
-        71.5,
-        74,
-        76.5,
-        78.5,
-        80.5,
-        83.5,
-        86.5,
-    ]
-    for bt in base_times:
-        t = min(bt * tl.s, tl.duration - 0.05)
-        frame_at(t, tl).save(STILLS / f"still_{int(bt):02d}.png")
-    print(f"Wrote {len(base_times)} stills to {STILLS}")
+    mk = tl.marks
+    times = [2.5]  # intro
+    # Each machine: entering just before the word, converting on the word, and
+    # streaming its outputs just after.
+    for key in ("import", "analyze", "plan", "build", "refit"):
+        m = mk[key]
+        times += [m - 0.8, m + 0.7, m + 2.4]
+    # Wall panels and closer, centered on their narration.
+    times += [mk["manifest"] + 2.0, mk["quarterdeck"] + 3.5]
+    times += [mk["truths"] + 2.0, mk["cta"] + 2.0]
+    times = sorted(t for t in times if 0.0 <= t < tl.duration)
+    for t in times:
+        t = min(t, tl.duration - 0.05)
+        frame_at(t, tl).save(STILLS / f"still_{int(round(t)):02d}.png")
+    print(f"Wrote {len(times)} stills to {STILLS}")
 
 
 def main():

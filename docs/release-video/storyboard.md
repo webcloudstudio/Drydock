@@ -8,6 +8,12 @@
 - World: one continuous conveyor belt runs the full video. The camera dollies along the
   belt at belt speed, so riding cards hold their screen position while world-fixed
   structures sweep right-to-left past them.
+- Timing: voice synthesis records the moment each command is spoken to
+  `audio/narration_marks.json`; the renderer anchors every machine, headline, and wall
+  panel to those marks. A machine reaches its center and converts its lead card as the
+  command is named, so its outputs stream out while the narrator describes them, and the
+  previous machine is still leaving frame as the next one enters — the machines overlap
+  on screen rather than leaving dead belt between them.
 - Card grammar: one paper-card style everywhere (title bar plus rule lines). Imported
   cards carry a check badge; Story cards carry green acceptance-criteria ticks; the
   Blueprints card lists its sections (Behavior, Acceptance, Guardrails).
@@ -24,20 +30,21 @@
 
 ## Scenes
 
-Times are in base units; the render scales them to the narration length.
+Machine, headline, and panel timing is anchored to the narration marks, not to fixed
+times; the columns below describe the beats in order.
 
-| Time | Visual | Voice |
-|---:|---|---|
-| 0-5 | Logo and title over the running belt. | Meet Drydock. |
-| 5-17 | "Import your Project": Specification, Notes, and Material cards drop onto the belt and ride into the `drydock import` gantry; Imported cards emerge in place. | Drydock import brings in specifications, notes, and other material. |
-| 17-26 | "Analyze is Agile Planning": the `drydock analyze` gantry converts the imported cards into Stories, Questions, Blockers, and Acceptance Criteria cards. | Drydock analyze proposes an Agile plan. |
-| 26-36 | The `drydock plan` gantry converts the plan cards into a Blueprints card (with section text) and a Manifest card. | Drydock plan converts your specifications into governed Blueprints. |
-| 36-46 | The Manifest wall panel pans past (no headline): Block 1 (Story 1) and Block 2 (Stories 2 and 3), story dependency arrows across blocks, Stack (Database, Web, Technology) and Rigging (Branding, Rules) on the left with light arrows feeding every block. | The Manifest is a graph database relating stories, stack, and branding. |
-| 46-56 | The QuarterDeck workbench pans past (no headline): six named build blocks holding mini Blueprints with section text; a cursor drags two blocks into build order. | Shape the build in the QuarterDeck web server. |
-| 56-70 | The Blueprints and Manifest cards ride into the `drydock build` gantry; a Working Software crate emerges with a Tests Passing chip. | Drydock build walks the graph and produces working software. |
-| 70-78 | Change tickets drop in behind the Working Software crate; all ride into `drydock refit`; more Working Software crates emerge. | Working software plus change tickets become more working software. |
-| 78-82 | Engineering-truth chips fade in above the still-running line. | Drydock is built on engineering truths. |
-| 82-end | The camera stops at the belt end; crates tip off and stack on the platform under the closer: logo, Take it for a sail., WebCloudStudio.com. | Take it for a sail. |
+| Beat | Visual | Voice cue |
+|---|---|---|
+| Intro | Logo and title over the running belt. | Meet Drydock. |
+| `import` | "Import your Project": Specification, Notes, and Material cards drop onto the belt and ride into the `drydock import` gantry; Imported cards emerge in place. | Drydock import brings in specifications, notes, and other material. |
+| `analyze` | "Analyze is Agile Planning": the `drydock analyze` gantry converts the imported cards into Stories, Questions, Blockers, and Acceptance Criteria cards. | Drydock analyze proposes an Agile plan. |
+| `plan` | The `drydock plan` gantry converts the plan cards into a Blueprints card (with section text) and a Manifest card. | Drydock plan converts your specifications into governed Blueprints. |
+| Manifest | The Manifest wall panel pans past (no headline): Block 1 (Story 1) and Block 2 (Stories 2 and 3), story dependency arrows across blocks, Stack (Database, Web, Technology) and Rigging (Branding, Rules) on the left with light arrows feeding every block. | The Manifest is a graph database relating stories, stack, and branding. |
+| QuarterDeck | The QuarterDeck workbench pans past (no headline): six named build blocks holding mini Blueprints with section text; a cursor drags two blocks into build order. | Shape the build in the QuarterDeck web server. |
+| `build` | The Blueprints and Manifest cards ride into the `drydock build` gantry; a Working Software crate emerges with a Tests Passing chip. | Drydock build walks the graph and produces working software. |
+| `refit` | Change tickets drop in behind the Working Software crate; all ride into `drydock refit`; more Working Software crates emerge. | Working software plus change tickets become more working software. |
+| Truths | Engineering-truth chips fade in above the still-running line. | Drydock is built on engineering truths. |
+| Closer | The camera stops at the belt end; crates tip off and stack on the platform under the closer: logo, Take it for a sail., WebCloudStudio.com. | Take it for a sail. |
 
 ## Music Options
 
