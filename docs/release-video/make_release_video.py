@@ -33,7 +33,7 @@ RENDERS = ROOT / "renders"
 WIDTH = 1920
 HEIGHT = 1080
 FPS = 15
-DURATION = 64.0
+DURATION = 86.0
 
 NAVY = (12, 25, 40)
 BLUE = (30, 84, 140)
@@ -48,19 +48,25 @@ PAPER = (249, 251, 252)
 LINE = (198, 212, 224)
 BG = (244, 248, 251)
 
-VOICE_TEXT = """Meet Drydock: a complete delivery system for specification-driven developers.
+VOICE_FALLBACK = """Meet Drydock: a complete delivery system for specification-driven developers.
 
-Ask your LLM to write your idea as a specification that describes what you want. Drydock imports that specification and turns it into governed Agile work.
+Drydock works with larger specifications, including multi-file specs and material imported from other tools.
 
-Run drydock analyze, and the system extracts stories, questions, blockers, and testable acceptance criteria.
+Start with drydock import: bring in specifications, notes, or existing project material.
 
-Run drydock plan, and those results become Blueprints and a Manifest: an executable dependency graph for the build.
+Run drydock analyze, and Drydock proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
 
-Run drydock build, and Drydock walks the graph step by step, producing working software with test-driven evidence.
+Run drydock plan, and your specifications become governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph of stories, dependencies, stack rules, and build order.
 
-When the idea changes, feed in the new material. drydock refit updates the Manifest and keeps the product aligned with the specification.
+You review and control the build in QuarterDeck.
 
-The result is reproducible AI-assisted software delivery: Agile planning, Test-Driven Development, and controlled context from idea to implementation.
+Drydock also supports enterprise branding and stack rules, so applications keep consistent look, behavior, and documentation.
+
+Run drydock build, and Drydock walks the graph block by block, verifying each story against its tests and producing working software.
+
+Agile software never stops changing. Update the specification or add change tickets. drydock refit updates the Manifest so changes move through the normal build process.
+
+Drydock is built on simple engineering truths: engineers decompose big problems; Agile and Test-Driven Development are proven practices; and a graph plus context compression makes specification-driven builds reproducible with your Sonnet or Codex subscription.
 
 Drydock is free, MIT-licensed software, now in stable alpha.
 
@@ -85,13 +91,15 @@ class Scene:
 
 SCENES = [
     Scene(0, 5, "intro"),
-    Scene(5, 12, "spec_in"),
-    Scene(12, 20, "analyze"),
-    Scene(20, 29, "plan"),
-    Scene(29, 39, "manifest"),
-    Scene(39, 49, "build"),
-    Scene(49, 57, "refit"),
-    Scene(57, 64, "cta"),
+    Scene(5, 17, "spec_in"),
+    Scene(17, 26, "analyze"),
+    Scene(26, 36, "plan"),
+    Scene(36, 54, "manifest"),
+    Scene(54, 61, "spec_in"),
+    Scene(61, 70, "build"),
+    Scene(70, 78, "refit"),
+    Scene(78, 82, "manifest"),
+    Scene(82, 86, "cta"),
 ]
 
 
@@ -100,6 +108,15 @@ def ffmpeg_exe() -> str:
     if found:
         return found
     return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def voice_text() -> str:
+    script_path = ROOT / "voiceover_script.txt"
+    if script_path.exists():
+        text = script_path.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    return VOICE_FALLBACK
 
 
 def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -494,9 +511,9 @@ def write_music(path: Path, option: int, duration: float = DURATION, sample_rate
 async def write_voice(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     communicator = edge_tts.Communicate(
-        VOICE_TEXT,
+        voice_text(),
         voice="en-US-AvaMultilingualNeural",
-        rate="+3%",
+        rate="+18%",
         volume="+0%",
     )
     await communicator.save(str(path))
@@ -554,7 +571,7 @@ def mux_audio(video: Path, voice: Path, music: Path, out: Path):
         "-i",
         str(music),
         "-filter_complex",
-        "[1:a]volume=1.15[a1];[2:a]volume=0.18,afade=t=out:st=61:d=3[a2];[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0[a]",
+        f"[1:a]volume=1.15[a1];[2:a]volume=0.18,afade=t=out:st={DURATION - 3}:d=3[a2];[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0[a]",
         "-map",
         "0:v",
         "-map",
@@ -574,7 +591,7 @@ def mux_audio(video: Path, voice: Path, music: Path, out: Path):
 def main():
     AUDIO.mkdir(exist_ok=True)
     RENDERS.mkdir(exist_ok=True)
-    (ROOT / "voiceover_script.txt").write_text(VOICE_TEXT + "\n", encoding="utf-8")
+    (ROOT / "voiceover_script.txt").write_text(voice_text() + "\n", encoding="utf-8")
 
     music_paths = [
         AUDIO / "music_option_1_clean_pulse.wav",
@@ -586,13 +603,13 @@ def main():
             write_music(path, idx)
 
     voice = AUDIO / "voiceover_ava_neural.mp3"
-    if not voice.exists():
-        asyncio.run(write_voice(voice))
+    asyncio.run(write_voice(voice))
 
     silent = RENDERS / "drydock-announcement-silent.mp4"
     final = RENDERS / "drydock-announcement-first-cut.mp4"
-    render_silent_video(silent)
-    mux_audio(silent, voice, music_paths[1], final)
+    if not silent.exists():
+        render_silent_video(silent)
+    mux_audio(silent, voice, music_paths[0], final)
     print(f"Wrote {final}")
     print(f"Music options: {', '.join(str(p) for p in music_paths)}")
 
