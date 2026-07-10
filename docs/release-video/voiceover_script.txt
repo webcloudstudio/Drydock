@@ -1,0 +1,19 @@
+Meet Drydock: a complete delivery system for specification-driven developers.
+
+Ask your LLM to write your idea as a specification that describes what you want. Drydock imports that specification and turns it into governed Agile work.
+
+Run drydock analyze, and the system extracts stories, questions, blockers, and testable acceptance criteria.
+
+Run drydock plan, and those results become Blueprints and a Manifest: an executable dependency graph for the build.
+
+Run drydock build, and Drydock walks the graph step by step, producing working software with test-driven evidence.
+
+When the idea changes, feed in the new material. drydock refit updates the Manifest and keeps the product aligned with the specification.
+
+The result is reproducible AI-assisted software delivery: Agile planning, Test-Driven Development, and controlled context from idea to implementation.
+
+Drydock is free, MIT-licensed software, now in stable alpha.
+
+Take it for a sail. Contributors wanted.
+
+WebCloudStudio.com.
