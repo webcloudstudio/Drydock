@@ -11,10 +11,6 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio. Licensed under CC BY 4.0 for this paper.
 ---
 
-# Improving Step Accuracy in Specification-Driven Development
-
-**Ed Barlow — Web Cloud Studio**
-
 ## Abstract
 
 Specification-driven development (SDD) builds software from a written specification by executing

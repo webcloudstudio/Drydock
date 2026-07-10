@@ -356,10 +356,17 @@ footer {{ color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: 
 }}
 @media print {{
   header, footer {{ display: none; }}
-  body {{ background: white; font-size: 12px; line-height: 1.45; }}
+  body {{ background: white; font-size: 11pt; line-height: 1.5; }}
   main {{ padding: 0; max-width: 100%; }}
-  #content {{ border: none; padding: 0; }}
-  .cover {{ border-top: 3px solid var(--green); padding: 16px; }}
+  h1 {{ font-size: 22pt; }}
+  h1 .h1-sub {{ font-size: 14pt; }}
+  .subtitle {{ font-size: 11pt; }}
+  #content h2 {{ font-size: 14pt; }}
+  #content h3 {{ font-size: 12pt; }}
+  #content th, #content td, #content code, #content pre {{ font-size: 9.5pt; }}
+  #content {{ padding: 20px 24px; }}
+  .cover {{ border-top: 3px solid var(--green); border-bottom: 1px solid var(--line);
+    padding: 18px 24px; }}
   .ideas-sail {{ border: 1px solid var(--line); padding: 14px 16px 8px; }}
   .sail-card {{ break-inside: avoid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; }}
   .sail-letter {{ font-size: 3rem; }}
@@ -811,7 +818,17 @@ def render_pdf_with_playwright(html_path: Path, pdf_path: Path) -> Path:
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
-        page.pdf(path=str(pdf_path), format="Letter", print_background=True)
+        page.pdf(
+            path=str(pdf_path),
+            format="Letter",
+            print_background=True,
+            margin={
+                "top": "0.65in",
+                "bottom": "0.65in",
+                "left": "0.65in",
+                "right": "0.65in",
+            },
+        )
         browser.close()
     return pdf_path
 
