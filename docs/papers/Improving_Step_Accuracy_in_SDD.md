@@ -147,7 +147,7 @@ determined up front and related to the stories that need them. These are the rul
 reproducible build requires: without them, two builds of the same specification diverge on
 every convention the specification does not state.
 
-The graph does three jobs:
+The graph does four jobs:
 
 1. **Ordering.** The runnable frontier — stories whose dependencies have all passed — is
    computable by inspection. Build order is a property of the data.
@@ -155,40 +155,42 @@ The graph does three jobs:
    dependents; the defect is caught where it was created and repaired locally.
 3. **Containment.** With a test suite at every edge, no unverified chain exceeds length one.
    The §1 arithmetic collapses from *pⁿ* to *p* per step.
+4. **Enabling build optimization.** The graph carries the token estimates and shared-context
+   relationships that make the optimizations of §7 computable.
 
-## 5. Stack Assembly
+## 5. How to Assemble a Stack of Prompts
 
 A build prompt is assembled, not written. Each step stacks the exact files the graph relates to
 it — story specifications, branding, and stack rules — each wrapped in a unique delimiter
-naming the file and its role:
+naming the file and its role. The delimiters make each block unambiguous to the LLM.
 
 ```xml
+<header explaining layout>
+
 <unique_delimiter filename="FEATURE-Import.md" role="implements">
   ...specification content...
 </unique_delimiter>
+
 <unique_delimiter filename="python.md" role="stack">
   ...stack rules...
 </unique_delimiter>
-```
 
-- The delimiters make each block unambiguous to the LLM: what it is, and why it is present.
-- Prompt composition is deterministic: the prompt for any step is a computed function of the
-  graph, reproducible byte for byte.
-- No step receives rules irrelevant to its technology.
+<prompt instructions>
+```
 
 ## 6. Compression: Optimizing Context
 
-Context is the scarce resource; compression optimizes it. The first story that implements a
-specification file needs all of it. Every later story needs only the contract:
+Many stories do not need the full version of their prerequisites. For example, a user interface
+screen needs only a summary of the web routes it calls — not the schemas, migrations, and design
+rationale behind them.
 
-| Full specification | Compressed contract |
-|---|---|
-| Schemas, migrations, rationale, examples, internal design | Routes, class names, method signatures, typed parameters, one-line summaries |
+This is the Builder/User distinction. The builder of a feature needs its full specification.
+Users of the feature need only the contract: routes, class names, method signatures, typed
+parameters, one-line summaries. Each specification file gains a compact derivative containing
+only that contract; the builder stacks the full file, every user stacks the derivative.
 
-Each specification file gains a compact derivative containing only its callable surface. The
-builder step stacks the full file, once; every consumer step stacks the derivative. Compression
-attacks both §1 failure modes: context per step falls, and what remains is exactly what the
-step consumes.
+Compression attacks both §1 failure modes: context per step falls, and what remains is exactly
+what the step consumes.
 
 ## 7. Optimization: Repeatable Quality Builds
 
@@ -202,17 +204,20 @@ The pieces compose:
 | Stack assembly (§5) | Every prompt is a deterministic function of declared files |
 | Compression (§6) | Every prompt carries contracts, not bulk |
 
-Optimizations fall out of the graph directly:
+The graph makes this optimizable algorithmically. Example: 30 stories, each prompt 20,000
+tokens, half of it shared stack rules and architecture. Built one at a time, the shared
+material is injected 30 times: 600,000 tokens total. Group the stories three per step and the
+shared material is injected 10 times: 400,000 tokens — a third of the build cost removed by
+regrouping alone. The grouping is computed from the graph's token estimates and shared-context
+edges, tuned for both cost and build quality.
 
-- Stories that share context group into a single step; the shared material is injected once.
-  Grouping is tuned for both context cost and build quality.
-- The method supports change. An edited specification or a change ticket enters the graph,
-  invalidates only the stories that depend on it, and the correct build context for the rework
-  is calculated dynamically. The rebuild is the affected subgraph, not the application.
+The method supports change. An edited specification or a change ticket enters the graph,
+invalidates only the stories that depend on it, and the correct build context for the rework is
+calculated dynamically. The rebuild is the affected subgraph, not the application.
 
 Repeatability is the sum. The specification, the graph, the test suites, and the assembly rules
-fully determine every prompt and every acceptance decision. Run the build again and the same
-inputs produce the same verified software.
+determine every prompt and every acceptance decision. The same inputs produce the same verified
+software.
 
 Drydock [1] is the reference implementation of this method.
 
