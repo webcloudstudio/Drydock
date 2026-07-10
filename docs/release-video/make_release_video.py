@@ -94,11 +94,12 @@ SCENES = [
     Scene(5, 17, "spec_in"),
     Scene(17, 26, "analyze"),
     Scene(26, 36, "plan"),
-    Scene(36, 54, "manifest"),
-    Scene(54, 61, "spec_in"),
+    Scene(36, 46, "manifest"),
+    Scene(46, 54, "quarterdeck"),
+    Scene(54, 61, "rigging"),
     Scene(61, 70, "build"),
     Scene(70, 78, "refit"),
-    Scene(78, 82, "manifest"),
+    Scene(78, 82, "truths"),
     Scene(82, 86, "cta"),
 ]
 
@@ -280,6 +281,29 @@ def graph_block(draw, x, y, label, color=BLUE2):
     draw.text((x + 95, y + 39), label, font=FONT_TINY, fill=INK, anchor="mm")
 
 
+def toy_block(draw, x, y, label, color=BLUE2, size=116, tilt=0):
+    shadow = (x + 12, y + 14, x + size + 12, y + size + 14)
+    rounded(draw, shadow, 14, (196, 207, 218))
+    rounded(draw, (x, y, x + size, y + size), 14, color, (72, 91, 110), 4)
+    draw.rectangle((x + 9, y + 9, x + size - 9, y + 38), fill=(255, 255, 255, 70))
+    draw.text((x + size / 2, y + size / 2 + 7), label, font=FONT_SMALL, fill=(255, 255, 255), anchor="mm")
+    if tilt:
+        draw.line((x + 18, y + size - 18, x + size - 18, y + 18), fill=(255, 255, 255), width=2)
+
+
+def cartoon_finger(draw, x, y, pointing="down"):
+    skin = (244, 190, 148)
+    outline = (150, 103, 75)
+    if pointing == "down":
+        rounded(draw, (x, y, x + 52, y + 138), 25, skin, outline, 3)
+        draw.ellipse((x - 10, y + 94, x + 62, y + 166), fill=skin, outline=outline, width=3)
+        draw.polygon([(x + 26, y + 154), (x - 2, y + 204), (x + 54, y + 204)], fill=skin, outline=outline)
+    else:
+        rounded(draw, (x, y, x + 138, y + 52), 25, skin, outline, 3)
+        draw.ellipse((x - 28, y - 10, x + 44, y + 62), fill=skin, outline=outline, width=3)
+        draw.polygon([(x + 128, y + 26), (x + 176, y - 2), (x + 176, y + 54)], fill=skin, outline=outline)
+
+
 def draw_intro(frame, draw, t, p):
     pulse = 1 + 0.03 * math.sin(t * 6)
     paste_logo(frame, (WIDTH // 2, 335), int(285 * pulse))
@@ -351,36 +375,83 @@ def draw_plan(frame, draw, t, p):
 
 
 def draw_manifest(frame, draw, t, p):
-    draw.text((120, 170), "The Manifest controls context and order", font=FONT_H1, fill=NAVY)
+    draw.text((120, 170), "The Manifest is a build graph", font=FONT_H1, fill=NAVY)
     draw.text(
         (120, 238),
-        "Blocks move only when dependencies and evidence are ready.",
+        "Stories, tests, stack rules, voice, build steps, and evidence snap into place.",
         font=FONT_BODY,
         fill=MUTED,
     )
-    nodes = [
-        ("Spec", 250, 380),
-        ("Story", 530, 315),
-        ("Tests", 530, 500),
-        ("Build 1", 850, 380),
-        ("Build 2", 1130, 315),
-        ("Evidence", 1130, 500),
-        ("Working Software", 1420, 405),
+    blocks = [
+        ("SPEC", 260, 405, AMBER),
+        ("STORY", 480, 330, BLUE2),
+        ("TEST", 480, 520, GREEN),
+        ("STACK", 730, 405, NAVY),
+        ("VOICE", 960, 330, BLUE),
+        ("BUILD", 960, 520, GREEN2),
+        ("EVID", 1210, 405, RED),
+        ("SHIP", 1440, 405, GREEN),
     ]
-    links = [(0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (3, 5), (4, 6), (5, 6)]
-    positions = []
-    for idx, (label, x, y) in enumerate(nodes):
-        jiggle = 14 * math.sin(t * 2.4 + idx) * (1 - min(1, p * 1.6))
-        positions.append((label, x, y + jiggle))
+    links = [(0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (3, 5), (4, 6), (5, 6), (6, 7)]
+    positions = [(label, x, y + 25 * math.sin(t * 3 + idx) * (1 - ease(p)), color) for idx, (label, x, y, color) in enumerate(blocks)]
     for a, b in links:
-        _, x1, y1 = positions[a]
-        _, x2, y2 = positions[b]
-        draw.line((x1 + 190, y1 + 39, x2, y2 + 39), fill=(151, 171, 190), width=5)
+        _, x1, y1, _ = positions[a]
+        _, x2, y2, _ = positions[b]
+        draw.line((x1 + 116, y1 + 58, x2, y2 + 58), fill=(151, 171, 190), width=5)
         draw.polygon(
-            [(x2 - 2, y2 + 39), (x2 - 22, y2 + 27), (x2 - 22, y2 + 51)], fill=(151, 171, 190)
+            [(x2 - 2, y2 + 58), (x2 - 22, y2 + 46), (x2 - 22, y2 + 70)], fill=(151, 171, 190)
         )
-    for idx, (label, x, y) in enumerate(positions):
-        graph_block(draw, x, int(y), label, GREEN if idx in (2, 5, 6) else BLUE2)
+    for idx, (label, x, y, color) in enumerate(positions):
+        toy_block(draw, int(x), int(y), label, color, tilt=idx % 2)
+    draw_conveyor(draw, t)
+
+
+def draw_quarterdeck(frame, draw, t, p):
+    draw.text((120, 170), "QuarterDeck lets you shape the build", font=FONT_H1, fill=NAVY)
+    draw.text((120, 238), "Swap, review, and approve the blocks before build execution.", font=FONT_BODY, fill=MUTED)
+    rounded(draw, (300, 300, 1620, 690), 28, (255, 255, 255), (142, 160, 180), 5)
+    draw.rectangle((300, 300, 1620, 365), fill=(231, 239, 247))
+    draw.text((355, 333), "QuarterDeck Review Scaffold", font=FONT_H2, fill=NAVY, anchor="lm")
+    lanes = [430, 565]
+    for y in lanes:
+        draw.line((370, y + 72, 1540, y + 72), fill=(210, 222, 234), width=5)
+    start_positions = [(430, 420), (650, 420), (870, 420), (1090, 420), (1310, 420)]
+    target_positions = [(430, 555), (650, 555), (870, 555), (1090, 555), (1310, 555)]
+    labels = [("STORY", BLUE2), ("TEST", GREEN), ("BUILD", GREEN2), ("STACK", NAVY), ("EVID", RED)]
+    swap = ease(p)
+    for idx, ((label, color), start, target) in enumerate(zip(labels, start_positions, target_positions, strict=True)):
+        tx, ty = target
+        sx, sy = start
+        if idx in (1, 2):
+            sx, sy = start_positions[2 if idx == 1 else 1]
+        x = int(lerp(sx, tx, swap))
+        y = int(lerp(sy, ty, swap))
+        toy_block(draw, x, y, label, color, size=104)
+    cartoon_finger(draw, int(700 + 260 * math.sin(p * math.pi)), 245)
+    cartoon_finger(draw, int(970 - 220 * math.sin(p * math.pi)), 250)
+    if p > 0.78:
+        rounded(draw, (1260, 610, 1515, 665), 16, (230, 249, 240), GREEN, 3)
+        text_center(draw, (1387, 638), "APPROVED", FONT_SMALL, GREEN)
+    draw_conveyor(draw, t)
+
+
+def draw_rigging(frame, draw, t, p):
+    draw.text((120, 170), "Rigging joins the Manifest", font=FONT_H1, fill=NAVY)
+    draw.text((120, 238), "Branding and engineering rules travel with every build.", font=FONT_BODY, fill=MUTED)
+    draw.line((480, 505, 1415, 505), fill=(151, 171, 190), width=6)
+    base = [("STORY", 520, BLUE2), ("TEST", 740, GREEN), ("BUILD", 960, GREEN2), ("EVID", 1180, RED)]
+    for label, x, color in base:
+        toy_block(draw, x, 445, label, color)
+    rigging = [
+        ("BRAND", int(80 + 360 * ease(p)), 325, AMBER),
+        ("RULES", int(80 + 360 * ease(max(0, p - 0.18) / 0.82)), 575, NAVY),
+    ]
+    for label, x, y, color in rigging:
+        toy_block(draw, x, y, label, color)
+        draw.line((x + 116, y + 58, 520, 505), fill=(151, 171, 190), width=4)
+    artifact(draw, 1395, 360, "Consistent Look", GREEN, 330)
+    artifact(draw, 1395, 470, "Consistent Behavior", BLUE2, 330)
+    artifact(draw, 1395, 580, "Consistent Docs", AMBER, 330)
     draw_conveyor(draw, t)
 
 
@@ -408,26 +479,47 @@ def draw_build(frame, draw, t, p):
 
 
 def draw_refit(frame, draw, t, p):
-    draw.text((120, 170), "When requirements change, refit", font=FONT_H1, fill=NAVY)
+    draw.text((120, 170), "Refit change tickets", font=FONT_H1, fill=NAVY)
     draw.text(
         (120, 238),
-        "New material updates the Manifest and feeds the next build.",
+        "Tickets become new Manifest blocks.",
         font=FONT_BODY,
         fill=MUTED,
     )
     draw_conveyor(draw, t)
-    paper_card(
-        draw,
-        int(140 + 420 * ease(p)),
-        430,
-        "New Requirement",
-        ["Change ticket", "Spec edit", "Review note"],
-        AMBER,
-    )
-    machine(draw, 780, 360, "REFIT")
-    command_button(draw, 735, 255, "drydock refit", active=math.sin(p * math.pi))
-    for i, label in enumerate(["Updated Manifest", "Next Build Step", "More Working Software"]):
-        artifact(draw, 1290, 360 + i * 105, label, [BLUE2, GREEN, GREEN2][i], 380)
+    for idx in range(9):
+        fall = ease((p + idx * 0.08) % 1.0)
+        x = 120 + (idx % 5) * 105 + int(30 * math.sin(t * 2 + idx))
+        y = int(315 + fall * 260)
+        rounded(draw, (x, y, x + 90, y + 58), 8, (255, 255, 255), AMBER, 2)
+        draw.text((x + 45, y + 29), "TICKET", font=FONT_TINY, fill=INK, anchor="mm")
+    machine(draw, 780, 385, "REFIT")
+    for i in range(7):
+        a = p * math.pi * 2 + i
+        x1 = int(700 + math.cos(a) * (210 - i * 12))
+        y1 = int(515 + math.sin(a) * (130 - i * 8))
+        draw.arc((x1, y1, x1 + 180, y1 + 90), 15, 320, fill=BLUE2, width=4)
+    draw.polygon([(750, 520), (705, 485), (705, 555)], fill=BLUE2)
+    command_button(draw, 735, 285, "drydock refit", active=math.sin(p * math.pi))
+    for i, (label, color) in enumerate([("NEW", BLUE2), ("BUILD", GREEN), ("EVID", RED)]):
+        toy_block(draw, 1280 + i * 155, 455 + int(35 * math.sin(p * math.pi + i)), label, color, size=108)
+    artifact(draw, 1275, 640, "Updated Manifest Blocks", GREEN, 455)
+
+
+def draw_truths(frame, draw, t, p):
+    draw.text((120, 170), "Engineering truths", font=FONT_H1, fill=NAVY)
+    truths = [
+        ("Decompose big problems", BLUE2),
+        ("Agile planning", GREEN),
+        ("Test-Driven Development", AMBER),
+        ("Graph + context compression", NAVY),
+    ]
+    for idx, (label, color) in enumerate(truths):
+        x = 260 + idx * 380
+        y = 440 + int(18 * math.sin(t * 3 + idx))
+        toy_block(draw, x, y, label.split()[0].upper()[:5], color, size=126)
+        draw.text((x + 63, y + 165), label, font=FONT_SMALL, fill=INK, anchor="mm")
+    draw_conveyor(draw, t)
 
 
 def draw_cta(frame, draw, t, p):
@@ -454,8 +546,11 @@ DRAWERS = {
     "analyze": draw_analyze,
     "plan": draw_plan,
     "manifest": draw_manifest,
+    "quarterdeck": draw_quarterdeck,
+    "rigging": draw_rigging,
     "build": draw_build,
     "refit": draw_refit,
+    "truths": draw_truths,
     "cta": draw_cta,
 }
 
@@ -607,8 +702,7 @@ def main():
 
     silent = RENDERS / "drydock-announcement-silent.mp4"
     final = RENDERS / "drydock-announcement-first-cut.mp4"
-    if not silent.exists():
-        render_silent_video(silent)
+    render_silent_video(silent)
     mux_audio(silent, voice, music_paths[0], final)
     print(f"Wrote {final}")
     print(f"Music options: {', '.join(str(p) for p in music_paths)}")
