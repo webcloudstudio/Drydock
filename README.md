@@ -6,15 +6,16 @@
 
 **The missing process layer for specification-driven development.**
 
-Governed, Blueprint-driven software delivery on your existing Claude or Codex
-subscription CLI — reproducible LLM builds with a real Agile process, no API keys.
+Drydock gives specification-driven development the part it skipped: a repeatable
+Agile delivery process that turns specs into reviewed plans, context-managed builds,
+evidence, and controlled change.
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-[Install](#install) · [Quick Start](#quick-start) · [Why It Is Different](#why-it-is-different) · [Specification](docs/Drydock_Specification.md) · [Docs](#public-documentation)
+[Install](#install) · [60-Second Example](#60-second-example) · [Why It Is Different](#why-it-is-different) · [Specification](https://webcloudstudio.com/project-docs/drydock/) · [Deck](https://webcloudstudio.com/drydock/) · [Paper](https://zenodo.org/records/21287574)
 
 </div>
 
@@ -24,16 +25,36 @@ subscription CLI — reproducible LLM builds with a real Agile process, no API k
 uv tool install drydock-sdd     # then: drydock init MyApp && drydock status
 ```
 
-Drydock adds the missing process layer to specification-driven development: import the
+Drydock runs on your existing Claude or Codex subscription CLI. It does not require
+API keys or per-token API billing.
+
+Drydock adds the missing process layer to specification-driven development: import
 source material, analyze it into stories and acceptance criteria, review decisions in
-the QuarterDeck, plan a dependency graph, build one context-optimized frontier at a
-time, verify evidence, and keep the Blueprint and software aligned as the product
-changes.
+the QuarterDeck, plan a dependency graph, build one context-optimized step at a time,
+verify evidence, and keep the Blueprint and software aligned as the product changes.
 
 > **You are the Commander** — the product owner. The LLM is your Agile delivery team.
 > Drydock makes that relationship explicit, reviewable, and repeatable.
 
 Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENSE](LICENSE).
+
+## 60-Second Example
+
+```bash
+uv tool install drydock-sdd
+
+drydock config set llm_provider claude
+drydock init MyApp --description "A small web application."
+drydock import MyApp ./notes --format markdown
+drydock analyze MyApp
+drydock run quarterdeck MyApp
+drydock plan MyApp
+drydock build MyApp
+```
+
+That loop creates a Target workspace, decomposes the source material, opens the
+Commander review surface, builds a dependency graph, and executes the first runnable
+frontier with persisted evidence.
 
 ## What Drydock Is
 
@@ -277,14 +298,20 @@ Configuration keys:
 
 ## Public Documentation
 
-Core references:
+Public hub and launch materials:
+
+- [Web Cloud Studio](https://webcloudstudio.com)
+- [Drydock GitHub repository](https://github.com/webcloudstudio/Drydock)
+- [Canonical Drydock specification](https://webcloudstudio.com/project-docs/drydock/)
+- [Launch deck and presentation](https://webcloudstudio.com/drydock/)
+- [Improving Step Accuracy in Specification-Driven Development](https://zenodo.org/records/21287574)
+
+Repository references:
 
 - [Install Drydock](docs/USER_INSTALLATION.md)
-- [Drydock specification](docs/Drydock_Specification.md)
+- [Drydock specification source](docs/Drydock_Specification.md)
 - [Rendered specification HTML](docs/Drydock_Specification.html)
 - [Rendered specification PDF](docs/Drydock_Specification.pdf)
-- [Published methodology page](docs/index.html)
-- [Launch deck](docs/presentation/deck.html)
 - [Launch script](docs/presentation/script.md)
 - [Talking points](docs/presentation/talking_points.md)
 - [Soundings readiness checklist](docs/SOUNDINGS.md)
