@@ -65,21 +65,28 @@ BG = (244, 248, 251)
 STEEL = (150, 168, 187)
 STEEL_DARK = (84, 103, 124)
 
+# Narration pacing: each sentence is synthesized separately and joined with
+# these silences. Adjust the constants, or put a `[pause 1.5]` line on its own
+# paragraph in voiceover_script.txt to override the gap before the next
+# paragraph.
+SENTENCE_GAP = 0.55
+PARAGRAPH_GAP = 1.05
+
 VOICE_FALLBACK = """Meet Drydock: a complete delivery system for specification-driven developers.
 
-Drydock works with larger specifications, including multi-file specs and material imported from other tools.
+Drydock works with larger specifications, including multi-file specs and imports from other tools.
 
-Start with drydock import: bring in specifications, notes, or existing project material.
+Drydock import brings in specifications, notes, and other material.
 
-Run drydock analyze, and Drydock proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
+Drydock analyze proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
 
-Run drydock plan, and your specifications become governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph database relating your stories, your stack, and your branding.
+Drydock plan converts your specifications into governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph database relating your stories, your stack, and your branding.
 
 Then shape the build in the QuarterDeck web server: group stories into blocks of Blueprints and set the build order.
 
 Drydock also supports enterprise branding and stack rules, so applications keep consistent look, behavior, and documentation.
 
-Run drydock build, and Drydock walks the graph block by block, verifying each story against its tests and producing working software.
+Drydock build walks the graph block by block, verifying each story against its tests and producing working software.
 
 Agile software never stops changing. Working software plus change tickets go through drydock refit and come out as more working software.
 
@@ -190,19 +197,12 @@ class Timeline:
 
         self.scenes = [
             ("intro", 0.0, sc(5), "", ""),
-            (
-                "import",
-                sc(5),
-                sc(17),
-                "Start with a specification",
-                "Specifications, notes, and project material drop onto the line.",
-            ),
-            ("analyze", sc(17), sc(26), "Analyze into governed Agile work", ""),
+            ("import", sc(5), sc(17), "Import your Project", ""),
+            ("analyze", sc(17), sc(26), "Analyze is Agile Planning", ""),
             ("plan", sc(26), sc(36), "Plan the reproducible build", ""),
-            ("manifest", sc(36), sc(46), "The Manifest is a graph database", ""),
-            ("quarterdeck", sc(46), sc(54), "Shape the build", ""),
-            ("rigging", sc(54), sc(61), "Rigging travels with every build", ""),
-            ("build", sc(61), sc(70), "Build with Test-Driven evidence", ""),
+            ("manifest", sc(36), sc(46), "", ""),
+            ("quarterdeck", sc(46), sc(58), "", ""),
+            ("build", sc(58), sc(70), "Build with Test-Driven evidence", ""),
             ("refit", sc(70), sc(78), "Refit change tickets", ""),
             ("truths", sc(78), sc(82), "Built on engineering truths", ""),
             ("cta", sc(82), duration, "", ""),
@@ -232,6 +232,7 @@ class Timeline:
             drop_from=-80,
             ticks=False,
             badge=False,
+            sections=None,
         ):
             self.cards.append(
                 dict(
@@ -246,31 +247,35 @@ class Timeline:
                     drop_from=drop_from,
                     ticks=ticks,
                     badge=badge,
+                    sections=sections,
                 )
             )
 
+        # Every machine's outputs reuse the belt positions of the inputs they
+        # replace, so each output emerges the instant its input converts —
+        # no dead time inside a gantry.
         # Inputs drop onto the belt, ride into IMPORT.
         for label, color, wx0, td in [
             ("Specification", BLUE2, 840, sc(5.5)),
             ("Notes", GREEN, 520, sc(6.4)),
-            ("Project Material", AMBER, 200, sc(7.3)),
+            ("Material", AMBER, 200, sc(7.3)),
         ]:
             card(
                 "card", label, color, wx0, td, c(t_import, wx0), drop=(td, td + 0.8), drop_from=390
             )
-        # IMPORT output: same cards, imported.
+        # IMPORT output: same cards, imported, at the same positions.
         for label, color, wx0 in [
             ("Imported Specification", BLUE2, 840),
             ("Imported Notes", GREEN, 520),
             ("Imported Material", AMBER, 200),
         ]:
             card("card", label, color, wx0, c(t_import, wx0), c(t_analyze, wx0), badge=True)
-        # ANALYZE output: the Agile plan.
+        # ANALYZE output: the Agile plan, spread across the input span.
         for label, color, wx0, ticks in [
-            ("Stories", GREEN, 900, True),
-            ("Questions", AMBER, 610, False),
-            ("Blockers", RED, 320, False),
-            ("Acceptance Criteria", BLUE2, 30, True),
+            ("Stories", GREEN, 840, True),
+            ("Questions", AMBER, 595, False),
+            ("Blockers", RED, 350, False),
+            ("Acceptance Criteria", BLUE2, 105, True),
         ]:
             card(
                 "card",
@@ -283,32 +288,34 @@ class Timeline:
                 ticks=ticks,
             )
         # PLAN output: Blueprints and the Manifest ride on toward BUILD.
-        card("card", "Blueprints", GREEN, 350, c(t_plan, 350), c(t_build, 350), ticks=True)
-        card("card", "Manifest", BLUE2, 100, c(t_plan, 100), c(t_build, 100))
-        # RIGGING drops Stack and Voice onto the belt; they ride into BUILD.
-        self.rig_bin_wx = 1150 + V * sc(56.5)
-        self.rig_drops = [("Stack", NAVY, 1150, sc(56.5)), ("Branding", BLUE, 820, sc(58.0))]
-        for label, color, wx0, td in self.rig_drops:
+        card(
+            "card",
+            "Blueprints",
+            GREEN,
+            840,
+            c(t_plan, 840),
+            c(t_build, 840),
+            ticks=True,
+            sections=["Behavior", "Acceptance", "Guardrails"],
+        )
+        card("card", "Manifest", BLUE2, 580, c(t_plan, 580), c(t_build, 580))
+        # BUILD output: a Working Software crate. It rides into REFIT.
+        card("crate", "", GREEN, 840, c(t_build, 840), c(t_refit, 840))
+        # Change tickets drop in behind the working software and follow it
+        # into REFIT.
+        for wx0, td in [(580, sc(70.4)), (430, sc(71.2)), (280, sc(72.0))]:
             card(
-                "card",
-                label,
-                color,
+                "ticket",
+                "CHANGE",
+                AMBER,
                 wx0,
                 td,
-                c(t_build, wx0),
-                scale=0.8,
+                c(t_refit, wx0),
                 drop=(td, td + 0.7),
-                drop_from=540,
+                drop_from=430,
             )
-        # BUILD output: a Working Software crate. It rides into REFIT with the
-        # change tickets.
-        card("crate", "", GREEN, 700, c(t_build, 700), c(t_refit, 700))
-        # Change tickets drop, ride into REFIT.
-        for wx0, td in [(1450, sc(70.6)), (1300, sc(71.4)), (1150, sc(72.2))]:
-            card("ticket", "CHANGE", AMBER, wx0, td, c(t_refit, wx0), drop=(td, td + 0.7))
-        # REFIT output: more working software, emerging where each ticket
-        # vanished, riding to the end of the line.
-        for wx0 in [1452, 1302, 1152]:
+        # REFIT output: more working software, riding to the end of the line.
+        for wx0 in [840, 600, 360]:
             card("crate", "", GREEN, wx0, c(t_refit, wx0), duration + 10)
 
         self.gantries = []
@@ -343,7 +350,7 @@ class Timeline:
             cd["slot"] = (self.wx_end + dx, y_bottom)
 
         # Wall panels above the belt.
-        self.manifest_panel = dict(wx=1920 + V * sc(36), w=1700, anim=(sc(37.0), sc(43.0)))
+        self.manifest_panel = dict(wx=1920 + V * sc(36), w=1180, anim=(sc(37.0), sc(43.0)))
         self.qd_panel = dict(wx=1920 + V * sc(46), w=1300, swap=(sc(48.0), sc(51.5)))
         self.truths_window = (sc(78.0), sc(82.0))
         self.truths = [
@@ -352,7 +359,7 @@ class Timeline:
             ("Test-Driven Development", 150, 392),
             ("Graph + context compression", 780, 392),
         ]
-        self.tests_chip = (c(t_build, 700) + 0.6, c(t_build, 350) + 1.2, 700)
+        self.tests_chip = (c(t_build, 840) + 0.5, c(t_build, 840) + 2.8, 840)
 
     def cam(self, t: float) -> float:
         if t <= self.t_stop:
@@ -381,7 +388,7 @@ def fit_font(draw, text, max_w, size, bold=True):
     return font(size, bold)
 
 
-def paper_card(draw, x, y, title, color, scale=1.0, ticks=False, badge=False):
+def paper_card(draw, x, y, title, color, scale=1.0, ticks=False, badge=False, sections=None):
     """The one card style used everywhere: title bar plus rule lines."""
     w = int(285 * scale)
     h = int(188 * scale)
@@ -404,7 +411,8 @@ def paper_card(draw, x, y, title, color, scale=1.0, ticks=False, badge=False):
         draw.line((cx - r * 0.45, cy, cx - r * 0.1, cy + r * 0.4), fill=GREEN, width=3)
         draw.line((cx - r * 0.1, cy + r * 0.4, cx + r * 0.5, cy - r * 0.4), fill=GREEN, width=3)
     yy = y + bar_h + int(30 * scale)
-    for i in range(3):
+    rows = sections if sections else [None, None, None]
+    for item in rows:
         x0 = x + int(24 * scale)
         x1 = x + w - int(26 * scale)
         if ticks:
@@ -425,7 +433,12 @@ def paper_card(draw, x, y, title, color, scale=1.0, ticks=False, badge=False):
                 width=max(2, int(3 * scale)),
             )
             x0 += int(28 * scale)
-        draw.line((x0, yy, x1, yy), fill=(173, 190, 204), width=max(1, int(3 * scale)))
+        if item:
+            draw.text(
+                (x0, yy), item, font=font(max(15, int(21 * scale)), False), fill=MUTED, anchor="lm"
+            )
+        else:
+            draw.line((x0, yy, x1, yy), fill=(173, 190, 204), width=max(1, int(3 * scale)))
         yy += int(36 * scale)
 
 
@@ -454,25 +467,6 @@ def ticket_slip(draw, cx, y_bottom):
     draw.text((x + w / 2, y + 24), "CHANGE", font=font(19, True), fill=INK, anchor="mm")
     draw.line((x + 16, y + 46, x + w - 16, y + 46), fill=(212, 195, 160), width=3)
     draw.line((x + 16, y + 58, x + w - 34, y + 58), fill=(212, 195, 160), width=3)
-
-
-def toy_block(draw, x, y, label, color, size=150):
-    """A kids' letter block: colored cube face, white inset, bold letter."""
-    draw.rounded_rectangle((x + 9, y + 11, x + size + 9, y + size + 11), 18, fill=(199, 210, 221))
-    draw.rounded_rectangle(
-        (x, y, x + size, y + size), 18, fill=color, outline=(30, 44, 58), width=4
-    )
-    inset = int(size * 0.16)
-    draw.rounded_rectangle(
-        (x + inset, y + inset, x + size - inset, y + size - inset), 12, fill=(255, 255, 255)
-    )
-    draw.text(
-        (x + size / 2, y + size / 2 + 2),
-        label,
-        font=font(int(size * 0.34), True),
-        fill=color,
-        anchor="mm",
-    )
 
 
 def cursor_arrow(draw, x, y):
@@ -656,6 +650,28 @@ def draw_gantry(frame, draw, sx, cmd, active, t):
             )
 
 
+def block_frame(draw, x, y, w, h, label, color):
+    """A build block: kids-block frame with a labeled band and white interior."""
+    draw.rounded_rectangle((x + 8, y + 10, x + w + 8, y + h + 10), 18, fill=(199, 210, 221))
+    draw.rounded_rectangle((x, y, x + w, y + h), 18, fill=color, outline=(30, 44, 58), width=4)
+    draw.rounded_rectangle((x + 12, y + 46, x + w - 12, y + h - 12), 12, fill=(255, 255, 255))
+    f = fit_font(draw, label, w - 32, 27)
+    draw.text((x + w / 2, y + 25), label, font=f, fill=(255, 255, 255), anchor="mm")
+
+
+def _arrow(draw, x1, y1, x2, y2, color, width=6):
+    draw.line((x1, y1, x2 - 14, y2), fill=color, width=width)
+    ang = math.atan2(y2 - y1, x2 - 14 - x1)
+    draw.polygon(
+        [
+            (x2, y2),
+            (x2 - 22 * math.cos(ang - 0.42), y2 - 22 * math.sin(ang - 0.42)),
+            (x2 - 22 * math.cos(ang + 0.42), y2 - 22 * math.sin(ang + 0.42)),
+        ],
+        fill=color,
+    )
+
+
 def draw_manifest_panel(draw, sx_left, t, tl):
     panel = tl.manifest_panel
     w = panel["w"]
@@ -669,46 +685,39 @@ def draw_manifest_panel(draw, sx_left, t, tl):
     draw.text(
         (x0 + 145, y0 + 511), "MANIFEST", font=font(28, True), fill=(255, 255, 255), anchor="mm"
     )
-    scale = 0.62
-    cw, ch = int(285 * scale), int(188 * scale)
-    nodes = {
-        "Branding": (95, 116, BLUE, False),
-        "Stack": (95, 330, NAVY, False),
-        "Story 1": (430, 223, BLUE2, True),
-        "Story 2": (775, 92, BLUE2, True),
-        "Story 3": (775, 356, BLUE2, True),
-        "Story 4": (1120, 223, BLUE2, True),
-    }
-    links = [
-        ("Branding", "Story 1"),
-        ("Stack", "Story 1"),
-        ("Stack", "Story 3"),
-        ("Story 1", "Story 2"),
-        ("Story 1", "Story 3"),
-        ("Story 2", "Story 4"),
-        ("Story 3", "Story 4"),
-    ]
     a0, a1 = panel["anim"]
     p = ease((t - a0) / max(0.001, a1 - a0))
-    for i, (src, dst) in enumerate(links):
-        if p < (i + 1) / (len(links) + 1):
-            continue
-        sxn, syn = nodes[src][0], nodes[src][1]
-        dxn, dyn = nodes[dst][0], nodes[dst][1]
-        x1, y1 = x0 + sxn + cw, y0 + syn + ch // 2
-        x2, y2 = x0 + dxn, y0 + dyn + ch // 2
-        draw.line((x1, y1, x2 - 16, y2), fill=(151, 171, 190), width=6)
-        ang = math.atan2(y2 - y1, x2 - 16 - x1)
-        draw.polygon(
-            [
-                (x2, y2),
-                (x2 - 24 * math.cos(ang - 0.42), y2 - 24 * math.sin(ang - 0.42)),
-                (x2 - 24 * math.cos(ang + 0.42), y2 - 24 * math.sin(ang + 0.42)),
-            ],
-            fill=(151, 171, 190),
-        )
-    for label, (nx, ny, color, ticks) in nodes.items():
-        paper_card(draw, x0 + nx, y0 + ny, label, color, scale=scale, ticks=ticks)
+    light = (203, 219, 233)
+    dark = (151, 171, 190)
+    # Stack and Rigging feed every block: light arrows, drawn behind.
+    feeds = [
+        (258, 145, 330, 220),
+        (258, 145, 690, 120),
+        (258, 375, 330, 300),
+        (258, 375, 690, 410),
+    ]
+    for i, (ax, ay, bx, by) in enumerate(feeds):
+        if p >= (i + 1) / 7:
+            _arrow(draw, x0 + ax, y0 + ay, x0 + bx, y0 + by, light)
+    paper_card(
+        draw,
+        x0 + 30,
+        y0 + 70,
+        "Stack",
+        NAVY,
+        scale=0.8,
+        sections=["Database", "Web", "Technology"],
+    )
+    paper_card(draw, x0 + 30, y0 + 300, "Rigging", BLUE, scale=0.8, sections=["Branding", "Rules"])
+    # Blocks group the stories; stories link to each other across blocks.
+    block_frame(draw, x0 + 330, y0 + 150, 290, 220, "Block 1", BLUE2)
+    paper_card(draw, x0 + 381, y0 + 216, "Story 1", BLUE2, scale=0.66, ticks=True)
+    block_frame(draw, x0 + 690, y0 + 50, 420, 400, "Block 2", GREEN)
+    paper_card(draw, x0 + 806, y0 + 114, "Story 2", BLUE2, scale=0.66, ticks=True)
+    paper_card(draw, x0 + 806, y0 + 290, "Story 3", BLUE2, scale=0.66, ticks=True)
+    for i, (ax, ay, bx, by) in enumerate([(569, 278, 806, 176), (569, 278, 806, 352)]):
+        if p >= (i + 5) / 7:
+            _arrow(draw, x0 + ax, y0 + ay, x0 + bx, y0 + by, dark)
 
 
 def block_tile(draw, x, y, label, color):
@@ -719,17 +728,18 @@ def block_tile(draw, x, y, label, color):
     draw.rounded_rectangle((x + 12, y + 44, x + bw - 12, y + bh - 12), 12, fill=(255, 255, 255))
     f = fit_font(draw, label, bw - 28, 26)
     draw.text((x + bw / 2, y + 24), label, font=f, fill=(255, 255, 255), anchor="mm")
-    # Two mini Blueprint cards inside the block.
+    # Two mini Blueprint cards inside the block, showing their sections.
     for k in range(2):
         mx = x + 24 + k * 102
         my = y + 58
         draw.rounded_rectangle((mx, my, mx + 92, my + 96), 8, fill=PAPER, outline=LINE, width=2)
         draw.rectangle((mx, my, mx + 92, my + 22), fill=color)
-        for j in range(3):
-            draw.line(
-                (mx + 10, my + 40 + j * 18, mx + 82, my + 40 + j * 18),
-                fill=(173, 190, 204),
-                width=2,
+        draw.text(
+            (mx + 46, my + 11), "Blueprint", font=font(13, True), fill=(255, 255, 255), anchor="mm"
+        )
+        for j, sec in enumerate(["Behavior", "Accepts", "Guards"]):
+            draw.text(
+                (mx + 10, my + 38 + j * 21), sec, font=font(14, False), fill=MUTED, anchor="lm"
             )
 
 
@@ -778,30 +788,6 @@ def draw_qd_panel(draw, sx_left, t, tl):
         block_tile(draw, x, y, label, color)
     if 0.02 < p < 0.98 and cursor_at:
         cursor_arrow(draw, cursor_at[0] + 214, cursor_at[1] - 30)
-
-
-def draw_rigging_bin(draw, sx, t, tl):
-    if sx < -450 or sx > WIDTH + 450:
-        return
-    sx = int(sx)
-    for lx in (sx - 232, sx + 192):
-        draw.rectangle((lx, 500, lx + 40, 1004), fill=STEEL, outline=(116, 134, 152), width=2)
-    draw.rounded_rectangle((sx - 260, 292, sx + 260, 456), 20, fill=NAVY, outline=STEEL, width=4)
-    draw.text((sx, 344), "RIGGING", font=font(40, True), fill=(255, 255, 255), anchor="mm")
-    draw.polygon(
-        [(sx - 120, 456), (sx + 120, 456), (sx + 64, 522), (sx - 64, 522)], fill=(38, 58, 82)
-    )
-    # Cards still waiting inside the bin.
-    slot_y = 404
-    waiting = [d for d in tl.rig_drops if t < d[3]]
-    for i, (label, color, _, _) in enumerate(waiting):
-        bx = sx - 128 + i * 136
-        draw.rounded_rectangle(
-            (bx, slot_y, bx + 124, slot_y + 34), 8, fill=color, outline=(255, 255, 255), width=2
-        )
-        draw.text(
-            (bx + 62, slot_y + 17), label, font=font(19, True), fill=(255, 255, 255), anchor="mm"
-        )
 
 
 def draw_truths(draw, t, tl):
@@ -873,6 +859,7 @@ def draw_cards(draw, t, tl):
                 scale=cd["scale"],
                 ticks=cd["ticks"],
                 badge=cd["badge"],
+                sections=cd["sections"],
             )
 
 
@@ -996,7 +983,6 @@ def frame_at(t: float, tl: Timeline) -> Image.Image:
     # Wall panels and structures behind the belt line.
     draw_manifest_panel(draw, tl.manifest_panel["wx"] - cam, t, tl)
     draw_qd_panel(draw, tl.qd_panel["wx"] - cam, t, tl)
-    draw_rigging_bin(draw, tl.rig_bin_wx - cam, t, tl)
     draw_belt(draw, t, tl)
     draw_cards(draw, t, tl)
     # Gantries on top, so cards pass through them.
@@ -1054,17 +1040,91 @@ def write_music(path: Path, option: int, duration: float, sample_rate: int = 441
         wav.writeframes((data * 32767).astype("<i2").tobytes())
 
 
+def narration_segments(text: str):
+    """Split the script into ("speak", sentence) and ("gap", seconds) segments.
+
+    Blank lines separate paragraphs (PARAGRAPH_GAP before the next one).
+    Sentences within a paragraph are separated by SENTENCE_GAP. A paragraph
+    consisting only of `[pause 1.5]` overrides the gap at that point.
+    """
+    segments = []
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    for paragraph in paragraphs:
+        directive = re.fullmatch(r"\[pause\s+([\d.]+)\]", paragraph, re.IGNORECASE)
+        if directive:
+            gap = ("gap", float(directive.group(1)))
+            if segments and segments[-1][0] == "gap":
+                segments[-1] = gap
+            else:
+                segments.append(gap)
+            continue
+        for i, sentence in enumerate(re.split(r"(?<=[.!?])\s+", paragraph)):
+            if i:
+                segments.append(("gap", SENTENCE_GAP))
+            segments.append(("speak", sentence))
+        segments.append(("gap", PARAGRAPH_GAP))
+    while segments and segments[-1][0] == "gap":
+        segments.pop()
+    return segments
+
+
+def _trim_silence(samples: np.ndarray, sample_rate: int, threshold: int = 260) -> np.ndarray:
+    """Cut edge-tts's inconsistent leading/trailing silence off a segment."""
+    loud = np.where(np.abs(samples.astype(np.int32)) > threshold)[0]
+    if len(loud) == 0:
+        return samples
+    lo = max(0, int(loud[0]) - int(0.04 * sample_rate))
+    hi = min(len(samples), int(loud[-1]) + int(0.10 * sample_rate))
+    return samples[lo:hi]
+
+
 async def write_voice(path: Path):
     import edge_tts
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    communicator = edge_tts.Communicate(
-        voice_text(),
-        voice="en-US-AvaMultilingualNeural",
-        rate="+0%",
-        volume="+0%",
+    sample_rate = 24000
+    exe = ffmpeg_exe()
+    tmp = path.parent / "_segments"
+    tmp.mkdir(exist_ok=True)
+    pieces = []
+    for i, (kind, value) in enumerate(narration_segments(voice_text())):
+        if kind == "gap":
+            pieces.append(np.zeros(int(sample_rate * value), dtype=np.int16))
+            continue
+        seg_mp3 = tmp / f"seg_{i:03d}.mp3"
+        communicator = edge_tts.Communicate(
+            value, voice="en-US-AvaMultilingualNeural", rate="+0%", volume="+0%"
+        )
+        await communicator.save(str(seg_mp3))
+        decoded = subprocess.run(
+            [exe, "-i", str(seg_mp3), "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-"],
+            capture_output=True,
+            check=True,
+        )
+        pieces.append(_trim_silence(np.frombuffer(decoded.stdout, dtype=np.int16), sample_rate))
+    data = np.concatenate(pieces)
+    subprocess.run(
+        [
+            exe,
+            "-y",
+            "-f",
+            "s16le",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            "1",
+            "-i",
+            "-",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "96k",
+            str(path),
+        ],
+        input=data.tobytes(),
+        check=True,
     )
-    await communicator.save(str(path))
+    shutil.rmtree(tmp)
 
 
 def probe_duration(path: Path) -> float:
@@ -1192,6 +1252,7 @@ def write_stills(tl: Timeline):
         66.5,
         71.5,
         74,
+        76.5,
         78.5,
         80.5,
         83.5,

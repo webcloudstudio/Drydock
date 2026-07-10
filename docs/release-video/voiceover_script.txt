@@ -1,18 +1,18 @@
 Meet Drydock: a complete delivery system for specification-driven developers.
 
-Drydock works with larger specifications, including multi-file specs and material imported from other tools.
+Drydock works with larger specifications, including multi-file specs and imports from other tools.
 
-Start with drydock import: bring in specifications, notes, or existing project material.
+Drydock import brings in specifications, notes, and other material.
 
-Run drydock analyze, and Drydock proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
+Drydock analyze proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
 
-Run drydock plan, and your specifications become governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph database relating your stories, your stack, and your branding.
+Drydock plan converts your specifications into governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph database relating your stories, your stack, and your branding.
 
 Then shape the build in the QuarterDeck web server: group stories into blocks of Blueprints and set the build order.
 
 Drydock also supports enterprise branding and stack rules, so applications keep consistent look, behavior, and documentation.
 
-Run drydock build, and Drydock walks the graph block by block, verifying each story against its tests and producing working software.
+Drydock build walks the graph block by block, verifying each story against its tests and producing working software.
 
 Agile software never stops changing. Working software plus change tickets go through drydock refit and come out as more working software.
 
