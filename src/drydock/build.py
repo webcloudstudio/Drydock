@@ -511,10 +511,12 @@ def render_build_prompt_assembly(
                     ],
                     kind="section",
                 )
-            )
+        )
         for step_file in role_files:
+            source = step_file.source
+            assert source is not None
             try:
-                content = step_file.source.read_text(encoding="utf-8")
+                content = source.read_text(encoding="utf-8")
             except OSError:
                 continue
             header = prompt_header_for_file(step_file.name)
@@ -525,7 +527,7 @@ def render_build_prompt_assembly(
                         content.rstrip(),
                         filename=step_file.name,
                         role=step_file.role,
-                        path=step_file.source,
+                        path=source,
                     )
                 )
                 continue
@@ -534,12 +536,12 @@ def render_build_prompt_assembly(
                     step_file.name,
                     (
                         f'<pblock filename="{step_file.name}" role="{step_file.role}"'
-                        + (f' path="{step_file.source}"' if step_file.source else "")
+                        + f' path="{source}"'
                         + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
                     ),
                     kind="file",
                     role=step_file.role,
-                    path=step_file.source,
+                    path=source,
                 )
             )
     if assembly.instructions.strip():
@@ -716,10 +718,12 @@ def render_build_group_prompt_assembly(
                     ],
                     kind="section",
                 )
-            )
+        )
         for step_file in role_files:
+            source = step_file.source
+            assert source is not None
             try:
-                content = step_file.source.read_text(encoding="utf-8")
+                content = source.read_text(encoding="utf-8")
             except OSError:
                 continue
             header = prompt_header_for_file(step_file.name)
@@ -730,7 +734,7 @@ def render_build_group_prompt_assembly(
                         content.rstrip(),
                         filename=step_file.name,
                         role=step_file.role,
-                        path=step_file.source,
+                        path=source,
                     )
                 )
                 continue
@@ -739,12 +743,12 @@ def render_build_group_prompt_assembly(
                     step_file.name,
                     (
                         f'<pblock filename="{step_file.name}" role="{step_file.role}"'
-                        + (f' path="{step_file.source}"' if step_file.source else "")
+                        + f' path="{source}"'
                         + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
                     ),
                     kind="file",
                     role=step_file.role,
-                    path=step_file.source,
+                    path=source,
                 )
             )
     instruction_lines = ["### Build instructions for this block"]
@@ -789,4 +793,4 @@ def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepG
         else:
             name = by_id[key].name
         groups.append(make_step_group(feature_id=key, name=name, steps=steps_in))
-    return groups
+    return tuple(groups)

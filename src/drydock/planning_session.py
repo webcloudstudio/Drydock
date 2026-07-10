@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256 as _sha256
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
@@ -463,7 +463,7 @@ def _merge_prior_state(
         return
 
     new_plan = parse_build_plan(plan_path)
-    updates: dict[str, dict[str, str]] = {}
+    updates: dict[str, dict[str, str | None]] = {}
 
     for block in new_plan.blocks:
         prior_state, prior_finding = prior_block_states.get(block.block_id, ("pending", None))
@@ -483,7 +483,7 @@ def _merge_prior_state(
             if spec
         )
 
-        block_updates: dict[str, str] = {}
+        block_updates: dict[str, str | None] = {}
         if not dirty:
             block_updates["state"] = prior_state
         if block.block_type == "spike" and prior_finding:
@@ -1097,8 +1097,14 @@ def _assemble_prompt_assembly(
         "QUESTIONNAIRES": questionnaire_parts,
         "TYPED_SPEC": typed_spec_parts,
     }
+    def make_contract_renderer(contract: str) -> Callable[[], list]:
+        def render_contract() -> list:
+            return contract_parts(contract)
+
+        return render_contract
+
     for contract in _CONTRACT_FILES:
-        renderers[contract] = lambda c=contract: contract_parts(c)
+        renderers[contract] = make_contract_renderer(contract)
     for token in input_tokens:
         render = renderers.get(token)
         if render is None:
@@ -1617,7 +1623,7 @@ def create_plan(
     # In overwrite mode nothing is protected: every regenerated spec is written so the
     # rewrite (e.g. freshly authored programmatic acceptance) actually lands on disk.
     if overwrite:
-        prior_applied_specs = ()
+        prior_applied_specs = {}
 
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
@@ -1724,7 +1730,7 @@ def create_plan(
         typed_spec_paths=reusable_spec_paths,
     )
 
-    result = run(
+    result = cast(CompletedRun, run(
         prompt_assembly.rendered_text,
         target_dir,
         llm=llm_provider,
@@ -1735,7 +1741,7 @@ def create_plan(
         target=target,
         on_text=on_text,
         prompt_assembly=prompt_assembly,
-    )
+    ))
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():
         detail = result.text.strip() or result.stderr.strip()

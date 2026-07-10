@@ -234,6 +234,8 @@ def _assemble_prompt_assembly(
 
 
 def _coerce_score(value: object, category: str) -> float:
+    if not isinstance(value, int | float | str):
+        raise DrydockError(f"review score for {category!r} is not numeric: {value!r}")
     try:
         score = float(value)
     except (TypeError, ValueError) as exc:

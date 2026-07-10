@@ -254,7 +254,7 @@ def _list_html(items: list[str], *, empty: str) -> str:
     return f"<ul>\n{rows}\n</ul>"
 
 
-def _manifest_story_list(plan) -> str:  # type: ignore[no-untyped-def]
+def _manifest_story_list(plan) -> str:
     """Render manifest stories grouped by feature with [pending] badges."""
     by_feature: dict[str | None, list] = {}
     feature_names: dict[str, str] = {}
@@ -280,7 +280,7 @@ def _manifest_story_list(plan) -> str:  # type: ignore[no-untyped-def]
     return "\n".join(parts)
 
 
-def _build_story_list(status) -> str:  # type: ignore[no-untyped-def]
+def _build_story_list(status) -> str:
     """Render build-phase stories grouped by feature with colour-coded state badges."""
     parts: list[str] = ['<div class="story-list">']
     for group in status.groups:
@@ -479,7 +479,7 @@ def _analyzed_next_step(quality: str, target: str) -> str:
     return f"drydock plan {target}"
 
 
-def _build_next_step(status, plan, target: str) -> str:  # type: ignore[no-untyped-def]
+def _build_next_step(status, plan, target: str) -> str:
     if status.steps_total == 0:
         return f"drydock build {target}"
     if status.steps_verified == status.steps_total:

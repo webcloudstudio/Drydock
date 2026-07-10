@@ -305,7 +305,7 @@ def _reconcile_drift(
 
     all_ids = cascade_reset_ids(plan, [spec.rel_path for spec in resettable])
     by_id = plan.by_id()
-    updates = {
+    updates: dict[str, dict[str, str | None]] = {
         block_id: {"state": "pending"} for block_id in all_ids if by_id[block_id].state != "pending"
     }
     if updates:

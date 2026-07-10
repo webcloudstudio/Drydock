@@ -154,6 +154,7 @@ def get_llm_provider(cli_override: str | None = None) -> str:
 
     Resolution order: cli_override → LLM_PROVIDER (env or config file) → ``claude``.
     """
+    value: str | None
     if cli_override is not None:
         value = cli_override
     else:
@@ -177,6 +178,7 @@ def get_codex_sandbox(cli_override: str | None = None) -> str:
     (``codex-linux-sandbox`` / ``bwrap``). Hardened deployments may opt into
     ``workspace-write``; confinement is otherwise a deployment-layer concern.
     """
+    value: str | None
     if cli_override is not None:
         value = cli_override
     else:

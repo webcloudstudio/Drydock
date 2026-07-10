@@ -17,6 +17,14 @@ HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 TIMEOUT_SECONDS = 60
 
 
+def _timeout_output_text(value: bytes | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
+
+
 @dataclass(frozen=True)
 class ProgrammaticAcceptance:
     check_id: str
@@ -147,8 +155,8 @@ def run_programmatic_acceptance(
                     intent=check.intent,
                     passed=False,
                     return_code=None,
-                    stdout=exc.stdout or "",
-                    stderr=exc.stderr or "",
+                    stdout=_timeout_output_text(exc.stdout),
+                    stderr=_timeout_output_text(exc.stderr),
                     error=f"timed out after {TIMEOUT_SECONDS}s",
                 )
             )

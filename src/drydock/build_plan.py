@@ -281,11 +281,13 @@ def _normalize_compact_acs(raw_blocks: list[dict[str, object]]) -> None:
     unique ``id`` slug from the summary, and pulls ``kind``/``check`` from the
     parenthetical. Blocks that already carry an ``id`` are left untouched.
     """
-    seen_ids = {
-        str(raw["fields"].get("id", "")).strip()  # type: ignore[union-attr]
-        for raw in raw_blocks
-        if str(raw["fields"].get("id", "")).strip()  # type: ignore[union-attr]
-    }
+    seen_ids: set[str] = set()
+    for raw in raw_blocks:
+        fields = raw["fields"]
+        assert isinstance(fields, dict)
+        block_id = str(fields.get("id", "")).strip()
+        if block_id:
+            seen_ids.add(block_id)
     last_parent: str | None = None
     for raw in raw_blocks:
         fields = raw["fields"]
@@ -334,7 +336,7 @@ def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
     assert isinstance(fields, dict)
 
     block_type = str(raw["block_type"])
-    number = int(raw["number"])
+    number = int(str(raw["number"]))
     name = str(raw["name"])
     block_id = str(fields.get("id", "")).strip()
     state = str(fields.get("state", "pending")).strip()

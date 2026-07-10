@@ -9,6 +9,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import NoReturn
 
 from drydock import __copyright__, __version__
 from drydock.errors import DrydockError, UsageError
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class DrydockArgumentParser(argparse.ArgumentParser):
     """Argument parser that shows full help on syntax errors."""
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         self.print_help(sys.stderr)
         self.exit(2, f"\nerror: {message}\n")
 
@@ -705,11 +706,11 @@ def cmd_import(args: argparse.Namespace) -> int:
     if fmt == "source":
         from drydock.import_source import import_source
 
-        result = import_source(args.Target, args.Target, source, td)
-        print(f"Blueprint: {result.blueprint_dir}")
-        print(f"Source: {result.source}")
-        for path in result.imported:
-            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
+        source_result = import_source(args.Target, args.Target, source, td)
+        print(f"Blueprint: {source_result.blueprint_dir}")
+        print(f"Source: {source_result.source}")
+        for path in source_result.imported:
+            print(f"  IMPORTED  {path.relative_to(source_result.blueprint_dir)}")
             print(f"  SAVED AS  {path}")
         _print_next_step("import", args.Target)
         return 0
@@ -717,12 +718,12 @@ def cmd_import(args: argparse.Namespace) -> int:
     if fmt == "speckit":
         from drydock.import_speckit import import_speckit
 
-        result = import_speckit(args.Target, args.Target, source, td)
-        print(f"Blueprint: {result.blueprint_dir}")
-        print(f"Source: {result.source}")
-        print(f"Features: {', '.join(result.features_found) or '(none)'}")
-        for path in result.imported:
-            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
+        speckit_result = import_speckit(args.Target, args.Target, source, td)
+        print(f"Blueprint: {speckit_result.blueprint_dir}")
+        print(f"Source: {speckit_result.source}")
+        print(f"Features: {', '.join(speckit_result.features_found) or '(none)'}")
+        for path in speckit_result.imported:
+            print(f"  IMPORTED  {path.relative_to(speckit_result.blueprint_dir)}")
             print(f"  SAVED AS  {path}")
         _print_next_step("import", args.Target)
         return 0
@@ -1886,6 +1887,7 @@ def _dispatch_build(args: argparse.Namespace) -> int:
     tokens = args.args
     if not tokens:
         not_implemented("build")
+        raise AssertionError("unreachable")
     first = tokens[0] if tokens else ""
     if first == "status":
         if len(tokens) != 2:
@@ -1919,6 +1921,7 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         return rc
     elif first == "score":
         not_implemented("build score")
+        raise AssertionError("unreachable")
     else:
         build_args = _parse_build_args(tokens)
         rc = cmd_build(build_args)

@@ -370,7 +370,7 @@ def status_blueprint_target(
 
     info = _analyze_target(target_path, target_dir.parent)
     plan = None
-    frontier = ()
+    frontier: tuple[object, ...] = ()
     if info.plan_summary is not None and (target_path / "MANIFEST.md").exists():
         plan = load_target_plan(target, target_dir)
         frontier = plan.runnable_frontier()

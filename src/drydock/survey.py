@@ -191,7 +191,12 @@ def compute_score(spec: CommandSpec, results: dict[str, str]) -> Scored:
     assessed = [d for d, v in dimensions.items() if v is not None]
     if assessed:
         total_w = sum(DIMENSION_WEIGHTS[d] for d in assessed)
-        composite = sum(DIMENSION_WEIGHTS[d] * dimensions[d] for d in assessed) / total_w  # type: ignore[operator]
+        weighted = 0.0
+        for dim in assessed:
+            dim_score = dimensions[dim]
+            assert dim_score is not None
+            weighted += DIMENSION_WEIGHTS[dim] * dim_score
+        composite = weighted / total_w
         score = round(composite)
     else:
         score = 0
@@ -427,10 +432,11 @@ def run_survey(
         on_text=on_text,
         prompt_assembly=prompt_assembly,
     )
-    if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():
+    result_text = str(getattr(result, "text", ""))
+    if not getattr(result, "ok", False) or not result_text.strip():
         raise SpecificationError("survey LLM execution failed or returned no output")
 
-    payload = _parse_survey_json(result.text)
+    payload = _parse_survey_json(result_text)
     recorded_at = _now()
     head = _short_head(target_dir)
     execution_id = getattr(result, "execution_id", "")
@@ -541,12 +547,13 @@ def import_specs(
         on_text=on_text,
         prompt_assembly=prompt_assembly,
     )
-    if not getattr(result, "ok", False) or not getattr(result, "text", "").strip():
+    result_text = str(getattr(result, "text", ""))
+    if not getattr(result, "ok", False) or not result_text.strip():
         raise SpecificationError("survey import LLM execution failed or returned no output")
 
     try:
         blocks = parse_artifact_blocks(
-            result.text,
+            result_text,
             label="Survey import",
             allowed_patterns=(r"SURVEY-[\w-]+\.md",),
         )

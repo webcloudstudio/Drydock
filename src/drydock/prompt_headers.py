@@ -157,16 +157,16 @@ def prompt_header_for_file(filename: str) -> PromptHeader | None:
     for header in _load_injected_headers():
         if header.filename == filename:
             return header
-    for header in _load_prefix_headers():
-        if filename.startswith(header.prefix):
+    for prefix_header in _load_prefix_headers():
+        if filename.startswith(prefix_header.prefix):
             return PromptHeader(
                 item_id=None,
                 filename=filename,
-                label=header.label,
+                label=prefix_header.label,
                 default_text=None,
-                role=header.role,
-                help_text=header.help_text,
-                prompt_text=header.prompt_text,
+                role=prefix_header.role,
+                help_text=prefix_header.help_text,
+                prompt_text=prefix_header.prompt_text,
             )
     return None
 
