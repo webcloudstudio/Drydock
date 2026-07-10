@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from drydock.skills import sync_skills
+from drydock.skills import AGENT_SKILLS_DIRS, sync_skills
 
 
 def _make_skill(root: Path, name: str, version: str, body: str = "body") -> Path:
@@ -17,34 +17,38 @@ def _make_skill(root: Path, name: str, version: str, body: str = "body") -> Path
 
 
 class TestSyncSkills:
-    def test_fresh_install_copies_all_skills(self, tmp_path):
+    def test_fresh_install_copies_all_skills_to_every_agent(self, tmp_path):
         source = tmp_path / "src"
         _make_skill(source, "refit", "3.0.0")
         _make_skill(source, "apply-refit", "1.0.0")
         project = tmp_path / "ws"
 
-        result = sync_skills(project, source_root=source)
+        results = sync_skills(project, source_root=source)
 
-        assert sorted(result.installed) == ["apply-refit", "refit"]
-        assert result.updated == []
-        assert result.changed is True
-        assert (project / ".claude" / "skills" / "refit" / "SKILL.md").is_file()
-        assert (project / ".claude" / "skills" / "apply-refit" / "SKILL.md").is_file()
+        assert set(results) == set(AGENT_SKILLS_DIRS)
+        for agent, relative in AGENT_SKILLS_DIRS.items():
+            result = results[agent]
+            assert sorted(result.installed) == ["apply-refit", "refit"]
+            assert result.updated == []
+            assert result.changed is True
+            assert (project / relative / "refit" / "SKILL.md").is_file()
+            assert (project / relative / "apply-refit" / "SKILL.md").is_file()
 
-    def test_second_run_is_idempotent(self, tmp_path):
+    def test_second_run_is_idempotent_for_every_agent(self, tmp_path):
         source = tmp_path / "src"
         _make_skill(source, "refit", "3.0.0")
         project = tmp_path / "ws"
 
         sync_skills(project, source_root=source)
-        result = sync_skills(project, source_root=source)
+        results = sync_skills(project, source_root=source)
 
-        assert result.installed == []
-        assert result.updated == []
-        assert result.skipped == ["refit"]
-        assert result.changed is False
+        for result in results.values():
+            assert result.installed == []
+            assert result.updated == []
+            assert result.skipped == ["refit"]
+            assert result.changed is False
 
-    def test_newer_version_upgrades(self, tmp_path):
+    def test_newer_version_upgrades_every_agent(self, tmp_path):
         source = tmp_path / "src"
         _make_skill(source, "refit", "3.0.0", body="old")
         project = tmp_path / "ws"
@@ -52,11 +56,12 @@ class TestSyncSkills:
 
         # Ship a newer version with changed content.
         _make_skill(tmp_path / "src2", "refit", "3.1.0", body="new")
-        result = sync_skills(project, source_root=tmp_path / "src2")
+        results = sync_skills(project, source_root=tmp_path / "src2")
 
-        assert result.updated == ["refit"]
-        installed = (project / ".claude" / "skills" / "refit" / "SKILL.md").read_text()
-        assert "new" in installed
+        for agent, relative in AGENT_SKILLS_DIRS.items():
+            assert results[agent].updated == ["refit"]
+            installed = (project / relative / "refit" / "SKILL.md").read_text()
+            assert "new" in installed
 
     def test_older_or_equal_version_does_not_downgrade(self, tmp_path):
         source = tmp_path / "src"
@@ -65,11 +70,12 @@ class TestSyncSkills:
         sync_skills(project, source_root=source)
 
         _make_skill(tmp_path / "src2", "refit", "2.9.0", body="stale")
-        result = sync_skills(project, source_root=tmp_path / "src2")
+        results = sync_skills(project, source_root=tmp_path / "src2")
 
-        assert result.skipped == ["refit"]
-        installed = (project / ".claude" / "skills" / "refit" / "SKILL.md").read_text()
-        assert "current" in installed
+        for agent, relative in AGENT_SKILLS_DIRS.items():
+            assert results[agent].skipped == ["refit"]
+            installed = (project / relative / "refit" / "SKILL.md").read_text()
+            assert "current" in installed
 
     def test_missing_version_treated_as_zero(self, tmp_path):
         source = tmp_path / "src"
@@ -81,9 +87,10 @@ class TestSyncSkills:
         first = sync_skills(project, source_root=source)
         second = sync_skills(project, source_root=source)
 
-        assert first.installed == ["refit"]
-        # Both versions parse to (0,); equal ⇒ no churn.
-        assert second.skipped == ["refit"]
+        for agent in AGENT_SKILLS_DIRS:
+            assert first[agent].installed == ["refit"]
+            # Both versions parse to (0,); equal ⇒ no churn.
+            assert second[agent].skipped == ["refit"]
 
     def test_directory_without_skill_md_ignored(self, tmp_path):
         source = tmp_path / "src"
@@ -92,17 +99,19 @@ class TestSyncSkills:
         _make_skill(source, "refit", "1.0.0")
         project = tmp_path / "ws"
 
-        result = sync_skills(project, source_root=source)
+        results = sync_skills(project, source_root=source)
 
-        assert result.installed == ["refit"]
-        assert not (project / ".claude" / "skills" / "not-a-skill").exists()
+        for agent, relative in AGENT_SKILLS_DIRS.items():
+            assert results[agent].installed == ["refit"]
+            assert not (project / relative / "not-a-skill").exists()
 
     def test_missing_source_root_is_noop(self, tmp_path):
         project = tmp_path / "ws"
-        result = sync_skills(project, source_root=tmp_path / "does-not-exist")
+        results = sync_skills(project, source_root=tmp_path / "does-not-exist")
 
-        assert result.changed is False
-        assert not (project / ".claude").exists()
+        for agent, relative in AGENT_SKILLS_DIRS.items():
+            assert results[agent].changed is False
+            assert not (project / relative).exists()
 
     def test_multi_file_skill_copied_whole(self, tmp_path):
         source = tmp_path / "src"
@@ -112,4 +121,5 @@ class TestSyncSkills:
 
         sync_skills(project, source_root=source)
 
-        assert (project / ".claude" / "skills" / "refit" / "reference.md").read_text() == "extra\n"
+        for relative in AGENT_SKILLS_DIRS.values():
+            assert (project / relative / "refit" / "reference.md").read_text() == "extra\n"

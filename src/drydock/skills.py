@@ -1,11 +1,11 @@
-"""Provision Drydock's Claude Code skills into a project's ``.claude/skills`` tree.
+"""Provision Drydock's agent skills into a project's Claude Code and Codex CLI trees.
 
-Skills ship inside Rigging (``Rigging/skills/<name>/SKILL.md``). ``drydock init`` calls
-:func:`sync_skills` so a managed workspace always carries the current skills. Each skill
-declares a semantic ``version`` in its SKILL.md frontmatter; a skill is (re)installed when
-the workspace copy is absent or its version is lower than the shipped version. Version is a
-deterministic upgrade signal — unlike filesystem mtimes, which reproducible wheel builds
-normalize.
+Skills ship inside Rigging (``Rigging/skills/<name>/SKILL.md``) in the shared SKILL.md format
+both agents read. ``drydock init`` calls :func:`sync_skills` so a managed workspace always
+carries the current skills for whichever agent(s) the user runs. Each skill declares a semantic
+``version`` in its SKILL.md frontmatter; a skill is (re)installed when the workspace copy is
+absent or its version is lower than the shipped version. Version is a deterministic upgrade
+signal — unlike filesystem mtimes, which reproducible wheel builds normalize.
 """
 
 from __future__ import annotations
@@ -20,10 +20,18 @@ from drydock.paths import get_rigging_root
 _VERSION_RE = re.compile(r"^version:\s*(.+?)\s*$", re.MULTILINE)
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
+# Relative skills directory per agent: Claude Code reads .claude/skills; Codex CLI reads
+# .agents/skills (its predecessor ~/.codex/prompts mechanism is deprecated in favor of this
+# shared SKILL.md format).
+AGENT_SKILLS_DIRS: dict[str, str] = {
+    "claude": ".claude/skills",
+    "codex": ".agents/skills",
+}
+
 
 @dataclass
 class SkillSyncResult:
-    """Outcome of one :func:`sync_skills` call."""
+    """Outcome of syncing shipped skills into one agent's skills directory."""
 
     dest_root: Path
     installed: list[str] = field(default_factory=list)
@@ -63,8 +71,8 @@ def _copy_skill(source_dir: Path, dest_dir: Path) -> None:
     shutil.copytree(source_dir, dest_dir)
 
 
-def sync_skills(project_root: Path, *, source_root: Path | None = None) -> SkillSyncResult:
-    """Install or upgrade shipped skills under ``project_root/.claude/skills``.
+def _sync_one(source: Path, dest_root: Path) -> SkillSyncResult:
+    """Install or upgrade every shipped skill under ``dest_root``.
 
     A skill directory is one holding a ``SKILL.md``. For each shipped skill:
 
@@ -72,8 +80,6 @@ def sync_skills(project_root: Path, *, source_root: Path | None = None) -> Skill
     - upgrade it if the shipped ``version`` is greater than the installed ``version``;
     - otherwise leave the destination untouched.
     """
-    source = source_root if source_root is not None else get_rigging_root() / "skills"
-    dest_root = project_root / ".claude" / "skills"
     result = SkillSyncResult(dest_root=dest_root)
 
     if not source.is_dir():
@@ -102,3 +108,18 @@ def sync_skills(project_root: Path, *, source_root: Path | None = None) -> Skill
             result.skipped.append(name)
 
     return result
+
+
+def sync_skills(
+    project_root: Path, *, source_root: Path | None = None
+) -> dict[str, SkillSyncResult]:
+    """Install or upgrade shipped skills for every supported agent under ``project_root``.
+
+    Returns one :class:`SkillSyncResult` per agent key in :data:`AGENT_SKILLS_DIRS`
+    (currently ``"claude"`` and ``"codex"``), each pointed at that agent's skills directory.
+    """
+    source = source_root if source_root is not None else get_rigging_root() / "skills"
+    return {
+        agent: _sync_one(source, project_root / relative)
+        for agent, relative in AGENT_SKILLS_DIRS.items()
+    }

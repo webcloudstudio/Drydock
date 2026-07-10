@@ -221,23 +221,23 @@ def cmd_config_set(args: argparse.Namespace) -> int:
 
 
 def _sync_workspace_skills(workspace: Path) -> None:
-    """Install or upgrade Drydock's Claude Code skills under the workspace, best-effort."""
+    """Install or upgrade Drydock's Claude Code and Codex skills, best-effort."""
     from drydock.skills import sync_skills
 
     try:
-        outcome = sync_skills(workspace)
+        outcomes = sync_skills(workspace)
     except Exception as exc:  # skill provisioning must never fail an init
         logger.debug("skill sync skipped: %s", exc)
         return
 
-    if not outcome.changed:
-        return
-    rel = outcome.dest_root
-    print(f"Skills: {rel}")
-    for name in outcome.installed:
-        print(f"  INSTALLED  {name}")
-    for name in outcome.updated:
-        print(f"  UPDATED    {name}")
+    for outcome in outcomes.values():
+        if not outcome.changed:
+            continue
+        print(f"Skills: {outcome.dest_root}")
+        for name in outcome.installed:
+            print(f"  INSTALLED  {name}")
+        for name in outcome.updated:
+            print(f"  UPDATED    {name}")
 
 
 def cmd_init(args: argparse.Namespace) -> int:
