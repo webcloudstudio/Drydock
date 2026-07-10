@@ -115,20 +115,27 @@ footer { color: var(--muted); font-size: 12px; padding: 16px 28px; text-align: c
 }
 @media print {
   header, footer { display: none; }
-  body { background: white; font-size: 11pt; line-height: 1.5; }
+  body { background: white; font-size: 11pt; line-height: 1.4; }
   main { padding: 0; max-width: 100%; }
-  h1 { font-size: 22pt; }
+  h1 { font-size: 22pt; margin: 4px 0 2px; }
   h1 .h1-sub { font-size: 14pt; }
   .subtitle { font-size: 11pt; }
+  .meta { margin-top: 8px; }
   #content h2 { font-size: 14pt; }
   #content h3 { font-size: 12pt; }
   #content th, #content td, #content code, #content pre { font-size: 9.5pt; }
   #content { padding: 20px 24px; }
   .cover { border-top: 3px solid var(--green); border-bottom: 1px solid var(--line);
-    padding: 18px 24px; }
-  .ideas-sail { border: 1px solid var(--line); padding: 14px 16px 8px; }
-  .sail-card { break-inside: avoid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; }
+    padding: 12px 24px; margin-bottom: 14px; }
+  .ideas { margin-bottom: 14px; }
+  .ideas-sail { border: 1px solid var(--line); padding: 10px 16px 2px; }
+  .sail-lead { margin: 0 0 8px; padding-bottom: 8px; }
+  .sail-grid { gap: 8px; }
+  .sail-card { break-inside: avoid; grid-template-columns: 70px minmax(0, 1fr);
+    gap: 10px; padding: 6px 0 8px; }
   .sail-letter { font-size: 3rem; }
+  .sail-copy .idea-title { font-size: 1.05rem; margin-bottom: 2px; }
+  .sail-copy li { margin-bottom: 2px; }
   #content pre, #content blockquote { break-inside: avoid; }
   #content h2, #content h3 { break-after: avoid; }
 }
