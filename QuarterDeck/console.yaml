@@ -42,9 +42,9 @@ items:
     label: "Sea Trials"
     section: core
     type: document
-    path_md:   ../docs/SEA_TRIALS_SAMPLE.md
-    path_html: ../docs/SEA_TRIALS_SAMPLE.html
-    path_pdf:  ../docs/SEA_TRIALS_SAMPLE.pdf
+    path_md:   ../notes/SEA_TRIALS_SAMPLE.md
+    path_html: ../notes/SEA_TRIALS_SAMPLE.html
+    path_pdf:  ../notes/SEA_TRIALS_SAMPLE.pdf
     review: true
     order: 3
 
@@ -52,7 +52,7 @@ items:
     label: "Soundings"
     section: core
     type: markdown
-    path: ../docs/SOUNDINGS.md
+    path: ../notes/SOUNDINGS.md
     order: 4
 
   - id: ships_log
@@ -109,8 +109,8 @@ items:
     label: "PyPI Name Reservation"
     section: docs
     type: document
-    path_md:  ../docs/PYPI_NAME_RESERVATION.md
-    path_pdf: ../docs/PYPI_NAME_RESERVATION.pdf
+    path_md:  ../notes/PYPI_NAME_RESERVATION.md
+    path_pdf: ../notes/PYPI_NAME_RESERVATION.pdf
 
   - id: command_status
     label: "Acceptance Status"

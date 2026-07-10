@@ -29,5 +29,5 @@ plans, builds, tests, reviews, and evolves software.
 
 The Planning Session approval writes to the target `MANIFEST.md`. Other QuarterDeck decisions do
 not yet append to `logs/ships_log.jsonl`; that remains a board item to build. Authority stays in
-`docs/Drydock_Specification.md` (behavior), `docs/SOUNDINGS.md` (acceptance), and
+`docs/Drydock_Specification.md` (behavior), `notes/SOUNDINGS.md` (acceptance), and
 `docs/SEA_TRIALS.md` (objectives).
