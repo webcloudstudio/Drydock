@@ -6,9 +6,7 @@
 
 **The missing process layer for specification-driven development.**
 
-Drydock gives specification-driven development the part it skipped: a repeatable
-Agile delivery process that turns specs into reviewed plans, context-managed builds,
-evidence, and controlled change.
+Drydock gives specification-driven development the part it skipped: a repeatable <strong><font color="#0a5c38">Agile</font></strong> delivery and <strong><font color="#0a5c38">Test Driven Development</font></strong> based end-to-end process that turns specs into reviewed plans, context-managed builds, and obvious ways to maintain.
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
