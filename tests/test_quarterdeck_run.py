@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from drydock import quarterdeck_run
 from drydock.errors import DrydockError
+
+
+def test_project_installs_quarterdeck_runtime_dependencies():
+    """The packaged QuarterDeck command must install the imports it shells out to."""
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    dependencies = data["project"]["dependencies"]
+    normalized = {dep.split("[", 1)[0].split(">=", 1)[0].lower() for dep in dependencies}
+
+    assert {"fastapi", "markdown", "pydantic", "pyyaml", "uvicorn"} <= normalized
 
 
 def _make_state(target_dir: Path) -> None:
