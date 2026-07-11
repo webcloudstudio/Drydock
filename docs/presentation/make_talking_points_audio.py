@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an audio track from the Drydock presentation talking points.
+"""Generate an audio track from the Drydock presentation teleprompter script.
 
 This uses the same free Edge TTS voice selected by docs/release-video:
 en-US-AvaMultilingualNeural. It does not use API keys or paid generation.
@@ -22,12 +22,12 @@ except ImportError:  # pragma: no cover - exercised when system ffmpeg exists
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_INPUT = ROOT / "talking_points.md"
-DEFAULT_OUTPUT = ROOT / "audio" / "talking_points_ava_multilingual.mp3"
+DEFAULT_INPUT = ROOT / "teleprompter.md"
+DEFAULT_OUTPUT = ROOT / "audio" / "teleprompter_ava_multilingual.mp3"
 DEFAULT_VOICE = "en-US-AvaMultilingualNeural"
 SAMPLE_RATE = 24000
-SENTENCE_GAP = 0.45
-BLOCK_GAP = 0.9
+LINE_GAP = 0.35
+PAUSE_GAP = 1.0
 
 
 def ffmpeg_exe() -> str:
@@ -39,9 +39,13 @@ def ffmpeg_exe() -> str:
     raise RuntimeError("ffmpeg was not found. Install ffmpeg or run with --with imageio-ffmpeg.")
 
 
-def markdown_to_spoken_text(markdown: str) -> str:
-    """Convert cue-card Markdown into plain text that sounds natural aloud."""
-    lines: list[str] = []
+def teleprompter_segments(markdown: str) -> list[tuple[str, str | float]]:
+    """Apply the teleprompter cue contract to Markdown lines.
+
+    Headers, separators, and ADVANCE markers are stage directions. Non-empty
+    non-cue lines are spoken as written. Each new spoken line gets a breath.
+    """
+    segments: list[tuple[str, str | float]] = []
     in_fence = False
     for raw_line in markdown.splitlines():
         line = raw_line.strip()
@@ -49,50 +53,34 @@ def markdown_to_spoken_text(markdown: str) -> str:
             in_fence = not in_fence
             continue
         if in_fence or not line:
-            lines.append("")
             continue
-        if line.startswith("# Drydock"):
+        if line.startswith("#"):
             continue
-        if line.startswith("- "):
-            line = line[2:].strip()
-        line = re.sub(r"^#+\s*", "", line)
-        line = re.sub(r"^\d+\.\s*", "", line)
-        line = re.sub(r"\*\*(.*?)\*\*", r"\1", line)
-        line = re.sub(r"\*(.*?)\*", r"\1", line)
-        line = re.sub(r"`([^`]+)`", r"\1", line)
-        line = re.sub(r"\[(.*?)\]\([^)]*\)", r"\1", line)
-        line = line.replace("—", ". ")
-        line = line.replace("→", " to ")
-        line = line.replace(" + ", " plus ")
-        line = line.replace("&", " and ")
-        line = re.sub(r"\s+", " ", line).strip()
-        if line:
-            lines.append(line)
-    text = "\n\n".join(line for line in lines if line)
-    text = re.sub(r"\bvs\.", "versus", text, flags=re.IGNORECASE)
-    text = text.replace("Q&A", "Q and A")
-    text = text.replace("SDD", "S D D")
-    text = text.replace("CLI", "C L I")
-    text = text.replace("TDD", "T D D")
-    text = text.replace("LLM", "L L M")
-    return text.strip()
-
-
-def speech_segments(text: str) -> list[tuple[str, str | float]]:
-    segments: list[tuple[str, str | float]] = []
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    for paragraph in paragraphs:
-        for index, sentence in enumerate(re.split(r"(?<=[.!?])\s+", paragraph)):
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            if index:
-                segments.append(("gap", SENTENCE_GAP))
-            segments.append(("speak", sentence))
-        segments.append(("gap", BLOCK_GAP))
+        if line == "---":
+            continue
+        if line.startswith(">> ADVANCE"):
+            continue
+        if re.fullmatch(r"\(\s*pause\s*\)", line, flags=re.IGNORECASE):
+            if segments and segments[-1][0] == "gap":
+                segments[-1] = ("gap", max(float(segments[-1][1]), PAUSE_GAP))
+            else:
+                segments.append(("gap", PAUSE_GAP))
+            continue
+        segments.append(("speak", line))
+        segments.append(("gap", LINE_GAP))
     while segments and segments[-1][0] == "gap":
         segments.pop()
     return segments
+
+
+def spoken_text(segments: list[tuple[str, str | float]]) -> str:
+    lines: list[str] = []
+    for kind, value in segments:
+        if kind == "speak":
+            lines.append(str(value))
+        elif value:
+            lines.append(f"[pause {float(value):.2f}]")
+    return "\n".join(lines)
 
 
 def trim_silence(raw_audio: bytes, threshold: int = 260) -> bytes:
@@ -108,7 +96,7 @@ def trim_silence(raw_audio: bytes, threshold: int = 260) -> bytes:
 
 async def synthesize_audio(
     *,
-    text: str,
+    segments: list[tuple[str, str | float]],
     output: Path,
     voice: str,
     rate: str,
@@ -119,14 +107,14 @@ async def synthesize_audio(
 
     output.parent.mkdir(parents=True, exist_ok=True)
     if keep_text:
-        output.with_suffix(".txt").write_text(text + "\n", encoding="utf-8")
+        output.with_suffix(".txt").write_text(spoken_text(segments) + "\n", encoding="utf-8")
 
     exe = ffmpeg_exe()
     tmp = output.parent / "_talking_points_segments"
     tmp.mkdir(exist_ok=True)
     raw_pieces: list[bytes] = []
     try:
-        for index, (kind, value) in enumerate(speech_segments(text)):
+        for index, (kind, value) in enumerate(segments):
             if kind == "gap":
                 raw_pieces.append(b"\0\0" * int(SAMPLE_RATE * float(value)))
                 continue
@@ -177,30 +165,43 @@ async def synthesize_audio(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate MP3 narration from docs/presentation/talking_points.md."
+        description="Generate MP3 narration from docs/presentation/teleprompter.md."
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--voice", default=DEFAULT_VOICE)
     parser.add_argument("--rate", default="+0%")
     parser.add_argument("--volume", default="+0%")
+    parser.add_argument("--line-gap", type=float, default=LINE_GAP)
+    parser.add_argument("--pause", type=float, default=PAUSE_GAP)
+    parser.add_argument(
+        "--print-text",
+        action="store_true",
+        help="print the exact spoken text without generating audio",
+    )
     parser.add_argument(
         "--keep-text",
         action="store_true",
-        help="also write the normalized narration text next to the MP3",
+        help="also write the exact spoken text next to the MP3",
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    global LINE_GAP, PAUSE_GAP
+    LINE_GAP = args.line_gap
+    PAUSE_GAP = args.pause
     markdown = args.input.read_text(encoding="utf-8")
-    text = markdown_to_spoken_text(markdown)
-    if not text:
+    segments = teleprompter_segments(markdown)
+    if not any(kind == "speak" for kind, _ in segments):
         raise RuntimeError(f"no speakable text found in {args.input}")
+    if args.print_text:
+        print(spoken_text(segments))
+        return 0
     asyncio.run(
         synthesize_audio(
-            text=text,
+            segments=segments,
             output=args.output,
             voice=args.voice,
             rate=args.rate,
