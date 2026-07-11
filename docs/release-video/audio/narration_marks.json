@@ -1,12 +1,10 @@
 {
-  "import": 13.101,
-  "analyze": 18.463,
-  "plan": 27.169,
-  "manifest": 35.285,
-  "quarterdeck": 42.917,
-  "build": 59.357,
-  "refit": 69.934,
-  "truths": 76.807,
-  "cta": 99.323,
-  "voice_duration": 105.266
+  "import": 14.766,
+  "analyze": 20.128,
+  "plan": 27.969,
+  "quarterdeck": 40.025,
+  "build": 46.077,
+  "refit": 52.566,
+  "cta": 80.051,
+  "voice_duration": 85.298
 }

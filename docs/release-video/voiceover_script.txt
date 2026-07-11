@@ -1,25 +1,27 @@
-Meet Drydock: a complete delivery system for specification-driven developers.
 
-Drydock works with larger specifications, including multi-file specs and imports from other tools.
+
+Meet Drydock: a complete software delivery system for specification-driven applications.
+
+Drydock works with larger specifications, including multi-file specifications and imports from other tools.
 
 Drydock import brings in specifications, notes, and other material.
 
-Drydock analyze proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
+Drydock analyze proposes an Agile plan with stories, questions, blockers, and acceptance criteria.
 
-Drydock plan converts your specifications into governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph database relating your stories, your stack, and your branding.
+Drydock plan converts Stories into Blueprints containing Test-Driven Development assertions and a Manifest or graph database relating Blueprints, Branding, and enterprise stack rules.
 
-Then shape the build in the QuarterDeck web server: group stories into blocks of Blueprints and set the build order.
+You Steer the build in the QuarterDeck web server where you group stories to optimize context
 
-Drydock also supports enterprise branding and stack rules, so applications keep consistent look, behavior, and documentation.
+Drydock build walks the Manifest, verifying each step against predefined tests.
 
-Drydock build walks the graph block by block, verifying each story against its tests and producing working software.
+Change tickets are conformed with drydock refit and delivered with drydock build
 
-Agile software never stops changing. Working software plus change tickets go through drydock refit and come out as more working software.
+Drydock decomposes your epic into stories using Agile and checks delivery quality with Test-Driven Development
 
-Drydock is built on simple engineering truths: engineers decompose big problems; Agile and Test-Driven Development are proven practices; and a graph plus context compression makes specification-driven builds reproducible with your Sonnet or Codex subscription.
+Build optimization makes specification-driven delivery reproducible with your Claude Sonnet or Codex 5.4 subscription.
 
-Drydock is free, MIT-licensed software, now in stable alpha.
+Drydock is free MIT-licensed software, now in stable alpha.
 
-Take it for a sail. Contributors wanted.
+Take it for a sail.
 
-WebCloudStudio.com.
+Find out more at WebCloudStudio.com

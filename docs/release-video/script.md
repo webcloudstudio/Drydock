@@ -26,7 +26,7 @@ Agile software never stops changing. Update the specification or add change tick
 
 Drydock is built on simple engineering truths: engineers decompose big problems; Agile and Test-Driven Development are proven practices; and a graph plus context compression makes specification-driven builds reproducible with your Sonnet or Codex subscription.
 
-Drydock is free MIT-licensed software, now in stable alpha.
+Drydock is free MIT-licensed software.
 
 Take it for a sail. 
 

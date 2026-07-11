@@ -78,15 +78,24 @@ PARAGRAPH_GAP = 1.05
 # outputs stream out while the narrator describes them. RIDE_IN is how long a
 # dropped input rides the belt before it reaches the machine.
 CONVERT_OFFSET = 0.35
-RIDE_IN = 3.4
+RIDE_IN = 5.4
+
+# The opening "Meet Drydock" title holds until this video-time second, then
+# fades and the belt takes over. Independent of the narration marks.
+INTRO_END = 11.0
 
 # Per-command timing nudges (seconds), applied on top of the narration marks.
 # Negative moves a beat earlier ("back"); positive moves it later. Each nudge
 # moves that machine together with its headline and wall panel.
+# import, analyze, plan, manifest, quarterdeck, build, refit, truths, cta.
 MARK_OFFSETS = {
-    "analyze": -1.5,
-    "plan": -5.0,
-    "manifest": -3.0,
+    "import": 2.1,
+    "analyze": 3.6,
+    "plan": 2.3,
+    "manifest": -4.2,
+    "quarterdeck": -0.3,
+    "build": 2.2,
+    "refit": 3.9,
 }
 
 VOICE_FALLBACK = """Meet Drydock: a complete delivery system for specification-driven developers.
@@ -270,14 +279,20 @@ class Timeline:
         # Headlines track the marks: a section's headline rises ~2.5s before its
         # command is named and clears as the next section begins.
         self.scenes = [
-            ("intro", 0.0, mi - 3.2, "", ""),
-            ("import", mi - 3.2, ma - 2.5, "Import your Project", ""),
-            ("analyze", ma - 2.5, mp - 2.5, "Analyze is Agile Planning", ""),
-            ("plan", mp - 2.5, mman - 0.3, "Plan the reproducible build", ""),
+            ("intro", 0.0, INTRO_END, "", ""),
+            ("import", INTRO_END, ma - 2.5, "Import your Project", ""),
+            ("analyze", ma - 2.5, mp - 2.5, "Analyze is Agile Story Planning", ""),
+            ("plan", mp - 2.5, mman - 0.3, "Plan creates Blueprints and a Manifest", ""),
             ("manifest", mman - 0.3, mqd - 2.0, "", ""),
             ("quarterdeck", mqd - 2.0, mb - 2.5, "", ""),
-            ("build", mb - 2.5, mr - 2.5, "Build with Test-Driven evidence", ""),
-            ("refit", mr - 2.5, mt - 0.5, "Refit change tickets", ""),
+            ("build", mb - 2.5, mr - 2.5, "Build steps verified - Test-Driven Development", ""),
+            (
+                "refit",
+                mr - 2.5,
+                mt - 0.5,
+                "Refit keeps software current",
+                "Change tickets in, working software out",
+            ),
             ("truths", mt - 0.5, mc - 0.5, "Built on engineering truths", ""),
             ("cta", mc - 0.5, duration, "", ""),
         ]
@@ -415,7 +430,7 @@ class Timeline:
         self.manifest_panel = dict(
             wx=960 - mpanel_w / 2 + V * (mman + 2.0), w=mpanel_w, anim=(mman, mman + 5.0)
         )
-        qd_w = 1300
+        qd_w = 960
         self.qd_panel = dict(
             wx=960 - qd_w / 2 + V * (mqd + 3.5), w=qd_w, swap=(mqd + 1.0, mqd + 4.5)
         )
@@ -823,37 +838,41 @@ def draw_qd_panel(draw, sx_left, t, tl):
     blocks = [
         ("Foundation", NAVY),
         ("Persistence", BLUE2),
-        ("Search", GREEN),
-        ("Reports", AMBER),
+        ("Feature 1", GREEN),
+        ("Feature 2", AMBER),
         ("User Interface", BLUE),
         ("Documentation", GREEN2),
     ]
-    slots = [(230, 58), (530, 58), (830, 58), (230, 278), (530, 278), (830, 278)]
+    slots = [(60, 58), (360, 58), (660, 58), (60, 278), (360, 278), (660, 278)]
     for sy in (58, 278):
         draw.rectangle((x0 + 60, y0 + sy + 180, x0 + w - 60, y0 + sy + 194), fill=(210, 222, 234))
     draw.rounded_rectangle((x0 + 28, y0 + 470, x0 + 322, y0 + 516), 12, fill=NAVY)
     draw.text(
         (x0 + 175, y0 + 493), "QUARTERDECK", font=font(26, True), fill=(255, 255, 255), anchor="mm"
     )
-    # Persistence and User Interface start in each other's slots; the cursor
-    # drags them straight up and down into the correct build order.
+    # Feature 1 and Feature 2 start nudged out into the corner aisle beside
+    # their slots; the cursor slides each into build order in turn (Feature 1
+    # first, then Feature 2).
     w0, w1 = panel["swap"]
-    p = ease((t - w0) / max(0.001, w1 - w0)) if t > w0 else 0.0
-    arc = math.sin(math.pi * min(1.0, p))
-    start = {1: 4, 4: 1}
+    span = max(0.001, w1 - w0)
+    p1 = ease(min(1.0, (t - w0) / (span * 0.5))) if t > w0 else 0.0
+    p2 = ease(min(1.0, (t - w0 - span * 0.5) / (span * 0.5))) if t > w0 + span * 0.5 else 0.0
+    # Per-block starting offset (dx, dy), removed as the block is dragged home.
+    nudge = {2: (54, -50), 3: (-54, 72)}
+    progress = {2: p1, 3: p2}
     cursor_at = None
     for i, (label, color) in enumerate(blocks):
-        sx_slot, sy_slot = slots[start.get(i, i)]
-        tx_slot, ty_slot = slots[i]
-        x = x0 + int(lerp(sx_slot, tx_slot, p))
-        y = y0 + int(lerp(sy_slot, ty_slot, p))
-        if i == 1:
-            x -= int(150 * arc)
-            cursor_at = (x, y)
-        elif i == 4:
-            x += int(150 * arc)
+        tx, ty = slots[i]
+        x, y = x0 + tx, y0 + ty
+        if i in nudge:
+            dx, dy = nudge[i]
+            pr = progress[i]
+            x += int(dx * (1 - pr))
+            y += int(dy * (1 - pr))
+            if 0.03 < pr < 0.97:
+                cursor_at = (x, y)
         block_tile(draw, x, y, label, color)
-    if 0.02 < p < 0.98 and cursor_at:
+    if cursor_at:
         cursor_arrow(draw, cursor_at[0] + 214, cursor_at[1] - 30)
 
 
@@ -960,7 +979,7 @@ def draw_intro(frame, draw, t, tl):
     )
     draw.text(
         (WIDTH // 2, 615),
-        "A complete delivery system for specification-driven developers",
+        "A complete delivery system for specification-driven applications",
         font=FONT_H2,
         fill=BLUE + (int(255 * a),),
         anchor="mm",

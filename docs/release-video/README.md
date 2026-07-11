@@ -56,23 +56,50 @@ uv run --python 3.12 --with edge-tts --with imageio-ffmpeg --with numpy --with p
   python make_release_video.py --stills --no-voice   # eyeball first
 ```
 
+## Section headers and lines of text
+
+Every scene carries a headline and an optional second line, both drawn by
+`draw_headline()`. They live in the `self.scenes = [...]` list in
+`Timeline.__init__`, one row per beat:
+
+```python
+("refit", mr - 2.5, mt - 0.5, "Refit keeps software current", "Change tickets in, working software out"),
+#  name    start      end       headline (4th field)            sub-line (5th field)
+```
+
+- **Add a header:** put text in the 4th field. Leave it `""` for no header.
+- **Add a line of text under it:** put text in the 5th field (smaller, muted).
+- **Break up a long stretch:** split one row into two rows with different
+  headers. The `start`/`end` are video-time seconds; the rows must stay
+  contiguous (each row's `end` is the next row's `start`). Anchor the split to
+  a mark expression (e.g. `mr + 6.0`) so it tracks the narration. The tail
+  from `refit` to `truths` is the longest gap — the natural place to add a
+  second header.
+
 ## Rename on-screen labels
 
 | Label | Where |
 |---|---|
 | QuarterDeck block cards ("Story") | `block_tile()` — the `draw.text(..., "Story", ...)` call |
-| QuarterDeck block names (Foundation, Persistence, …) | `draw_qd_panel()` — the `blocks = [...]` list |
+| QuarterDeck block names (Foundation, Persistence, Feature 1, …) | `draw_qd_panel()` — the `blocks = [...]` list |
+| QuarterDeck grid positions / widths | `draw_qd_panel()` — the `slots = [...]` list and `qd_w` |
+| QuarterDeck cards that get dragged into order | `draw_qd_panel()` — the `nudge = {...}` dict (block index → start offset) |
 | Manifest panel cards (Stack, Rigging, Story 1–3) | `draw_manifest_panel()` |
 | Belt Blueprints card sections (Behavior/Acceptance/Guardrails) | `Timeline.__init__` — the Blueprints `card(...)` `sections=` list |
-| Section headlines ("Analyze is Agile Planning", …) | `Timeline.__init__` — the `self.scenes = [...]` list, 4th field per row |
+| Section headlines ("Import your Project", …) | `Timeline.__init__` — the `self.scenes = [...]` list, 4th field per row |
 
 ## Other tunables (top of the file)
 
 | Constant | Effect |
 |---|---|
+| `INTRO_END` (11.0) | Video-time second the "Meet Drydock" title fades and the belt takes over |
 | `CONVERT_OFFSET` (0.35) | Seconds after the word that the machine finishes converting its lead card |
-| `RIDE_IN` (3.4) | Seconds an input rides the belt before it reaches its machine |
+| `RIDE_IN` (5.4) | Seconds an import input rides the belt before it reaches the machine — raise it to drop the input cards earlier (they still arrive on the word) |
 | `SENTENCE_GAP` / `PARAGRAPH_GAP` | Silence inserted between sentences / paragraphs |
 | `V` (220) | Belt speed in px/s |
+
+The QuarterDeck panel width is `qd_w` inside `Timeline.__init__`; its block
+layout is `slots` in `draw_qd_panel()`. Narrow the panel by lowering `qd_w`
+and tightening the column x-values in `slots` together.
 
 Change what is said, or insert a `[pause 1.5]` line, in `voiceover_script.txt`.
