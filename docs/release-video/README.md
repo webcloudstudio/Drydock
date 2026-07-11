@@ -71,10 +71,19 @@ Every scene carries a headline and an optional second line, both drawn by
 - **Add a line of text under it:** put text in the 5th field (smaller, muted).
 - **Break up a long stretch:** split one row into two rows with different
   headers. The `start`/`end` are video-time seconds; the rows must stay
-  contiguous (each row's `end` is the next row's `start`). Anchor the split to
-  a mark expression (e.g. `mr + 6.0`) so it tracks the narration. The tail
-  from `refit` to `truths` is the longest gap — the natural place to add a
-  second header.
+  contiguous (each row's `end` is the next row's `start`).
+
+The closer tail is paced by three fixed video-time seconds set just above the
+`self.scenes` list:
+
+| Constant | Default | Controls |
+|---|---|---|
+| `refit_end` | `59.0` | The `refit` headline stops here |
+| `decompose_end` | `70.0` | The `decompose` header ("Drydock decomposes big problems") runs `refit_end` → here |
+| `truths_end` | `t_stop + 1.0` | "Built on engineering truths" (headline and floating chips) holds until the closer banner rises |
+
+Move these numbers to re-pace the ending; keep them in ascending order and
+below `t_stop`.
 
 ## Rename on-screen labels
 

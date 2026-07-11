@@ -257,7 +257,7 @@ class Timeline:
         mi, ma, mp = mk["import"], mk["analyze"], mk["plan"]
         mman, mqd = mk["manifest"], mk["quarterdeck"]
         mb, mr = mk["build"], mk["refit"]
-        mt, mc = mk["truths"], mk["cta"]
+        mc = mk["cta"]
 
         # A gantry arrival puts its lead input (belt position 840) at the machine
         # center; that card finishes converting CONVERT_OFFSET after the command
@@ -277,7 +277,11 @@ class Timeline:
         self.cam_final = V * self.t_stop + V * self.stop_len / 2
 
         # Headlines track the marks: a section's headline rises ~2.5s before its
-        # command is named and clears as the next section begins.
+        # command is named and clears as the next section begins. The closer
+        # beats hold on fixed video-time seconds so they pace the long tail.
+        refit_end = 59.0  # refit headline stops here
+        decompose_end = 70.0  # "decomposes" section runs refit_end -> here
+        truths_end = self.t_stop + 1.0  # "engineering truths" holds until the closer banner
         self.scenes = [
             ("intro", 0.0, INTRO_END, "", ""),
             ("import", INTRO_END, ma - 2.5, "Import your Project", ""),
@@ -289,12 +293,19 @@ class Timeline:
             (
                 "refit",
                 mr - 2.5,
-                mt - 0.5,
+                refit_end,
                 "Refit keeps software current",
                 "Change tickets in, working software out",
             ),
-            ("truths", mt - 0.5, mc - 0.5, "Built on engineering truths", ""),
-            ("cta", mc - 0.5, duration, "", ""),
+            (
+                "decompose",
+                refit_end,
+                decompose_end,
+                "Drydock decomposes big problems",
+                "Big work splits into small, verifiable stories",
+            ),
+            ("truths", decompose_end, truths_end, "Built on engineering truths", ""),
+            ("cta", truths_end, duration, "", ""),
         ]
 
         def conv(t_arr: float, wx0: float) -> float:
@@ -434,7 +445,8 @@ class Timeline:
         self.qd_panel = dict(
             wx=960 - qd_w / 2 + V * (mqd + 3.5), w=qd_w, swap=(mqd + 1.0, mqd + 4.5)
         )
-        self.truths_window = (mt, mc - 0.4)
+        # The floating truth chips ride with the "engineering truths" headline.
+        self.truths_window = (decompose_end, truths_end)
         self.truths = [
             ("Decompose big problems", 150, 300),
             ("Agile planning", 780, 300),
@@ -1364,7 +1376,9 @@ def write_stills(tl: Timeline):
         times += [m - 0.8, m + 0.7, m + 2.4]
     # Wall panels and closer, centered on their narration.
     times += [mk["manifest"] + 2.0, mk["quarterdeck"] + 3.5]
-    times += [mk["truths"] + 2.0, mk["cta"] + 2.0]
+    # Closer beats: the "decomposes" section, the "engineering truths" hold,
+    # and the call to action.
+    times += [64.5, 75.0, mk["cta"] + 2.0]
     times = sorted(t for t in times if 0.0 <= t < tl.duration)
     for t in times:
         t = min(t, tl.duration - 0.05)

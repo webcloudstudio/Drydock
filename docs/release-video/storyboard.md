@@ -43,7 +43,8 @@ times; the columns below describe the beats in order.
 | QuarterDeck | The QuarterDeck workbench pans past (no headline): six named build blocks (Foundation, Persistence, Feature 1, Feature 2, User Interface, Documentation), each holding mini Blueprints with section text. Feature 1 and Feature 2 start nudged out beside their slots and the cursor slides each into build order. | Shape the build in the QuarterDeck web server. |
 | `build` | The Blueprints and Manifest cards ride into the `drydock build` gantry; a Working Software crate emerges with a Tests Passing chip. | Drydock build walks the graph and produces working software. |
 | `refit` | "Refit keeps software current" (with the line "Change tickets in, working software out"): change tickets drop in behind the Working Software crate; all ride into `drydock refit`; more Working Software crates emerge. | Working software plus change tickets become more working software. |
-| Truths | Engineering-truth chips fade in above the still-running line. | Drydock is built on engineering truths. |
+| Decompose | "Drydock decomposes big problems" (with the line "Big work splits into small, verifiable stories") holds over the running line of Working Software crates. | engineers decompose big problems. |
+| Truths | "Built on engineering truths": the four engineering-truth chips fade in above the still-running line and hold until the closer banner rises. | Drydock is built on engineering truths. |
 | Closer | The camera stops at the belt end; crates tip off and stack on the platform under the closer: logo, Take it for a sail., WebCloudStudio.com. | Take it for a sail. |
 
 ## Music Options
