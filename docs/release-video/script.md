@@ -6,13 +6,13 @@ Tone: technical, energetic, professional, free-software announcement.
 
 ## Voiceover
 
-Meet Drydock: a complete delivery system for specification-driven developers.
+Meet Drydock: a complete delivery system for specification focused developers.
 
-Drydock works with larger specifications, including multi-file specs and material imported from other tools.
+Drydock works with larger specifications, including multi-file specifications and material imported from other tools.
 
-Start with `drydock import`: bring in specifications, notes, or existing project material.
+Start with `drydock import` to bring in specifications, notes, and other material.
 
-Run `drydock analyze`, and Drydock proposes an Agile plan with features, stories, questions, blockers, and acceptance criteria.
+`drydock analyze` performs Agile Story Planning and creates features, stories, questions, blockers, and acceptance criteria.
 
 Run `drydock plan`, and your specifications become governed Blueprints. Each Blueprint carries Test-Driven Development tests. Plan also builds the Manifest: a graph of stories, dependencies, stack rules, and build order.
 
@@ -26,8 +26,8 @@ Agile software never stops changing. Update the specification or add change tick
 
 Drydock is built on simple engineering truths: engineers decompose big problems; Agile and Test-Driven Development are proven practices; and a graph plus context compression makes specification-driven builds reproducible with your Sonnet or Codex subscription.
 
-Drydock is free, MIT-licensed software, now in stable alpha.
+Drydock is free MIT-licensed software, now in stable alpha.
 
-Take it for a sail. Contributors wanted.
+Take it for a sail. 
 
-WebCloudStudio.com.
+For more Information - WebCloudStudio.com.

@@ -80,6 +80,15 @@ PARAGRAPH_GAP = 1.05
 CONVERT_OFFSET = 0.35
 RIDE_IN = 3.4
 
+# Per-command timing nudges (seconds), applied on top of the narration marks.
+# Negative moves a beat earlier ("back"); positive moves it later. Each nudge
+# moves that machine together with its headline and wall panel.
+MARK_OFFSETS = {
+    "analyze": -1.5,
+    "plan": -5.0,
+    "manifest": -3.0,
+}
+
 VOICE_FALLBACK = """Meet Drydock: a complete delivery system for specification-driven developers.
 
 Drydock works with larger specifications, including multi-file specs and imports from other tools.
@@ -232,6 +241,9 @@ class Timeline:
             for key, value in marks.items():
                 if key in mk and isinstance(value, (int, float)):
                     mk[key] = float(value)
+        for key, delta in MARK_OFFSETS.items():
+            if key in mk:
+                mk[key] += delta
         self.marks = mk
         mi, ma, mp = mk["import"], mk["analyze"], mk["plan"]
         mman, mqd = mk["manifest"], mk["quarterdeck"]
@@ -790,7 +802,7 @@ def block_tile(draw, x, y, label, color):
         draw.rounded_rectangle((mx, my, mx + 92, my + 96), 8, fill=PAPER, outline=LINE, width=2)
         draw.rectangle((mx, my, mx + 92, my + 22), fill=color)
         draw.text(
-            (mx + 46, my + 11), "Blueprint", font=font(13, True), fill=(255, 255, 255), anchor="mm"
+            (mx + 46, my + 11), "Story", font=font(13, True), fill=(255, 255, 255), anchor="mm"
         )
         for j, sec in enumerate(["Behavior", "Accepts", "Guards"]):
             draw.text(
