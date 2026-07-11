@@ -22,8 +22,8 @@ Drydock checks delivery quality with Test-Driven Development
 
 Build optimization makes specification-driven delivery reproducible with your Claude Sonnet or Codex 5.4 subscription.
 
-Drydock is free MIT-licensed software, now in stable alpha.
+Drydock is open source MIT-licensed software, now in stable alpha.
 
 Take it for a sail.
 
-Find out more at WebCloudStudio.com
+Find out more at WebCloudStudio
