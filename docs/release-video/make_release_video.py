@@ -96,10 +96,10 @@ RIDE_IN = 5.4
 # gate, which is where "delivered with drydock build" lands in the read.
 REFIT_TO_DELIVER = 3.4
 
-# The opening "Meet Drydock" title holds through the specification lines and
-# fades out as the narrator says "Drydock import", handing the screen to the
-# belt. It tracks the spoken word, not the import gantry, so MARK_OFFSETS does
-# not drag the title around.
+# The opening "Meet Drydock" title holds for its own sentence and fades out as
+# the narrator starts the next one ("Drydock works with larger specifications"),
+# handing the screen to the belt. It tracks the spoken word, not a machine, so
+# MARK_OFFSETS does not drag the title around.
 
 # Per-command timing nudges (seconds), applied on top of the narration marks.
 # Negative moves a beat earlier ("back"); positive moves it later. Each nudge
@@ -259,6 +259,7 @@ class Timeline:
         # command engages as it is spoken. Real marks come from voice synthesis
         # (audio/narration_marks.json); absent that, base timing stands in.
         fallback = {
+            "specs": sc(6.5),
             "import": sc(11.5),
             "analyze": sc(21.0),
             "plan": sc(30.0),
@@ -276,8 +277,8 @@ class Timeline:
             for key, value in marks.items():
                 if key in mk and isinstance(value, (int, float)):
                     mk[key] = float(value)
-        # The title clears on the spoken "drydock import", before the nudges.
-        intro_end = mk["import"]
+        # The title clears as the second sentence begins, before the nudges.
+        intro_end = mk["specs"]
         for key, delta in MARK_OFFSETS.items():
             if key in mk:
                 mk[key] += delta
@@ -1298,10 +1299,12 @@ def save_marks(spoken, voice_duration: float):
         return None
 
     marks = {
+        # The sentence after the "Meet Drydock" line: the title clears on it.
+        "specs": find("works with larger specifications"),
         "import": find("drydock import"),
         "analyze": find("drydock analyze"),
         "plan": find("drydock plan"),
-        "manifest": find("builds the Manifest"),
+        "manifest": find("Manifest is a graph database"),
         "quarterdeck": find("QuarterDeck"),
         "build": find("drydock build"),
         "refit": find("drydock refit"),
