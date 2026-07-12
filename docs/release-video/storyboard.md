@@ -18,7 +18,7 @@
   cards carry a check badge; Story cards carry green acceptance-criteria ticks; the
   Blueprints card lists its sections (Behavior, Acceptance, Guardrails).
 - Machines: slim gates straddle the belt — two thin posts, a header beam carrying the
-  command (`drydock import`, `analyze`, `plan`, `build`, `refit`) on a navy sign, a small
+  command (`drydock import`, `analyze`, `plan`, `build`, `refit`, `build`) on a navy sign, a small
   scanner gear that spins up and glows, and a translucent light curtain between the posts.
   A card converts as it crosses the curtain, and the curtain flares white at that instant,
   so the conversion is covered by light rather than by a solid shroud. Outputs emerge at
@@ -45,8 +45,9 @@ times; the columns below describe the beats in order.
 | Manifest | The Manifest wall panel pans past (no headline): Block 1 (Story 1) and Block 2 (Stories 2 and 3), story dependency arrows across blocks, Stack (Database, Web, Technology) and Rigging (Branding, Rules) on the left with light arrows feeding every block. | The Manifest is a graph database relating stories, stack, and branding. |
 | QuarterDeck | The QuarterDeck workbench pans past (no headline): six named build blocks (Foundation, Persistence, Feature 1, Feature 2, User Interface, Documentation), each holding mini Blueprints with section text. Feature 1 and Feature 2 start nudged out beside their slots and the cursor slides each into build order. | Shape the build in the QuarterDeck web server. |
 | `build` | The Blueprints and Manifest cards ride into the `drydock build` gantry; a Working Software crate emerges with a Tests Passing chip. | Drydock build walks the graph and produces working software. |
-| `refit` | "Refit keeps software current" (with the line "Change tickets in, working software out"): change tickets drop in behind the Working Software crate; all ride into `drydock refit`; more Working Software crates emerge. | Working software plus change tickets become more working software. |
-| Decompose | "Drydock decomposes big problems" (with the line "Big work splits into small, verifiable stories") holds over the running line of Working Software crates. | engineers decompose big problems. |
+| `refit` | Change tickets drop in behind the Working Software crate; all ride into the `drydock refit` gate, which emits a conformed Blueprint and Manifest — the same pair `drydock plan` emits. | Change tickets are conformed with drydock refit. |
+| `deliver` | The refit Blueprint and Manifest ride into a second `drydock build` gate; one Working Software crate emerges with its Tests Passing chip, exactly as the first build produced. | ...and delivered with drydock build. |
+| Decompose | "Drydock decomposes big problems" (with the line "Big work splits into small, verifiable stories") holds over the Working Software crate running to the end of the line. | engineers decompose big problems. |
 | Truths | "Built on engineering truths": the four engineering-truth chips fade in above the still-running line and hold until the closer banner rises. | Drydock is built on engineering truths. |
 | Closer | The camera stops at the belt end; crates tip off and stack on the platform under the closer: logo, Take it for a sail., WebCloudStudio.com. | Take it for a sail. |
 

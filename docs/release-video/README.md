@@ -51,7 +51,10 @@ MARK_OFFSETS = {
 ```
 
 - Keys: `import`, `analyze`, `plan`, `manifest`, `quarterdeck`, `build`,
-  `refit`, `truths`, `cta`.
+  `refit`, `deliver`, `truths`, `cta`.
+- `deliver` is the second `drydock build` gate. It has no spoken word of its
+  own — the narration names both commands in one sentence — so it follows the
+  refit gate by `REFIT_TO_DELIVER` seconds and moves whenever `refit` moves.
 - Units are seconds. `-4.0` moves that beat 4 seconds earlier; `+2.0` moves it
   2 seconds later. Omit a key (or set `0.0`) to leave it on its spoken word.
 
@@ -120,7 +123,8 @@ below `t_stop`.
 | `SENTENCE_GAP` / `PARAGRAPH_GAP` | Silence inserted between sentences / paragraphs |
 | `PAUSE_UNIT` (0.35) | Silence added by each `(pause)` cue in the script |
 | `VOICE_NAME` / `VOICE_RATE` / `VOICE_PITCH` | Voice, delivery speed, and pitch passed to edge-tts |
-| `GATE_HALF` (132) / `GATE_DX` (121) | Gate half-width, and its offset onto the converting card |
+| `GATE_HALF` (79) / `GATE_DX` (121) | Half the distance between the two gate posts, and the gate's offset onto the converting card |
+| `REFIT_TO_DELIVER` (3.4) | Seconds after the refit gate that the second `drydock build` gate engages |
 | `V` (220) | Belt speed in px/s |
 
 The QuarterDeck panel width is `qd_w` inside `Timeline.__init__`; its block

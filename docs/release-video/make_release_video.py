@@ -50,10 +50,10 @@ V = 220.0
 BELT_Y = 760  # belt top surface
 GANTRY_SX = 880  # screen x where a gantry center sits at its arrival time
 # Gate geometry. Cards are drawn from their left edge, so the gate is offset by
-# half a card to straddle the card that is converting under it. GATE_HALF is
-# just wider than that card, keeping the structure narrow.
+# half a card to straddle the card that is converting under it. GATE_HALF is the
+# half-distance between the two posts.
 GATE_DX = 121
-GATE_HALF = 132
+GATE_HALF = 79
 BASE_END = 88.0  # base timeline length; scaled to the narration
 
 NAVY = (12, 25, 40)
@@ -90,6 +90,12 @@ VOICE_PITCH = "+0Hz"
 CONVERT_OFFSET = 0.35
 RIDE_IN = 5.4
 
+# The delivery build. The refit sentence names both commands ("conformed with
+# drydock refit, and delivered with drydock build"), so the narration carries a
+# single mark for it. The second build gate engages this long after the refit
+# gate, which is where "delivered with drydock build" lands in the read.
+REFIT_TO_DELIVER = 3.4
+
 # The opening "Meet Drydock" title holds until this video-time second, then
 # fades and the belt takes over. Independent of the narration marks.
 INTRO_END = 11.0
@@ -102,10 +108,10 @@ MARK_OFFSETS = {
     "import": 2.1,
     "analyze": 3.6,
     "plan": 2.3,
-    "manifest": -4.2,
+    "manifest": -1.2,
     "quarterdeck": -0.3,
     "build": 2.2,
-    "refit": 3.9,
+    "refit": 0.5,
 }
 
 VOICE_FALLBACK = """Meet Drydock: a complete delivery system for specification-driven developers.
@@ -272,6 +278,9 @@ class Timeline:
         for key, delta in MARK_OFFSETS.items():
             if key in mk:
                 mk[key] += delta
+        # The delivery build has no spoken mark of its own; it trails refit by a
+        # fixed gap, and follows refit whenever refit moves.
+        mk["deliver"] = mk["refit"] + REFIT_TO_DELIVER + MARK_OFFSETS.get("deliver", 0.0)
         self.marks = mk
         mi, ma, mp = mk["import"], mk["analyze"], mk["plan"]
         mman, mqd = mk["manifest"], mk["quarterdeck"]
@@ -289,6 +298,7 @@ class Timeline:
         t_plan = arrival(mp)
         t_build = arrival(mb)
         t_refit = arrival(mr)
+        t_deliver = arrival(mk["deliver"])
 
         # Camera: locked to belt speed, then eased to a stop for the closer.
         self.t_stop = mc + 0.2
@@ -424,9 +434,22 @@ class Timeline:
             cin = c(t_refit, wx0)
             td = cin - 3.0
             card("ticket", "CHANGE", AMBER, wx0, td, cin, drop=(td, td + 0.7), drop_from=430)
-        # REFIT output: more working software, riding to the end of the line.
-        for wx0 in [840, 600, 360]:
-            card("crate", "", GREEN, wx0, c(t_refit, wx0), duration + 10)
+        # REFIT output: a conformed Blueprint and Manifest, exactly what PLAN
+        # emits, riding on into the delivery BUILD.
+        card(
+            "card",
+            "Blueprint",
+            GREEN,
+            840,
+            c(t_refit, 840),
+            c(t_deliver, 840),
+            ticks=True,
+            sections=["Behavior", "Acceptance", "Guardrails"],
+        )
+        card("card", "Manifest", BLUE2, 580, c(t_refit, 580), c(t_deliver, 580))
+        # DELIVERY BUILD output: one Working Software crate, riding to the end
+        # of the line.
+        card("crate", "", GREEN, 840, c(t_deliver, 840), duration + 10)
 
         self.gantries = []
         for cmd, t_arr in [
@@ -435,6 +458,7 @@ class Timeline:
             ("drydock plan", t_plan),
             ("drydock build", t_build),
             ("drydock refit", t_refit),
+            ("drydock build", t_deliver),
         ]:
             wx = GANTRY_SX + V * t_arr
             # A gantry is active when any card converts at it.
@@ -476,7 +500,11 @@ class Timeline:
             ("Test-Driven Development", 150, 392),
             ("Graph + context compression", 780, 392),
         ]
-        self.tests_chip = (c(t_build, 840) + 0.5, c(t_build, 840) + 2.8, 840)
+        # Both builds raise the same "Tests Passing" chip over the crate they
+        # produce.
+        self.tests_chips = [
+            (c(t, 840) + 0.5, c(t, 840) + 2.8, 840) for t in (t_build, t_deliver)
+        ]
 
     def cam(self, t: float) -> float:
         if t <= self.t_stop:
@@ -1068,26 +1096,26 @@ def draw_intro(frame, draw, t, tl):
 
 
 def draw_tests_chip(draw, t, tl):
-    t0, t1, wx0 = tl.tests_chip
-    if not (t0 <= t <= t1):
-        return
-    a = ease(min((t - t0) / 0.4, (t1 - t) / 0.4))
-    sx = wx0 + V * t - tl.cam(t)
-    x, y = int(sx - 40), 520
-    draw.rounded_rectangle(
-        (x, y, x + 290, y + 64),
-        18,
-        fill=(226, 248, 238, int(255 * a)),
-        outline=GREEN + (int(255 * a),),
-        width=3,
-    )
-    draw.text(
-        (x + 145, y + 32),
-        "Tests Passing",
-        font=font(30, True),
-        fill=GREEN + (int(255 * a),),
-        anchor="mm",
-    )
+    for t0, t1, wx0 in tl.tests_chips:
+        if not (t0 <= t <= t1):
+            continue
+        a = ease(min((t - t0) / 0.4, (t1 - t) / 0.4))
+        sx = wx0 + V * t - tl.cam(t)
+        x, y = int(sx - 40), 520
+        draw.rounded_rectangle(
+            (x, y, x + 290, y + 64),
+            18,
+            fill=(226, 248, 238, int(255 * a)),
+            outline=GREEN + (int(255 * a),),
+            width=3,
+        )
+        draw.text(
+            (x + 145, y + 32),
+            "Tests Passing",
+            font=font(30, True),
+            fill=GREEN + (int(255 * a),),
+            anchor="mm",
+        )
 
 
 def draw_cta(frame, draw, t, tl):
@@ -1451,7 +1479,7 @@ def write_stills(tl: Timeline):
     times = [2.5]  # intro
     # Each machine: entering just before the word, converting on the word, and
     # streaming its outputs just after.
-    for key in ("import", "analyze", "plan", "build", "refit"):
+    for key in ("import", "analyze", "plan", "build", "refit", "deliver"):
         m = mk[key]
         times += [m - 0.8, m + 0.7, m + 2.4]
     # Wall panels and closer, centered on their narration.
