@@ -27,7 +27,7 @@ DEFAULT_OUTPUT = ROOT / "audio" / "teleprompter_ava_multilingual.mp3"
 DEFAULT_VOICE = "en-US-AvaMultilingualNeural"
 SAMPLE_RATE = 24000
 LINE_GAP = 0.35
-PAUSE_GAP = 1.0
+PAUSE_GAP = 0.35
 
 
 def ffmpeg_exe() -> str:
@@ -47,6 +47,7 @@ def teleprompter_segments(markdown: str) -> list[tuple[str, str | float]]:
     """
     segments: list[tuple[str, str | float]] = []
     in_fence = False
+    last_gap_is_explicit_pause = False
     for raw_line in markdown.splitlines():
         line = raw_line.strip()
         if line.startswith("```"):
@@ -63,15 +64,17 @@ def teleprompter_segments(markdown: str) -> list[tuple[str, str | float]]:
         if re.fullmatch(r"\(\s*pause\s*\)", line, flags=re.IGNORECASE):
             if segments and segments[-1][0] == "gap":
                 previous_gap = float(segments[-1][1])
-                if previous_gap == LINE_GAP:
+                if not last_gap_is_explicit_pause:
                     segments[-1] = ("gap", PAUSE_GAP)
                 else:
                     segments[-1] = ("gap", previous_gap + PAUSE_GAP)
             else:
                 segments.append(("gap", PAUSE_GAP))
+            last_gap_is_explicit_pause = True
             continue
         segments.append(("speak", line))
         segments.append(("gap", LINE_GAP))
+        last_gap_is_explicit_pause = False
     while segments and segments[-1][0] == "gap":
         segments.pop()
     return segments
