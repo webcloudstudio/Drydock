@@ -55,4 +55,10 @@ QuarterDeck/tickets.json
 # Too Large
 Drydock_Video.mp4
 *.mp4
+*.mov
+*.webm
+*.mp3
+*.wav
+*.m4a
+*.aac
 .pre-commit-cache-codex

@@ -1,0 +1,198 @@
+[pause 0.70]
+Welcome Commanders,
+[pause 0.35]
+I am happy to announce the release of the Drydock process for specification-driven software delivery.
+[pause 0.35]
+Drydock can repeatably deliver working software from specifications.
+[pause 0.35]
+Drydock is enterprise-ready and uses your branding and business rules.
+[pause 1.40]
+AI can write code faster and better than anyone imagined. Speed is not the problem.
+[pause 0.35]
+The problem is that you can't reproduce results and therefore can't maintain your systems.
+[pause 0.35]
+Drydock reproduces using THE process used at professional software organizations.
+[pause 0.70]
+That process is Agile plus Test-Driven development plus a dev-ops process that minimizes token use and delivers reproducible results.
+[pause 1.40]
+First, thirty seconds of background for anyone new to specification-driven development.
+[pause 0.70]
+Instead of interactively prompting an AI, you write specifications defining software behavior. Agents build software from the specifications.
+[pause 0.35]
+There are many approaches to creating specifications, including simply asking your LLM to create one.
+[pause 0.70]
+Drydock is focused on larger applications built from specifications.
+[pause 1.05]
+The promise is that your software can get better as you update the specifications, but there are two gaps.
+[pause 1.40]
+The first gap comes from specification size. Output quality is related to prompt size and complexity.
+[pause 0.35]
+With a small spec you get great results.
+[pause 0.35]
+But with a big spec, software quality falls off a cliff.
+[pause 0.70]
+Better results occur when you divide the software into small units of work.
+[pause 1.05]
+Gap two is reproducibility.
+[pause 0.35]
+The LLM is not deterministic. Large specifications drift.
+[pause 0.35]
+That means you can't reproduce.
+[pause 1.40]
+The solution, unsurprisingly, is to use software development best practices.
+[pause 0.70]
+In Drydock, you are the Commander — the Agile Product Owner — and the LLM is your crew.  Your crew specializes in Agile and Test Driven Development.
+[pause 0.70]
+For 25 years, software engineers have been decomposing large projects using Agile. Agile is a communication process whereby the team agrees on small steps or stories that will deliver the product owner's vision.
+[pause 0.70]
+Agile means Discovery, decomposition, planning, Kanban, and review. Agile also means Stories, spikes, acceptance criteria, and definition of done.
+[pause 1.05]
+Test-driven development means programatic assertions are defined for each story before you build. Test-driven development focuses on build quality. Testable assertions define exact software behavior and edge cases.
+[pause 0.70]
+TDD is a huge quality win for Specification delivery.
+[pause 0.70]
+These two well-established processes enable reproducible builds and allow specifications to serve as the source of truth for your projects.
+[pause 1.05]
+Working software you cannot reproduce is not maintainable
+[pause 0.35]
+Drydock lets you reproduce working software from specifications.
+[pause 1.40]
+SAIL is the governed Blueprint-driven delivery process.
+[pause 0.35]
+Set up.
+[pause 0.35]
+Analyze.
+[pause 0.35]
+Implement.
+[pause 0.35]
+Loop.
+[pause 0.70]
+Set up installs the CLI and imports notes or LLM-created specifications.
+[pause 0.70]
+Analyze decomposes stories using Agile, creates Tests, and plans the build.
+[pause 0.70]
+Implement builds working software with optimized context.
+[pause 0.70]
+Loop iterates using change tickets or specification edits.
+[pause 0.70]
+Rigging builds every project with your common standards and branding.
+[pause 1.40]
+You are the commander and the Commander steers the course.
+[pause 0.35]
+The QuarterDeck is your web interface to the team. It renders Markdown cleanly.
+[pause 1.05]
+Three Compass files define guardrails and intent.
+[pause 0.70]
+The first is the project COMPASS which is always injected
+[pause 0.35]
+ANALYZE_COMPASS and PLAN_COMPASS are injected into the analyze and plan steps
+[pause 1.05]
+The QuarterDeck is a web interface that lets you answer questions such as stack preferences and lets you address blockers identified by the crew.
+[pause 0.35]
+The MANIFEST is the graph-database build plan, which you can steer in the QuarterDeck.
+[pause 1.40]
+In the setup phase we lay the keel.
+[pause 0.70]
+Three commands.
+[pause 0.35]
+First install drydock
+[pause 0.70]
+then run drydock config to define your variables.
+[pause 0.70]
+finally run drydock init to initialize a workspace for your project
+[pause 1.05]
+Drydock runs on a subscription to an LLM service.
+[pause 0.35]
+No A-P-I keys or token based billing is used
+[pause 1.40]
+Phase two is Analyze, or charting the course.
+[pause 0.70]
+Import ingests Markdown, source code, specifications, and notes into your project workspace.
+[pause 0.35]
+Analyze decomposes your epic into stories, acceptance criteria, blockers, and questions from the team
+[pause 0.35]
+The Commander answers these in the QuarterDeck.
+[pause 0.35]
+Finally, the plan step creates the Blueprints and the MANIFEST or authoritative build graph
+[pause 1.40]
+The QuarterDeck is your web console — an optimized communication path between the Commander and the crew.
+[pause 0.70]
+The command — drydock run quarterdeck — starts your local server.
+[pause 0.70]
+It renders crew output such as the story hierarchy, blockers, and questionaires.
+[pause 0.35]
+You answer or redirect — decisions are persisted and carried forward.
+[pause 0.35]
+The Quarterdeck also lets the commander organize the Manifest based on your testing and delivery priorities.
+[pause 0.70]
+I will give you a live look at the QuarterDeck shortly — and full deep-dive videos are coming.
+[pause 1.40]
+The Manifest is the engine of the system, and it is the part of Drydock which I am most proud
+[pause 0.70]
+drydock plan turns your analysis into typed Blueprints plus a Manifest or dependency graph. The Manifest relates stories both to their underlying stack and to other stories. It uses token cost for story points and optimizes context using compression. The Manifest is how we optimize the build.
+[pause 0.35]
+Context is engineered, not hoped for. That's what makes builds reproducible.
+[pause 1.40]
+In the Implement Phase drydock build will read both your Blueprints and your Manifest and will output working software.
+[pause 0.70]
+It builds one block of work at a time. Blocks of similar stories save context.
+[pause 0.35]
+After each build block, programatic tests are run to verify story quality. These are the tests defined during planning.
+[pause 0.35]
+Blocks are built until the build is complete.
+[pause 0.70]
+drydock build score measures delivery health.
+[pause 0.70]
+drydock document builds project documentation.
+[pause 1.40]
+Rigging is branding, stack rules, and conventions. Rigging is built into every project so the project is maintainable and consistent.
+[pause 0.70]
+Appropriate rigging is injected into each story. Rigging is smart about context compression.
+[pause 1.05]
+Service Builders need the full specification to implement a feature.
+[pause 0.70]
+But Service Consumers only need a compacted version — how to call it, not how it works.
+[pause 0.70]
+A web page does not need to understand rest call details - just its contract.
+[pause 0.35]
+Drydock rigging compact produces that consumer version and keeps context lean across a large codebase.
+[pause 1.40]
+Loop. Software is never done, so Drydock gives you three ways to Refit your software.
+[pause 0.70]
+Option one: edit the specification files directly. Refit remaps your edits using git commits, and rebuilds only what changed.
+[pause 1.05]
+Option two: drydock Refit will tie your change tickets into your manifest.
+[pause 1.05]
+Option three: you can use skills to brainstorm and create tickets.
+[pause 0.70]
+With all three options, you build normally with drydock build.
+[pause 0.35]
+Specifications are ordered. Minimal drift.
+[pause 1.40]
+So why Drydock? The differentiator is process — and the process is Agile and Test Driven Development.
+[pause 1.05]
+Vibe coding has no spec, no process. You get Speed, then drift.
+[pause 0.70]
+Spec-driven design has a specification, but no process to reproduce the build.
+[pause 0.70]
+Drydock has specifications, plus test-driven development, plus Agile and it uses a clean process that minimizes drift. The Commander decides; the team develops.
+[pause 0.70]
+The goal is the same goal Agile has always had: working software you can reliably iterate — with an easy path to make it better.
+[pause 1.40]
+Take it for a sail.
+[pause 0.70]
+Drydock is Open Source - Mit Licensed - We are looking for new Commanders.
+[pause 0.70]
+Now — let me show you the QuarterDeck.
+[pause 1.40]
+The quarterdeck is your dedicated Agile console.  Here we see the captains chair which shows project status.
+[pause 1.05]
+In the quarterdeck you can review and edit your compass files.
+[pause 1.05]
+You can answer questions surfaced by the llm
+[pause 1.05]
+You can see your project kanban board and also can steer the manifest -
+[pause 1.40]
+The Quarterdeck manifest lets you group your stories into blocks. Blocks are implemented together in one step.  Grouping enables you to save context.
+[pause 1.40]
+THis concludes our overview of the Drydock.  THe web site at webcloudstudio.com has the complete documentation for drydock but the true test is when you install the project.

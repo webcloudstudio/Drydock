@@ -1,0 +1,47 @@
+Compressed cue cards. One block per slide. Use if you'd rather speak extemporaneously than read the script.
+
+Act 1 . The setup (0:00–2:15)
+
+Title . Build software from specs with a real process so you can reproduce it. Speed was never the issue.
+
+The gap . S D D today ships specs but threw away 25 years of software best practices. To a financial engineer: a number . or a build . you can't reproduce isn't a result. No process, no reproducible build. Bottleneck = missing process, not the model.
+
+Insight . Reproducible builds need a process, and it already exists: Agile. The Agile Manifesto turns 25 this year; how devs ship at major companies. Drydock = Agile applied to AI delivery. About system behavior, not sub-agents. Spec = single source of truth.
+
+Act 2 . The product (2:15–3:50)
+
+Drydock plus SAIL . Governed, Blueprint-driven C L I. SAIL is an agile process: Set up, Analyze, Implement, Loop. Notes/specs to feature+story files to dependency graph to working software to kept in sync, documented, scored.
+
+The Commander . Your role changed: not developer/designer to Commander (the Agile product owner). Commander decides; the L L M Agile Best Practices Team develops; the QuarterDeck is how you talk to them. Behavior, not sub-agents. Compass = intent, Ship's Log = decisions, QuarterDeck = your agile interface.
+
+Act 3 . Walk the phases (3:50–9:00)
+
+S / Set up . pipx install, config, init. Runs on Claude/Codex subscription. No API keys. Just a subscription and an idea.
+
+A / Analyze . Import md/source/Spec Kit/notes to analyze decomposes into stories, milestones, blockers, questions. Blocker to stops and asks. Output = a tentative set of Features, Stories, Spikes; nothing committed until you approve.
+
+QuarterDeck (core differentiator) . Your Agile web interface to the process: an optimized path between Commander and the L L M team. Renders the story hierarchy, blockers, questionnaires; approve/answer/redirect to persisted to carried forward. rigging compact gives minimal context with Builder/User views. Instead of guessing, the path 25 years of agile already worked out. Commander controls to goal is working software you can iterate.
+
+Manifest (engine) . plan to typed Blueprints plus dependency graph. L L M estimates Story Points (token cost) per story against the graph. Drydock stacks the minimal correct files into each build prompt. Context engineered, not hoped for.
+
+I / Implement . build walks the graph, builds the runnable frontier one context-optimized step at a time; evidence per step; verify against acceptance to unlock dependents. build score = 7-dimension delivery health (completeness, tests, drift…).
+
+Rigging . Branding plus stack rules injected everywhere. Builder gets full spec; consumer gets compacted how-to. Keeps context lean at scale.
+
+L / Loop . refit, two ways: (1) edit spec files to tracks git commit per file to rebuilds only what changed; (2) change tickets against existing specs, built with minimized context. Spec stays source of truth. Minimal drift.
+
+Act 4 . The close (9:00–10:00)
+
+Why different . Vibe = no spec, no process. S D D = spec, no process. Drydock = spec plus a real Agile process. Commander decides, team develops, every decision logged. Goal = working software you can reliably iterate, with an easy path to rebuild anytime.
+
+CTA . pipx install drydock-sdd. Open spec, open methodology, recruiting Commanders. Link.
+
+Anticipated Q and A (for the description / pinned comment)
+
+versus GitHub Spec Kit? Spec Kit authors specs; Drydock adds the missing process . an Agile delivery loop with a Commander (product-owner) role, the QuarterDeck review interface, a dependency-graph Manifest, context-budgeted build stacking, and drift scoring/refit. It governs the whole loop and can import Spec Kit projects.
+
+Which models? Any subscription-authenticated C L I agent . Claude or Codex today. No raw API keys.
+
+Does it lock me in? Outputs are plain Markdown Blueprints plus standard source in your own git repo. Uninstalling removes the C L I, not your work.
+
+Determinism? The scoring/state math is deterministic and lives in the command; the L L M judges and drafts, the command computes and writes.

@@ -499,16 +499,14 @@ class Timeline:
         # The floating truth chips ride with the "engineering truths" headline.
         self.truths_window = (decompose_end, truths_end)
         self.truths = [
-            ("Decompose big problems", 150, 300),
-            ("Agile planning", 780, 300),
-            ("Test-Driven Development", 150, 392),
-            ("Graph + context compression", 780, 392),
+            ("Agile planning", 150, 300),
+            ("Test-Driven Development", 780, 300),
+            ("Build Graph", 150, 392),
+            ("Context Optimization", 780, 392),
         ]
         # Both builds raise the same "Tests Passing" chip over the crate they
         # produce.
-        self.tests_chips = [
-            (c(t, 840) + 0.5, c(t, 840) + 2.8, 840) for t in (t_build, t_deliver)
-        ]
+        self.tests_chips = [(c(t, 840) + 0.5, c(t, 840) + 2.8, 840) for t in (t_build, t_deliver)]
 
     def cam(self, t: float) -> float:
         if t <= self.t_stop:
