@@ -49,6 +49,11 @@ FPS = 24
 V = 220.0
 BELT_Y = 760  # belt top surface
 GANTRY_SX = 880  # screen x where a gantry center sits at its arrival time
+# Gate geometry. Cards are drawn from their left edge, so the gate is offset by
+# half a card to straddle the card that is converting under it. GATE_HALF is
+# just wider than that card, keeping the structure narrow.
+GATE_DX = 121
+GATE_HALF = 132
 BASE_END = 88.0  # base timeline length; scaled to the narration
 
 NAVY = (12, 25, 40)
@@ -67,11 +72,29 @@ STEEL = (150, 168, 187)
 STEEL_DARK = (84, 103, 124)
 
 # Narration pacing: each sentence is synthesized separately and joined with
-# these silences. Adjust the constants, or put a `[pause 1.5]` line on its own
-# paragraph in voiceover_script.txt to override the gap before the next
-# paragraph.
+# these silences. Adjust the constants, or use a cue in voiceover_script.txt:
+# `(pause)` adds PAUSE_UNIT wherever it appears (repeat it for a longer beat);
+# a paragraph of `[pause 1.5]` sets an exact gap at that point.
 SENTENCE_GAP = 0.55
 PARAGRAPH_GAP = 1.05
+PAUSE_UNIT = 0.35
+
+# Voice. A slightly slower rate reads as announcement delivery rather than
+# assistant chatter; the fixes below are applied to the synthesis text only, so
+# the script stays readable and the narration marks still match on the commands.
+VOICE_NAME = "en-US-AvaMultilingualNeural"
+VOICE_RATE = "-5%"
+VOICE_PITCH = "+0Hz"
+SPEECH_FIXES = [
+    (r"\bWebCloudStudio\b", "Web Cloud Studio"),
+    (r"\bQuarterDeck\b", "Quarter Deck"),
+    (r"\bMIT-licensed\b", "M I T licensed"),
+    (r"\bMIT\b", "M I T"),
+    (r"\bTDD\b", "T D D"),
+    (r"\bCLI\b", "C L I"),
+    (r"\bdrydock\b", "Drydock"),
+    (r"\b5\.4\b", "five point four"),
+]
 
 # Gantry sync. The lead input card (belt position 840) finishes converting this
 # long after its command is named, so the machine engages on the word and its
@@ -204,15 +227,24 @@ def load_logo() -> Image.Image:
 LOGO_IMG = load_logo()
 
 
+def composite(frame: Image.Image, layer: Image.Image, x: int, y: int):
+    """Alpha-composite a layer onto the frame, clipped to the frame bounds."""
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(WIDTH, x + layer.width), min(HEIGHT, y + layer.height)
+    if x1 <= x0 or y1 <= y0:
+        return
+    if (x0, y0, x1, y1) != (x, y, x + layer.width, y + layer.height):
+        layer = layer.crop((x0 - x, y0 - y, x1 - x, y1 - y))
+    frame.alpha_composite(layer, (x0, y0))
+
+
 def paste_logo(frame: Image.Image, center, size, alpha=1.0):
     logo = LOGO_IMG.copy()
     logo.thumbnail((size, size), Image.Resampling.LANCZOS)
     if alpha < 1.0:
         a = logo.getchannel("A").point(lambda v: int(v * alpha))
         logo.putalpha(a)
-    x = int(center[0] - logo.width / 2)
-    y = int(center[1] - logo.height / 2)
-    frame.alpha_composite(logo, (x, y))
+    composite(frame, logo, int(center[0] - logo.width / 2), int(center[1] - logo.height / 2))
 
 
 # ---------------------------------------------------------------------------
@@ -672,40 +704,71 @@ def draw_belt(draw, t, tl):
 
 
 def draw_gantry(frame, draw, sx, cmd, active, t):
-    if sx < -420 or sx > WIDTH + 420:
+    """A slim gate: two posts, a signed header, and a light curtain.
+
+    The gate is a scanner, not an enclosure. A card converts as its center
+    crosses the curtain, and the curtain flares to white at that instant, so the
+    swap is covered by light rather than by a solid shroud.
+    """
+    if sx < -520 or sx > WIDTH + 520:
         return
-    sx = int(sx)
+    gx = int(sx) + GATE_DX  # gate center sits on the card center at conversion
     glow = ease(active)
-    # Legs down to the floor, straddling the belt.
-    for lx in (sx - 224, sx + 180):
-        draw.rectangle((lx, 400, lx + 44, 1004), fill=STEEL, outline=(116, 134, 152), width=2)
-        draw.rectangle((lx + 8, 430, lx + 36, 442), fill=(116, 134, 152))
-        draw.rectangle((lx + 8, 950, lx + 36, 962), fill=(116, 134, 152))
-    # Crossbeam and command sign.
+    lit = glow > 0.3
+    accent = GREEN2 if lit else (110, 132, 156)
+    # Posts: thin steel columns just clear of the passing card.
+    for lx in (gx - GATE_HALF - 14, gx + GATE_HALF):
+        draw.rectangle((lx, 352, lx + 14, 1004), fill=STEEL, outline=(116, 134, 152), width=1)
+        draw.rectangle((lx - 6, 996, lx + 20, 1006), fill=STEEL_DARK)
+        draw.rectangle((lx - 3, 366, lx + 17, 374), fill=(116, 134, 152))
+    # Header beam.
     draw.rounded_rectangle(
-        (sx - 264, 342, sx + 264, 424), 18, fill=(214, 224, 233), outline=STEEL, width=3
+        (gx - GATE_HALF - 22, 330, gx + GATE_HALF + 22, 358),
+        8,
+        fill=(214, 224, 233),
+        outline=STEEL,
+        width=2,
     )
-    sign = (sx - 240, 354, sx + 240, 412)
+    # Command sign hanging above the beam.
+    sign_w = 200
+    sign = (gx - sign_w, 258, gx + sign_w, 322)
     if glow > 0.05:
         draw.rounded_rectangle(
-            (sign[0] - 8, sign[1] - 8, sign[2] + 8, sign[3] + 8),
-            18,
+            (sign[0] - 7, sign[1] - 7, sign[2] + 7, sign[3] + 7),
+            16,
             fill=(67, 210, 143, int(110 * glow)),
         )
-    draw.rounded_rectangle(sign, 12, fill=NAVY, outline=GREEN2 if glow > 0.3 else BLUE2, width=3)
-    draw.text((sx + 12, 383), cmd, font=FONT_CMD, fill=(255, 255, 255), anchor="mm")
-    paste_logo(frame, (sx - 196, 383), 44)
-    # Status lamp.
-    lamp = GREEN2 if glow > 0.3 else (120, 138, 156)
-    draw.ellipse((sx + 216, 330, sx + 244, 358), fill=lamp, outline=(90, 106, 122), width=2)
-    # Shroud the cards pass through.
-    draw.rounded_rectangle(
-        (sx - 180, 424, sx + 180, 872), 14, fill=(230, 238, 245), outline=STEEL, width=4
+    draw.rounded_rectangle(sign, 12, fill=NAVY, outline=GREEN2 if lit else BLUE2, width=3)
+    draw.text((gx + 24, 290), cmd, font=FONT_CMD, fill=(255, 255, 255), anchor="mm")
+    paste_logo(frame, (gx - sign_w + 44, 290), 40)
+    draw.line((gx, 322, gx, 330), fill=STEEL_DARK, width=4)
+    # Status lamp on the beam.
+    draw.ellipse(
+        (gx + GATE_HALF + 4, 336, gx + GATE_HALF + 26, 358),
+        fill=GREEN2 if lit else (120, 138, 156),
+        outline=(90, 106, 122),
+        width=2,
     )
-    # Porthole with a working gear.
-    cx, cy, pr = sx, 596, 84
-    draw.ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=NAVY, outline=STEEL, width=5)
-    gr = 52
+    # Light curtain from the beam to the belt: a translucent standing beam that
+    # flares white as the card under it converts. Composited as its own layer;
+    # ImageDraw alpha fills do not blend onto an RGBA frame.
+    top, bottom = 358, BELT_Y - 2
+    curtain = Image.new("RGBA", (2 * GATE_HALF, bottom - top), (0, 0, 0, 0))
+    cdraw = ImageDraw.Draw(curtain)
+    cw, ch = curtain.size
+    cdraw.rectangle((0, 0, cw, ch), fill=(67, 210, 143, int(26 + 60 * glow)))
+    for ly in range(12, ch, 44):
+        cdraw.line((0, ly, cw, ly), fill=(67, 210, 143, int(34 + 80 * glow)), width=2)
+    flare = glow * glow
+    if flare > 0.02:
+        cdraw.rectangle((0, 0, cw, ch), fill=(244, 255, 249, int(240 * flare)))
+    cdraw.line((0, 0, 0, ch), fill=accent + (255,), width=6)
+    cdraw.line((cw - 1, 0, cw - 1, ch), fill=accent + (255,), width=6)
+    composite(frame, curtain, gx - GATE_HALF, top)
+    # Scanner head: a small gear under the beam, spinning up as a card converts.
+    cx, cy, pr = gx, 392, 30
+    draw.ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=NAVY, outline=STEEL, width=3)
+    gr = 20
     a0 = t * (2.2 + 5.5 * glow)
     for k in range(8):
         a = a0 + k * math.pi / 4
@@ -716,31 +779,32 @@ def draw_gantry(frame, draw, sx, cmd, active, t):
                 cx + gr * math.cos(a),
                 cy + gr * math.sin(a),
             ),
-            fill=GREEN2 if glow > 0.3 else (110, 132, 156),
-            width=9,
+            fill=accent,
+            width=4,
         )
-    draw.ellipse(
-        (cx - 22, cy - 22, cx + 22, cy + 22), fill=GREEN2 if glow > 0.3 else (110, 132, 156)
-    )
-    # Hazard band above the belt opening.
-    for hx in range(sx - 176, sx + 176, 36):
-        draw.polygon([(hx, 862), (hx + 18, 862), (hx + 4, 838), (hx - 14, 838)], fill=AMBER)
-    draw.rectangle((sx - 180, 862, sx + 180, 872), fill=NAVY)
+    draw.ellipse((cx - 8, cy - 8, cx + 8, cy + 8), fill=accent)
+    # Hazard strip on the belt under the gate.
+    for hx in range(gx - GATE_HALF, gx + GATE_HALF - 16, 34):
+        draw.polygon(
+            [(hx, BELT_Y + 8), (hx + 17, BELT_Y + 8), (hx + 5, BELT_Y - 2), (hx - 12, BELT_Y - 2)],
+            fill=AMBER,
+        )
+    draw.rectangle((gx - GATE_HALF, BELT_Y + 8, gx + GATE_HALF, BELT_Y + 14), fill=NAVY)
     # Conversion sparks at the exit side.
     if glow > 0.25:
-        ex, ey = sx + 186, BELT_Y - 22
+        ex, ey = gx + GATE_HALF + 6, BELT_Y - 30
         for k in range(6):
             a = -0.9 + k * 0.36
-            ln = 18 + 26 * glow
+            ln = 16 + 24 * glow
             draw.line(
                 (
-                    ex + 10 * math.cos(a),
-                    ey + 10 * math.sin(a),
-                    ex + (10 + ln) * math.cos(a),
-                    ey + (10 + ln) * math.sin(a),
+                    ex + 8 * math.cos(a),
+                    ey + 8 * math.sin(a),
+                    ex + (8 + ln) * math.cos(a),
+                    ey + (8 + ln) * math.sin(a),
                 ),
                 fill=AMBER,
-                width=5,
+                width=4,
             )
 
 
@@ -1138,31 +1202,58 @@ def write_music(path: Path, option: int, duration: float, sample_rate: int = 441
         wav.writeframes((data * 32767).astype("<i2").tobytes())
 
 
+PAUSE_CUE = re.compile(r"\(\s*pause\s*\)", re.IGNORECASE)
+
+
+def speech_text(sentence: str) -> str:
+    """Rewrite a sentence for the synthesizer without changing the script."""
+    for pattern, replacement in SPEECH_FIXES:
+        sentence = re.sub(pattern, replacement, sentence)
+    return sentence
+
+
 def narration_segments(text: str):
     """Split the script into ("speak", sentence) and ("gap", seconds) segments.
 
     Blank lines separate paragraphs (PARAGRAPH_GAP before the next one).
-    Sentences within a paragraph are separated by SENTENCE_GAP. A paragraph
-    consisting only of `[pause 1.5]` overrides the gap at that point.
+    Sentences within a paragraph are separated by SENTENCE_GAP. Each `(pause)`
+    cue adds PAUSE_UNIT on top of the gap already in force at that point, so
+    repeating the cue lengthens the beat. A paragraph consisting only of
+    `[pause 1.5]` sets an exact gap instead.
     """
-    segments = []
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    for paragraph in paragraphs:
+    # Pass one: flatten the script into sentences and the gap cues between them.
+    items = []
+    for paragraph in [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]:
         directive = re.fullmatch(r"\[pause\s+([\d.]+)\]", paragraph, re.IGNORECASE)
         if directive:
-            gap = ("gap", float(directive.group(1)))
-            if segments and segments[-1][0] == "gap":
-                segments[-1] = gap
-            else:
-                segments.append(gap)
+            items.append(("exact", float(directive.group(1))))
             continue
-        for i, sentence in enumerate(re.split(r"(?<=[.!?])\s+", paragraph)):
-            if i:
-                segments.append(("gap", SENTENCE_GAP))
-            segments.append(("speak", sentence))
-        segments.append(("gap", PARAGRAPH_GAP))
-    while segments and segments[-1][0] == "gap":
-        segments.pop()
+        chunks = PAUSE_CUE.split(paragraph)
+        for i, chunk in enumerate(chunks):
+            for sentence in re.split(r"(?<=[.!?])\s+", chunk.strip()):
+                if sentence:
+                    items.append(("speak", sentence))
+            if i < len(chunks) - 1:
+                items.append(("cue", PAUSE_UNIT))
+        items.append(("paragraph", PARAGRAPH_GAP))
+
+    # Pass two: resolve the gap before each sentence. The natural gap is the
+    # sentence or paragraph break; cues add to it; `[pause N]` replaces it.
+    segments = []
+    natural, cues, exact = 0.0, 0, None
+    for kind, value in items:
+        if kind == "cue":
+            cues += 1
+        elif kind == "paragraph":
+            natural = max(natural, value)
+        elif kind == "exact":
+            natural, cues, exact = 0.0, 0, value
+        else:
+            gap = exact if exact is not None else natural + cues * PAUSE_UNIT
+            if segments and gap > 0:
+                segments.append(("gap", round(gap, 3)))
+            segments.append(("speak", value))
+            natural, cues, exact = SENTENCE_GAP, 0, None
     return segments
 
 
@@ -1225,7 +1316,11 @@ async def write_voice(path: Path):
             continue
         seg_mp3 = tmp / f"seg_{i:03d}.mp3"
         communicator = edge_tts.Communicate(
-            value, voice="en-US-AvaMultilingualNeural", rate="+0%", volume="+0%"
+            speech_text(value),
+            voice=VOICE_NAME,
+            rate=VOICE_RATE,
+            pitch=VOICE_PITCH,
+            volume="+0%",
         )
         await communicator.save(str(seg_mp3))
         decoded = subprocess.run(

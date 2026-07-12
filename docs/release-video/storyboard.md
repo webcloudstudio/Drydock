@@ -17,16 +17,19 @@
 - Card grammar: one paper-card style everywhere (title bar plus rule lines). Imported
   cards carry a check badge; Story cards carry green acceptance-criteria ticks; the
   Blueprints card lists its sections (Behavior, Acceptance, Guardrails).
-- Machines: portal gantries straddle the belt. Each carries its command
-  (`drydock import`, `analyze`, `plan`, `build`, `refit`) on a navy sign and a porthole
-  gear that spins up, glows, and sparks while a card converts under the shroud. Outputs
-  emerge at the same belt positions their inputs entered, so conversion is continuous —
-  no dead time inside a machine.
+- Machines: slim gates straddle the belt — two thin posts, a header beam carrying the
+  command (`drydock import`, `analyze`, `plan`, `build`, `refit`) on a navy sign, a small
+  scanner gear that spins up and glows, and a translucent light curtain between the posts.
+  A card converts as it crosses the curtain, and the curtain flares white at that instant,
+  so the conversion is covered by light rather than by a solid shroud. Outputs emerge at
+  the same belt positions their inputs entered, so conversion is continuous — no dead time
+  inside a machine.
 - Closer: the belt ends at a delivery platform. Working Software crates tip off the end
   and stack while the camera eases to a stop under the call to action.
-- Audio: female neural voice; each sentence is synthesized separately and joined with
-  fixed silences (SENTENCE_GAP / PARAGRAPH_GAP in the renderer; `[pause N]` lines in
-  the script override a paragraph gap). Video length scales to the narration.
+- Audio: female neural voice at -5% rate; each sentence is synthesized separately and
+  joined with fixed silences (SENTENCE_GAP / PARAGRAPH_GAP in the renderer). A `(pause)`
+  cue in the script adds 0.35 s wherever it appears; a `[pause N]` line sets an exact gap.
+  Video length scales to the narration.
 
 ## Scenes
 

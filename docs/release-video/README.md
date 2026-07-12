@@ -105,10 +105,27 @@ below `t_stop`.
 | `CONVERT_OFFSET` (0.35) | Seconds after the word that the machine finishes converting its lead card |
 | `RIDE_IN` (5.4) | Seconds an import input rides the belt before it reaches the machine — raise it to drop the input cards earlier (they still arrive on the word) |
 | `SENTENCE_GAP` / `PARAGRAPH_GAP` | Silence inserted between sentences / paragraphs |
+| `PAUSE_UNIT` (0.35) | Silence added by each `(pause)` cue in the script |
+| `VOICE_RATE` (-5%) / `VOICE_PITCH` | Delivery speed and pitch passed to edge-tts |
+| `SPEECH_FIXES` | Pronunciation rewrites applied to the synthesis text only |
+| `GATE_HALF` (132) / `GATE_DX` (121) | Gate half-width, and its offset onto the converting card |
 | `V` (220) | Belt speed in px/s |
 
 The QuarterDeck panel width is `qd_w` inside `Timeline.__init__`; its block
 layout is `slots` in `draw_qd_panel()`. Narrow the panel by lowering `qd_w`
 and tightening the column x-values in `slots` together.
 
-Change what is said, or insert a `[pause 1.5]` line, in `voiceover_script.txt`.
+## Narration cues
+
+Edit `voiceover_script.txt`. Blank lines separate paragraphs. Two cues shape
+the pacing:
+
+- `(pause)` adds `PAUSE_UNIT` (0.35 s) on top of the gap already in force, so a
+  cue between sentences gives 0.90 s and a cue on its own line between
+  paragraphs gives 1.40 s. Repeat the cue for a longer beat.
+- `[pause 1.5]` on its own paragraph sets an exact gap instead.
+
+Voice quality is controlled by `VOICE_RATE` (slower reads as announcement
+delivery), and by `SPEECH_FIXES`, which rewrites words the synthesizer says
+badly ("WebCloudStudio" → "Web Cloud Studio") without changing the script or
+the narration marks.
