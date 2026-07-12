@@ -117,7 +117,6 @@ below `t_stop`.
 
 | Constant | Effect |
 |---|---|
-| `INTRO_END` (11.0) | Video-time second the "Meet Drydock" title fades and the belt takes over |
 | `CONVERT_OFFSET` (0.35) | Seconds after the word that the machine finishes converting its lead card |
 | `RIDE_IN` (5.4) | Seconds an import input rides the belt before it reaches the machine — raise it to drop the input cards earlier (they still arrive on the word) |
 | `SENTENCE_GAP` / `PARAGRAPH_GAP` | Silence inserted between sentences / paragraphs |

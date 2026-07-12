@@ -96,9 +96,10 @@ RIDE_IN = 5.4
 # gate, which is where "delivered with drydock build" lands in the read.
 REFIT_TO_DELIVER = 3.4
 
-# The opening "Meet Drydock" title holds until this video-time second, then
-# fades and the belt takes over. Independent of the narration marks.
-INTRO_END = 11.0
+# The opening "Meet Drydock" title holds through the specification lines and
+# fades out as the narrator says "Drydock import", handing the screen to the
+# belt. It tracks the spoken word, not the import gantry, so MARK_OFFSETS does
+# not drag the title around.
 
 # Per-command timing nudges (seconds), applied on top of the narration marks.
 # Negative moves a beat earlier ("back"); positive moves it later. Each nudge
@@ -275,6 +276,8 @@ class Timeline:
             for key, value in marks.items():
                 if key in mk and isinstance(value, (int, float)):
                     mk[key] = float(value)
+        # The title clears on the spoken "drydock import", before the nudges.
+        intro_end = mk["import"]
         for key, delta in MARK_OFFSETS.items():
             if key in mk:
                 mk[key] += delta
@@ -316,8 +319,8 @@ class Timeline:
         decompose_end = mt - 1.0  # "decomposes" section runs refit_end -> here
         truths_end = self.t_stop + 1.0  # "engineering truths" holds until the closer banner
         self.scenes = [
-            ("intro", 0.0, INTRO_END, "", ""),
-            ("import", INTRO_END, ma - 2.5, "Import your Project", ""),
+            ("intro", 0.0, intro_end, "", ""),
+            ("import", intro_end, ma - 2.5, "Import your Project", ""),
             ("analyze", ma - 2.5, mp - 2.5, "Agile Story Planning", ""),
             ("plan", mp - 2.5, mman - 0.3, "Test Driven Development", ""),
             ("manifest", mman - 0.3, mqd - 2.0, "A Graph Build Database", ""),
@@ -1057,9 +1060,10 @@ def draw_headline(draw, t, tl):
     if a <= 0:
         return
     col = NAVY + (int(255 * a),)
-    draw.text((120, 185), headline, font=FONT_H1, fill=col)
+    # Sits just below the header divider (y=118), clear of the gantry signs.
+    draw.text((120, 134), headline, font=FONT_H1, fill=col)
     if sub:
-        draw.text((120, 268), sub, font=FONT_BODY, fill=MUTED + (int(255 * a),))
+        draw.text((120, 217), sub, font=FONT_BODY, fill=MUTED + (int(255 * a),))
 
 
 def draw_intro(frame, draw, t, tl):
