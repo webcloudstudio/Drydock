@@ -1,31 +1,36 @@
 (pause)
 Meet Drydock: a complete software delivery system for specification-driven applications.
 
-Drydock works with larger specifications, including multi-file specifications and imports from other tools.
+Drydock works with larger specifications. Multi-file specifications, and imports from other tools.
 
 Drydock import brings in specifications, notes, and other material.
 (pause)
 
-Drydock analyze proposes an Agile plan with stories, questions, blockers, and acceptance criteria.
+Drydock analyze proposes an Agile plan. Stories, questions, blockers, and acceptance criteria.
 (pause)
 
-Drydock plan converts Stories into Blueprints containing Test-Driven Development assertions and a Manifest or graph database relating Blueprints, Branding, and enterprise stack rules.
+Drydock plan converts Stories into Blueprints. Each Blueprint carries Test-Driven Development assertions.
+
+Plan also builds the Manifest: a graph database relating Blueprints, Branding, and enterprise stack rules.
 (pause)
 
-You Steer the build in the QuarterDeck web server where you group stories to optimize context
+You steer the build in the QuarterDeck web server. Group your stories, and optimize the context.
 
 Drydock build walks the Manifest, verifying each step against predefined tests.
 (pause)
 
-Change tickets are conformed with drydock refit and delivered with drydock build
+Change tickets are conformed with drydock refit, and delivered with drydock build.
+(pause)
 
-Drydock decomposes your epic into stories using Agile
+Drydock is built on engineering truths.
 
-Drydock checks delivery quality with Test-Driven Development
+Engineers decompose big problems. Drydock decomposes your epic into stories, using Agile.
 
-Build optimization makes specification-driven delivery reproducible with your Claude Sonnet or Codex 5.4 subscription.
+Test-Driven Development proves delivery quality.
 
-Drydock is open source MIT-licensed software, now in stable alpha.
+And build optimization makes specification-driven delivery reproducible, with your Claude Sonnet or Codex subscription.
+
+Drydock is open source, MIT-licensed software. Now in stable alpha.
 (pause)
 
 Take it for a sail.

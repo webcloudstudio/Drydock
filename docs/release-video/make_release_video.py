@@ -298,8 +298,12 @@ class Timeline:
         # Headlines track the marks: a section's headline rises ~2.5s before its
         # command is named and clears as the next section begins. The closer
         # beats hold on fixed video-time seconds so they pace the long tail.
-        refit_end = 59.0  # refit headline stops here
-        decompose_end = 70.0  # "decomposes" section runs refit_end -> here
+        mt = mk["truths"]
+        # The tail sections hang off the "engineering truths" mark, like every
+        # other beat. They used to sit on fixed video-time seconds, which drifted
+        # the moment the narration changed length.
+        refit_end = mt - 6.0  # refit headline stops here
+        decompose_end = mt - 1.0  # "decomposes" section runs refit_end -> here
         truths_end = self.t_stop + 1.0  # "engineering truths" holds until the closer banner
         self.scenes = [
             ("intro", 0.0, INTRO_END, "", ""),
@@ -1454,7 +1458,7 @@ def write_stills(tl: Timeline):
     times += [mk["manifest"] + 2.0, mk["quarterdeck"] + 3.5]
     # Closer beats: the "decomposes" section, the "engineering truths" hold,
     # and the call to action.
-    times += [64.5, 75.0, mk["cta"] + 2.0]
+    times += [mk["truths"] - 3.5, mk["truths"] + 2.0, mk["cta"] + 2.0]
     times = sorted(t for t in times if 0.0 <= t < tl.duration)
     for t in times:
         t = min(t, tl.duration - 0.05)
