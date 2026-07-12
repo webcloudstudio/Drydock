@@ -62,7 +62,11 @@ def teleprompter_segments(markdown: str) -> list[tuple[str, str | float]]:
             continue
         if re.fullmatch(r"\(\s*pause\s*\)", line, flags=re.IGNORECASE):
             if segments and segments[-1][0] == "gap":
-                segments[-1] = ("gap", max(float(segments[-1][1]), PAUSE_GAP))
+                previous_gap = float(segments[-1][1])
+                if previous_gap == LINE_GAP:
+                    segments[-1] = ("gap", PAUSE_GAP)
+                else:
+                    segments[-1] = ("gap", previous_gap + PAUSE_GAP)
             else:
                 segments.append(("gap", PAUSE_GAP))
             continue
