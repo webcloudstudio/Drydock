@@ -79,22 +79,9 @@ SENTENCE_GAP = 0.55
 PARAGRAPH_GAP = 1.05
 PAUSE_UNIT = 0.35
 
-# Voice. A slightly slower rate reads as announcement delivery rather than
-# assistant chatter; the fixes below are applied to the synthesis text only, so
-# the script stays readable and the narration marks still match on the commands.
 VOICE_NAME = "en-US-AvaMultilingualNeural"
-VOICE_RATE = "-5%"
+VOICE_RATE = "+0%"
 VOICE_PITCH = "+0Hz"
-SPEECH_FIXES = [
-    (r"\bWebCloudStudio\b", "Web Cloud Studio"),
-    (r"\bQuarterDeck\b", "Quarter Deck"),
-    (r"\bMIT-licensed\b", "M I T licensed"),
-    (r"\bMIT\b", "M I T"),
-    (r"\bTDD\b", "T D D"),
-    (r"\bCLI\b", "C L I"),
-    (r"\bdrydock\b", "Drydock"),
-    (r"\b5\.4\b", "five point four"),
-]
 
 # Gantry sync. The lead input card (belt position 840) finishes converting this
 # long after its command is named, so the machine engages on the word and its
@@ -1205,13 +1192,6 @@ def write_music(path: Path, option: int, duration: float, sample_rate: int = 441
 PAUSE_CUE = re.compile(r"\(\s*pause\s*\)", re.IGNORECASE)
 
 
-def speech_text(sentence: str) -> str:
-    """Rewrite a sentence for the synthesizer without changing the script."""
-    for pattern, replacement in SPEECH_FIXES:
-        sentence = re.sub(pattern, replacement, sentence)
-    return sentence
-
-
 def narration_segments(text: str):
     """Split the script into ("speak", sentence) and ("gap", seconds) segments.
 
@@ -1316,11 +1296,7 @@ async def write_voice(path: Path):
             continue
         seg_mp3 = tmp / f"seg_{i:03d}.mp3"
         communicator = edge_tts.Communicate(
-            speech_text(value),
-            voice=VOICE_NAME,
-            rate=VOICE_RATE,
-            pitch=VOICE_PITCH,
-            volume="+0%",
+            value, voice=VOICE_NAME, rate=VOICE_RATE, pitch=VOICE_PITCH, volume="+0%"
         )
         await communicator.save(str(seg_mp3))
         decoded = subprocess.run(
@@ -1440,7 +1416,12 @@ def mux_audio(video: Path, voice: Path, music: Path, out: Path, duration: float)
         "-i",
         str(music),
         "-filter_complex",
-        f"[1:a]volume=1.15[a1];[2:a]volume=0.18,afade=t=out:st={duration - 3}:d=3[a2];"
+        # apad/atrim let a supplied track that is shorter than the video run to
+        # the end on silence instead of cutting the bed off mid-video; for the
+        # generated beds, which are cut to length, they do nothing.
+        f"[1:a]volume=1.15[a1];"
+        f"[2:a]volume=0.18,apad,atrim=0:{duration},"
+        f"afade=t=out:st={duration - 3}:d=3[a2];"
         f"[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0[a]",
         "-map",
         "0:v",
@@ -1481,10 +1462,26 @@ def write_stills(tl: Timeline):
     print(f"Wrote {len(times)} stills to {STILLS}")
 
 
+def resolve_music(value: str, generated: list[Path]) -> Path:
+    """Turn a --music value into the bed to mux: an option number, or a file."""
+    if value in ("1", "2", "3"):
+        return generated[int(value) - 1]
+    path = Path(value).expanduser()
+    if not path.is_file():
+        raise SystemExit(f"--music: not 1, 2, or 3, and not a file: {value}")
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stills", action="store_true", help="render review stills only")
     parser.add_argument("--no-voice", action="store_true", help="reuse the existing narration file")
+    parser.add_argument(
+        "--music",
+        default="1",
+        metavar="1|2|3|FILE",
+        help="music bed to mux: a generated option, or a path to an audio file (default: 1)",
+    )
     args = parser.parse_args()
 
     AUDIO.mkdir(exist_ok=True)
@@ -1508,14 +1505,15 @@ def main():
     ]
     for idx, path in enumerate(music_paths, start=1):
         write_music(path, idx, duration)
+    music = resolve_music(args.music, music_paths)
 
     write_stills(tl)
     silent = RENDERS / "drydock-announcement-silent.mp4"
     final = RENDERS / "drydock-announcement-first-cut.mp4"
     render_silent_video(silent, tl)
-    mux_audio(silent, voice, music_paths[0], final, duration)
+    mux_audio(silent, voice, music, final, duration)
     print(f"Wrote {final}")
-    print(f"Music options: {', '.join(str(p) for p in music_paths)}")
+    print(f"Music bed: {music.name}")
 
 
 if __name__ == "__main__":

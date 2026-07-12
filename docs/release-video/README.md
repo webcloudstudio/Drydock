@@ -24,6 +24,18 @@ python make_release_video.py --no-voice   # full MP4 but reuse the existing voic
 Re-synthesize the voice (drops `--no-voice`) only when you change
 `voiceover_script.txt`. Editing constants or labels does not need new voice.
 
+## Music
+
+`--music` selects the bed that is mixed under the narration. All three beds are
+generated every run; only the selected one reaches the video.
+
+```bash
+python make_release_video.py --music 1        # clean pulse (default)
+python make_release_video.py --music 2        # bright ditty
+python make_release_video.py --music 3        # minimal drive
+python make_release_video.py --music beat.mp3 # any audio file; short tracks are padded
+```
+
 ## Move a machine earlier or later
 
 Edit `MARK_OFFSETS` near the top of `make_release_video.py`. Each entry nudges
@@ -106,8 +118,7 @@ below `t_stop`.
 | `RIDE_IN` (5.4) | Seconds an import input rides the belt before it reaches the machine — raise it to drop the input cards earlier (they still arrive on the word) |
 | `SENTENCE_GAP` / `PARAGRAPH_GAP` | Silence inserted between sentences / paragraphs |
 | `PAUSE_UNIT` (0.35) | Silence added by each `(pause)` cue in the script |
-| `VOICE_RATE` (-5%) / `VOICE_PITCH` | Delivery speed and pitch passed to edge-tts |
-| `SPEECH_FIXES` | Pronunciation rewrites applied to the synthesis text only |
+| `VOICE_NAME` / `VOICE_RATE` / `VOICE_PITCH` | Voice, delivery speed, and pitch passed to edge-tts |
 | `GATE_HALF` (132) / `GATE_DX` (121) | Gate half-width, and its offset onto the converting card |
 | `V` (220) | Belt speed in px/s |
 
@@ -115,17 +126,17 @@ The QuarterDeck panel width is `qd_w` inside `Timeline.__init__`; its block
 layout is `slots` in `draw_qd_panel()`. Narrow the panel by lowering `qd_w`
 and tightening the column x-values in `slots` together.
 
-## Narration cues
+## The narration script
 
-Edit `voiceover_script.txt`. Blank lines separate paragraphs. Two cues shape
-the pacing:
+`voiceover_script.txt` is the only script. It is what the voice reads and what
+the narration marks are derived from; there is no second copy to edit.
+
+Blank lines separate paragraphs. Two cues shape the pacing:
 
 - `(pause)` adds `PAUSE_UNIT` (0.35 s) on top of the gap already in force, so a
   cue between sentences gives 0.90 s and a cue on its own line between
   paragraphs gives 1.40 s. Repeat the cue for a longer beat.
 - `[pause 1.5]` on its own paragraph sets an exact gap instead.
 
-Voice quality is controlled by `VOICE_RATE` (slower reads as announcement
-delivery), and by `SPEECH_FIXES`, which rewrites words the synthesizer says
-badly ("WebCloudStudio" → "Web Cloud Studio") without changing the script or
-the narration marks.
+A pause only adds silence between sentences; it does not change the delivery
+within one. Sentence length and punctuation do that.

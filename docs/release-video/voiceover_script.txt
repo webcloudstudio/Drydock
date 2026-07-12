@@ -1,18 +1,21 @@
-
-
+(pause)
 Meet Drydock: a complete software delivery system for specification-driven applications.
 
 Drydock works with larger specifications, including multi-file specifications and imports from other tools.
 
 Drydock import brings in specifications, notes, and other material.
+(pause)
 
 Drydock analyze proposes an Agile plan with stories, questions, blockers, and acceptance criteria.
+(pause)
 
 Drydock plan converts Stories into Blueprints containing Test-Driven Development assertions and a Manifest or graph database relating Blueprints, Branding, and enterprise stack rules.
+(pause)
 
 You Steer the build in the QuarterDeck web server where you group stories to optimize context
 
 Drydock build walks the Manifest, verifying each step against predefined tests.
+(pause)
 
 Change tickets are conformed with drydock refit and delivered with drydock build
 
@@ -23,7 +26,9 @@ Drydock checks delivery quality with Test-Driven Development
 Build optimization makes specification-driven delivery reproducible with your Claude Sonnet or Codex 5.4 subscription.
 
 Drydock is open source MIT-licensed software, now in stable alpha.
+(pause)
 
 Take it for a sail.
+(pause)
 
 Find out more at WebCloudStudio

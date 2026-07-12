@@ -26,10 +26,10 @@
   inside a machine.
 - Closer: the belt ends at a delivery platform. Working Software crates tip off the end
   and stack while the camera eases to a stop under the call to action.
-- Audio: female neural voice at -5% rate; each sentence is synthesized separately and
-  joined with fixed silences (SENTENCE_GAP / PARAGRAPH_GAP in the renderer). A `(pause)`
-  cue in the script adds 0.35 s wherever it appears; a `[pause N]` line sets an exact gap.
-  Video length scales to the narration.
+- Audio: female neural voice; each sentence is synthesized separately and joined with
+  fixed silences (SENTENCE_GAP / PARAGRAPH_GAP in the renderer). A `(pause)` cue in the
+  script adds 0.35 s wherever it appears; a `[pause N]` line sets an exact gap. Video
+  length scales to the narration.
 
 ## Scenes
 
