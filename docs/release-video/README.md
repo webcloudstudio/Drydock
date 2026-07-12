@@ -7,18 +7,19 @@ anchored to those marks.
 
 ## Build it
 
-Run from `docs/release-video/`:
+```bash
+./run.sh                # full pipeline, music option 1 -> renders/drydock-announcement-first-cut.mp4
+./run.sh --stills       # only review PNGs in renders/stills/ (seconds)
+./run.sh --no-voice     # full MP4 but reuse the existing voice + marks
+./run.sh --music 2      # override the music bed
+```
+
+`run.sh` supplies the environment and the default `--music 1`; every other flag
+passes straight through. The raw form it wraps:
 
 ```bash
 uv run --python 3.12 --with edge-tts --with imageio-ffmpeg --with numpy --with pillow \
-  python make_release_video.py            # full pipeline -> renders/drydock-announcement-first-cut.mp4
-```
-
-Faster loops (same `uv run ...` prefix):
-
-```bash
-python make_release_video.py --stills     # only review PNGs in renders/stills/ (seconds)
-python make_release_video.py --no-voice   # full MP4 but reuse the existing voice + marks
+  python make_release_video.py --music 1
 ```
 
 Re-synthesize the voice (drops `--no-voice`) only when you change
