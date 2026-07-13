@@ -2,7 +2,20 @@
 set -euo pipefail
 
 TEST_BED="$(mktemp -d "${TMPDIR:-/tmp}/drydock-test.XXXXXX")"
-trap 'rm -rf "$TEST_BED"' EXIT
+
+cleanup() {
+    echo
+    echo "Cleanup: removing $TEST_BED"
+    rm -rf "$TEST_BED"
+    if [[ ! -e "$TEST_BED" ]]; then
+        echo "Cleanup: PASS"
+    else
+        echo "Cleanup: FAIL"
+        exit 1
+    fi
+}
+
+trap cleanup EXIT
 
 EXISTING_DRYDOCK="$(command -v drydock || true)"
 
@@ -60,4 +73,3 @@ echo "drydock init/status: PASS"
 
 echo
 echo "Smoke test: PASS"
-echo "Test bed will be removed: $TEST_BED"
