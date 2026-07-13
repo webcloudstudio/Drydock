@@ -511,7 +511,7 @@ def render_build_prompt_assembly(
                     ],
                     kind="section",
                 )
-        )
+            )
         for step_file in role_files:
             source = step_file.source
             assert source is not None
@@ -718,7 +718,7 @@ def render_build_group_prompt_assembly(
                     ],
                     kind="section",
                 )
-        )
+            )
         for step_file in role_files:
             source = step_file.source
             assert source is not None

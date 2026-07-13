@@ -1097,6 +1097,7 @@ def _assemble_prompt_assembly(
         "QUESTIONNAIRES": questionnaire_parts,
         "TYPED_SPEC": typed_spec_parts,
     }
+
     def make_contract_renderer(contract: str) -> Callable[[], list]:
         def render_contract() -> list:
             return contract_parts(contract)
@@ -1730,18 +1731,21 @@ def create_plan(
         typed_spec_paths=reusable_spec_paths,
     )
 
-    result = cast(CompletedRun, run(
-        prompt_assembly.rendered_text,
-        target_dir,
-        llm=llm_provider,
-        model=model or prompt.model,
-        command_name="plan",
-        parameters={"target": target, "blueprint": str(blueprint_dir)},
-        log_dir=log_dir,
-        target=target,
-        on_text=on_text,
-        prompt_assembly=prompt_assembly,
-    ))
+    result = cast(
+        CompletedRun,
+        run(
+            prompt_assembly.rendered_text,
+            target_dir,
+            llm=llm_provider,
+            model=model or prompt.model,
+            command_name="plan",
+            parameters={"target": target, "blueprint": str(blueprint_dir)},
+            log_dir=log_dir,
+            target=target,
+            on_text=on_text,
+            prompt_assembly=prompt_assembly,
+        ),
+    )
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():
         detail = result.text.strip() or result.stderr.strip()
