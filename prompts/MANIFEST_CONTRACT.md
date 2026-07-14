@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, block types, field semantics, lifecycle states, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20260618 V8
+version: 20260714 V9
 ---
 
 ## Overview
@@ -61,13 +61,20 @@ state:   pending
 A story builds something. It is an enriched unit of work with states, dependencies, Blueprint
 acceptance, and prompt-assembly fields.
 
+Stories and Blueprint specification files are one-to-one: every story implements exactly one
+Blueprint file, and every Blueprint file is implemented by exactly one story. The story is the
+atomic build primitive. Context economy comes from grouping, not from bundling files into one
+story: a `feature` block builds as one combined prompt with the shared stack deduped across its
+stories, so atomic stories cost no extra context while preserving per-file build state,
+incremental rebuild via `applied_specs`, failure attribution, and evidence.
+
 ```markdown
 ## story N: {Name}
 id:           foundation
 parent:       feature-catalog
 summary:      One-line description.
-implements:   DATABASE.md, FEATURE-CATALOG.md
-context:      ARCHITECTURE.md
+implements:   FEATURE-CATALOG.md
+context:      ARCHITECTURE.md, DATABASE.md
 stack:        common.md, python.md, sqlite.md
 rules:        CLAUDE_RULES.md
 copy:         Rigging/templates/common.sh -> bin/common.sh
@@ -86,7 +93,7 @@ scope:        blueprint | target | both
 | `id` | Yes | Stable unique slug within the Manifest |
 | `parent` | No | Parent feature id for hierarchy and QuarterDeck display |
 | `summary` | Yes | One-line description |
-| `implements` | Yes | Spec files this story uses as primary build context |
+| `implements` | Yes | The single Blueprint spec file this story builds — exactly one file; stories and Blueprint files are one-to-one |
 | `context` | No | Read-only support context files |
 | `stack` | No | Rigging stack files to inject |
 | `rules` | No | Rigging rules files to inject |
@@ -97,7 +104,7 @@ scope:        blueprint | target | both
 | `evidence` | No | Path to the evidence file written after execution |
 | `scope` | No | `blueprint` \| `target` \| `both` — what this story changes |
 
-When `implements` contains `DATABASE.md`, `stack` must include `persistence.md` and the selected
+When `implements` is `DATABASE.md`, `stack` must include `persistence.md` and the selected
 backend stack file, such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
 
 ### Spike

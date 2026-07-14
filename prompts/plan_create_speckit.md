@@ -1,7 +1,7 @@
 ---
 name: plan_create_speckit
 description: Spec Kit translation planning — convert an imported Spec Kit project (blueprint/sources/.specify, blueprint/sources/specs) into Blueprint specification files, MANIFEST.md, and a conversion report.
-version: 20260702 V1
+version: 20260714 V2
 intent: Act as an Agile Development Team translating a Spec Kit project into a Drydock Blueprint per the Spec Kit Import Contract mapping table, then emit the executable Manifest and a conversion report documenting mapped, duplicated, ambiguous, and ignored content.
 command: drydock plan create
 model: sonnet
@@ -147,9 +147,10 @@ actual user-facing screens; `DATABASE.md` when `data-model.md` or persistent sta
 ## Manifest Construction Rules
 
 Derive `MANIFEST.md` from the authored specs, using the same `feature`/`story`/`spike`/`ac` rules,
-ordering rules, and `scope` rules as standard `drydock plan create`. A Spec Kit `tasks.md`, where
-present, is a hint for `story` granularity and ordering; it is not copied verbatim and is not
-emitted as its own file.
+ordering rules, and `scope` rules as standard `drydock plan create`. Stories and Blueprint spec
+files are one-to-one: each story implements exactly one spec file. A Spec Kit `tasks.md`, where
+present, is a hint for story ordering and feature grouping, subject to the
+one-story-per-Blueprint-file rule; it is not copied verbatim and is not emitted as its own file.
 
 ---
 

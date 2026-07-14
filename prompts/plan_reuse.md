@@ -1,7 +1,7 @@
 ---
 name: plan_reuse
 description: Manifest-first planning for an already-populated Blueprint — preserve conformant specs, emit MANIFEST.md, and author only truly missing required spec files.
-version: 20260702 V1
+version: 20260714 V2
 intent: Act as an Agile Development Team reviewing an existing Drydock Blueprint. Reuse the current typed spec files as authoritative where they already define the product correctly. Emit MANIFEST.md and only those Blueprint files that are truly missing and required to make the Blueprint buildable.
 command: drydock plan create
 model: sonnet
@@ -52,9 +52,10 @@ Do not create speculative new files.
 
 - Follow `MANIFEST_CONTRACT.md` exactly.
 - Use `feature`, `story`, `spike`, and `ac` blocks exactly as defined there.
-- Every `story` block's `implements:` filenames must exactly match real Blueprint spec files:
-  either existing files injected below or files you emit in this response.
-- Every important existing Blueprint file must be implemented by exactly one story.
+- Every `story` block's `implements:` filename must exactly match a real Blueprint spec file:
+  either an existing file injected below or a file you emit in this response.
+- Stories and Blueprint spec files are one-to-one: each story's `implements:` names exactly one
+  spec file, and every important existing Blueprint file is implemented by exactly one story.
 - Group related stories under coherent `feature` parents.
 - Emit an acyclic, runnable, foundation-first plan.
 - All blocks start `state: pending`.

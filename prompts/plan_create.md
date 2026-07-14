@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260706 V7
+version: 20260714 V8
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -196,8 +196,10 @@ Rules:
 Manifest rules:
 
 - Use `feature`, `story`, `spike`, and `ac` blocks exactly as defined by `MANIFEST_CONTRACT.md`.
-- Each `story` must reference real emitted spec files in `implements:`. Every authored Blueprint
-  spec file is implemented by exactly one story.
+- Stories and authored Blueprint spec files are one-to-one: each `story` names exactly one real
+  emitted (or existing) spec file in `implements:`, and every authored Blueprint spec file is
+  implemented by exactly one story. Never bundle multiple spec files into one story; context
+  economy comes from `feature` grouping, not from bundling.
 - Use `context:` only for genuine read-only support files.
 - Open questions that do not block authored spec creation become `spike` blocks.
 - Group coherent capabilities under `feature` parents; keep unrelated capabilities in separate
@@ -306,11 +308,19 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 
 **Feature blocks**
 - One `feature` block per substantial workflow or delivery grouping.
+- The feature block is the batching unit: its stories build together in one combined prompt with
+  the shared stack deduped.
 - Small plans may omit feature blocks only when a parent would add no planning value.
 
 **Story blocks**
+- One story per Blueprint file: `implements:` names exactly one spec file, and every authored
+  spec file is implemented by exactly one story. The story is the atomic build primitive.
 - Each story is independently buildable and verifiable.
-- Prefer 1-4 stories per feature.
+- Group stories that share a stack and workflow under one `feature` block — the screens of one
+  workflow together, related backend features together. The feature group builds as a single
+  combined prompt with the shared stack deduped, so grouping is where context is saved. Keep a
+  group's combined size within the context ceiling; the Commander can split or regroup in the
+  QuarterDeck.
 - Every story must have:
   - `id`
   - `summary`
@@ -431,6 +441,8 @@ Required action:
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
 - Every `implements:` entry in `MANIFEST.md` must name a real emitted authored spec file or an
   authored spec file that already exists in the input Blueprint.
+- Stories and Blueprint spec files are one-to-one: each story's `implements:` names exactly one
+  spec file, and every authored spec file is implemented by exactly one story.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
   header table and end with `## Programmatic Acceptance`, `## User Acceptance`, `## Guardrails`,
