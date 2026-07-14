@@ -168,6 +168,37 @@ state: pending
     assert plan.by_id()["ac-marlib-1"].depends == ("marlib",)
 
 
+def test_story_depends_on_ac_id_rewritten_to_ac_parent(tmp_path: Path):
+    # Stories block on stories: a story depends: entry naming an ac id is
+    # rewritten on read to the ac's parent story, with duplicates collapsed.
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: approved
+
+## story 1: Library
+id: marlib
+state: pending
+
+## ac 1: Marlib works
+id: marlib-passes
+parent: marlib
+kind: smoke
+check: test -f lib
+state: pending
+
+## story 2: Infra
+id: infra
+depends: marlib-passes marlib
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+
+    assert plan.by_id()["infra"].depends == ("marlib",)
+
+
 def test_parse_build_plan_captures_block_scalar_instructions(tmp_path: Path):
     path = write_plan(
         tmp_path / "MANIFEST.md",

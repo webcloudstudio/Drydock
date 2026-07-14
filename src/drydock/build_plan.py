@@ -7,7 +7,7 @@ import re
 import tempfile
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -378,6 +378,31 @@ def _parse_block(raw: dict[str, object], path: Path) -> PlanBlock:
     )
 
 
+def _normalize_story_depends(blocks: tuple[PlanBlock, ...]) -> tuple[PlanBlock, ...]:
+    """Rewrite story/spike ``depends:`` entries that name an ``ac`` id to the ac's parent.
+
+    Stories block on stories, never on acceptance checks: an ac only gates its own
+    parent, and a story is not ``closed/verified`` until its child acs pass, so a
+    dependency on a story already implies its acs. A planner-emitted ac id in a
+    story's ``depends:`` would otherwise read as an unbuildable external block.
+    """
+    by_id = {block.block_id: block for block in blocks}
+    normalized: list[PlanBlock] = []
+    for block in blocks:
+        if block.block_type in ("story", "spike") and block.depends:
+            deps: list[str] = []
+            for dep in block.depends:
+                target = by_id.get(dep)
+                if target is not None and target.block_type == "ac" and target.parent:
+                    dep = target.parent
+                if dep != block.block_id and dep not in deps:
+                    deps.append(dep)
+            if tuple(deps) != block.depends:
+                block = replace(block, depends=tuple(deps))
+        normalized.append(block)
+    return tuple(normalized)
+
+
 def parse_build_plan(path: Path) -> BuildPlan:
     """Parse one MANIFEST.md and validate its structural execution contract."""
     if not path.is_file():
@@ -450,6 +475,8 @@ def parse_build_plan(path: Path) -> BuildPlan:
         if block.block_id in seen:
             raise SpecificationError(f"Duplicate block id {block.block_id!r} in {path}")
         seen.add(block.block_id)
+
+    blocks = _normalize_story_depends(blocks)
 
     return BuildPlan(
         path=path,

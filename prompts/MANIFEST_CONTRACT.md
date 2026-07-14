@@ -104,10 +104,15 @@ scope:        blueprint | target | both
 | `rules` | No | Rigging rules files to inject |
 | `copy` | No | `source -> destination` file copies applied before build |
 | `instructions` | Yes | Freeform build instructions for the agent |
-| `depends` | No | Space-separated ids that must be `closed/verified` first |
+| `depends` | No | Space-separated story/spike ids that must be `closed/verified` first — never `ac` ids |
 | `state` | Yes | Current block state |
 | `evidence` | No | Path to the evidence file written after execution |
 | `scope` | No | `blueprint` \| `target` \| `both` — what this story changes |
+
+Stories block on stories. An `ac` id never appears in a `depends:` list: an acceptance
+check gates only its own parent, and a story does not become `closed/verified` until its
+child `ac` blocks pass, so depending on a story already implies its acceptance checks.
+The reader rewrites a story `depends:` entry that names an `ac` id to that ac's parent.
 
 When `implements` is `DATABASE.md`, `stack` must include `persistence.md` and the selected
 backend stack file, such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
@@ -165,7 +170,7 @@ evidence: <Target>/evidence/<id>.md
 | `summary` | Yes | One-line description |
 | `kind` | Yes | `smoke` — runs a command; `assertion` — checks behavior from evidence or review |
 | `check` | If smoke | Shell command to execute |
-| `depends` | No | Prerequisite ids |
+| `depends` | No | Omit — an ac is gated by its `parent`; any other entry is dropped on read |
 | `state` | Yes | Current block state |
 | `evidence` | No | Path to evidence file |
 

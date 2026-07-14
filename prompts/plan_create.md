@@ -217,6 +217,10 @@ Manifest rules:
 - Dependencies must reference earlier-emitted ids and form a runnable, acyclic build order.
   `depends:` is topologically consistent: a later block never supplies a dependency to an earlier
   block, and every id in a `depends:` list has already appeared above the block that names it.
+- Stories block on stories: a `depends:` list names story or spike ids only, never `ac` ids. An
+  acceptance check gates its own parent story, and a story is not `closed/verified` until its
+  child acs pass, so depending on the story already implies its acceptance checks. `ac` blocks
+  carry no `depends:` of their own — the `parent` relationship alone gates when an ac runs.
 - The initial runnable frontier is never empty: **at least one `story` or `spike` has an empty
   `depends:`** and can build immediately. Do not gate the first executable block on another block,
   and never place a story ahead of the block it depends on. A `depends:` entry expresses a genuine
