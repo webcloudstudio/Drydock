@@ -139,6 +139,35 @@ class TestImportIntentCli:
         assert r.returncode == 0
         assert "COMPASS.md" in r.stdout
 
+    def test_compass_format_accepts_force(self, tmp_path):
+        source = tmp_path / "brief.md"
+        source.write_text("# COMPASS\n", encoding="utf-8")
+
+        import os
+
+        env = os.environ.copy()
+        env["DRYDOCK_WORKSPACE"] = str(tmp_path / "ws")
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "config")
+
+        r = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "drydock",
+                "import",
+                "MyTarget",
+                str(source),
+                "--format",
+                "compass",
+                "--force",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert r.returncode == 0
+        assert "COMPASS.md" in r.stdout
+
     def test_intent_in_help(self):
         r = subprocess.run(
             [sys.executable, "-m", "drydock", "import", "--help"],

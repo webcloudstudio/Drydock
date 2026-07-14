@@ -1774,6 +1774,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["auto", "markdown", "source", "speckit", "compass", "intent"],
         default="auto",
     )
+    p_import.add_argument(
+        "--force",
+        action="store_true",
+        help="Accepted for compass imports; COMPASS.md is overwritten and normalized on analyze.",
+    )
 
     return parser
 
