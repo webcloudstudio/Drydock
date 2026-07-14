@@ -1,6 +1,7 @@
 # AWS Lambda Best Practices
 
 **Version:** 20260528 V1
+**Category:** AWS
 **Description:** AWS Lambda (Python) patterns: handlers, IAM least privilege, CloudWatch logging, and Terraform packaging
 
 Technology reference for AWS Lambda functions in Python. This file does not change between projects.

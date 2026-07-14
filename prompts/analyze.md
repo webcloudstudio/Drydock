@@ -389,17 +389,19 @@ emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` 
 === END discovery-identity.json ===
 ```
 
-**Stack questionnaire rule.** The stack `options` are the injected Rigging catalog filenames
-(`Rigging/BRA*.md` plus `Rigging/stack/*.md`, no `README.md`, no `_compact` variants), filtered
-to the detected project type, always ending with `"other"`. Never open the per-technology files —
-list their names only.
+**Stack questionnaire rule.** The stack `options` are the **complete** injected Rigging catalog
+filenames (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, no `README.md`, no `_compact` variants),
+always ending with `"other"`. Do **not** filter the list to the detected project type — the
+Product Owner sees every available component and picks freely. Never open the per-technology
+files — list their names only. Drydock tooling normalizes the persisted questionnaire and groups
+the options by category for display; you emit the flat list only.
 
 - If a source names a technology **and** a matching catalog file exists, treat it as decided:
   record the technology and do **not** raise it as an open question.
 - If a source names a technology with **no** matching catalog file, raise it as a discovery
   questionnaire (a gap: no stack guidance exists for it).
 - If the sources are silent on the stack, emit a `discovery-stack.json` with `"input": "checkbox_grid"`
-  whose `options` are the filtered filename list plus `"other"`, for the Product Owner to choose.
+  whose `options` are the complete injected filename list plus `"other"`, for the Product Owner to choose.
   Sort `options` alphabetically. Use `checkbox_grid` (not `select`) so the Commander can select
   multiple stack components. Set `"answer": ""`; do not guess stack selections.
 
@@ -453,10 +455,10 @@ list their names only.
 - Never re-ask a question already settled by `ANALYZE_COMPASS.md`, a prior `BLOCKERS.md`, or an
   existing questionnaire answer. Never emit a duplicate or reworded version of an existing
   unanswered questionnaire.
-- Stack questionnaire uses `"input": "checkbox_grid"`. Options are the injected catalog filenames
-  (no `_compact` variants), filtered to the detected project type, alphabetized, plus `"other"`.
-  Never open the per-technology stack files — list their names only. Leave `answer` as an empty
-  string until the Commander selects one or more components.
+- Stack questionnaire uses `"input": "checkbox_grid"`. Options are the complete injected catalog
+  filenames (no `_compact` variants), alphabetized, plus `"other"` — never filtered to the
+  detected project type. Never open the per-technology stack files — list their names only.
+  Leave `answer` as an empty string until the Commander selects one or more components.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with
   no matching file is a discovery questionnaire.
 - SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise

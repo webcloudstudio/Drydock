@@ -1,6 +1,7 @@
 # Branding — White Papers
 
 **Version:** 20260609 V2
+**Category:** Branding
 **Description:** Visual standard for Ed Barlow / Web Cloud Studio white papers — the single 860px
 print column.
 

@@ -1,6 +1,7 @@
 # Common Best Practices
 
 **Version:** 20260320 V1  
+**Category:** Technologies
 **Description:** Common development patterns shared across all stack configurations
 
 Always included regardless of technology stack. Covers project structure conventions, shell scripts, metadata files, git hygiene, and development workflow. This file does not change between projects.

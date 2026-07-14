@@ -1065,12 +1065,48 @@ def test_normalize_discovery_prefills_identity_answers():
     assert questions["short_description"]["answer"] == "A test project for automated analysis."
 
 
-def test_normalize_discovery_forces_stack_checkbox_grid_and_sorted_options():
+_FAKE_CATALOG = [
+    ("BRANDING_MAIN.md", "Branding"),
+    ("aws-s3.md", "AWS"),
+    ("flask.md", "Web Server"),
+    ("python.md", "Technologies"),
+    ("sqlite.md", "Persistence"),
+]
+
+
+def test_normalize_discovery_replaces_stack_options_with_full_catalog(monkeypatch):
+    monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: _FAKE_CATALOG)
+    normalized = _normalize_discovery("discovery-stack.json", json.loads(_DISCOVERY_STACK))
+
+    question = normalized["questions"][0]
+    assert question["input"] == "checkbox_grid"
+    assert question["options"] == [
+        "BRANDING_MAIN.md",
+        "aws-s3.md",
+        "flask.md",
+        "python.md",
+        "sqlite.md",
+        "other",
+    ]
+    assert question["groups"] == [
+        {"label": "Web Server", "options": ["flask.md"]},
+        {"label": "Persistence", "options": ["sqlite.md"]},
+        {"label": "AWS", "options": ["aws-s3.md"]},
+        {"label": "Technologies", "options": ["python.md"]},
+        {"label": "Branding", "options": ["BRANDING_MAIN.md"]},
+        {"label": "Other", "options": ["other"]},
+    ]
+    assert question["answer"] == ""
+
+
+def test_normalize_discovery_stack_falls_back_to_sorted_llm_options(monkeypatch):
+    monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: [])
     normalized = _normalize_discovery("discovery-stack.json", json.loads(_DISCOVERY_STACK))
 
     question = normalized["questions"][0]
     assert question["input"] == "checkbox_grid"
     assert question["options"] == ["flask.md", "other", "python.md"]
+    assert "groups" not in question
     assert question["answer"] == ""
 
 
@@ -1342,7 +1378,10 @@ class TestAnalyze:
         assert questions["display_name"]["answer"] == "Test Project"
         assert questions["short_description"]["answer"] == "A test project for automated analysis."
 
-    def test_discovery_stack_questionnaire_written_as_sorted_checkbox_grid(self, tmp_path):
+    def test_discovery_stack_questionnaire_written_as_grouped_checkbox_grid(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: _FAKE_CATALOG)
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         output = _make_llm_output(include_spikes=True)
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
@@ -1351,7 +1390,22 @@ class TestAnalyze:
         data = json.loads(stack_path.read_text(encoding="utf-8"))
         question = data["questions"][0]
         assert question["input"] == "checkbox_grid"
-        assert question["options"] == ["flask.md", "other", "python.md"]
+        assert question["options"] == [
+            "BRANDING_MAIN.md",
+            "aws-s3.md",
+            "flask.md",
+            "python.md",
+            "sqlite.md",
+            "other",
+        ]
+        assert [g["label"] for g in question["groups"]] == [
+            "Web Server",
+            "Persistence",
+            "AWS",
+            "Technologies",
+            "Branding",
+            "Other",
+        ]
         assert question["answer"] == ""
 
     def test_missing_blueprint_raises(self, tmp_path):

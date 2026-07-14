@@ -1472,14 +1472,31 @@ def _render_question_controls(data: dict[str, Any]) -> list[str]:
             control = f"<select name='{qid}'{multiple}>{opts}</select>"
         elif input_type == "checkbox_grid":
             saved_set = set(saved_vals)
-            checkboxes = "".join(
-                f"<label class='cb-grid-item'>"
-                f"<input type='checkbox' name='{qid}' value='{html.escape(str(o))}'"
-                f"{' checked' if str(o) in saved_set else ''}>"
-                f" {html.escape(str(o))}</label>"
-                for o in options
-            )
-            control = f"<div class='cb-grid'>{checkboxes}</div>"
+
+            def _checkboxes(opts: list[Any]) -> str:
+                return "".join(
+                    f"<label class='cb-grid-item'>"
+                    f"<input type='checkbox' name='{qid}' value='{html.escape(str(o))}'"
+                    f"{' checked' if str(o) in saved_set else ''}>"
+                    f" {html.escape(str(o))}</label>"
+                    for o in opts
+                )
+
+            groups = question.get("groups") or []
+            if groups:
+                parts = []
+                for group in groups:
+                    label = str(group.get("label", ""))
+                    heading = (
+                        f"<h4 class='cb-group-label'>{html.escape(label)}</h4>" if label else ""
+                    )
+                    parts.append(
+                        f"<div class='cb-group'>{heading}"
+                        f"<div class='cb-grid'>{_checkboxes(group.get('options', []))}</div></div>"
+                    )
+                control = "".join(parts)
+            else:
+                control = f"<div class='cb-grid'>{_checkboxes(options)}</div>"
         elif input_type == "textarea":
             control = f"<textarea name='{qid}' rows='4'>{html.escape(saved)}</textarea>"
         elif input_type == "number":
@@ -2273,6 +2290,9 @@ _STYLE = """
   th { background:#f8fafc; font-weight:600; }
   .question { background:#fff; border:1px solid #d7dde5; padding:12px; margin:12px 0; border-radius:4px; }
   .cb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:4px 16px; margin:8px 0; }
+  .cb-group { margin:10px 0; }
+  .cb-group-label { margin:0 0 4px; font-size:12px; font-weight:600; text-transform:uppercase;
+                    letter-spacing:.04em; color:#64748b; border-bottom:1px solid #e2e8f0; padding-bottom:3px; }
   .cb-grid-item { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding:3px 0; }
   .cb-grid-item input[type=checkbox] { width:auto; cursor:pointer; }
   input[type=text],input[type=number],select,textarea { width:100%; max-width:620px; padding:8px;

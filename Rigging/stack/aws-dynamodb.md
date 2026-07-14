@@ -1,6 +1,7 @@
 # AWS DynamoDB Best Practices
 
 **Version:** 20260528 V1
+**Category:** AWS
 **Description:** DynamoDB single-table design for hierarchical catalog/state data accessed through a cloud client library (never raw boto3)
 
 Technology reference for Amazon DynamoDB with Python. This file does not change between projects.

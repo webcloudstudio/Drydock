@@ -1,6 +1,7 @@
 # Branding — Master
 
 **Version:** 20260523 V1
+**Category:** Branding
 **Description:** Master brand standard for Ed Barlow / Web Cloud Studio — canonical palette,
 typography, and philosophy. Per-medium rules inherit from this file.
 

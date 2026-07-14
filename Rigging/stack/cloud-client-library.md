@@ -1,6 +1,7 @@
 # Cloud Client Library Best Practices
 
 **Version:** 20260528 V1
+**Category:** AWS
 **Description:** A project-neutral Python cloud client library — the single indirection layer between project code and AWS. Projects call the library, never boto3.
 
 Technology reference for a project-owned cloud client library. This file does not change between projects.

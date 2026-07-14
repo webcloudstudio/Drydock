@@ -1,6 +1,7 @@
 # Python Best Practices
 
 **Version:** 20260603 V1  
+**Category:** Technologies
 **Description:** Python language conventions and patterns for specification-driven projects
 
 Technology reference for Python development. Framework-agnostic — applies to any Python project. This file does not change between projects.

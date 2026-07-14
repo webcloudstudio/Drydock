@@ -1,6 +1,7 @@
 # Branding — Website
 
 **Version:** 20260523 V1
+**Category:** Branding
 **Description:** Visual standard for the portfolio / homepage site. First pass — refine the
 medium-specific rules below.
 

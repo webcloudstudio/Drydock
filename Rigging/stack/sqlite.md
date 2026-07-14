@@ -1,6 +1,7 @@
 # SQLite Best Practices
 
 **Version:** 20260603 V1  
+**Category:** Persistence
 **Description:** SQLite database patterns: schema, queries, migrations, and connection management
 
 Technology reference for SQLite in Python applications. This file does not change between projects.

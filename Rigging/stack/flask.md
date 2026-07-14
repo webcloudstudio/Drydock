@@ -1,6 +1,7 @@
 # Flask Best Practices
 
 **Version:** 20260410 V2  
+**Category:** Web Server
 **Description:** Flask web framework patterns: app package layout, routes, blueprints, templates, and error handling
 
 Technology reference for Flask web applications. This file does not change between projects.

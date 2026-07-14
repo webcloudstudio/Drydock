@@ -1,6 +1,7 @@
 # Branding — Posts
 
 **Version:** 20260702 V2
+**Category:** Branding
 **Description:** Standard for development-log posts Ed publishes on his site.
 
 Inherits the brand feel from `BRANDING_MAIN.md`; this file covers only what is specific to

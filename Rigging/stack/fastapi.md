@@ -1,6 +1,7 @@
 # FastAPI Best Practices
 
 **Version:** 20260521 V1
+**Category:** Web Server
 **Description:** FastAPI web framework patterns: app factory, routers, Pydantic models, dependency injection, templates, and testing
 
 Technology reference for FastAPI web applications. This file does not change between projects.

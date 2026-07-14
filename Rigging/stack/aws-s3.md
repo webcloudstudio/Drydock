@@ -1,6 +1,7 @@
 # AWS S3 Best Practices
 
 **Version:** 20260528 V1
+**Category:** AWS
 **Description:** S3 for blob storage and a simple per-user company file share — private, encrypted, prefix-scoped
 
 Technology reference for Amazon S3 with Python (via a cloud client library). This file does not change

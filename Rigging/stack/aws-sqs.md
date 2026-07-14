@@ -1,6 +1,7 @@
 # AWS SQS Best Practices
 
 **Version:** 20260528 V1
+**Category:** AWS
 **Description:** SQS as the durable store-and-forward queue — producers submit 24×7, a local consumer drains when alive
 
 Technology reference for Amazon SQS with Python (boto3, inside a cloud client library). This file does not

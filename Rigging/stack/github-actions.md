@@ -1,6 +1,7 @@
 # GitHub Actions Best Practices
 
 **Version:** 20260528 V1
+**Category:** Technologies
 **Description:** CI/CD pipelines that assume AWS roles via OIDC (no static keys), gate on lint/test, and run Terraform plan-on-PR / apply-on-merge
 
 Technology reference for GitHub Actions pipelines deploying a project to AWS. This file does not change

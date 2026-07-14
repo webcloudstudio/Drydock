@@ -161,19 +161,60 @@ def _feedback_body(feedback_text: str | None) -> str:
     return body
 
 
-def _rigging_catalog_names() -> list[str]:
-    """Return the stack-option filenames offered to the stack questionnaire.
+_DEFAULT_STACK_CATEGORY = "Technologies"
+_STACK_CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
+_CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
-    Names only — analyze never opens these files. Source: ``Rigging/BRA*.md`` plus
-    ``Rigging/stack/*.md``, excluding ``README.md``.
+
+def _stack_option_category(path: Path) -> str:
+    """Read the ``**Category:**`` header from a Rigging file's header block.
+
+    Only the first 20 lines are scanned — the header block sits at the top of every
+    Rigging file. Files without the header fall into the default category.
+    """
+    try:
+        head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:20])
+    except OSError:
+        return _DEFAULT_STACK_CATEGORY
+    match = _CATEGORY_HEADER.search(head)
+    return match.group(1) if match else _DEFAULT_STACK_CATEGORY
+
+
+def _rigging_catalog() -> list[tuple[str, str]]:
+    """Return ``(filename, category)`` pairs for the stack questionnaire options.
+
+    Source: ``Rigging/BRA*.md`` plus ``Rigging/stack/*.md``, excluding ``README.md``
+    and ``_compact`` variants. Categories come from each file's ``**Category:**``
+    header; only the tooling opens these files, never the analyze LLM.
     """
     try:
         root = get_rigging_root()
     except Exception:
         return []
-    names = [p.name for p in root.glob("BRA*.md") if "_compact" not in p.name]
-    names += [p.name for p in (root / "stack").glob("*.md") if "_compact" not in p.name]
-    return sorted(name for name in names if name != "README.md")
+    paths = [p for p in root.glob("BRA*.md") if "_compact" not in p.name]
+    paths += [p for p in (root / "stack").glob("*.md") if "_compact" not in p.name]
+    return sorted((p.name, _stack_option_category(p)) for p in paths if p.name != "README.md")
+
+
+def _rigging_catalog_names() -> list[str]:
+    """Return the stack-option filenames offered to the stack questionnaire."""
+    return [name for name, _ in _rigging_catalog()]
+
+
+def _stack_option_groups(catalog: list[tuple[str, str]]) -> list[dict]:
+    """Group catalog options by category for the stack questionnaire.
+
+    Known categories render in ``_STACK_CATEGORY_ORDER``; unknown categories follow
+    alphabetically. A trailing ``Other`` group carries the free-choice ``other`` option.
+    """
+    by_category: dict[str, list[str]] = {}
+    for name, category in catalog:
+        by_category.setdefault(category, []).append(name)
+    ordered = [c for c in _STACK_CATEGORY_ORDER if c in by_category]
+    ordered += sorted(c for c in by_category if c not in _STACK_CATEGORY_ORDER)
+    groups = [{"label": c, "options": sorted(by_category[c])} for c in ordered]
+    groups.append({"label": "Other", "options": ["other"]})
+    return groups
 
 
 _EMPTY_LINE = frozenset({"", "- None.", "- None"})
@@ -606,9 +647,17 @@ def _normalize_discovery(name: str, data: dict) -> dict:
                 question["answer"] = proposed
         if name == "discovery-stack.json":
             question["input"] = "checkbox_grid"
-            options = question.get("options", [])
-            if isinstance(options, list):
-                question["options"] = sorted(str(option) for option in options)
+            catalog = _rigging_catalog()
+            if catalog:
+                # The option list is deterministic: the full Rigging catalog grouped by
+                # category, regardless of what the LLM emitted. The LLM must not filter
+                # the choices offered to the Commander.
+                question["options"] = [name_ for name_, _ in catalog] + ["other"]
+                question["groups"] = _stack_option_groups(catalog)
+            else:
+                options = question.get("options", [])
+                if isinstance(options, list):
+                    question["options"] = sorted(str(option) for option in options)
             question.setdefault("answer", "")
         questions.append(question)
     normalized["questions"] = questions

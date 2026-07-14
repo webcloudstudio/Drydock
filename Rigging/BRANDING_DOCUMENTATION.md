@@ -1,6 +1,7 @@
 # Branding — Documentation Site
 
 **Version:** 20260523 V1
+**Category:** Branding
 **Description:** Visual standard for the documentation site — the dark-sidebar / light-content
 single-page app, themes, and CSS assembly.
 
