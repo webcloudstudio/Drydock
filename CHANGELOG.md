@@ -8,7 +8,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
-No unreleased changes.
+### Changed
+
+- `drydock import --format compass` now normalizes the intent document into the canonical
+  COMPASS.md format with an LLM pass at import time (prompt contract
+  `prompts/import_compass.md`), preserving the Commander's vocabulary. It is the only import form
+  that runs an LLM and honors `--llm-provider` and `--model`. The written COMPASS.md is final and
+  Commander-owned; an existing COMPASS.md is preserved unless `--force` is given, and
+  `drydock analyze` no longer performs deferred normalization for compass imports.
 
 ## [0.1.1] — 2026-07-08
 

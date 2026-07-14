@@ -729,16 +729,25 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 0
 
     if fmt in {"compass", "intent"}:
+        from drydock.config import get_llm_provider, get_model, get_workspace
         from drydock.import_markdown import import_intent
 
-        result = import_intent(args.Target, source, td)
+        result = import_intent(
+            args.Target,
+            source,
+            td,
+            force=bool(getattr(args, "force", False)),
+            model=get_model(getattr(args, "model", None)),
+            llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+            log_dir=get_workspace() / "logs",
+        )
         print(f"Blueprint: {result.blueprint_dir}")
         print(f"Source: {result.source}")
         for path in result.imported:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
             print(f"  SAVED AS  {path}")
         print()
-        print("COMPASS.md placed at Target root.")
+        print("COMPASS.md normalized and placed at Target root. Review it; it is Commander-owned.")
         print("Run: drydock analyze", args.Target)
         return 0
 
@@ -1777,7 +1786,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_import.add_argument(
         "--force",
         action="store_true",
-        help="Accepted for compass imports; COMPASS.md is overwritten and normalized on analyze.",
+        help="Compass imports: overwrite an existing COMPASS.md (normalized by LLM at import).",
     )
 
     return parser

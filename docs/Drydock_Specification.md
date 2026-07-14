@@ -270,7 +270,8 @@ flowchart LR
 
 `drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>` is the intake step.
 It brings external material under Drydock control.  Drydock can import data from other specification systems or can import
-a compass file.  The data is copied as is into `blueprint/sources/`.
+a compass file.  The data is copied as is into `blueprint/sources/`; compass imports instead write
+`COMPASS.md` at the Target root.
 
 `drydock import <Target> <Source File> --format markdown` imports general markdown specifications
 
@@ -278,7 +279,12 @@ a compass file.  The data is copied as is into `blueprint/sources/`.
 
 `drydock import <Target> <Source> --format <source|speckit>` imports specifications from other systems
 
-`drydock import <Target> <Source> --format compass` copies the source into the target `COMPASS.md`.
+`drydock import <Target> <Source> --format compass` normalizes the source into the canonical
+`COMPASS.md` format and writes it to the Target root. This is the only `drydock import` form that
+runs an LLM; `--llm-provider` and `--model` select the provider. The normalization preserves the
+Commander's vocabulary and reformats only. The written `COMPASS.md` is final and Commander-owned;
+`drydock analyze` never rewrites a populated `COMPASS.md`. An existing `COMPASS.md` is preserved
+unless `--force` is given.
 
 ### drydock analyze
 
@@ -1371,10 +1377,10 @@ not authored as specification files.
 
 - **`COMPASS.md`** — Project guidance: intent, constraints, and guardrails. Lives at the Target
   root (not inside `blueprint/`). Injected into every LLM run as ambient project context.
-  Created by `drydock analyze` (generated from spec if absent) or seeded via
-  `drydock import --format compass`.
+  Created by `drydock analyze` (generated from spec if absent) or by
+  `drydock import --format compass` (user-supplied intent, LLM-normalized at import).
   - Auto Generate: `drydock analyze` (auto-generated)
-  - Created: `drydock import --format compass` (user-supplied)
+  - Created: `drydock import --format compass` (user-supplied, normalized at import)
   - Updated: Product owner
 
 - **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`

@@ -3,12 +3,29 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
-from drydock.compass_sources import mark_compass_imported, seed_compass_from_sources
+from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.compass_sources import clear_compass_import_pending, seed_compass_from_sources
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
+from drydock.llm import run_prompt
+from drydock.prompts import load_prompt
+
+_COMPASS_PROMPT_NAME = "import_compass"
+
+
+class _CompletedRun(Protocol):
+    @property
+    def ok(self) -> bool: ...
+
+    text: str
+
+
+_RunnerFn = Callable[..., _CompletedRun]
 
 _CODE_EXTENSIONS: frozenset[str] = frozenset({
     ".py",
@@ -112,25 +129,84 @@ def import_markdown(
     )
 
 
-def import_intent(target: str, source: Path, target_directory: Path) -> ImportResult:
-    """Copy a user intent document to COMPASS.md at the Target root.
+def _assemble_compass_prompt(target: str, intent_text: str) -> str:
+    prompt = load_prompt(_COMPASS_PROMPT_NAME)
+    return "\n".join([
+        prompt.body,
+        "",
+        "# Input Context",
+        "",
+        "## Import job",
+        "",
+        f"- TARGET_NAME: {target}",
+        "",
+        "## INTENT_DOCUMENT (Commander-supplied intent — normalize this)",
+        "",
+        "=== INTENT_DOCUMENT ===",
+        intent_text.strip(),
+        "=== END INTENT_DOCUMENT ===",
+    ])
 
-    The source file is placed as-is; no LLM or template transformation is applied at import time.
-    ``drydock analyze`` receives the imported content and normalizes it once into the COMPASS.md
-    format.
+
+def import_intent(
+    target: str,
+    source: Path,
+    target_directory: Path,
+    *,
+    force: bool = False,
+    model: str | None = None,
+    llm_provider: str | None = None,
+    log_dir: Path | None = None,
+    runner: _RunnerFn | None = None,
+) -> ImportResult:
+    """Normalize a user intent document into COMPASS.md at the Target root.
+
+    This is the only import format that runs an LLM. The source document is reformatted
+    once into the canonical COMPASS.md sections, preserving the Commander's vocabulary;
+    the written file is final and Commander-owned. ``drydock analyze`` never rewrites a
+    populated COMPASS.md, so re-importing with ``--force`` is the way to regenerate it.
     """
     source = source.expanduser().resolve()
     if not source.exists():
         raise SpecificationError(f"Intent source not found: {source}")
     if not source.is_file():
         raise SpecificationError(f"Compass import requires a file: {source}")
+    intent_text = source.read_text(encoding="utf-8")
+    if not intent_text.strip():
+        raise SpecificationError(f"Intent source is empty: {source}")
 
     target_dir = target_directory / target
+    dest = target_dir / "COMPASS.md"
+    if dest.is_file() and not force:
+        raise SpecificationError(
+            f"COMPASS.md already exists: {dest}\n  Use --force to overwrite it."
+        )
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    dest = target_dir / "COMPASS.md"
-    shutil.copyfile(source, dest)
-    mark_compass_imported(target_dir, source)
+    run = runner if runner is not None else run_prompt
+    result = run(
+        _assemble_compass_prompt(target, intent_text),
+        target_dir,
+        llm=llm_provider,
+        model=model,
+        command_name="import_compass",
+        parameters={"target": target, "source": str(source)},
+        log_dir=log_dir,
+        target=target,
+    )
+    if not result.ok or not result.text.strip():
+        raise SpecificationError("Compass normalization failed: LLM execution failed")
+
+    blocks = parse_artifact_blocks(
+        result.text, label="import compass output", allowed_names={"COMPASS.md"}
+    )
+    compass_text = (blocks.get("COMPASS.md") or "").strip()
+    if not compass_text:
+        raise SpecificationError("Compass normalization failed: no COMPASS.md block in LLM output")
+
+    dest.write_text(compass_text + "\n", encoding="utf-8", newline="\n")
+    # The file is normalized and final at import time — no analyze pass is pending.
+    clear_compass_import_pending(target_dir)
 
     return ImportResult(
         blueprint=target,
