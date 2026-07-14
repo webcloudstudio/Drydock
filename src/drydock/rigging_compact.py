@@ -9,6 +9,7 @@ credits.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from collections.abc import Callable
@@ -222,10 +223,41 @@ def _skip_path(source: Path) -> Path:
     return source.with_name(f"{source.stem}{SKIP_SUFFIX}.md")
 
 
+_PROVENANCE_SHA_RE = re.compile(r"sha256=([0-9a-f]{64})")
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _sibling_source_sha(sibling: Path) -> str | None:
+    """The source sha256 recorded in a derivative's provenance line, or None."""
+    with sibling.open(encoding="utf-8") as handle:
+        first_line = handle.readline()
+    match = _PROVENANCE_SHA_RE.search(first_line)
+    return match.group(1) if match else None
+
+
 def _is_stale(source: Path) -> bool:
-    """True when neither the compact nor skip sibling is as new as the source."""
+    """True when no sibling derivative is fresh for the source.
+
+    A sibling is fresh when it is at least as new as the source (mtime fast
+    path) or when its provenance records the source's current content sha256 —
+    a rewrite that did not change the source's bytes never re-triggers
+    compaction.
+    """
+    source_mtime = source.stat().st_mtime
+    source_sha: str | None = None
     for sibling in (_compact_path(source), _skip_path(source)):
-        if sibling.exists() and sibling.stat().st_mtime >= source.stat().st_mtime:
+        if not sibling.exists():
+            continue
+        if sibling.stat().st_mtime >= source_mtime:
+            return False
+        if source_sha is None:
+            source_sha = _sha256_text(source.read_text(encoding="utf-8"))
+        if _sibling_source_sha(sibling) == source_sha:
+            # Refresh mtime so the fast path answers without re-hashing next time.
+            os.utime(sibling)
             return False
     return True
 
@@ -365,9 +397,10 @@ def _extract_compact_error(text: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
-def _provenance(rel_source: str, today: str) -> str:
+def _provenance(rel_source: str, today: str, source_sha: str) -> str:
     return (
-        f"<!-- Compacted from {rel_source} on {today} by drydock rigging compact — "
+        f"<!-- Compacted from {rel_source} sha256={source_sha} on {today} "
+        "by drydock rigging compact — "
         "regenerate with: drydock rigging compact --include-file {rel_source} -->"
     )
 
@@ -377,13 +410,13 @@ def _strip_provenance(text: str) -> str:
     return _LEADING_PROVENANCE.sub("", text.strip()).strip()
 
 
-def _finalize(text: str, *, rel_source: str, today: str) -> str:
+def _finalize(text: str, *, rel_source: str, today: str, source_sha: str) -> str:
     body = text.strip()
     fenced = _OUTER_FENCE.match(body)
     if fenced:
         body = fenced.group(1).strip()
     body = _LEADING_PROVENANCE.sub("", body).strip()
-    return f"{_provenance(rel_source, today)}\n\n{body}\n"
+    return f"{_provenance(rel_source, today, source_sha)}\n\n{body}\n"
 
 
 def compact(
@@ -502,10 +535,11 @@ def compact(
             continue
 
         error_msg = _extract_compact_error(result.text)
+        source_sha = _sha256_text(source_text)
         if error_msg:
             skip_content = (
-                f"<!-- no-surface: {rel_source} on {today} by drydock rigging compact"
-                f" — {error_msg} -->\n"
+                f"<!-- no-surface: {rel_source} sha256={source_sha} on {today} "
+                f"by drydock rigging compact — {error_msg} -->\n"
             )
             skip_path.write_text(skip_content, encoding="utf-8", newline="\n")
             record(
@@ -522,13 +556,20 @@ def compact(
             )
             continue
 
-        finalized = _finalize(result.text, rel_source=rel_source, today=today)
+        finalized = _finalize(
+            result.text, rel_source=rel_source, today=today, source_sha=source_sha
+        )
         if existing_compact is not None and _strip_provenance(finalized) == _strip_provenance(
             existing_compact
         ):
-            # The regenerated body is identical: keep the existing bytes (and their
-            # sha256 provenance) and refresh mtime so staleness stops re-triggering.
-            os.utime(compact_path)
+            # The regenerated body is identical: keep the existing bytes and refresh
+            # mtime so staleness stops re-triggering — unless the old provenance
+            # predates sha recording, in which case write the new header so the
+            # sha gate can answer without an LLM run next time.
+            if _sibling_source_sha(compact_path) != source_sha:
+                compact_path.write_text(finalized, encoding="utf-8", newline="\n")
+            else:
+                os.utime(compact_path)
             record(
                 CompactItem(
                     source,

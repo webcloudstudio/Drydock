@@ -12,6 +12,7 @@ from drydock.errors import SpecificationError
 from drydock.rigging_compact import (
     _extract_compact_error,
     _finalize,
+    _strip_provenance,
     compact,
     discover,
     resolve_role,
@@ -180,29 +181,77 @@ class TestCompact:
         rewritten = compact(name, root / name, force=True, runner=changed)
         assert [i.status for i in rewritten.items] == ["compacted"]
 
-    def test_unchanged_body_keeps_bytes_and_bumps_mtime(self, tmp_path):
+    def test_source_rewrite_with_unchanged_content_skips_via_sha(self, tmp_path):
+        # A source rewritten with identical bytes (mtime bumped, sha unchanged)
+        # must not re-trigger an LLM compaction run.
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
+        compact(name, root / name, runner=fake_runner())
+        source = root / name / "DATABASE.md"
+        future = source.stat().st_mtime + 100
+        source.write_text("db\n", encoding="utf-8")
+        os.utime(source, (future, future))
+
+        calls: list[str] = []
+
+        def counting_runner(prompt, working_directory, **kwargs):
+            calls.append(prompt)
+            return FakeRun()
+
+        again = compact(name, root / name, runner=counting_runner)
+        assert calls == []
+        assert [i.status for i in again.items] == ["skipped-fresh"]
+
+    def test_source_content_change_recompacts(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
+        compact(name, root / name, runner=fake_runner())
+        source = root / name / "DATABASE.md"
+        future = source.stat().st_mtime + 100
+        source.write_text("db changed\n", encoding="utf-8")
+        os.utime(source, (future, future))
+
+        def changed(prompt, wd, **kwargs):
+            return FakeRun(text="# DB — Persistence Contract\n\n### new_store.read\n")
+
+        again = compact(name, root / name, runner=changed)
+        assert [i.status for i in again.items] == ["compacted"]
+
+    def test_unchanged_body_after_source_change_updates_provenance_only(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
         compact(name, root / name, runner=fake_runner())
         compact_file = root / name / "DATABASE_compact.md"
-        original_bytes = compact_file.read_bytes()
-        past = compact_file.stat().st_mtime - 1000
-        os.utime(compact_file, (past, past))
-        # Source newer than compact → regeneration runs; identical body → no rewrite.
+        original = compact_file.read_text(encoding="utf-8")
+        # Source content changes → regeneration runs; identical body → provenance
+        # is rewritten (new source sha) but the body is untouched.
         source = root / name / "DATABASE.md"
-        os.utime(source, (past + 500, past + 500))
+        future = source.stat().st_mtime + 100
+        source.write_text("db changed\n", encoding="utf-8")
+        os.utime(source, (future, future))
 
         result = compact(name, root / name, runner=fake_runner())
         assert [i.status for i in result.items] == ["skipped-unchanged"]
-        assert compact_file.read_bytes() == original_bytes
-        assert compact_file.stat().st_mtime > past + 500
+        updated = compact_file.read_text(encoding="utf-8")
+        assert _strip_provenance(updated) == _strip_provenance(original)
         assert result.exit_code() == 0
+
+        # The recorded sha now matches the rewritten source, so the next run
+        # skips without an LLM call.
+        calls: list[str] = []
+
+        def counting(prompt, wd, **kwargs):
+            calls.append(prompt)
+            return FakeRun()
+
+        again = compact(name, root / name, runner=counting)
+        assert calls == []
+        assert [i.status for i in again.items] == ["skipped-fresh"]
 
     def test_existing_compact_is_not_injected_into_prompt(self, tmp_path):
         name, root = _blueprint(tmp_path, **{"DATABASE.md": "db\n"})
         compact(name, root / name, runner=fake_runner())
-        compact_file = root / name / "DATABASE_compact.md"
-        past = compact_file.stat().st_mtime - 1000
-        os.utime(compact_file, (past, past))
+        source = root / name / "DATABASE.md"
+        future = source.stat().st_mtime + 100
+        source.write_text("db changed\n", encoding="utf-8")
+        os.utime(source, (future, future))
 
         runner = fake_runner()
         compact(name, root / name, runner=runner)
@@ -321,8 +370,8 @@ class TestExtractCompactError:
 class TestFinalize:
     def test_strips_outer_fence_and_dedupes_provenance(self):
         text = "```markdown\n<!-- Compacted from old by old -->\n# T — Usage Surface\nbody\n```"
-        out = _finalize(text, rel_source="DATABASE.md", today="2026-06-22")
-        assert out.startswith("<!-- Compacted from DATABASE.md on 2026-06-22")
+        out = _finalize(text, rel_source="DATABASE.md", today="2026-06-22", source_sha="0" * 64)
+        assert out.startswith(f"<!-- Compacted from DATABASE.md sha256={'0' * 64} on 2026-06-22")
         assert out.count("Compacted from") == 1
         assert "# T — Usage Surface" in out
         assert "```" not in out
