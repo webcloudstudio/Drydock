@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from drydock.compass_sources import (
+    clear_compass_import_pending,
     collect_compass_sources,
+    compass_import_pending,
     is_compass_source,
+    mark_compass_imported,
     seed_compass_from_sources,
 )
 
@@ -59,6 +62,7 @@ def test_seed_compass_from_single_source_copies_content(tmp_path):
 
     assert result == tmp_path / "COMPASS.md"
     assert result.read_text(encoding="utf-8") == "# Intent\n\nExact text.\n"
+    assert compass_import_pending(tmp_path)
 
 
 def test_seed_compass_does_not_overwrite_populated_compass(tmp_path):
@@ -71,6 +75,17 @@ def test_seed_compass_does_not_overwrite_populated_compass(tmp_path):
 
     assert result is None
     assert compass.read_text(encoding="utf-8") == "# COMPASS\n\n## Compass\nExisting.\n"
+
+
+def test_mark_and_clear_compass_import_pending(tmp_path):
+    source = tmp_path / "brief.md"
+    source.write_text("# Intent\n", encoding="utf-8")
+
+    mark_compass_imported(tmp_path, source)
+    assert compass_import_pending(tmp_path)
+
+    clear_compass_import_pending(tmp_path)
+    assert not compass_import_pending(tmp_path)
 
 
 def test_seed_compass_combines_multiple_sources_with_source_comments(tmp_path):

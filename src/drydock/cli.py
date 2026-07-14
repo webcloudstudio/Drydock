@@ -738,8 +738,8 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
             print(f"  SAVED AS  {path}")
         print()
-        print("COMPASS.md placed at Target root. Edit it to match the required format,")
-        print("then run: drydock analyze", args.Target)
+        print("COMPASS.md placed at Target root.")
+        print("Run: drydock analyze", args.Target)
         return 0
 
     raise UsageError(f"Unknown format: {fmt!r}")

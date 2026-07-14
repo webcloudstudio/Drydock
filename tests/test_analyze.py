@@ -613,7 +613,25 @@ class TestAssemblePrompt:
             "body", bp, "2026-06-14", compass_exists=True, input_tokens=("COMPASS.md",)
         )
         assert "COMPASS_EXISTS: true" in result
+        assert "COMPASS_PENDING_FORMAT: false" in result
         assert "## COMPASS.md" not in result
+
+    def test_compass_token_injects_imported_compass_when_pending_format(self, tmp_path):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        result = _assemble_prompt(
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=True,
+            compass_pending_format=True,
+            compass_content="# Intent\n\nRaw intent.\n",
+            input_tokens=("COMPASS.md",),
+        )
+        assert "COMPASS_EXISTS: true" in result
+        assert "COMPASS_PENDING_FORMAT: true" in result
+        assert 'filename="COMPASS.md"' in result
+        assert "Raw intent." in result
 
     def test_identity_fields_in_job_block_when_provided(self, tmp_path):
         bp = tmp_path / "blueprint"
@@ -1120,6 +1138,8 @@ class TestAnalyze:
         assert result.compass_path.exists()
 
     def test_imported_intent_seeds_compass_before_prompt(self, tmp_path):
+        from drydock.compass_sources import compass_import_pending
+
         target_dir = _target(tmp_path)
         sources = target_dir / "blueprint" / "sources"
         sources.mkdir()
@@ -1133,10 +1153,32 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=runner)
 
         assert result.ok
+        assert (target_dir / "COMPASS.md").read_text(encoding="utf-8") == _COMPASS_CONTENT + "\n"
+        assert result.compass_path == target_dir / "COMPASS.md"
+        assert not compass_import_pending(target_dir)
+        assert "COMPASS_EXISTS: true" in received_prompts[0]
+        assert "COMPASS_PENDING_FORMAT: true" in received_prompts[0]
+        assert "Use local first." in received_prompts[0]
+
+    def test_pending_imported_compass_requires_normalized_output(self, tmp_path):
+        from drydock.compass_sources import compass_import_pending, mark_compass_imported
+
+        target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
+        (target_dir / "COMPASS.md").write_text("# Intent\n\nUse local first.\n", encoding="utf-8")
+        mark_compass_imported(target_dir, target_dir / "COMPASS.md")
+
+        result = analyze(
+            "MyTarget",
+            target_dir,
+            runner=lambda *a, **k: FakeRun(text=_VALID_LLM_OUTPUT_NO_COMPASS),
+        )
+
+        assert not result.ok
+        assert result.error == "Imported COMPASS.md was not normalized by analyze output"
         assert (target_dir / "COMPASS.md").read_text(encoding="utf-8") == (
             "# Intent\n\nUse local first.\n"
         )
-        assert "COMPASS_EXISTS: true" in received_prompts[0]
+        assert compass_import_pending(target_dir)
 
     def test_compass_written_when_unpopulated_template(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})

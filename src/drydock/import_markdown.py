@@ -6,7 +6,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.compass_sources import seed_compass_from_sources
+from drydock.compass_sources import mark_compass_imported, seed_compass_from_sources
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
 
@@ -115,9 +115,9 @@ def import_markdown(
 def import_intent(target: str, source: Path, target_directory: Path) -> ImportResult:
     """Copy a user intent document to COMPASS.md at the Target root.
 
-    The source file is placed as-is; no LLM or template transformation is applied.
-    The user is expected to open and edit it (manually or via QuarterDeck) to match
-    the COMPASS.md format before running drydock analyze.
+    The source file is placed as-is; no LLM or template transformation is applied at import time.
+    ``drydock analyze`` receives the imported content and normalizes it once into the COMPASS.md
+    format.
     """
     source = source.expanduser().resolve()
     if not source.exists():
@@ -130,6 +130,7 @@ def import_intent(target: str, source: Path, target_directory: Path) -> ImportRe
 
     dest = target_dir / "COMPASS.md"
     shutil.copyfile(source, dest)
+    mark_compass_imported(target_dir, source)
 
     return ImportResult(
         blueprint=target,

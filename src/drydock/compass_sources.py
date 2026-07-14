@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 _INTENT_FILENAMES = frozenset({"compass.md", "intent.md", "constitution.md"})
+_COMPASS_STATE_FILENAME = ".drydock-compass"
 _SELF_IDENTIFY_RE = re.compile(
     r"(?im)"
     r"("
@@ -16,6 +17,36 @@ _SELF_IDENTIFY_RE = re.compile(
     r"\bauthor'?s?\s+intent\b"
     r")"
 )
+
+
+def _state_path(target_dir: Path) -> Path:
+    return target_dir / _COMPASS_STATE_FILENAME
+
+
+def mark_compass_imported(target_dir: Path, source: Path | None = None) -> None:
+    """Mark target COMPASS.md as imported raw material awaiting analyze normalization."""
+    lines = ["state: imported"]
+    if source is not None:
+        lines.append(f"source: {source}")
+    _state_path(target_dir).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
+def compass_import_pending(target_dir: Path) -> bool:
+    """Return True when COMPASS.md was imported and has not yet been normalized."""
+    path = _state_path(target_dir)
+    if not path.is_file():
+        return False
+    return any(
+        line.strip() == "state: imported" for line in path.read_text(encoding="utf-8").splitlines()
+    )
+
+
+def clear_compass_import_pending(target_dir: Path) -> None:
+    """Clear normalize-once state after analyze writes a formatted COMPASS.md."""
+    try:
+        _state_path(target_dir).unlink()
+    except FileNotFoundError:
+        pass
 
 
 def is_compass_source(path: Path) -> bool:
@@ -73,4 +104,5 @@ def seed_compass_from_sources(
 
     compass_path.parent.mkdir(parents=True, exist_ok=True)
     compass_path.write_text("\n\n".join(chunks) + "\n", encoding="utf-8", newline="\n")
+    mark_compass_imported(target_dir, sources[0])
     return compass_path

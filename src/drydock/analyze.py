@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.artifact_blocks import parse_artifact_blocks
-from drydock.compass_sources import seed_compass_from_sources
+from drydock.compass_sources import (
+    clear_compass_import_pending,
+    compass_import_pending,
+    seed_compass_from_sources,
+)
 from drydock.errors import DrydockError, SpecificationError
 from drydock.exclude_files import (
     append_suggested_exclusions,
@@ -287,6 +291,8 @@ def _assemble_prompt(
     *,
     questionnaires_dir: Path | None = None,
     compass_exists: bool,
+    compass_pending_format: bool = False,
+    compass_content: str | None = None,
     feedback_text: str | None = None,
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
@@ -298,6 +304,8 @@ def _assemble_prompt(
         today,
         questionnaires_dir=questionnaires_dir,
         compass_exists=compass_exists,
+        compass_pending_format=compass_pending_format,
+        compass_content=compass_content,
         feedback_text=feedback_text,
         blockers_text=blockers_text,
         input_tokens=input_tokens,
@@ -313,6 +321,8 @@ def _assemble_prompt_assembly(
     *,
     questionnaires_dir: Path | None = None,
     compass_exists: bool,
+    compass_pending_format: bool = False,
+    compass_content: str | None = None,
     feedback_text: str | None = None,
     blockers_text: str | None = None,
     input_tokens: tuple[str, ...] | None = None,
@@ -335,6 +345,7 @@ def _assemble_prompt_assembly(
                 f"- BLUEPRINT_PATH: {blueprint_dir}",
                 f"- DATE: {today}",
                 f"- COMPASS_EXISTS: {'true' if compass_exists else 'false'}",
+                f"- COMPASS_PENDING_FORMAT: {'true' if compass_pending_format else 'false'}",
                 f"- DISPLAY_NAME: {_display_name}",
                 f"- SHORT_DESCRIPTION: {_short_desc}",
                 "",
@@ -351,6 +362,16 @@ def _assemble_prompt_assembly(
             content=feedback_text.strip(),
             content_role="analyze feedback",
             path=blueprint_dir.parent / _FEEDBACK_FILENAME,
+        )
+
+    def compass_parts() -> list:
+        if not (compass_pending_format and compass_content and compass_content.strip()):
+            return []
+        return _managed_doc_parts(
+            filename="COMPASS.md",
+            content=compass_content.strip(),
+            content_role="imported compass pending normalization",
+            path=blueprint_dir.parent / "COMPASS.md",
         )
 
     def blocker_parts() -> list:
@@ -441,6 +462,7 @@ def _assemble_prompt_assembly(
         return parts_list
 
     renderers: dict[str, Callable[[], list]] = {
+        "COMPASS.md": compass_parts,
         "ANALYZE_COMPASS.md": feedback_parts,
         "BLOCKERS.md": blocker_parts,
         "EXISTING_SPIKES": discovery_parts,
@@ -714,7 +736,11 @@ def analyze(
     )
 
     # COMPASS is (re)written when absent or when the existing file is an unpopulated template.
+    compass_pending = compass_import_pending(target_dir)
     compass_exists = compass_target.is_file() and not _is_compass_unpopulated(compass_target)
+    compass_content = (
+        compass_target.read_text(encoding="utf-8") if compass_target.is_file() else None
+    )
 
     # Inject prior blocker answers if the Commander has filled in BLOCKERS.md.
     blockers_md_path = target_dir / "BLOCKERS.md"
@@ -744,6 +770,8 @@ def analyze(
         today,
         questionnaires_dir=questionnaires_dir,
         compass_exists=compass_exists,
+        compass_pending_format=compass_pending,
+        compass_content=compass_content,
         feedback_text=feedback_for_prompt,
         blockers_text=blockers_text,
         input_tokens=prompt.input_tokens,
@@ -805,6 +833,9 @@ def analyze(
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
 
+    if compass_pending and not compass_text:
+        return _fail("Imported COMPASS.md was not normalized by analyze output")
+
     def _safe_int(key: str) -> int:
         try:
             return int(summary.get(key, "0"))
@@ -842,8 +873,9 @@ def analyze(
     soundings_path.write_text(soundings_text + "\n", encoding="utf-8", newline="\n")
 
     written_compass: Path | None = None
-    if compass_text and not compass_exists:
+    if compass_text and (not compass_exists or compass_pending):
         compass_target.write_text(compass_text + "\n", encoding="utf-8", newline="\n")
+        clear_compass_import_pending(target_dir)
         written_compass = compass_target
 
     discovery_paths: list[Path] = []

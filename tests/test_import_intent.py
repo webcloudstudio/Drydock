@@ -7,6 +7,7 @@ import sys
 
 import pytest
 
+from drydock.compass_sources import compass_import_pending
 from drydock.errors import SpecificationError
 from drydock.import_markdown import import_intent
 
@@ -22,6 +23,7 @@ class TestImportIntent:
         dest = result.blueprint_dir / "COMPASS.md"
         assert dest.exists()
         assert dest.read_text(encoding="utf-8") == "# My Project\nThis is the intent."
+        assert compass_import_pending(result.blueprint_dir)
 
     def test_result_has_correct_fields(self, tmp_path):
         source = tmp_path / "brief.md"
@@ -107,6 +109,7 @@ class TestImportIntentCli:
         )
         assert r.returncode == 0
         assert "COMPASS.md" in r.stdout
+        assert "Edit it to match the required format" not in r.stdout
 
     def test_compass_format_accepted(self, tmp_path):
         source = tmp_path / "brief.md"

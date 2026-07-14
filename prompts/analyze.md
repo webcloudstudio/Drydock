@@ -79,8 +79,10 @@ questionnaires have already decided, nor for anything you can derive yourself.
   present. Treat questions with non-empty `answer` fields as settled decisions. Do not re-emit an
   existing questionnaire file, do not ask duplicate or reworded versions of existing unanswered
   questions, and do not move questionnaire questions into `ANALYSIS.md`.
-- **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root; omit the `=== COMPASS.md ===`
-  block. `false`: write it.
+- **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root. `false`: write it.
+- **COMPASS_PENDING_FORMAT** — `true`: COMPASS.md was imported as raw Commander intent and is
+  injected as an input block. Rewrite it into the canonical COMPASS.md format and emit the
+  `=== COMPASS.md ===` block. `false`: if `COMPASS_EXISTS: true`, omit the block.
 - **DISPLAY_NAME** — current `display_name` value from METADATA.md, or `(blank)` when not yet set.
 - **SHORT_DESCRIPTION** — current `short_description` value from METADATA.md, or `(blank)` when not yet set.
 - **Rigging catalog** — a filename list (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, excluding
@@ -200,7 +202,8 @@ question in `ANALYSIS.md`.
   unanswered questionnaire.
 
 **9. Emit all output blocks.** See Output Format below. Emit the `BLOCKERS.md` block only when
-blockers exist; emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
+blockers exist; emit the `COMPASS.md` block when `COMPASS_EXISTS: false` or
+`COMPASS_PENDING_FORMAT: true`.
 
 ---
 
@@ -274,8 +277,13 @@ each item; the next `drydock analyze` run reads the answers.
 === END BLOCKERS.md ===
 ```
 
-**COMPASS.md block (conditional):** Emit only when `COMPASS_EXISTS: false` in the job block.
-If `COMPASS_EXISTS: true`, omit this block entirely.
+**COMPASS.md block (conditional):** Emit when `COMPASS_EXISTS: false` or
+`COMPASS_PENDING_FORMAT: true` in the job block. If `COMPASS_EXISTS: true` and
+`COMPASS_PENDING_FORMAT: false`, omit this block entirely.
+
+When `COMPASS_PENDING_FORMAT: true`, preserve the imported Commander intent, constraints, and
+guardrails, but normalize them into the canonical sections below. Do not weaken, replace, or
+summarize away specific strategic direction.
 
 The COMPASS.md is injected into **every build step** as orientation for the building agent. It must
 be short (30–40 lines maximum), synthesized, and written for an agent about to write code — not for
@@ -421,7 +429,8 @@ list their names only.
 
 - Emit **only** the `=== ... ===` / `=== END ... ===` blocks. No text outside them — no preamble, no summary, no prose, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
-- Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false`.
+- Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false` or
+  `COMPASS_PENDING_FORMAT: true`.
 - Emit `discovery-identity.json` only when `DISPLAY_NAME` or `SHORT_DESCRIPTION` is `(blank)` in the job block. When both are already set, omit it entirely.
 - COMPASS.md must be ≤40 lines. It is injected into every build step — brevity is a hard requirement.
 - COMPASS.md is orientation for a build agent, not project documentation. Never reproduce source
