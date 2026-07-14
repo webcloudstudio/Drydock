@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, block types, field semantics, lifecycle states, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20260714 V9
+version: 20260714 V10
 ---
 
 ## Overview
@@ -67,6 +67,11 @@ atomic build primitive. Context economy comes from grouping, not from bundling f
 story: a `feature` block builds as one combined prompt with the shared stack deduped across its
 stories, so atomic stories cost no extra context while preserving per-file build state,
 incremental rebuild via `applied_specs`, failure attribution, and evidence.
+
+Acceptance is mandatory at both levels: every story is gated by at least one child `ac` block,
+and the Blueprint file it implements carries concrete `Programmatic Acceptance` assertions (or an
+inline-justified `- None.` when the item has no programmatic surface). A plan that emits a story
+missing either gate is rejected.
 
 ```markdown
 ## story N: {Name}

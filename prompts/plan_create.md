@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260714 V8
+version: 20260714 V9
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -340,10 +340,18 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - Spikes precede dependent stories and appear in those stories' `depends:`.
 
 **Acceptance check blocks**
-- Store durable acceptance in the implemented Blueprint specs, not in `MANIFEST.md`.
-- Do not emit child `ac` blocks for checks that can live in `Programmatic Acceptance`.
-- Use feature-level or story-level `ac` blocks only for exceptional build orchestration checks that
-  cannot be represented in the Blueprint spec.
+- Acceptance is mandatory at both levels, and a story missing either is rejected:
+  - every story has at least one child `ac` block gating its build, and
+  - the spec it implements carries concrete `Programmatic Acceptance` assertions (or an
+    inline-justified `- None.` when the item genuinely has no programmatic surface).
+- Durable behavioral acceptance lives in the implemented spec's `Programmatic Acceptance`: a
+  SCREEN spec's assertions call every route the screen provides and consumes; a FEATURE spec's
+  assertions exercise every route, interface, read, and write it provides.
+- The child `ac` block is the build gate: a smoke check that runs the project test suite, or a
+  sharper story-scoped command when one exists. Do not duplicate individual `Programmatic
+  Acceptance` assertions as `ac` blocks.
+- Feature-level `ac` blocks are optional group gates for orchestration checks that cannot be
+  represented in a Blueprint spec.
 
 **Ordering**
 - Emit blocks in dependency order: every `depends:` id appears above the block that names it, and no
@@ -443,6 +451,8 @@ Required action:
   authored spec file that already exists in the input Blueprint.
 - Stories and Blueprint spec files are one-to-one: each story's `implements:` names exactly one
   spec file, and every authored spec file is implemented by exactly one story.
+- Every story has at least one child `ac` block, and its implemented spec carries concrete
+  `Programmatic Acceptance` assertions or an inline-justified `- None.`.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
   header table and end with `## Programmatic Acceptance`, `## User Acceptance`, `## Guardrails`,

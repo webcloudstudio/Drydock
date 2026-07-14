@@ -323,7 +323,8 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "## Trigger\n\n"
         "- Preserve this feature body.\n\n"
         "## Programmatic Acceptance\n\n"
-        "- assert the status route responds with HTTP 200.\n",
+        "- assert the status route responds with HTTP 200.\n"
+        "- assert the status payload names the current build state.\n",
         encoding="utf-8",
     )
     prompt_texts: list[str] = []
@@ -475,7 +476,9 @@ def test_conform_authors_acceptance_for_empty_imported_spec(tmp_path):
 def test_conform_skips_already_conformant_spec(tmp_path):
     conformant_feature = _FEATURE_EMPTY_ACCEPTANCE.replace(
         "## Programmatic Acceptance\n\n- None.\n",
-        "## Programmatic Acceptance\n\n- assert the status route responds with HTTP 200.\n",
+        "## Programmatic Acceptance\n\n"
+        "- assert the status route responds with HTTP 200.\n"
+        "- assert the status payload names the current build state.\n",
     )
     _seed_conform_target(tmp_path, feature_text=conformant_feature)
     seen: list[str] = []
@@ -502,15 +505,16 @@ def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
     )
     block = f"=== FEATURE-Status.md ===\n{still_empty}\n=== END FEATURE-Status.md ===\n"
 
-    result = create_plan(
-        "Example",
-        "Example",
-        tmp_path,
-        runner=_conform_runner(block),
-    )
+    # Acceptance is mandatory: a surface-declaring spec still lacking assertions after
+    # a failed conform pass aborts the plan instead of writing with a warning.
+    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            runner=_conform_runner(block),
+        )
 
-    assert result.conformed_files == ()
-    assert any("still lacks Programmatic Acceptance" in w for w in result.warnings)
     # Original imported content is left intact when conform fails to author acceptance.
     assert "Verify status prints the build state." in feature.read_text(encoding="utf-8")
 
@@ -519,17 +523,19 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
     target_dir, feature = _seed_conform_target(tmp_path, feature_text=_FEATURE_EMPTY_ACCEPTANCE)
     seen: list[str] = []
 
-    result = create_plan(
-        "Example",
-        "Example",
-        tmp_path,
-        conform=False,
-        runner=_conform_runner("unused", seen=seen),
-    )
+    # Conform is suppressed, so the surface-declaring spec keeps its bare `- None.`
+    # acceptance and the mandatory-acceptance gate aborts the plan.
+    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            conform=False,
+            runner=_conform_runner("unused", seen=seen),
+        )
 
     assert seen == []  # conform pass suppressed
-    assert result.conformed_files == ()
-    # Normalization still runs, so the section exists but stays the bare skeleton.
+    # No conform pass ran, so no assertions were authored into the spec.
     assert "assert the status command" not in feature.read_text(encoding="utf-8")
 
 
@@ -1036,10 +1042,10 @@ def test_story_without_acceptance_is_fatal(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
 
 
-def test_missing_programmatic_acceptance_warns(tmp_path):
+def test_missing_programmatic_acceptance_is_fatal(tmp_path):
     _make_target(tmp_path)
     # A programmatic-surface spec (Provides: drydock status) shipped with bare `- None.`
-    # acceptance is a soft warning, not fatal — the plan still writes.
+    # acceptance is a hard emission gate — the plan must not write.
     bare = _SPEC_HEADER.replace(
         "- assert the {name} route responds with HTTP 200.\n"
         "- assert the {name} handler returns the documented payload keys.",
@@ -1053,9 +1059,8 @@ def test_missing_programmatic_acceptance_warns(tmp_path):
         f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
     )
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
-
-    assert any("Programmatic Acceptance assertion" in w for w in result.warnings)
+    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
 
 def test_inline_justified_none_acceptance_does_not_warn(tmp_path):

@@ -1360,9 +1360,10 @@ def _integrity_check(
         if not has_ac:
             fatal.append(f"{block.block_id}: story has no acceptance check")
 
-        # Test-driven-acceptance coverage — a soft warning. A story whose implemented
-        # specs declare a programmatic surface should carry several concrete Python
-        # assertions unless an inline-justified `- None.` explains the absence.
+        # Test-driven-acceptance coverage — a hard emission gate, like the child-ac
+        # gate above. A story whose implemented specs declare a programmatic surface
+        # must carry several concrete Python assertions unless an inline-justified
+        # `- None.` explains the absence.
         surface = False
         justified = False
         assertions = 0
@@ -1376,7 +1377,7 @@ def _integrity_check(
             assertions += count
             justified = justified or none_reason
         if surface and not justified and assertions < _MIN_ASSERTIONS_PER_STORY:
-            warnings.append(
+            fatal.append(
                 f"{block.block_id}: {assertions} Programmatic Acceptance assertion(s) across "
                 "its implemented spec(s), which declare a programmatic surface; author several "
                 "concrete Python assertions (test-driven acceptance) or justify `- None.` inline"
