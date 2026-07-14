@@ -1022,7 +1022,9 @@ state: pending
 
         plan = parse_build_plan(target_dir / "MANIFEST.md")
         assert "DATABASE.md" in plan.applied_specs
-        assert "ARCHITECTURE.md" in plan.applied_specs
+        # Context always prefers the compact derivative; the applied record names
+        # the file that actually entered the prompt.
+        assert "ARCHITECTURE_compact.md" in plan.applied_specs
         assert "README.md" not in plan.applied_specs
 
     def test_changed_previously_applied_spec_blocks_before_runner(self, tmp_path):

@@ -174,6 +174,14 @@ def _compact_sibling(name: str) -> str:
     return name
 
 
+def _canonical_spec_name(name: str) -> str:
+    """Map a compact-derivative name back to its source name; identity otherwise."""
+    for suffix in ("_compact.skip.md", "_compact.md"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)] + ".md"
+    return name
+
+
 def _implements(block: PlanBlock) -> tuple[str, ...]:
     value = block.fields.get("implements", ())
     if isinstance(value, tuple):
@@ -268,17 +276,29 @@ def normalize_context_names(block: PlanBlock, blueprint_dir: Path) -> tuple[str,
 
 
 def required_auto_compact_sources(block: PlanBlock, blueprint_dir: Path) -> tuple[Path, ...]:
-    """Return source spec files whose compact derivatives must be fresh for this step."""
+    """Return source spec files whose compact derivatives should be fresh for this step.
+
+    ARCHITECTURE/DATABASE remain the required pair. Every other Blueprint file named
+    in ``context:`` is an optional compaction source: the assembler prefers its
+    ``*_compact.md`` sibling and falls through to the full file, so a missing or
+    no-surface derivative never blocks. Context entries whose source is also in
+    this block's ``implements:`` are excluded — the step already carries the full file.
+    """
     required: list[Path] = []
     implements = _implements(block)
+    implements_canonical = {_canonical_spec_name(name) for name in implements}
     effective_context = normalize_context_names(block, blueprint_dir)
-    if "ARCHITECTURE.md" in implements or "ARCHITECTURE_compact.md" in effective_context:
-        path = blueprint_dir / "ARCHITECTURE.md"
-        if path.is_file():
-            required.append(path)
-    if "DATABASE.md" in implements or "DATABASE_compact.md" in effective_context:
-        path = blueprint_dir / "DATABASE.md"
-        if path.is_file():
+    context_canonical = [_canonical_spec_name(name) for name in effective_context]
+    for name in ("ARCHITECTURE.md", "DATABASE.md"):
+        if name in implements or name in context_canonical:
+            path = blueprint_dir / name
+            if path.is_file():
+                required.append(path)
+    for canonical in context_canonical:
+        if canonical in ("ARCHITECTURE.md", "DATABASE.md") or canonical in implements_canonical:
+            continue
+        path = blueprint_dir / canonical
+        if path.is_file() and path not in required:
             required.append(path)
     return tuple(required)
 
@@ -354,15 +374,33 @@ def assemble_step(
     step. When ``None``, no compact substitution is applied. The caller —
     either ``assemble_steps`` (forward-scan) or ``build_run`` (applied registry)
     — supplies the set.
+
+    The ``context`` role always prefers each file's ``*_compact.md`` sibling and
+    falls through to the full file, independent of ``compact_stack``. A context
+    entry whose source file is also in this block's ``implements:`` is dropped —
+    the step already carries the authoritative full file.
     """
     files: list[StepFile] = []
+    implements_canonical = {
+        _canonical_spec_name(name)
+        for name in _role_names(block, "implements", blueprint_dir=roots.blueprint_dir)
+    }
     for role in _ROLE_ORDER:
         names: list[str] = []
-        for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
-            if name not in names:
-                names.append(name)
+        if role == "context":
+            for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
+                canonical = _canonical_spec_name(name)
+                if canonical in implements_canonical or canonical in names:
+                    continue
+                names.append(canonical)
+        else:
+            for name in _role_names(block, role, blueprint_dir=roots.blueprint_dir):
+                if name not in names:
+                    names.append(name)
         for name in names:
-            if compact_stack is not None and name in compact_stack:
+            if role == "context":
+                files.append(_measure_compact(name, role, roots.roots_for(role)))
+            elif compact_stack is not None and name in compact_stack:
                 files.append(_measure_compact(name, role, roots.roots_for(role)))
             else:
                 files.append(_measure(name, role, roots.roots_for(role)))

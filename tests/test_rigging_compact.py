@@ -15,6 +15,7 @@ from drydock.rigging_compact import (
     _strip_provenance,
     compact,
     discover,
+    ensure_compact_files,
     resolve_role,
 )
 
@@ -375,3 +376,39 @@ class TestFinalize:
         assert out.count("Compacted from") == 1
         assert "# T — Usage Surface" in out
         assert "```" not in out
+
+
+class TestEnsureCompactFiles:
+    def test_no_surface_is_fatal_for_required_sources(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"DATABASE.md": "prose only\n"})
+        with pytest.raises(SpecificationError, match="Auto-compaction failed for DATABASE.md"):
+            ensure_compact_files(
+                root / name,
+                sources=[root / name / "DATABASE.md"],
+                reason="test",
+                runner=fake_runner_no_surface(),
+            )
+
+    def test_no_surface_is_non_fatal_for_optional_context_sources(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"SCREEN-UI.md": "layout prose only\n"})
+        result = ensure_compact_files(
+            root / name,
+            sources=[root / name / "SCREEN-UI.md"],
+            reason="test",
+            runner=fake_runner_no_surface(),
+        )
+        assert result.items[0].status == "no-surface"
+        # skip marker written so the source is not re-attempted every run
+        assert (root / name / "SCREEN-UI_compact.skip.md").is_file()
+        assert not (root / name / "SCREEN-UI_compact.md").exists()
+
+    def test_optional_source_with_surface_gets_compact(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"FEATURE-X.md": "# X\nGET /x\n"})
+        result = ensure_compact_files(
+            root / name,
+            sources=[root / name / "FEATURE-X.md"],
+            reason="test",
+            runner=fake_runner(),
+        )
+        assert result.items[0].status == "compacted"
+        assert (root / name / "FEATURE-X_compact.md").is_file()

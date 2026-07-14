@@ -15,6 +15,7 @@ from drydock.build import (
     band_for,
     band_of,
     group_steps,
+    required_auto_compact_sources,
 )
 from drydock.build_plan import parse_build_plan
 
@@ -379,3 +380,109 @@ state: pending
         s2_rules = next(f for f in steps[1].files if "CLAUDE_RULES" in f.name)
         assert s2_rules.name == "CLAUDE_RULES_compact.md"
         assert s2_rules.compact_substituted is True
+
+
+_CONTEXT_COMPACT_MANIFEST = """# MANIFEST: Demo
+state: approved
+
+## story 1: One
+id: s1
+implements: FEATURE-A.md
+context: FEATURE-B.md, FEATURE-C.md
+state: pending
+
+## story 2: Two
+id: s2
+implements: FEATURE-B.md
+context: FEATURE-B.md, FEATURE-B_compact.md, FEATURE-A.md
+state: pending
+
+## story 3: Three
+id: s3
+implements: FEATURE-C.md
+context: FEATURE-B_compact.md, README.md
+state: pending
+"""
+
+
+class TestContextCompactSubstitution:
+    def _roots(self, tmp_path: Path) -> StepRoots:
+        target = tmp_path / "target"
+        blueprint = target / "blueprint"
+        stack = tmp_path / "rigging" / "stack"
+        rigging = tmp_path / "rigging"
+        for d in (blueprint, stack, rigging):
+            d.mkdir(parents=True, exist_ok=True)
+        (target / "COMPASS.md").write_text("compass" * 10, encoding="utf-8")
+        (target / "README.md").write_text("readme" * 10, encoding="utf-8")
+        (blueprint / "FEATURE-A.md").write_text("feature-a" * 100, encoding="utf-8")
+        (blueprint / "FEATURE-B.md").write_text("feature-b" * 100, encoding="utf-8")
+        (blueprint / "FEATURE-B_compact.md").write_text("b-compact" * 10, encoding="utf-8")
+        (blueprint / "FEATURE-C.md").write_text("feature-c" * 100, encoding="utf-8")
+        # no FEATURE-C_compact.md — context falls through to the full file
+        return StepRoots(
+            target_dir=target, blueprint_dir=blueprint, stack_dir=stack, rigging_dir=rigging
+        )
+
+    def _plan(self, tmp_path: Path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_CONTEXT_COMPACT_MANIFEST, encoding="utf-8")
+        return parse_build_plan(path)
+
+    def test_context_prefers_compact_sibling_without_compact_stack(self, tmp_path):
+        step = assemble_step(self._plan(tmp_path).by_id()["s1"], self._roots(tmp_path))
+        b_file = next(f for f in step.files if f.role == "context" and "FEATURE-B" in f.name)
+        assert b_file.name == "FEATURE-B_compact.md"
+        assert b_file.compact_substituted is True
+
+    def test_context_falls_through_to_full_file_when_no_sibling(self, tmp_path):
+        step = assemble_step(self._plan(tmp_path).by_id()["s1"], self._roots(tmp_path))
+        c_file = next(f for f in step.files if f.role == "context" and "FEATURE-C" in f.name)
+        assert c_file.name == "FEATURE-C.md"
+        assert c_file.compact_substituted is False
+
+    def test_context_entry_dropped_when_source_is_in_implements(self, tmp_path):
+        # s2 implements FEATURE-B.md; both FEATURE-B.md and FEATURE-B_compact.md
+        # context entries collapse away, and the duplicate pair dedups to nothing.
+        step = assemble_step(self._plan(tmp_path).by_id()["s2"], self._roots(tmp_path))
+        context_names = [f.name for f in step.files if f.role == "context"]
+        assert context_names == ["FEATURE-A.md"]
+        implements_names = [f.name for f in step.files if f.role == "implements"]
+        assert implements_names == ["FEATURE-B.md"]
+
+    def test_authored_compact_context_name_resolves_compact(self, tmp_path):
+        step = assemble_step(self._plan(tmp_path).by_id()["s3"], self._roots(tmp_path))
+        b_file = next(f for f in step.files if f.role == "context" and "FEATURE-B" in f.name)
+        assert b_file.name == "FEATURE-B_compact.md"
+        # target-dir context files resolve normally
+        readme = next(f for f in step.files if f.role == "context" and f.name == "README.md")
+        assert readme.missing is False
+
+    def test_required_auto_compact_sources_include_context_specs(self, tmp_path):
+        plan = self._plan(tmp_path)
+        roots = self._roots(tmp_path)
+        s1 = required_auto_compact_sources(plan.by_id()["s1"], roots.blueprint_dir)
+        assert [p.name for p in s1] == ["FEATURE-B.md", "FEATURE-C.md"]
+        # s2: FEATURE-B is in implements → excluded; FEATURE-A remains
+        s2 = required_auto_compact_sources(plan.by_id()["s2"], roots.blueprint_dir)
+        assert [p.name for p in s2] == ["FEATURE-A.md"]
+        # s3: README.md is not a Blueprint file → excluded
+        s3 = required_auto_compact_sources(plan.by_id()["s3"], roots.blueprint_dir)
+        assert [p.name for p in s3] == ["FEATURE-B.md"]
+
+    def test_required_auto_compact_sources_canonicalize_architecture_context(self, tmp_path):
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## spike 1: Question
+id: spike-q
+context: ARCHITECTURE.md
+state: pending
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+        roots = self._roots(tmp_path)
+        (roots.blueprint_dir / "ARCHITECTURE.md").write_text("arch" * 50, encoding="utf-8")
+        sources = required_auto_compact_sources(plan.by_id()["spike-q"], roots.blueprint_dir)
+        assert [p.name for p in sources] == ["ARCHITECTURE.md"]

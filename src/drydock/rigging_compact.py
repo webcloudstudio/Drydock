@@ -36,6 +36,10 @@ COMPACT_SUFFIX = "_compact"
 # Files always expected to carry a compact derivative inside a Blueprint.
 REQUIRED_PAIRS: tuple[str, ...] = ("DATABASE.md", "BUSINESS_RULES.md")
 
+# Sources whose failed or no-surface compaction blocks the caller; every other
+# source is optional and the assembler falls through to the full file.
+_REQUIRED_SOURCES = frozenset({"ARCHITECTURE.md", "DATABASE.md", *REQUIRED_PAIRS})
+
 
 @dataclass(frozen=True)
 class CompactRole:
@@ -164,9 +168,13 @@ def ensure_compact_files(
 ) -> CompactResult:
     """Ensure explicit source files have fresh compact derivatives.
 
-    Missing files are ignored. ARCHITECTURE.md and DATABASE.md are treated as required:
-    a no-surface or failed compaction raises ``SpecificationError`` because downstream
-    build context depends on them.
+    Missing files are ignored. ARCHITECTURE.md, DATABASE.md, and the required pairs
+    are treated as required: a no-surface or failed compaction raises
+    ``SpecificationError`` because downstream build context depends on them. All
+    other sources (context-referenced feature and screen specifications) are
+    optional: a no-surface classification writes the ``*_compact.skip.md`` marker
+    and a failure is reported, but neither blocks — the assembler falls through to
+    the full file when no compact derivative exists.
     """
     explicit = [path for path in sources if path.is_file()]
     if not explicit:
@@ -199,7 +207,7 @@ def ensure_compact_files(
             detail = f"{item.source.name} failed: {item.error}"
         if on_text is not None:
             on_text(f"AUTO-COMPACT: {detail} [{role}] ({reason})")
-        if item.status in {"no-surface", "failed"}:
+        if item.status in {"no-surface", "failed"} and item.source.name in _REQUIRED_SOURCES:
             raise SpecificationError(
                 f"Auto-compaction failed for {item.source.name}: {item.error or item.status}"
             )
