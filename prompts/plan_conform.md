@@ -1,7 +1,7 @@
 ---
 name: plan_conform
 description: Conform one imported or legacy typed Blueprint spec into Drydock format — preserve its substance, restructure into the standard header plus four terminal sections, and author test-driven Programmatic Acceptance assertions.
-version: 20260706 V1
+version: 20260714 V2
 intent: Act as an Agile Development Team conforming a single imported specification into Drydock format. Keep the spec's substance intact, restructure it into the standard typed header and the four terminal sections, and author several concrete Python-testable Programmatic Acceptance assertions from the spec body and any imported test material.
 command: drydock plan create
 model: sonnet
@@ -69,6 +69,9 @@ This is the point of the conform pass. Treat it as writing the failing tests fir
   reachable and returns the expected status; for a record, that it is written with the expected
   keys; for an invariant, that it holds; for a guardrail, that it rejects; for an error path, that
   the expected error is raised. Do not assume these are obvious — write them.
+- Route coverage is enforced downstream: a SCREEN spec's assertions must literally call every
+  route in its `Provides` and `Consumes`; a FEATURE spec's assertions must exercise every route it
+  provides, naming each literal route path in at least one assertion.
 - Imported test material is **input, not output**. If the source carries a `## Test` section, test
   scripts, or embedded tests, review it and re-express the intended checks as Drydock Programmatic
   Acceptance assertions. Do not trust its format, copy it verbatim, or point at an external script

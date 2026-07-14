@@ -1085,6 +1085,79 @@ def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
     assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
 
 
+def _screen_output(pa_lines: str, *, provides: str = "GET /welcome", consumes: str = "") -> str:
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    screen = (
+        "# SCREEN: Welcome\n\n"
+        "| Field       | Value |\n|-------------|-------|\n"
+        "| Version     | 20260714 V1 |\n| Description | Welcome screen. |\n"
+        "| Depends On  | |\n"
+        f"| Provides    | {provides} |\n"
+        f"| Consumes    | {consumes} |\n"
+        "| Phase       | 1 |\n\n"
+        "## Layout\n\n- Welcome body.\n\n"
+        f"## Programmatic Acceptance\n\n{pa_lines}\n\n"
+        "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n"
+        "## Open Questions\n\n- None.\n"
+    )
+    manifest = _manifest(implements="SCREEN-Welcome.md")
+    return (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== SCREEN-Welcome.md ===\n{screen}\n=== END SCREEN-Welcome.md ===\n"
+        f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"
+    )
+
+
+def test_screen_route_not_called_in_acceptance_is_fatal(tmp_path):
+    _make_target(tmp_path)
+    out = _screen_output(
+        "- `assert client.get('/other').status_code == 200`\n"
+        "- `assert 'Welcome' in client.get('/other').text`",
+    )
+    with pytest.raises(SpecificationError, match="never calls route"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+
+def test_screen_consumed_route_not_called_in_acceptance_is_fatal(tmp_path):
+    _make_target(tmp_path)
+    out = _screen_output(
+        "- `assert client.get('/welcome').status_code == 200`\n"
+        "- `assert 'Welcome' in client.get('/welcome').text`",
+        consumes="GET /api/welcome-summary",
+    )
+    with pytest.raises(SpecificationError, match="never calls route"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+
+def test_screen_routes_called_in_acceptance_passes(tmp_path):
+    _make_target(tmp_path)
+    out = _screen_output(
+        "- `assert client.get('/welcome').status_code == 200`\n"
+        "- `assert client.get('/api/welcome-summary').status_code == 200`",
+        consumes="GET /api/welcome-summary",
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    assert not any("route" in w for w in result.warnings)
+
+
+def test_feature_route_not_named_in_acceptance_warns(tmp_path):
+    _make_target(tmp_path)
+    feature = _SPEC_HEADER.replace(
+        "| Provides    | drydock status |", "| Provides    | POST /catalog |"
+    )
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = feature.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    )
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    assert any("does not name route" in w and "POST /catalog" in w for w in result.warnings)
+
+
 def test_empty_initial_frontier_warns(tmp_path):
     _make_target(tmp_path)
     # The only empty-depends block is the (non-executable) feature; the sole story

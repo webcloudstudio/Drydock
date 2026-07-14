@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260714 V9
+version: 20260714 V10
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -161,6 +161,10 @@ Rules:
   record is written with the expected keys, an invariant holds, a guardrail rejects, an error type
   is raised. Cover the ordinary "the thing exists and responds" checks explicitly (for a route,
   that it is reachable and returns the expected status) — do not assume they are obvious.
+- Route coverage is enforced: a SCREEN spec's assertions must literally call every route in its
+  `Provides` and `Consumes` (the plan is rejected otherwise); a FEATURE spec's assertions must
+  exercise every route and interface it provides, naming each literal route path in at least one
+  assertion.
 - Imported test material is **input, not output**. If the source carries tests, test scripts, or a
   prose `## Test` section, review it and re-express the intended checks as Drydock Programmatic
   Acceptance assertions in the spec. Do not trust its format, copy it verbatim, or point at an
@@ -465,6 +469,8 @@ Required action:
 - Every spec that declares a `Provides` entry (or any route, interface, read, or write) must carry
   several concrete Python assertions under `## Programmatic Acceptance`. `- None.` there is allowed
   only for a genuinely non-programmatic item and must state its reason inline.
+- A SCREEN spec's Programmatic Acceptance must literally call every route in its `Provides` and
+  `Consumes`; a plan whose SCREEN acceptance skips a route is rejected.
 - The Manifest has a non-empty initial runnable frontier: at least one `story` or `spike` with an
   empty `depends:`. Emit blocks in topological order with no forward-referencing `depends:`.
 - Do not emit placeholder phrases like `TBD`, `fill later`, `to be determined`, or

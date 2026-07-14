@@ -1137,12 +1137,33 @@ def _has_cycle(edges: dict[str, set[str]]) -> bool:
 
 
 _PROVIDES_RE = re.compile(r"^\|\s*Provides\s*\|(.*)\|\s*$", re.MULTILINE)
+_ROUTE_ROW_RE = re.compile(r"^\|\s*(?:Provides|Consumes)\s*\|(.*)\|\s*$", re.MULTILINE)
+_ROUTE_RE = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)\s+(/[^\s,|`]*)")
 
 
 def _spec_provides(text: str) -> str:
     """Return the trimmed `| Provides |` header value, or '' when absent/empty."""
     match = _PROVIDES_RE.search(text)
     return match.group(1).strip() if match else ""
+
+
+def _uncovered_routes(text: str) -> tuple[str, ...]:
+    """Routes in `Provides`/`Consumes` whose literal path never appears in the
+    spec's Programmatic Acceptance section (test-driven route coverage)."""
+    routes: set[tuple[str, str]] = set()
+    for row in _ROUTE_ROW_RE.finditer(text):
+        routes.update(_ROUTE_RE.findall(row.group(1)))
+    if not routes:
+        return ()
+    acceptance = _extract_terminal_section(text, "Programmatic Acceptance") or ""
+    missing: list[str] = []
+    for verb, path in sorted(routes):
+        key = path.split("{")[0].split("<")[0]
+        if key in ("", "/"):
+            continue
+        if key not in acceptance:
+            missing.append(f"{verb} {path}")
+    return tuple(missing)
 
 
 def _acceptance_status(text: str) -> tuple[int, bool]:
@@ -1376,6 +1397,25 @@ def _integrity_check(
             count, none_reason = _acceptance_status(text)
             assertions += count
             justified = justified or none_reason
+            # Test-driven route coverage. A SCREEN's assertions must literally
+            # call every route it provides or consumes — hard gate. A FEATURE
+            # may exercise its routes through typed helpers, so an unnamed
+            # route is a warning, not fatal.
+            uncovered = _uncovered_routes(text)
+            if uncovered:
+                detail = ", ".join(uncovered)
+                if name.startswith("SCREEN-"):
+                    fatal.append(
+                        f"{block.block_id}: {name}: Programmatic Acceptance never calls "
+                        f"route(s) {detail} — a SCREEN's assertions must call every route "
+                        "it provides or consumes"
+                    )
+                elif name.startswith("FEATURE-"):
+                    warnings.append(
+                        f"{block.block_id}: {name}: Programmatic Acceptance does not name "
+                        f"route(s) {detail}; exercise each provided route, naming its "
+                        "literal path"
+                    )
         if surface and not justified and assertions < _MIN_ASSERTIONS_PER_STORY:
             fatal.append(
                 f"{block.block_id}: {assertions} Programmatic Acceptance assertion(s) across "
