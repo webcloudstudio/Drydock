@@ -114,6 +114,18 @@ class TestImportSource:
         text = marker.read_text(encoding="utf-8")
         assert "format: source" in text
 
+    def test_intent_file_seeds_compass(self, tmp_path):
+        src = self._make_source(tmp_path)
+        (src / "INTENT.md").write_text("# Intent\n\nUse local backend first.\n", encoding="utf-8")
+        td = tmp_path / "targets"
+        td.mkdir()
+
+        import_source("Proj", "Tgt", src, td)
+
+        assert (td / "Tgt" / "COMPASS.md").read_text(encoding="utf-8") == (
+            "# Intent\n\nUse local backend first.\n"
+        )
+
     def test_excluded_dirs_skipped(self, tmp_path):
         src = self._make_source(tmp_path)
         venv = src / "venv"

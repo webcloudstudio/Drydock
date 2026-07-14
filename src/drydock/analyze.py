@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.compass_sources import seed_compass_from_sources
 from drydock.errors import DrydockError, SpecificationError
 from drydock.exclude_files import (
     append_suggested_exclusions,
@@ -192,7 +193,12 @@ def _is_compass_unpopulated(path: Path) -> bool:
         elif in_section:
             content_lines.append(line.strip())
     if not content_lines:
-        return True
+        non_heading_content = [
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        return not non_heading_content
     return all(line in _EMPTY_LINE for line in content_lines)
 
 
@@ -699,6 +705,14 @@ def analyze(
     soundings_path = target_dir / "SOUNDINGS.md"
     compass_target = target_dir / "COMPASS.md"
 
+    source_files = _collect_blueprint_files(blueprint_dir)
+    seed_compass_from_sources(
+        target_dir,
+        source_files,
+        overwrite_unpopulated=not compass_target.is_file()
+        or _is_compass_unpopulated(compass_target),
+    )
+
     # COMPASS is (re)written when absent or when the existing file is an unpopulated template.
     compass_exists = compass_target.is_file() and not _is_compass_unpopulated(compass_target)
 
@@ -712,7 +726,6 @@ def analyze(
     # user has edited it beyond the default placeholder.
     feedback_text = ensure_feedback_file(target_dir)
     feedback_for_prompt = _feedback_body(feedback_text) or None
-    source_files = _collect_blueprint_files(blueprint_dir)
     ensure_exclude_file(target_dir)
     append_suggested_exclusions(target_dir, source_files)
     excluded_filenames = load_excluded_filenames(target_dir)

@@ -410,6 +410,11 @@ class TestIsCompassUnpopulated:
         )
         assert not _is_compass_unpopulated(p)
 
+    def test_verbatim_intent_without_compass_sections_returns_false(self, tmp_path):
+        p = tmp_path / "COMPASS.md"
+        p.write_text("# Intent\n\nUse local first.\n", encoding="utf-8")
+        assert not _is_compass_unpopulated(p)
+
 
 # ---------------------------------------------------------------------------
 # _collect_blueprint_files
@@ -1113,6 +1118,25 @@ class TestAnalyze:
         assert result.ok
         assert result.compass_path == target_dir / "COMPASS.md"
         assert result.compass_path.exists()
+
+    def test_imported_intent_seeds_compass_before_prompt(self, tmp_path):
+        target_dir = _target(tmp_path)
+        sources = target_dir / "blueprint" / "sources"
+        sources.mkdir()
+        (sources / "INTENT.md").write_text("# Intent\n\nUse local first.\n", encoding="utf-8")
+        received_prompts = []
+
+        def runner(prompt, *a, **k):
+            received_prompts.append(prompt)
+            return FakeRun()
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert result.ok
+        assert (target_dir / "COMPASS.md").read_text(encoding="utf-8") == (
+            "# Intent\n\nUse local first.\n"
+        )
+        assert "COMPASS_EXISTS: true" in received_prompts[0]
 
     def test_compass_written_when_unpopulated_template(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})

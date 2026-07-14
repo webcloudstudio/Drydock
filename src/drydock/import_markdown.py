@@ -6,6 +6,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.compass_sources import seed_compass_from_sources
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
 
@@ -99,6 +100,7 @@ def import_markdown(
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_path, destination)
         imported.append(destination)
+    seed_compass_from_sources(target_dir, imported, overwrite_unpopulated=False)
 
     return ImportResult(
         blueprint=blueprint,

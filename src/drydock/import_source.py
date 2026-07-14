@@ -11,6 +11,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.compass_sources import seed_compass_from_sources
 from drydock.errors import SpecificationError
 from drydock.init_specification import init_specification
 from drydock.metadata import METADATA_NAME, set_field
@@ -152,6 +153,7 @@ def import_source(
             imported.append(destination)
     except OSError as exc:
         raise SpecificationError(f"Cannot copy source files: {exc}") from exc
+    seed_compass_from_sources(target_dir, imported, overwrite_unpopulated=False)
 
     detected = detect_stack(source)
     if detected:

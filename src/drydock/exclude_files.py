@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _FILENAME = "EXCLUDE_FILES.md"
@@ -16,8 +17,10 @@ _SUGGESTED_SOURCE_NAMES = (
     "BUILD_PLAN.md",
     "BUILD_PLAN_INTENT.md",
     "CHANGE_LOG.md",
-    "FUNCTIONALITY.md",
-    "INTENT.md",
+)
+_SUGGESTED_SOURCE_PATTERNS = (
+    re.compile(r".*MANIFEST.*\.md\Z", re.IGNORECASE),
+    re.compile(r".*CONTRACT.*\.md\Z", re.IGNORECASE),
 )
 
 
@@ -49,11 +52,16 @@ def load_excluded_filenames(target_dir: Path) -> frozenset[str]:
 def append_suggested_exclusions(target_dir: Path, source_files: list[Path]) -> Path:
     path = exclude_files_path(target_dir)
     existing = set(load_excluded_filenames(target_dir))
-    to_add = [
-        name
-        for name in _SUGGESTED_SOURCE_NAMES
-        if name not in existing and any(p.name == name for p in source_files)
-    ]
+    source_names = {p.name for p in source_files}
+    to_add = []
+    for name in _SUGGESTED_SOURCE_NAMES:
+        if name not in existing and name in source_names:
+            to_add.append(name)
+    for name in sorted(source_names):
+        if name in existing:
+            continue
+        if any(pattern.fullmatch(name) for pattern in _SUGGESTED_SOURCE_PATTERNS):
+            to_add.append(name)
     if not to_add:
         ensure_exclude_file(target_dir)
         return path

@@ -120,6 +120,34 @@ class TestImportMarkdownInitialization:
         # blueprint/ contains only the sources subtree.
         assert {p.name for p in result.blueprint_dir.iterdir()} == {"sources"}
 
+    def test_intent_file_seeds_target_compass_verbatim(self, tmp_path):
+        source = tmp_path / "INTENT.md"
+        source.write_text("# Intent\n\nLocal-first path.\n", encoding="utf-8")
+        td = tmp_path / "targets"
+        td.mkdir()
+
+        import_markdown("Proj", "Tgt", source, td)
+
+        assert (td / "Tgt" / "COMPASS.md").read_text(encoding="utf-8") == (
+            "# Intent\n\nLocal-first path.\n"
+        )
+
+    def test_existing_compass_is_not_overwritten_by_imported_intent(self, tmp_path):
+        source = tmp_path / "INTENT.md"
+        source.write_text("# Intent\n\nNew.\n", encoding="utf-8")
+        td = tmp_path / "targets"
+        target_dir = td / "Tgt"
+        target_dir.mkdir(parents=True)
+        (target_dir / "COMPASS.md").write_text(
+            "# COMPASS\n\n## Compass\nExisting.\n", encoding="utf-8"
+        )
+
+        import_markdown("Proj", "Tgt", source, td)
+
+        assert (target_dir / "COMPASS.md").read_text(encoding="utf-8") == (
+            "# COMPASS\n\n## Compass\nExisting.\n"
+        )
+
     def test_initialized_false_on_reimport(self, tmp_path):
         source = tmp_path / "s.md"
         source.write_text("# S\n", encoding="utf-8")
