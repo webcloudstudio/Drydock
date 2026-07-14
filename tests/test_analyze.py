@@ -1099,6 +1099,17 @@ def test_normalize_discovery_replaces_stack_options_with_full_catalog(monkeypatc
     assert question["answer"] == ""
 
 
+def test_normalize_discovery_degrades_optionless_select_to_textarea():
+    normalized = _normalize_discovery(
+        "discovery-stack-guidance.json",
+        {
+            "id": "discovery-stack-guidance",
+            "questions": [{"id": "gap", "label": "Gap", "prompt": "Proceed?", "input": "select"}],
+        },
+    )
+    assert normalized["questions"][0]["input"] == "textarea"
+
+
 def test_normalize_discovery_stack_falls_back_to_sorted_llm_options(monkeypatch):
     monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: [])
     normalized = _normalize_discovery("discovery-stack.json", json.loads(_DISCOVERY_STACK))
@@ -1141,9 +1152,10 @@ class TestAnalyze:
         assert result.soundings_path == target_dir / "SOUNDINGS.md"
 
     def test_quality_signal_in_result(self, tmp_path):
+        # The always-written stack questionnaire is an open question until answered.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.quality == "Ready"
+        assert result.quality == "Questions"
 
     def test_summary_counts_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1151,7 +1163,7 @@ class TestAnalyze:
         assert result.story_count == 5
         assert result.feature_count == 4
         assert result.blocker_count == 0
-        assert result.question_count == 0
+        assert result.question_count == 1  # the always-written stack questionnaire
         assert result.screen_count == 4
         assert result.stack == "python/flask"
 
@@ -1247,12 +1259,19 @@ class TestAnalyze:
         ):
             assert (questionnaires / name).exists(), f"{name} not written"
 
-    def test_no_spikes_emitted_is_ok(self, tmp_path):
+    def test_no_spikes_emitted_still_writes_stack_questionnaire(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: _FAKE_CATALOG)
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         output = _make_llm_output(include_spikes=False)
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert result.ok
-        assert result.discovery_paths == ()
+        assert [p.name for p in result.discovery_paths] == ["discovery-stack.json"]
+        data = json.loads(result.discovery_paths[0].read_text(encoding="utf-8"))
+        question = data["questions"][0]
+        assert question["input"] == "checkbox_grid"
+        assert question["options"][-1] == "other"
+        assert [g["label"] for g in question["groups"]][-1] == "Other"
+        assert question["answer"] == ""
 
     def test_spike_paths_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1494,15 +1513,14 @@ class TestLifecycleState:
         assert "Build Directory:" not in html
         assert 'class="stat" href="#stories"' in html
         assert 'section id="stories"' in html
-        assert "<strong>Questionnaires:</strong> No open questionnaires" in html
-        assert "No open questionnaires" in html
+        # The always-written stack questionnaire keeps questionnaires open on first run.
+        assert "Open questionnaires remain" in html
         assert "Next Step" in html
         assert "drydock plan MyTarget" in html
         assert "FND-001 - One" in html
         assert "Setup Screen: AWS" in html
         assert '<div class="stat-label">Features</div>' in html
         assert "Story Shape" not in html
-        assert "Stack" not in html
 
     def test_commanders_chair_rewritten_when_state_does_not_advance(self, tmp_path):
         from drydock.metadata import render_metadata, set_build_state

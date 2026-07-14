@@ -1463,6 +1463,15 @@ def _render_question_controls(data: dict[str, Any]) -> list[str]:
         saved = question.get("answer", "")
         saved_vals = saved.split(", ") if isinstance(saved, str) and saved else []
 
+        # A choice input without options renders as an unanswerable empty control —
+        # degrade to a textarea so the Commander can still answer in free text.
+        if (
+            input_type in {"select", "multiselect", "checkbox_grid"}
+            and not options
+            and not question.get("groups")
+        ):
+            input_type = "textarea"
+
         if input_type in {"select", "multiselect"}:
             multiple = " multiple" if input_type == "multiselect" else ""
             opts = "".join(

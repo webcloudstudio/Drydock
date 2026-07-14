@@ -201,6 +201,33 @@ def _rigging_catalog_names() -> list[str]:
     return [name for name, _ in _rigging_catalog()]
 
 
+def _default_stack_questionnaire() -> dict:
+    """Return the canonical stack questionnaire shell.
+
+    Options and groups are filled by ``_normalize_discovery``; analyze writes this
+    whenever the LLM did not emit a ``discovery-stack.json`` of its own.
+    """
+    return {
+        "id": "discovery-stack",
+        "title": "Discovery: Technology Stack",
+        "purpose": "Select the stack guidance components that apply before planning.",
+        "questions": [
+            {
+                "id": "stack_components",
+                "label": "Stack Components",
+                "prompt": (
+                    "Select all Rigging stack guidance components that apply. "
+                    "Leave blank when undecided."
+                ),
+                "input": "checkbox_grid",
+                "options": [],
+                "answer": "",
+            }
+        ],
+        "state": "open",
+    }
+
+
 def _stack_option_groups(catalog: list[tuple[str, str]]) -> list[dict]:
     """Group catalog options by category for the stack questionnaire.
 
@@ -641,6 +668,12 @@ def _normalize_discovery(name: str, data: dict) -> dict:
     questions = []
     for raw_question in normalized.get("questions", []):
         question = dict(raw_question)
+        # A choice input without options is unanswerable — degrade to free text.
+        if question.get("input") in ("select", "multiselect", "checkbox_grid") and not question.get(
+            "options"
+        ):
+            if name != "discovery-stack.json":  # stack options are filled below
+                question["input"] = "textarea"
         if name == "discovery-identity.json":
             proposed = str(question.get("proposed", "")).strip()
             if proposed and not str(question.get("answer", "")).strip():
@@ -935,6 +968,16 @@ def analyze(
         data = _normalize_discovery(name, data)
         discovery_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         discovery_paths.append(discovery_path)
+
+    # The stack questionnaire always exists after analyze — its content is deterministic
+    # (the full Rigging catalog), so it never depends on the LLM choosing to emit it.
+    stack_path = questionnaires_dir / "discovery-stack.json"
+    if not stack_path.exists():
+        stack_data = _normalize_discovery("discovery-stack.json", _default_stack_questionnaire())
+        stack_path.write_text(
+            json.dumps(stack_data, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        discovery_paths.append(stack_path)
 
     # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
     # Its presence is the flag that halts the pipeline; written when present, deleted otherwise
