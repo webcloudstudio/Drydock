@@ -238,13 +238,21 @@ finding: acceptance failed ac-core: assertion returned non-zero""",
 
 # `extra` depends on the still-unbuilt `core`, so `extra` is Blocked while
 # `core` is Ready To Build. Both share one feature group.
+# `extra` sits in its own group and depends on `core` in another group. Only an
+# unverified dependency outside the story's group blocks it; a depends between
+# stories in the same group is internal sequencing.
 _MANIFEST_BLOCKED = _MANIFEST_TWO_STORIES.replace(
     """## story 4: Extra
 id: extra
 parent: feat-foundation""",
-    """## story 4: Extra
+    """## feature 5: Later
+id: feat-later
+summary: Group.
+state: pending
+
+## story 4: Extra
 id: extra
-parent: feat-foundation
+parent: feat-later
 depends: core""",
 )
 
@@ -333,6 +341,25 @@ class TestState:
         assert "cmp-group-blocked" in out
         # Header rolls the blocked story into the blocked count.
         assert "blocked</span>" in out
+
+    def test_same_group_depends_is_internal_and_never_blocks(self, tmp_path, monkeypatch):
+        # `extra` depends on `core` inside the same group: the group builds as a
+        # unit, so the dependency is internal sequencing and both stories are
+        # Ready To Build. The first group can never block itself.
+        manifest = _MANIFEST_TWO_STORIES.replace(
+            """id: extra
+parent: feat-foundation""",
+            """id: extra
+parent: feat-foundation
+depends: core""",
+        )
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "cmp-step-blocked" not in out
+        assert "cmp-group-blocked" not in out
+        assert "Blocked by story" not in out
+        assert "0 blocked</span>" in out
 
     def test_group_title_is_click_to_rename(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()

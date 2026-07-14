@@ -878,15 +878,14 @@ def render_compass(item: dict[str, Any]) -> str:
     groups = group_steps(plan, steps)
     status = build_status(plan)
     by_id = plan.by_id()
+    # Ready/blocked comes from build_status: depends between stories in the
+    # same group are internal sequencing and never block; only unverified
+    # dependencies outside the group do. The first group is never blocked.
     buildable = {
-        block.block_id
-        for block in plan.blocks
-        if block.block_type in {"story", "spike"}
-        and block.state == "pending"
-        and all(
-            by_id.get(dep) is not None and by_id[dep].state == "closed/verified"
-            for dep in block.depends
-        )
+        step.block.block_id
+        for group_status in status.groups
+        for step in group_status.steps
+        if step.buildable
     }
 
     item_id = html.escape(item.get("id", ""))
@@ -900,9 +899,9 @@ def render_compass(item: dict[str, Any]) -> str:
 
         A story is Built once it has been executed (checksum + commit); the DoD
         outcome then splits Built (passed) from Failed. Every unbuilt story is
-        either Ready To Build (all ``depends:`` verified) or Blocked (a
-        dependency story is not yet built). There is no idle pending state and no
-        separate review stage.
+        either Ready To Build (all ``depends:`` outside its group verified) or
+        Blocked (an external dependency story is not yet built). There is no
+        idle pending state and no separate review stage.
         """
         if block_id in buildable:
             return "ready"
@@ -914,14 +913,21 @@ def render_compass(item: dict[str, Any]) -> str:
         return "blocked"
 
     def _blockers(block_id: str) -> list:
-        """The unbuilt ``depends:`` stories keeping this story Blocked."""
+        """The unbuilt external ``depends:`` stories keeping this story Blocked.
+
+        Dependencies on stories in the same group are internal sequencing and
+        are never reported as blockers.
+        """
         block = by_id.get(block_id)
         if not block:
             return []
+        internal: set[str] = set()
+        if block.parent and block.parent in by_id:
+            internal = {child.block_id for child in plan.children(block.parent)}
         return [
             by_id[dep]
             for dep in block.depends
-            if dep in by_id and by_id[dep].state != "closed/verified"
+            if dep in by_id and dep not in internal and by_id[dep].state != "closed/verified"
         ]
 
     def step_controls(step, group_step_count: int) -> str:
