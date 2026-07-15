@@ -270,7 +270,8 @@ class TestState:
         assert "blocked</span>" in out
         assert "failed</span>" in out
         assert "Total SP " in out
-        assert "Total Savings " in out
+        assert "Used SP " in out
+        assert "Saved SP " in out
         assert "Buildable now:" in out
         assert "steps</span>" not in out
 
