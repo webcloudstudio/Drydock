@@ -111,10 +111,10 @@ class TestRender:
         out = quarterdeck.render_compass(_ITEM)
         # compass 200 + arch 4000 + db 400 + common 40 = 4640 bytes -> 1160 SP,
         # plus instructions text. Cost must exceed the bare spec-file total (1100).
-        assert "Total SP " in out
+        assert "Used SP " in out
         import re
 
-        total = int(re.search(r"Total SP ([\d,]+)", out).group(1).replace(",", ""))
+        total = int(re.search(r"Used SP ([\d,]+)", out).group(1).replace(",", ""))
         assert total > 1100
 
     def test_missing_context_file_flagged(self, tmp_path, monkeypatch):
@@ -269,9 +269,9 @@ class TestState:
         assert "ready to build</span>" in out
         assert "blocked</span>" in out
         assert "failed</span>" in out
-        assert "Total SP " in out
+        assert "Blueprint SP " in out
+        assert "Context SP " in out
         assert "Used SP " in out
-        assert "Saved SP " in out
         assert "Buildable now:" in out
         assert "steps</span>" not in out
 
