@@ -117,12 +117,17 @@ def _compact_derivative_paths(name: str) -> tuple[str, str]:
 
 def _eligible_compaction_recommendations(plan, blueprint_dir: Path) -> list:
     from drydock.build_plan import compact_recommendations
-    from drydock.rigging_compact import REQUIRED_PAIRS
+    from drydock.rigging_compact import REQUIRED_PAIRS, compact_derivative_is_current
 
     recommendations = compact_recommendations(plan)
     eligible: list = []
     for rec in recommendations:
-        if rec.file in REQUIRED_PAIRS:
+        source = blueprint_dir / rec.file
+        if not source.is_file():
+            continue
+        if compact_derivative_is_current(source):
+            continue
+        if rec.file in REQUIRED_PAIRS or rec.file == "ARCHITECTURE.md":
             eligible.append(rec)
             continue
         compact_name, skip_name = _compact_derivative_paths(rec.file)

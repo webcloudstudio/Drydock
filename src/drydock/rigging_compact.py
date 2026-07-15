@@ -270,6 +270,11 @@ def _is_stale(source: Path) -> bool:
     return True
 
 
+def compact_derivative_is_current(source: Path) -> bool:
+    """True when a current compact or no-surface derivative exists for ``source``."""
+    return source.is_file() and not _is_stale(source)
+
+
 def _resolve_md(path: Path, base: Path) -> Path:
     """Resolve a file path relative to base if not absolute. Must be a .md file."""
     p = Path(path)
