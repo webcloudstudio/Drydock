@@ -1676,6 +1676,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock build <Target>          — build next frontier\n"
             "drydock build <Target> --reset-failed  — reset failed blocks to pending, then build\n"
+            "drydock build <Target> --dry-run       — preview next build block without writes\n"
             "drydock build status <Target>   — show build state\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),

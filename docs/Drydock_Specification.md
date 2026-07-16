@@ -398,6 +398,8 @@ Implement the Blueprint using the Manifest
 
 ```text
 drydock build <Target>
+drydock build <Target> --dry-run
+drydock build <Target> --reset-failed
 drydock build <Target> --step <STEP>
 drydock build <Target> --step <STEP> --force
 drydock build status <Target>
@@ -482,6 +484,8 @@ flowchart LR
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
 `drydock build <Target>` executes the dependency-ready frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
+`drydock build <Target> --reset-failed` resets all failed Manifest blocks to `pending`, clears their
+findings, and then executes the normal dependency-ready frontier.
 `drydock build <Target> --dry-run` resolves the same build block, assembles the same prompt,
 prints build diagnostics, assembled-file names, prompt size, and estimated tokens, and exits without
 compact refresh, LLM execution, file writes, evidence writes, Manifest state changes, QuarterDeck

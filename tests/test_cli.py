@@ -370,6 +370,12 @@ class TestAnalyzeCommand:
         assert rc == 0
         assert "--llm-provider" in out
 
+    def test_build_help_lists_reset_and_dry_run_flags(self):
+        rc, out, _ = run_cli("build", "--help")
+        assert rc == 0
+        assert "--reset-failed" in out
+        assert "--dry-run" in out
+
     def test_analyze_passes_cli_provider_override(
         self, tmp_target_root, isolated_config, monkeypatch
     ):
