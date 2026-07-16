@@ -54,7 +54,7 @@ from drydock.build_plan import (
 )
 from drydock.config import blueprint_dir_for, build_dir_for
 from drydock.errors import SpecificationError
-from drydock.llm import run_prompt
+from drydock.llm import render_rate_limit_error_block, run_prompt
 from drydock.manifest_edit import set_block_fields
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
@@ -362,6 +362,7 @@ def _blocked_options(
 
 def _blocked_dependency_details(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock]) -> str:
     lines: list[str] = []
+    fatal_blocks: list[str] = []
     for dep in dict.fromkeys(dependencies):
         block = by_id.get(dep)
         if block is None:
@@ -371,10 +372,15 @@ def _blocked_dependency_details(dependencies: tuple[str, ...], by_id: dict[str, 
         finding = block.fields.get("finding", "").strip()
         if finding:
             detail += f"; finding={finding}"
+            if "rate limit" in finding.lower() or "session limit" in finding.lower():
+                fatal_blocks.append(render_rate_limit_error_block(error=finding))
         lines.append(detail)
     if not lines:
         return ""
-    return "\nBlocking dependency status:\n" + "\n".join(lines)
+    block_text = "\nBlocking dependency status:\n" + "\n".join(lines)
+    if fatal_blocks:
+        block_text += "\n\n" + "\n\n".join(fatal_blocks)
+    return block_text
 
 
 def _verified_dependency(block_id: str, by_id: dict[str, PlanBlock]) -> bool:

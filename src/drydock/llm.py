@@ -543,15 +543,15 @@ def _is_rate_limit_error(*texts: str | None) -> bool:
     return "rate limit" in haystack or "session limit" in haystack
 
 
-def _print_fatal_provider_error(
+def render_fatal_provider_error_block(
     *,
     llm: str,
     command_name: str,
-    execution_id: str,
+    execution_id: str | None,
     error: str,
     title: str,
     action_lines: tuple[str, ...],
-) -> None:
+) -> str:
     border = "*" * 78
     lines = [
         border,
@@ -565,10 +565,54 @@ def _print_fatal_provider_error(
         "* Required action:",
         *(f"*   {line}" for line in action_lines),
         "*",
-        f"* execution_id: {execution_id}",
-        border,
     ]
-    print("\n".join(lines), file=sys.stderr, flush=True)
+    if execution_id:
+        lines.append(f"* execution_id: {execution_id}")
+    lines.append(border)
+    return "\n".join(lines)
+
+
+def render_rate_limit_error_block(
+    *,
+    error: str,
+    llm: str = "claude",
+    command_name: str = "build",
+    execution_id: str | None = None,
+) -> str:
+    return render_fatal_provider_error_block(
+        llm=llm,
+        command_name=command_name,
+        execution_id=execution_id,
+        error=error,
+        title="FATAL ERROR - PROVIDER RATE LIMIT",
+        action_lines=(
+            "Wait for the provider quota or session limit to reset,",
+            "or switch the configured LLM provider/model, then rerun the Drydock command.",
+        ),
+    )
+
+
+def _print_fatal_provider_error(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    error: str,
+    title: str,
+    action_lines: tuple[str, ...],
+) -> None:
+    print(
+        render_fatal_provider_error_block(
+            llm=llm,
+            command_name=command_name,
+            execution_id=execution_id,
+            error=error,
+            title=title,
+            action_lines=action_lines,
+        ),
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _print_authentication_required(
@@ -598,16 +642,15 @@ def _print_rate_limit_required(
     execution_id: str,
     error: str,
 ) -> None:
-    _print_fatal_provider_error(
-        llm=llm,
-        command_name=command_name,
-        execution_id=execution_id,
-        error=error,
-        title="FATAL ERROR - PROVIDER RATE LIMIT",
-        action_lines=(
-            "Wait for the provider quota or session limit to reset,",
-            "or switch the configured LLM provider/model, then rerun the Drydock command.",
+    print(
+        render_rate_limit_error_block(
+            llm=llm,
+            command_name=command_name,
+            execution_id=execution_id,
+            error=error,
         ),
+        file=sys.stderr,
+        flush=True,
     )
 
 

@@ -350,6 +350,45 @@ state: pending
     assert len(runner.calls) == 0
 
 
+def test_blocked_build_formats_rate_limit_dependency_finding(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Catalog
+id: feature-catalog
+summary: Catalog block.
+state: pending
+
+## story 2: Foundation
+id: foundation
+parent: feature-catalog
+implements: DATABASE.md
+depends: external-foundation
+instructions: |
+  Build the database.
+state: pending
+
+## story 3: External
+id: external-foundation
+finding: provider rate limit 429: You've hit your session limit · resets 3am (America/New_York)
+implements: SERVICE.md
+instructions: |
+  Build the external dependency.
+state: closed/failed
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+
+    with pytest.raises(SpecificationError, match="unverified external dependencies") as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    message = str(exc.value)
+    assert "External [external-foundation]: state=closed/failed" in message
+    assert "FATAL ERROR - PROVIDER RATE LIMIT" in message
+    assert "You've hit your session limit" in message
+    assert "Wait for the provider quota or session limit to reset" in message
+    assert "Story Retry: drydock build Demo --step external-foundation --force" in message
+
+
 def test_blocked_build_does_not_auto_compact(tmp_path, monkeypatch):
     manifest = """# MANIFEST: Demo
 state: draft
