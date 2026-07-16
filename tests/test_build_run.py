@@ -207,6 +207,47 @@ def test_builds_feature_group_in_one_runner_call(tmp_path):
     assert result.steps[0].evidence_path == target_dir / "evidence" / "feature-catalog.md"
 
 
+def test_mixed_feature_group_builds_one_work_kind_per_runner_call(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Catalog
+id: feature-catalog
+summary: Mixed catalog block.
+state: pending
+
+## story 2: Catalog Service
+id: catalog-service
+parent: feature-catalog
+implements: FEATURE-CATALOG.md
+instructions: |
+  Build the service.
+state: pending
+
+## story 3: Catalog Screen
+id: catalog-screen
+parent: feature-catalog
+implements: SCREEN-CATALOG.md
+depends: catalog-service
+instructions: |
+  Build the screen.
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    runner = make_runner()
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        dry_run=True,
+    )
+
+    assert [s.block_id for s in result.steps] == ["catalog-service"]
+    assert runner.calls == []
+
+
 def test_failed_feature_group_marks_parent_failed(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
     runner = make_runner(ok=False, text="", write_files=False, stderr="provider rate limit")

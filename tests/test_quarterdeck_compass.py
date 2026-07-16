@@ -99,10 +99,12 @@ class TestRender:
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
-        assert "# Foundation" in out
+        assert "Foundation" in out
         assert "Core" in out
         assert "STORY" in out
+        assert "BLOCK" in out
         assert "cmp-stype-story" in out
+        assert "cmp-stype-block" in out
         assert "STEP " not in out
 
     def test_step_cost_includes_full_stack(self, tmp_path, monkeypatch):
@@ -368,3 +370,13 @@ depends: core""",
         out = quarterdeck.render_compass(_ITEM)
         assert "cmp-gname-edit" in out
         assert "compassRename(" in out
+
+    def test_group_header_orders_state_block_name(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_FAILED)
+        out = quarterdeck.render_compass(_ITEM)
+        assert (
+            out.index("bp-state bp-failed")
+            < out.index("cmp-stype cmp-stype-block")
+            < out.index("cmp-gname cmp-gname-edit")
+        )

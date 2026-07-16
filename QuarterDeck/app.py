@@ -1146,6 +1146,10 @@ def render_compass(item: dict[str, Any]) -> str:
             done_check = (
                 "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
             )
+            step_type_tag = (
+                f"<span class='cmp-stype cmp-stype-{html.escape(step.block_type)}'>"
+                f"{html.escape(step.block_type.upper())}</span>"
+            )
             if incremental_sp != step.total_story_points:
                 sp_label = (
                     f"<span class='cmp-gsp'>Story Points = {incremental_sp:,} "
@@ -1162,8 +1166,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 "<div class='cmp-shead'>"
                 f"{done_check}"
                 f"{_KIND_CHIP[kind]}"
-                f"<span class='cmp-stype cmp-stype-{html.escape(step.block_type)}'>"
-                f"{html.escape(step.block_type.upper())}</span>"
+                f"{step_type_tag}"
                 f"{_stack_tag(step)}"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
                 f"{sp_label}{warn}"
@@ -1192,14 +1195,15 @@ def render_compass(item: dict[str, Any]) -> str:
             fname = html.escape(gname, quote=True)
             title_html = (
                 f"<span class='cmp-gname cmp-gname-edit' title='Click to rename group' "
-                f"onclick=\"compassRename('{item_id}','{fid}','{fname}')\"># {html.escape(gname)}</span>"
+                f"onclick=\"compassRename('{item_id}','{fid}','{fname}')\">{html.escape(gname)}</span>"
             )
         else:
-            title_html = f"<span class='cmp-gname'># {html.escape(gname)}</span>"
+            title_html = f"<span class='cmp-gname'>{html.escape(gname)}</span>"
+        block_tag = "<span class='cmp-stype cmp-stype-block'>BLOCK</span>"
         parts.append(
             f"<div class='cmp-group{gdone_cls}'>"
             "<div class='cmp-ghead'>"
-            f"{gcheck}{title_html}"
+            f"{gcheck}{block_tag}{title_html}"
             f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points:,}</span>"
             f"<span class='cmp-gsp'>Story Point Savings = {group.story_point_savings:,}</span>"
             f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
@@ -2470,11 +2474,12 @@ _STYLE = """
   .cmp-snum { font-size:11px; font-weight:700; color:#1e3a8a; background:#dbeafe; padding:1px 7px; border-radius:3px; }
   .cmp-stype { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
   .cmp-stype-story { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#7c2d12; background:#fff7ed; border-color:#fdba74; transform:rotate(-2deg); box-shadow:1px 1px 0 #fed7aa; }
+  .cmp-stype-block { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#334155; background:#f8fafc; border-color:#94a3b8; transform:rotate(-2deg); box-shadow:1px 1px 0 #cbd5e1; }
   .cmp-stack-tag { display:inline-block; font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; padding:1px 6px; border:1px solid; border-radius:3px; transform:rotate(-2deg); white-space:nowrap; }
   .cmp-stack-feature { color:#5b21b6; background:#f5f3ff; border-color:#c4b5fd; box-shadow:1px 1px 0 #ddd6fe; }
   .cmp-stack-screen { color:#1e40af; background:#eff6ff; border-color:#93c5fd; box-shadow:1px 1px 0 #bfdbfe; }
   .cmp-stack-foundation { color:#334155; background:#f1f5f9; border-color:#94a3b8; box-shadow:1px 1px 0 #cbd5e1; }
-  .cmp-sname { font-weight:600; font-size:13px; }
+  .cmp-sname { font-weight:700; font-family:ui-monospace,Consolas,monospace; font-size:13px; color:#4338ca; }
   .cmp-warn { font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:3px 10px; border-radius:6px; white-space:nowrap; }
   .cmp-detail { margin:6px 0 0; }
   .cmp-detail summary { cursor:pointer; font-size:11px; color:#64748b; }

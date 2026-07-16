@@ -20,7 +20,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from drydock.build import BAND_FOUNDATION, BAND_NAMES, band_for
+from drydock.build import BAND_FOUNDATION, BAND_NAMES, band_for, work_kind_for
 from drydock.build_plan import _HEADER_RE, _split_depends
 from drydock.errors import SpecificationError
 
@@ -185,6 +185,13 @@ def _raw_band(block: RawBlock) -> int:
     implements = _scan_field(block.lines, "implements") or ""
     names = [name.strip() for name in implements.split(",") if name.strip()]
     return band_for(block.block_type, names)
+
+
+def _raw_work_kind(block: RawBlock) -> str:
+    """Stack-local work kind for one raw step block."""
+    implements = _scan_field(block.lines, "implements") or ""
+    names = [name.strip() for name in implements.split(",") if name.strip()]
+    return work_kind_for(block.block_type, names)
 
 
 def validate_order(blocks: list[RawBlock]) -> list[str]:
@@ -518,14 +525,16 @@ def split_step(doc: ManifestDoc, step_id: str) -> str:
 
 
 def normalize_order(doc: ManifestDoc) -> None:
-    """Reorder feature groups into canonical non-decreasing layer-band order.
+    """Reorder feature groups and split mixed stack-kind groups.
 
     A stable normalization offered when a manifest is out of band order: groups
     keep their relative order within a band and are sorted so Foundation precedes
-    Data/Persistence precedes the Features/Screens band. Steps follow their group
-    and acceptance blocks fold under their step; within-band order and grouping are
-    otherwise preserved. A group's band is the foundation-most band of its steps.
+    Data/Persistence precedes the implementation band. A feature group that mixes
+    feature/service, screen, foundation, data, or other work is split into
+    contiguous single-kind groups first, preserving the existing story order.
     """
+    _split_mixed_work_kind_groups(doc)
+    _roll_up_feature_states(doc)
     by_id = doc.by_id()
     steps_by_feature = _steps_by_feature(doc)
     feature_order = _feature_order(doc)
@@ -540,6 +549,108 @@ def normalize_order(doc: ManifestDoc) -> None:
     others = [block for block in doc.blocks if block.block_type != "feature"]
     doc.blocks[:] = features + others
     doc.blocks[:] = _flatten(doc)
+
+
+_WORK_KIND_LABELS = {
+    "foundation": "Foundation",
+    "data": "Data",
+    "feature": "Features",
+    "screen": "Screens",
+    "other": "Work",
+}
+
+
+def _block_header_name(block: RawBlock) -> str:
+    match = _HEADER_RE.match(block.lines[0]) if block.lines else None
+    return match.group(3).strip() if match else block.block_id
+
+
+def _split_mixed_work_kind_groups(doc: ManifestDoc) -> None:
+    """Split any feature group containing multiple contiguous work-kind runs."""
+    by_id = doc.by_id()
+    existing = {block.block_id for block in doc.blocks}
+
+    for feature_id in list(_feature_order(doc)):
+        steps = _steps_by_feature(doc).get(feature_id, [])
+        if len(steps) < 2:
+            continue
+        runs: list[tuple[str, list[str]]] = []
+        for step_id in steps:
+            kind = _raw_work_kind(by_id[step_id])
+            if runs and runs[-1][0] == kind:
+                runs[-1][1].append(step_id)
+            else:
+                runs.append((kind, [step_id]))
+        if len(runs) < 2:
+            continue
+
+        feature = by_id[feature_id]
+        base_name = _block_header_name(feature)
+        insert_at = next(i for i, b in enumerate(doc.blocks) if b.block_id == feature_id) + 1
+        for kind, run_steps in runs[1:]:
+            label = _WORK_KIND_LABELS.get(kind, "Work")
+            new_name = f"{base_name} {label}"
+            new_id = _unique_id(f"{feature_id}-{kind}", existing)
+            existing.add(new_id)
+            doc.blocks.insert(
+                insert_at,
+                RawBlock(
+                    block_id=new_id,
+                    block_type="feature",
+                    parent=None,
+                    depends=(),
+                    lines=[
+                        f"## feature {_next_ordinal(doc)}: {new_name}",
+                        f"id: {new_id}",
+                        f"summary: {new_name}",
+                        "state: pending",
+                    ],
+                ),
+            )
+            insert_at += 1
+            for step_id in run_steps:
+                _set_parent_line(by_id[step_id], new_id)
+
+    _require_unique_ids(doc)
+    doc.blocks[:] = _flatten(doc)
+
+
+def _roll_up_feature_states(doc: ManifestDoc) -> None:
+    """Keep feature block state coherent with its executable child stories."""
+    by_id = doc.by_id()
+    for feature_id, step_ids in _steps_by_feature(doc).items():
+        if feature_id is None or feature_id not in by_id or not step_ids:
+            continue
+        feature = by_id[feature_id]
+        child_states = [
+            _scan_field(by_id[step_id].lines, "state") or "pending" for step_id in step_ids
+        ]
+        if any(state == "closed/failed" for state in child_states):
+            failed_id = next(
+                step_id
+                for step_id, state in zip(step_ids, child_states)
+                if state == "closed/failed"
+            )
+            failed = by_id[failed_id]
+            _set_field_line(feature, "state", "closed/failed")
+            _set_field_line(
+                feature,
+                "finding",
+                _scan_field(failed.lines, "finding") or _scan_field(feature.lines, "finding"),
+            )
+            _set_field_line(
+                feature,
+                "evidence",
+                _scan_field(failed.lines, "evidence") or _scan_field(feature.lines, "evidence"),
+            )
+        elif all(state == "closed/verified" for state in child_states):
+            first = by_id[step_ids[0]]
+            _set_field_line(feature, "state", "closed/verified")
+            _set_field_line(
+                feature,
+                "evidence",
+                _scan_field(first.lines, "evidence") or _scan_field(feature.lines, "evidence"),
+            )
 
 
 # ── Serialization ────────────────────────────────────────────────────────────

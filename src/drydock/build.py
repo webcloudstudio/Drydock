@@ -229,8 +229,9 @@ def is_screen_step(block: PlanBlock) -> bool:
 
 # Layer bands for build-order validation. Manifest order constrains only the
 # coarse layer a step sits in — Foundation before Data/Persistence before the
-# Features/Screens band — never a strict per-dependency order, which the engine
-# derives at run time from ``depends:``. Features and Screens share one band.
+# implementation band — never a strict per-dependency order, which the engine
+# derives at run time from ``depends:``. Feature/service and screen work can live
+# in the same band, but they are separate work kinds for grouping.
 BAND_FOUNDATION = 0
 BAND_DATA = 1
 BAND_FEATURES = 2
@@ -265,6 +266,25 @@ def band_of(block: PlanBlock) -> int:
     Acceptance (``ac``) blocks are out of the ordered stream and are never banded.
     """
     return band_for(block.block_type, _implements(block))
+
+
+def work_kind_for(block_type: str, implements: Iterable[str]) -> str:
+    """Return the stack-local work kind used for build grouping.
+
+    Bands answer "can this appear before that"; work kinds answer "should this
+    run in the same prompt." Screen work uses a different stack from the
+    feature/service/foundation implementation path, so it does not share a build
+    prompt with non-screen work.
+    """
+    names = tuple(implements)
+    if names and all(name.startswith("SCREEN-") for name in names):
+        return "screen"
+    return "feature"
+
+
+def work_kind_of(block: PlanBlock) -> str:
+    """Return the stack-local work kind for a parsed manifest block."""
+    return work_kind_for(block.block_type, _implements(block))
 
 
 def auto_context_files(block: PlanBlock, blueprint_dir: Path) -> tuple[str, ...]:

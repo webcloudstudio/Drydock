@@ -40,6 +40,7 @@ from drydock.build import (
     render_build_group_prompt_assembly,
     render_build_prompt_assembly,
     required_auto_compact_sources,
+    work_kind_of,
 )
 from drydock.build_plan import (
     AppliedSpecRecord,
@@ -366,6 +367,19 @@ def _external_unverified_dependencies(
     )
 
 
+def _first_pending_work_run(pending: tuple[PlanBlock, ...]) -> tuple[PlanBlock, ...]:
+    """Return the first contiguous run of pending steps with the same work kind."""
+    if not pending:
+        return ()
+    first_kind = work_kind_of(pending[0])
+    run: list[PlanBlock] = []
+    for child in pending:
+        if work_kind_of(child) != first_kind:
+            break
+        run.append(child)
+    return tuple(run)
+
+
 def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None:
     by_id = plan.by_id()
     executable = tuple(
@@ -377,7 +391,8 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
     pending = tuple(child for child in executable if child.state == "pending")
     if not pending:
         return None
-    if _external_unverified_dependencies(feature, pending, executable, by_id):
+    pending = _first_pending_work_run(pending)
+    if _external_unverified_dependencies(feature, pending, pending, by_id):
         return None
     return BuildUnit(
         block_id=feature.block_id,
@@ -394,7 +409,8 @@ def _blocked_block_message(plan: BuildPlan, feature: PlanBlock) -> str:
         child for child in plan.children(feature.block_id) if child.block_type in {"story", "spike"}
     )
     pending = tuple(child for child in executable if child.state == "pending")
-    blockers = _external_unverified_dependencies(feature, pending, executable, by_id)
+    pending = _first_pending_work_run(pending)
+    blockers = _external_unverified_dependencies(feature, pending, pending, by_id)
     if blockers:
         return (
             f"Build block {_block_label(feature)} is blocked by unverified external dependencies: "

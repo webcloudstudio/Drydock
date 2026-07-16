@@ -450,6 +450,55 @@ def test_normalize_order_sorts_groups_into_band_order(tmp_path):
     assert validate_order(doc.blocks) == []
 
 
+def test_normalize_order_splits_mixed_feature_and_screen_runs(tmp_path):
+    manifest = """# MANIFEST: Mixed
+state: approved
+
+## feature 1: Catalog
+id: feat-catalog
+summary: Mixed feature.
+state: pending
+
+## story 1: Catalog Service
+id: catalog-service
+parent: feat-catalog
+implements: FEATURE-CATALOG.md
+state: pending
+
+## story 2: Catalog Screen
+id: catalog-screen
+parent: feat-catalog
+implements: SCREEN-CATALOG.md
+depends: catalog-service
+finding: provider rate limit
+state: closed/failed
+
+## story 3: Catalog Export
+id: catalog-export
+parent: feat-catalog
+implements: FEATURE-EXPORT.md
+depends: catalog-screen
+state: pending
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    doc = split_manifest(path)
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+
+    ids = _ids(doc)
+    assert doc.by_id()["catalog-service"].parent == "feat-catalog"
+    assert doc.by_id()["catalog-screen"].parent == "feat-catalog-screen"
+    assert doc.by_id()["catalog-export"].parent == "feat-catalog-feature"
+    assert any(line == "state: closed/failed" for line in doc.by_id()["feat-catalog-screen"].lines)
+    assert any(
+        line == "finding: provider rate limit" for line in doc.by_id()["feat-catalog-screen"].lines
+    )
+    assert ids.index("catalog-service") < ids.index("catalog-screen") < ids.index("catalog-export")
+    assert validate_order(doc.blocks) == []
+
+
 def test_apply_edit_normalize_persists(tmp_path):
     path = _write_bands(tmp_path)
     apply_edit(path, "normalize")

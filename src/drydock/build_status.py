@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from drydock.build import work_kind_of
 from drydock.build_plan import BuildPlan, PlanBlock
 
 STEP_TYPES = ("story", "spike")
@@ -161,7 +162,9 @@ def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]
         pending = tuple(child for child in executable if child.state == "pending")
         if not pending:
             continue
-        internal_ids = {child.block_id for child in executable}
+        first_kind = work_kind_of(pending[0])
+        pending = _first_pending_work_run(pending, first_kind)
+        internal_ids = {child.block_id for child in pending}
         external_deps = [
             dep for dep in block.depends if dep not in internal_ids and not _verified(dep, by_id)
         ]
@@ -185,3 +188,14 @@ def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]
         buildable_steps.append(block.block_id)
 
     return tuple(buildable_blocks), tuple(buildable_steps)
+
+
+def _first_pending_work_run(
+    pending: tuple[PlanBlock, ...], first_kind: str
+) -> tuple[PlanBlock, ...]:
+    run: list[PlanBlock] = []
+    for child in pending:
+        if work_kind_of(child) != first_kind:
+            break
+        run.append(child)
+    return tuple(run)
