@@ -15,7 +15,8 @@ These technology files are **shared across all projects** in this specification 
 | File | Maps to STACK.yaml | Covers |
 |------|-------------------|--------|
 | `common.md` | *(always)* | Directory layout, bin/ scripts, Links.md, CLAUDE.md conventions, git hygiene, dev workflow |
-| `python.md` | `language: python` | Config classes, logging, testing with pytest, dependencies, startup validation |
+| `python.md` | `language: python` | Config classes, type hints and static typing, logging, testing with pytest, dependencies, startup validation |
+| `typescript.md` | `language: typescript` | Strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
 | `flask.md` | `framework: flask` | App factory, blueprints, Jinja2, HTMX, test client, security |
 | `django.md` | `framework: django` | Settings package, ORM, migrations, admin, django-htmx |
 | `sqlite.md` | `database: sqlite` | Connection setup, PRAGMAs, JSON columns, migrations, backup |
@@ -39,6 +40,7 @@ These technology files are **shared across all projects** in this specification 
 
 ### Languages
 - **python.md** — Server-side Python application development
+- **typescript.md** — Typed JavaScript application development (strict compilation, boundary validation)
 
 ### Web Frameworks
 - **flask.md** — Lightweight Python web framework with HTMX

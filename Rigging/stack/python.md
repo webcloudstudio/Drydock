@@ -1,6 +1,6 @@
 # Python Best Practices
 
-**Version:** 20260603 V1  
+**Version:** 20260716 V2  
 **Category:** Technologies
 **Description:** Python language conventions and patterns for specification-driven projects
 
@@ -52,7 +52,38 @@ APP_PORT=5001
 
 ---
 
-## 2. Logging
+## 2. Type Hints and Static Typing
+
+**Rule**: Use modern type hints on all public interfaces. Model data that crosses module or process boundaries with typed structures — dataclasses, `TypedDict`, or Pydantic models — never bare dicts or tuples of implicit shape. Run a static type checker when practical.
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class User:
+    id: int
+    email: str
+    roles: list[str]
+
+# Public interfaces are fully typed; modern syntax only
+def load_users(db: Database, limit: int | None = None) -> list[User]: ...
+
+# Boundary shapes are explicit types, never dict[str, Any]
+def to_response(user: User) -> UserResponse: ...
+```
+
+Rules:
+- Type every public function, method, and class attribute. Module-private helpers may omit hints when the types are obvious.
+- Use modern syntax: built-in generics (`list[str]`, `dict[str, int]`) and unions (`X | None`) — never `typing.List`, `Optional`, or `Union`.
+- Schemas, serializers, services, and data structures are typed classes where appropriate: frozen dataclasses for internal data, Pydantic models or `TypedDict` at serialization and validation boundaries.
+- Never rely on implicit or ambiguous shapes — no bare `dict`, positional tuples, or `Any` crossing a module boundary. If a shape matters, give it a name and a type.
+- Run a suitable static type checker when practical: `uv add --dev mypy` then `uv run mypy .` (pyright is an acceptable alternative). Run it alongside ruff and pytest in CI.
+
+**Why**: Typed interfaces make wrong calls fail at check time instead of runtime, and named shapes document intent where docstrings drift. The type checker is the cheapest reviewer the project has.
+
+---
+
+## 3. Logging
 
 **Rule**: Use Python's `logging` module with named loggers, never `print()`. Configure formatters and handlers at startup.
 
@@ -95,7 +126,7 @@ logger.error('Failed to connect: %s', err)
 
 ---
 
-## 3. Environment Separation
+## 4. Environment Separation
 
 **Rule**: Maintain distinct `.env` files per environment; the same typed `Config` reads whichever `.env` is present. Never run debug mode in production.
 
@@ -110,7 +141,7 @@ logger.error('Failed to connect: %s', err)
 
 ---
 
-## 4. Testing
+## 5. Testing
 
 **Rule**: Use `pytest` with fixtures. Isolate each test with a fresh database. Test at the boundary, not internals. Every Python project build must include a complete pytest suite regardless of whether the specification mentions tests — a project without tests does not satisfy ACTIVE conformity.
 
@@ -169,7 +200,7 @@ testpaths = tests
 addopts = -v
 ```
 
-Add `pytest` to `pyproject.toml` dev dependencies (see §6).
+Add `pytest` to `pyproject.toml` dev dependencies (see §7).
 
 ### What not to test
 - Third-party library internals (Flask, SQLite, HTMX)
@@ -180,7 +211,7 @@ Add `pytest` to `pyproject.toml` dev dependencies (see §6).
 
 ---
 
-## 5. Security Basics
+## 6. Security Basics
 
 **Rule**: Validate all user input. Use parameterized queries exclusively. Never trust client data.
 
@@ -195,7 +226,7 @@ Checklist:
 
 ---
 
-## 6. Dependency Management (uv)
+## 7. Dependency Management (uv)
 
 **Rule**: Use `uv` for venv creation and dependency management. `pyproject.toml` is the required manifest; `uv.lock` is committed.
 
@@ -242,7 +273,7 @@ Rules:
 
 ---
 
-## 7. Health Check and Startup Validation
+## 8. Health Check and Startup Validation
 
 **Rule**: Validate required config and DB connectivity at startup. Crash early on misconfiguration.
 
@@ -262,7 +293,7 @@ def validate_startup(config: Config, db: Database):
 
 ---
 
-## 8. Project Directory Layout (Python-specific)
+## 9. Project Directory Layout (Python-specific)
 
 Python web projects extend the common layout:
 
@@ -298,6 +329,7 @@ project-name/
 
 - [ ] One typed `Config` class is the only env reader; no hardcoded secrets, no Dev/Prod/Test subclasses
 - [ ] All persistence/services through typed classes (`stack/persistence.md`) — no raw SQL/`os.environ`/`open()`/SDK in app code
+- [ ] Modern type hints on all public interfaces; typed schemas/serializers/services; no ambiguous shapes across boundaries; type checker run when practical
 - [ ] Logging with named loggers, not `print()`
 - [ ] Distinct dev/test/prod configs
 - [ ] pytest with fixtures and isolated test DB
