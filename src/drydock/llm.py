@@ -537,6 +537,40 @@ def _login_command(llm: str) -> str:
     return f"{llm} login"
 
 
+def _is_rate_limit_error(*texts: str | None) -> bool:
+    """True when provider output indicates a quota/session/rate-limit block."""
+    haystack = "\n".join(text for text in texts if text).lower()
+    return "rate limit" in haystack or "session limit" in haystack
+
+
+def _print_fatal_provider_error(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    error: str,
+    title: str,
+    action_lines: tuple[str, ...],
+) -> None:
+    border = "*" * 78
+    lines = [
+        border,
+        f"* {title}",
+        "*",
+        f"* Drydock could not run '{command_name}' with the {llm} provider.",
+        "*",
+        "* Details:",
+        f"*   {error}",
+        "*",
+        "* Required action:",
+        *(f"*   {line}" for line in action_lines),
+        "*",
+        f"* execution_id: {execution_id}",
+        border,
+    ]
+    print("\n".join(lines), file=sys.stderr, flush=True)
+
+
 def _print_authentication_required(
     *,
     llm: str,
@@ -544,23 +578,89 @@ def _print_authentication_required(
     execution_id: str,
     error: str,
 ) -> None:
-    border = "=" * 78
-    lines = [
-        border,
-        "LLM AUTHENTICATION REQUIRED",
-        "",
-        f"Drydock could not run '{command_name}' because the {llm} CLI is not authenticated.",
-        "",
-        "Provider error:",
-        f"  {error}",
-        "",
-        "Refresh the CLI login, then rerun the Drydock command:",
-        f"  {_login_command(llm)}",
-        "",
-        f"execution_id: {execution_id}",
-        border,
-    ]
-    print("\n".join(lines), file=sys.stderr, flush=True)
+    _print_fatal_provider_error(
+        llm=llm,
+        command_name=command_name,
+        execution_id=execution_id,
+        error=error,
+        title="FATAL ERROR - LLM AUTHENTICATION REQUIRED",
+        action_lines=(
+            "Refresh the CLI login, then rerun the Drydock command:",
+            _login_command(llm),
+        ),
+    )
+
+
+def _print_rate_limit_required(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    error: str,
+) -> None:
+    _print_fatal_provider_error(
+        llm=llm,
+        command_name=command_name,
+        execution_id=execution_id,
+        error=error,
+        title="FATAL ERROR - PROVIDER RATE LIMIT",
+        action_lines=(
+            "Wait for the provider quota or session limit to reset,",
+            "or switch the configured LLM provider/model, then rerun the Drydock command.",
+        ),
+    )
+
+
+def _print_provider_failure(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    error: str,
+) -> None:
+    _print_fatal_provider_error(
+        llm=llm,
+        command_name=command_name,
+        execution_id=execution_id,
+        error=error,
+        title="FATAL ERROR - LLM PROVIDER ERROR",
+        action_lines=("Review the provider error and rerun the Drydock command.",),
+    )
+
+
+def _print_llm_failure_block(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    error: str,
+    provider_error: str | None,
+    raw_output: str,
+) -> None:
+    if _is_authentication_error(error, provider_error, raw_output):
+        _print_authentication_required(
+            llm=llm,
+            command_name=command_name,
+            execution_id=execution_id,
+            error=error,
+        )
+        return
+    if _is_rate_limit_error(error, provider_error, raw_output):
+        _print_rate_limit_required(
+            llm=llm,
+            command_name=command_name,
+            execution_id=execution_id,
+            error=error,
+        )
+        return
+    if provider_error:
+        _print_provider_failure(
+            llm=llm,
+            command_name=command_name,
+            execution_id=execution_id,
+            error=error,
+        )
+        return
 
 
 def _record(
@@ -917,12 +1017,14 @@ def run_prompt(
             if returncode
             else None
         )
-        if returncode and error and _is_authentication_error(error, provider_error, raw_output):
-            _print_authentication_required(
+        if returncode and error:
+            _print_llm_failure_block(
                 llm=selected,
                 command_name=command_name,
                 execution_id=artifacts.execution_id,
                 error=error,
+                provider_error=provider_error,
+                raw_output=raw_output,
             )
         record = _record(
             artifacts=artifacts,

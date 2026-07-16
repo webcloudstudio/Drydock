@@ -1256,7 +1256,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
         print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
         if step.status == "failed":
-            print(f"      {BUILD_FAILURE_FORCE_HINT}")
+            border = "*" * 78
+            print(border)
+            print("* FATAL ERROR")
+            print(f"*   Build step failed: {step.block_id} - {step.name}")
+            print(f"*   Details: {step.error or 'build failed'}")
+            if step.execution_id:
+                print(f"*   execution_id: {step.execution_id}")
+            if step.evidence_path is not None:
+                print(f"*   evidence: {step.evidence_path}")
+            print(f"*   {BUILD_FAILURE_FORCE_HINT}")
+            print(border)
         if step.evidence_path is not None:
             print(f"      evidence: {step.evidence_path}")
         print(f"      files changed: {len(step.written_files)}")
@@ -1304,6 +1314,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"Setting up git directory in {result.build_dir}")
     if result.git_commit:
         print(f"Ran git commit to commit changes ({result.git_commit})")
+    elif result.failed():
+        print("Build failed; skipped final git commit.")
     elif not result.dry_run:
         print("No git changes to commit.")
         if result.drydock_commit_skipped_after_build:

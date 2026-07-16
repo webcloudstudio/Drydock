@@ -657,6 +657,49 @@ def test_failed_step_marks_failed_and_stops(tmp_path):
     assert result.exit_code() == 1
 
 
+def test_failed_step_stops_independent_frontier(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+instructions: |
+  Build the database.
+state: pending
+
+## story 2: Service
+id: service
+implements: SERVICE.md
+instructions: |
+  Build the service.
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    runner = make_runner(ok=False, text="", write_files=False)
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert [step.block_id for step in result.steps] == ["foundation"]
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert _state(target_dir, "service") == "pending"
+    assert len(runner.calls) == 1
+    assert result.exit_code() == 1
+
+
+def test_failed_step_skips_final_build_commit_even_with_file_changes(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    runner = make_runner(ok=False, text="", write_files=True)
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].written_files == ("foundation.txt",)
+    assert result.git_commit is None
+    assert result.git_commit_message is None
+    assert result.exit_code() == 1
+
+
 def test_evidence_records_summary_and_state(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(

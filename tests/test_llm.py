@@ -359,10 +359,50 @@ def test_run_claude_prints_login_block_for_authentication_failure(tmp_path, monk
 
     stderr = capsys.readouterr().err
     assert not result.ok
-    assert "LLM AUTHENTICATION REQUIRED" in stderr
-    assert "because the claude CLI is not authenticated" in stderr
+    assert "FATAL ERROR - LLM AUTHENTICATION REQUIRED" in stderr
+    assert "Drydock could not run 'rigging compact' with the claude provider." in stderr
     assert "Failed to authenticate: OAuth session expired" in stderr
-    assert "  claude" in stderr
+    assert "*   claude" in stderr
+    assert result.execution_id in stderr
+    assert _records(tmp_path)[0]["result"]["error"] == result.stderr
+
+
+def test_run_claude_prints_fatal_block_for_rate_limit(tmp_path, monkeypatch, capsys):
+    raw = "\n".join([
+        json.dumps({
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "rejected",
+                "rateLimitType": "five_hour",
+                "overageDisabledReason": "out_of_credits",
+            },
+        }),
+        json.dumps({
+            "type": "result",
+            "is_error": True,
+            "api_error_status": 429,
+            "result": "You've hit your session limit",
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+        }),
+    ])
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=raw + "\n",
+            returncode=1,
+            **kwargs,
+        ),
+    )
+
+    result = run_prompt("Work", tmp_path, llm="claude", command_name="build")
+
+    stderr = capsys.readouterr().err
+    assert not result.ok
+    assert "FATAL ERROR - PROVIDER RATE LIMIT" in stderr
+    assert "provider rate limit 429: You've hit your session limit" in stderr
+    assert "Wait for the provider quota or session limit to reset" in stderr
     assert result.execution_id in stderr
     assert _records(tmp_path)[0]["result"]["error"] == result.stderr
 

@@ -1357,8 +1357,11 @@ def build_target(
         if status == "failed" or step_id is not None:
             break
 
+    build_failed = any(step.status == "failed" for step in steps)
     git_commit, git_commit_message = (
-        (None, None) if dry_run else _commit_build_dir(resolved_build_dir, target, today)
+        (None, None)
+        if dry_run or build_failed
+        else _commit_build_dir(resolved_build_dir, target, today)
     )
     drydock_commit_skipped_after_build = git_commit is None and any(
         step.status in {"built", "implemented"} and step.written_files for step in steps
@@ -1367,7 +1370,11 @@ def build_target(
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
     readme_path: Path | None = None
-    if not dry_run and any(step.status in {"built", "implemented"} for step in steps):
+    if (
+        not dry_run
+        and not build_failed
+        and any(step.status in {"built", "implemented"} for step in steps)
+    ):
         set_build_state(target_dir, "built")
         set_sub_state(target_dir, "complete")
         stamp_last(target_dir, "built")
