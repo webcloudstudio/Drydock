@@ -860,10 +860,11 @@ state: pending
 
         assert rc == 1
         assert "unverified external dependencies: Awaiting checks [awaiting-checks]" in err
+        assert "Awaiting checks [awaiting-checks]: state=implemented" in err
         assert "Options:" in err
         assert "Review and normalize in QuarterDeck" in err
-        assert "Story Retry: drydock build <Target> --step awaiting-checks --force" in err
-        assert "drydock build status <Target>" in err
+        assert "Story Retry: drydock build ExampleTarget --step awaiting-checks --force" in err
+        assert "drydock build status ExampleTarget" in err
         assert "drydock build verify ExampleTarget awaiting-checks" not in out
 
 

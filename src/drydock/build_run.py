@@ -341,21 +341,40 @@ def _dependency_labels(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock
     return ", ".join(labels)
 
 
-def _blocked_options(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock]) -> str:
+def _blocked_options(
+    dependencies: tuple[str, ...], by_id: dict[str, PlanBlock], target: str
+) -> str:
     known_dependencies = [dep for dep in dict.fromkeys(dependencies) if dep in by_id]
     if not known_dependencies:
         return (
             "\nOptions:"
-            "\n  - Review in QuarterDeck: drydock run quarterdeck <Target>"
-            "\n  - Inspect build state: drydock build status <Target>"
+            f"\n  - Review in QuarterDeck: drydock run quarterdeck {target}"
+            f"\n  - Inspect build state: drydock build status {target}"
         )
     first = known_dependencies[0]
     return (
         "\nOptions:"
-        "\n  - Review and normalize in QuarterDeck: drydock run quarterdeck <Target>"
-        f"\n  - Story Retry: drydock build <Target> --step {first} --force"
-        "\n  - Inspect build state: drydock build status <Target>"
+        f"\n  - Review and normalize in QuarterDeck: drydock run quarterdeck {target}"
+        f"\n  - Story Retry: drydock build {target} --step {first} --force"
+        f"\n  - Inspect build state: drydock build status {target}"
     )
+
+
+def _blocked_dependency_details(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock]) -> str:
+    lines: list[str] = []
+    for dep in dict.fromkeys(dependencies):
+        block = by_id.get(dep)
+        if block is None:
+            lines.append(f"  - {dep}: missing from MANIFEST.md")
+            continue
+        detail = f"  - {_block_label(block)}: state={block.state}"
+        finding = block.fields.get("finding", "").strip()
+        if finding:
+            detail += f"; finding={finding}"
+        lines.append(detail)
+    if not lines:
+        return ""
+    return "\nBlocking dependency status:\n" + "\n".join(lines)
 
 
 def _verified_dependency(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
@@ -420,7 +439,7 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
     )
 
 
-def _blocked_block_message(plan: BuildPlan, feature: PlanBlock) -> str:
+def _blocked_block_message(plan: BuildPlan, feature: PlanBlock, target: str) -> str:
     by_id = plan.by_id()
     executable = tuple(
         child for child in plan.children(feature.block_id) if child.block_type in {"story", "spike"}
@@ -432,7 +451,8 @@ def _blocked_block_message(plan: BuildPlan, feature: PlanBlock) -> str:
         return (
             f"Build block {_block_label(feature)} is blocked by unverified external dependencies: "
             + _dependency_labels(blockers, by_id)
-            + _blocked_options(blockers, by_id)
+            + _blocked_dependency_details(blockers, by_id)
+            + _blocked_options(blockers, by_id, target)
         )
     return (
         f"{_block_label(feature)} is not buildable; state={feature.state!r}, "
@@ -449,7 +469,7 @@ def _containing_feature(block: PlanBlock, by_id: dict[str, PlanBlock]) -> PlanBl
     return parent
 
 
-def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None:
+def _select_build_unit(plan: BuildPlan, step_id: str | None, target: str) -> BuildUnit | None:
     by_id = plan.by_id()
     if step_id is not None:
         block = by_id.get(step_id)
@@ -458,13 +478,13 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
         if block.block_type == "feature":
             unit = _feature_build_unit(plan, block)
             if unit is None:
-                raise SpecificationError(_blocked_block_message(plan, block))
+                raise SpecificationError(_blocked_block_message(plan, block, target))
             return unit
         parent = _containing_feature(block, by_id)
         if parent is not None:
             unit = _feature_build_unit(plan, parent)
             if unit is None:
-                raise SpecificationError(_blocked_block_message(plan, parent))
+                raise SpecificationError(_blocked_block_message(plan, parent, target))
             return unit
         if block.block_type not in {"story", "spike"} or not _is_buildable(block, by_id):
             raise SpecificationError(
@@ -487,7 +507,7 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
                 child.block_type in {"story", "spike"} and child.state == "pending"
                 for child in plan.children(block.block_id)
             ):
-                raise SpecificationError(_blocked_block_message(plan, block))
+                raise SpecificationError(_blocked_block_message(plan, block, target))
         if (
             block.block_type in {"story", "spike"}
             and _containing_feature(block, by_id) is None
@@ -497,7 +517,8 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
                 raise SpecificationError(
                     f"Build block {_block_label(block)} is blocked by unverified external dependencies: "
                     + _dependency_labels(block.depends, by_id)
-                    + _blocked_options(block.depends, by_id)
+                    + _blocked_dependency_details(block.depends, by_id)
+                    + _blocked_options(block.depends, by_id, target)
                 )
             return BuildUnit(
                 block_id=block.block_id,
@@ -1105,7 +1126,7 @@ def build_target(
     guard = 0
     while True:
         plan = preview_plan if preview_plan is not None else parse_build_plan(manifest_path)
-        unit = _select_build_unit(plan, step_id)
+        unit = _select_build_unit(plan, step_id, target)
         if unit is None:
             break
         guard += 1
