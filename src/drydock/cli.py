@@ -1254,12 +1254,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     def report(step: BuildStepResult) -> None:
         mark = _marks.get(step.status, f"[{step.status}]")
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
-        print(f"  {mark:>9}  {step.block_id}  {step.name}  SP {step.story_points}{extra}")
+        print(f"  {mark:>9}  {step.name} [{step.block_id}]  SP {step.story_points}{extra}")
         if step.status == "failed":
             border = "*" * 78
             print(border)
             print("* FATAL ERROR")
-            print(f"*   Build step failed: {step.block_id} - {step.name}")
+            print(f"*   Build step failed: {step.name} [{step.block_id}]")
             print(f"*   Details: {step.error or 'build failed'}")
             if step.execution_id:
                 print(f"*   execution_id: {step.execution_id}")

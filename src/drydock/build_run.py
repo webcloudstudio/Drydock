@@ -328,6 +328,18 @@ def _is_buildable(block: PlanBlock, by_id: dict[str, PlanBlock]) -> bool:
     return block.state == "pending" and all(verified(dep) for dep in block.depends)
 
 
+def _block_label(block: PlanBlock) -> str:
+    return f"{block.name} [{block.block_id}]"
+
+
+def _dependency_labels(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock]) -> str:
+    labels: list[str] = []
+    for dep in dependencies:
+        block = by_id.get(dep)
+        labels.append(_block_label(block) if block is not None else dep)
+    return ", ".join(labels)
+
+
 def _verified_dependency(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
     dependency = by_id.get(block_id)
     return dependency is not None and dependency.state == "closed/verified"
@@ -385,11 +397,11 @@ def _blocked_block_message(plan: BuildPlan, feature: PlanBlock) -> str:
     blockers = _external_unverified_dependencies(feature, pending, executable, by_id)
     if blockers:
         return (
-            f"Build block {feature.block_id!r} is blocked by unverified external dependencies: "
-            + ", ".join(blockers)
+            f"Build block {_block_label(feature)} is blocked by unverified external dependencies: "
+            + _dependency_labels(blockers, by_id)
         )
     return (
-        f"{feature.block_id!r} is not buildable; state={feature.state!r}, "
+        f"{_block_label(feature)} is not buildable; state={feature.state!r}, "
         "dependencies must be closed/verified"
     )
 
@@ -422,7 +434,7 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
             return unit
         if block.block_type not in {"story", "spike"} or not _is_buildable(block, by_id):
             raise SpecificationError(
-                f"{step_id!r} is not buildable; state={block.state!r}, "
+                f"{_block_label(block)} is not buildable; state={block.state!r}, "
                 "dependencies must be closed/verified"
             )
         return BuildUnit(
@@ -449,8 +461,8 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
         ):
             if not _is_buildable(block, by_id):
                 raise SpecificationError(
-                    f"Build block {block.block_id!r} is blocked by unverified external dependencies: "
-                    + ", ".join(block.depends)
+                    f"Build block {_block_label(block)} is blocked by unverified external dependencies: "
+                    + _dependency_labels(block.depends, by_id)
                 )
             return BuildUnit(
                 block_id=block.block_id,
@@ -1106,7 +1118,7 @@ def build_target(
             )
         _emit(on_text, "")
         _emit(on_text, "=" * 80)
-        _emit(on_text, f"BUILD BLOCK: {unit.block_id} — {unit.name}")
+        _emit(on_text, f"BUILD BLOCK: {unit.name} [{unit.block_id}]")
         _emit(on_text, f"  Type: {unit.block_type}")
         _emit(
             on_text,
@@ -1143,7 +1155,7 @@ def build_target(
             _emit(on_text, "-" * 80)
             _emit_dry_run_file_list(on_text, group)
             _emit(on_text, "-" * 80)
-            _emit(on_text, f"DRY RUN: LLM execution skipped for {unit.block_id}")
+            _emit(on_text, f"DRY RUN: LLM execution skipped for {unit.name} [{unit.block_id}]")
             _emit(
                 on_text,
                 (
@@ -1159,7 +1171,7 @@ def build_target(
                 _emit(on_text, "DRY RUN PROMPT END")
             else:
                 _emit(on_text, "DRY RUN PROMPT: hidden; use --show-prompt to print it")
-            _emit(on_text, f"BUILD BLOCK DRY-RUN COMPLETE: {unit.block_id}")
+            _emit(on_text, f"BUILD BLOCK DRY-RUN COMPLETE: {unit.name} [{unit.block_id}]")
             _emit(on_text, "=" * 80)
             for block, assembly in zip(unit.steps, assemblies):
                 step_result = BuildStepResult(
@@ -1205,7 +1217,10 @@ def build_target(
             execution_bits.append(f"rc={returncode}")
         if execution_id:
             execution_bits.append(f"id={execution_id}")
-        _emit(on_text, f"BUILD BLOCK RETURNED: {unit.block_id}  " + "  ".join(execution_bits))
+        _emit(
+            on_text,
+            f"BUILD BLOCK RETURNED: {unit.name} [{unit.block_id}]  " + "  ".join(execution_bits),
+        )
         state, status, error, failure_detail = _build_outcome(
             summary,
             ok=ok,
@@ -1218,10 +1233,11 @@ def build_target(
             suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
             _emit(
                 on_text,
-                f"BUILD BLOCK FILES: {unit.block_id}  {len(changed_files)} changed: {preview}{suffix}",
+                f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  "
+                f"{len(changed_files)} changed: {preview}{suffix}",
             )
         else:
-            _emit(on_text, f"BUILD BLOCK FILES: {unit.block_id}  0 changed")
+            _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         if status != "failed":
             checks = tuple(
@@ -1334,12 +1350,12 @@ def build_target(
 
         _emit(on_text, "-" * 80)
         if status == "failed":
-            _emit(on_text, f"BUILD BLOCK FAILED: {unit.block_id}")
+            _emit(on_text, f"BUILD BLOCK FAILED: {unit.name} [{unit.block_id}]")
             _emit(on_text, f"  Completed: {_wall_time()}")
             _emit(on_text, f"  Elapsed: {_elapsed_text(time.monotonic() - block_started)}")
             _emit(on_text, f"  Error: {error or 'build failed'}")
         else:
-            _emit(on_text, f"BUILD BLOCK COMPLETE: {unit.block_id}")
+            _emit(on_text, f"BUILD BLOCK COMPLETE: {unit.name} [{unit.block_id}]")
             _emit(on_text, f"  State: {state}")
             _emit(on_text, f"  Completed: {_wall_time()}")
             _emit(on_text, f"  Elapsed: {_elapsed_text(time.monotonic() - block_started)}")

@@ -282,9 +282,12 @@ state: pending
     target_dir, build_dir = _setup(tmp_path, manifest=manifest)
     runner = make_runner()
 
-    with pytest.raises(SpecificationError, match="unverified external dependencies"):
+    with pytest.raises(SpecificationError, match="unverified external dependencies") as exc:
         build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
+    message = str(exc.value)
+    assert "Catalog [feature-catalog]" in message
+    assert "External [external-foundation]" in message
     assert len(runner.calls) == 0
 
 
@@ -365,7 +368,7 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert "DRY RUN ASSEMBLED FILES" in log
     assert any(line.startswith("  Role") for line in log)
     assert any("implements" in line and "DATABASE.md" in line for line in log)
-    assert any(line == "BUILD BLOCK: feature-catalog — Catalog" for line in log)
+    assert any(line == "BUILD BLOCK: Catalog [feature-catalog]" for line in log)
     assert any(line.startswith("DRY RUN PROMPT: assembled") for line in log)
     assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in log
     assert "DRY RUN PROMPT BEGIN" not in log
@@ -424,16 +427,21 @@ def test_build_emits_step_progress_lines(tmp_path):
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
 
-    assert any(line == "BUILD BLOCK: foundation — Foundation" for line in log)
+    assert any(line == "BUILD BLOCK: Foundation [foundation]" for line in log)
     assert any(line == "  Type: story" for line in log)
     assert any(line == "  Stories Included: 1 run, 0 already verified" for line in log)
     assert any(re.match(r"  Combined Story Points: \d+", line) for line in log)
     assert any(re.match(r"  Started: \d{4}-\d{2}-\d{2} ", line) for line in log)
     assert any(line == f"Workdir: {build_dir}" for line in log)
     assert any(line == "  [run] Foundation (foundation)" for line in log)
-    assert any(line == "BUILD BLOCK RETURNED: foundation  ok=True  id=exec-1" for line in log)
-    assert any(line == "BUILD BLOCK FILES: foundation  1 changed: foundation.txt" for line in log)
-    assert any(line == "BUILD BLOCK COMPLETE: foundation" for line in log)
+    assert any(
+        line == "BUILD BLOCK RETURNED: Foundation [foundation]  ok=True  id=exec-1" for line in log
+    )
+    assert any(
+        line == "BUILD BLOCK FILES: Foundation [foundation]  1 changed: foundation.txt"
+        for line in log
+    )
+    assert any(line == "BUILD BLOCK COMPLETE: Foundation [foundation]" for line in log)
     assert any(line == "  State: closed/verified" for line in log)
     assert any(re.match(r"  Completed: \d{4}-\d{2}-\d{2} ", line) for line in log)
     assert any(line.startswith("  Elapsed: ") for line in log)

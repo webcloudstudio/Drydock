@@ -708,7 +708,7 @@ state: pending
         assert rc == 1
         assert "[failed]" in out
         assert "FATAL ERROR" in out
-        assert "Build step failed: foundation - Foundation" in out
+        assert "Build step failed: Foundation [foundation]" in out
         assert "LLM execution failed" in out
         assert "rerun drydock build with --force to override errors" in out
         assert "Build failed; skipped final git commit." in out
@@ -745,7 +745,7 @@ state: pending
 
         assert rc == 0, err
         assert "DRY RUN: no LLM call" in out
-        assert "\nDRY RUN: skipping pre-build compact refresh\n" in out
+        assert "\nDRY RUN: skipping build-block compact refresh\n" in out
         assert "\nDRY RUN ASSEMBLED FILES\n" in out
         assert "Role       File" in out
         assert "implements DATABASE.md" in out
@@ -859,7 +859,7 @@ state: pending
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 1
-        assert "unverified external dependencies: awaiting-checks" in err
+        assert "unverified external dependencies: Awaiting checks [awaiting-checks]" in err
         assert "drydock build verify ExampleTarget awaiting-checks" not in out
 
 
