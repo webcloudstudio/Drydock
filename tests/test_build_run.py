@@ -345,7 +345,7 @@ state: pending
     assert "External [external-foundation]" in message
     assert "Options:" in message
     assert "drydock run quarterdeck <Target>" in message
-    assert "drydock build <Target> --step external-foundation --force" in message
+    assert "Story Retry: drydock build <Target> --step external-foundation --force" in message
     assert len(runner.calls) == 0
 
 

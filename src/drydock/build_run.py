@@ -346,15 +346,14 @@ def _blocked_options(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock])
     if not known_dependencies:
         return (
             "\nOptions:"
-            "\n  - Open QuarterDeck: drydock run quarterdeck <Target>"
+            "\n  - Review in QuarterDeck: drydock run quarterdeck <Target>"
             "\n  - Inspect build state: drydock build status <Target>"
         )
     first = known_dependencies[0]
     return (
         "\nOptions:"
-        "\n  - Open QuarterDeck: drydock run quarterdeck <Target>"
-        "\n    Then rerun the failed or blocked dependency block."
-        f"\n  - CLI retry: drydock build <Target> --step {first} --force"
+        "\n  - Review and normalize in QuarterDeck: drydock run quarterdeck <Target>"
+        f"\n  - Story Retry: drydock build <Target> --step {first} --force"
         "\n  - Inspect build state: drydock build status <Target>"
     )
 
