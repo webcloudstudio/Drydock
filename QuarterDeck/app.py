@@ -779,15 +779,27 @@ def _render_compass_empty() -> str:
     )
 
 
-def _render_step_files(step) -> str:
-    """Collapsible per-file cost breakdown for one step, grouped by role."""
+def _render_step_files(step, duplicate_flags: tuple[bool, ...] | None = None) -> str:
+    """Collapsible per-file cost breakdown for one step, grouped by role.
+
+    ``duplicate_flags`` marks files already carried by an earlier story in the
+    same build block: the row keeps its full SP but is badged (duplicate) since
+    it adds nothing to the grouped prompt. Compact-substituted files are badged
+    (compact) and show the compact SP — the cost that actually ships.
+    """
     rows = []
-    for fc in step.files:
+    for index, fc in enumerate(step.files):
         miss = " <span class='cmp-miss'>missing</span>" if fc.missing else ""
+        badges = ""
+        if getattr(fc, "compact_substituted", False):
+            badges += "<span class='cmp-badge cmp-badge-compact'>compact</span>"
+        if duplicate_flags is not None and duplicate_flags[index]:
+            badges += "<span class='cmp-badge cmp-badge-dup'>duplicate</span>"
         rows.append(
             "<li class='cmp-file'>"
             f"<span class='cmp-role'>{html.escape(fc.role)}</span>"
             f"<span class='cmp-fname'>{html.escape(fc.name)}</span>"
+            f"{badges}"
             f"<span class='cmp-fsp'>SP {fc.story_points:,}</span>{miss}"
             "</li>"
         )
@@ -803,6 +815,37 @@ def _render_step_files(step) -> str:
         "<details class='cmp-detail'><summary>stack breakdown</summary>"
         f"<ul class='cmp-files'>{''.join(rows)}</ul></details>"
     )
+
+
+def _stack_tag(step) -> str:
+    """Classify a story by what its stack carries: a FEATURE- blueprint makes it
+    Feature/Service, a SCREEN- blueprint makes it Screen, and a full (non-compact)
+    DATABASE, ARCHITECTURE, or UI_GENERAL document makes it Foundation. First
+    match wins, in that priority order.
+    """
+    has_screen = has_foundation = False
+    for fc in step.files:
+        name = fc.name.upper()
+        if "FEATURE-" in name:
+            return "<span class='cmp-stack-tag cmp-stack-feature'>Feature/Service</span>"
+        if "SCREEN-" in name:
+            has_screen = True
+        elif (
+            (
+                "DATABASE" in name
+                or "ARCHITECTURE" in name
+                or "UI_GENERAL" in name
+                or "UI-GENERAL" in name
+            )
+            and not getattr(fc, "compact_substituted", False)
+            and "_COMPACT" not in name
+        ):
+            has_foundation = True
+    if has_screen:
+        return "<span class='cmp-stack-tag cmp-stack-screen'>Screen</span>"
+    if has_foundation:
+        return "<span class='cmp-stack-tag cmp-stack-foundation'>Foundation</span>"
+    return ""
 
 
 def _feature_options(plan, selected: str | None) -> str:
@@ -979,8 +1022,9 @@ def render_compass(item: dict[str, Any]) -> str:
         label = singular if count == 1 else plural
         return f"{count} {label}"
 
-    total_sp = sum(s.total_story_points for s in steps)
-    total_savings = sum(group.story_point_savings for group in groups)
+    blueprint_sp = sum(s.own_story_points for s in steps)
+    context_sp = sum(s.overhead_story_points for s in steps)
+    used_sp = sum(group.total_story_points for group in groups)
     story_n = sum(1 for block in plan.blocks if block.block_type == "story")
     spike_n = sum(1 for block in plan.blocks if block.block_type == "spike")
     spike_html = (
@@ -1018,8 +1062,8 @@ def render_compass(item: dict[str, Any]) -> str:
         f"<span class='cmp-count cmp-count-ready'>{ready_n} ready to build</span>"
         f"<span class='cmp-count cmp-count-blocked'>{pending_n} blocked</span>"
         f"<span class='cmp-count cmp-count-failed'>{status.steps_failed} failed</span>"
-        f"<span class='cmp-count cmp-count-sp'>Total SP {total_sp:,}</span>"
-        f"<span class='cmp-count cmp-count-sp'>Total Savings {total_savings:,}</span></div>"
+        f"<span class='cmp-count cmp-count-sp'>Blueprint SP {blueprint_sp:,} · "
+        f"Context SP {context_sp:,} · Used SP {used_sp:,}</span></div>"
         f"<div class='cmp-hdr-buildable'>Buildable now: <strong>{html.escape(buildable_txt)}</strong>"
         f"</div></div>"
     )
@@ -1036,15 +1080,20 @@ def render_compass(item: dict[str, Any]) -> str:
         "</div>",
     ]
 
+    from drydock.build import group_duplicate_flags, step_incremental_story_points
+
     for group in groups:
         step_cards = []
+        group_flags = group_duplicate_flags(group.steps)
         group_total = len(group.steps)
         group_verified = sum(
             1
             for s in group.steps
             if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
         )
-        for step in group.steps:
+        for step_index, step in enumerate(group.steps):
+            step_flags = group_flags[step_index]
+            incremental_sp = step_incremental_story_points(step, step_flags)
             kind = _story_kind(step.block_id)
             state = by_id[step.block_id].state if step.block_id in by_id else "pending"
             step_cls = _KIND_STEP_CLS.get(kind, "")
@@ -1097,6 +1146,17 @@ def render_compass(item: dict[str, Any]) -> str:
             done_check = (
                 "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
             )
+            if incremental_sp != step.total_story_points:
+                sp_label = (
+                    f"<span class='cmp-gsp'>Story Points = {incremental_sp:,} "
+                    f"(full {step.total_story_points:,}, "
+                    f"overhead {step.overhead_story_points:,})</span>"
+                )
+            else:
+                sp_label = (
+                    f"<span class='cmp-gsp'>Story Points = {step.total_story_points:,} "
+                    f"(overhead {step.overhead_story_points:,})</span>"
+                )
             step_cards.append(
                 f"<div class='cmp-step{step_cls}'>"
                 "<div class='cmp-shead'>"
@@ -1104,14 +1164,14 @@ def render_compass(item: dict[str, Any]) -> str:
                 f"{_KIND_CHIP[kind]}"
                 f"<span class='cmp-stype cmp-stype-{html.escape(step.block_type)}'>"
                 f"{html.escape(step.block_type.upper())}</span>"
+                f"{_stack_tag(step)}"
                 f"<span class='cmp-sname'>{html.escape(step.name)}</span>"
-                f"<span class='cmp-gsp'>Story Points = {step.total_story_points:,} "
-                f"(overhead {step.overhead_story_points:,})</span>{warn}"
+                f"{sp_label}{warn}"
                 f"{step_controls(step, group_total)}"
                 "</div>"
                 f"{fail_html}"
                 f"{blocked_html}"
-                f"{_render_step_files(step)}"
+                f"{_render_step_files(step, step_flags)}"
                 f"{dod_html}"
                 "</div>"
             )
@@ -2391,22 +2451,29 @@ _STYLE = """
   .q-save-status.q-save-failed { color:#b91c1c; }
   .cmp-total { font-size:14px; font-weight:700; margin:0 0 14px; padding:8px 12px; background:#eef2f7; border-radius:4px; }
   .cmp-group { border:1px solid #d7dde5; border-radius:5px; margin:0 0 12px; overflow:hidden; }
-  .cmp-ghead { display:flex; align-items:center; gap:12px; padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
-  .cmp-gname { font-weight:700; font-family:ui-monospace,Consolas,monospace; }
+  .cmp-ghead { display:flex; align-items:center; gap:12px; padding:8px 12px; background:#f8fafc; border:2px solid #94a3b8; }
+  .cmp-gname { font-weight:700; font-family:ui-monospace,Consolas,monospace; color:#4338ca; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 9px; border-radius:4px; }
   .cmp-gsp { font-size:12px; color:#475569; font-weight:600; }
   .cmp-files { list-style:none; margin:0; padding:4px 12px 8px; }
   .cmp-file { display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid #f1f5f9; }
   .cmp-file:last-child { border-bottom:none; }
-  .cmp-fname { font-family:ui-monospace,Consolas,monospace; font-size:13px; }
-  .cmp-fsp { font-size:12px; color:#64748b; margin-left:auto; white-space:nowrap; }
+  .cmp-fname { font-family:ui-monospace,Consolas,monospace; font-size:13px; margin-right:auto; }
+  .cmp-fsp { font-size:12px; color:#64748b; white-space:nowrap; }
   .cmp-miss { font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#b91c1c; background:#fee2e2; border:1px solid #fca5a5; padding:3px 10px; border-radius:6px; white-space:nowrap; }
   .cmp-role { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#64748b; background:#eef2f7; padding:1px 6px; border-radius:3px; min-width:74px; text-align:center; }
+  .cmp-badge { font-size:10px; text-transform:uppercase; letter-spacing:.04em; padding:1px 6px; border-radius:3px; white-space:nowrap; }
+  .cmp-badge-compact { color:#0e7490; background:#cffafe; border:1px solid #67e8f9; }
+  .cmp-badge-dup { color:#92400e; background:#fef3c7; border:1px solid #fcd34d; }
   .cmp-step { padding:8px 12px; border-bottom:1px solid #eef2f7; }
   .cmp-step:last-child { border-bottom:none; }
   .cmp-shead { display:flex; align-items:center; gap:10px; }
   .cmp-snum { font-size:11px; font-weight:700; color:#1e3a8a; background:#dbeafe; padding:1px 7px; border-radius:3px; }
   .cmp-stype { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
   .cmp-stype-story { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#7c2d12; background:#fff7ed; border-color:#fdba74; transform:rotate(-2deg); box-shadow:1px 1px 0 #fed7aa; }
+  .cmp-stack-tag { display:inline-block; font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; padding:1px 6px; border:1px solid; border-radius:3px; transform:rotate(-2deg); white-space:nowrap; }
+  .cmp-stack-feature { color:#5b21b6; background:#f5f3ff; border-color:#c4b5fd; box-shadow:1px 1px 0 #ddd6fe; }
+  .cmp-stack-screen { color:#1e40af; background:#eff6ff; border-color:#93c5fd; box-shadow:1px 1px 0 #bfdbfe; }
+  .cmp-stack-foundation { color:#334155; background:#f1f5f9; border-color:#94a3b8; box-shadow:1px 1px 0 #cbd5e1; }
   .cmp-sname { font-weight:600; font-size:13px; }
   .cmp-warn { font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:3px 10px; border-radius:6px; white-space:nowrap; }
   .cmp-detail { margin:6px 0 0; }
@@ -2426,7 +2493,7 @@ _STYLE = """
   .cmp-btn-ico { font-size:15px; line-height:1; font-weight:800; }
   .cmp-acname { font-size:12px; color:#334155; }
   .cmp-accheck { font-size:11px; color:#475569; background:#eef2f7; padding:1px 6px; border-radius:3px; font-family:ui-monospace,Consolas,monospace; }
-  .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:140px; }
+  .cmp-regroup { font-size:11px; padding:1px 4px; border:1px solid #cbd5e1; border-radius:3px; color:#475569; max-width:280px; }
   @media (max-width: 900px) {
     main { grid-template-columns:1fr; }
     nav { border-right:none; border-bottom:1px solid #d7dde5; }
@@ -2438,13 +2505,13 @@ _STYLE = """
   .cmp-step-blocked { background:#f4f5f7; border-left:4px solid #94a3b8; }
   .cmp-step-failed { background:#fef2f2; border-left:4px solid #ef4444; }
   .cmp-group-done { border-color:#86efac; box-shadow:inset 3px 0 0 #22c55e; }
-  .cmp-group-done > .cmp-ghead { background:#f0fdf4; }
+  .cmp-group-done > .cmp-ghead { background:#f0fdf4; border-color:#22c55e; }
   .cmp-group-buildable { border-color:#d8c191; box-shadow:inset 3px 0 0 #c8a96a; }
-  .cmp-group-buildable > .cmp-ghead { background:#f6efe0; }
+  .cmp-group-buildable > .cmp-ghead { background:#f6efe0; border-color:#c8a96a; }
   .cmp-group-blocked { border-color:#cbd5e1; box-shadow:inset 3px 0 0 #94a3b8; }
-  .cmp-group-blocked > .cmp-ghead { background:#f4f5f7; }
+  .cmp-group-blocked > .cmp-ghead { background:#f4f5f7; border-color:#94a3b8; }
   .cmp-group-failed { border-color:#fca5a5; box-shadow:inset 3px 0 0 #ef4444; }
-  .cmp-group-failed > .cmp-ghead { background:#fef2f2; }
+  .cmp-group-failed > .cmp-ghead { background:#fef2f2; border-color:#ef4444; }
   .bp-check { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
               flex:none; font-size:15px; font-weight:900; color:#fff; background:#22c55e;
               border-radius:5px; box-shadow:0 1px 2px rgba(22,101,52,.3); }

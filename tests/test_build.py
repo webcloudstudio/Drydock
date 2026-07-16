@@ -14,8 +14,10 @@ from drydock.build import (
     assemble_steps,
     band_for,
     band_of,
+    group_duplicate_flags,
     group_steps,
     required_auto_compact_sources,
+    step_incremental_story_points,
 )
 from drydock.build_plan import parse_build_plan
 
@@ -469,6 +471,55 @@ class TestContextCompactSubstitution:
         # s3: README.md is not a Blueprint file → excluded
         s3 = required_auto_compact_sources(plan.by_id()["s3"], roots.blueprint_dir)
         assert [p.name for p in s3] == ["FEATURE-B.md"]
+
+    def test_group_duplicate_flags_first_seen_wins(self, tmp_path):
+        plan = self._plan(tmp_path)
+        roots = self._roots(tmp_path)
+        # s1 carries FEATURE-B_compact.md (context of s1); s3 names it again.
+        steps = (
+            assemble_step(plan.by_id()["s1"], roots),
+            assemble_step(plan.by_id()["s3"], roots),
+        )
+        flags = group_duplicate_flags(steps)
+        s1_flags = dict(zip([f.name for f in steps[0].files], flags[0], strict=True))
+        s3_flags = dict(zip([f.name for f in steps[1].files], flags[1], strict=True))
+        # first occurrence goes through
+        assert s1_flags["FEATURE-B_compact.md"] is False
+        # second occurrence is a duplicate; COMPASS.md repeats in every step
+        assert s3_flags["FEATURE-B_compact.md"] is True
+        assert s3_flags["COMPASS.md"] is True
+        # s3 implements FEATURE-C.md — s1 already carried the full FEATURE-C.md
+        # as context, which collapses to the same canonical key
+        assert s3_flags["FEATURE-C.md"] is True
+        # missing files are never duplicates
+        assert all(not flag for f, flag in zip(steps[1].files, flags[1], strict=True) if f.missing)
+
+    def test_step_incremental_story_points_excludes_duplicates(self, tmp_path):
+        plan = self._plan(tmp_path)
+        roots = self._roots(tmp_path)
+        steps = (
+            assemble_step(plan.by_id()["s1"], roots),
+            assemble_step(plan.by_id()["s3"], roots),
+        )
+        flags = group_duplicate_flags(steps)
+        # first step: nothing seen before it, incremental == total
+        assert step_incremental_story_points(steps[0], flags[0]) == steps[0].total_story_points
+        # later step: duplicates contribute zero
+        duplicate_sp = sum(
+            f.story_points for f, dup in zip(steps[1].files, flags[1], strict=True) if dup
+        )
+        assert duplicate_sp > 0
+        expected = steps[1].total_story_points - duplicate_sp
+        assert step_incremental_story_points(steps[1], flags[1]) == expected
+        # incremental sums reconcile with the group combined cost
+        combined = sum(
+            step_incremental_story_points(step, step_flags)
+            for step, step_flags in zip(steps, flags, strict=True)
+        )
+        from drydock.build import make_step_group
+
+        group = make_step_group(feature_id="f", name="F", steps=steps)
+        assert combined == group.total_story_points
 
     def test_required_auto_compact_sources_canonicalize_architecture_context(self, tmp_path):
         manifest = """# MANIFEST: Demo

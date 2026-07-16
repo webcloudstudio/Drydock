@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import math
 import re
+import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -148,13 +149,28 @@ class StepAssembly:
         return self.total_story_points - self.overhead_story_points
 
 
+def _file_size(candidate: Path) -> int | None:
+    """Byte length of a regular file via one stat call; None when unusable.
+
+    stat instead of read: the assembler only needs lengths, and the compass
+    re-measures every named file per refresh — content reads made that slow
+    on network-mounted filesystems.
+    """
+    try:
+        st = candidate.stat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(st.st_mode):
+        return None
+    return st.st_size
+
+
 def _measure(name: str, role: str, roots: tuple[Path, ...]) -> StepFile:
     """Resolve one named file against ordered roots; first existing wins."""
     for root in roots:
         candidate = root / name
-        try:
-            byte_count = len(candidate.read_bytes())
-        except OSError:
+        byte_count = _file_size(candidate)
+        if byte_count is None:
             continue
         return StepFile(
             name=name,
@@ -327,9 +343,8 @@ def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> Step
     if compact != canonical:
         for root in roots:
             candidate = root / compact
-            try:
-                byte_count = len(candidate.read_bytes())
-            except OSError:
+            byte_count = _file_size(candidate)
+            if byte_count is None:
                 continue
             return StepFile(
                 name=compact,
@@ -666,6 +681,38 @@ def _combined_story_points(steps: tuple[StepAssembly, ...]) -> int:
             seen.add(key)
             total += step_file.story_points
     return total
+
+
+def group_duplicate_flags(steps: tuple[StepAssembly, ...]) -> tuple[tuple[bool, ...], ...]:
+    """Per step, per file: True when an earlier file in this group already covers it.
+
+    Mirrors ``_combined_story_points`` first-seen semantics exactly: identity is
+    ``_group_file_key`` (compact derivatives collapse to their source), the seen set
+    spans the whole group walk in step order, and missing files are never duplicates.
+    A flagged file contributes nothing to the grouped build prompt.
+    """
+    seen: set[tuple[str, str]] = set()
+    flags: list[tuple[bool, ...]] = []
+    for step in steps:
+        step_flags: list[bool] = []
+        for step_file in step.files:
+            if step_file.missing:
+                step_flags.append(False)
+                continue
+            key = _group_file_key(step_file)
+            step_flags.append(key in seen)
+            seen.add(key)
+        flags.append(tuple(step_flags))
+    return tuple(flags)
+
+
+def step_incremental_story_points(step: StepAssembly, flags: tuple[bool, ...]) -> int:
+    """The step's grouped cost: instructions plus every non-duplicate file."""
+    return step.instructions_story_points + sum(
+        step_file.story_points
+        for step_file, duplicate in zip(step.files, flags, strict=True)
+        if not duplicate
+    )
 
 
 def _unique_group_files(steps: tuple[StepAssembly, ...], role: str) -> tuple[StepFile, ...]:

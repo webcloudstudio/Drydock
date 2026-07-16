@@ -1123,3 +1123,60 @@ def test_render_refit_never_built_target_is_clear(tmp_path, monkeypatch):
     assert "steady as she goes" in out
     assert "A.md" not in out
     assert "drydock refit" not in out
+
+
+def test_render_step_files_badges_compact_and_duplicate(tmp_path):
+    from drydock.build import StepRoots, assemble_step, group_duplicate_flags
+    from drydock.build_plan import parse_build_plan
+
+    quarterdeck = _load_quarterdeck()
+
+    target = tmp_path / "target"
+    blueprint = target / "blueprint"
+    stack = tmp_path / "rigging" / "stack"
+    rigging = tmp_path / "rigging"
+    for d in (blueprint, stack, rigging):
+        d.mkdir(parents=True, exist_ok=True)
+    (target / "COMPASS.md").write_text("compass" * 10, encoding="utf-8")
+    (blueprint / "FEATURE-A.md").write_text("feature-a" * 100, encoding="utf-8")
+    (blueprint / "FEATURE-B.md").write_text("feature-b" * 100, encoding="utf-8")
+    (blueprint / "FEATURE-B_compact.md").write_text("b-compact" * 10, encoding="utf-8")
+    roots = StepRoots(
+        target_dir=target, blueprint_dir=blueprint, stack_dir=stack, rigging_dir=rigging
+    )
+    manifest = tmp_path / "MANIFEST.md"
+    manifest.write_text(
+        """# MANIFEST: Demo
+state: approved
+
+## story 1: One
+id: s1
+implements: FEATURE-A.md
+context: FEATURE-B.md
+state: pending
+
+## story 2: Two
+id: s2
+implements: FEATURE-A.md
+context: FEATURE-B.md
+state: pending
+""",
+        encoding="utf-8",
+    )
+    plan = parse_build_plan(manifest)
+    steps = (
+        assemble_step(plan.by_id()["s1"], roots),
+        assemble_step(plan.by_id()["s2"], roots),
+    )
+    flags = group_duplicate_flags(steps)
+
+    first = quarterdeck._render_step_files(steps[0], flags[0])
+    second = quarterdeck._render_step_files(steps[1], flags[1])
+
+    # context FEATURE-B substitutes its compact sibling in both steps
+    assert "FEATURE-B_compact.md" in first
+    assert "cmp-badge-compact" in first
+    # first occurrence is not a duplicate
+    assert "cmp-badge-dup" not in first
+    # second step repeats every file — duplicate badges appear
+    assert "cmp-badge-dup" in second
