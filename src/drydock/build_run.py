@@ -341,6 +341,24 @@ def _dependency_labels(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock
     return ", ".join(labels)
 
 
+def _blocked_options(dependencies: tuple[str, ...], by_id: dict[str, PlanBlock]) -> str:
+    known_dependencies = [dep for dep in dict.fromkeys(dependencies) if dep in by_id]
+    if not known_dependencies:
+        return (
+            "\nOptions:"
+            "\n  - Open QuarterDeck: drydock run quarterdeck <Target>"
+            "\n  - Inspect build state: drydock build status <Target>"
+        )
+    first = known_dependencies[0]
+    return (
+        "\nOptions:"
+        "\n  - Open QuarterDeck: drydock run quarterdeck <Target>"
+        "\n    Then rerun the failed or blocked dependency block."
+        f"\n  - CLI retry: drydock build <Target> --step {first} --force"
+        "\n  - Inspect build state: drydock build status <Target>"
+    )
+
+
 def _verified_dependency(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
     dependency = by_id.get(block_id)
     return dependency is not None and dependency.state == "closed/verified"
@@ -415,6 +433,7 @@ def _blocked_block_message(plan: BuildPlan, feature: PlanBlock) -> str:
         return (
             f"Build block {_block_label(feature)} is blocked by unverified external dependencies: "
             + _dependency_labels(blockers, by_id)
+            + _blocked_options(blockers, by_id)
         )
     return (
         f"{_block_label(feature)} is not buildable; state={feature.state!r}, "
@@ -479,6 +498,7 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None) -> BuildUnit | None
                 raise SpecificationError(
                     f"Build block {_block_label(block)} is blocked by unverified external dependencies: "
                     + _dependency_labels(block.depends, by_id)
+                    + _blocked_options(block.depends, by_id)
                 )
             return BuildUnit(
                 block_id=block.block_id,
