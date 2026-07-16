@@ -288,6 +288,48 @@ state: pending
     assert len(runner.calls) == 0
 
 
+def test_blocked_build_does_not_auto_compact(tmp_path, monkeypatch):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Catalog
+id: feature-catalog
+summary: Catalog block.
+state: pending
+
+## story 2: Foundation
+id: foundation
+parent: feature-catalog
+implements: DATABASE.md
+context: FEATURE-A.md
+depends: external-foundation
+instructions: |
+  Build the database.
+state: pending
+
+## story 3: External
+id: external-foundation
+implements: SERVICE.md
+instructions: |
+  Build the external dependency.
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    (target_dir / "blueprint" / "FEATURE-A.md").write_text("FEATURE A\n", encoding="utf-8")
+    compact_calls: list[object] = []
+
+    def fail_if_called(*args, **kwargs):
+        compact_calls.append((args, kwargs))
+        raise AssertionError("blocked build should not auto-compact")
+
+    monkeypatch.setattr("drydock.build_run.ensure_compact_files", fail_if_called)
+
+    with pytest.raises(SpecificationError, match="unverified external dependencies"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert compact_calls == []
+
+
 def test_build_suppresses_raw_model_stream(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     log: list[str] = []
@@ -424,6 +466,46 @@ state: pending
     prompt = runner.calls[0]["prompt"]
     assert 'filename="ARCHITECTURE_compact.md"' in prompt
     assert 'filename="DATABASE_compact.md"' in prompt
+
+
+def test_build_auto_compacts_only_current_block_sources(tmp_path, monkeypatch):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+context: FEATURE-A.md
+instructions: |
+  Build the database.
+state: pending
+
+## story 2: Service
+id: service
+implements: SERVICE.md
+context: FEATURE-B.md
+instructions: |
+  Build the service.
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    blueprint = target_dir / "blueprint"
+    (blueprint / "FEATURE-A.md").write_text("FEATURE A\n", encoding="utf-8")
+    (blueprint / "FEATURE-B.md").write_text("FEATURE B\n", encoding="utf-8")
+    compact_sources: list[tuple[str, ...]] = []
+
+    def record_compacts(blueprint_dir, *, sources, **kwargs):
+        compact_sources.append(tuple(source.name for source in sources))
+
+    monkeypatch.setattr("drydock.build_run.ensure_compact_files", record_compacts)
+    runner = make_runner(ok=False, text="", write_files=False)
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert result.steps[0].status == "failed"
+    assert compact_sources == [("DATABASE.md", "FEATURE-A.md")]
+    assert "FEATURE-B.md" not in compact_sources[0]
+    assert len(runner.calls) == 1
 
 
 def test_successful_build_updates_target_lifecycle_metadata(tmp_path):

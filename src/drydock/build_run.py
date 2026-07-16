@@ -39,7 +39,7 @@ from drydock.build import (
     make_step_group,
     render_build_group_prompt_assembly,
     render_build_prompt_assembly,
-    required_plan_auto_compact_sources,
+    required_auto_compact_sources,
 )
 from drydock.build_plan import (
     AppliedSpecRecord,
@@ -1035,18 +1035,7 @@ def build_target(
         )
     plan = parse_build_plan(manifest_path)
     if dry_run:
-        _emit(on_text, "DRY RUN: skipping pre-build compact refresh")
-    else:
-        ensure_compact_files(
-            blueprint_dir,
-            sources=list(required_plan_auto_compact_sources(plan.blocks, blueprint_dir)),
-            reason="pre-build context refresh",
-            log_dir=log_dir,
-            target=target,
-            on_text=on_text,
-            model=model,
-            llm_provider=llm_provider,
-        )
+        _emit(on_text, "DRY RUN: skipping build-block compact refresh")
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
     prompt = load_prompt(PROMPT_NAME)
@@ -1075,6 +1064,25 @@ def build_target(
         guard += 1
         if guard > len(plan.blocks) + 1:  # defensive; state always advances per step
             break
+
+        if not dry_run:
+            compact_sources: list[Path] = []
+            seen_compact_sources: set[Path] = set()
+            for block in unit.steps:
+                for source in required_auto_compact_sources(block, blueprint_dir):
+                    if source not in seen_compact_sources:
+                        seen_compact_sources.add(source)
+                        compact_sources.append(source)
+            ensure_compact_files(
+                blueprint_dir,
+                sources=compact_sources,
+                reason=f"build block {unit.block_id} context refresh",
+                log_dir=log_dir,
+                target=target,
+                on_text=on_text,
+                model=model,
+                llm_provider=llm_provider,
+            )
 
         block_started = time.monotonic()
         block_started_at = _wall_time()
