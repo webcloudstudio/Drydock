@@ -1278,6 +1278,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_started = time.monotonic()
     print(f"Building Target: {args.Target}")
     print(f"BUILD COMMAND START: {args.Target}  started={_wall_time()}")
+    print(f"LLM: {llm_provider}/{model}")
     if getattr(args, "step", None):
         print(f"Building step: {args.step}")
     if getattr(args, "force", False) and getattr(args, "dry_run", False):

@@ -763,6 +763,42 @@ state: pending
         assert not (target / "evidence").exists()
         assert (target / "MANIFEST.md").read_text(encoding="utf-8") == manifest
 
+    def test_build_prints_resolved_llm_from_config(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from drydock.config import config_set
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        config_set("llm_provider", "codex")
+        config_set("drydock_model", "gpt-5.4")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+
+        def _run(*a, **k):
+            raise AssertionError("dry-run must not invoke the LLM runner")
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--build-dir",
+            str(tmp_path / "out"),
+            "--dry-run",
+        )
+
+        assert rc == 0, err
+        assert "LLM: codex/gpt-5.4" in out
+
     def test_build_dry_run_show_prompt_prints_full_prompt(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
