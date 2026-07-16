@@ -710,7 +710,7 @@ state: pending
         assert "FATAL ERROR" in out
         assert "Build step failed: Foundation [foundation]" in out
         assert "LLM execution failed" in out
-        assert "rerun drydock build with --force to override errors" in out
+        assert "rerun drydock build with --force to rerun this step" in out
         assert "Build failed; skipped final git commit." in out
 
     def test_build_dry_run_prints_prompt_without_writes(

@@ -61,7 +61,7 @@ from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
 from drydock.rigging_compact import ensure_compact_files
 
-BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to override errors"
+BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to rerun this step"
 
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]

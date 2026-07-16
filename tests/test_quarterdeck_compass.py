@@ -326,7 +326,7 @@ class TestState:
         assert "cmp-fail-reason" in out
         assert "assertion returned non-zero" in out
         assert "cmp-fail-action" in out
-        assert "rerun drydock build with --force to override errors" in out
+        assert "rerun drydock build with --force to rerun this step" in out
         # A failed frontier blocks the graph: nothing is buildable.
         assert "blocked by" in out
 

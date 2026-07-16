@@ -75,7 +75,7 @@ PROJECT_ROOT = (
 CONFIG_PATH = BASE_DIR / "console.yaml"
 WORKSPACE_ROOT = PROJECT_ROOT.parent.parent  # $DRYDOCK_WORKSPACE/targets/<Target> → workspace root
 ACTIVE_TARGET_COOKIE = "quarterdeck_target"
-BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to override errors"
+BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to rerun this step"
 TARGET_BUTTON_PALETTE = (
     ("#0f766e", "#5eead4"),
     ("#b45309", "#fbbf24"),
