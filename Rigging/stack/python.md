@@ -1,6 +1,6 @@
 # Python Best Practices
 
-**Version:** 20260716 V2  
+**Version:** 20260716 V3  
 **Category:** Technologies
 **Description:** Python language conventions and patterns for specification-driven projects
 
@@ -50,9 +50,29 @@ APP_PORT=5001
 
 **Why**: A single typed `Config` is the only env reader. Typed fields crash on a missing or malformed variable at startup, not at first use. The environment (`.env`) selects configuration — not a Python subclass.
 
+Secret hygiene and `.env.example` discipline: see `stack/env_variables_and_secrets.md`.
+
 ---
 
-## 2. Type Hints and Static Typing
+## 2. Code Style and Understandability
+
+**Rule**: Code must be understandable on its own through naming, structure, small focused units, explicit types, clear interfaces, appropriate abstractions, and tests. If a reader needs a comment to follow the mechanics, improve the code instead.
+
+Rules:
+- **Naming** — names state intent: `load_active_users()`, not `get_data()`; `retry_limit`, not `n`. No abbreviations a new reader must decode.
+- **Structure** — modules have one responsibility each (see §10 layout); related code lives together; call depth stays shallow.
+- **Small focused units** — functions do one thing at one level of abstraction; a function that needs a section comment ("# now validate…") is two functions.
+- **Explicit types** — public interfaces are fully typed (§3); the signature answers "what goes in, what comes out" without reading the body.
+- **Clear interfaces** — few parameters, typed returns, no boolean flags that change what a function fundamentally does, no output-by-mutation surprises.
+- **Appropriate abstractions** — introduce a layer only to remove real duplication or isolate a boundary (DB, cloud, external API). No speculative generality.
+- **Tests** — tests are the executable specification of behavior (§6); a behavior worth keeping is a behavior worth a test.
+- Comments state constraints the code cannot express (invariants, external quirks, why-not-the-obvious-way) — never restate what the next line does.
+
+**Why**: Code is read far more often than written. Every hour invested in clarity is repaid at each future read, debug, and review — including by the author six months later.
+
+---
+
+## 3. Type Hints and Static Typing
 
 **Rule**: Use modern type hints on all public interfaces. Model data that crosses module or process boundaries with typed structures — dataclasses, `TypedDict`, or Pydantic models — never bare dicts or tuples of implicit shape. Run a static type checker when practical.
 
@@ -83,7 +103,7 @@ Rules:
 
 ---
 
-## 3. Logging
+## 4. Logging
 
 **Rule**: Use Python's `logging` module with named loggers, never `print()`. Configure formatters and handlers at startup.
 
@@ -126,7 +146,7 @@ logger.error('Failed to connect: %s', err)
 
 ---
 
-## 4. Environment Separation
+## 5. Environment Separation
 
 **Rule**: Maintain distinct `.env` files per environment; the same typed `Config` reads whichever `.env` is present. Never run debug mode in production.
 
@@ -141,7 +161,7 @@ logger.error('Failed to connect: %s', err)
 
 ---
 
-## 5. Testing
+## 6. Testing
 
 **Rule**: Use `pytest` with fixtures. Isolate each test with a fresh database. Test at the boundary, not internals. Every Python project build must include a complete pytest suite regardless of whether the specification mentions tests — a project without tests does not satisfy ACTIVE conformity.
 
@@ -200,7 +220,7 @@ testpaths = tests
 addopts = -v
 ```
 
-Add `pytest` to `pyproject.toml` dev dependencies (see §7).
+Add `pytest` to `pyproject.toml` dev dependencies (see §8).
 
 ### What not to test
 - Third-party library internals (Flask, SQLite, HTMX)
@@ -211,7 +231,7 @@ Add `pytest` to `pyproject.toml` dev dependencies (see §7).
 
 ---
 
-## 6. Security Basics
+## 7. Security Basics
 
 **Rule**: Validate all user input. Use parameterized queries exclusively. Never trust client data.
 
@@ -226,14 +246,14 @@ Checklist:
 
 ---
 
-## 7. Dependency Management (uv)
+## 8. Dependency Management (uv)
 
 **Rule**: Use `uv` for venv creation and dependency management. `pyproject.toml` is the required manifest; `uv.lock` is committed.
 
 ```bash
 uv venv                         # creates .venv/
 uv add flask python-dotenv      # add runtime deps → updates pyproject.toml + uv.lock
-uv add --dev pytest ruff        # add dev deps
+uv add --dev pytest ruff mypy   # add dev deps
 uv sync                         # install from uv.lock (standard clone setup)
 uv sync --frozen                # strict install (CI — fail if lock is stale)
 ```
@@ -250,7 +270,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.4"]
+dev = ["pytest>=8.0", "ruff>=0.4", "mypy>=1.10"]
 
 [tool.ruff]
 line-length = 88
@@ -271,9 +291,11 @@ Rules:
 
 **Why**: uv resolves and locks dependencies deterministically, eliminating "works on my machine" drift. `uv sync --frozen` in CI guarantees the exact locked versions are installed.
 
+Full toolchain conventions (uv workflow, ruff rulesets, local/CI gates): see `stack/uv_ruff.md`.
+
 ---
 
-## 8. Health Check and Startup Validation
+## 9. Health Check and Startup Validation
 
 **Rule**: Validate required config and DB connectivity at startup. Crash early on misconfiguration.
 
@@ -293,7 +315,7 @@ def validate_startup(config: Config, db: Database):
 
 ---
 
-## 9. Project Directory Layout (Python-specific)
+## 10. Project Directory Layout (Python-specific)
 
 Python web projects extend the common layout:
 
@@ -327,7 +349,8 @@ project-name/
 
 ## Summary Checklist
 
-- [ ] One typed `Config` class is the only env reader; no hardcoded secrets, no Dev/Prod/Test subclasses
+- [ ] One typed `Config` class is the only env reader; no hardcoded secrets, no Dev/Prod/Test subclasses; `.env.example` maintained (`stack/env_variables_and_secrets.md`)
+- [ ] Code understandable through naming, structure, small units, explicit types, clear interfaces, appropriate abstractions, and tests
 - [ ] All persistence/services through typed classes (`stack/persistence.md`) — no raw SQL/`os.environ`/`open()`/SDK in app code
 - [ ] Modern type hints on all public interfaces; typed schemas/serializers/services; no ambiguous shapes across boundaries; type checker run when practical
 - [ ] Logging with named loggers, not `print()`

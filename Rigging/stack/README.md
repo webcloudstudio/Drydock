@@ -15,8 +15,10 @@ These technology files are **shared across all projects** in this specification 
 | File | Maps to STACK.yaml | Covers |
 |------|-------------------|--------|
 | `common.md` | *(always)* | Directory layout, bin/ scripts, Links.md, CLAUDE.md conventions, git hygiene, dev workflow |
-| `python.md` | `language: python` | Config classes, type hints and static typing, logging, testing with pytest, dependencies, startup validation |
-| `typescript.md` | `language: typescript` | Strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
+| `env_variables_and_secrets.md` | *(always)* | Secret hygiene, `.env`/`.env.example` discipline, early env validation, when not to use env vars |
+| `python.md` | `language: python` | Config classes, code style, type hints and static typing, logging, testing with pytest, dependencies, startup validation |
+| `uv_ruff.md` | `tooling: uv-ruff` | uv environment/lock workflow, ruff lint+format configuration, identical local/CI gates |
+| `typescript.md` | `language: typescript` | Code style, strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
 | `flask.md` | `framework: flask` | App factory, blueprints, Jinja2, HTMX, test client, security |
 | `django.md` | `framework: django` | Settings package, ORM, migrations, admin, django-htmx |
 | `sqlite.md` | `database: sqlite` | Connection setup, PRAGMAs, JSON columns, migrations, backup |
@@ -38,9 +40,15 @@ These technology files are **shared across all projects** in this specification 
 
 ## Technology Groupings
 
+### Cross-Cutting
+- **env_variables_and_secrets.md** — Secret hygiene and environment-variable discipline (all languages)
+
 ### Languages
 - **python.md** — Server-side Python application development
 - **typescript.md** — Typed JavaScript application development (strict compilation, boundary validation)
+
+### Tooling
+- **uv_ruff.md** — Python toolchain: uv environments/dependencies, ruff lint+format
 
 ### Web Frameworks
 - **flask.md** — Lightweight Python web framework with HTMX

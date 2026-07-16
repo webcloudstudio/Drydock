@@ -1,6 +1,6 @@
 # TypeScript Best Practices
 
-**Version:** 20260716 V1  
+**Version:** 20260716 V2  
 **Category:** Technologies
 **Description:** TypeScript language conventions and patterns for specification-driven projects
 
@@ -10,7 +10,25 @@ Prerequisite: `stack/common.md`
 
 ---
 
-## 1. Strict Compiler Settings
+## 1. Code Style and Understandability
+
+**Rule**: Code must be understandable on its own through naming, structure, small focused units, explicit types, clear interfaces, appropriate abstractions, and tests. If a reader needs a comment to follow the mechanics, improve the code instead.
+
+Rules:
+- **Naming** — names state intent: `loadActiveUsers()`, not `getData()`; `retryLimit`, not `n`. No abbreviations a new reader must decode.
+- **Structure** — one responsibility per module; related code lives together; import graphs stay shallow and acyclic.
+- **Small focused units** — functions do one thing at one level of abstraction; a function that needs a section comment ("// now validate…") is two functions.
+- **Explicit types** — exported functions and values carry explicit types (§4); the signature answers "what goes in, what comes out" without reading the body.
+- **Clear interfaces** — few parameters (an options object once past two or three), typed returns, no boolean flags that change what a function fundamentally does, no output-by-mutation surprises.
+- **Appropriate abstractions** — introduce a layer only to remove real duplication or isolate a boundary (API client, storage, external service). No speculative generality.
+- **Tests** — tests are the executable specification of behavior; a behavior worth keeping is a behavior worth a test.
+- Comments state constraints the code cannot express (invariants, external quirks, why-not-the-obvious-way) — never restate what the next line does.
+
+**Why**: Code is read far more often than written. Every hour invested in clarity is repaid at each future read, debug, and review — including by the author six months later.
+
+---
+
+## 2. Strict Compiler Settings
 
 **Rule**: Enable strict compiler settings so compilation catches as many errors as reasonably possible. `strict: true` is the floor, not the ceiling.
 
@@ -41,7 +59,7 @@ Rules:
 
 ---
 
-## 2. No `any`, No Unsafe Assertions
+## 3. No `any`, No Unsafe Assertions
 
 **Rule**: Avoid `any` and avoid unsafe type assertions. Use `unknown` plus narrowing for values of uncertain type.
 
@@ -67,7 +85,7 @@ Rules:
 
 ---
 
-## 3. Explicit Domain Modeling
+## 4. Explicit Domain Modeling
 
 **Rule**: Model domain data explicitly. Every meaningful shape gets a named type; state that can only be one of several variants is a discriminated union, not a bag of optional fields.
 
@@ -104,7 +122,7 @@ Rules:
 
 ---
 
-## 4. Validate Data at System Boundaries
+## 5. Validate Data at System Boundaries
 
 **Rule**: Validate all data entering the process — HTTP payloads, environment variables, file contents, message queues — with a runtime schema (e.g. zod) that derives the static type. Inside the boundary, trust the types.
 
@@ -122,6 +140,7 @@ export type User = z.infer<typeof UserSchema>;   // single source of truth
 const user: User = UserSchema.parse(await res.json());
 
 // Environment config validated once at startup — crash early
+// (secret hygiene and .env.example discipline: stack/env_variables_and_secrets.md)
 const ConfigSchema = z.object({
   PORT: z.coerce.number().default(5001),
   DATABASE_URL: z.string().min(1),
@@ -138,7 +157,7 @@ Rules:
 
 ---
 
-## 5. Generated Types
+## 6. Generated Types
 
 **Rule**: Where a machine-readable contract exists — OpenAPI spec, GraphQL schema, database schema, protobuf — generate the TypeScript types from it instead of writing them by hand.
 
@@ -160,6 +179,7 @@ Rules:
 
 ## Summary Checklist
 
+- [ ] Code understandable through naming, structure, small units, explicit types, clear interfaces, appropriate abstractions, and tests
 - [ ] `strict: true` plus `noUncheckedIndexedAccess` and companion flags; `tsc --noEmit` in CI
 - [ ] No `any` (use `unknown` + narrowing); no unsafe `as` assertions; no undocumented `!`
 - [ ] Domain data modeled with named types; variant state as discriminated unions; exhaustive switches
