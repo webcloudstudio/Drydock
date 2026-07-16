@@ -345,6 +345,49 @@ class TestState:
         # Header rolls the blocked story into the blocked count.
         assert "blocked</span>" in out
 
+    def test_later_independent_group_is_not_ready_before_blocked_frontier(
+        self, tmp_path, monkeypatch
+    ):
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## feature 1: Blocked First
+id: feat-blocked
+summary: Group.
+state: pending
+
+## story 2: Blocked Core
+id: blocked-core
+parent: feat-blocked
+implements: ARCHITECTURE.md
+depends: missing-foundation
+stack: common.md
+instructions: |
+  Build the blocked core.
+state: pending
+
+## feature 3: Later
+id: feat-later
+summary: Group.
+state: pending
+
+## story 4: Later Work
+id: later-work
+parent: feat-later
+implements: DATABASE.md
+stack: common.md
+instructions: |
+  Build later work.
+state: pending
+"""
+        quarterdeck = _load_quarterdeck()
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+        out = quarterdeck.render_compass(_ITEM)
+
+        assert "Buildable now: <strong>(none)</strong>" in out
+        assert "Ready To Build" not in out
+        assert "cmp-step-blocked" in out
+
     def test_same_group_depends_is_internal_and_never_blocks(self, tmp_path, monkeypatch):
         # `extra` depends on `core` inside the same group: the group builds as a
         # unit, so the dependency is internal sequencing and both stories are

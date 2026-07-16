@@ -73,10 +73,36 @@ def test_ungrouped_holds_steps_without_a_feature_parent(tmp_path):
 def test_buildable_marks_pending_steps_with_verified_depends(tmp_path):
     report = _report(tmp_path)
     # The Core block is buildable even though service depends on foundation
-    # inside the same block; loose is an ungrouped one-story block.
-    assert set(report.buildable_ids) == {"core", "loose"}
+    # inside the same block. Later blocks are not marked buildable until earlier
+    # pending work is complete or reordered ahead of them.
+    assert report.buildable_ids == ("core",)
     service = report.groups[0].steps[1]
     assert service.buildable is True
+    loose = report.groups[-1].steps[0]
+    assert loose.buildable is False
+
+
+def test_blocked_frontier_hides_later_independent_work(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Core
+id: core
+
+## story 2: Service
+id: service
+parent: core
+depends: missing-foundation
+state: pending
+
+## spike 3: Later
+id: later
+state: pending
+"""
+    report = _report(tmp_path, manifest=manifest)
+
+    assert report.buildable_ids == ()
+    assert [step.buildable for group in report.groups for step in group.steps] == [False, False]
 
 
 def test_self_dependent_group_is_buildable_as_one_block(tmp_path):

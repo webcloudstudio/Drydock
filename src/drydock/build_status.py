@@ -141,53 +141,58 @@ def _verified(block_id: str, by_id: dict[str, PlanBlock]) -> bool:
 
 
 def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Return runnable build block ids and the child step ids marked runnable in UI.
+    """Return the next runnable build block id and child step ids.
 
     A grouped block is runnable when all dependencies outside the group are
     verified. Dependencies between stories/spikes in the same group are internal
-    sequencing and do not split the build unit.
+    sequencing and do not split the build unit. The frontier is strictly
+    manifest-order: later blocks are not considered ready until earlier pending
+    work is verified, failed/retried, or reordered by the operator.
     """
     by_id = plan.by_id()
-    buildable_blocks: list[str] = []
-    buildable_steps: list[str] = []
-    grouped_children: set[str] = set()
+    grouped_children = {
+        child.block_id
+        for block in plan.blocks
+        if block.block_type == "feature"
+        for child in plan.children(block.block_id)
+        if child.block_type in STEP_TYPES
+    }
 
     for block in plan.blocks:
-        if block.block_type != "feature":
-            continue
-        executable = tuple(
-            child for child in plan.children(block.block_id) if child.block_type in STEP_TYPES
-        )
-        grouped_children.update(child.block_id for child in executable)
-        pending = tuple(child for child in executable if child.state == "pending")
-        if not pending:
-            continue
-        first_kind = work_kind_of(pending[0])
-        pending = _first_pending_work_run(pending, first_kind)
-        internal_ids = {child.block_id for child in pending}
-        external_deps = [
-            dep for dep in block.depends if dep not in internal_ids and not _verified(dep, by_id)
-        ]
-        for child in pending:
-            external_deps.extend(
-                dep
-                for dep in child.depends
-                if dep not in internal_ids and not _verified(dep, by_id)
+        if block.block_type == "feature":
+            executable = tuple(
+                child for child in plan.children(block.block_id) if child.block_type in STEP_TYPES
             )
-        if external_deps:
-            continue
-        buildable_blocks.append(block.block_id)
-        buildable_steps.extend(child.block_id for child in pending)
+            pending = tuple(child for child in executable if child.state == "pending")
+            if not pending:
+                continue
+            first_kind = work_kind_of(pending[0])
+            pending = _first_pending_work_run(pending, first_kind)
+            internal_ids = {child.block_id for child in pending}
+            external_deps = [
+                dep
+                for dep in block.depends
+                if dep not in internal_ids and not _verified(dep, by_id)
+            ]
+            for child in pending:
+                external_deps.extend(
+                    dep
+                    for dep in child.depends
+                    if dep not in internal_ids and not _verified(dep, by_id)
+                )
+            if external_deps:
+                return (), ()
+            return (block.block_id,), tuple(child.block_id for child in pending)
 
-    for block in plan.blocks:
         if block.block_type not in STEP_TYPES or block.block_id in grouped_children:
             continue
-        if block.state != "pending" or not all(_verified(dep, by_id) for dep in block.depends):
+        if block.state != "pending":
             continue
-        buildable_blocks.append(block.block_id)
-        buildable_steps.append(block.block_id)
+        if not all(_verified(dep, by_id) for dep in block.depends):
+            return (), ()
+        return (block.block_id,), (block.block_id,)
 
-    return tuple(buildable_blocks), tuple(buildable_steps)
+    return (), ()
 
 
 def _first_pending_work_run(
