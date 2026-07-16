@@ -473,6 +473,13 @@ depends: catalog-service
 finding: provider rate limit
 state: closed/failed
 
+## ac 2: Catalog Screen Passes
+id: catalog-screen-passes
+parent: catalog-screen
+kind: smoke
+check: python -m pytest
+state: pending
+
 ## story 3: Catalog Export
 id: catalog-export
 parent: feat-catalog
@@ -489,14 +496,42 @@ state: pending
 
     ids = _ids(doc)
     assert doc.by_id()["catalog-service"].parent == "feat-catalog"
-    assert doc.by_id()["catalog-screen"].parent == "feat-catalog-screen"
-    assert doc.by_id()["catalog-export"].parent == "feat-catalog-feature"
-    assert any(line == "state: closed/failed" for line in doc.by_id()["feat-catalog-screen"].lines)
+    assert doc.by_id()["catalog-screen"].parent == "retry-catalog-screen"
+    assert doc.by_id()["catalog-export"].parent == "feat-catalog-continued"
+    assert doc.by_id()["catalog-screen-passes"].parent == "catalog-screen"
+    assert any(line == "state: closed/failed" for line in doc.by_id()["retry-catalog-screen"].lines)
     assert any(
-        line == "finding: provider rate limit" for line in doc.by_id()["feat-catalog-screen"].lines
+        line == "finding: provider rate limit" for line in doc.by_id()["retry-catalog-screen"].lines
     )
     assert ids.index("catalog-service") < ids.index("catalog-screen") < ids.index("catalog-export")
     assert validate_order(doc.blocks) == []
+
+
+def test_normalize_order_does_not_duplicate_already_isolated_failed_step(tmp_path):
+    manifest = """# MANIFEST: Failed
+state: approved
+
+## feature 1: Catalog Screen Retry
+id: retry-catalog-screen
+summary: Catalog Screen Retry.
+state: closed/failed
+
+## story 1: Catalog Screen
+id: catalog-screen
+parent: retry-catalog-screen
+implements: SCREEN-CATALOG.md
+finding: provider rate limit
+state: closed/failed
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    doc = split_manifest(path)
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+
+    assert _feature_order_for_test(doc) == ["retry-catalog-screen"]
+    assert doc.by_id()["catalog-screen"].parent == "retry-catalog-screen"
 
 
 def test_apply_edit_normalize_persists(tmp_path):

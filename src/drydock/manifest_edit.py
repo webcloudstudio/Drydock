@@ -533,6 +533,7 @@ def normalize_order(doc: ManifestDoc) -> None:
     feature/service, screen, foundation, data, or other work is split into
     contiguous single-kind groups first, preserving the existing story order.
     """
+    _isolate_failed_steps(doc)
     _split_mixed_work_kind_groups(doc)
     _roll_up_feature_states(doc)
     by_id = doc.by_id()
@@ -609,6 +610,65 @@ def _split_mixed_work_kind_groups(doc: ManifestDoc) -> None:
             )
             insert_at += 1
             for step_id in run_steps:
+                _set_parent_line(by_id[step_id], new_id)
+
+    _require_unique_ids(doc)
+    doc.blocks[:] = _flatten(doc)
+
+
+def _isolate_failed_steps(doc: ManifestDoc) -> None:
+    """Move failed executable steps into their own retry feature blocks."""
+    by_id = doc.by_id()
+    existing = {block.block_id for block in doc.blocks}
+
+    for feature_id in list(_feature_order(doc)):
+        steps = _steps_by_feature(doc).get(feature_id, [])
+        if len(steps) < 2:
+            continue
+        runs: list[list[str]] = []
+        for step_id in steps:
+            state = _scan_field(by_id[step_id].lines, "state") or "pending"
+            if state == "closed/failed":
+                runs.append([step_id])
+            elif runs and all(
+                (_scan_field(by_id[existing_step].lines, "state") or "pending") != "closed/failed"
+                for existing_step in runs[-1]
+            ):
+                runs[-1].append(step_id)
+            else:
+                runs.append([step_id])
+        if len(runs) < 2:
+            continue
+
+        feature = by_id[feature_id]
+        insert_at = next(i for i, b in enumerate(doc.blocks) if b.block_id == feature_id) + 1
+        for run in runs[1:]:
+            first_step = by_id[run[0]]
+            first_state = _scan_field(first_step.lines, "state") or "pending"
+            if len(run) == 1 and first_state == "closed/failed":
+                new_name = f"{_block_header_name(first_step)} Retry"
+                new_id = _unique_id(f"retry-{first_step.block_id}", existing)
+            else:
+                new_name = f"{_block_header_name(feature)} Continued"
+                new_id = _unique_id(f"{feature_id}-continued", existing)
+            existing.add(new_id)
+            doc.blocks.insert(
+                insert_at,
+                RawBlock(
+                    block_id=new_id,
+                    block_type="feature",
+                    parent=None,
+                    depends=(),
+                    lines=[
+                        f"## feature {_next_ordinal(doc)}: {new_name}",
+                        f"id: {new_id}",
+                        f"summary: {new_name}",
+                        "state: pending",
+                    ],
+                ),
+            )
+            insert_at += 1
+            for step_id in run:
                 _set_parent_line(by_id[step_id], new_id)
 
     _require_unique_ids(doc)
