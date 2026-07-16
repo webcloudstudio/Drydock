@@ -878,6 +878,56 @@ state: pending
         assert "foundation" in out
         assert "RESULT: 1 built, 0 failed" in out
 
+    def test_build_reset_failed_resets_all_failures_then_builds_frontier(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## feature 1: Core\nid: core\nfinding: failed group\nstate: closed/failed\n\n"
+            "## story 1: Foundation\nid: foundation\nparent: core\n"
+            "implements: DATABASE.md\nfinding: failed story\n"
+            "instructions: |\n  Build it.\nstate: closed/failed\n\n"
+            "## ac 1: Foundation Passes\nid: foundation-passes\nparent: foundation\n"
+            "kind: smoke\ncheck: true\nstate: closed/failed\n",
+            encoding="utf-8",
+        )
+        (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _run(*a, **k):
+            out_dir = Path(a[1])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "foundation.txt").write_text("rebuilt\n", encoding="utf-8")
+            return SimpleNamespace(
+                ok=True,
+                text="RESULT: SUCCESS\n\nFILES CHANGED:\n- foundation.txt\n\nSUMMARY:\nRebuilt.\n",
+                execution_id="exec-fake",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--reset-failed",
+            "--build-dir",
+            str(tmp_path / "out"),
+        )
+
+        assert rc == 0, err
+        assert "Reset failed: reset 3 failed block(s) to pending" in out
+        assert "[built]" in out
+        text = (target / "MANIFEST.md").read_text(encoding="utf-8")
+        assert "finding: failed" not in text
+        assert "state: closed/failed" not in text
+
     def test_build_with_blocked_pending_step_reports_external_dependency(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

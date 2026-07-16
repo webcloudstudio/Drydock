@@ -560,7 +560,7 @@ def normalize_order(doc: ManifestDoc) -> None:
     feature/service, screen, foundation, data, or other work is split into
     contiguous single-kind groups first, preserving the existing story order.
     """
-    _reset_retryable_provider_failures(doc)
+    reset_failed_blocks(doc)
     _isolate_failed_steps(doc)
     _split_mixed_work_kind_groups(doc)
     _roll_up_feature_states(doc)
@@ -603,28 +603,46 @@ _WORK_KIND_LABELS = {
 }
 
 
-def _is_provider_limit_finding(text: str | None) -> bool:
-    if not text:
-        return False
-    lowered = text.lower()
-    return "rate limit" in lowered or "session limit" in lowered
-
-
-def _reset_retryable_provider_failures(doc: ManifestDoc) -> None:
-    """Turn provider-limit failures back into pending work during normalization."""
+def reset_failed_blocks(doc: ManifestDoc) -> int:
+    """Turn all failed blocks back into pending work and clear their findings."""
     by_id = doc.by_id()
+    reset = 0
     for block in doc.blocks:
         if block.block_type not in {"feature", *_STEP_TYPES}:
             continue
         if (_scan_field(block.lines, "state") or "pending") != "closed/failed":
             continue
-        if not _is_provider_limit_finding(_scan_field(block.lines, "finding")):
-            continue
         _set_field_line(block, "state", "pending")
         _set_field_line(block, "finding", None)
+        reset += 1
         for ac_id in _acs_by_parent(doc).get(block.block_id, []):
             if ac_id in by_id:
-                _set_field_line(by_id[ac_id], "state", "pending")
+                ac = by_id[ac_id]
+                if (_scan_field(ac.lines, "state") or "pending") == "closed/failed":
+                    reset += 1
+                _set_field_line(ac, "state", "pending")
+                _set_field_line(ac, "finding", None)
+    return reset
+
+
+def count_failed_blocks(path: Path) -> int:
+    """Return how many MANIFEST blocks are currently marked failed."""
+    doc = split_manifest(path)
+    return sum(
+        1
+        for block in doc.blocks
+        if block.block_type in {"feature", *_STEP_TYPES, "ac"}
+        and (_scan_field(block.lines, "state") or "pending") == "closed/failed"
+    )
+
+
+def reset_failed_states(path: Path) -> int:
+    """Persistently reset all failed MANIFEST blocks to pending."""
+    doc = split_manifest(path)
+    count = reset_failed_blocks(doc)
+    if count:
+        write_manifest(doc)
+    return count
 
 
 def _drop_empty_retry_features(doc: ManifestDoc) -> None:

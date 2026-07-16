@@ -1237,6 +1237,7 @@ def cmd_status_current() -> int:
 def cmd_build(args: argparse.Namespace) -> int:
     from drydock.build_run import BUILD_FAILURE_FORCE_HINT, BuildStepResult, build_target
     from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.manifest_edit import count_failed_blocks, reset_failed_states
 
     target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
@@ -1285,6 +1286,12 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"Force rebuild dry run: would reset {args.step} and child ACs to pending")
     elif getattr(args, "force", False):
         print(f"Force rebuild: resetting {args.step} and child ACs to pending")
+    if getattr(args, "reset_failed", False) and getattr(args, "dry_run", False):
+        failed_count = count_failed_blocks(target_dir / "MANIFEST.md")
+        print(f"Reset failed dry run: would reset {failed_count} failed block(s) to pending")
+    elif getattr(args, "reset_failed", False):
+        reset_count = reset_failed_states(target_dir / "MANIFEST.md")
+        print(f"Reset failed: reset {reset_count} failed block(s) to pending")
     if getattr(args, "dry_run", False):
         print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")
         if getattr(args, "show_prompt", False):
@@ -1668,6 +1675,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Build or inspect build state.",
         description=(
             "drydock build <Target>          — build next frontier\n"
+            "drydock build <Target> --reset-failed  — reset failed blocks to pending, then build\n"
             "drydock build status <Target>   — show build state\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),
@@ -1880,6 +1888,12 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         "--force",
         action="store_true",
         help="With --step, reset the step and child ACs to pending before rebuilding.",
+    )
+    p.add_argument(
+        "--reset-failed",
+        dest="reset_failed",
+        action="store_true",
+        help="Reset all failed MANIFEST blocks to pending before building.",
     )
     p.add_argument(
         "--dry-run",

@@ -590,13 +590,13 @@ state: pending
     assert ids.index("summary") < ids.index("settings") < ids.index("aws") < ids.index("terraform")
 
 
-def test_normalize_order_resets_provider_limit_failures_for_retry(tmp_path):
+def test_normalize_order_resets_all_failures_for_retry(tmp_path):
     manifest = """# MANIFEST: Retry
 state: approved
 
 ## feature 1: Catalog
 id: feat-catalog
-finding: provider rate limit
+finding: assertion returned non-zero
 summary: Catalog.
 state: closed/failed
 
@@ -685,6 +685,46 @@ state: closed/failed
 
     assert _feature_order_for_test(doc) == ["retry-catalog-screen"]
     assert doc.by_id()["catalog-screen"].parent == "retry-catalog-screen"
+    assert any(line == "state: pending" for line in doc.by_id()["retry-catalog-screen"].lines)
+    assert any(line == "state: pending" for line in doc.by_id()["catalog-screen"].lines)
+    assert not any(line.startswith("finding:") for line in doc.by_id()["catalog-screen"].lines)
+
+
+def test_reset_failed_states_persists_all_failed_blocks(tmp_path):
+    manifest = """# MANIFEST: Failed
+state: approved
+
+## feature 1: Catalog
+id: feat-catalog
+finding: failed group
+state: closed/failed
+
+## story 1: Catalog Service
+id: catalog-service
+parent: feat-catalog
+implements: FEATURE-CATALOG.md
+finding: failed story
+state: closed/failed
+
+## ac 1: Catalog Service Passes
+id: catalog-service-passes
+parent: catalog-service
+kind: smoke
+check: python -m pytest
+state: closed/failed
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    from drydock.manifest_edit import count_failed_blocks, reset_failed_states
+
+    assert count_failed_blocks(path) == 3
+    assert reset_failed_states(path) == 3
+
+    doc = split_manifest(path)
+    for block_id in ("feat-catalog", "catalog-service", "catalog-service-passes"):
+        assert any(line == "state: pending" for line in doc.by_id()[block_id].lines)
+        assert not any(line.startswith("finding:") for line in doc.by_id()[block_id].lines)
+    assert count_failed_blocks(path) == 0
 
 
 def test_apply_edit_normalize_persists(tmp_path):
