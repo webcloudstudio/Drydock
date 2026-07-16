@@ -370,10 +370,11 @@ class TestAnalyzeCommand:
         assert rc == 0
         assert "--llm-provider" in out
 
-    def test_build_help_lists_reset_and_dry_run_flags(self):
+    def test_build_help_lists_reset_normalize_and_dry_run_flags(self):
         rc, out, _ = run_cli("build", "--help")
         assert rc == 0
         assert "--reset-failed" in out
+        assert "--normalize-order" in out
         assert "--dry-run" in out
 
     def test_analyze_passes_cli_provider_override(
@@ -933,6 +934,60 @@ state: pending
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert "finding: failed" not in text
         assert "state: closed/failed" not in text
+
+    def test_build_normalize_order_reorders_manifest_then_builds_frontier(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## feature 1: Screen Setup\nid: screen-setup\nsummary: Screen.\nstate: pending\n\n"
+            "## story 1: Screen Setup\nid: screen-setup-story\nparent: screen-setup\n"
+            "implements: SCREEN-SETUP.md\nscope: both\ninstructions: |\n  Build screen.\n"
+            "state: pending\n\n"
+            "## feature 2: Feature Core\nid: feature-core\nsummary: Core.\nstate: pending\n\n"
+            "## story 2: Feature Core\nid: feature-core-story\nparent: feature-core\n"
+            "implements: FEATURE-CORE.md\nscope: both\ninstructions: |\n  Build core.\n"
+            "state: pending\n",
+            encoding="utf-8",
+        )
+        (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target / "blueprint" / "SCREEN-SETUP.md").write_text("Screen.\n", encoding="utf-8")
+        (target / "blueprint" / "FEATURE-CORE.md").write_text("Core.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        calls = iter(("core", "screen"))
+
+        def _run(*a, **k):
+            out_dir = Path(a[1])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            name = next(calls)
+            (out_dir / f"{name}.txt").write_text("built\n", encoding="utf-8")
+            return SimpleNamespace(
+                ok=True,
+                text=f"RESULT: SUCCESS\n\nFILES CHANGED:\n- {name}.txt\n\nSUMMARY:\nBuilt.\n",
+                execution_id="exec-fake",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--normalize-order",
+            "--build-dir",
+            str(tmp_path / "out"),
+        )
+
+        assert rc == 0, out + err
+        assert "Normalize order: updated MANIFEST.md" in out
+        assert "Feature Core [feature-core-story]" in out
+        text = (target / "MANIFEST.md").read_text(encoding="utf-8")
+        assert text.index("id: feature-core") < text.index("id: screen-setup")
 
     def test_build_with_blocked_pending_step_reports_external_dependency(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

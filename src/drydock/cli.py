@@ -1237,7 +1237,14 @@ def cmd_status_current() -> int:
 def cmd_build(args: argparse.Namespace) -> int:
     from drydock.build_run import BUILD_FAILURE_FORCE_HINT, BuildStepResult, build_target
     from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
-    from drydock.manifest_edit import count_failed_blocks, reset_failed_states
+    from drydock.manifest_edit import (
+        count_failed_blocks,
+        normalize_order,
+        render_manifest,
+        reset_failed_states,
+        split_manifest,
+        write_manifest,
+    )
 
     target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
@@ -1292,6 +1299,22 @@ def cmd_build(args: argparse.Namespace) -> int:
     elif getattr(args, "reset_failed", False):
         reset_count = reset_failed_states(target_dir / "MANIFEST.md")
         print(f"Reset failed: reset {reset_count} failed block(s) to pending")
+    if getattr(args, "normalize_order", False):
+        manifest_path = target_dir / "MANIFEST.md"
+        doc = split_manifest(manifest_path)
+        before = render_manifest(doc)
+        normalize_order(doc)
+        after = render_manifest(doc)
+        changed = before != after
+        if getattr(args, "dry_run", False):
+            print(
+                "Normalize order dry run: would "
+                f"{'update' if changed else 'leave unchanged'} MANIFEST.md"
+            )
+        else:
+            if changed:
+                write_manifest(doc)
+            print(f"Normalize order: {'updated' if changed else 'already normalized'} MANIFEST.md")
     if getattr(args, "dry_run", False):
         print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")
         if getattr(args, "show_prompt", False):
@@ -1676,6 +1699,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock build <Target>          — build next frontier\n"
             "drydock build <Target> --reset-failed  — reset failed blocks to pending, then build\n"
+            "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
             "drydock build <Target> --dry-run       — preview next build block without writes\n"
             "drydock build status <Target>   — show build state\n"
             "drydock build score <Target>    — generate SCORECARD.md"
@@ -1895,6 +1919,13 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         dest="reset_failed",
         action="store_true",
         help="Reset all failed MANIFEST blocks to pending before building.",
+    )
+    p.add_argument(
+        "--normalize-order",
+        "--normalize_order",
+        dest="normalize_order",
+        action="store_true",
+        help="Normalize MANIFEST group order before building.",
     )
     p.add_argument(
         "--dry-run",

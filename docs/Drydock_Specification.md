@@ -400,6 +400,7 @@ Implement the Blueprint using the Manifest
 drydock build <Target>
 drydock build <Target> --dry-run
 drydock build <Target> --reset-failed
+drydock build <Target> --normalize-order
 drydock build <Target> --step <STEP>
 drydock build <Target> --step <STEP> --force
 drydock build status <Target>
@@ -486,6 +487,8 @@ flowchart LR
 `drydock build <Target>` executes the dependency-ready frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
 `drydock build <Target> --reset-failed` resets all failed Manifest blocks to `pending`, clears their
 findings, and then executes the normal dependency-ready frontier.
+`drydock build <Target> --normalize-order` normalizes Manifest group order and then executes the
+normal dependency-ready frontier.
 `drydock build <Target> --dry-run` resolves the same build block, assembles the same prompt,
 prints build diagnostics, assembled-file names, prompt size, and estimated tokens, and exits without
 compact refresh, LLM execution, file writes, evidence writes, Manifest state changes, QuarterDeck
