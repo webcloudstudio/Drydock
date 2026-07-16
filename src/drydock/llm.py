@@ -515,6 +515,54 @@ def _provider_error(llm: str, raw: str) -> str | None:
     return None
 
 
+_AUTHENTICATION_ERROR_MARKERS = (
+    "authentication_failed",
+    "failed to authenticate",
+    "oauth session expired",
+    "could not be refreshed",
+)
+
+
+def _is_authentication_error(*texts: str | None) -> bool:
+    """True when provider output indicates the CLI needs an interactive login refresh."""
+    haystack = "\n".join(text for text in texts if text).lower()
+    return any(marker in haystack for marker in _AUTHENTICATION_ERROR_MARKERS)
+
+
+def _login_command(llm: str) -> str:
+    if llm == "claude":
+        return "claude"
+    if llm == "codex":
+        return "codex login"
+    return f"{llm} login"
+
+
+def _print_authentication_required(
+    *,
+    llm: str,
+    command_name: str,
+    execution_id: str,
+    error: str,
+) -> None:
+    border = "=" * 78
+    lines = [
+        border,
+        "LLM AUTHENTICATION REQUIRED",
+        "",
+        f"Drydock could not run '{command_name}' because the {llm} CLI is not authenticated.",
+        "",
+        "Provider error:",
+        f"  {error}",
+        "",
+        "Refresh the CLI login, then rerun the Drydock command:",
+        f"  {_login_command(llm)}",
+        "",
+        f"execution_id: {execution_id}",
+        border,
+    ]
+    print("\n".join(lines), file=sys.stderr, flush=True)
+
+
 def _record(
     *,
     artifacts: ExecutionArtifacts,
@@ -869,6 +917,13 @@ def run_prompt(
             if returncode
             else None
         )
+        if returncode and error and _is_authentication_error(error, provider_error, raw_output):
+            _print_authentication_required(
+                llm=selected,
+                command_name=command_name,
+                execution_id=artifacts.execution_id,
+                error=error,
+            )
         record = _record(
             artifacts=artifacts,
             command_name=command_name,
