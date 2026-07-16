@@ -139,7 +139,7 @@ def _acs_by_parent(doc: ManifestDoc) -> dict[str, list[str]]:
     return out
 
 
-def _flatten(doc: ManifestDoc) -> list[RawBlock]:
+def _flatten(doc: ManifestDoc, *, order_dependencies: bool = False) -> list[RawBlock]:
     """Re-serialize blocks canonically: features group their steps contiguously.
 
     Order within each group follows current block order. Each step is followed by
@@ -166,15 +166,42 @@ def _flatten(doc: ManifestDoc) -> list[RawBlock]:
 
     for feature_id in features:
         emit(feature_id)
-        for step_id in steps_by_feature.get(feature_id, []):
+        step_ids = steps_by_feature.get(feature_id, [])
+        if order_dependencies:
+            step_ids = _ordered_step_ids(step_ids, by_id)
+        for step_id in step_ids:
             emit_step(step_id)
         for ac_id in acs_by_parent.get(feature_id, []):
             emit(ac_id)
-    for step_id in steps_by_feature.get(None, []):
+    step_ids = steps_by_feature.get(None, [])
+    if order_dependencies:
+        step_ids = _ordered_step_ids(step_ids, by_id)
+    for step_id in step_ids:
         emit_step(step_id)
     for block in doc.blocks:  # orphans (e.g. acs whose parent is missing)
         emit(block.block_id)
     return out
+
+
+def _ordered_step_ids(step_ids: list[str], by_id: dict[str, RawBlock]) -> list[str]:
+    """Return step ids ordered so same-group dependencies come first."""
+    remaining = set(step_ids)
+    index = {step_id: i for i, step_id in enumerate(step_ids)}
+    step_set = set(step_ids)
+    ordered: list[str] = []
+    while remaining:
+        ready = [
+            step_id
+            for step_id in remaining
+            if not (set(by_id[step_id].depends) & step_set & remaining)
+        ]
+        if not ready:
+            ordered.extend(sorted(remaining, key=index.get))
+            break
+        chosen = min(ready, key=index.get)
+        remaining.remove(chosen)
+        ordered.append(chosen)
+    return ordered
 
 
 # ── Validation ───────────────────────────────────────────────────────────────
@@ -533,9 +560,11 @@ def normalize_order(doc: ManifestDoc) -> None:
     feature/service, screen, foundation, data, or other work is split into
     contiguous single-kind groups first, preserving the existing story order.
     """
+    _reset_retryable_provider_failures(doc)
     _isolate_failed_steps(doc)
     _split_mixed_work_kind_groups(doc)
     _roll_up_feature_states(doc)
+    _drop_empty_retry_features(doc)
     by_id = doc.by_id()
     steps_by_feature = _steps_by_feature(doc)
     feature_order = _feature_order(doc)
@@ -545,11 +574,24 @@ def normalize_order(doc: ManifestDoc) -> None:
         bands = [_raw_band(by_id[sid]) for sid in steps_by_feature.get(fid, [])]
         return min(bands) if bands else BAND_FOUNDATION + 2
 
-    ordered = sorted(feature_order, key=lambda fid: (feature_band(fid), index_of[fid]))
+    def feature_work_kind_rank(fid: str) -> int:
+        ranks = {"feature": 0, "screen": 1}
+        kinds = [_raw_work_kind(by_id[sid]) for sid in steps_by_feature.get(fid, [])]
+        return min((ranks.get(kind, 2) for kind in kinds), default=2)
+
+    def sort_key(fid: str) -> tuple[int, int, int]:
+        return (feature_band(fid), feature_work_kind_rank(fid), index_of[fid])
+
+    ordered = _dependency_ordered_features(
+        feature_order,
+        steps_by_feature,
+        by_id,
+        sort_key=sort_key,
+    )
     features = [by_id[fid] for fid in ordered]
     others = [block for block in doc.blocks if block.block_type != "feature"]
     doc.blocks[:] = features + others
-    doc.blocks[:] = _flatten(doc)
+    doc.blocks[:] = _flatten(doc, order_dependencies=True)
 
 
 _WORK_KIND_LABELS = {
@@ -559,6 +601,84 @@ _WORK_KIND_LABELS = {
     "screen": "Screens",
     "other": "Work",
 }
+
+
+def _is_provider_limit_finding(text: str | None) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    return "rate limit" in lowered or "session limit" in lowered
+
+
+def _reset_retryable_provider_failures(doc: ManifestDoc) -> None:
+    """Turn provider-limit failures back into pending work during normalization."""
+    by_id = doc.by_id()
+    for block in doc.blocks:
+        if block.block_type not in {"feature", *_STEP_TYPES}:
+            continue
+        if (_scan_field(block.lines, "state") or "pending") != "closed/failed":
+            continue
+        if not _is_provider_limit_finding(_scan_field(block.lines, "finding")):
+            continue
+        _set_field_line(block, "state", "pending")
+        _set_field_line(block, "finding", None)
+        for ac_id in _acs_by_parent(doc).get(block.block_id, []):
+            if ac_id in by_id:
+                _set_field_line(by_id[ac_id], "state", "pending")
+
+
+def _drop_empty_retry_features(doc: ManifestDoc) -> None:
+    """Remove stale retry wrapper groups that no longer own executable work."""
+    steps_by_feature = _steps_by_feature(doc)
+    doc.blocks[:] = [
+        block
+        for block in doc.blocks
+        if not (
+            block.block_type == "feature"
+            and block.block_id.startswith("retry-")
+            and not steps_by_feature.get(block.block_id)
+        )
+    ]
+
+
+def _dependency_ordered_features(
+    feature_order: list[str],
+    steps_by_feature: dict[str | None, list[str]],
+    by_id: dict[str, RawBlock],
+    *,
+    sort_key,
+) -> list[str]:
+    """Order feature groups by layer/work kind without violating explicit dependencies."""
+    step_to_feature = {
+        step_id: feature_id
+        for feature_id, step_ids in steps_by_feature.items()
+        if feature_id is not None
+        for step_id in step_ids
+    }
+    remaining = set(feature_order)
+    dependencies: dict[str, set[str]] = {feature_id: set() for feature_id in feature_order}
+    for feature_id in feature_order:
+        feature = by_id[feature_id]
+        deps = set(feature.depends)
+        for step_id in steps_by_feature.get(feature_id, []):
+            deps.update(by_id[step_id].depends)
+        for dep in deps:
+            dep_feature = step_to_feature.get(dep)
+            if dep_feature is not None and dep_feature != feature_id:
+                dependencies[feature_id].add(dep_feature)
+
+    ordered: list[str] = []
+    while remaining:
+        ready = [
+            feature_id for feature_id in remaining if not (dependencies[feature_id] & remaining)
+        ]
+        if not ready:
+            ordered.extend(sorted(remaining, key=sort_key))
+            break
+        chosen = min(ready, key=sort_key)
+        remaining.remove(chosen)
+        ordered.append(chosen)
+    return ordered
 
 
 def _block_header_name(block: RawBlock) -> str:

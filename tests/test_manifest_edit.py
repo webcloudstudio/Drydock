@@ -496,15 +496,168 @@ state: pending
 
     ids = _ids(doc)
     assert doc.by_id()["catalog-service"].parent == "feat-catalog"
-    assert doc.by_id()["catalog-screen"].parent == "retry-catalog-screen"
-    assert doc.by_id()["catalog-export"].parent == "feat-catalog-continued"
+    assert doc.by_id()["catalog-screen"].parent == "feat-catalog-screen"
+    assert doc.by_id()["catalog-export"].parent == "feat-catalog-feature"
     assert doc.by_id()["catalog-screen-passes"].parent == "catalog-screen"
-    assert any(line == "state: closed/failed" for line in doc.by_id()["retry-catalog-screen"].lines)
-    assert any(
-        line == "finding: provider rate limit" for line in doc.by_id()["retry-catalog-screen"].lines
-    )
+    assert any(line == "state: pending" for line in doc.by_id()["catalog-screen"].lines)
+    assert not any(line.startswith("finding:") for line in doc.by_id()["catalog-screen"].lines)
     assert ids.index("catalog-service") < ids.index("catalog-screen") < ids.index("catalog-export")
     assert validate_order(doc.blocks) == []
+
+
+def test_normalize_order_places_independent_features_before_screens(tmp_path):
+    manifest = """# MANIFEST: Mixed
+state: approved
+
+## feature 1: Screens First
+id: feat-screens
+summary: Screens.
+state: pending
+
+## story 1: Catalog Screen
+id: catalog-screen
+parent: feat-screens
+implements: SCREEN-CATALOG.md
+state: pending
+
+## feature 2: Features Later
+id: feat-features
+summary: Features.
+state: pending
+
+## story 2: Catalog Service
+id: catalog-service
+parent: feat-features
+implements: FEATURE-CATALOG.md
+state: pending
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    doc = split_manifest(path)
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+
+    ids = _ids(doc)
+    assert ids.index("catalog-service") < ids.index("catalog-screen")
+    assert validate_order(doc.blocks) == []
+
+
+def test_normalize_order_sorts_steps_inside_group_by_dependencies(tmp_path):
+    manifest = """# MANIFEST: Screens
+state: approved
+
+## feature 1: Setup Screens
+id: feat-screens
+summary: Screens.
+state: pending
+
+## story 1: AWS
+id: aws
+parent: feat-screens
+implements: SCREEN-AWS.md
+depends: settings
+state: pending
+
+## story 2: Summary
+id: summary
+parent: feat-screens
+implements: SCREEN-SUMMARY.md
+state: pending
+
+## story 3: Terraform
+id: terraform
+parent: feat-screens
+implements: SCREEN-TERRAFORM.md
+depends: aws
+state: pending
+
+## story 4: Settings
+id: settings
+parent: feat-screens
+implements: SCREEN-SETTINGS.md
+depends: summary
+state: pending
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    doc = split_manifest(path)
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+
+    ids = _ids(doc)
+    assert ids.index("summary") < ids.index("settings") < ids.index("aws") < ids.index("terraform")
+
+
+def test_normalize_order_resets_provider_limit_failures_for_retry(tmp_path):
+    manifest = """# MANIFEST: Retry
+state: approved
+
+## feature 1: Catalog
+id: feat-catalog
+finding: provider rate limit
+summary: Catalog.
+state: closed/failed
+
+## story 1: Catalog Service
+id: catalog-service
+parent: feat-catalog
+implements: FEATURE-CATALOG.md
+finding: provider rate limit 429: session limit
+state: closed/failed
+
+## ac 1: Catalog Service Passes
+id: catalog-service-passes
+parent: catalog-service
+kind: smoke
+check: python -m pytest
+state: closed/failed
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    doc = split_manifest(path)
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+
+    by_id = doc.by_id()
+    assert any(line == "state: pending" for line in by_id["feat-catalog"].lines)
+    assert any(line == "state: pending" for line in by_id["catalog-service"].lines)
+    assert any(line == "state: pending" for line in by_id["catalog-service-passes"].lines)
+    assert not any(line.startswith("finding:") for line in by_id["feat-catalog"].lines)
+    assert not any(line.startswith("finding:") for line in by_id["catalog-service"].lines)
+
+
+def test_normalize_order_drops_empty_retry_groups(tmp_path):
+    manifest = """# MANIFEST: Retry
+state: approved
+
+## feature 1: Empty Retry
+id: retry-empty
+summary: Empty Retry.
+state: closed/failed
+
+## feature 2: Catalog
+id: feat-catalog
+summary: Catalog.
+state: pending
+
+## story 1: Catalog Service
+id: catalog-service
+parent: feat-catalog
+implements: FEATURE-CATALOG.md
+state: pending
+"""
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(manifest, encoding="utf-8")
+    doc = split_manifest(path)
+    from drydock.manifest_edit import normalize_order
+
+    normalize_order(doc)
+
+    assert "retry-empty" not in doc.by_id()
+    assert doc.by_id()["catalog-service"].parent == "feat-catalog"
 
 
 def test_normalize_order_does_not_duplicate_already_isolated_failed_step(tmp_path):
@@ -520,7 +673,7 @@ state: closed/failed
 id: catalog-screen
 parent: retry-catalog-screen
 implements: SCREEN-CATALOG.md
-finding: provider rate limit
+finding: assertion returned non-zero
 state: closed/failed
 """
     path = tmp_path / "MANIFEST.md"
