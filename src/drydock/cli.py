@@ -358,6 +358,7 @@ def cmd_rigging_compact(args: argparse.Namespace) -> int:
         skip_autodiscovery=explicit_only,
         log_dir=log_dir,
         target=compact_target,
+        on_text=_stream_stdout,
         on_item=report,
         model=model,
         llm_provider=llm_provider,

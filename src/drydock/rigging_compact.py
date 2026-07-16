@@ -506,6 +506,13 @@ def compact(
         existing_compact = (
             compact_path.read_text(encoding="utf-8") if compact_path.is_file() else None
         )
+        if on_text is not None:
+            on_text(
+                "AUTO-COMPACT: compacting "
+                f"{rel_source} -> {compact_path.name} "
+                f"[{role.label} via {role.prompt_name}.md] "
+                f"{source_bytes} B"
+            )
         prompt_assembly = _assemble_prompt_assembly(
             prompt.body,
             rel_source=rel_source,

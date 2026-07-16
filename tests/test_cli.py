@@ -332,6 +332,10 @@ class TestRiggingCompact:
         assert (spec / "DATABASE_compact.md").exists()
         assert "1 compacted" in out
         assert "exec-test" in out
+        assert (
+            "AUTO-COMPACT: compacting DATABASE.md -> DATABASE_compact.md "
+            "[Database API via rigging_compact_database.md]"
+        ) in out
         assert "Database API via rigging_compact_database.md" in out
 
     def test_failed_execution_exits_one(self, tmp_target_root, isolated_config, monkeypatch):

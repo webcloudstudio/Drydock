@@ -325,6 +325,28 @@ class TestCompact:
         kwargs = runner.seen_kwargs[0]  # type: ignore[attr-defined]
         assert kwargs["on_text"] is None
 
+    def test_reports_source_before_runner_starts(self, tmp_path):
+        name, root = _blueprint(tmp_path, **{"ARCHITECTURE.md": "module layout\n"})
+        events: list[str] = []
+
+        def runner(prompt, working_directory, **kwargs):
+            events.append("runner")
+            return FakeRun()
+
+        compact(
+            name,
+            root / name,
+            include_files=[root / name / "ARCHITECTURE.md"],
+            runner=runner,
+            on_text=events.append,
+        )
+
+        assert events[0].startswith(
+            "AUTO-COMPACT: compacting ARCHITECTURE.md -> ARCHITECTURE_compact.md "
+            "[Architecture via rigging_compact_architecture.md]"
+        )
+        assert events[1] == "runner"
+
     def test_unknown_blueprint_raises(self, tmp_path):
         root = tmp_path / "specs"
         root.mkdir()
