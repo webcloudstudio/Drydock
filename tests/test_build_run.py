@@ -207,6 +207,20 @@ def test_builds_feature_group_in_one_runner_call(tmp_path):
     assert result.steps[0].evidence_path == target_dir / "evidence" / "feature-catalog.md"
 
 
+def test_failed_feature_group_marks_parent_failed(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    runner = make_runner(ok=False, text="", write_files=False, stderr="provider rate limit")
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert result.steps[0].status == "failed"
+    assert _state(target_dir, "feature-catalog") == "closed/failed"
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert _state(target_dir, "service") == "closed/failed"
+    assert "provider rate limit" in (_finding(target_dir, "feature-catalog") or "")
+
+
 def test_feature_step_selection_builds_feature_group(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
     runner = make_runner()
@@ -574,6 +588,7 @@ state: draft
 ## story 1: Foundation
 id: foundation
 implements: DATABASE.md
+finding: previous provider failure
 instructions: |
   Build the database.
 state: closed/verified
@@ -607,6 +622,7 @@ state: closed/verified
     assert [s.block_id for s in result.steps] == ["foundation"]
     assert result.steps[0].status == "built"
     assert _state(target_dir, "foundation") == "closed/verified"
+    assert _finding(target_dir, "foundation") is None
     assert _state(target_dir, "ac-db") == "closed/verified"
     assert _state(target_dir, "service") == "pending"
 

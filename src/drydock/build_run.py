@@ -915,7 +915,7 @@ def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
     else:
         raise SpecificationError(f"{step_id!r} is not a build step or feature block")
     for reset_id in reset_ids:
-        set_block_fields(manifest_path, reset_id, state="pending")
+        set_block_fields(manifest_path, reset_id, state="pending", finding=None)
         for child in plan.children(reset_id):
             if child.block_type == "ac":
                 set_block_fields(manifest_path, child.block_id, state="pending")
@@ -1304,6 +1304,14 @@ def build_target(
             if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
                 for child_id in _child_ac_ids(plan.blocks, block.block_id):
                     set_block_fields(manifest_path, child_id, state="closed/verified")
+        if unit.is_group and status == "failed":
+            feature_fields: dict[str, str | None] = {
+                "state": "closed/failed",
+                "evidence": _rel(evidence_path, target_dir),
+            }
+            if finding is not None:
+                feature_fields["finding"] = finding
+            set_block_fields(manifest_path, unit.block_id, **feature_fields)
         if unit.is_group and status != "failed":
             refreshed = parse_build_plan(manifest_path)
             children = refreshed.children(unit.block_id)
