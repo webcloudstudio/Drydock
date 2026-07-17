@@ -30,6 +30,7 @@ from drydock.quarterdeck_state import (
     _feature_items,
     _fill_chair,
     _render_story_breakdown_html,
+    _scorecard_html,
     _screen_items,
     _story_breakdown,
     _story_items,
@@ -161,13 +162,6 @@ _SEA_TRIALS_CONTENT = """\
 | ID | Objective / Success Criterion | State | Evidence |
 |---|---|---|---|
 | st-001 | System is operational | NOT STARTED | |"""
-
-_SOUNDINGS_CONTENT = """\
-# Soundings
-
-| ID | Acceptance Criterion | State | Evidence |
-|---|---|---|---|
-| ac-login-001 | User can log in | NOT STARTED | |"""
 
 _COMPASS_CONTENT = """\
 # COMPASS: TestProject
@@ -324,7 +318,6 @@ def _make_llm_output(
     blocks = [
         f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
         f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
-        f"=== SOUNDINGS.md ===\n{_SOUNDINGS_CONTENT}\n=== END SOUNDINGS.md ===",
     ]
     if include_identity:
         blocks.append(
@@ -700,12 +693,11 @@ class TestParseBlocks:
 
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
-        analysis, sea_trials, soundings, compass, blockers, spikes, quality, summary = (
-            _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
+        analysis, sea_trials, compass, blockers, spikes, quality, summary = _parse_output(
+            _VALID_LLM_OUTPUT_WITH_SPIKES
         )
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
-        assert "Soundings" in soundings
         assert compass is not None
         assert "COMPASS" in compass
         assert blockers is None
@@ -716,7 +708,7 @@ class TestParseOutput:
         assert "discovery-guardrails.json" in spikes
 
     def test_summary_fields_parsed(self):
-        _, _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
+        _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         assert summary.get("stories") == "5"
         assert summary.get("features") == "4"
         assert summary.get("blockers") == "0"
@@ -728,21 +720,21 @@ class TestParseOutput:
 
     def test_blocked_quality_parsed(self):
         output = _make_llm_output(quality="Blocked")
-        _, _, _, _, _, _, quality, _ = _parse_output(output)
+        _, _, _, _, _, quality, _ = _parse_output(output)
         assert quality == "Blocked"
 
     def test_questions_quality_parsed(self):
         output = _make_llm_output(quality="Questions")
-        _, _, _, _, _, _, quality, _ = _parse_output(output)
+        _, _, _, _, _, quality, _ = _parse_output(output)
         assert quality == "Questions"
 
     def test_no_compass_block_returns_none(self):
-        _, _, _, compass, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
+        _, _, compass, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
         assert compass is None
 
     def test_blockers_block_returned_when_present(self):
         output = _make_llm_output(blockers=_BLOCKERS_CONTENT)
-        _, _, _, _, blockers, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _ = _parse_output(output)
         assert blockers is not None
         assert "Missing project name" in blockers
 
@@ -750,13 +742,13 @@ class TestParseOutput:
         # Regression (FIX-10): the LLM emitted the block with placeholder text instead of
         # omitting it; the writer must treat it as "no blockers" so its existence stays a real flag.
         output = _make_llm_output(blockers="(omitted — no blockers)")
-        _, _, _, _, blockers, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _ = _parse_output(output)
         assert blockers is None
 
     def test_titleonly_blockers_block_returns_none(self):
         # Heading prose but no "## " blocker entry → not a genuine blocker list.
         output = _make_llm_output(blockers="# Blockers: TestProject\n\nNo blockers found.")
-        _, _, _, _, blockers, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _ = _parse_output(output)
         assert blockers is None
 
     def test_missing_analysis_block_raises(self):
@@ -803,30 +795,10 @@ Verification: proof""",
         assert "### About Sea Trials" in sea_trials_text
         assert "### Notation — EARS" in sea_trials_text
 
-    def test_missing_soundings_is_derived_from_analysis(self):
-        analysis = """# Blueprint Analysis: TestProject
-
-## Story List
-
-| ID | Story | High-level AC |
-|---|---|---|
-| STORY-001 | Start | Start works |
-
-## Analysis Notes
-
-Quality: Ready
-"""
-        output = "\n".join([
-            f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
-            f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
-        ])
-        _, _, soundings, _, _, _, _, _ = _parse_output(output)
-        assert "| STORY-001 | Start works | — UNVERIFIED |  |  |" in soundings
-
     def test_no_spikes_is_tolerated(self):
         # Spikes are emitted dynamically; an analysis with nothing open is valid.
         output = _make_llm_output(include_spikes=False)
-        _, _, _, _, _, spikes, _, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _ = _parse_output(output)
         assert spikes == {}
 
     def test_invalid_spike_json_raises(self):
@@ -836,12 +808,12 @@ Quality: Ready
 
     def test_unknown_quality_when_absent(self):
         no_quality = _VALID_LLM_OUTPUT.replace("Quality: Ready", "")
-        _, _, _, _, _, _, quality, _ = _parse_output(no_quality)
+        _, _, _, _, _, quality, _ = _parse_output(no_quality)
         assert quality == "unknown"
 
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
-        _, _, _, _, _, spikes, _, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _ = _parse_output(output)
         assert "discovery-auth.json" in spikes
 
     def test_write_tool_transcript_is_recovered(self):
@@ -881,14 +853,6 @@ None.</parameter>
 | st-001 | Objective | NOT STARTED | |</parameter>
 </invoke>
 <invoke name="Write">
-<parameter name="path">/tmp/target/blueprint/SOUNDINGS.md</parameter>
-<parameter name="content"># Soundings
-
-| ID | Acceptance Criterion | State | Evidence |
-|---|---|---|---|
-| ac-001 | Criterion | NOT STARTED | |</parameter>
-</invoke>
-<invoke name="Write">
 <parameter name="path">/tmp/target/COMPASS.md</parameter>
 <parameter name="content"># COMPASS: TestProject
 
@@ -902,10 +866,9 @@ Compass text.
 - None stated.</parameter>
 </invoke>
 </function_calls>"""
-        analysis, sea_trials, soundings, compass, blockers, spikes, quality, _ = _parse_output(text)
+        analysis, sea_trials, compass, blockers, spikes, quality, _ = _parse_output(text)
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
-        assert "Soundings" in soundings
         assert compass is not None
         assert blockers is None
         assert spikes == {}
@@ -963,6 +926,67 @@ def _base_fill(**overrides):
     )
     kwargs.update(overrides)
     return _fill_chair(_CHAIR_TEMPLATE, **kwargs)
+
+
+_SCORECARD_CONTENT = """\
+# Build Scorecard: Demo
+
+- Completion gate: INCOMPLETE
+- Technical score: 82/100
+- Code identity: abc123
+
+## Technical quality
+
+| Dimension | Score | Gate |
+|---|---:|---|
+| Build Quality | 90 | PASS |
+
+## Project acceptance
+
+| ID | Type | Criterion | Required | Verdict | Evidence |
+|---|---|---|---|---|---|
+| st-proof | behavioral | The build contains its marker. | yes | PASS | src:built=PASS |
+| st-privacy | guardrail | No personal data in logs. | absolute | BREACHED | missing |
+
+## Completion blockers
+
+- Guardrail st-privacy is BREACHED.
+"""
+
+
+class TestScorecardHtml:
+    def test_renders_verdict_rows_with_checkmarks(self, tmp_path):
+        (tmp_path / "SCORECARD.md").write_text(_SCORECARD_CONTENT, encoding="utf-8")
+
+        html = _scorecard_html(tmp_path)
+
+        assert "Score 82/100" in html
+        assert "INCOMPLETE" in html
+        assert "badge-verified" in html  # PASS row
+        assert "✓ PASS" in html
+        assert "badge-failed" in html  # BREACHED guardrail
+        assert "✗ BREACHED" in html
+        assert "st-privacy" in html
+
+    def test_empty_when_absent(self, tmp_path):
+        assert _scorecard_html(tmp_path) == ""
+
+    def test_fill_chair_defaults_to_not_yet_scored(self):
+        result = _fill_chair(
+            "{{SCORECARD_HTML}}",
+            project_name="X",
+            phase_label="Building",
+            generated_date="",
+            quality="Ready",
+            stats_html="",
+            next_step="",
+            question_count=0,
+            stories_html="",
+            questions_html="",
+            blockers_html="",
+            screens_html="",
+        )
+        assert "Not yet scored" in result
 
 
 class TestFillCaptainsChair:
@@ -1163,7 +1187,7 @@ class TestAnalyze:
         assert result.ok
         assert result.analysis_path.exists()
         assert result.sea_trials_path.exists()
-        assert result.soundings_path.exists()
+        assert not (target_dir / "SOUNDINGS.md").exists()
         assert "## Open Questions" not in result.analysis_path.read_text(encoding="utf-8")
 
     def test_analysis_path_is_at_target_root(self, tmp_path):
@@ -1232,10 +1256,11 @@ QUESTIONS:
         )
         assert questionnaire["questions"][0]["id"] == "q-speed-workload"
 
-    def test_soundings_at_target_root(self, tmp_path):
+    def test_analyze_does_not_write_soundings(self, tmp_path):
+        # SOUNDINGS.md is written only by `drydock score ac`; analyze must not create it.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.soundings_path == target_dir / "SOUNDINGS.md"
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_quality_signal_in_result(self, tmp_path):
         # The always-written stack questionnaire is an open question until answered.

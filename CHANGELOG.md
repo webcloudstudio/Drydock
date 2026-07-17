@@ -10,6 +10,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-17: reworked scoring to match the specification. `drydock score release` is now an
+  LLM-assisted release gate that judges the project criteria in `SEA_TRIALS.md` and writes
+  `SCORECARD.md` (prompt contract `prompts/score_release.md`); deterministic proofs, measurements,
+  and guardrails still settle mechanically and feed the model. `drydock score ac` remains
+  deterministic and is now the sole writer of `SOUNDINGS.md` — `analyze` and `plan` no longer create
+  it, so a project has no Soundings until it is scored. The Commander's Chair renders a Scorecard
+  section with per-criterion checkmarks.
 - 2026-07-17: retired the Ship's Log feature, removed the `drydock shipslog` command and related
   repository tooling, and made `CHANGELOG.md` the only maintained high-level project history.
 - 2026-07-17: aligned `drydock document` with its specification by making generated `DOC-*` output

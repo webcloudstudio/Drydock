@@ -3,9 +3,9 @@
 Single LLM call producing all analyze outputs via delimited blocks. Writes deterministically;
 tests inject a fake runner and never spend API credits.
 
-Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, SOUNDINGS.md, COMPASS.md (if absent or
-unpopulated), BLOCKERS.md (only when blockers exist), discovery-*.json questionnaires (one per
-open question), commanders_chair.html (when lifecycle state advances to analyzed).
+Outputs: ANALYSIS.md (target root), SEA_TRIALS.md, COMPASS.md (if absent or unpopulated),
+BLOCKERS.md (only when blockers exist), discovery-*.json questionnaires (one per open question),
+commanders_chair.html (when lifecycle state advances to analyzed).
 """
 
 from __future__ import annotations
@@ -57,7 +57,6 @@ from drydock.sea_trials import (
     parse_sea_trials_text,
     project_questions,
 )
-from drydock.standard_artifacts import Sounding, render_soundings
 
 PROMPT_NAME = "analyze"
 
@@ -103,7 +102,6 @@ class AnalyzeResult:
     target_dir: Path
     analysis_path: Path
     sea_trials_path: Path
-    soundings_path: Path
     compass_path: Path | None
     commanders_chair_path: Path | None
     discovery_paths: tuple[Path, ...]
@@ -717,45 +715,10 @@ def _normalize_discovery(name: str, data: dict) -> dict:
     return normalized
 
 
-def _normalize_cell(value: str) -> str:
-    return " ".join(value.split())
-
-
-def _split_markdown_row(line: str) -> list[str]:
-    text = line.strip()
-    if text.startswith("|"):
-        text = text[1:]
-    if text.endswith("|"):
-        text = text[:-1]
-    return [_normalize_cell(cell.replace(r"\|", "|")) for cell in re.split(r"(?<!\\)\|", text)]
-
-
-def _soundings_from_analysis(analysis_text: str) -> str:
-    rows: list[Sounding] = []
-    lines = analysis_text.splitlines()
-    for index, line in enumerate(lines):
-        cells = _split_markdown_row(line) if "|" in line else []
-        normalized = [cell.lower() for cell in cells]
-        if normalized[:3] != ["id", "story", "high-level ac"]:
-            continue
-        cursor = index + 2
-        while cursor < len(lines):
-            row_line = lines[cursor]
-            if not row_line.strip() or row_line.startswith("## "):
-                break
-            row = _split_markdown_row(row_line) if "|" in row_line else []
-            if len(row) >= 3 and row[0] and row[2]:
-                rows.append(Sounding(row[0], row[2]))
-            cursor += 1
-    if not rows:
-        rows.append(Sounding("analysis-acceptance", "Acceptance criteria are identified."))
-    return render_soundings(rows)
-
-
 def _parse_output(
     text: str,
-) -> tuple[str, str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
-    """Return (analysis, sea_trials, soundings, compass_or_none, blockers_or_none, discoveries,
+) -> tuple[str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
+    """Return (analysis, sea_trials, compass_or_none, blockers_or_none, discoveries,
     quality, summary).
 
     ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, features.
@@ -766,7 +729,7 @@ def _parse_output(
     blocks = parse_artifact_blocks(
         text,
         label="Analyze",
-        allowed_names={"ANALYSIS.md", "SEA_TRIALS.md", "SOUNDINGS.md", "BLOCKERS.md", "COMPASS.md"},
+        allowed_names={"ANALYSIS.md", "SEA_TRIALS.md", "BLOCKERS.md", "COMPASS.md"},
         allowed_prefixes=("discovery-",),
     )
 
@@ -805,7 +768,6 @@ def _parse_output(
     return (
         analysis_text,
         sea_trials_text,
-        _soundings_from_analysis(analysis_text),
         compass_content,
         blockers_content,
         discoveries,
@@ -832,7 +794,6 @@ def analyze(
     questionnaires_dir = target_dir / "QuarterDeck" / "questionnaires"
     analysis_path = target_dir / "ANALYSIS.md"
     sea_trials_path = target_dir / "SEA_TRIALS.md"
-    soundings_path = target_dir / "SOUNDINGS.md"
     compass_target = target_dir / "COMPASS.md"
 
     source_files = _collect_blueprint_files(blueprint_dir)
@@ -907,7 +868,6 @@ def analyze(
             target_dir=target_dir,
             analysis_path=analysis_path,
             sea_trials_path=sea_trials_path,
-            soundings_path=soundings_path,
             compass_path=None,
             commanders_chair_path=None,
             discovery_paths=(),
@@ -931,7 +891,6 @@ def analyze(
         (
             analysis_text,
             sea_trials_text,
-            soundings_text,
             compass_text,
             blockers_text_out,
             discoveries,
@@ -978,7 +937,6 @@ def analyze(
 
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
     sea_trials_path.write_text(sea_trials_text + "\n", encoding="utf-8", newline="\n")
-    soundings_path.write_text(soundings_text + "\n", encoding="utf-8", newline="\n")
 
     written_compass: Path | None = None
     if compass_text and (not compass_exists or compass_pending):
@@ -1047,7 +1005,6 @@ def analyze(
         target_dir=target_dir,
         analysis_path=analysis_path,
         sea_trials_path=sea_trials_path,
-        soundings_path=soundings_path,
         compass_path=written_compass,
         commanders_chair_path=commanders_chair_path,
         discovery_paths=tuple(sorted(discovery_paths)),

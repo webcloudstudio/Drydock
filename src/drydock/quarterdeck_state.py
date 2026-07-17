@@ -218,6 +218,7 @@ def _chair_for_building(target_dir: Path, template: str, today: str) -> str | No
         questions_html="",
         blockers_html="",
         screens_html="",
+        scorecard_html=_scorecard_html(target_dir),
     )
 
 
@@ -298,6 +299,62 @@ def _build_story_list(status) -> str:
     return "\n".join(parts)
 
 
+def _scorecard_field(text: str, label: str) -> str:
+    match = re.search(rf"^- {re.escape(label)}:\s*(.+?)\s*$", text, re.MULTILINE)
+    return match.group(1).strip() if match else ""
+
+
+def _scorecard_acceptance_rows(text: str) -> list[tuple[str, str, str]]:
+    """Return (criterion_id, criterion, verdict) rows from the Project acceptance table."""
+    section = text.split("## Project acceptance", 1)
+    if len(section) != 2:
+        return []
+    body = section[1]
+    next_section = re.search(r"^##\s+", body, re.MULTILINE)
+    if next_section:
+        body = body[: next_section.start()]
+    rows: list[tuple[str, str, str]] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-"}:
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if len(cells) < 6 or cells[0].lower() == "id":
+            continue
+        rows.append((cells[0], cells[2], cells[4]))
+    return rows
+
+
+def _scorecard_html(target_dir: Path) -> str:
+    """Render SCORECARD.md as a compact verdict board, or empty when the file is absent."""
+    path = target_dir / "SCORECARD.md"
+    if not path.is_file():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    parts: list[str] = []
+    score = _scorecard_field(text, "Technical score")
+    gate = _scorecard_field(text, "Completion gate")
+    summary = " · ".join(bit for bit in (f"Score {score}" if score else "", gate) if bit)
+    if summary:
+        parts.append(f'<div class="question-status">{escape(summary)}</div>')
+    rows = _scorecard_acceptance_rows(text)
+    if rows:
+        parts.append('<div class="story-list">')
+        for criterion_id, criterion, verdict in rows:
+            held = verdict.upper() in {"PASS", "HELD"}
+            css = "badge-verified" if held else "badge-failed"
+            glyph = "✓" if held else "✗"
+            name = f"{criterion_id} — {criterion}" if criterion else criterion_id
+            parts.append(
+                f'<div class="story-row">'
+                f'<span class="story-name">{escape(name)}</span>'
+                f' <span class="badge {css}">{escape(f"{glyph} {verdict}")}</span>'
+                f"</div>"
+            )
+        parts.append("</div>")
+    return "\n".join(parts)
+
+
 def _fill_chair(
     template: str,
     *,
@@ -312,6 +369,7 @@ def _fill_chair(
     questions_html: str,
     blockers_html: str,
     screens_html: str,
+    scorecard_html: str = "",
 ) -> str:
     css_class, icon, desc = _QUALITY_META.get(quality, ("ready", "✓", quality))
     question_status = "Open questionnaires remain" if question_count else "No open questionnaires"
@@ -341,6 +399,8 @@ def _fill_chair(
         "{{QUESTIONS_HTML}}": questions_html,
         "{{BLOCKERS_HTML}}": blockers_html,
         "{{SCREENS_HTML}}": screens_html,
+        "{{SCORECARD_HTML}}": scorecard_html
+        or '<p class="empty">Not yet scored. Run drydock score release.</p>',
     }
     for key, value in replacements.items():
         template = template.replace(key, value)
@@ -483,7 +543,7 @@ def _build_next_step(status, plan, target: str) -> str:
     if status.steps_total == 0:
         return f"drydock build {target}"
     if status.steps_verified == status.steps_total:
-        return f"drydock build score {target}"
+        return f"drydock score release {target}"
     if status.steps_implemented:
         first_review = next(
             (

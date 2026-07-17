@@ -51,7 +51,6 @@ from drydock.sea_trials import parse_sea_trials_text
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
-    sync_plan_soundings,
 )
 
 PROMPT_NAME = "plan_create"
@@ -1618,7 +1617,7 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck = target_dir / "QuarterDeck"
     quarterdeck.mkdir(parents=True, exist_ok=True)
     ensure_standard_artifacts(plan.project, target_dir)
-    sync_plan_soundings(plan, target_dir)
+    # SOUNDINGS.md is written only by ``drydock score ac``; planning never creates it.
     # The QuarterDeck runtime is served from the package; only console state is
     # written into the Target (see quarterdeck_run.run_quarterdeck).
     (quarterdeck / "planning-session.md").write_text(

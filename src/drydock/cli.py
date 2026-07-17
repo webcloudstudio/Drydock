@@ -489,7 +489,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     tdir = result.target_dir
     print(f"  ANALYSIS.md   →  {result.analysis_path.relative_to(tdir)}")
     print(f"  SEA_TRIALS.md →  {result.sea_trials_path.relative_to(tdir)}")
-    print(f"  SOUNDINGS.md  →  {result.soundings_path.relative_to(tdir)}")
     if result.compass_path:
         print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}  (created)")
     for discovery_path in result.discovery_paths:
@@ -1401,17 +1400,32 @@ def cmd_score_ac(target: str) -> int:
 
 
 def cmd_score_release(target: str) -> int:
-    from drydock.config import require_target_dir
-    from drydock.score import deterministic_gate
+    from drydock.config import (
+        get_llm_provider,
+        get_model,
+        get_workspace,
+        require_target_dir,
+    )
+    from drydock.quarterdeck_state import refresh_commanders_chair
+    from drydock.score import score_release
 
     target_dir = require_target_dir(target)
-    result = deterministic_gate(target, target_dir)
+    result = score_release(
+        target,
+        target_dir,
+        model=get_model(None),
+        llm_provider=get_llm_provider(None),
+        log_dir=get_workspace() / "logs",
+        on_text=_stream_stdout,
+    )
+    refresh_commanders_chair(target_dir)
     print()
-    print(f"Release gate: {target}  {'PASS' if result.passed else 'FAIL'}")
+    print(f"Release score: {result.score}/100")
+    print(f"Release gate: {target}  {'COMPLETE' if result.complete else 'INCOMPLETE'}")
+    print(f"Scorecard: {result.scorecard_path}")
+    print(f"Evidence: {result.evidence_path}")
     for blocker in result.blockers:
         print(f"  BLOCKER: {blocker}")
-    if not result.passed:
-        print("  (model- and human-judged criteria are deferred to `drydock build score`)")
     return result.exit_code()
 
 
@@ -1750,13 +1764,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── score ─────────────────────────────────────────────────────────────────
-    # Deterministic, LLM-free scoring. Handles: score ac <Target>, score release <Target>.
+    # Handles: score ac <Target> (deterministic), score release <Target> (LLM-assisted).
     p_score = sub.add_parser(
         "score",
-        help="Deterministically verify acceptance criteria and the release gate (no LLM).",
+        help="Verify acceptance criteria (deterministic) and judge the release gate (LLM).",
         description=(
             "drydock score ac <Target>       — verify each acceptance criterion, update Soundings\n"
-            "drydock score release <Target>  — deterministic release gate (CI-portable, no LLM)"
+            "drydock score release <Target>  — LLM release gate over Sea Trials; writes SCORECARD.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

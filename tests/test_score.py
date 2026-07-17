@@ -1,12 +1,33 @@
-"""Tests for deterministic, LLM-free scoring: per-AC verification and the release gate."""
+"""Tests for scoring: deterministic per-AC verification and the LLM release gate."""
 
 from __future__ import annotations
 
+import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.score import deterministic_gate, verify_acs
+from drydock.build_score import DIMENSIONS
+from drydock.score import score_release, verify_acs
 from drydock.standard_artifacts import load_soundings
+
+
+@dataclass
+class FakeRun:
+    text: str
+    ok: bool = True
+    execution_id: str = "exec-release"
+
+
+def _runner(*, proof_verdict: str = "PASS"):
+    payload = {
+        "dimensions": {name: 90 for name in DIMENSIONS},
+        "criteria": [
+            {"id": "st-proof", "verdict": proof_verdict, "rationale": "model guess", "evidence": []}
+        ],
+        "improvements": ["Broaden coverage."],
+    }
+    return lambda *args, **kwargs: FakeRun(json.dumps(payload))
 
 
 def _git(path: Path, *args: str) -> None:
@@ -115,39 +136,37 @@ def test_verify_acs_demotes_vacuous_proof_to_unverified(tmp_path):
     assert row.verified_at == ""
 
 
-def test_release_gate_passes_when_all_deterministic_hold(tmp_path):
+def test_release_score_completes_and_writes_scorecard(tmp_path):
     target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
 
-    result = deterministic_gate("Demo", target_dir)
+    # The model guesses FAIL; the passing code-bound proof overrides it to PASS.
+    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="FAIL"))
 
-    assert result.passed
+    assert result.complete
     assert result.exit_code() == 0
-    assert result.blockers == ()
+    assert result.criteria[0].verdict == "PASS"
+    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert "# Build Scorecard: Demo" in scorecard
+    assert (target_dir / "evidence" / "score-release.json").is_file()
 
 
-def test_release_gate_fails_on_failing_proof(tmp_path):
+def test_release_score_fails_on_failing_proof(tmp_path):
     target_dir, _ = _target(tmp_path, proof=_FAILING_PROOF)
 
-    result = deterministic_gate("Demo", target_dir)
+    # The model guesses PASS; the failing proof overrides it and blocks release.
+    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
 
-    assert not result.passed
-    assert any("FAILED its proof" in b for b in result.blockers)
-
-
-def test_release_gate_fails_on_vacuous_proof(tmp_path):
-    target_dir, _ = _target(tmp_path, proof="assert True")
-
-    result = deterministic_gate("Demo", target_dir)
-
-    assert result.passed
-    assert result.blockers == ()
+    assert not result.complete
+    assert result.exit_code() == 1
+    assert result.criteria[0].verdict == "FAIL"
+    assert any("st-proof" in blocker for blocker in result.blockers)
 
 
-def test_release_gate_fails_on_dirty_worktree(tmp_path):
+def test_release_score_blocks_on_dirty_worktree(tmp_path):
     target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
     (build_dir / "marker.txt").write_text("changed\n", encoding="utf-8")
 
-    result = deterministic_gate("Demo", target_dir)
+    result = score_release("Demo", target_dir, runner=_runner())
 
-    assert not result.passed
-    assert any("uncommitted changes" in b for b in result.blockers)
+    assert not result.complete
+    assert any("uncommitted changes" in blocker for blocker in result.blockers)

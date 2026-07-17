@@ -6,7 +6,7 @@ intent: Act as an Agile Development Team: perform sprint planning on imported so
 command: drydock analyze
 model: opus
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, TYPED_SPEC
-output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
+output: ANALYSIS.md, SEA_TRIALS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
 ---
 
 # Agent for: blueprint analysis
@@ -54,7 +54,7 @@ one only when the answer turns on something the sources do not contain: business
 taste, an external or regulatory constraint, an irreversible trade-off, or a genuinely absent fact
 (no stack named, no auth model stated for a product that clearly needs one).
 
-Anything you can derive from the sources, you **must derive** — into the story list, SOUNDINGS,
+Anything you can derive from the sources, you **must derive** — into the story list,
 SEA_TRIALS, or a tuning option. Never ask the human to supply work the team owns. In particular,
 acceptance criteria, smoke checks, build gates, and test sequences are *outputs you synthesize*,
 not questions you ask. Outcome baselines, business thresholds, observation windows, and external
@@ -182,8 +182,8 @@ question in `ANALYSIS.md`.
 
 **5. Derive test criteria from the story list.**
 - *Consumes:* the story list (and any explicit acceptance criteria stated in the sources).
-- *Emits:* high-level acceptance criteria in `ANALYSIS.md` Story List rows. Drydock projects
-  these criteria into `SOUNDINGS.md` deterministically; do not emit `SOUNDINGS.md`.
+- *Emits:* high-level acceptance criteria in `ANALYSIS.md` Story List rows. Do not emit
+  `SOUNDINGS.md` — it is written only by `drydock score ac`.
 
 **6. Derive SEA_TRIALS project acceptance.**
 - *Consumes:* the story list + the COMPASS (existing file or the COMPASS you will emit in step 9).
@@ -346,7 +346,7 @@ human-owned decision open:
 
 Do **not** emit a "gaps" or "acceptance criteria" questionnaire. Underspecified acceptance
 criteria, success evidence, smoke checks, build gates, and test sequences are outputs you
-synthesize (into SOUNDINGS and SEA_TRIALS), never questions you ask.
+synthesize (into the story list and SEA_TRIALS), never questions you ask.
 
 Each questionnaire uses this shape:
 
@@ -486,7 +486,7 @@ list plus `"other"`, sorted alphabetically.
   decision uses `"input": "textarea"`.
 - A named technology with a matching catalog file is decided (do not ask); a named technology with
   no matching file is a discovery questionnaire.
-- SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise
+- Story List high-level AC: use acceptance criteria stated in the sources where present; otherwise
   synthesize one milestone per feature area / screen / persistence area.
 - SEA_TRIALS.md criteria are project-level and use stable `st-*` IDs. Preserve prior IDs for the
   same criterion on reruns. Technical and behavioral criteria normally use Blueprint proof;

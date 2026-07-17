@@ -1,21 +1,22 @@
-"""Deterministic, LLM-free scoring: per-AC verification and the release gate.
-
-Two capabilities sit beside the model-assisted ``drydock build score``:
+"""Acceptance scoring: deterministic per-AC verification and the LLM release gate.
 
 - ``drydock score ac`` runs each acceptance criterion's Programmatic Acceptance, applies proof
   integrity, and records a ``✓ PASS`` / ``✗ FAIL`` / ``— UNVERIFIED`` verdict per AC into
-  ``SOUNDINGS.md`` with a timestamp. It is the trust-but-verify board: the Commander scans
-  checkmarks instead of granting approvals.
-- ``drydock score release`` re-runs the deterministic subset of the completion gate — proofs,
-  measurements, guardrails, Manifest completion, clean worktree — with no model call and no
-  network. It is the CI-portable gate: same inputs, same exit code, every environment.
+  ``SOUNDINGS.md`` with a timestamp. It is deterministic — no model call, no network — and is the
+  sole writer of ``SOUNDINGS.md``: the trust-but-verify board the Commander scans instead of
+  granting approvals.
+- ``drydock score release`` judges the project-level criteria in ``SEA_TRIALS.md`` against the
+  completed build. Deterministic proofs, measurements, and guardrails are settled mechanically and
+  fed to the model, which judges the remaining ``evidence`` and ``llm`` criteria and scores the
+  quality dimensions. It writes ``SCORECARD.md`` and ``evidence/score-release.json``.
 
-Both reuse the build_score primitives so the deterministic verdicts agree with the model path.
+Both reuse the build_score primitives so the deterministic verdicts agree across paths.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,11 +27,28 @@ from drydock.acceptance import (
     run_programmatic_acceptance,
 )
 from drydock.build_plan import parse_build_plan, stale_applied_specs
-from drydock.build_score import _code_identity, _measure
+from drydock.build_score import (
+    DIMENSIONS,
+    VALID_VERDICTS,
+    BuildScoreResult,
+    CriterionResult,
+    RunnerFn,
+    TextCallback,
+    _code_identity,
+    _coverage_penalty,
+    _evidence_fact,
+    _measure,
+    _parse_json,
+    _render_scorecard,
+    _sha,
+)
 from drydock.errors import SpecificationError
+from drydock.llm import run_prompt
 from drydock.metadata import get_build_dir
+from drydock.prompt_assembly import PromptAssembly
+from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_proof
-from drydock.sea_trials import load_sea_trials
+from drydock.sea_trials import DETERMINISTIC_VERIFICATION, load_sea_trials
 from drydock.standard_artifacts import (
     VERIFIED_FAIL,
     VERIFIED_PASS,
@@ -65,16 +83,6 @@ class AcReport:
         # A FAIL is a hard failure; UNVERIFIED is surfaced but does not fail the run, since not
         # every story carries an executable proof (spikes, pure UI). The board shows the gap.
         return 1 if any(v.status == FAIL for v in self.verdicts) else 0
-
-
-@dataclass(frozen=True)
-class GateResult:
-    target: str
-    passed: bool
-    blockers: tuple[str, ...]
-
-    def exit_code(self) -> int:
-        return 0 if self.passed else 1
 
 
 def _now() -> str:
@@ -146,14 +154,23 @@ def verify_acs(target: str, target_dir: Path) -> AcReport:
     return AcReport(target, tuple(verdicts), soundings_path, verified_at)
 
 
-def deterministic_gate(target: str, target_dir: Path) -> GateResult:
-    """Deterministic release gate: pass only when every mechanically-checkable gate holds.
+def score_release(
+    target: str,
+    target_dir: Path,
+    *,
+    runner: RunnerFn | None = None,
+    on_text: TextCallback | None = None,
+    model: str | None = None,
+    llm_provider: str | None = None,
+    log_dir: Path | None = None,
+) -> BuildScoreResult:
+    """LLM-assisted release gate: judge project Sea Trials against the built code.
 
-    Verifies proofs (with integrity), measurements, guardrails, Manifest completion, and a clean
-    worktree — no model call. Criteria that are inherently model- or human-judged (``llm``,
-    ``evidence``, qualitative, outcome) are deferred to ``drydock build score`` and do not block,
-    except guardrails: a guardrail that cannot be verified deterministically fails the gate,
-    because a guardrail is absolute.
+    Reads ``SEA_TRIALS.md`` and judges every project-level criterion. Proofs, measurements, and
+    guardrails are settled deterministically and fed to the model, which judges the remaining
+    ``evidence`` and ``llm`` criteria and scores the seven quality dimensions. Writes
+    ``SCORECARD.md`` and ``evidence/score-release.json``. The release verdict is COMPLETE only when
+    no completion blocker remains.
     """
     sea_path = target_dir / "SEA_TRIALS.md"
     manifest_path = target_dir / "MANIFEST.md"
@@ -165,18 +182,16 @@ def deterministic_gate(target: str, target_dir: Path) -> GateResult:
         raise SpecificationError(f"build directory not found: {build_dir}")
 
     blockers: list[str] = []
-
-    executable = [b for b in plan.blocks if b.block_type in {"story", "spike"}]
-    incomplete = [b.block_id for b in executable if b.state != "closed/verified"]
+    warnings: list[str] = []
+    executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
+    incomplete = [block.block_id for block in executable if block.state != "closed/verified"]
     if incomplete:
         blockers.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
-
     stale = stale_applied_specs(plan, blueprint_dir)
     if stale:
         blockers.append(
             "Applied Blueprint specifications are stale: " + ", ".join(s.rel_path for s in stale)
         )
-
     code_identity, dirty = _code_identity(build_dir)
     if not code_identity:
         blockers.append("Build directory has no usable Git code identity")
@@ -185,49 +200,255 @@ def deterministic_gate(target: str, target_dir: Path) -> GateResult:
     if document.questions:
         blockers.append("Sea Trials has unresolved QUESTIONS")
 
-    # Proofs, keyed to the criteria they reference, with integrity applied.
     checks = tuple(
         check
         for path in sorted(blueprint_dir.glob("*.md"))
         for check in parse_programmatic_acceptance(path)
     )
-    integrity = [analyze_proof(check.code) for check in checks]
     acceptance = run_programmatic_acceptance(
         checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
     )
-    proof_pass: dict[str, bool] = {}  # criterion_id -> all referencing proofs passed
-    proof_seen: set[str] = set()
-    for check, integ, result in zip(checks, integrity, acceptance, strict=True):
-        for criterion in check.sea_trials:
-            proof_seen.add(criterion)
-            proof_pass[criterion] = proof_pass.get(criterion, True) and result.passed
+    proof_integrity = tuple(analyze_proof(check.code) for check in checks)
+    failed_acceptance = [check.check_id for check in acceptance if not check.passed]
+    if failed_acceptance:
+        blockers.append("Programmatic acceptance failed: " + ", ".join(failed_acceptance))
+    vacuous_proofs = [
+        check.check_id for check, integ in zip(checks, proof_integrity, strict=True) if not integ.ok
+    ]
+    if vacuous_proofs:
+        warnings.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
+    proof_backed = {criterion for check in checks for criterion in check.sea_trials}
+    deterministic_ids = frozenset(
+        trial.criterion_id
+        for trial in document.trials
+        if trial.verification in DETERMINISTIC_VERIFICATION
+        and (trial.verification != "proof" or trial.criterion_id in proof_backed)
+    )
 
-    for trial in document.trials:
-        cid = trial.criterion_id
-        guardrail = trial.trial_type == "guardrail"
-        required = trial.required or guardrail
-        if not required:
-            continue
+    known_trial_ids = {trial.criterion_id for trial in document.trials}
+    manifest_refs = {
+        value
+        for block in executable
+        for value in block.fields.get("accepts", ())
+        if isinstance(value, str)
+    }
+    proof_refs = {value for check in checks for value in check.sea_trials}
+    unknown_refs = sorted((manifest_refs | proof_refs) - known_trial_ids)
+    if unknown_refs:
+        blockers.append("Unknown Sea Trial references: " + ", ".join(unknown_refs))
+    traceable_required = {
+        trial.criterion_id
+        for trial in document.trials
+        if trial.required and trial.trial_type in {"technical", "behavioral"}
+    }
+    uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
+    if uncovered:
+        blockers.append(
+            "Required Sea Trials lack implementation/proof coverage: " + ", ".join(uncovered)
+        )
+
+    measurements = tuple(
+        _measure(trial, target_dir=target_dir, build_dir=build_dir) for trial in document.trials
+    )
+    evidence_facts = tuple(
+        fact for trial in document.trials if (fact := _evidence_fact(trial, target_dir)) is not None
+    )
+    facts = {
+        "target": target,
+        "manifest": {
+            "total_executable": len(executable),
+            "verified": len(executable) - len(incomplete),
+            "incomplete": incomplete,
+        },
+        "code": {"identity": code_identity, "dirty": dirty},
+        "blueprint": {
+            "files": [path.name for path in sorted(blueprint_dir.glob("*.md"))],
+            "stale": [item.rel_path for item in stale],
+        },
+        "programmatic_acceptance": [asdict(item) for item in acceptance],
+        "traceability": {
+            "manifest_references": sorted(manifest_refs),
+            "proof_references": sorted(proof_refs),
+            "uncovered_required": uncovered,
+            "unknown_references": unknown_refs,
+        },
+        "measurements": [asdict(item) for item in measurements],
+        "evidence_files": evidence_facts,
+        "sea_trials": [asdict(item) for item in document.trials],
+        "deterministic_blockers": blockers,
+        "warnings": warnings,
+    }
+    prompt = load_prompt("score_release")
+    rendered = (
+        prompt.body + "\n\n## Evidence facts\n\n```json\n" + json.dumps(facts, indent=2) + "\n```\n"
+    )
+    assembly = PromptAssembly.single_prompt(rendered)
+    run = runner if runner is not None else run_prompt
+    result = run(
+        rendered,
+        target_dir,
+        llm=llm_provider,
+        model=model or prompt.model,
+        command_name="score release",
+        parameters={"target": target},
+        log_dir=log_dir,
+        target=target,
+        on_text=on_text,
+        prompt_assembly=assembly,
+    )
+    if not result.ok or not result.text.strip():
+        raise SpecificationError("score release LLM execution failed or returned no output")
+    payload = _parse_json(result.text)
+    raw_dimensions = payload.get("dimensions")
+    if not isinstance(raw_dimensions, dict) or set(raw_dimensions) != set(DIMENSIONS):
+        raise SpecificationError("score release output must score exactly the seven dimensions")
+    dimensions: dict[str, int] = {}
+    for name in DIMENSIONS:
+        value = raw_dimensions[name]
+        if not isinstance(value, int) or not 0 <= value <= 100:
+            raise SpecificationError(f"score release dimension {name} must be an integer 0..100")
+        dimensions[name] = value
+    dimensions["acceptance_criteria_coverage"] = _coverage_penalty(
+        dimensions["acceptance_criteria_coverage"], document.trials, deterministic_ids
+    )
+
+    trial_by_id = {trial.criterion_id: trial for trial in document.trials}
+    model_criteria: dict[str, dict] = {}
+    for item in payload.get("criteria", []):
+        if not isinstance(item, dict) or item.get("id") not in trial_by_id:
+            raise SpecificationError("score release output contains an unknown criterion ID")
+        criterion_id = str(item["id"])
+        if criterion_id in model_criteria:
+            raise SpecificationError(f"score release output duplicates criterion {criterion_id}")
+        model_criteria[criterion_id] = item
+    if set(model_criteria) != set(trial_by_id):
+        raise SpecificationError("score release output must judge every Sea Trial exactly once")
+
+    measurements_by_id = {item.criterion_id: item for item in measurements}
+    evidence_by_id = {str(item["criterion_id"]): item for item in evidence_facts}
+    criteria: list[CriterionResult] = []
+    for criterion_id, trial in trial_by_id.items():
+        item = model_criteria[criterion_id]
+        verdict = str(item.get("verdict", "INCONCLUSIVE")).upper()
+        if verdict not in VALID_VERDICTS:
+            raise SpecificationError(f"score release {criterion_id} has invalid verdict {verdict}")
+        rationale = str(item.get("rationale", "")).strip()
+        raw_evidence = item.get("evidence", [])
+        evidence = (
+            tuple(str(value) for value in raw_evidence) if isinstance(raw_evidence, list) else ()
+        )
+        measured = measurements_by_id[criterion_id]
         if trial.verification == "measurement":
-            measured = _measure(trial, target_dir=target_dir, build_dir=build_dir)
-            if measured.status != PASS:
-                label = "Guardrail" if guardrail else "Required Sea Trial"
-                detail = measured.detail or measured.source
-                blockers.append(f"{label} {cid} is {measured.status} ({detail})")
-            continue
+            verdict = measured.status if measured.status in VALID_VERDICTS else "INCONCLUSIVE"
+            evidence = tuple(filter(None, (measured.source, measured.detail)))
         if trial.verification == "proof":
-            if cid not in proof_seen or cid not in proof_pass:
-                label = "Guardrail" if guardrail else "Required Sea Trial"
-                blockers.append(f"{label} {cid} has no code-bound proof")
-            elif not proof_pass[cid]:
-                label = "Guardrail" if guardrail else "Required Sea Trial"
-                blockers.append(f"{label} {cid} FAILED its proof")
-            continue
-        # Reaches here only for evidence/llm verification. A guardrail is absolute, so one that
-        # cannot be checked deterministically fails the gate; other criteria defer to build score.
-        if guardrail:
-            blockers.append(
-                f"Guardrail {cid} cannot be verified deterministically ({trial.verification})"
-            )
+            referencing = [
+                (result_item, integ)
+                for check, result_item, integ in zip(
+                    checks, acceptance, proof_integrity, strict=True
+                )
+                if criterion_id in check.sea_trials
+            ]
+            valid = [result_item for result_item, integ in referencing if integ.ok]
+            if not referencing:
+                verdict = "INCONCLUSIVE"
+                evidence = ("no code-bound proof references this criterion",)
+            elif not valid:
+                reasons = "; ".join(reason for _, integ in referencing for reason in integ.reasons)
+                evidence = (
+                    "warning: proof passed but failed integrity: "
+                    + (reasons or "no effective failure path"),
+                )
+            else:
+                verdict = "PASS" if all(entry.passed for entry in valid) else "FAIL"
+                evidence = tuple(
+                    f"{entry.source}:{entry.check_id}={'PASS' if entry.passed else 'FAIL'}"
+                    for entry in valid
+                )
+        if trial.verification == "evidence" and "error" in evidence_by_id.get(criterion_id, {}):
+            verdict = "INCONCLUSIVE"
+            evidence = (str(evidence_by_id[criterion_id]["error"]),)
+        criteria.append(CriterionResult(criterion_id, verdict, rationale, evidence))
 
-    return GateResult(target, not blockers, tuple(blockers))
+    score = round(sum(dimensions.values()) / len(DIMENSIONS))
+    if score < 80:
+        blockers.append(f"Technical score {score} is below 80")
+    low_dimensions = [name for name, value in dimensions.items() if value < 60]
+    if low_dimensions:
+        blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
+    for item in criteria:
+        trial = trial_by_id[item.criterion_id]
+        if trial.trial_type == "guardrail":
+            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE breaches too.
+            if item.verdict != "PASS":
+                blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
+            continue
+        if trial.required and item.verdict != "PASS":
+            blockers.append(f"Required Sea Trial {item.criterion_id} is {item.verdict}")
+
+    criterion_improvements = [
+        f"Resolve {item.criterion_id} ({item.verdict}): {trial_by_id[item.criterion_id].criterion}"
+        for item in criteria
+        if item.verdict != "PASS"
+    ]
+    raw_improvements = payload.get("improvements", [])
+    proposed = criterion_improvements + [
+        str(item).strip() for item in raw_improvements if str(item).strip()
+    ]
+    improvements = tuple(dict.fromkeys(proposed))
+    complete = not blockers
+    evidence_path = target_dir / "evidence" / "score-release.json"
+    scorecard_path = target_dir / "SCORECARD.md"
+    record = {
+        "schema_version": 2,
+        "recorded_at": _now(),
+        "target": target,
+        "complete": complete,
+        "technical_score": score,
+        "dimensions": dimensions,
+        "criteria": [asdict(item) for item in criteria],
+        "blockers": blockers,
+        "warnings": warnings,
+        "improvements": improvements,
+        "identities": {
+            "code": code_identity,
+            "sea_trials": _sha(sea_path),
+            "manifest": _sha(manifest_path),
+            "blueprint": {path.name: _sha(path) for path in sorted(blueprint_dir.glob("*.md"))},
+        },
+        "measurements": [asdict(item) for item in measurements],
+        "evidence_files": evidence_facts,
+        "programmatic_acceptance": [asdict(item) for item in acceptance],
+        "execution_id": result.execution_id,
+    }
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
+    scorecard_path.write_text(
+        _render_scorecard(
+            target=target,
+            complete=complete,
+            score=score,
+            dimensions=dimensions,
+            criteria=tuple(criteria),
+            trials=trial_by_id,
+            blockers=tuple(blockers),
+            warnings=tuple(warnings),
+            improvements=improvements,
+            code_identity=code_identity,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return BuildScoreResult(
+        target,
+        score,
+        dimensions,
+        tuple(criteria),
+        tuple(blockers),
+        tuple(warnings),
+        improvements,
+        complete,
+        scorecard_path,
+        evidence_path,
+        result.execution_id,
+    )
