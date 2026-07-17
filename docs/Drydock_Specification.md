@@ -54,7 +54,12 @@ Rigging provides governed business rules, stack guidance, branding, and compact 
 
 The loop phase lets the Commander update the product while preserving the specification as the source of truth. Edit specifications or add change tickets, run `drydock refit`, and rebuild only the impacted work.
 
-Quality is measured at the project level using `drydock score`.
+Quality is verified deterministically with `drydock score` — no model call, no network.
+`drydock score ac` proves each acceptance criterion and stamps a `✓ PASS` / `✗ FAIL` /
+`— UNVERIFIED` verdict into Soundings; a vacuous proof (an empty body, a constant assertion,
+a self-comparison) is demoted rather than trusted. `drydock score release` is the CI-portable
+gate: the same inputs yield the same exit code in every environment. This is trust-but-verify —
+the Commander scans checkmarks instead of granting approvals.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -87,6 +92,7 @@ flowchart LR
 | Compass | Persistent project guidance used by Drydock commands. |
 | Rigging | Shared branding, stack rules, templates, and compact context derivatives. |
 | Soundings | The per-story acceptance-criterion verification board; Sea Trials is the project-level gate. |
+| Proof integrity | Static analysis that demotes a vacuous or tautological acceptance proof to UNVERIFIED, so a passing test cannot lift the score without actually proving behavior. |
 | Sea Trials | Product-level objectives and proof-of-delivery criteria. |
 | Refit | Change process that maps updates into the manifest. |
 
