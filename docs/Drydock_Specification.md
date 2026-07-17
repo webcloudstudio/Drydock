@@ -444,6 +444,10 @@ Build also validates changed Python dependency manifests as part of build accept
 dependency names must resolve legitimately before a build block is accepted; suspicious dependency
 names stop the block and surface a reviewable failure.
 
+Each Manifest build step is quality-gated at the story or grouped-block level. Drydock shows
+per-story acceptance observations in build evidence and operator output. Pre-build proof passes are
+informational. Post-build proof failures fail the step.
+
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
@@ -522,7 +526,8 @@ assertion, or a self-comparison — is demoted to `UNVERIFIED` rather than trust
 Acceptance with integrity, measurements, guardrails, Manifest completion, and a clean build
 worktree. Model- and human-judged criteria defer to `drydock build score`; a guardrail that cannot
 be verified deterministically fails the gate. The same inputs yield the same exit code in every
-environment, so any CI system gates on it directly.
+environment, so any CI system gates on it directly. A vacuous or pre-passing proof is reported as
+weak evidence and does not block release completion by itself.
 
 **Input files**
 
@@ -893,7 +898,10 @@ Legacy `ac` blocks are reconciled by the build engine or QuarterDeck. They are n
 acceptance authority for new plans.
 
 A `story` or `spike` becomes `closed/verified` after the build agent succeeds, files are written,
-and Blueprint `Programmatic Acceptance` passes.
+and Blueprint `Programmatic Acceptance` passes after the build.
+
+Drydock may run the same `Programmatic Acceptance` before the build as an observation. A proof that
+already passes is recorded as `GREEN (prepassed)` or `GREEN (vacuous)`. This does not block the build.
 
 The story and the deterministic tests that prove its acceptance are written in the same build
 step. The Blueprint's `Programmatic Acceptance` is the story's Definition of Done — declared
@@ -905,11 +913,13 @@ revising the block's instructions, acceptance, or scope interactively — and th
 returns it to `pending` with the revision recorded. The decision writer is the only mutator of
 Manifest block state; recovery never requires hand-editing `MANIFEST.md`.
 
-Guardrails and `Programmatic Acceptance` embedded in the Specification files run after each
-successful story build. `Programmatic Acceptance` is deterministic and non-agentic: each check is
-a Python invocation run as a post-build hook, so verification consumes no model context and cannot
-self-report. A story that satisfies its implementation but fails programmatic acceptance becomes
-`closed/failed` until rebuilt. A story that fails build records a single-line
+Guardrails and `Programmatic Acceptance` embedded in the Specification files are evaluated as part
+of story build verification. `Programmatic Acceptance` is deterministic and non-agentic. Drydock
+may run it before the build as an observation and runs it after the build as the acceptance gate.
+
+A story that fails post-build `Programmatic Acceptance` becomes `closed/failed`. A story whose proof
+passes before the build is marked as weak evidence and does not fail for that reason alone. A story
+that fails build records a single-line
 `finding:` with the failure reason, surfaced on the Build Compass. `User Acceptance` entries are
 Commander review signals and do not block ordinary downstream build unless modeled as explicit
 dependencies.
