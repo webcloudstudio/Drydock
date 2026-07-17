@@ -22,7 +22,13 @@ def _git(path: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
 
 
-def _target(tmp_path: Path, *, measurement: bool = False) -> tuple[Path, Path]:
+def _target(
+    tmp_path: Path,
+    *,
+    measurement: bool = False,
+    guardrail: bool = False,
+    guardrail_evidence: bool = True,
+) -> tuple[Path, Path]:
     target_dir = tmp_path / "targets" / "Demo"
     blueprint_dir = target_dir / "blueprint"
     build_dir = tmp_path / "build" / "Demo"
@@ -61,8 +67,9 @@ assert Path("marker.txt").read_text(encoding="utf-8") == "built\\n"
 ## st-proof: Built behavior
 Type: behavioral
 Required: yes
-Criterion: The built artifact contains its marker.
+Criterion: The built artifact shall contain its marker.
 Verification: proof
+Pattern: ubiquitous
 """
     if measurement:
         sea += f"""
@@ -78,6 +85,22 @@ Operator: <=
 Target: 10
 Unit: ms
 """
+    if guardrail:
+        # No story accepts st-privacy: a guardrail is never implemented by one.
+        sea += """
+
+## st-privacy: No personal data in logs
+Type: guardrail
+Required: yes
+Criterion: If a request carries personal data, then the system shall omit it from all logs.
+Verification: evidence
+Pattern: unwanted
+Evidence: evidence/privacy-scan.md
+"""
+        if guardrail_evidence:
+            scan = target_dir / "evidence" / "privacy-scan.md"
+            scan.parent.mkdir(parents=True, exist_ok=True)
+            scan.write_text("Log scan found no personal data.\n", encoding="utf-8")
     (target_dir / "SEA_TRIALS.md").write_text(sea, encoding="utf-8")
     (build_dir / "marker.txt").write_text("built\n", encoding="utf-8")
     _git(build_dir, "init")
@@ -88,7 +111,7 @@ Unit: ms
     return target_dir, build_dir
 
 
-def _runner(*, measurement: bool = False):
+def _runner(*, measurement: bool = False, guardrail_verdict: str | None = None):
     criteria = [{"id": "st-proof", "verdict": "FAIL", "rationale": "model guess", "evidence": []}]
     if measurement:
         criteria.append({
@@ -96,6 +119,13 @@ def _runner(*, measurement: bool = False):
             "verdict": "PASS",
             "rationale": "model guess",
             "evidence": [],
+        })
+    if guardrail_verdict is not None:
+        criteria.append({
+            "id": "st-privacy",
+            "verdict": guardrail_verdict,
+            "rationale": "scan reviewed",
+            "evidence": ["evidence/privacy-scan.md"],
         })
     payload = {
         "dimensions": {
@@ -141,3 +171,53 @@ def test_failed_measurement_overrides_model_and_blocks_completion(tmp_path):
     assert result.complete is False
     assert "Required Sea Trial st-speed is FAIL" in result.blockers
     assert result.improvements[0].startswith("Resolve st-speed (FAIL):")
+
+
+def test_held_guardrail_needs_no_story_coverage_and_gate_completes(tmp_path):
+    target_dir, _ = _target(tmp_path, guardrail=True)
+
+    result = score_target("Demo", target_dir, runner=_runner(guardrail_verdict="PASS"))
+
+    assert result.complete is True
+    assert not any("coverage" in blocker for blocker in result.blockers)
+    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert "| st-privacy | guardrail |" in scorecard
+    assert "| absolute | HELD |" in scorecard
+
+
+def test_breached_guardrail_blocks_completion(tmp_path):
+    target_dir, _ = _target(tmp_path, guardrail=True)
+
+    result = score_target("Demo", target_dir, runner=_runner(guardrail_verdict="FAIL"))
+
+    assert result.complete is False
+    assert result.exit_code() == 1
+    assert "Guardrail st-privacy is BREACHED" in "\n".join(result.blockers)
+    assert "| absolute | BREACHED |" in (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+
+
+def test_guardrail_without_evidence_is_breached(tmp_path):
+    """An unproven never is not held: missing evidence fails the gate rather than passing it."""
+    target_dir, _ = _target(tmp_path, guardrail=True, guardrail_evidence=False)
+
+    result = score_target("Demo", target_dir, runner=_runner(guardrail_verdict="PASS"))
+
+    verdicts = {item.criterion_id: item.verdict for item in result.criteria}
+    assert verdicts["st-privacy"] == "INCONCLUSIVE"
+    assert result.complete is False
+    assert "Guardrail st-privacy is BREACHED" in "\n".join(result.blockers)
+
+
+def test_required_assertions_judged_only_by_the_model_lose_coverage_score(tmp_path):
+    target_dir, _ = _target(tmp_path)
+    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+    (target_dir / "SEA_TRIALS.md").write_text(
+        sea.replace("Verification: proof", "Verification: llm"), encoding="utf-8"
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner())
+
+    # The only required assertion rests on llm judgment: 90 -> 45, tripping the <60 gate.
+    assert result.dimensions["acceptance_criteria_coverage"] == 45
+    assert result.complete is False
+    assert "Technical dimensions below 60: acceptance_criteria_coverage" in result.blockers

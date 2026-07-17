@@ -318,13 +318,36 @@ Commander's answers guide the LLM on the next run, and the cycle repeats until n
 
 `SEA_TRIALS.md` contains criteria with stable `st-*` IDs. Each criterion declares `Type`,
 `Required`, `Criterion`, and `Verification`. Types are `technical`, `behavioral`, `qualitative`,
-or `outcome`. Verification methods are `proof`, `measurement`, `evidence`, or `llm`.
+`outcome`, or `guardrail`. Verification methods are `proof`, `measurement`, `evidence`, or `llm`.
 Measurement criteria use either a JSON argv `Command` executed without a shell in the build
 directory or an `Evidence` file contained by the Target. Measurement output is a JSON object with
 a numeric `value` and optional `unit`; `Operator` and `Target` define the deterministic verdict.
 Unknown baselines, targets, workloads, or business measures remain in a literal `QUESTIONS:` block
 with stable `q-*` IDs. Analyze projects these questions into
 `QuarterDeck/questionnaires/discovery-sea-trials.json` and preserves existing answers on rerun.
+Analyze writes that projection; the file is never an analyze output block.
+
+`technical`, `behavioral`, and `guardrail` criteria are assertions. Each declares a `Pattern` and
+states its `Criterion` in the EARS shape that `Pattern` names:
+
+| Pattern | Shape |
+|---|---|
+| `ubiquitous` | `The <system> shall <response>` |
+| `event` | `When <trigger>, the <system> shall <response>` |
+| `state` | `While <state>, the <system> shall <response>` |
+| `option` | `Where <feature>, the <system> shall <response>` |
+| `unwanted` | `If <trigger>, then the <system> shall <mitigation>` |
+
+A criterion whose wording does not match its declared `Pattern` invalidates the analysis.
+`qualitative` and `outcome` criteria declare no `Pattern` and state the criterion in plain English.
+
+A `guardrail` is an absolute prohibition. It uses `Pattern: unwanted`, requires no implementing
+story, and reports as `HELD` or `BREACHED`.
+
+`SEA_TRIALS.md` embeds Drydock-owned reader documentation as `###` blocks describing the Sea
+Trials contract, EARS notation, the types, guardrails, the fields, and the `QUESTIONS:` block.
+Analyze replaces these blocks on every write. The QuarterDeck renders them as standout notes.
+Sea Trials are not approved; advancing a stage accepts the risk they state.
 
 | Quality | Meaning |
 |---|---|
@@ -602,11 +625,18 @@ Deterministic proof and measurement verdicts override LLM verdicts. The command 
 the current Git HEAD and content hashes of `SEA_TRIALS.md`, `MANIFEST.md`, and every Blueprint file.
 `drydock build status` reports persisted score evidence as `none`, `current`, or `stale`.
 
+The command discounts the acceptance-criteria-coverage dimension by the share of required
+`technical`, `behavioral`, and `guardrail` criteria whose `Verification` is neither `proof` nor
+`measurement`. A contract of required assertions resting wholly on model judgment scores half the
+model's value. `qualitative` and `outcome` criteria are exempt from the discount.
+
 The aggregate completion gate passes only when the equal-weight technical score is at least 80,
-every technical dimension is at least 60, every required Sea Trial is `PASS`, all executable
-Manifest work is `closed/verified`, the build Git worktree is clean, and no deterministic blocker
-exists. Failed and inconclusive findings become ranked Scorecard recommendations. They do not
-create change tickets.
+every technical dimension is at least 60, every required Sea Trial is `PASS`, every guardrail is
+`HELD`, all executable Manifest work is `closed/verified`, the build Git worktree is clean, and no
+deterministic blocker exists. A guardrail is `HELD` only when its verdict is `PASS`; a `FAIL` or
+`INCONCLUSIVE` guardrail is `BREACHED` and fails the gate regardless of every score. `SCORECARD.md`
+reports guardrail verdicts as `HELD` or `BREACHED`. Failed and inconclusive findings become ranked
+Scorecard recommendations. They do not create change tickets.
 
 **Input files**
 
@@ -956,7 +986,9 @@ rules-based on block type. `scope:` declares whether a story changes the Bluepri
 software, or both.
 `accepts:` lists stable `SEA_TRIALS.md` IDs implemented by the story. Every required technical or
 behavioral Sea Trial is referenced by an implementing story or a Blueprint Programmatic Acceptance
-proof. Unknown references and missing required coverage invalidate a generated plan.
+proof. Unknown references and missing required coverage invalidate a generated plan. `guardrail`,
+`qualitative`, and `outcome` criteria require no `accepts:` reference; `drydock build score` judges
+them at the end of the build.
 
 ### Feature Blocks
 

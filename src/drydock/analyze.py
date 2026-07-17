@@ -52,10 +52,17 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
-from drydock.sea_trials import parse_sea_trials_text, project_questions
+from drydock.sea_trials import (
+    normalize_sea_trials_text,
+    parse_sea_trials_text,
+    project_questions,
+)
 from drydock.standard_artifacts import Sounding, render_soundings
 
 PROMPT_NAME = "analyze"
+
+#: Projected from the SEA_TRIALS.md QUESTIONS: block by this module; the LLM never emits it.
+SEA_TRIALS_QUESTIONNAIRE = "discovery-sea-trials.json"
 
 _SOURCES_SUBDIR = "sources"
 
@@ -774,10 +781,20 @@ def _parse_output(
     discoveries: dict[str, dict] = {}
     for name, content in blocks.items():
         if name.startswith("discovery-") and name.endswith(".json"):
+            if name == SEA_TRIALS_QUESTIONNAIRE:
+                raise ValueError(
+                    f"{name} is written by Drydock from the SEA_TRIALS.md QUESTIONS: block "
+                    "and must not be emitted"
+                )
             try:
                 discoveries[name] = json.loads(content)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
+
+    # Validate and document the Sea Trials before any caller writes them: a malformed contract
+    # must fail the run with nothing on disk.
+    sea_trials_text = normalize_sea_trials_text(blocks["SEA_TRIALS.md"])
+    parse_sea_trials_text(sea_trials_text)
 
     analysis_text = _remove_open_questions_section(blocks["ANALYSIS.md"])
     analysis_text = _remove_tuning_options_section(analysis_text)
@@ -791,7 +808,7 @@ def _parse_output(
 
     return (
         analysis_text,
-        blocks["SEA_TRIALS.md"],
+        sea_trials_text,
         _soundings_from_analysis(analysis_text),
         compass_content,
         blockers_content,
@@ -984,7 +1001,7 @@ def analyze(
 
     sea_questions_path = project_questions(
         parse_sea_trials_text(sea_trials_text),
-        questionnaires_dir / "discovery-sea-trials.json",
+        questionnaires_dir / SEA_TRIALS_QUESTIONNAIRE,
     )
     if sea_questions_path is not None:
         discovery_paths.append(sea_questions_path)

@@ -1010,8 +1010,9 @@ def test_required_sea_trial_requires_manifest_or_proof_traceability(tmp_path):
 ## st-status: Status behavior
 Type: behavioral
 Required: yes
-Criterion: The status command reports current state.
+Criterion: The status command shall report current state.
 Verification: proof
+Pattern: ubiquitous
 """,
         encoding="utf-8",
     )
@@ -1028,8 +1029,9 @@ def test_manifest_accepts_provides_required_sea_trial_traceability(tmp_path):
 ## st-status: Status behavior
 Type: behavioral
 Required: yes
-Criterion: The status command reports current state.
+Criterion: The status command shall report current state.
 Verification: proof
+Pattern: ubiquitous
 """,
         encoding="utf-8",
     )

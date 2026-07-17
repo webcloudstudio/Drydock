@@ -1,12 +1,12 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260716 V13
+version: 20260717 V14
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, TYPED_SPEC
-output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question)
+output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
 ---
 
 # Agent for: blueprint analysis
@@ -188,7 +188,9 @@ question in `ANALYSIS.md`.
 **6. Derive SEA_TRIALS project acceptance.**
 - *Consumes:* the story list + the COMPASS (existing file or the COMPASS you will emit in step 9).
 - *Emits:* structured SEA_TRIALS.md project criteria with stable IDs, one observable behavior or
-  outcome per criterion, and unresolved measurement facts under `QUESTIONS:`.
+  outcome per criterion, EARS wording and a `Pattern` for technical/behavioral/guardrail criteria,
+  a `guardrail` for each prohibition the sources state or imply, and unresolved measurement facts
+  under `QUESTIONS:`.
 
 **7. Compute the quality signal.**
 - *Consumes:* the blocker and question counts from step 3.
@@ -249,14 +251,17 @@ Do not add an ## Overview section or any other sections not listed here.}
 === SEA_TRIALS.md ===
 # Sea Trials: {ProjectName}
 
-Project-level acceptance derived from COMPASS and sources. Emit 3–7 criteria normally.
+Project-level acceptance derived from COMPASS and sources. Emit 3–7 criteria normally, plus any
+guardrail the sources state or clearly imply. Emit criteria only — Drydock injects the reader
+documentation. Never emit `###` headings or explanatory prose.
 
 ## st-001: {Short criterion title}
 
-Type: {technical | behavioral | qualitative | outcome}
+Type: {technical | behavioral | qualitative | outcome | guardrail}
 Required: {yes | no}
-Criterion: {One observable English behavior or outcome.}
+Criterion: {One observable behavior or outcome. EARS-shaped for technical, behavioral, and guardrail; plain English for qualitative and outcome.}
 Verification: {proof | measurement | evidence | llm}
+Pattern: {ubiquitous | event | state | option | unwanted — technical/behavioral/guardrail only; blank otherwise}
 Command: {JSON argv array, or blank}
 Evidence: {target-relative evidence file, or blank}
 Baseline: {numeric value, or blank}
@@ -486,8 +491,28 @@ list plus `"other"`, sorted alphabetically.
 - SEA_TRIALS.md criteria are project-level and use stable `st-*` IDs. Preserve prior IDs for the
   same criterion on reruns. Technical and behavioral criteria normally use Blueprint proof;
   outcomes use measurement; subjective criteria use evidence-bound LLM judgment.
+- Technical, behavioral, and guardrail criteria are written in EARS and declare the `Pattern`
+  their `Criterion` matches. Drydock rejects the analysis when the wording does not match:
+
+  | Pattern | Required shape |
+  |---|---|
+  | `ubiquitous` | `The <system> shall <response>` |
+  | `event` | `When <trigger>, the <system> shall <response>` |
+  | `state` | `While <state>, the <system> shall <response>` |
+  | `option` | `Where <feature>, the <system> shall <response>` |
+  | `unwanted` | `If <trigger>, then the <system> shall <mitigation>` |
+
+- Qualitative and outcome criteria never use EARS and leave `Pattern` blank. They are measurement
+  contracts settled by `Baseline`, `Operator`, `Target`, and `Unit`.
+- A `guardrail` is an absolute prohibition the project may never do — a *never*, not a target. It
+  always uses `Pattern: unwanted`, and a breach fails delivery regardless of every score. Raise one
+  only where the sources state or clearly imply a prohibition; never invent one to be thorough.
+- Prefer `proof` or `measurement` for required technical, behavioral, and guardrail criteria. A
+  required assertion resting only on `llm` judgment reduces the project's acceptance coverage score.
 - Never invent outcome baselines, targets, units, or external measurement sources. Emit stable-ID
   `QUESTIONS:` entries for missing human-owned facts. Omit `QUESTIONS:` when none remain.
+- Never emit a `discovery-sea-trials.json` block. Sea Trials questions live in the SEA_TRIALS.md
+  `QUESTIONS:` block; Drydock projects them into that questionnaire itself.
 - All questionnaire JSON must be valid JSON.
 - Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources only — there are no
   typed spec files at analyze time, so do not inspect or invent them.

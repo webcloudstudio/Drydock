@@ -19,7 +19,12 @@ from drydock.llm import run_prompt
 from drydock.metadata import get_build_dir
 from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
-from drydock.sea_trials import SeaTrial, load_sea_trials
+from drydock.sea_trials import (
+    ASSERTION_TYPES,
+    DETERMINISTIC_VERIFICATION,
+    SeaTrial,
+    load_sea_trials,
+)
 
 DIMENSIONS = (
     "specification_completeness",
@@ -32,6 +37,20 @@ DIMENSIONS = (
 )
 VALID_VERDICTS = frozenset({"PASS", "FAIL", "INCONCLUSIVE"})
 MEASUREMENT_TIMEOUT = 60
+
+
+def _coverage_penalty(value: int, trials: tuple[SeaTrial, ...]) -> int:
+    """Discount acceptance coverage by the share of required assertions judged only by the model.
+
+    A required technical, behavioral, or guardrail criterion is expected to be provable, so a
+    contract resting on model opinion cannot score as one resting on proof or measurement.
+    Qualitative and outcome criteria are exempt: judgment is their only honest method.
+    """
+    graded = [trial for trial in trials if trial.required and trial.trial_type in ASSERTION_TYPES]
+    if not graded:
+        return value
+    deterministic = sum(1 for trial in graded if trial.verification in DETERMINISTIC_VERIFICATION)
+    return round(value * (0.5 + 0.5 * deterministic / len(graded)))
 
 
 class CompletedRun(Protocol):
@@ -308,15 +327,21 @@ def _render_scorecard(
         "",
         "## Project acceptance",
         "",
-        "| ID | Criterion | Required | Verdict | Evidence |",
-        "|---|---|---|---|---|",
+        "| ID | Type | Criterion | Required | Verdict | Evidence |",
+        "|---|---|---|---|---|---|",
     ])
     for result in criteria:
         trial = trials[result.criterion_id]
         evidence = "; ".join(result.evidence) or result.rationale
+        guardrail = trial.trial_type == "guardrail"
+        # A guardrail is absolute: it is held or breached, and Required does not apply to it.
+        verdict = (
+            ("HELD" if result.verdict == "PASS" else "BREACHED") if guardrail else result.verdict
+        )
+        required = "absolute" if guardrail else ("yes" if trial.required else "no")
         lines.append(
-            f"| {result.criterion_id} | {trial.criterion.replace('|', '/')} | "
-            f"{'yes' if trial.required else 'no'} | {result.verdict} | {evidence.replace('|', '/')} |"
+            f"| {result.criterion_id} | {trial.trial_type} | {trial.criterion.replace('|', '/')} | "
+            f"{required} | {verdict} | {evidence.replace('|', '/')} |"
         )
     lines.extend(["", "## Completion blockers", ""])
     lines.extend(f"- {item}" for item in blockers or ("None.",))
@@ -459,6 +484,9 @@ def score_target(
         if not isinstance(value, int) or not 0 <= value <= 100:
             raise SpecificationError(f"build score dimension {name} must be an integer 0..100")
         dimensions[name] = value
+    dimensions["acceptance_criteria_coverage"] = _coverage_penalty(
+        dimensions["acceptance_criteria_coverage"], document.trials
+    )
 
     trial_by_id = {trial.criterion_id: trial for trial in document.trials}
     model_criteria: dict[str, dict] = {}
@@ -516,7 +544,14 @@ def score_target(
     if low_dimensions:
         blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
     for item in criteria:
-        if trial_by_id[item.criterion_id].required and item.verdict != "PASS":
+        trial = trial_by_id[item.criterion_id]
+        if trial.trial_type == "guardrail":
+            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE breaches
+            # too, and Required does not apply.
+            if item.verdict != "PASS":
+                blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
+            continue
+        if trial.required and item.verdict != "PASS":
             blockers.append(f"Required Sea Trial {item.criterion_id} is {item.verdict}")
 
     criterion_improvements = [
@@ -533,7 +568,7 @@ def score_target(
     evidence_path = target_dir / "evidence" / "build-score.json"
     scorecard_path = target_dir / "SCORECARD.md"
     record = {
-        "schema_version": 1,
+        "schema_version": 2,
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "target": target,
         "complete": complete,

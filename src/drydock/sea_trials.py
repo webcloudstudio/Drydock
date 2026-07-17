@@ -9,8 +9,29 @@ from pathlib import Path
 
 from drydock.errors import SpecificationError
 
-TRIAL_TYPES = frozenset({"technical", "behavioral", "qualitative", "outcome"})
+TRIAL_TYPES = frozenset({"technical", "behavioral", "qualitative", "outcome", "guardrail"})
 VERIFICATION_TYPES = frozenset({"proof", "measurement", "evidence", "llm"})
+DETERMINISTIC_VERIFICATION = frozenset({"proof", "measurement"})
+
+#: Types whose Criterion is an assertion and therefore carries an EARS Pattern.
+ASSERTION_TYPES = frozenset({"technical", "behavioral", "guardrail"})
+
+#: EARS templates. A criterion must match the template its declared Pattern names.
+EARS_PATTERNS: dict[str, re.Pattern[str]] = {
+    "ubiquitous": re.compile(r"^The .+ shall .+", re.I),
+    "event": re.compile(r"^When .+, the .+ shall .+", re.I),
+    "state": re.compile(r"^While .+, the .+ shall .+", re.I),
+    "option": re.compile(r"^Where .+, the .+ shall .+", re.I),
+    "unwanted": re.compile(r"^If .+, then the .+ shall .+", re.I),
+}
+EARS_SHAPES: dict[str, str] = {
+    "ubiquitous": "The <system> shall <response>",
+    "event": "When <trigger>, the <system> shall <response>",
+    "state": "While <state>, the <system> shall <response>",
+    "option": "Where <feature>, the <system> shall <response>",
+    "unwanted": "If <trigger>, then the <system> shall <mitigation>",
+}
+
 _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", re.I)
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
 _QUESTION_RE = re.compile(r"^-\s+(?P<id>q-[a-z0-9-]+):\s*(?P<text>.+?)\s*$", re.I)
@@ -24,6 +45,7 @@ class SeaTrial:
     required: bool
     criterion: str
     verification: str
+    pattern: str = ""
     command: tuple[str, ...] = ()
     evidence: str = ""
     baseline: float | None = None
@@ -43,6 +65,87 @@ class SeaTrialsDocument:
     project: str
     trials: tuple[SeaTrial, ...]
     questions: tuple[SeaTrialQuestion, ...]
+
+
+#: Canonical reader documentation embedded in ``SEA_TRIALS.md``. Drydock owns this text and
+#: reinserts it on every write, so the artifact explains itself wherever it is read. Authored
+#: as h3 blocks; the QuarterDeck renders them as standout notes.
+SEA_TRIALS_DOC = """\
+### About Sea Trials
+
+Sea Trials are project-level acceptance: what this project must achieve to be declared
+delivered. `drydock analyze` derives them from the COMPASS and the sources before the work is
+decomposed. `drydock build score` judges every criterion at the end and reports the verdicts in
+`SCORECARD.md`.
+
+Sea Trials are fixed up front and are not approved. Advancing to the next stage accepts the risk
+these criteria describe. Read them now; they are the terms the finished project is measured
+against.
+
+Stories carry an `accepts:` field naming the criteria they implement, so most criteria are also
+checked during the build. A criterion needs no implementing story to be judged at the end.
+
+### Notation — EARS
+
+Technical, behavioral, and guardrail criteria are written in EARS (Easy Approach to Requirements
+Syntax). Each declares a `Pattern` and its `Criterion` matches that pattern's shape. The
+constrained wording gives every criterion an explicit subject, trigger, and response, which is
+what makes an independent verdict possible.
+
+| Pattern | Shape |
+|---|---|
+| `ubiquitous` | The <system> shall <response> |
+| `event` | When <trigger>, the <system> shall <response> |
+| `state` | While <state>, the <system> shall <response> |
+| `option` | Where <feature>, the <system> shall <response> |
+| `unwanted` | If <trigger>, then the <system> shall <mitigation> |
+
+Qualitative and outcome criteria do not use EARS and declare no `Pattern`. They are measurement
+contracts stated in plain English and settled by `Baseline`, `Operator`, `Target`, and `Unit`.
+
+### Types
+
+| Type | Meaning |
+|---|---|
+| `technical` | An assertion about the built system. EARS. |
+| `behavioral` | An assertion about observable product behavior. EARS. |
+| `qualitative` | A judged quality of the delivery. No EARS. |
+| `outcome` | A business or operational result. No EARS. |
+| `guardrail` | An absolute prohibition. EARS `unwanted` only. |
+
+### Guardrails
+
+A guardrail is a permanent *never* — a thing the project may not do regardless of how well it
+scores. Guardrails are reported as `HELD` or `BREACHED`. A breach fails the completion gate
+outright, independent of every score. A guardrail whose evidence is missing is `INCONCLUSIVE`
+and also fails the gate: an unproven *never* is not held.
+
+Guardrails are exempt from `accepts:` coverage. No story builds a prohibition.
+
+### Fields
+
+| Field | Meaning |
+|---|---|
+| `Type` | The category above. |
+| `Required` | `yes` criteria gate completion. `no` criteria are reported only. |
+| `Criterion` | The observable behavior or outcome. EARS-shaped for assertion types. |
+| `Verification` | `proof` (Blueprint Programmatic Acceptance), `measurement` (a command or evidence file producing a number), `evidence` (a declared file), or `llm` (independent judgment). |
+| `Pattern` | The EARS pattern. Assertion types only. |
+| `Command` | JSON argv array executed without a shell, for `measurement`. |
+| `Evidence` | Target-relative evidence file. |
+| `Baseline` / `Operator` / `Target` / `Unit` | The deterministic measurement verdict. |
+
+`proof` and `measurement` verdicts are computed by Drydock and override any model judgment.
+Required technical, behavioral, and guardrail criteria verified only by `llm` reduce the
+acceptance-criteria-coverage score; a required assertion is expected to be provable.
+
+### Questions
+
+A `QUESTIONS:` block lists measurement facts only a human can supply — unknown baselines,
+targets, workloads, or business measures. Drydock projects these into a QuarterDeck
+questionnaire and preserves the answers across reruns. An unanswered question leaves its
+criterion `INCONCLUSIVE` at scoring time.\
+"""
 
 
 def _number(value: str, *, field: str, criterion_id: str) -> float | None:
@@ -76,6 +179,36 @@ def _command(value: str, criterion_id: str) -> tuple[str, ...]:
     return tuple(parsed)
 
 
+def _pattern(value: str, *, trial_type: str, criterion: str, criterion_id: str) -> str:
+    """Validate the EARS Pattern against the trial type and the criterion wording."""
+    pattern = value.strip().lower()
+    if trial_type not in ASSERTION_TYPES:
+        if pattern:
+            raise SpecificationError(
+                f"SEA_TRIALS.md {criterion_id} is {trial_type} and must not declare a Pattern; "
+                "EARS applies only to technical, behavioral, and guardrail criteria"
+            )
+        return ""
+    if not pattern:
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} is {trial_type} and is missing Pattern; "
+            f"expected one of: {', '.join(sorted(EARS_PATTERNS))}"
+        )
+    if pattern not in EARS_PATTERNS:
+        raise SpecificationError(f"SEA_TRIALS.md {criterion_id} has invalid Pattern: {pattern}")
+    if trial_type == "guardrail" and pattern != "unwanted":
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} is a guardrail and must use Pattern: unwanted "
+            f"({EARS_SHAPES['unwanted']})"
+        )
+    if not EARS_PATTERNS[pattern].match(criterion):
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} Criterion does not match the {pattern} EARS pattern; "
+            f"expected: {EARS_SHAPES[pattern]}"
+        )
+    return pattern
+
+
 def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
     """Parse the structured Sea Trials contract, accepting the legacy table as qualitative AC."""
     first = text.splitlines()[0] if text.splitlines() else ""
@@ -94,9 +227,11 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             seen.add(criterion_id)
             fields: dict[str, str] = {}
             index += 1
+            # Any heading ends the field scan. Documentation blocks are h3, so a "## " test
+            # would let their prose reach _FIELD_RE and overwrite this criterion's fields.
             while (
                 index < len(lines)
-                and not lines[index].startswith("## ")
+                and not lines[index].lstrip().startswith("#")
                 and lines[index].strip() != "QUESTIONS:"
             ):
                 match = _FIELD_RE.match(lines[index].strip())
@@ -129,6 +264,12 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                     required=required_raw == "yes",
                     criterion=criterion,
                     verification=verification,
+                    pattern=_pattern(
+                        fields.get("pattern", ""),
+                        trial_type=trial_type,
+                        criterion=criterion,
+                        criterion_id=criterion_id,
+                    ),
                     command=_command(fields.get("command", ""), criterion_id),
                     evidence=fields.get("evidence", ""),
                     baseline=_number(
@@ -174,6 +315,33 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
     if not trials:
         raise SpecificationError("SEA_TRIALS.md contains no project acceptance criteria")
     return SeaTrialsDocument(project, tuple(trials), tuple(questions))
+
+
+def _strip_documentation(text: str) -> str:
+    """Drop every h3 block, so stale or model-authored documentation never survives a write."""
+    lines = text.splitlines()
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        if lines[index].lstrip().startswith("### "):
+            index += 1
+            while index < len(lines) and not lines[index].lstrip().startswith("#"):
+                index += 1
+            continue
+        kept.append(lines[index])
+        index += 1
+    return "\n".join(kept)
+
+
+def normalize_sea_trials_text(text: str) -> str:
+    """Return the document with exactly the canonical documentation blocks after the title."""
+    lines = _strip_documentation(text).splitlines()
+    title = ""
+    if lines and lines[0].startswith("# Sea Trials:"):
+        title, lines = lines[0], lines[1:]
+    body = "\n".join(lines).strip()
+    sections = [section for section in (title, SEA_TRIALS_DOC, body) if section]
+    return "\n\n".join(sections) + "\n"
 
 
 def load_sea_trials(path: Path) -> SeaTrialsDocument:

@@ -773,6 +773,36 @@ class TestParseOutput:
         with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(truncated)
 
+    def test_malformed_sea_trials_raises(self):
+        broken = _VALID_LLM_OUTPUT.replace(
+            _SEA_TRIALS_CONTENT,
+            """# Sea Trials: TestProject
+
+## st-001: Operational
+Type: technical
+Required: yes
+Criterion: The system is operational.
+Verification: proof""",
+        )
+        with pytest.raises(SpecificationError, match="is missing Pattern"):
+            _parse_output(broken)
+
+    def test_model_owned_sea_trials_questionnaire_is_rejected(self):
+        intruding = _VALID_LLM_OUTPUT.replace(
+            "=== ANALYSIS.md ===",
+            '=== discovery-sea-trials.json ===\n{"id": "discovery-sea-trials"}\n'
+            "=== END discovery-sea-trials.json ===\n\n=== ANALYSIS.md ===",
+            1,
+        )
+        with pytest.raises(ValueError, match="must not be emitted"):
+            _parse_output(intruding)
+
+    def test_documentation_is_injected_into_sea_trials(self):
+        _, sea_trials_text, *_ = _parse_output(_VALID_LLM_OUTPUT)
+
+        assert "### About Sea Trials" in sea_trials_text
+        assert "### Notation — EARS" in sea_trials_text
+
     def test_missing_soundings_is_derived_from_analysis(self):
         analysis = """# Blueprint Analysis: TestProject
 
@@ -1145,6 +1175,38 @@ class TestAnalyze:
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.sea_trials_path == target_dir / "SEA_TRIALS.md"
+
+    def test_malformed_sea_trials_writes_nothing_and_fails_the_run(self, tmp_path):
+        """Validation precedes every target write, so a rejected contract leaves no artifacts."""
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        broken = _VALID_LLM_OUTPUT.replace(
+            _SEA_TRIALS_CONTENT,
+            """# Sea Trials: TestProject
+
+## st-001: Operational
+Type: guardrail
+Required: yes
+Criterion: The system is operational.
+Verification: llm
+Pattern: ubiquitous""",
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=broken))
+
+        assert result.ok is False
+        assert "must use Pattern: unwanted" in result.error
+        assert not (target_dir / "SEA_TRIALS.md").exists()
+        assert not (target_dir / "ANALYSIS.md").exists()
+        assert not (target_dir / "SOUNDINGS.md").exists()
+
+    def test_emitted_sea_trials_carry_the_reader_documentation(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        sea_trials = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+        assert sea_trials.startswith("# Sea Trials: TestProject")
+        assert "### Guardrails" in sea_trials
 
     def test_sea_trial_questions_are_projected_to_quarterdeck(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

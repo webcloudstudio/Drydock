@@ -663,6 +663,25 @@ def _render_help_note(item: dict[str, Any]) -> str:
 # ── Renderers (one per type; each takes the item dict) ──────────────────────────
 
 
+#: An h3 block and its prose, up to the next heading. Drydock embeds reader documentation in
+#: SEA_TRIALS.md this way; each block renders as a standout note.
+_DOC_BLOCK_RE = re.compile(r"(?ms)^### .+?(?=^\#{1,3} |\Z)")
+
+
+def _render_sea_trials(text: str) -> str:
+    """Render Sea Trials, boxing each embedded documentation block."""
+    parts: list[str] = []
+    position = 0
+    for match in _DOC_BLOCK_RE.finditer(text):
+        if match.start() > position:
+            parts.append(_md(text[position : match.start()]))
+        parts.append(f"<div class='doc-note'>{_md(match.group(0))}</div>")
+        position = match.end()
+    if position < len(text):
+        parts.append(_md(text[position:]))
+    return "".join(parts)
+
+
 def render_markdown_item(item: dict[str, Any]) -> str:
     text = _strip_leading_h1(
         _strip_frontmatter(resolve_path(item["path"]).read_text(encoding="utf-8"))
@@ -672,6 +691,8 @@ def render_markdown_item(item: dict[str, Any]) -> str:
         text = re.sub(r"(?m)^\|\s*ID\s*\|\s*Story\s*\|", "| Story ID | Story |", text)
         rendered = _render_markdown_tabbed(item, text) if item.get("tabs") else _md(text)
         return helper + f"<div class='analysis-doc'>{rendered}</div>"
+    if item.get("id") == "sea_trials":
+        return helper + f"<div class='sea-trials-doc'>{_render_sea_trials(text)}</div>"
     if item.get("tabs"):
         return helper + _render_markdown_tabbed(item, text)
     return helper + _md(text)
@@ -2410,6 +2431,13 @@ _STYLE = """
                 box-sizing:border-box; font-family:ui-monospace,'Cascadia Code',Consolas,monospace; font-size:13px; line-height:1.5; }
   .doc-edit-actions { display:flex; gap:8px; margin-top:10px; }
   .page-header { margin-bottom:0; }
+  .sea-trials-doc .doc-note { margin:0 0 16px; padding:12px 14px 2px; background:#f8fafc;
+                              border:1px solid #e2e8f0; border-left:3px solid #94a3b8; border-radius:4px;
+                              color:#475569; font-size:13.5px; }
+  .sea-trials-doc .doc-note h3 { margin:0 0 8px; font-size:12px; font-weight:600; letter-spacing:.06em;
+                                 text-transform:uppercase; color:#64748b; }
+  .sea-trials-doc .doc-note table { font-size:13px; }
+  .sea-trials-doc .doc-note > *:last-child { margin-bottom:10px; }
   .page-note { margin:0 0 14px; padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe;
                border-radius:6px; color:#1e3a8a; font-size:13px; line-height:1.45; }
   .page-note code { font-family:ui-monospace,'Cascadia Code',Consolas,monospace; font-size:.95em; }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -365,6 +366,54 @@ def test_markdown_renderer_tabs_splits_h2_sections(tmp_path, monkeypatch):
     assert "Story List" in rendered
     assert "Analysis Notes" in rendered
     assert "Markdown help." in rendered
+
+
+def test_sea_trials_renderer_boxes_documentation_blocks(tmp_path, monkeypatch):
+    """Embedded h3 documentation renders as standout notes; criteria render outside them."""
+    quarterdeck = _load_quarterdeck()
+    md_file = tmp_path / "SEA_TRIALS.md"
+    md_file.write_text(
+        "# Sea Trials: Demo\n\n"
+        "### About Sea Trials\nWhat they are.\n\n"
+        "### Notation — EARS\nHow they are written.\n\n"
+        "## st-001: Catalog responds\n"
+        "Type: behavioral\nPattern: event\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
+
+    rendered = quarterdeck.render_markdown_item({
+        "id": "sea_trials",
+        "label": "Sea Trials",
+        "type": "markdown",
+        "path": "../SEA_TRIALS.md",
+        "help_text": "Sea Trials help.",
+    })
+
+    assert "sea-trials-doc" in rendered
+    assert rendered.count("<div class='doc-note'>") == 2
+    assert "What they are." in rendered
+
+    outside_notes = re.sub(r"(?s)<div class='doc-note'>.*?</div>", "", rendered)
+    assert "st-001" in outside_notes
+    assert "What they are." not in outside_notes
+
+
+def test_ordinary_markdown_pages_do_not_box_h3_headings(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    md_file = tmp_path / "doc.md"
+    md_file.write_text("# Title\n\n### Section\nBody.\n", encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: md_file)
+
+    rendered = quarterdeck.render_markdown_item({
+        "id": "plain",
+        "label": "Plain",
+        "type": "markdown",
+        "path": "../doc.md",
+    })
+
+    assert "doc-note" not in rendered
+    assert "<h3>Section</h3>" in rendered
 
 
 def test_markdown_renderer_without_tabs_flag_renders_plain(tmp_path, monkeypatch):
