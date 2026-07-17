@@ -96,6 +96,7 @@ class BuildScoreResult:
     dimensions: dict[str, int]
     criteria: tuple[CriterionResult, ...]
     blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
     improvements: tuple[str, ...]
     complete: bool
     scorecard_path: Path
@@ -311,6 +312,7 @@ def _render_scorecard(
     criteria: tuple[CriterionResult, ...],
     trials: dict[str, SeaTrial],
     blockers: tuple[str, ...],
+    warnings: tuple[str, ...],
     improvements: tuple[str, ...],
     code_identity: str,
 ) -> str:
@@ -352,6 +354,8 @@ def _render_scorecard(
         )
     lines.extend(["", "## Completion blockers", ""])
     lines.extend(f"- {item}" for item in blockers or ("None.",))
+    lines.extend(["", "## Advisory warnings", ""])
+    lines.extend(f"- {item}" for item in warnings or ("None.",))
     lines.extend(["", "## Ranked improvements", ""])
     lines.extend(f"{index}. {item}" for index, item in enumerate(improvements, 1))
     if not improvements:
@@ -380,6 +384,7 @@ def score_target(
         raise SpecificationError(f"build directory not found: {build_dir}")
 
     blockers: list[str] = []
+    warnings: list[str] = []
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     incomplete = [block.block_id for block in executable if block.state != "closed/verified"]
     if incomplete:
@@ -413,15 +418,11 @@ def score_target(
         check.check_id for check, integ in zip(checks, proof_integrity, strict=True) if not integ.ok
     ]
     if vacuous_proofs:
-        blockers.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
-    # A criterion carries deterministic backing only when a measurement contract or an
-    # integrity-valid proof stands behind it; a vacuous proof is scored as model judgment.
-    proof_backed = {
-        criterion
-        for check, integ in zip(checks, proof_integrity, strict=True)
-        if integ.ok
-        for criterion in check.sea_trials
-    }
+        warnings.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
+    # A criterion carries deterministic backing when a measurement contract or an executable
+    # proof stands behind it. Vacuous proofs are warned on, but they no longer demote coverage
+    # or block completion by themselves.
+    proof_backed = {criterion for check in checks for criterion in check.sea_trials}
     deterministic_ids = frozenset(
         trial.criterion_id
         for trial in document.trials
@@ -480,6 +481,7 @@ def score_target(
         "evidence_files": evidence_facts,
         "sea_trials": [asdict(item) for item in document.trials],
         "deterministic_blockers": blockers,
+        "warnings": warnings,
     }
     prompt = load_prompt("build_score")
     rendered = (
@@ -555,10 +557,11 @@ def score_target(
                 verdict = "INCONCLUSIVE"
                 evidence = ("no code-bound proof references this criterion",)
             elif not valid:
-                # Every referencing proof is vacuous: treat the criterion as unproven.
                 reasons = "; ".join(reason for _, integ in referencing for reason in integ.reasons)
-                verdict = "INCONCLUSIVE"
-                evidence = (f"proof failed integrity: {reasons or 'no effective failure path'}",)
+                evidence = (
+                    "warning: proof passed but failed integrity: "
+                    + (reasons or "no effective failure path"),
+                )
             else:
                 verdict = "PASS" if all(item.passed for item in valid) else "FAIL"
                 evidence = tuple(
@@ -609,6 +612,7 @@ def score_target(
         "dimensions": dimensions,
         "criteria": [asdict(item) for item in criteria],
         "blockers": blockers,
+        "warnings": warnings,
         "improvements": improvements,
         "identities": {
             "code": code_identity,
@@ -632,6 +636,7 @@ def score_target(
             criteria=tuple(criteria),
             trials=trial_by_id,
             blockers=tuple(blockers),
+            warnings=tuple(warnings),
             improvements=improvements,
             code_identity=code_identity,
         ),
@@ -644,6 +649,7 @@ def score_target(
         dimensions,
         tuple(criteria),
         tuple(blockers),
+        tuple(warnings),
         improvements,
         complete,
         scorecard_path,

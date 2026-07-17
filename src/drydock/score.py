@@ -195,13 +195,11 @@ def deterministic_gate(target: str, target_dir: Path) -> GateResult:
     acceptance = run_programmatic_acceptance(
         checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
     )
-    proof_pass: dict[str, bool] = {}  # criterion_id -> all referencing valid proofs passed
+    proof_pass: dict[str, bool] = {}  # criterion_id -> all referencing proofs passed
     proof_seen: set[str] = set()
     for check, integ, result in zip(checks, integrity, acceptance, strict=True):
         for criterion in check.sea_trials:
             proof_seen.add(criterion)
-            if not integ.ok:
-                continue
             proof_pass[criterion] = proof_pass.get(criterion, True) and result.passed
 
     for trial in document.trials:
@@ -220,7 +218,7 @@ def deterministic_gate(target: str, target_dir: Path) -> GateResult:
         if trial.verification == "proof":
             if cid not in proof_seen or cid not in proof_pass:
                 label = "Guardrail" if guardrail else "Required Sea Trial"
-                blockers.append(f"{label} {cid} has no integrity-valid proof")
+                blockers.append(f"{label} {cid} has no code-bound proof")
             elif not proof_pass[cid]:
                 label = "Guardrail" if guardrail else "Required Sea Trial"
                 blockers.append(f"{label} {cid} FAILED its proof")

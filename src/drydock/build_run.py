@@ -27,7 +27,9 @@ from hashlib import sha256
 from pathlib import Path
 
 from drydock.acceptance import (
+    AcceptanceObservation,
     AcceptanceRunResult,
+    observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
 )
@@ -272,6 +274,7 @@ class BuildStepResult:
     evidence_path: Path | None = None
     error: str | None = None
     written_files: tuple[str, ...] = ()
+    pre_acceptance: tuple[AcceptanceObservation, ...] = ()
     acceptance: tuple[AcceptanceRunResult, ...] = ()
     prompt: str | None = None
 
@@ -854,6 +857,7 @@ def _write_evidence(
     execution_id: str | None,
     summary: str,
     written_files: tuple[str, ...],
+    pre_acceptance: tuple[AcceptanceObservation, ...],
     acceptance: tuple[AcceptanceRunResult, ...],
     today: str,
 ) -> None:
@@ -881,8 +885,27 @@ def _write_evidence(
         lines.append("## Build directory changes")
         lines.extend(f"- {changed}" for changed in written_files)
         lines.append("")
+    if pre_acceptance:
+        lines.append("## Pre-build acceptance observation")
+        for check in pre_acceptance:
+            lines.append(f"- {_observation_mark(check)}: {check.check_id} ({check.source})")
+            if check.intent:
+                lines.append(f"  intent: {check.intent}")
+            if check.return_code is not None:
+                lines.append(f"  return code: {check.return_code}")
+            if check.integrity_reasons:
+                lines.append(f"  note: {'; '.join(check.integrity_reasons)}")
+            if check.error:
+                lines.append(f"  error: {check.error}")
+            if check.stdout.strip():
+                lines.append("  stdout:")
+                lines.extend(f"    {line}" for line in check.stdout.strip().splitlines())
+            if check.stderr.strip():
+                lines.append("  stderr:")
+                lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
+        lines.append("")
     if acceptance:
-        lines.append("## Programmatic acceptance")
+        lines.append("## Post-build programmatic acceptance")
         for check in acceptance:
             mark = "PASS" if check.passed else "FAIL"
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
@@ -913,6 +936,7 @@ def _write_group_evidence(
     execution_id: str | None,
     summary: str,
     written_files: tuple[str, ...],
+    pre_acceptance: tuple[AcceptanceObservation, ...],
     acceptance: tuple[AcceptanceRunResult, ...],
     today: str,
     failure_summary: str = "",
@@ -956,8 +980,27 @@ def _write_group_evidence(
         lines.append("## Build directory changes")
         lines.extend(f"- {changed}" for changed in written_files)
         lines.append("")
+    if pre_acceptance:
+        lines.append("## Pre-build acceptance observation")
+        for check in pre_acceptance:
+            lines.append(f"- {_observation_mark(check)}: {check.check_id} ({check.source})")
+            if check.intent:
+                lines.append(f"  intent: {check.intent}")
+            if check.return_code is not None:
+                lines.append(f"  return code: {check.return_code}")
+            if check.integrity_reasons:
+                lines.append(f"  note: {'; '.join(check.integrity_reasons)}")
+            if check.error:
+                lines.append(f"  error: {check.error}")
+            if check.stdout.strip():
+                lines.append("  stdout:")
+                lines.extend(f"    {line}" for line in check.stdout.strip().splitlines())
+            if check.stderr.strip():
+                lines.append("  stderr:")
+                lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
+        lines.append("")
     if acceptance:
-        lines.append("## Programmatic acceptance")
+        lines.append("## Post-build programmatic acceptance")
         for check in acceptance:
             mark = "PASS" if check.passed else "FAIL"
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
@@ -985,6 +1028,14 @@ def _write_group_evidence(
     lines.append("## Build summary")
     lines.append(summary.strip() or "(no summary returned)")
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+
+
+def _observation_mark(check: AcceptanceObservation) -> str:
+    if not check.passed:
+        return "RED"
+    if not check.integrity_ok:
+        return "GREEN (vacuous)"
+    return "GREEN (prepassed)"
 
 
 def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
@@ -1278,6 +1329,37 @@ def build_target(
                 if on_step is not None:
                     on_step(step_result)
             break
+        checks = tuple(
+            check
+            for block in unit.steps
+            for check in programmatic_acceptance_for_step(block, blueprint_dir)
+        )
+        pre_acceptance = observe_programmatic_acceptance(
+            checks,
+            build_dir=resolved_build_dir,
+            target_dir=target_dir,
+            blueprint_dir=blueprint_dir,
+        )
+        if pre_acceptance:
+            baseline_red = sum(1 for check in pre_acceptance if not check.passed)
+            weak_checks = [check.check_id for check in pre_acceptance if check.passed]
+            vacuous_checks = [
+                check.check_id
+                for check in pre_acceptance
+                if check.passed and not check.integrity_ok
+            ]
+            _emit(on_text, "")
+            _emit(
+                on_text,
+                "Pre-build Acceptance: "
+                f"{baseline_red} red baseline, {len(weak_checks)} prepassed"
+                + (f", {len(vacuous_checks)} vacuous" if vacuous_checks else ""),
+            )
+            if vacuous_checks:
+                _emit(on_text, "  GREEN (vacuous): " + ", ".join(vacuous_checks))
+            remaining_weak = [check for check in weak_checks if check not in vacuous_checks]
+            if remaining_weak:
+                _emit(on_text, "  GREEN (prepassed): " + ", ".join(remaining_weak))
         before_files = _snapshot_files(resolved_build_dir)
         result = run(
             prompt_assembly.rendered_text,
@@ -1352,11 +1434,6 @@ def build_target(
                         f"{len(dependency_gate.issues)} issue(s)",
                     )
                 else:
-                    checks = tuple(
-                        check
-                        for block in unit.steps
-                        for check in programmatic_acceptance_for_step(block, blueprint_dir)
-                    )
                     if checks:
                         _emit(on_text, "")
                         _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
@@ -1395,6 +1472,7 @@ def build_target(
             execution_id=execution_id,
             summary=summary,
             written_files=changed_files,
+            pre_acceptance=pre_acceptance,
             acceptance=acceptance,
             today=today,
             failure_summary=error or "",
@@ -1493,6 +1571,7 @@ def build_target(
                 evidence_path=evidence_path,
                 error=error,
                 written_files=changed_files,
+                pre_acceptance=pre_acceptance,
                 acceptance=acceptance,
             )
             steps.append(step_result)

@@ -811,14 +811,82 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     )
 
     result = build_target(
-        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(text=_success_report(changed=("notes.txt",))),
+        step_id="foundation",
     )
 
     assert result.steps[0].status == "built"
     assert result.steps[0].acceptance[0].check_id == "foundation-file"
     assert result.steps[0].acceptance[0].passed is True
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
-    assert "## Programmatic acceptance" in evidence
+    assert "## Pre-build acceptance observation" in evidence
+    assert "RED: foundation-file" in evidence
+    assert "## Post-build programmatic acceptance" in evidence
+    assert "PASS: foundation-file" in evidence
+
+
+def test_blueprint_programmatic_prepass_is_informational(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (build_dir / "foundation.txt").parent.mkdir(parents=True, exist_ok=True)
+    (build_dir / "foundation.txt").write_text("built foundation\n", encoding="utf-8")
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-file\n"
+        "Foundation writes its output marker.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'built foundation\\n'\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    def runner(prompt, working_directory, **kwargs):
+        (Path(working_directory) / "notes.txt").write_text("build note\n", encoding="utf-8")
+        return FakeResult(text=_success_report(changed=("notes.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+    )
+
+    assert result.steps[0].status == "built"
+    assert result.steps[0].pre_acceptance[0].passed is True
+    assert result.steps[0].pre_acceptance[0].integrity_ok is True
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "GREEN (prepassed): foundation-file" in evidence
+    assert "PASS: foundation-file" in evidence
+
+
+def test_blueprint_programmatic_vacuous_prepass_is_informational(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-file\n"
+        "Foundation vacuously passes.\n\n"
+        "```python\n"
+        "assert True\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert result.steps[0].status == "built"
+    assert result.steps[0].pre_acceptance[0].passed is True
+    assert result.steps[0].pre_acceptance[0].integrity_ok is False
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "GREEN (vacuous): foundation-file" in evidence
+    assert "assertion on constant literal True is always true" in evidence
     assert "PASS: foundation-file" in evidence
 
 

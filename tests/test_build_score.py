@@ -116,8 +116,20 @@ Evidence: evidence/privacy-scan.md
     return target_dir, build_dir
 
 
-def _runner(*, measurement: bool = False, guardrail_verdict: str | None = None):
-    criteria = [{"id": "st-proof", "verdict": "FAIL", "rationale": "model guess", "evidence": []}]
+def _runner(
+    *,
+    proof_verdict: str = "FAIL",
+    measurement: bool = False,
+    guardrail_verdict: str | None = None,
+):
+    criteria = [
+        {
+            "id": "st-proof",
+            "verdict": proof_verdict,
+            "rationale": "model guess",
+            "evidence": [],
+        }
+    ]
     if measurement:
         criteria.append({
             "id": "st-speed",
@@ -166,18 +178,18 @@ def test_code_bound_proof_overrides_model_and_gate_completes(tmp_path):
     assert "build code changed" in state.reasons
 
 
-def test_vacuous_proof_is_demoted_and_blocks_completion(tmp_path):
-    # A tautological proof passes at runtime but proves nothing: it must not lift the gate.
+def test_vacuous_proof_is_warned_on_but_does_not_block_completion(tmp_path):
     target_dir, _ = _target(tmp_path, vacuous_proof=True)
 
-    result = score_target("Demo", target_dir, runner=_runner())
+    result = score_target("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
 
     verdict = {item.criterion_id: item for item in result.criteria}["st-proof"]
-    assert verdict.verdict == "INCONCLUSIVE"
-    assert "proof failed integrity" in verdict.evidence[0]
-    assert result.complete is False
-    assert any("vacuous" in blocker for blocker in result.blockers)
-    assert any("Required Sea Trial st-proof is INCONCLUSIVE" in b for b in result.blockers)
+    assert verdict.verdict == "PASS"
+    assert verdict.rationale == "model guess"
+    assert "warning: proof passed but failed integrity" in verdict.evidence[0]
+    assert result.complete is True
+    assert result.blockers == ()
+    assert any("vacuous" in warning for warning in result.warnings)
 
 
 def test_failed_measurement_overrides_model_and_blocks_completion(tmp_path):

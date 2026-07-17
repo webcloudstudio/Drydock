@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.build_plan import PlanBlock
+from drydock.proof_integrity import analyze_proof
 
 SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
 PYTHON_FENCE_RE = re.compile(r"```python\s*\n(?P<code>.*?)\n```", re.DOTALL)
@@ -44,6 +45,30 @@ class AcceptanceRunResult:
     stdout: str
     stderr: str
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class AcceptanceObservation:
+    check_id: str
+    source: str
+    intent: str
+    passed: bool
+    return_code: int | None
+    stdout: str
+    stderr: str
+    error: str | None = None
+    integrity_ok: bool = True
+    integrity_reasons: tuple[str, ...] = ()
+
+    @property
+    def status(self) -> str:
+        if not self.passed:
+            return "baseline-red"
+        return "green" if self.integrity_ok else "green-vacuous"
+
+    @property
+    def weak(self) -> bool:
+        return self.passed
 
 
 def _slugify(text: str) -> str:
@@ -182,3 +207,36 @@ def run_programmatic_acceptance(
             )
         )
     return tuple(results)
+
+
+def observe_programmatic_acceptance(
+    checks: tuple[ProgrammaticAcceptance, ...],
+    *,
+    build_dir: Path,
+    target_dir: Path,
+    blueprint_dir: Path,
+) -> tuple[AcceptanceObservation, ...]:
+    """Execute checks and annotate whether a passing proof is integrity-valid or vacuous."""
+    if not checks:
+        return ()
+    runtime = run_programmatic_acceptance(
+        checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
+    )
+    observations: list[AcceptanceObservation] = []
+    for check, result in zip(checks, runtime, strict=True):
+        integrity = analyze_proof(check.code)
+        observations.append(
+            AcceptanceObservation(
+                check_id=result.check_id,
+                source=result.source,
+                intent=result.intent,
+                passed=result.passed,
+                return_code=result.return_code,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                error=result.error,
+                integrity_ok=integrity.ok,
+                integrity_reasons=integrity.reasons,
+            )
+        )
+    return tuple(observations)

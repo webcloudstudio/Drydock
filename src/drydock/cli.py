@@ -1241,6 +1241,18 @@ def cmd_build(args: argparse.Namespace) -> int:
         if step.evidence_path is not None:
             print(f"      evidence: {step.evidence_path}")
         print(f"      files changed: {len(step.written_files)}")
+        for check in step.pre_acceptance:
+            if not check.passed:
+                continue
+            if check.integrity_ok:
+                label = "GREEN (prepassed)"
+                detail = ""
+            else:
+                label = "GREEN (vacuous)"
+                detail = (
+                    "  " + "; ".join(check.integrity_reasons) if check.integrity_reasons else ""
+                )
+            print(f"      [!] {label} {check.check_id}  {check.intent}{detail}")
         for check in step.acceptance:
             check_mark = "OK" if check.passed else "X"
             detail = f"  {check.error}" if check.error else ""

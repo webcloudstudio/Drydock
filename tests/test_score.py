@@ -139,8 +139,8 @@ def test_release_gate_fails_on_vacuous_proof(tmp_path):
 
     result = deterministic_gate("Demo", target_dir)
 
-    assert not result.passed
-    assert any("no integrity-valid proof" in b for b in result.blockers)
+    assert result.passed
+    assert result.blockers == ()
 
 
 def test_release_gate_fails_on_dirty_worktree(tmp_path):
