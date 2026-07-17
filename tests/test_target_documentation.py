@@ -196,6 +196,22 @@ def test_generate_documentation_bad_model_output_fails(
     assert not (tmp_path / "build" / "Demo" / "docs").exists()
 
 
+def test_generate_documentation_removes_stale_standard_docs(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _make_target(tmp_target_root)
+    build_root = tmp_path / "build"
+    docs = build_root / "Demo" / "docs"
+    docs.mkdir(parents=True)
+    (docs / "DOC-SIGNALS.md").write_text("# Signals\n", encoding="utf-8")
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
+
+    result = generate_documentation("Demo", tmp_target_root, runner=lambda *a, **k: FakeRun())
+
+    assert (result.docs_dir / "DOC-OVERVIEW.md").exists()
+    assert not (result.docs_dir / "DOC-SIGNALS.md").exists()
+
+
 def test_assemble_documentation_writes_sidebar_app(
     tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -219,6 +235,29 @@ def test_assemble_documentation_writes_sidebar_app(
     assert "showGuide" in html
     assert "Evidence Review" in html
     assert "marked.parse" in html
+
+
+def test_assemble_documentation_ignores_unconfigured_docs(
+    tmp_target_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    target_dir = _make_target(tmp_target_root)
+    (target_dir / "documentation.yaml").write_text(
+        "theme: slate\nsections:\n  - OVERVIEW\n  - FEATURES\n",
+        encoding="utf-8",
+    )
+    build_root = tmp_path / "build"
+    monkeypatch.setenv("DRYDOCK_BUILD_DIRECTORY", str(build_root))
+    docs = build_root / "Demo" / "docs"
+    docs.mkdir(parents=True)
+    (docs / "DOC-OVERVIEW.md").write_text("# Overview\n\nHello.\n", encoding="utf-8")
+    (docs / "DOC-FEATURES.md").write_text("# Features\n\n## One\n\nBody.\n", encoding="utf-8")
+    (docs / "DOC-SIGNALS.md").write_text("# Signals\n\nHidden.\n", encoding="utf-8")
+
+    result = assemble_documentation("Demo", tmp_target_root)
+    html = result.output.read_text(encoding="utf-8")
+
+    assert result.guides == ("OVERVIEW", "FEATURES")
+    assert "Signals" not in html
 
 
 def test_assemble_documentation_missing_docs_fails(

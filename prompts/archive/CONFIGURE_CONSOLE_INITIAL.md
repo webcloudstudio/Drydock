@@ -16,8 +16,8 @@ cut that the product owner can test and revise.
 3. Inspect the project's source-of-truth specification, current implementation, tests, roadmap,
    acceptance criteria, and decision-log artifacts. Do not invent completed capabilities.
 4. If this is Drydock, read `AGENTS.md` in full and use this source precedence:
-   `docs/Drydock_Specification.md`, `docs/SOUNDINGS.md`, current code/tests, `AGENTS.md`, then
-   read-only Prototyper evidence.
+   `docs/Drydock_Specification.md`, current code/tests, `AGENTS.md`, then read-only Prototyper
+   evidence.
 
 ## Objective
 

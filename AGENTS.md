@@ -78,7 +78,6 @@ build-generated and are not independently editable sources.
 | Data | Location |
 |---|---|
 | Drydock authoritative product specification | `docs/Drydock_Specification.md` |
-| Drydock implementation acceptance checklist | `docs/SOUNDINGS.md` |
 | Target Blueprint files | `$DRYDOCK_WORKSPACE/targets/<Target>/blueprint/` |
 | `METADATA.md`, `MANIFEST.md`, `BUILD_COMPASS.md`, `SCORECARD.md`, Sea Trials, Soundings, evidence, logs, QuarterDeck state | `$DRYDOCK_WORKSPACE/targets/<Target>/` |
 | Drydock distributable rules and templates | `Rigging/` and the packaged resource copy |
@@ -95,7 +94,6 @@ repository.
 - Keep the public interface under `drydock <verb> [<sub-verb>]`.
 - Put business logic in importable `src/drydock/` modules. `bin/` contains launchers only.
 - Add focused unit tests and CLI contract tests for every implemented command.
-- Update `docs/SOUNDINGS.md` when a capability's implementation or verification state changes.
 - Multiple contributors may edit this directory concurrently. Before committing, inspect the
   current diff and preserve changes made by other writers. Never stage or commit changes outside
   the active task.
@@ -117,7 +115,7 @@ Implement commands as vertical slices:
 5. Replace the matching deferred-command stub test with behavior tests.
 6. Add integration tests for filesystem changes and failure handling.
 7. Update `README.md` when a command moves from deferred to working.
-8. Update `docs/SOUNDINGS.md` with final state and verification evidence.
+8. Update repository guidance and tests so implementation status is represented truthfully.
 
 Preserve clear, separate contracts for path resolution, plan parsing, prompt assembly, process
 execution, and evidence; do not collapse them into a single module.
@@ -133,7 +131,7 @@ execution, and evidence; do not collapse them into a single module.
 | Lint | `ruff check src/ tests/` |
 | Full suite | `python -m pytest` |
 | Package test | Required when changing Rigging resolution, package data, or launch behavior |
-| Soundings | Matching row updated to the truthful state with concrete evidence |
+| Implementation evidence | Matching tests and user-facing repository documentation updated truthfully |
 
 LLM-assisted commands must isolate process execution behind an adapter so tests can use a fake
 runner. Tests must never spend API credits or require network access.
@@ -177,23 +175,7 @@ Commands that call an LLM follow one shape, first established by `drydock riggin
 Prompts are packaged via `force-include` to `drydock/resources/prompts/` and resolved by
 `paths.get_prompts_root()`; both source-tree and installed paths must work.
 
-## Soundings
-
-Each command or capability has one row in `docs/SOUNDINGS.md`. States:
-
-| State | Meaning |
-|---|---|
-| `NOT STARTED` | No public command or implementation contract exists |
-| `STUBBED` | Command surface exists and returns the tested deferred response |
-| `IMPLEMENTED` | Real behavior exists but required acceptance verification is incomplete |
-| `DONE` | Approved behavior is implemented and all required verification passes |
-
-Do not mark `DONE` based only on code presence. Record test names and evidence. When behavior
-regresses or the specification changes, move the row back to the truthful state.
-
 ## Build Order
-
-`docs/SOUNDINGS.md` is the authoritative record of what is working, stubbed, or implemented.
 Preferred implementation order:
 
 1. Command surface and shared path/process contracts

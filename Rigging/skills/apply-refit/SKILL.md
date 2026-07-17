@@ -85,7 +85,7 @@ The user replies with numbers, letters, ranges, or keywords (`all code`, `all do
 
 **After all selected items are implemented:**
 - Run `ruff check src/ tests/` and `python -m pytest` (or `bash bin/test.sh`).
-- Update `docs/SOUNDINGS.md` for any capability whose state changed.
+- Update tests and user-facing repository documentation for any capability whose state changed.
 - Commit with a descriptive message per AGENTS.md rules.
 - Report: files changed, tests passed, residual risk.
 

@@ -359,6 +359,10 @@ def parse_generated_docs(text: str, *, sections: tuple[str, ...]) -> dict[str, s
     return docs
 
 
+def _known_doc_names() -> set[str]:
+    return {f"DOC-{section}.md" for section in GUIDE_TITLES}
+
+
 def generate_documentation(
     target: str,
     targets_root: Path,
@@ -405,10 +409,8 @@ def generate_documentation(
         written.append(path)
 
     emitted = set(docs)
-    for section in config.sections:
-        name = f"DOC-{section}.md"
-        path = docs_dir / name
-        if name not in emitted and path.exists() and section not in REQUIRED_SECTIONS:
+    for path in docs_dir.glob("DOC-*.md"):
+        if path.is_file() and path.name in _known_doc_names() and path.name not in emitted:
             path.unlink()
 
     return GeneratedDocumentation(
@@ -432,10 +434,10 @@ def _extract_h2(content: str) -> list[tuple[str, str]]:
 
 def _discover_guides(docs_dir: Path, sections: tuple[str, ...]) -> list[dict[str, str]]:
     found = {path.stem[4:]: path for path in docs_dir.glob("DOC-*.md") if path.is_file()}
-    ordered = [section for section in sections if section in found]
-    ordered.extend(sorted(section for section in found if section not in ordered))
     guides = []
-    for key in ordered:
+    for key in sections:
+        if key not in found:
+            continue
         path = found[key]
         guides.append({
             "key": key,

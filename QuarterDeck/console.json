@@ -25,20 +25,6 @@
       "path": "../docs/Drydock_Specification.md"
     },
     {
-      "id": "sea_trials",
-      "label": "Sea Trials",
-      "section": "core",
-      "type": "markdown",
-      "path": "../docs/SEA_TRIALS.md"
-    },
-    {
-      "id": "soundings",
-      "label": "Soundings",
-      "section": "core",
-      "type": "markdown",
-      "path": "../notes/SOUNDINGS.md"
-    },
-    {
       "id": "command_status",
       "label": "Acceptance Status",
       "section": "pages",
@@ -73,20 +59,6 @@
       "section": "pages",
       "type": "link",
       "href": "../docs/index.html"
-    },
-    {
-      "id": "sea_trials_poster",
-      "label": "Sea Trials Poster",
-      "section": "archive",
-      "type": "link",
-      "href": "../docs/SEA_TRIALS.html"
-    },
-    {
-      "id": "sea_trials_pdf",
-      "label": "Sea Trials PDF",
-      "section": "archive",
-      "type": "link",
-      "href": "../docs/SEA_TRIALS.pdf"
     },
     {
       "id": "pypi_reservation",

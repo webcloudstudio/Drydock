@@ -246,9 +246,6 @@ and structured project acceptance criteria, then writes the aggregate completion
 The installed wheel includes Drydock's canonical product specification as a
 read-only package resource at `drydock/resources/docs/Drydock_Specification.md`.
 
-Read [docs/SOUNDINGS.md](docs/SOUNDINGS.md) for the authoritative implementation
-readiness checklist and test evidence.
-
 ## Command Surface
 
 ```text
@@ -316,8 +313,6 @@ Repository references:
 - [Rendered specification PDF](docs/Drydock_Specification.pdf)
 - [Launch script](docs/presentation/script.md)
 - [Talking points](docs/presentation/talking_points.md)
-- [Soundings readiness checklist](docs/SOUNDINGS.md)
-- [Sea Trials sample](docs/SEA_TRIALS_SAMPLE.md)
 
 Development and governance:
 

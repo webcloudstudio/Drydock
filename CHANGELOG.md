@@ -12,6 +12,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - 2026-07-17: retired the Ship's Log feature, removed the `drydock shipslog` command and related
   repository tooling, and made `CHANGELOG.md` the only maintained high-level project history.
+- 2026-07-17: aligned `drydock document` with its specification by making generated `DOC-*` output
+  authoritative for configured sections only, tightening the prompt against invented content, and
+  removing stale repository references to non-Target sample acceptance artifacts.
 - `drydock import --format compass` now normalizes the intent document into the canonical
   COMPASS.md format with an LLM pass at import time (prompt contract
   `prompts/import_compass.md`), preserving the Commander's vocabulary. It is the only import form
@@ -25,7 +28,6 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - Drydock Blueprint Methodology vocabulary across the product specification, documentation, and CLI.
 - Sole authoritative product specification at `docs/Drydock_Specification.md`.
-- Authoritative implementation acceptance/readiness checklist at `docs/SOUNDINGS.md`.
 - Project foundation: single-sourced version, packaging metadata and classifiers, `py.typed` marker.
 - Continuous integration (GitHub Actions) across Python 3.11–3.13 on Linux and Windows, with a wheel
   build and installed-CLI smoke test.

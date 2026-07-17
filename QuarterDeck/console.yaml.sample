@@ -38,18 +38,6 @@ items:
     type: markdown
     path: ../docs/Specification.md
 
-  - id: sea_trials
-    label: "Sea Trials"
-    section: core
-    type: markdown
-    path: ../docs/SEA_TRIALS.md
-
-  - id: soundings
-    label: "Soundings"
-    section: core
-    type: markdown
-    path: ../docs/SOUNDINGS.md
-
   - id: board
     label: "Kanban Board"
     section: build_plan

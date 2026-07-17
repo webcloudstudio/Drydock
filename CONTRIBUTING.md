@@ -9,8 +9,7 @@ source-precedence contract.
 Read [AGENTS.md](AGENTS.md) in full. It defines the operating rules, development architecture,
 source precedence, verification contract, and mandatory decision-capture process.
 [docs/Drydock_Specification.md](docs/Drydock_Specification.md) is the sole authoritative Drydock
-specification; [docs/SOUNDINGS.md](docs/SOUNDINGS.md) is the authoritative implementation
-acceptance/readiness checklist.
+specification.
 
 ## Environment
 
@@ -32,8 +31,8 @@ Run `uv run pre-commit run --all-files` explicitly when needed.
 - **Concurrent sessions.** Before committing, preserve other writers' changes and commit only the
   active task. If Git state changed, reread affected files, resolve conflicts preserving both
   intents, and retry. Never restore, reset, delete, stage, or commit another writer's changes.
-- **Completion.** Update the matching `docs/SOUNDINGS.md` row and evidence before declaring a
-  capability complete.
+- **Completion.** Add or update focused tests and keep repository documentation truthful before
+  declaring a capability complete.
 - **Ship's Log.** Record material decisions and milestones through `python bin/ships_log.py record`,
   then perform the required final capture review before completing the task.
 - **Rigging.** `Rigging/` is Drydock's own source of shared rules and templates. All rule and

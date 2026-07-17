@@ -21,7 +21,7 @@ prompts here; deferred commands have no prompts yet.
 | `drydock prompt review` | `prompt_review.md` | Implemented |
 | `drydock analyze` | `analyze.md` | Implemented |
 | `drydock plan create` | `plan_create.md` | Implemented |
-| `drydock document generate` | `document_generate.md` | Not yet ported — command is deferred |
+| `drydock document generate` | `document_generate.md` | Implemented |
 | `drydock import` | `import_source.md`, `import_speckit.md` | Not yet ported — command is deferred |
 | `drydock build` | `build_story.md`, `build_spike.md` | Not yet ported — command is deferred |
 

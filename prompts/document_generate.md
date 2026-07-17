@@ -56,9 +56,13 @@ Do not emit files outside the requested `SECTIONS` list from the job block.
 - Every DOC file starts with exactly one H1.
 - Use H2 headings for navigable sections.
 - Keep descriptions concrete and specific.
+- Ground every claim in the injected source material.
+- Do not infer, invent, or speculate about features, screens, workflows, schemas, telemetry, or pipeline stages that are not clearly present in the source.
+- If source material is thin or ambiguous, omit the unsupported detail instead of guessing.
 - Strip open questions, internal planning notes, rationale, and implementation uncertainty.
 - Use Markdown tables and Mermaid diagrams when they make the documentation easier to scan.
 - `DOC-SCHEMA.md` replaces any database-oriented output; never emit `DOC-DATABASE.md`.
+- Do not mention missing information, missing files, ambiguity, confidence, or your own process.
 
 ## Section Guidance
 
@@ -75,7 +79,7 @@ summary of what the user sees or does.
 boundaries.
 
 `DOC-SCHEMA.md` starts with a Mermaid ER diagram when a data model exists, then lists key entities
-or tables.
+or tables. Omit this file unless the Blueprint contains a concrete data model.
 
 `DOC-FLOWS.md` covers end-to-end workflows with trigger, reads, writes, and result.
 
