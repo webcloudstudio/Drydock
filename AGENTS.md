@@ -1,5 +1,7 @@
 # AGENTS.md — Drydock
 
+IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO docs/Drydock_Specification.md unless specifically authorized by the user.  Each block edit must be approved individually.  There are no exceptions.  STOP OVERWRITING MY MAIN ARTIFACT AND SCREWING IT UP - YOU DO NOT UNDERSTAND MY VOICE. YOU ALSO SEEM TO **WANT** to give away my trade secrets.  STOP IT!!!
+
 Drydock is a specification-driven software design and delivery methodology implemented as an
 installable Python CLI. It plans, builds, tests, reviews, and evolves software from Blueprints
 expressed as Typed Specifications.
@@ -97,8 +99,6 @@ repository.
 - Multiple contributors may edit this directory concurrently. Before committing, inspect the
   current diff and preserve changes made by other writers. Never stage or commit changes outside
   the active task.
-- Follow the Ship's Log process: record material decisions and milestones immediately, then review
-  again before committing.
 - When constructing an agent prompt, include only the relevant specification sections. Do not
   inject the full specification unless the task is cross-cutting.
 - Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
@@ -208,56 +208,9 @@ Preferred implementation order:
 This is guidance, not authority. A user-requested capability can be implemented earlier when its
 dependencies are satisfied.
 
-## Ship's Log
-
-The Ship's Log records material product decisions and delivery milestones as structured,
-append-only events. The only canonical artifact is `logs/ships_log.jsonl`. Never create or
-maintain a Markdown Ship's Log.
-
-**When to record.** Record an event for:
-
-- an approved specification or product-behavior change
-- a feature addition, removal, or material scope change
-- an architecture, persistence, interface, governance, or development-process decision
-- a meaningful completed delivery milestone
-- a reversal or replacement of an earlier recorded decision
-
-Do not record routine file edits, implementation mechanics, commits, test runs, or minor refactors.
-If no event qualifies, report that the final review found no material event. Do not add a
-placeholder record.
-
-**When to evaluate.** Every agent must evaluate Ship's Log capture: (1) immediately after making or
-receiving approval for a material decision or milestone; (2) again before committing, using the
-completed diff to catch anything missed during implementation.
-
-**Recording.**
-
-```bash
-python bin/ships_log.py record \
-  --event-type decision \
-  --title "Concise decision title" \
-  --summary "What changed or was decided." \
-  --rationale "Why this choice was made." \
-  --source-type agent \
-  --source-command "task or workflow" \
-  --source-provider codex \
-  --scope "affected area" \
-  --alternative "Rejected option::Reason it was rejected" \
-  --evidence "path or durable evidence" \
-  --tag "classification"
-```
-
-Use `--event-type milestone` for delivery milestones. Repeat `--scope`, `--alternative`,
-`--evidence`, `--supersedes`, and `--tag` as needed.
-
-Classification tags: `open-item` (material unresolved question), `deferred-item` (accepted but
-postponed), `accepted-risk` (known risk explicitly accepted).
-
-To reverse an earlier decision, append a new event with `--supersedes <event_id>`. Never rewrite
-or delete an existing record.
-
-Validate the ledger when changing its process, schema, or viewer:
-
-```bash
-python bin/ships_log.py audit
-```
+# Changelog
+CHANGELOG.md is the only maintained project history artifact. Record major deliverables, release-level
+behavior changes, milestone accomplishments, and other high-value changes. Keep it short, simple,
+and datestamped. Do not record minor fixes, routine refactors, test-only churn, or implementation
+mechanics. When a release is cut, add a version heading. Releases are cut with `publish_pypi.sh`
+after the version is updated manually.

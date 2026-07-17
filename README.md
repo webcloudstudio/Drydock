@@ -42,6 +42,7 @@ Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENS
 ```bash
 uv tool install drydock-sdd
 
+drydock config set drydock_build_directory /mnt/c/Users/barlo/projects
 drydock config set llm_provider claude
 drydock init MyApp --description "A small web application."
 drydock import MyApp ./notes --format markdown
@@ -283,7 +284,6 @@ drydock document <Target> [--model <model>] [--theme <theme>]
 drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf]
 drydock survey <Target> [--run] [--import <path>] [--command <name>] [--raw]
 drydock prompt review <component>
-drydock shipslog [--dir <path>] [--dry-run]
 ```
 
 Configuration keys:
@@ -296,7 +296,6 @@ Configuration keys:
 | `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` | Prompt-size warning threshold in tokens |
 | `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
-| `shipslog_dir` | `DRYDOCK_SHIPSLOG_DIR` | Ship's Log posts package directory for `drydock shipslog` |
 
 ## Public Documentation
 

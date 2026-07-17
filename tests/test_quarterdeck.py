@@ -98,12 +98,6 @@ def test_drydock_console_exposes_existing_owned_documents():
     assert (root / "QuarterDeck" / pypi["path_md"]).resolve().is_file()
     assert (root / "QuarterDeck" / pypi["path_pdf"]).resolve().is_file()
 
-    ships_log = items["ships_log"]
-    assert ships_log["type"] == "jsonl"
-    assert ships_log["path"] == "../logs/ships_log.jsonl"
-    assert len(ships_log["fields"]) > 0
-    assert ships_log.get("badge_field") == "event_type"
-
 
 def test_drydock_console_pins_the_three_standard_artifacts_in_core():
     config = _console_config()
@@ -236,7 +230,6 @@ def test_drydock_console_core_artifact_order():
         "master_blueprint",
         "sea_trials",
         "soundings",
-        "ships_log",
         "board",
     ]
 

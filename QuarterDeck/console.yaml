@@ -55,28 +55,13 @@ items:
     path: ../notes/SOUNDINGS.md
     order: 4
 
-  - id: ships_log
-    label: "Ship's Log"
-    section: core
-    type: jsonl
-    path: ../logs/ships_log.jsonl
-    fields: [recorded_at, title]
-    sort: recorded_at
-    sort_direction: desc
-    date_fields: [recorded_at]
-    badge_field: event_type
-    badge_colors:
-      decision: "#0d9488"
-      milestone: "#d97706"
-    order: 5
-
   - id: board
     label: "Kanban Board"
     section: core
     type: kanban
     path: tickets.json
     review: true
-    order: 6
+    order: 5
 
   # Actions — items with review or completion requirement
   - id: initial_review

@@ -21,10 +21,10 @@
       "options": [
         "Plan workflow: init, create, show",
         "QuarterDeck projection and decision reconciliation",
-        "Ship's Log decision writer",
+        "Build score and acceptance gate",
         "Build status and evidence contracts"
       ],
-      "answer": "Ship's Log decision writer"
+      "answer": "Build score and acceptance gate"
     },
     {
       "id": "most_important_view",
@@ -33,7 +33,7 @@
       "input": "select",
       "options": [
         "Delivery plan and acceptance criteria",
-        "Decisions and Ship's Log",
+        "Build decisions and acceptance history",
         "Build evidence and reviews",
         "Current-state executive overview"
       ],

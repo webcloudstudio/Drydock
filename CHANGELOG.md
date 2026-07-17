@@ -10,6 +10,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-17: retired the Ship's Log feature, removed the `drydock shipslog` command and related
+  repository tooling, and made `CHANGELOG.md` the only maintained high-level project history.
 - `drydock import --format compass` now normalizes the intent document into the canonical
   COMPASS.md format with an LLM pass at import time (prompt contract
   `prompts/import_compass.md`), preserving the Commander's vocabulary. It is the only import form

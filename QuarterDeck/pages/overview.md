@@ -15,19 +15,16 @@ plans, builds, tests, reviews, and evolves software.
 | Plan workflow | Working foundation | `drydock plan create <Blueprint> <Target>` creates the target plan and Planning Session |
 | Build and evidence | Backlog | Build status works; execution, evidence, and score remain deferred |
 | QuarterDeck loop | Working foundation | The Planning Session approves the target plan; broader review write-back remains to build |
-| Ship's Log | Working foundation | JSONL writer, audit, and viewer are implemented; workflow integrations remain |
-
 ## Where To Go
 
 - **Sea Trials** — objectives and success criteria for delivery.
 - **Soundings** — acceptance criteria, current state, and evidence.
 - **Drydock Specification** — the sole authoritative behavior contract.
 - **Choose Next Slice** / **Initial Console Review** — give direction and record sign-off.
-- **Ship's Log** — canonical JSONL decision and milestone events.
 
 ## Control Boundary
 
 The Planning Session approval writes to the target `MANIFEST.md`. Other QuarterDeck decisions do
-not yet append to `logs/ships_log.jsonl`; that remains a board item to build. Authority stays in
-`docs/Drydock_Specification.md` (behavior), `notes/SOUNDINGS.md` (acceptance), and
+not change canonical product history automatically. Authority stays in `docs/Drydock_Specification.md`
+(behavior), `notes/SOUNDINGS.md` (acceptance), and
 `docs/SEA_TRIALS.md` (objectives).

@@ -969,48 +969,6 @@ def _resolve_sole_target(targets_root: Path) -> Path:
     )
 
 
-_SHIPSLOG_STATUS_MARK = {
-    "generated": "[generated]",
-    "planned": "[planned]  ",
-    "empty": "[empty]    ",
-    "failed": "[FAILED]   ",
-}
-
-
-def cmd_shipslog(args: argparse.Namespace) -> int:
-    from datetime import timedelta
-
-    from drydock import shipslog
-
-    package_dir = shipslog.resolve_package_dir(getattr(args, "package_dir", None))
-    print(f"Ship's Log posts: {package_dir}")
-    result = shipslog.generate(
-        package_dir,
-        dry_run=bool(getattr(args, "dry_run", False)),
-        on_text=_stream_stdout,
-    )
-    for week in result.weeks:
-        mark = _SHIPSLOG_STATUS_MARK.get(week.status, week.status)
-        detail = f"  {week.detail}" if week.detail else ""
-        events = f"  {week.event_count} events" if week.event_count else ""
-        print(f"  {mark}  {week.start} → {week.end}{events}{detail}")
-    if result.pending_window:
-        start, end = result.pending_window
-        print(
-            f"  [pending]    {start} → {end}  {result.pending_events} events"
-            f"  (week in progress; runs on {end + timedelta(days=1)})"
-        )
-    if not result.weeks and not result.pending_window:
-        print("  Nothing to publish — no unpublished Ship's Log events.")
-    print()
-    generated = len(result.generated())
-    planned = len([w for w in result.weeks if w.status == "planned"])
-    empty = len([w for w in result.weeks if w.status == "empty"])
-    failed = len(result.failed())
-    print(f"RESULT: {generated} generated, {planned} planned, {empty} empty, {failed} failed")
-    return result.exit_code()
-
-
 def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
     from drydock import quarterdeck_run as _qd
     from drydock.config import get_quarterdeck_port, get_target_directory
@@ -1406,6 +1364,40 @@ def cmd_build_score(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+def cmd_score_ac(target: str) -> int:
+    from drydock.config import require_target_dir
+    from drydock.score import UNVERIFIED, verify_acs
+
+    target_dir = require_target_dir(target)
+    report = verify_acs(target, target_dir)
+    passed = sum(1 for v in report.verdicts if v.status == "PASS")
+    failed = sum(1 for v in report.verdicts if v.status == "FAIL")
+    unverified = sum(1 for v in report.verdicts if v.status == UNVERIFIED)
+    print()
+    print(f"Acceptance verification: {target}  ({report.verified_at})")
+    print(f"  PASS {passed}   FAIL {failed}   UNVERIFIED {unverified}")
+    for verdict in report.verdicts:
+        if verdict.status != "PASS":
+            print(f"  {verdict.status}: {verdict.criterion_id} — {verdict.evidence}")
+    print(f"Soundings: {report.soundings_path}")
+    return report.exit_code()
+
+
+def cmd_score_release(target: str) -> int:
+    from drydock.config import require_target_dir
+    from drydock.score import deterministic_gate
+
+    target_dir = require_target_dir(target)
+    result = deterministic_gate(target, target_dir)
+    print()
+    print(f"Release gate: {target}  {'PASS' if result.passed else 'FAIL'}")
+    for blocker in result.blockers:
+        print(f"  BLOCKER: {blocker}")
+    if not result.passed:
+        print("  (model- and human-judged criteria are deferred to `drydock build score`)")
+    return result.exit_code()
+
+
 _BUILD_STATE_MARK = {
     "closed/verified": "[done]",
     "implemented": "[review]",
@@ -1540,7 +1532,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "llm_provider",
             "prompt_warn_tokens",
             "quarterdeck_port",
-            "shipslog_dir",
         ],
     )
     p_set.add_argument("value", metavar="<value>")
@@ -1741,6 +1732,19 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_llm_override_flags(p_build)
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
+    # ── score ─────────────────────────────────────────────────────────────────
+    # Deterministic, LLM-free scoring. Handles: score ac <Target>, score release <Target>.
+    p_score = sub.add_parser(
+        "score",
+        help="Deterministically verify acceptance criteria and the release gate (no LLM).",
+        description=(
+            "drydock score ac <Target>       — verify each acceptance criterion, update Soundings\n"
+            "drydock score release <Target>  — deterministic release gate (CI-portable, no LLM)"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_score.add_argument("args", nargs=argparse.REMAINDER, metavar="<ac|release> <Target>")
+
     # ── refit ─────────────────────────────────────────────────────────────────
     p_iter = sub.add_parser(
         "refit",
@@ -1826,30 +1830,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default="127.0.0.1",
         metavar="HOST",
         help="Host to bind to (default: 127.0.0.1).",
-    )
-
-    # ── shipslog ──────────────────────────────────────────────────────────────
-    p_slog = sub.add_parser(
-        "shipslog",
-        help="Generate weekly development-log posts from the Ship's Log.",
-        description=(
-            "drydock shipslog             — publish one post per fully elapsed week\n"
-            "drydock shipslog --dry-run   — report the weeks that would publish"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    _add_llm_override_flags(p_slog)
-    p_slog.add_argument(
-        "--dir",
-        dest="package_dir",
-        default=None,
-        metavar="<path>",
-        help="Posts package directory (default: shipslog_dir config, then ./ShipsLog).",
-    )
-    p_slog.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Report eligible weeks without generating posts.",
     )
 
     # ── import ────────────────────────────────────────────────────────────────
@@ -2048,6 +2028,24 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         return rc
 
 
+def _dispatch_score(args: argparse.Namespace) -> int:
+    tokens = args.args
+    first = tokens[0] if tokens else ""
+    if first == "ac" and len(tokens) == 2:
+        rc = cmd_score_ac(tokens[1])
+        from drydock.config import record_activity
+
+        record_activity("score ac", tokens[1], tokens[1])
+        return rc
+    if first == "release" and len(tokens) == 2:
+        rc = cmd_score_release(tokens[1])
+        from drydock.config import record_activity
+
+        record_activity("score release", tokens[1], tokens[1])
+        return rc
+    raise UsageError("Usage: drydock score <ac|release> <Target>")
+
+
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     command = args.command
 
@@ -2110,6 +2108,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if command == "build":
         return _dispatch_build(args)
 
+    if command == "score":
+        return _dispatch_score(args)
+
     if command == "refit":
         rc = cmd_refit(args)
         if rc == 0:
@@ -2153,9 +2154,6 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         else:
             parser.parse_args(["run", "--help"])
             return 0
-
-    if command == "shipslog":
-        return cmd_shipslog(args)
 
     if command == "import":
         rc = cmd_import(args)

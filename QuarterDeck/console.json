@@ -39,24 +39,6 @@
       "path": "../notes/SOUNDINGS.md"
     },
     {
-      "id": "ships_log",
-      "label": "Ship's Log",
-      "section": "pages",
-      "type": "jsonl",
-      "path": "../logs/ships_log.jsonl",
-      "fields": [
-        "recorded_at",
-        "event_type",
-        "title",
-        "summary",
-        "rationale",
-        "source.type",
-        "tags"
-      ],
-      "sort": "recorded_at",
-      "sort_direction": "desc"
-    },
-    {
       "id": "command_status",
       "label": "Acceptance Status",
       "section": "pages",

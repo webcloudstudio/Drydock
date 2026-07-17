@@ -52,7 +52,7 @@ ideas_layout: sail
 sail_lead:
   - Your Compass (constitution/intent) guides your build
   - QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions
-  - Your Ship's Log preserves material decisions and milestones
+  - CHANGELOG.md records major project accomplishments and release-level changes
 ideas:
   - title: **S** — Setup and Install Drydock
     sub_list:
@@ -85,7 +85,7 @@ def test_parse_source_reads_sail_lead_lines():
     assert metadata["sail_lead"] == [
         "Your Compass (constitution/intent) guides your build",
         "QuarterDeck keeps the product owner in command of plans, evidence, questions, and decisions",
-        "Your Ship's Log preserves material decisions and milestones",
+        "CHANGELOG.md records major project accomplishments and release-level changes",
     ]
 
 
@@ -117,7 +117,10 @@ def test_render_page_supports_sail_cover_layout():
     assert '<div class="sail-letter">S</div>' in page
     assert '<div class="sail-letter">A</div>' in page
     assert "<p>Your Compass (constitution/intent) guides your build</p>" in page
-    assert "<p>Your Ship&#x27;s Log preserves material decisions and milestones</p>" in page
+    assert (
+        "<p>CHANGELOG.md records major project accomplishments and release-level changes</p>"
+        in page
+    )
     assert '<div class="idea-title">Setup and Install Drydock</div>' in page
     assert "<li>pip install, drydock config, drydock init</li>" in page
     assert (

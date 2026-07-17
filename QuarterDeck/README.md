@@ -25,7 +25,7 @@ structure edits.
 | Editable document | `editable_markdown` | Steering docs the human and agent co-edit (`COMPASS.md`, `BLOCKERS.md`, per-command compasses) |
 | Multi-format document | `document` | One artifact with `path_md` / `path_html` / `path_pdf` variants; best available format wins |
 | Questionnaire | `questionnaire` | Asking the human structured questions; answers are saved into the JSON and read back |
-| JSONL log | `jsonl` | Append-only records (the Ship's Log) as a read-only, badge-colored table |
+| JSONL log | `jsonl` | Append-only records as a read-only, badge-colored table |
 | Work board | `kanban` | `MANIFEST.md` features/stories/spikes as a read-only four-column board |
 | Build Compass | `compass` | The live `MANIFEST.md` work graph: grouped, costed, state-badged, and editable (reorder / regroup / rename / split) |
 | Refit watch | `refit` | Blueprints added or touched since they were applied to the Manifest — the prompt to run `drydock refit` |
@@ -257,7 +257,7 @@ skipped silently.
 
 Renders an append-only JSONL file as a read-only table. Configure `fields` with dotted field
 names, `sort` / `sort_direction`, optional exact-match `filters`, `date_fields` (trimmed to the
-date), and `badge_field` + `badge_colors` for a colored leading badge (the Ship's Log uses this
+date), and `badge_field` + `badge_colors` for a colored leading badge (the sample config uses this
 for `event_type`). Each malformed line is reported without hiding valid records. A missing file
 renders as an empty view.
 
@@ -387,7 +387,6 @@ add a row each time we use the tool on a real problem and learn how it should wo
 | **Open questions** — ask the human to resolve unknowns | `questionnaire` | Analyze | ✅ answers captured + read back on the next run |
 | **Sprint / backlog** — track features and stories | `kanban` ← `MANIFEST.md` | Plan | ✅ read-only projection of plan state |
 | **Story planning** — group, cost, and order the build | `compass` ← `MANIFEST.md` | Build | ✅ constrained editing writes back to the manifest |
-| **Decision history** — show material decisions and milestones | `jsonl` ← `ships_log.jsonl` | Docs | ✅ works (badges, sort, filters) |
 | **Evidence / demo** — show results backing a claim | `markdown` / `document` (+ `link`) | any | ✅ works |
 | **Acceptance readiness** — roll up the Soundings checklist | `command_status` | Docs | ✅ derived, read-only |
 
