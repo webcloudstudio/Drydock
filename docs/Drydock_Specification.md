@@ -55,12 +55,12 @@ Rigging provides governed business rules, stack guidance, branding, and compact 
 
 The loop phase lets the Commander update the product while preserving the specification as the source of truth. Edit specifications or add change tickets, run `drydock refit`, and rebuild only the impacted work.
 
-Quality is verified deterministically with `drydock score` — no model call, no network.
-`drydock score ac` proves each acceptance criterion and stamps a `✓ PASS` / `✗ FAIL` /
-`— UNVERIFIED` verdict into Soundings; a vacuous proof (an empty body, a constant assertion,
-a self-comparison) is demoted rather than trusted. `drydock score release` is the CI-portable
-gate: the same inputs yield the same exit code in every environment. This is trust-but-verify —
-the Commander scans checkmarks instead of granting approvals.
+Quality is verified deterministically with `drydock score` based on programatic acceptance criteria or using the LLM to evaluate
+the completed build.  `drydock score ac` retests and shows `✓ PASS` / `✗ FAIL` / `— UNVERIFIED` verdict into Soundings while
+demoting a vacuous proof (an empty body, a constant assertion,
+a self-comparison) proofs.  
+
+Trust But Verify - the Commander reviews in the Quarterdeck - running the next step in the process indicates approval.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -99,42 +99,50 @@ flowchart LR
 
 ## Drydock Features
 
-Drydock is DevOps for specifications: a governed build pipeline with gates. It runs the same process on a one-page specification and a hundred-page specification.
+**Drydock is DevOps for specifications** and provides a governed build pipeline with gates to create working software from your imported specifications.
 
 **Model and cost**
 - Works with your LLM subscription. No API keys, no per-token billing.
-- Builds effectively on low-end models (Sonnet, GPT-5.4). The pipeline does the work, not the model.
-- Compresses specifications by audience so each build step stays small.
-- Stacks each build step to a token budget.
-- Prices each story in tokens.
+- Trivially portable to any LLM CLI system (Claude, Codex).
+- Builds effectively with low-end models (Sonnet, GPT-5.4).
+- Compresses specifications as needed.
 
-**Method**
+**Methodology**
+- Agile story points are token costs.
 - Decomposes specifications into features, stories, blockers, and acceptance criteria.
-- Builds against acceptance criteria under test-driven development.
-- QuarterDeck is a Commander-to-LLM portal tuned for Agile and test-driven development.
-- Halts and asks when a decision is missing.
-- Builds only what is ready and only what changed, off a dependency graph.
+- Builds against programmatic acceptance criteria using test-driven development.
+- QuarterDeck is a Commander-to-Crew web portal.
+- Surfaces questionnaires for Commander review, and halts rather than guessing when a decision is missing.
+- Builds an optimized dependency graph and executes only the ready, changed frontier.
+- Context optimization at every step — LLM usage minimized.
 
 **Governance**
 - Typed specification files with fixed roles.
 - EARS acceptance criteria, grammar-validated.
-- Guardrails enforced by a hard gate.
+- Acceptance criteria verified programmatically for each story.
+- Guardrails are absolute prohibitions enforced by a hard gate; any that cannot be verified deterministically fail closed.
 - Sealed foundational specifications that require a change ticket to alter.
-- Rigging injects enterprise build rules and house voice into every build.
+- Rigging injects enterprise conventions, build rules, and voice.
+- Writes durable, reviewable evidence for every story.
 
 **Verification**
-- `drydock score` is deterministic: no model call, no network.
+- `drydock score` verifies acceptance deterministically — no LLM call, no network (SOUNDINGS.md).
+- `drydock score release` is the CI-portable gate over project criteria (SEA_TRIALS.md): the same inputs yield the same exit code in every environment.
+- `drydock build score` performs the model- and human-judged evaluation; deterministic proof takes precedence.
 - Scores bind to Git HEAD and content hashes.
-- Model-judged verification is discounted against deterministic proof.
 - Vacuous and tautological proofs are demoted to unverified.
 - Gates every story before it counts as complete.
 
-**Change**
-- Refit runs specification edits and change tickets through the same governed build pipeline as new work.
-- Rebuilds only the impacted stories.
+**Complete change-management methodology**
+- Refit updates the build graph for specification edits and change tickets.
+- Changes build through the normal process using minimal context.
 
-**Output**
-- Generates project documentation and renders it to a publishable site.
+**Import**
+- Greenfield: imports specification documents into a governed Blueprint.
+- Brownfield: reverse-engineers an existing codebase into specifications.
+
+**Add-ons**
+- Generates consistent project documentation in your voice and renders it to a browsable site (HTML/PDF).
 
 ## The drydock CLI
 
