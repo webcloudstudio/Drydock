@@ -1002,6 +1002,44 @@ def test_integrity_unknown_dependency_is_fatal(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
 
 
+def test_required_sea_trial_requires_manifest_or_proof_traceability(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "SEA_TRIALS.md").write_text(
+        """# Sea Trials: Example
+
+## st-status: Status behavior
+Type: behavioral
+Required: yes
+Criterion: The status command reports current state.
+Verification: proof
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SpecificationError, match="lack implementation/proof coverage"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+
+def test_manifest_accepts_provides_required_sea_trial_traceability(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "SEA_TRIALS.md").write_text(
+        """# Sea Trials: Example
+
+## st-status: Status behavior
+Type: behavioral
+Required: yes
+Criterion: The status command reports current state.
+Verification: proof
+""",
+        encoding="utf-8",
+    )
+    manifest = _manifest().replace("scope: both\n", "scope: both\naccepts: st-status\n")
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert result.plan.by_id()["story-status"].fields["accepts"] == ("st-status",)
+
+
 def test_integrity_accepts_whitespace_separated_dependencies(tmp_path):
     _make_target(tmp_path)
     manifest = (

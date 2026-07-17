@@ -69,6 +69,7 @@ class TestInputTokens:
             "COMPASS.md",
             "ANALYZE_COMPASS.md",
             "BLOCKERS.md",
+            "SEA_TRIALS.md",
             "EXISTING_SPIKES",
             "TYPED_SPEC",
         )
@@ -109,6 +110,7 @@ class TestInputTokens:
             "COMPASS.md",
             "PLAN_COMPASS.md",
             "ANALYSIS.md",
+            "SEA_TRIALS.md",
             "SOUNDINGS.md",
             "BLOCKERS.md",
             "QUESTIONNAIRES",

@@ -132,6 +132,8 @@ the build directory after the story implementing the file completes.
 ### health-check
 The health endpoint returns an OK response.
 
+Sea Trials: st-001
+
 ```python
 from app import create_app
 
@@ -145,6 +147,10 @@ assert response.get_json()["status"] == "ok"
 `User Acceptance` contains only Commander-observed checks that cannot be honestly automated,
 such as look-and-feel or subjective workflow acceptance. Do not place deterministic behavior in
 `User Acceptance`.
+
+`Sea Trials:` optionally lists the stable project-acceptance IDs proved by an assertion. It
+appears between the intent sentence and Python fence. Every listed ID exists in
+`SEA_TRIALS.md`.
 
 `COMPASS.md` uses `## Compass`, `## Constraints`, and `## Guardrails` as its body sections.
 Success criteria belong in `SEA_TRIALS.md`; open questions in spike questionnaires. Do not add

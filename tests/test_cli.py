@@ -1293,30 +1293,31 @@ class TestImport:
         assert "<Source>" in combined
 
 
-class TestStubs:
-    """Deferred commands must exit 2, print a message, and not write anything."""
+class TestBuildScore:
+    def test_reports_aggregate_gate(self, tmp_target_root, isolated_config, monkeypatch):
+        from types import SimpleNamespace
 
-    STUB_CASES = [
-        (["build", "score", "MyTarget"], "build score"),
-    ]
+        target = tmp_target_root / "ExampleTarget"
+        target.mkdir()
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        monkeypatch.setattr(
+            "drydock.build_score.score_target",
+            lambda *args, **kwargs: SimpleNamespace(
+                score=84,
+                complete=False,
+                scorecard_path=target / "SCORECARD.md",
+                evidence_path=target / "evidence" / "build-score.json",
+                blockers=("Required Sea Trial st-one is FAIL",),
+                exit_code=lambda: 1,
+            ),
+        )
 
-    @pytest.mark.parametrize("args,label", STUB_CASES)
-    def test_stub_exits_2(self, args, label, tmp_path):
-        rc, out, err = run_cli(*args)
-        assert rc == 2, f"{label!r} should exit 2, got {rc}"
+        rc, out, err = run_cli("build", "score", "ExampleTarget")
 
-    @pytest.mark.parametrize("args,label", STUB_CASES)
-    def test_stub_prints_not_implemented(self, args, label, tmp_path):
-        rc, out, err = run_cli(*args)
-        combined = out + err
-        assert "not implemented" in combined, f"{label!r}: expected 'not implemented' in output"
-
-    @pytest.mark.parametrize("args,label", STUB_CASES)
-    def test_stub_does_not_write_files(self, args, label, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        run_cli(*args)
-        written = list(tmp_path.rglob("*"))
-        assert not written, f"{label!r} wrote files: {written}"
+        assert rc == 1, err
+        assert "Build score: 84/100" in out
+        assert "Completion gate: INCOMPLETE" in out
+        assert "Required Sea Trial st-one is FAIL" in out
 
 
 class TestRefit:

@@ -306,7 +306,7 @@ unless `--force` is given.
 |---|---|---|
 | `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existence implies blockers.  Edit to resolve them. |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
-| `SEA_TRIALS.md` | Target root | Product-level objectives and success criteria |
+| `SEA_TRIALS.md` | Target root | Structured project acceptance criteria with stable IDs, verification methods, and unresolved measurement questions |
 | `SOUNDINGS.md` | Target root | Acceptance tests and milestones  |
 | `COMPASS.md` | Target root | Created if it does not Exist. The master project intent file.   Always imported.  Review it if one was automatically created. |
 | `questionnaires/*.json` | `QuarterDeck/` | Review questionnaires for unresolved decisions and genuine research spikes |
@@ -315,6 +315,16 @@ unless `--force` is given.
 The LLM gives a verdict on the condition of the build.  The most important guard is `BLOCKERS.md`.  If
 `BLOCKERS.md` exists, the Commander edits it to answer the questions and reruns `drydock analyze`. The
 Commander's answers guide the LLM on the next run, and the cycle repeats until no blockers remain.
+
+`SEA_TRIALS.md` contains criteria with stable `st-*` IDs. Each criterion declares `Type`,
+`Required`, `Criterion`, and `Verification`. Types are `technical`, `behavioral`, `qualitative`,
+or `outcome`. Verification methods are `proof`, `measurement`, `evidence`, or `llm`.
+Measurement criteria use either a JSON argv `Command` executed without a shell in the build
+directory or an `Evidence` file contained by the Target. Measurement output is a JSON object with
+a numeric `value` and optional `unit`; `Operator` and `Target` define the deterministic verdict.
+Unknown baselines, targets, workloads, or business measures remain in a literal `QUESTIONS:` block
+with stable `q-*` IDs. Analyze projects these questions into
+`QuarterDeck/questionnaires/discovery-sea-trials.json` and preserves existing answers on rerun.
 
 | Quality | Meaning |
 |---|---|
@@ -362,6 +372,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 | `PLAN_COMPASS.md` | Target root | Human Editable important block for `build plan`, re-injected every run |
 | `COMPASS.md` | Target root | Project intent |
 | `questionnaires/*.json` | `QuarterDeck/` | Resolved planning decisions |
+| `SEA_TRIALS.md` | Target root | Structured project acceptance criteria and stable IDs |
 
 **Output files**
 
@@ -573,32 +584,54 @@ drydock build status <Target>   # print per-block state and current runnable fro
 
 ### drydock build score
 
-`drydock build score` measures delivery health across seven dimensions — Typed Specification
-completeness, implementation coverage, test coverage, documentation coverage, Blueprint drift,
-build quality, and acceptance criteria coverage. Output is `SCORECARD.md` at the Target root,
-alongside `ANALYSIS.md`, `MANIFEST.md`, and `METADATA.md`.
-
-```mermaid
-%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart LR
-  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
-  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
-  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
-  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
-
-  SPEC(["Blueprint"]):::dir --> SCORE["build score"]:::script
-  TGT(["Working Software"]):::dir --> SCORE
-  SCORE --> SC{{"SCORECARD.md"}}:::md
+```text
+drydock build score <Target>
 ```
 
-1. `drydock build score <Target>` — compare the Blueprint against the built application; surfaces
-   drift between what was specified and what was delivered.
-2. `SCORECARD.md` identifies the highest-value gap across all seven dimensions. Use it to
-   prioritize the `drydock refit`.
+**Behavior description**
 
-TODO: Need to import SOUNDINGS and SEA TRIALS as well.
+`drydock build score` verifies the current build against two independent axes. The technical axis
+scores specification completeness, implementation coverage, test coverage, documentation
+coverage, Blueprint drift, build quality, and acceptance criteria coverage from 0 through 100.
+The project-acceptance axis judges every criterion in `SEA_TRIALS.md` as `PASS`, `FAIL`, or
+`INCONCLUSIVE`.
+
+The command reruns Blueprint `Programmatic Acceptance`, executes declared measurements, loads
+declared evidence files, and supplies those facts to the configured subscription-authenticated LLM.
+Deterministic proof and measurement verdicts override LLM verdicts. The command binds evidence to
+the current Git HEAD and content hashes of `SEA_TRIALS.md`, `MANIFEST.md`, and every Blueprint file.
+`drydock build status` reports persisted score evidence as `none`, `current`, or `stale`.
+
+The aggregate completion gate passes only when the equal-weight technical score is at least 80,
+every technical dimension is at least 60, every required Sea Trial is `PASS`, all executable
+Manifest work is `closed/verified`, the build Git worktree is clean, and no deterministic blocker
+exists. Failed and inconclusive findings become ranked Scorecard recommendations. They do not
+create change tickets.
+
+**Input files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `SEA_TRIALS.md` | Target root | Project acceptance criteria, measurement contracts, and required verdicts |
+| `MANIFEST.md` | Target root | Build completion state and criterion implementation references |
+| `blueprint/*.md` | Target Blueprint | Typed Specifications and code-bound Programmatic Acceptance proofs |
+| Declared evidence files | Target root subtree | Criterion evidence and measurement observations |
+| Built application | Configured build directory | Git identity and executable proof subject |
+
+**Output files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `SCORECARD.md` | Target root | Human-readable technical score, project verdicts, blockers, and ranked improvements |
+| `build-score.json` | `evidence/` | Reproducible facts, identities, measurements, proof results, model execution ID, and aggregate verdict |
+
+**Exit codes**
+
+| Code | Meaning |
+|---:|---|
+| `0` | Aggregate completion gate passes |
+| `1` | Aggregate completion gate fails or scoring cannot complete |
+| `2` | Command syntax is invalid |
 
 ### drydock survey
 
@@ -907,6 +940,7 @@ implements:   DATABASE.md, FEATURE-CATALOG.md
 context:      ARCHITECTURE.md
 stack:        common.md, python.md, sqlite.md
 rules:        CLAUDE_RULES.md
+accepts:      st-foundation, st-catalog
 copy:         Rigging/templates/common.sh -> bin/common.sh
 instructions: |
   Build persistence and the catalog service.
@@ -920,6 +954,9 @@ scope:        blueprint | target | both
 `parent:` is optional. It is used for arbitrary hierarchy and QuarterDeck display. Builds are
 rules-based on block type. `scope:` declares whether a story changes the Blueprint, target
 software, or both.
+`accepts:` lists stable `SEA_TRIALS.md` IDs implemented by the story. Every required technical or
+behavioral Sea Trial is referenced by an implementing story or a Blueprint Programmatic Acceptance
+proof. Unknown references and missing required coverage invalidate a generated plan.
 
 ### Feature Blocks
 
@@ -1462,7 +1499,10 @@ updated by `drydock refit` as specification files and application code evolve.
   signal, story count, stack, and next recommended step
   - Created: `drydock analyze <Target>` on first run; updated when lifecycle state advances
 
-- **`SCORECARD.md`** — Blueprint and application quality scores across seven dimensions; surfaces the highest-value gap and drift between the Blueprint and the built software
+- **`SCORECARD.md`** — Technical quality scores, project acceptance verdicts, completion blockers, and ranked improvements
+  - Created and updated: `drydock build score`
+
+- **`evidence/build-score.json`** — Code-bound aggregate gate evidence with input hashes, Git identity, deterministic observations, proof results, and LLM execution identity
   - Created and updated: `drydock build score`
 
 - **`logs/ships_log.jsonl`** — Drydock's append-only JSONL ledger of product and design events; see
@@ -1513,6 +1553,7 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 
 ## Programmatic Acceptance
 ← Executable Python assertions. Each check has a stable heading, intent text, and a fenced `python` block.
+← `Sea Trials: st-id, st-id` between the heading and fence binds the proof to project acceptance IDs.
 
 ## User Acceptance
 ← Commander-observed checks that cannot be honestly automated.

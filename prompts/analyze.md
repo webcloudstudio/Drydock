@@ -1,11 +1,11 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260628 V12
+version: 20260716 V13
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
-inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, EXISTING_SPIKES, TYPED_SPEC
+inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, TYPED_SPEC
 output: ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question)
 ---
 
@@ -56,10 +56,10 @@ taste, an external or regulatory constraint, an irreversible trade-off, or a gen
 
 Anything you can derive from the sources, you **must derive** — into the story list, SOUNDINGS,
 SEA_TRIALS, or a tuning option. Never ask the human to supply work the team owns. In particular,
-acceptance criteria, success evidence, smoke checks, build gates, and test sequences are *outputs
-you synthesize*, not questions you ask. If you find yourself asking the human "what should the
-acceptance criteria be" or "which checks should the build run," you are outsourcing your own
-analysis — derive a proposal instead and offer it as a tuning option.
+acceptance criteria, smoke checks, build gates, and test sequences are *outputs you synthesize*,
+not questions you ask. Outcome baselines, business thresholds, observation windows, and external
+measurement sources are different: never invent them. Record the criterion and emit a stable-ID
+entry under the SEA_TRIALS.md `QUESTIONS:` block for each missing human-owned measurement fact.
 
 A discovery questionnaire is delivered as a form for the human to answer. Do not raise one for a
 matter the sources, `ANALYZE_COMPASS.md`, prior `BLOCKERS.md` answers, or existing answered
@@ -185,9 +185,10 @@ question in `ANALYSIS.md`.
 - *Emits:* high-level acceptance criteria in `ANALYSIS.md` Story List rows. Drydock projects
   these criteria into `SOUNDINGS.md` deterministically; do not emit `SOUNDINGS.md`.
 
-**6. Derive SEA_TRIALS objectives.**
+**6. Derive SEA_TRIALS project acceptance.**
 - *Consumes:* the story list + the COMPASS (existing file or the COMPASS you will emit in step 9).
-- *Emits:* SEA_TRIALS.md strategic objectives.
+- *Emits:* structured SEA_TRIALS.md project criteria with stable IDs, one observable behavior or
+  outcome per criterion, and unresolved measurement facts under `QUESTIONS:`.
 
 **7. Compute the quality signal.**
 - *Consumes:* the blocker and question counts from step 3.
@@ -248,13 +249,25 @@ Do not add an ## Overview section or any other sections not listed here.}
 === SEA_TRIALS.md ===
 # Sea Trials: {ProjectName}
 
-Strategic objectives at product level. Derived from COMPASS and spec. 3–7 rows typical.
+Project-level acceptance derived from COMPASS and sources. Emit 3–7 criteria normally.
 
-| ID | Objective / Success Criterion | State | Evidence |
-|---|---|---|---|
-| st-001 | {High-level objective one} | NOT STARTED | |
-| st-002 | {High-level objective two} | NOT STARTED | |
-{Add more rows as warranted.}
+## st-001: {Short criterion title}
+
+Type: {technical | behavioral | qualitative | outcome}
+Required: {yes | no}
+Criterion: {One observable English behavior or outcome.}
+Verification: {proof | measurement | evidence | llm}
+Command: {JSON argv array, or blank}
+Evidence: {target-relative evidence file, or blank}
+Baseline: {numeric value, or blank}
+Operator: {< | <= | == | >= | >, or blank}
+Target: {numeric value, or blank}
+Unit: {unit, or blank}
+
+{Repeat one section per criterion.}
+
+QUESTIONS:
+- q-st-001-baseline: {Human-owned missing measurement fact. Omit the entire QUESTIONS block when none remain.}
 === END SEA_TRIALS.md ===
 
 ```
@@ -470,7 +483,11 @@ list plus `"other"`, sorted alphabetically.
   no matching file is a discovery questionnaire.
 - SOUNDINGS.md rows: use acceptance criteria stated in the sources where present; otherwise
   synthesize one milestone per feature area / screen / persistence area.
-- SEA_TRIALS.md objectives are strategic — one per major product capability or outcome.
+- SEA_TRIALS.md criteria are project-level and use stable `st-*` IDs. Preserve prior IDs for the
+  same criterion on reruns. Technical and behavioral criteria normally use Blueprint proof;
+  outcomes use measurement; subjective criteria use evidence-bound LLM judgment.
+- Never invent outcome baselines, targets, units, or external measurement sources. Emit stable-ID
+  `QUESTIONS:` entries for missing human-owned facts. Omit `QUESTIONS:` when none remain.
 - All questionnaire JSON must be valid JSON.
 - Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources only — there are no
   typed spec files at analyze time, so do not inspect or invent them.

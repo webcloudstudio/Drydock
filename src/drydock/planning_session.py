@@ -47,6 +47,7 @@ from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 from drydock.rigging_compact import ensure_compact_files
+from drydock.sea_trials import parse_sea_trials_text
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
@@ -995,6 +996,21 @@ def _assemble_prompt_assembly(
             )
         )
 
+    def sea_trials_parts() -> list:
+        path = target_dir / "SEA_TRIALS.md"
+        text = _read_if(path)
+        if not text:
+            return []
+        return list(
+            contextual_markdown_parts(
+                "SEA_TRIALS.md",
+                text,
+                filename="SEA_TRIALS.md",
+                role="project acceptance contract",
+                path=path,
+            )
+        )
+
     def questionnaire_parts() -> list:
         answered = [(p, _answered_discovery(p)) for p in _collect_discoveries(target_dir)]
         answered = [(p, data) for p, data in answered if data is not None]
@@ -1093,6 +1109,7 @@ def _assemble_prompt_assembly(
         "COMPASS.md": compass_parts,
         "PLAN_COMPASS.md": plan_compass_parts,
         "ANALYSIS.md": analysis_parts,
+        "SEA_TRIALS.md": sea_trials_parts,
         "SOUNDINGS.md": soundings_parts,
         "QUESTIONNAIRES": questionnaire_parts,
         "TYPED_SPEC": typed_spec_parts,
@@ -1421,6 +1438,41 @@ def _integrity_check(
                 f"{block.block_id}: {assertions} Programmatic Acceptance assertion(s) across "
                 "its implemented spec(s), which declare a programmatic surface; author several "
                 "concrete Python assertions (test-driven acceptance) or justify `- None.` inline"
+            )
+
+    sea_path = blueprint_dir.parent / "SEA_TRIALS.md"
+    sea_text = sea_path.read_text(encoding="utf-8") if sea_path.is_file() else ""
+    if re.search(r"^##\s+st-", sea_text, re.MULTILINE):
+        sea_document = parse_sea_trials_text(sea_text)
+        known = {trial.criterion_id for trial in sea_document.trials}
+        covered: set[str] = set()
+        for block in plan.blocks:
+            raw_accepts = block.fields.get("accepts", ())
+            refs = raw_accepts if isinstance(raw_accepts, tuple) else (raw_accepts,)
+            for ref in refs:
+                if ref not in known:
+                    fatal.append(f"{block.block_id}: accepts unknown Sea Trial {ref!r}")
+                else:
+                    covered.add(ref)
+        for name, text in emitted_files.items():
+            if not name.endswith(".md"):
+                continue
+            for match in re.finditer(r"^Sea Trials:\s*(.+?)\s*$", text, re.M | re.I):
+                for ref in (part.strip().lower() for part in match.group(1).split(",")):
+                    if ref not in known:
+                        fatal.append(f"{name}: proof references unknown Sea Trial {ref!r}")
+                    else:
+                        covered.add(ref)
+        missing = sorted(
+            trial.criterion_id
+            for trial in sea_document.trials
+            if trial.required
+            and trial.trial_type in {"technical", "behavioral"}
+            and trial.criterion_id not in covered
+        )
+        if missing:
+            fatal.append(
+                "required Sea Trials lack implementation/proof coverage: " + ", ".join(missing)
             )
 
     # Reject an over-decomposed plan.

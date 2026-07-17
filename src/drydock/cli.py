@@ -1378,6 +1378,34 @@ def _reviewable_build_steps(target_dir: Path) -> list[tuple[str, str]]:
     ]
 
 
+def cmd_build_score(args: argparse.Namespace) -> int:
+    from drydock.build_score import score_target
+    from drydock.config import (
+        get_llm_provider,
+        get_model,
+        get_workspace,
+        require_target_dir,
+    )
+
+    target_dir = require_target_dir(args.Target)
+    result = score_target(
+        args.Target,
+        target_dir,
+        model=get_model(getattr(args, "model", None)),
+        llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        log_dir=get_workspace() / "logs",
+        on_text=_stream_stdout,
+    )
+    print()
+    print(f"Build score: {result.score}/100")
+    print(f"Completion gate: {'COMPLETE' if result.complete else 'INCOMPLETE'}")
+    print(f"Scorecard: {result.scorecard_path}")
+    print(f"Evidence: {result.evidence_path}")
+    for blocker in result.blockers:
+        print(f"  BLOCKER: {blocker}")
+    return result.exit_code()
+
+
 _BUILD_STATE_MARK = {
     "closed/verified": "[done]",
     "implemented": "[review]",
@@ -1388,6 +1416,7 @@ _BUILD_STATE_MARK = {
 
 def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_plan import load_target_plan
+    from drydock.build_score import score_evidence_state
     from drydock.build_status import build_status
     from drydock.config import get_target_directory, require_target_dir
 
@@ -1433,6 +1462,9 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         f"({report.percent_complete()}% complete)"
     )
     print("Buildable now: " + (", ".join(report.buildable_ids) or "(none)"))
+    score_state = score_evidence_state(target, target_path)
+    detail = f" ({'; '.join(score_state.reasons)})" if score_state.reasons else ""
+    print(f"Build score evidence: {score_state.state}{detail}")
     return 0
 
 
@@ -1994,8 +2026,18 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             record_activity("build verify", tokens[1], tokens[1])
         return rc
     elif first == "score":
-        not_implemented("build score")
-        raise AssertionError("unreachable")
+        if len(tokens) != 2:
+            raise UsageError("Usage: drydock build score <Target>")
+        score_args = argparse.Namespace(
+            Target=tokens[1],
+            model=getattr(args, "model", None),
+            llm_provider=getattr(args, "llm_provider", None),
+        )
+        rc = cmd_build_score(score_args)
+        from drydock.config import record_activity
+
+        record_activity("build score", tokens[1], tokens[1])
+        return rc
     else:
         build_args = _parse_build_args(tokens)
         rc = cmd_build(build_args)

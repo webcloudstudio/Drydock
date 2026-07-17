@@ -1146,6 +1146,30 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.sea_trials_path == target_dir / "SEA_TRIALS.md"
 
+    def test_sea_trial_questions_are_projected_to_quarterdeck(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        structured = """# Sea Trials: MyTarget
+
+## st-speed: Faster workflow
+Type: outcome
+Required: yes
+Criterion: The representative workflow is faster than its baseline.
+Verification: measurement
+
+QUESTIONS:
+- q-speed-workload: Which representative workload defines the measurement?
+"""
+        output = _VALID_LLM_OUTPUT.replace(_SEA_TRIALS_CONTENT, structured)
+
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+
+        questionnaire = json.loads(
+            (target_dir / "QuarterDeck/questionnaires/discovery-sea-trials.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert questionnaire["questions"][0]["id"] == "q-speed-workload"
+
     def test_soundings_at_target_root(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())

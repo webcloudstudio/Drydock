@@ -25,7 +25,7 @@ SCOPES = ("blueprint", "target", "both")
 _HEADER_RE = re.compile(r"^##\s+(feature|story|spike|ac)\s+(\d+):\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$")
 _PLAN_HEADER_RE = re.compile(r"^#\s+MANIFEST:\s*(.+?)\s*$")
-_LIST_FIELDS = {"depends", "implements", "context", "stack", "rules"}
+_LIST_FIELDS = {"depends", "implements", "context", "stack", "rules", "accepts"}
 # Compact single-line ac form: "## ac N: Summary (smoke|assertion: check)".
 # The check is greedy to the final ')' so embedded parens (e.g. json.load(x)) survive.
 _COMPACT_AC_RE = re.compile(

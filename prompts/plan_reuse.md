@@ -5,11 +5,15 @@ version: 20260714 V3
 intent: Act as an Agile Development Team reviewing an existing Drydock Blueprint. Reuse the current typed spec files as authoritative where they already define the product correctly. Emit MANIFEST.md and only those Blueprint files that are truly missing and required to make the Blueprint buildable.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: MANIFEST.md and any missing required Blueprint specification files
 ---
 
 # Agent for: manifest-first planning from an existing Blueprint
+
+Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
+story's `accepts:` field and, where an existing assertion proves it, a `Sea Trials:` proof line.
+Never invent or rename Sea Trial IDs.
 
 You are planning from an already-populated Drydock Blueprint.
 

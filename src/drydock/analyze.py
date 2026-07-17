@@ -52,6 +52,7 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
+from drydock.sea_trials import parse_sea_trials_text, project_questions
 from drydock.standard_artifacts import Sounding, render_soundings
 
 PROMPT_NAME = "analyze"
@@ -491,6 +492,17 @@ def _assemble_prompt_assembly(
             )
         return parts_list
 
+    def sea_trials_parts() -> list:
+        path_obj = blueprint_dir.parent / "SEA_TRIALS.md"
+        if not path_obj.is_file():
+            return []
+        return _managed_doc_parts(
+            filename="SEA_TRIALS.md",
+            content=path_obj.read_text(encoding="utf-8"),
+            content_role="prior project acceptance contract; preserve stable IDs",
+            path=path_obj,
+        )
+
     def typed_spec_parts() -> list:
         parts_list = []
         catalog = _rigging_catalog_names()
@@ -533,6 +545,7 @@ def _assemble_prompt_assembly(
         "COMPASS.md": compass_parts,
         "ANALYZE_COMPASS.md": feedback_parts,
         "BLOCKERS.md": blocker_parts,
+        "SEA_TRIALS.md": sea_trials_parts,
         "EXISTING_SPIKES": discovery_parts,
         "TYPED_SPEC": typed_spec_parts,
     }
@@ -968,6 +981,13 @@ def analyze(
         data = _normalize_discovery(name, data)
         discovery_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         discovery_paths.append(discovery_path)
+
+    sea_questions_path = project_questions(
+        parse_sea_trials_text(sea_trials_text),
+        questionnaires_dir / "discovery-sea-trials.json",
+    )
+    if sea_questions_path is not None:
+        discovery_paths.append(sea_questions_path)
 
     # The stack questionnaire always exists after analyze — its content is deterministic
     # (the full Rigging catalog), so it never depends on the LLM choosing to emit it.

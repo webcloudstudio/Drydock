@@ -13,7 +13,7 @@ Drydock gives specification-driven development the part it skipped: a repeatable
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-[Install](#install) · [60-Second Example](#60-second-example) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/) 
+[Install](#install) · [60-Second Example](#60-second-example) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
 [Overview Deck](https://webcloudstudio.com/drydock/) · [White Paper](https://zenodo.org/records/21287574) · [10 Minute Overview](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4) · [User Installation Guide](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.html)
 
 </div>
@@ -239,9 +239,8 @@ the `0.x` series:
 - Deterministic Markdown publishing to HTML and optional PDF.
 - Survey and prompt-review tooling used to evaluate Drydock's own command quality.
 
-One command surface remains visible but deferred in the current CLI:
-
-- `drydock build score <Target>`
+`drydock build score <Target>` verifies the built application against technical quality metrics
+and structured project acceptance criteria, then writes the aggregate completion gate evidence.
 
 The installed wheel includes Drydock's canonical product specification as a
 read-only package resource at `drydock/resources/docs/Drydock_Specification.md`.

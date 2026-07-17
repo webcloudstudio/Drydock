@@ -31,6 +31,7 @@ class ProgrammaticAcceptance:
     source: str
     intent: str
     code: str
+    sea_trials: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,12 +72,19 @@ def _intent(prefix: str, title: str | None) -> str:
     lines = []
     for raw in prefix.splitlines():
         line = raw.strip()
-        if not line or line.startswith("###"):
+        if not line or line.startswith("###") or re.match(r"Sea Trials:", line, re.I):
             continue
         lines.append(line)
     if lines:
         return " ".join(lines)
     return title or "Programmatic acceptance assertion"
+
+
+def _sea_trials(prefix: str) -> tuple[str, ...]:
+    match = re.search(r"^Sea Trials:\s*(.+?)\s*$", prefix, re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return ()
+    return tuple(value.lower() for raw in match.group(1).split(",") if (value := raw.strip()))
 
 
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:
@@ -98,6 +106,7 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
                 source=path.name,
                 intent=_intent(prefix, title),
                 code=match.group("code").strip(),
+                sea_trials=_sea_trials(prefix),
             )
         )
         previous_end = match.end()

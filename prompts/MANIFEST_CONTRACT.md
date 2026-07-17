@@ -79,6 +79,7 @@ id:           foundation
 parent:       feature-catalog
 summary:      One-line description.
 implements:   FEATURE-CATALOG.md
+accepts:      st-001, st-002
 context:      ARCHITECTURE.md, DATABASE.md
 stack:        common.md, python.md, sqlite.md
 rules:        CLAUDE_RULES.md
@@ -228,6 +229,12 @@ and blocks dependent work. `User Acceptance` entries are Commander review signal
 ordinary downstream build unless modeled as explicit dependencies.
 
 ---
+
+## Sea Trials Traceability
+
+`accepts:` lists stable project-acceptance IDs from `SEA_TRIALS.md` that the story implements.
+Every required technical or behavioral Sea Trial is referenced by at least one story or by a
+Blueprint Programmatic Acceptance proof. Unknown IDs are invalid.
 
 ## Plan State Writer
 

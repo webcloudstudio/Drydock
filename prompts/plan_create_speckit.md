@@ -5,11 +5,15 @@ version: 20260714 V2
 intent: Act as an Agile Development Team translating a Spec Kit project into a Drydock Blueprint per the Spec Kit Import Contract mapping table, then emit the executable Manifest and a conversion report documenting mapped, duplicated, ambiguous, and ignored content.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: Blueprint specification files, MANIFEST.md, CONVERSION_REPORT.md
 ---
 
 # Agent for: Spec Kit translation planning
+
+Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
+story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Trials:` line.
+Never invent or rename Sea Trial IDs.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 
