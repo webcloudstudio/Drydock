@@ -49,6 +49,7 @@ Drydock is a governed Blueprint-driven software delivery system built around the
 **Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns imported source material into Blueprints and writes a **Manifest** that tracks dependency-aware build order, runnable work, and incremental rebuild scope.
 
 Drydock builds with the product specification, the applicable Rigging, and the current plan. It groups related work to keep builds context-aware and reviewable.
+Drydock build also applies dependency legitimacy guardrails before accepting generated Python dependency changes.
 
 Rigging provides governed business rules, stack guidance, branding, and compact derivatives that keep downstream builds focused on how to use a capability instead of reloading full authoring context every time.
 
@@ -439,6 +440,10 @@ Passing programmatic acceptance unlocks the next set of dependent operations.
 Build executes the work blocks in `MANIFEST.md` based on their dependency graph. `BUILD_COMPASS.md`
 is the story-planning input that defines the authored grouping and build order.
 
+Build also validates changed Python dependency manifests as part of build acceptance. Registry-backed
+dependency names must resolve legitimately before a build block is accepted; suspicious dependency
+names stop the block and surface a reviewable failure.
+
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
@@ -479,6 +484,7 @@ flowchart LR
 `--dry-run` previews the next build step without invoking the LLM or writing files. `--show-prompt` prints the full assembled prompt only when combined with `--dry-run`.
 
 Before executing work, `drydock build` checks previously applied Blueprint files for drift. If a governing specification changed, build stops and directs the Commander to run `drydock refit`. Foundational specifications such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require an explicit change ticket.
+Before acceptance closes a build block, `drydock build` also validates newly introduced or changed registry-backed Python dependency names. Dependency legitimacy failures are written through the normal build evidence and failure path.
 
 ### Agile Build Review with drydock run quarterdeck
 
@@ -1122,6 +1128,8 @@ not silently discard ambiguous or conflicting source content.
 
 The following explains the current implementation of drydock security.  The surface most exposed is the llm
 parsing and below is how drydock currently implements for claude and codex.
+
+Drydock also applies a dependency legitimacy guardrail during build to reduce hallucinated or suspicious package-name supply-chain exposure.
 
 For stronger encapsulation, wrapping this command in bwrap (bubblewrap) confines the build's filesystem to the config home and working directory — recommended as an added safety layer but out of scope for the current implementation.  A pipeline sandbox should limit read/write to the two main directories in scope for this work - namely DRYDOCK_BUILD_DIRECTORY and DRYDOCK_WORKSPACE.
 
