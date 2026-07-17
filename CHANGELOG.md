@@ -55,7 +55,6 @@ command surface and Typed Specification contract are unstable and may change bet
 
 - This is an alpha release. Command contracts and Typed Specification contracts may change during
   the `0.x` series.
-- `drydock build score <Target>` is visible in the command surface but remains deferred.
 - LLM-assisted commands require an authenticated local `claude` or `codex` CLI.
 
 ## [0.1.0] — Unreleased
