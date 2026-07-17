@@ -86,7 +86,7 @@ flowchart LR
 | QuarterDeck | The web review console between the Commander and the LLM process. |
 | Compass | Persistent project guidance used by Drydock commands. |
 | Rigging | Shared branding, stack rules, templates, and compact context derivatives. |
-| Soundings | The acceptance checklist and implementation evidence ledger. |
+| Soundings | The per-story acceptance-criterion verification board; Sea Trials is the project-level gate. |
 | Sea Trials | Product-level objectives and proof-of-delivery criteria. |
 | Refit | Change process that maps updates into the manifest. |
 
@@ -306,12 +306,12 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 | `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existence implies blockers.  Edit to resolve them. |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
 | `SEA_TRIALS.md` | Target root | Project-level acceptance criteria and release objectives |
-| `SOUNDINGS.md` | Target root | Acceptance tests and milestones  |
+| `SOUNDINGS.md` | Target root | Per-criterion verification board: ID, Summary, Verified, Evidence, Verified At |
 | `COMPASS.md` | Target root | Created if absent. Review it if one was automatically created. |
 | `questionnaires/*.json` | `QuarterDeck/` | Review questionnaires for unresolved decisions and genuine research spikes |
 | `commanders_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
-The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commander edits it and reruns `drydock analyze` until the blockers are cleared. `SEA_TRIALS.md` captures release-level success criteria. `SOUNDINGS.md` captures acceptance coverage and implementation milestones.
+The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commander edits it and reruns `drydock analyze` until the blockers are cleared. `SEA_TRIALS.md` captures release-level success criteria. `SOUNDINGS.md` is the per-story acceptance-criterion verification board; `drydock score ac` sets its Verified column and `drydock plan`/`drydock analyze` preserve it per ID.
 
 | Quality | Meaning |
 |---|---|
@@ -360,7 +360,7 @@ The QuarterDeck calls out blockers and action items and gives the Commander a si
 | `ARCHITECTURE.md`,<br> `DATABASE.md`,<br> `FEATURE-{Name}.md`,<br> `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files |
 | `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input for `drydock build` |
 | `MANIFEST.md` | Target root | The executable build plan |
-| `SOUNDINGS.md` | Target root | Acceptance gates projected by stable ID |
+| `SOUNDINGS.md` | Target root | Acceptance criteria projected by stable ID, verified status preserved |
 
 **Replan behavior**
 
@@ -497,25 +497,35 @@ drydock score release <Target>
 
 **Behavior description**
 
-`drydock score ac <Target>` verifies the Target's acceptance criteria from `SOUNDINGS.md`.
+`drydock score` verifies acceptance deterministically, with no LLM call and no network. It is the
+trust-but-verify complement to the model-assisted `drydock build score`: the Commander scans
+checkmarks instead of granting approvals.
 
-`drydock score release <Target>` evaluates overall release approval against `SEA_TRIALS.md` and
-the Target's current acceptance state.
+`drydock score ac` runs each acceptance criterion's Programmatic Acceptance, applies proof-integrity
+analysis, and records a `✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` verdict per criterion in
+`SOUNDINGS.md` with a timestamp. A criterion whose proof is vacuous — an empty body, a constant
+assertion, or a self-comparison — is demoted to `UNVERIFIED` rather than trusted.
+
+`drydock score release` re-runs the deterministic subset of the completion gate: Programmatic
+Acceptance with integrity, measurements, guardrails, Manifest completion, and a clean build
+worktree. Model- and human-judged criteria defer to `drydock build score`; a guardrail that cannot
+be verified deterministically fails the gate. The same inputs yield the same exit code in every
+environment, so any CI system gates on it directly.
 
 **Input files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `SOUNDINGS.md` | Target root | Acceptance criteria and implementation state |
-| `SEA_TRIALS.md` | Target root | Release-level acceptance criteria |
-| `MANIFEST.md` | Target root | Current build and acceptance state |
+| `MANIFEST.md` | Target root | Acceptance-criterion blocks and their parent stories |
+| `SEA_TRIALS.md` | Target root | Project criteria, measurement contracts, and guardrails |
+| `blueprint/*.md` | Target Blueprint | Programmatic Acceptance proofs |
+| Built application | Configured build directory | Git identity and executable proof subject |
 
 **Output files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `SCORECARD.md` | Target root | Human-readable acceptance and release scoring results |
-| `build-score.json` | `evidence/` | Reproducible scoring evidence and verdict data |
+| `SOUNDINGS.md` | Target root | Per-criterion verified status, evidence, and timestamp (`score ac`) |
 
 **Exit codes**
 
