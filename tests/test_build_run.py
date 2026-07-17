@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from drydock.build_plan import parse_build_plan
 from drydock.build_run import build_target
+from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError
 
 
@@ -167,6 +169,16 @@ def _setup(tmp_path, manifest=_TWO_STORIES):
 def _state(target_dir, block_id):
     plan = parse_build_plan(target_dir / "MANIFEST.md")
     return plan.by_id()[block_id].state
+
+
+class FakeRegistryClient:
+    def __init__(self, packages: dict[tuple[str, str], RegistryPackageInfo]):
+        self.packages = packages
+        self.calls: list[tuple[str, str]] = []
+
+    def lookup_package(self, normalized_name: str, registry_url: str) -> RegistryPackageInfo:
+        self.calls.append((normalized_name, registry_url))
+        return self.packages[(normalized_name, registry_url)]
 
 
 def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
@@ -1001,6 +1013,120 @@ def test_execution_failure_traps_stderr_into_finding(tmp_path):
     assert finding is not None
     assert finding.startswith("LLM execution failed")
     assert "provider crashed" in finding
+
+
+def test_dependency_legitimacy_gate_blocks_missing_package_before_acceptance(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    build_dir.mkdir(parents=True)
+    checks_seen: list[tuple[str, ...]] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        pyproject = Path(working_directory) / "pyproject.toml"
+        pyproject.write_text(
+            """
+[project]
+dependencies = ["missing-package>=1.0"]
+""",
+            encoding="utf-8",
+        )
+        return FakeResult(
+            text=_success_report(changed=("foundation.txt", "pyproject.toml"), summary="Built it.")
+        )
+
+    client = FakeRegistryClient({
+        ("missing-package", "https://pypi.org/simple"): RegistryPackageInfo(
+            exists=False,
+            registry_url="https://pypi.org/simple",
+        )
+    })
+
+    import drydock.build_run as br
+
+    def fake_acceptance(checks, **kwargs):
+        checks_seen.append(tuple(check.check_id for check in checks))
+        return ()
+
+    original_today = br.date
+
+    class FixedDate(original_today):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 17)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(br, "date", FixedDate)
+    monkeypatch.setattr(br, "run_programmatic_acceptance", fake_acceptance)
+    try:
+        result = build_target(
+            "Demo",
+            target_dir,
+            build_dir=build_dir,
+            runner=runner,
+            dependency_registry_client=client,
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "dependency legitimacy gate failed: 1 issue(s)"
+    assert checks_seen == []
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert _finding(target_dir, "foundation") == "dependency legitimacy gate failed: 1 issue(s)"
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "Blocked packages:" in evidence
+    assert "missing-package [missing]" in evidence
+
+
+def test_dependency_legitimacy_gate_blocks_new_package_and_skips_applied_updates(
+    tmp_path, monkeypatch
+):
+    import drydock.build_run as br
+
+    target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
+    (target_dir / "blueprint" / "common.md").write_text("stack content\n", encoding="utf-8")
+    monkeypatch.setattr(br, "_git_head", lambda p: "commitabc")
+    monkeypatch.setattr(br, "_is_dirty", lambda p: False)
+
+    def runner(prompt, working_directory, **kwargs):
+        path = Path(working_directory) / "requirements.txt"
+        path.write_text("fresh-package==1.0\n", encoding="utf-8")
+        return FakeResult(
+            text=_success_report(
+                changed=("foundation.txt", "requirements.txt"), summary="Built it."
+            )
+        )
+
+    client = FakeRegistryClient({
+        ("fresh-package", "https://pypi.org/simple"): RegistryPackageInfo(
+            exists=True,
+            registry_url="https://pypi.org/simple",
+            first_published_at=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+    })
+
+    class FixedDate(br.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 17)
+
+    monkeypatch.setattr(br, "date", FixedDate)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        dependency_registry_client=client,
+    )
+
+    assert result.steps[0].status == "failed"
+    assert "dependency legitimacy gate failed" in (result.steps[0].error or "")
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    assert "common.md" not in plan.applied_registry
+    assert "DATABASE.md" not in plan.applied_specs
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "fresh-package [newly-published]" in evidence
+    assert "first_published=2026-07-01" in evidence
 
 
 class TestClassifyFailure:

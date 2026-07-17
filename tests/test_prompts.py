@@ -128,3 +128,11 @@ class TestInputTokens:
         assert "implemented by exactly one story." in body
         assert "Build shared providers before their consumers" in body
         assert "topologically consistent" in body
+
+    def test_build_prompt_requires_dependency_verification_before_install(self):
+        body = load_prompt("build").body
+
+        assert "verify each package name" in body
+        assert "fail explicitly" in body
+        assert "instead of installing it" in body
+        assert "`uv`" in body

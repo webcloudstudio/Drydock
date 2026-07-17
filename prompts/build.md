@@ -44,13 +44,20 @@ Operating contract:
 7. The `implements` section is authoritative and intentionally stacked late in
    the prompt as the recency anchor. Build that WHAT exactly; do not substitute
    generic framework defaults.
-8. Do not claim success unless you actually created or modified project files in
+8. Before adding or installing Python dependencies, verify each package name
+   against the declared registry. Do not invent package names. If a needed
+   package cannot be verified or appears newly published, fail explicitly
+   instead of installing it.
+9. Use the stack's required package manager workflow for dependency changes.
+   When the stack requires `uv`, update manifests through `uv` conventions
+   rather than bare `pip install`.
+10. Do not claim success unless you actually created or modified project files in
    the build working directory. If you cannot write files or cannot complete the
    step, report failure explicitly.
-9. Do not run `git add`, `git commit`, create branches, create tags, rewrite
+11. Do not run `git add`, `git commit`, create branches, create tags, rewrite
    history, or otherwise mutate Git history. Drydock owns the final build
    directory commit after you return.
-10. End your response with this exact closing structure:
+12. End your response with this exact closing structure:
 
 ```text
 RESULT: SUCCESS | FAILED
@@ -65,9 +72,9 @@ BLOCKERS:
 - <only if any>
 ```
 
-11. `FILES CHANGED` must list only files actually written in the build working
+13. `FILES CHANGED` must list only files actually written in the build working
    directory. If no files were written, use `RESULT: FAILED`.
-12. On `RESULT: FAILED`, append two additional lines so the failure is actionable
+14. On `RESULT: FAILED`, append two additional lines so the failure is actionable
    without opening logs. `FAILURE_SUMMARY` is one line naming the cause;
    `FAILURE_DETAIL` states what happened, why, and what to change before a rerun.
    Name concrete conditions when they apply: token or context limit exceeded,

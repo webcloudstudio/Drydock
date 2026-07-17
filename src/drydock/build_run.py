@@ -53,6 +53,11 @@ from drydock.build_plan import (
     stale_applied_specs,
 )
 from drydock.config import blueprint_dir_for, build_dir_for
+from drydock.dependency_gate import (
+    DependencyGateResult,
+    RegistryClient,
+    check_python_dependency_manifests,
+)
 from drydock.errors import SpecificationError
 from drydock.llm import render_rate_limit_error_block, run_prompt
 from drydock.manifest_edit import set_block_fields
@@ -782,6 +787,27 @@ def _build_outcome(
     return "closed/failed", "failed", category, detail
 
 
+def _dependency_gate_failure(result: DependencyGateResult) -> tuple[str, str]:
+    summary = f"dependency legitimacy gate failed: {len(result.issues)} issue(s)"
+    lines = [
+        "Changed Python dependency manifests introduced unverified package names.",
+        "Blocked packages:",
+    ]
+    for issue in result.issues:
+        detail = (
+            f"- {issue.package_name} [{issue.verdict}] in {issue.source_file}; "
+            f"registry={issue.registry_url}"
+        )
+        if issue.first_published_at is not None and issue.age_days is not None:
+            detail += (
+                f"; first_published={issue.first_published_at.date().isoformat()}; "
+                f"age_days={issue.age_days}"
+            )
+        detail += f"; detail={issue.detail}"
+        lines.append(detail)
+    return summary, "\n".join(lines)
+
+
 def _clip(text: str, limit: int = 240) -> str:
     """Collapse whitespace to a single line and truncate to ``limit`` characters."""
     collapsed = " ".join(text.split())
@@ -803,6 +829,8 @@ def _failure_finding(
     if status != "failed":
         return None
     reason = error or "build failed"
+    if reason.startswith("dependency legitimacy gate failed:"):
+        return _clip(reason)
     detail = ""
     failed = [check for check in acceptance if not check.passed]
     if failed:
@@ -1071,6 +1099,7 @@ def build_target(
     force: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
+    dependency_registry_client: RegistryClient | None = None,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
@@ -1302,39 +1331,60 @@ def build_target(
             _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         if status != "failed":
-            checks = tuple(
-                check
-                for block in unit.steps
-                for check in programmatic_acceptance_for_step(block, blueprint_dir)
-            )
-            if checks:
-                _emit(on_text, "")
-                _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
-            acceptance = run_programmatic_acceptance(
-                checks,
-                build_dir=resolved_build_dir,
-                target_dir=target_dir,
-                blueprint_dir=blueprint_dir,
-            )
-            failed_checks = tuple(check for check in acceptance if not check.passed)
-            if failed_checks:
-                state, status = "closed/failed", "failed"
-                error = "programmatic acceptance failed: " + ", ".join(
-                    check.check_id for check in failed_checks
+            try:
+                dependency_gate = check_python_dependency_manifests(
+                    resolved_build_dir,
+                    changed_files,
+                    client=dependency_registry_client,
+                    today=date.today(),
                 )
-                # Per-check errors are already rendered in the evidence acceptance section.
-                failure_detail = ""
+            except Exception as exc:
+                state, status = "closed/failed", "failed"
+                error = "dependency legitimacy gate failed: registry lookup error"
+                failure_detail = str(exc)
             else:
-                state, status, error = "closed/verified", "built", None
-                failure_detail = ""
-            if checks:
-                passed = sum(1 for check in acceptance if check.passed)
-                _emit(on_text, f"  {passed}/{len(checks)} Unit Tests passed")
-                if failed_checks:
+                if dependency_gate.blocked:
+                    state, status = "closed/failed", "failed"
+                    error, failure_detail = _dependency_gate_failure(dependency_gate)
                     _emit(
                         on_text,
-                        "  FAILED: " + ", ".join(check.check_id for check in failed_checks),
+                        f"DEPENDENCY GATE FAILED: {unit.name} [{unit.block_id}]  "
+                        f"{len(dependency_gate.issues)} issue(s)",
                     )
+                else:
+                    checks = tuple(
+                        check
+                        for block in unit.steps
+                        for check in programmatic_acceptance_for_step(block, blueprint_dir)
+                    )
+                    if checks:
+                        _emit(on_text, "")
+                        _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
+                    acceptance = run_programmatic_acceptance(
+                        checks,
+                        build_dir=resolved_build_dir,
+                        target_dir=target_dir,
+                        blueprint_dir=blueprint_dir,
+                    )
+                    failed_checks = tuple(check for check in acceptance if not check.passed)
+                    if failed_checks:
+                        state, status = "closed/failed", "failed"
+                        error = "programmatic acceptance failed: " + ", ".join(
+                            check.check_id for check in failed_checks
+                        )
+                        # Per-check errors are already rendered in the evidence acceptance section.
+                        failure_detail = ""
+                    else:
+                        state, status, error = "closed/verified", "built", None
+                        failure_detail = ""
+                    if checks:
+                        passed = sum(1 for check in acceptance if check.passed)
+                        _emit(on_text, f"  {passed}/{len(checks)} Unit Tests passed")
+                        if failed_checks:
+                            _emit(
+                                on_text,
+                                "  FAILED: " + ", ".join(check.check_id for check in failed_checks),
+                            )
 
         evidence_path = evidence_dir / f"{unit.block_id}.md"
         _write_group_evidence(
