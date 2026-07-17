@@ -19,6 +19,7 @@ from drydock.llm import run_prompt
 from drydock.metadata import get_build_dir
 from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
+from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import (
     ASSERTION_TYPES,
     DETERMINISTIC_VERIFICATION,
@@ -39,17 +40,23 @@ VALID_VERDICTS = frozenset({"PASS", "FAIL", "INCONCLUSIVE"})
 MEASUREMENT_TIMEOUT = 60
 
 
-def _coverage_penalty(value: int, trials: tuple[SeaTrial, ...]) -> int:
+def _coverage_penalty(
+    value: int, trials: tuple[SeaTrial, ...], deterministic_ids: frozenset[str]
+) -> int:
     """Discount acceptance coverage by the share of required assertions judged only by the model.
 
     A required technical, behavioral, or guardrail criterion is expected to be provable, so a
     contract resting on model opinion cannot score as one resting on proof or measurement.
     Qualitative and outcome criteria are exempt: judgment is their only honest method.
+
+    ``deterministic_ids`` names the criteria that carry genuine deterministic backing — a
+    passing measurement contract or a proof that survives integrity analysis. A criterion whose
+    only proof is vacuous is not in the set, so it is scored as if judged by the model.
     """
     graded = [trial for trial in trials if trial.required and trial.trial_type in ASSERTION_TYPES]
     if not graded:
         return value
-    deterministic = sum(1 for trial in graded if trial.verification in DETERMINISTIC_VERIFICATION)
+    deterministic = sum(1 for trial in graded if trial.criterion_id in deterministic_ids)
     return round(value * (0.5 + 0.5 * deterministic / len(graded)))
 
 
@@ -398,9 +405,29 @@ def score_target(
     acceptance = run_programmatic_acceptance(
         checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
     )
+    proof_integrity = tuple(analyze_proof(check.code) for check in checks)
     failed_acceptance = [check.check_id for check in acceptance if not check.passed]
     if failed_acceptance:
         blockers.append("Programmatic acceptance failed: " + ", ".join(failed_acceptance))
+    vacuous_proofs = [
+        check.check_id for check, integ in zip(checks, proof_integrity, strict=True) if not integ.ok
+    ]
+    if vacuous_proofs:
+        blockers.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
+    # A criterion carries deterministic backing only when a measurement contract or an
+    # integrity-valid proof stands behind it; a vacuous proof is scored as model judgment.
+    proof_backed = {
+        criterion
+        for check, integ in zip(checks, proof_integrity, strict=True)
+        if integ.ok
+        for criterion in check.sea_trials
+    }
+    deterministic_ids = frozenset(
+        trial.criterion_id
+        for trial in document.trials
+        if trial.verification in DETERMINISTIC_VERIFICATION
+        and (trial.verification != "proof" or trial.criterion_id in proof_backed)
+    )
 
     known_trial_ids = {trial.criterion_id for trial in document.trials}
     manifest_refs = {
@@ -485,7 +512,7 @@ def score_target(
             raise SpecificationError(f"build score dimension {name} must be an integer 0..100")
         dimensions[name] = value
     dimensions["acceptance_criteria_coverage"] = _coverage_penalty(
-        dimensions["acceptance_criteria_coverage"], document.trials
+        dimensions["acceptance_criteria_coverage"], document.trials, deterministic_ids
     )
 
     trial_by_id = {trial.criterion_id: trial for trial in document.trials}
@@ -518,19 +545,25 @@ def score_target(
             verdict = measured.status if measured.status in VALID_VERDICTS else "INCONCLUSIVE"
             evidence = tuple(filter(None, (measured.source, measured.detail)))
         if trial.verification == "proof":
-            proof_results = [
-                result
-                for check, result in zip(checks, acceptance, strict=True)
+            referencing = [
+                (result, integ)
+                for check, result, integ in zip(checks, acceptance, proof_integrity, strict=True)
                 if criterion_id in check.sea_trials
             ]
-            if not proof_results:
+            valid = [result for result, integ in referencing if integ.ok]
+            if not referencing:
                 verdict = "INCONCLUSIVE"
                 evidence = ("no code-bound proof references this criterion",)
+            elif not valid:
+                # Every referencing proof is vacuous: treat the criterion as unproven.
+                reasons = "; ".join(reason for _, integ in referencing for reason in integ.reasons)
+                verdict = "INCONCLUSIVE"
+                evidence = (f"proof failed integrity: {reasons or 'no effective failure path'}",)
             else:
-                verdict = "PASS" if all(item.passed for item in proof_results) else "FAIL"
+                verdict = "PASS" if all(item.passed for item in valid) else "FAIL"
                 evidence = tuple(
                     f"{item.source}:{item.check_id}={'PASS' if item.passed else 'FAIL'}"
-                    for item in proof_results
+                    for item in valid
                 )
         if trial.verification == "evidence" and "error" in evidence_by_id.get(criterion_id, {}):
             verdict = "INCONCLUSIVE"

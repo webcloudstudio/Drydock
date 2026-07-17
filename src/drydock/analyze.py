@@ -745,14 +745,10 @@ def _soundings_from_analysis(analysis_text: str) -> str:
                 break
             row = _split_markdown_row(row_line) if "|" in row_line else []
             if len(row) >= 3 and row[0] and row[2]:
-                rows.append(Sounding(row[0], row[2], "NOT STARTED", ""))
+                rows.append(Sounding(row[0], row[2]))
             cursor += 1
     if not rows:
-        rows.append(
-            Sounding(
-                "analysis-acceptance", "Acceptance criteria are identified.", "NOT STARTED", ""
-            )
-        )
+        rows.append(Sounding("analysis-acceptance", "Acceptance criteria are identified."))
     return render_soundings(rows)
 
 

@@ -149,16 +149,66 @@ state: pending
     soundings = target / "SOUNDINGS.md"
     soundings.write_text(
         "# Soundings\n\n"
-        "| ID | Acceptance Criterion | State | Evidence |\n"
-        "|---|---|---|---|\n"
-        "| system-starts | Old wording | DONE | `evidence/start.txt` |\n",
+        "| ID | Summary | Verified | Evidence | Verified At |\n"
+        "|---|---|---|---|---|\n"
+        "| system-starts | Old wording | ✓ PASS | features.md:starts | 2026-07-17T10:00:00+00:00 |\n"
+        "| gone | Removed criterion | ✓ PASS | x | 2026-07-17T10:00:00+00:00 |\n",
         encoding="utf-8",
     )
 
     sync_plan_soundings(parse_build_plan(plan_path), target)
 
+    # Summary refreshes from the plan; verified status, evidence, and timestamp are preserved;
+    # the criterion no longer in the plan is dropped.
     assert load_soundings(soundings) == {
         "system-starts": Sounding(
-            "system-starts", "System starts", "NOT STARTED", "`evidence/start.txt`"
+            "system-starts",
+            "System starts",
+            "✓ PASS",
+            "features.md:starts",
+            "2026-07-17T10:00:00+00:00",
         )
     }
+
+
+def test_sync_plan_soundings_resets_dirty_and_adds_new_as_unverified(tmp_path):
+    from drydock.standard_artifacts import VERIFIED_UNVERIFIED
+
+    target = tmp_path / "Target"
+    target.mkdir()
+    plan_path = target / "MANIFEST.md"
+    plan_path.write_text(
+        """# MANIFEST: Example
+state: draft
+
+## story 1: Work
+id: work
+state: pending
+
+## ac 1: System starts
+id: system-starts
+parent: work
+state: pending
+
+## ac 2: New gate
+id: new-gate
+parent: work
+state: pending
+""",
+        encoding="utf-8",
+    )
+    soundings = target / "SOUNDINGS.md"
+    soundings.write_text(
+        "# Soundings\n\n"
+        "| ID | Summary | Verified | Evidence | Verified At |\n"
+        "|---|---|---|---|---|\n"
+        "| system-starts | System starts | ✓ PASS | e | 2026-07-17T10:00:00+00:00 |\n",
+        encoding="utf-8",
+    )
+
+    sync_plan_soundings(parse_build_plan(plan_path), target, reset_ids=frozenset({"system-starts"}))
+
+    rows = load_soundings(soundings)
+    # A dirtied criterion loses its stale checkmark; a brand-new criterion starts unverified.
+    assert rows["system-starts"] == Sounding("system-starts", "System starts", VERIFIED_UNVERIFIED)
+    assert rows["new-gate"] == Sounding("new-gate", "New gate", VERIFIED_UNVERIFIED)

@@ -63,7 +63,6 @@ class TestHelpAndVersion:
             "config",
             "init",
             "validate",
-            "prompt",
             "document",
             "publish",
             "rigging",
@@ -75,6 +74,23 @@ class TestHelpAndVersion:
             "run",
         ):
             assert cmd in out, f"Command {cmd!r} missing from --help"
+        assert "prompt" not in out
+        assert "survey" not in out
+
+    def test_help_lists_score_command(self):
+        _, out, _ = run_cli("--help")
+        assert "score" in out
+
+    def test_score_help_shows_ac_and_release(self):
+        rc, out, _ = run_cli("score", "--help")
+        assert rc == 0
+        assert "score ac" in out
+        assert "score release" in out
+
+    def test_score_bad_subverb_is_usage_error(self):
+        rc, _, err = run_cli("score", "bogus", "Demo")
+        assert rc == 2
+        assert "ac|release" in err
 
     def test_version_shows_version_and_copyright(self):
         rc, out, err = run_cli("--version")

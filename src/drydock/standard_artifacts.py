@@ -10,15 +10,22 @@ from pathlib import Path
 from drydock.build_plan import BuildPlan
 from drydock.prompt_headers import prompt_header_for_file, prompt_headers
 
-SOUNDINGS_HEADER = ("ID", "Acceptance Criterion", "State", "Evidence")
+SOUNDINGS_HEADER = ("ID", "Summary", "Verified", "Evidence", "Verified At")
+
+# Trust-but-verify vocabulary. ``score ac`` sets these from deterministic proof results so the
+# Commander can scan the board and see exactly which acceptance criteria are proven.
+VERIFIED_PASS = "✓ PASS"
+VERIFIED_FAIL = "✗ FAIL"
+VERIFIED_UNVERIFIED = "— UNVERIFIED"
 
 
 @dataclass(frozen=True)
 class Sounding:
     criterion_id: str
-    criterion: str
-    state: str
+    summary: str
+    verified: str = VERIFIED_UNVERIFIED
     evidence: str = ""
+    verified_at: str = ""
 
 
 def _escape_cell(value: str) -> str:
@@ -29,12 +36,17 @@ def render_soundings(rows: list[Sounding]) -> str:
     lines = [
         "# Soundings",
         "",
-        "| ID | Acceptance Criterion | State | Evidence |",
-        "|---|---|---|---|",
+        "Deterministic acceptance-criterion verification. `drydock score ac` sets the Verified",
+        "column from Programmatic Acceptance results; a rerun of `drydock plan`/`drydock analyze`",
+        "preserves it per ID.",
+        "",
+        "| ID | Summary | Verified | Evidence | Verified At |",
+        "|---|---|---|---|---|",
     ]
     lines.extend(
-        f"| {_escape_cell(row.criterion_id)} | {_escape_cell(row.criterion)} | "
-        f"{_escape_cell(row.state)} | {_escape_cell(row.evidence)} |"
+        f"| {_escape_cell(row.criterion_id)} | {_escape_cell(row.summary)} | "
+        f"{_escape_cell(row.verified)} | {_escape_cell(row.evidence)} | "
+        f"{_escape_cell(row.verified_at)} |"
         for row in rows
     )
     return "\n".join(lines) + "\n"
@@ -56,24 +68,23 @@ def load_soundings(path: Path) -> dict[str, Sounding]:
             if "|" not in row_line:
                 break
             cells = _split_row(row_line)
-            if len(cells) != 4 or not cells[0]:
+            if len(cells) != len(SOUNDINGS_HEADER) or not cells[0]:
                 continue
             rows[cells[0]] = Sounding(*cells)
         return rows
     return {}
 
 
-def _soundings_state(plan_state: str) -> str:
-    return {
-        "pending": "NOT STARTED",
-        "implemented": "IMPLEMENTED",
-        "closed/verified": "DONE",
-        "closed/failed": "IMPLEMENTED",
-    }[plan_state]
+def sync_plan_soundings(
+    plan: BuildPlan, target_dir: Path, *, reset_ids: frozenset[str] = frozenset()
+) -> Path:
+    """Reconcile Soundings rows to the plan's acceptance criteria, preserving verified status.
 
-
-def sync_plan_soundings(plan: BuildPlan, target_dir: Path) -> Path:
-    """Project plan acceptance gates into Soundings while preserving recorded evidence."""
+    ID-keyed and idempotent: verified status, evidence, and timestamp survive for every AC id
+    still present; rows for ids no longer in the plan are dropped; new ids arrive as
+    ``UNVERIFIED``. An id in ``reset_ids`` (its story's Blueprint changed since it was proven) is
+    forced back to ``UNVERIFIED`` so a stale checkmark never lingers.
+    """
     path = target_dir / "SOUNDINGS.md"
     existing = load_soundings(path)
     rows = []
@@ -81,9 +92,18 @@ def sync_plan_soundings(plan: BuildPlan, target_dir: Path) -> Path:
         if block.block_type != "ac":
             continue
         previous = existing.get(block.block_id)
-        state = _soundings_state(block.state)
-        evidence = previous.evidence if previous else ""
-        rows.append(Sounding(block.block_id, block.name, state, evidence))
+        if previous is None or block.block_id in reset_ids:
+            rows.append(Sounding(block.block_id, block.name))
+        else:
+            rows.append(
+                Sounding(
+                    block.block_id,
+                    block.name,
+                    previous.verified,
+                    previous.evidence,
+                    previous.verified_at,
+                )
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_soundings(rows), encoding="utf-8", newline="\n")
     return path

@@ -821,7 +821,7 @@ Quality: Ready
             f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
         ])
         _, _, soundings, _, _, _, _, _ = _parse_output(output)
-        assert "| STORY-001 | Start works | NOT STARTED |  |" in soundings
+        assert "| STORY-001 | Start works | — UNVERIFIED |  |  |" in soundings
 
     def test_no_spikes_is_tolerated(self):
         # Spikes are emitted dynamically; an analysis with nothing open is valid.

@@ -1,244 +1,239 @@
-<!-- Compacted from RulesEngine/CLAUDE_RULES.md on 2026-04-29 by prompts/compact_file.md — regenerate via bin/rulesengine_compact.sh -->
+<!-- Compacted from /mnt/c/Users/barlo/projects/Drydock/Rigging/CLAUDE_RULES.md sha256=ba39e2cbeed39f4be96e02bcca33bb450608641aeba4bd743e97cd1daa08b55e on 2026-07-16 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
-# Development Rules — Compact
+# DEFAULT DEVELOPMENT RULES — Contract Surface
 
 ## Git Workflow
 
-1. Commit immediately after completing a task with no errors.
-2. Commit messages: descriptive text, no "Claude"/"Anthropic"/"AI" mentions.
-3. DO NOT push — local commits only.
-4. NO co-authored-by lines.
+### Rule: commit-on-clean-completion
+Tasks must be committed locally immediately after completion when no errors remain.
+Constraints: Commit after completing a task with no errors; do not push; commit messages must not mention `Claude`, `Anthropic`, or `AI`; do not add `co-authored-by` lines.
 
-Web server changes: print "No restart needed — browser refresh is enough." (templates/CSS/static only) or "Restart required — `./bin/start.sh`." (Python/JS server files).
+### Rule: web-server-change-notice
+Web-server-related changes require a specific operator notice based on the file types changed.
+| Input | Required |
+|---|---|
+| change scope | Yes |
+
+Returns: Print `No restart needed — browser refresh is enough.` for templates/CSS/static-only changes, or `Restart required — ./bin/start.sh.` for Python/JS server-file changes.
 
 ## Project Layout
 
-```
-ProjectName/
-  METADATA.md       Identity (name, port, status, stack, etc.)
-  AGENTS.md         AI context: dev commands, endpoints, architecture
-  CLAUDE.md         Contains only: @AGENTS.md
-  .env.sample       Required env vars (committed)
-  .env              Actual env vars (never committed)
-  bin/              All executable scripts
-    common.sh       Shared functions — sourced by all bash scripts
-    common.py       Shared OperationContext — imported by Python scripts
-  docs/             Generated documentation
-  logs/             Log files (gitignored)
-  data/             Persistent data
-  tests/            Test suite
-  archive/          Superseded files — gitignored, never committed (optional)
-```
+### Rule: required-project-files
+Projects use a standard root layout with required identity, environment, executable, documentation, log, data, and test locations.
+| Input | Required |
+|---|---|
+| `METADATA.md` | Yes |
+| `AGENTS.md` | Yes |
+| `CLAUDE.md` | Yes |
+| `.env.sample` | Yes |
+| `.env` | Yes |
+| `bin/` | Yes |
+| `docs/` | Yes |
+| `logs/` | Yes |
+| `data/` | Yes |
+| `tests/` | Yes |
+| `archive/` | No |
 
-## Scripts (`bin/`)
+Constraints: `CLAUDE.md` contains only `@AGENTS.md`; `archive/` is optional, lives at project root, is gitignored, is never committed, and is not treated as current content.
 
-Standard script names:
+## Scripts
 
-| Script | Purpose | Name String |
-|--------|---------|-------------|
-| `bin/start.sh` | Start service — service projects only | Start Service |
-| `bin/stop.sh` | Stop service — service projects only | Stop Service |
-| `bin/build.sh` | Build / compile / package | Build |
-| `bin/daily.sh` | Daily maintenance | Daily Batch |
-| `bin/weekly.sh` | Weekly maintenance | Weekly Batch |
-| `bin/build_documentation.sh` | Generate docs/ output | Build Doc |
-| `bin/deploy.sh` | Deploy to environment | Deploy |
-| `bin/test.sh` | Run project tests — stub is acceptable | Test |
+### Rule: script-location
+All executable project scripts live under `bin/` and use `.sh` or `.py` extensions.
+Constraints: The `# CommandCenter Operation` marker within the first 20 lines registers a script with the platform.
 
-Standard script header (Name String must match table above; no other `# Name:` or `# Category:` fields):
+### Rule: standard-script-names
+Certain script filenames have fixed purposes and display names.
+| Input | Required |
+|---|---|
+| `bin/start.sh` | Service projects only |
+| `bin/stop.sh` | Service projects only |
+| `bin/build.sh` | As needed |
+| `bin/daily.sh` | As needed |
+| `bin/weekly.sh` | As needed |
+| `bin/build_documentation.sh` | As needed |
+| `bin/deploy.sh` | As needed |
+| `bin/test.sh` | Yes |
 
-```bash
-#!/bin/bash
-# CommandCenter Operation
-# Name: {Name String}
-# Category: Operations
-# Args: Arg1, Arg2          # omit if the script takes no positional arguments
-```
+Returns: Name strings are `Start Service`, `Stop Service`, `Build`, `Daily Batch`, `Weekly Batch`, `Build Doc`, `Deploy`, and `Test`.
+Constraints: `bin/test.sh` is mandatory for all projects; a minimal stub of `#!/bin/bash` plus `exit 0` is acceptable until real tests exist.
 
-CommandCenter header fields — recognized in first 20 lines:
+### Rule: commandcenter-header-schema
+Registered `bin/` scripts expose a header schema discoverable from the first 20 lines.
+| Input | Required | Notes |
+|---|---|---|
+| `# CommandCenter Operation` | Yes | Registration marker |
+| `# Name:` | Yes | Display name |
+| `# Category:` | Yes | `Operations`, `Workflow`, or `Global` |
+| `# Description:` | Programmatic scripts only | One-line summary |
+| `# Args:` | If positional arguments exist | Positional args only, comma-separated |
+| `# Port:` | If script binds/exposes a port | Port number |
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| `# CommandCenter Operation` | Yes — marker | Registers the file in the service catalog. Must appear within the first 20 lines. |
-| `# Name:` | Yes | Display name used in GAME and the service catalog. |
-| `# Category:` | Yes | `Operations`, `Workflow`, or `Global` (see Category Definitions). |
-| `# Description:` | Required for programmatically called scripts | One-line summary. Mandatory for scheduler/orchestrator/platform-invoked scripts. |
-| `# Args:` | Required if positional arguments exist | Positional arguments in order, comma-separated. Omit if none. |
-| `# Port:` | Required if script binds or exposes a port | Port number the script listens on or uses. |
+Constraints: For standard script names, if the filename matches a standard name, the header must include `# Name:` matching its defined Name String; avoid any other `# Name:` or `# Category:` fields; `# Args:` omits flags and is omitted entirely when no positional args exist.
 
-Category Definitions:
+### Rule: script-category-classification
+Scripts are classified by filename and role into one of three categories.
+| Input | Required |
+|---|---|
+| filename | Yes |
 
-| Category | Rule | Examples |
-|----------|------|---------|
-| `Operations` | Standard lifecycle scripts: `start.sh`, `stop.sh`, `build.sh`, `test.sh`, `build_documentation.sh`. Use this exact category for these exact filenames. | start.sh, stop.sh, build.sh, test.sh |
-| `Global` | Scripts whose filename begins with a capital letter — they modify files or state in other repositories. | ProjectUpdate.sh, ProjectValidate.sh |
-| `Workflow` | All other `bin/` scripts not matching a Standard Script Name and not starting with a capital letter. | iterate.sh, scorecard.sh, validate.sh |
+Returns: `Operations` for exact standard lifecycle filenames, `Global` for filenames beginning with a capital letter, otherwise `Workflow`.
 
-All projects must have `bin/test.sh`. A minimal stub (`#!/bin/bash` + `exit 0`) is sufficient until real tests exist.
+### Rule: python-test-suite-layout
+Python projects require a pytest-based test suite with standard files.
+| Input | Required |
+|---|---|
+| `tests/conftest.py` | Yes |
+| `tests/test_smoke.py` | Yes |
+| `tests/test_routes.py` | Yes |
+| `tests/test_db.py` | If project has a database |
 
-## Python Projects
+Constraints: `pytest` must appear in `pyproject.toml` under `[project.optional-dependencies].dev`; pytest configuration must set `testpaths = tests` and `addopts = -v`; `bin/test.sh` must activate the venv via `uv sync --frozen`, run `ruff check . && ruff format --check .`, then `python -m pytest tests/ -v`; tests must pass before any commit; failing lint or format checks fail the build.
 
-Test suite:
+### Rule: python-tooling
+Python projects use `uv` for environment and dependency management and `ruff` for lint and format.
+| Input | Required |
+|---|---|
+| `pyproject.toml` | Yes |
+| `uv.lock` | Yes |
 
-```
-tests/
-  conftest.py     — app, client, and db fixtures
-  test_smoke.py   — startup and health checks
-  test_routes.py  — one test per registered route
-  test_db.py      — schema and CRUD round-trips (if project has a database)
-```
+Constraints: `.venv/` and `.ruff_cache/` are gitignored; never use `pip install` directly except `uv pip install`; never use `python -m venv`; new and migrated projects use `pyproject.toml` as the dependency manifest.
 
-`pytest` must appear in `pyproject.toml` `[project.optional-dependencies].dev`. `bin/test.sh` runs `ruff check . && ruff format --check .` then `python -m pytest tests/ -v`. Tests must pass before any commit. A failing lint/format check also fails the build.
+### config_key
+Project Python lint and format configuration is declared in `pyproject.toml`.
+| Input | Required |
+|---|---|
+| `[tool.ruff].line-length = 88` | Yes |
+| `[tool.ruff.lint].select = ["E", "F", "I", "UP", "B"]` | Yes |
+| `[tool.ruff.format].quote-style = "double"` | Yes |
 
-Use `uv` for venv + deps, `ruff` for lint + format. Never use `pip install` directly — always `uv add` or `uv pip install`. Never use `python -m venv` — always `uv venv`. `uv.lock` must be committed. `.venv/` is gitignored. `uv sync --frozen` for CI.
+### Rule: env-load-order
+Shell environment files must be loaded in a fixed order before deriving environment-based variables.
+| Input | Required |
+|---|---|
+| `METADATA.md` fields | Yes |
+| `.venv` | Yes |
+| `.secrets` | Yes |
+| `.env` | Yes |
+| derived vars | Yes |
 
-`pyproject.toml` must declare:
+Constraints: `common.sh` load order is `METADATA.md` fields -> `.venv` -> `.secrets` -> `.env` -> derived vars; do not change that order.
 
-```toml
-[tool.ruff]
-line-length = 88
+### Rule: bash-script-contract
+Bash scripts source `common.sh` and use the project port provided by it.
+| Input | Required |
+|---|---|
+| `source "$(cd "$(dirname "$0")" && pwd)/common.sh"` | Yes |
 
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+Constraints: Use `$PORT` for the service port and never hardcode a port number.
 
-[tool.ruff.format]
-quote-style = "double"
-```
+### Rule: python-script-contract
+Python scripts import `common.py` and execute through `op(__file__).run(main)`.
+| Input | Required |
+|---|---|
+| `main(ctx)` | Yes |
+| `op(__file__).run(main)` | Yes |
 
-## Script Templates
+Returns: `ctx` provides `project_name`, `port`, and `logger`.
+Constraints: Use `ctx.port` for the service port.
 
-`.env` load order — `common.sh` order: METADATA.md fields → `.venv` → `.secrets` → `.env` → derived vars. Do not change that order.
+### Rule: line-endings-and-executable-bit
+Script files use Linux line endings and shell scripts are executable.
+| Input | Required |
+|---|---|
+| line endings | Yes |
+| execute bit on `bin/*.sh` | Yes |
 
-Bash:
+Constraints: No `\r`; run `chmod +x bin/*.sh`.
 
-```bash
-#!/bin/bash
-# CommandCenter Operation
-# Category: Operations
-source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+### Rule: exit-logging
+Every script emits canonical start and completion terminal tokens.
+| Input | Required |
+|---|---|
+| start line | Yes |
+| success line | Yes |
+| error line | Yes |
 
-# your start command — use $PORT for the service port
-# e.g. Flask: export FLASK_DEBUG=1 && flask run --port "$PORT"
-```
+Returns: `[ProjectName] HH:MM Starting`, `[ProjectName] HH:MM Completed OK`, and `[ProjectName] HH:MM Completed ERROR <reason>`.
+Constraints: Do not add additional completion lines after these.
 
-Python:
+### heartbeat
+Scripts can emit health heartbeats without affecting control flow.
+| Input | Required |
+|---|---|
+| `state` | Yes |
+| `message` | No |
 
-```python
-#!/usr/bin/env python3
-# CommandCenter Operation
-# Category: Workflow
-import sys, os; sys.path.insert(0, os.path.dirname(__file__)); from common import op
+Returns: Accepts states `OK`, `WARNING`, `ERROR`, or `CRITICAL`.
+Constraints: Resolve GAME port from `$GAME_PORT`, then `~/.game_port`, then `5000`; silently no-op if GAME is unreachable; call `heartbeat('OK')` at script start in long-running loops; call `heartbeat('ERROR', msg)` before exiting on known failure; never gate script logic on heartbeat success.
 
-def main(ctx):
-    # ctx.project_name, ctx.port, ctx.logger available — use ctx.port as the service port
-    pass
+### log_event
+Scripts can emit structured severity events without affecting control flow.
+| Input | Required |
+|---|---|
+| `severity` | Yes |
+| `message` | Yes |
 
-if __name__ == '__main__':
-    op(__file__).run(main)
-```
+Returns: Accepts severities `INFORMATION`, `WARNING`, `ERROR`, or `CRITICAL`.
 
-Use `$PORT` / `ctx.port` as the service port — never hardcode a port number. Use Linux line endings (no `\r`). Run `chmod +x bin/*.sh`.
+### Rule: debug-flag
+Scripts that already parse flags must support a debug flag.
+| Input | Required |
+|---|---|
+| `-d` / `--debug` | When flags already exist |
 
-Exit logging — every script must emit:
+Constraints: Do not add an argument parser solely to support this flag.
 
-```
-[ProjectName] HH:MM Starting
-[ProjectName] HH:MM Completed OK
-[ProjectName] HH:MM Completed ERROR <reason>
-```
+### Rule: log-format
+Operational log output uses a canonical timestamped format.
+Constraints: Format is `YYYY-MM-DD HH:MM:SS LEVEL    [ProjectName] message here`; `LEVEL` is left-padded to 8 characters; do not use `print()` for operational messages; use logger methods or shell logging helpers.
 
-These are the canonical terminal tokens — do not add additional completion lines after them.
+### Rule: documentation-build-entrypoint
+Generated documentation is produced through the shell entry point `bin/build_documentation.sh`.
+| Input | Required |
+|---|---|
+| `bin/build_documentation.sh` | Yes |
 
-Heartbeat / log_event:
-
-```bash
-heartbeat <state> [message]   # state: OK | WARNING | ERROR | CRITICAL
-log_event <severity> <message> # severity: INFORMATION | WARNING | ERROR | CRITICAL
-# Resolves GAME port from $GAME_PORT, then ~/.game_port, then 5000. Silent no-op if GAME unreachable.
-```
-
-```python
-ctx.heartbeat(state, message='')
-ctx.log_event(severity, message)
-```
-
-Call `heartbeat('OK')` at script start in long-running loops. Call `heartbeat('ERROR', msg)` before exiting on known failure. Never gate script logic on heartbeat success. Where a script already parses flags, add `-d` / `--debug` to enable DEBUG-level logging. Do not add an argument parser solely to support this flag.
-
-Log format — all log output:
-
-```
-YYYY-MM-DD HH:MM:SS LEVEL    [ProjectName] message here
-```
-
-`LEVEL` left-padded to 8 characters. Do not use `print()` for operational messages; use `logger.info()` etc. Generated documentation must be produced by `bin/build_documentation.sh`. Output goes to `docs/`.
+Constraints: If the script delegates to another tool, the shell script remains the canonical entry point; output goes to `docs/`.
 
 ## METADATA.md
 
-Always read `name`, `display_name`, `short_description`, and `git_repo` from this file — never infer them from directory names.
+### METADATA.md
+`METADATA.md` is the authoritative source for project identity and platform metadata.
+| Input | Required |
+|---|---|
+| `name` | Yes |
+| `display_name` | Yes |
+| `git_repo` | Yes |
+| `short_description` | Yes |
+| `status` | Yes |
+| `version` | Yes |
+| `updated` | Yes |
+| `port` | No |
+| `health` | No |
+| `stack` | No |
+| `show_on_homepage` | No |
+| `desired_state` | No |
+| `card_url` | No |
+| `namespace` | No |
+| `tags` | No |
+| `image` | No |
+| `image_description` | No |
+| `specification_directory` | No |
 
-```
-# AUTHORITATIVE PROJECT METADATA - THE FIELDS IN THIS FILE SHOULD BE CURRENT
+Constraints: Use key-value format, not YAML; always read `name`, `display_name`, `short_description`, and `git_repo` from this file and never infer them from directory names; `status` is one of `IDEA`, `PROTOTYPE`, `ACTIVE`, `PRODUCTION`, or `ARCHIVED`; `desired_state` is one of `on-demand`, `running`, or `stopped`; `git_repo` is a full HTTPS URL for links only and SSH remotes are normalized to HTTPS automatically.
 
-name: MyProject                              # machine slug, matches directory name
-display_name: My Project                     # human-readable name for UI/display
-git_repo: https://github.com/org/MyProject   # full HTTPS URL, for links only
-port: 8000                                   # omit if not a service
-short_description: One sentence.             # shown in dashboards and indexes
-health: /health                              # omit if not a service
-status: PROTOTYPE                            # IDEA|PROTOTYPE|ACTIVE|PRODUCTION|ARCHIVED
-stack: Python/Flask/SQLite                   # slash-separated, used by generate_prompt.sh
-version: 2026-03-16.1                        # YYYY-MM-DD.N, increment on releases
-updated: 20260316_120000                     # set automatically by platform scripts
+## AGENTS.md
 
-# Optional platform and interrelationship fields (managed by GAME/platform scripts):
-show_on_homepage: true                       # include in GAME portfolio display
-desired_state: on-demand                     # on-demand|running|stopped — GAME manages lifecycle
-card_url: /path/to/docs                      # URL for project card link in GAME
-namespace: development                       # logical grouping: development|production|archive
-tags: AI Framework                           # comma-separated classification tags
-image: filename.webp                         # card image (served from GAME static/)
-image_description: ...                       # alt text and DALL-E generation prompt
+### Rule: agents-required-sections
+`AGENTS.md` uses a fixed section structure with conditional sections for services.
+| Input | Required |
+|---|---|
+| Title `# AGENTS.md — {Display Name}` | Yes |
+| One-paragraph description | Yes |
+| `## Dev Commands` | Yes |
+| `## Service Endpoints` | Service projects only |
+| `## Bookmarks` | Yes |
+| `## Logs` | Service projects at `ACTIVE` level |
 
-# Interrelationship fields (project-type-specific):
-specification_directory: ../Specifications   # path to specification repo (Prototyper only)
-```
-
-## AGENTS.md Required Sections
-
-```markdown
-# AGENTS.md — {Display Name}
-
-{One-paragraph description: what it does, its stack, and key directories.}
-
-## Dev Commands
-
-| Command | Description |
-|---------|-------------|
-| `./bin/start.sh` | Start server |
-| `./bin/stop.sh` | Stop server |
-| `./bin/test.sh` | Run tests |
-
-## Service Endpoints        # omit if not a service
-
-| Endpoint | Method | Description | CLI |
-|----------|--------|-------------|-----|
-| `/health` | GET | Health check | — |
-
-## Bookmarks
-
-| Label | URL |
-|-------|-----|
-| App | http://localhost:PORT |
-| Docs | docs/index.html |
-
-## Logs                     # omit if not a service
-
-| Label | Path |
-|-------|------|
-| App | logs/{name}_start_*.log |
-```
-
-- `CLI` column: bin/ script that triggers the route, or `—` if none.
-- `## Logs` required for service projects at ACTIVE level. Use glob pattern for timestamped files.
-- Only include commands and endpoints that actually exist for the project.
-- Do not create `Links.md` — all URLs belong in AGENTS.md `## Bookmarks`.
+Constraints: `Service Endpoints` includes columns `Endpoint`, `Method`, `Description`, and `CLI`; the `CLI` column contains the triggering `bin/` script or `—` if none; `Logs` uses a glob pattern for timestamped files; include only commands and endpoints that actually exist; do not create `Links.md`; all URLs belong under `AGENTS.md` `## Bookmarks`.

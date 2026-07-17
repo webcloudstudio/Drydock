@@ -28,6 +28,7 @@ def _target(
     measurement: bool = False,
     guardrail: bool = False,
     guardrail_evidence: bool = True,
+    vacuous_proof: bool = False,
 ) -> tuple[Path, Path]:
     target_dir = tmp_path / "targets" / "Demo"
     blueprint_dir = target_dir / "blueprint"
@@ -46,8 +47,13 @@ accepts: st-proof
 """,
         encoding="utf-8",
     )
+    proof_body = (
+        "assert True"
+        if vacuous_proof
+        else 'from pathlib import Path\nassert Path("marker.txt").read_text(encoding="utf-8") == "built\\n"'
+    )
     (blueprint_dir / "FEATURES.md").write_text(
-        """# Features
+        f"""# Features
 
 ## Programmatic Acceptance
 
@@ -56,8 +62,7 @@ Sea Trials: st-proof
 The build contains its marker.
 
 ```python
-from pathlib import Path
-assert Path("marker.txt").read_text(encoding="utf-8") == "built\\n"
+{proof_body}
 ```
 """,
         encoding="utf-8",
@@ -159,6 +164,20 @@ def test_code_bound_proof_overrides_model_and_gate_completes(tmp_path):
     state = score_evidence_state("Demo", target_dir)
     assert state.state == "stale"
     assert "build code changed" in state.reasons
+
+
+def test_vacuous_proof_is_demoted_and_blocks_completion(tmp_path):
+    # A tautological proof passes at runtime but proves nothing: it must not lift the gate.
+    target_dir, _ = _target(tmp_path, vacuous_proof=True)
+
+    result = score_target("Demo", target_dir, runner=_runner())
+
+    verdict = {item.criterion_id: item for item in result.criteria}["st-proof"]
+    assert verdict.verdict == "INCONCLUSIVE"
+    assert "proof failed integrity" in verdict.evidence[0]
+    assert result.complete is False
+    assert any("vacuous" in blocker for blocker in result.blockers)
+    assert any("Required Sea Trial st-proof is INCONCLUSIVE" in b for b in result.blockers)
 
 
 def test_failed_measurement_overrides_model_and_blocks_completion(tmp_path):
