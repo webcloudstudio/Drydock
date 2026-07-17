@@ -73,19 +73,18 @@ These are the capabilities Drydock is built on. The field is scored against Dryd
 | A10 | Sealed foundational specs requiring a change ticket | **5** | 1 | 0 | 2 | 3 | 0 | 1 | 3 | 0 | 1 | 0 |
 | A11 | Human review console for plan, evidence, and decisions | **4** | 1 | 4 | 2 | 3 | 2 | 4 | 2 | 1 | 1 | **5** |
 | A12 | Persistent intent injected into every prompt (Compass) | **5** | 4 | 3 | 3 | 3 | 3 | 3 | 4 | 2 | 3 | 2 |
-| A13 | Append-only material decision ledger (Ship's Log) | **5** | 0 | 0 | 1 | 2 | 1 | 2 | 2 | 1 | 3 | 2 |
-| A14 | Enterprise branding / stack rules injection (Rigging) | **5** | 2 | 3 | 1 | 1 | 2 | 1 | 2 | 1 | 1 | 1 |
-| A15 | Builder/user spec compaction to cut context cost | **5** | 0 | 0 | 2 | 1 | 3 | 0 | 0 | 1 | 2 | 1 |
-| A16 | Blocker/questionnaire loop that halts planning | **5** | 1 | 2 | 1 | 2 | 3 | 2 | 3 | 3 | 3 | 2 |
-| A17 | Brownfield reverse-engineering into specs | **3** | 1 | 2 | 2 | 4 | 3 | 2 | 1 | 1 | 2 | 3 |
-| A18 | Documentation generation and publishable rendering | **5** | 1 | 1 | 2 | 1 | 2 | 1 | 1 | 0 | 1 | 1 |
-| A19 | Subscription-CLI-only execution (no API-key spend) | **5** | 3 | 0 | 0 | 3 | 3 | 3 | 4 | 4 | 3 | 0 |
-| A20 | Provider/IDE neutrality | **4** | **5** | 0 | 2 | 4 | 4 | **5** | **5** | 2 | 2 | 3 |
+| A13 | Enterprise branding / stack rules injection (Rigging) | **5** | 2 | 3 | 1 | 1 | 2 | 1 | 2 | 1 | 1 | 1 |
+| A14 | Builder/user spec compaction to cut context cost | **5** | 0 | 0 | 2 | 1 | 3 | 0 | 0 | 1 | 2 | 1 |
+| A15 | Blocker/questionnaire loop that halts planning | **5** | 1 | 2 | 1 | 2 | 3 | 2 | 3 | 3 | 3 | 2 |
+| A16 | Brownfield reverse-engineering into specs | **3** | 1 | 2 | 2 | 4 | 3 | 2 | 1 | 1 | 2 | 3 |
+| A17 | Documentation generation and publishable rendering | **5** | 1 | 1 | 2 | 1 | 2 | 1 | 1 | 0 | 1 | 1 |
+| A18 | Subscription-CLI-only execution (no API-key spend) | **5** | 3 | 0 | 0 | 3 | 3 | 3 | 4 | 4 | 3 | 0 |
+| A19 | Provider/IDE neutrality | **4** | **5** | 0 | 2 | 4 | 4 | **5** | **5** | 2 | 2 | 3 |
 
-**Reading.** Drydock leads or ties on 17 of 20 of its own core dimensions. The genuinely contested
+**Reading.** Drydock leads or ties on 16 of 19 of its own core dimensions. The genuinely contested
 ground is A5 (Walden matches Drydock's EARS grammar validation), A9 (Walden's staleness chain is
-stricter), A11 (Traycer's review UX is more mature), and A20 (several open-source tools are more
-portable). A4, A8, A15, and A18 are effectively uncontested — nobody else prices stories in tokens,
+stricter), A11 (Traycer's review UX is more mature), and A19 (several open-source tools are more
+portable). A4, A8, A14, and A17 are effectively uncontested — nobody else prices stories in tokens,
 discounts model judgment, compacts specs by audience, or ships a documentation pipeline.
 
 ---
@@ -117,7 +116,7 @@ This is where the gaps live. Drydock's scores here are the input to the NEXT_STE
 | B19 | Bidirectional sync (fix spec first, then regenerate code) | **2** | 1 | 1 | **5** | 3 | 1 | 2 | 3 | 1 | 2 | 1 |
 | B20 | Multi-agent role specialization | **1** | 2 | 2 | 2 | 1 | **5** | 4 | 1 | 4 | 4 | 3 |
 
-**Reading.** Drydock's average in Matrix B is roughly 1.0 against a field average near 2.0. The
+**Reading.** Drydock's average in Matrix B is roughly 0.85 against a field average near 1.8. The
 concentrated damage is in three clusters:
 
 1. **Parallelism (B1, B2, B20).** Drydock builds strictly serially down the frontier. Spec Kitty,
@@ -137,27 +136,27 @@ concentrated damage is in three clusters:
 
 | Product | Matrix A avg (Drydock's ground) | Matrix B avg (field's ground) | Combined |
 |---|:--:|:--:|:--:|
-| **Drydock** | **4.75** | **1.00** | **2.88** |
-| Walden | 2.90 | 2.30 | 2.60 |
-| Tessl + IIKit | 1.85 | 2.80 | 2.33 |
-| GSD | 2.10 | 3.05 | 2.58 |
-| Spec Kitty | 1.75 | 2.10 | 1.93 |
-| OpenSpec | 1.60 | 2.00 | 1.80 |
-| BMAD | 1.85 | 2.25 | 2.05 |
-| Superpowers | 1.15 | 2.10 | 1.63 |
-| Traycer | 1.40 | 1.65 | 1.53 |
-| GitHub Spec Kit | 1.15 | 0.60 | 0.88 |
-| Kiro | 1.15 | 0.65 | 0.90 |
+| **Drydock** | **4.74** | **0.85** | **2.79** |
+| GSD | 1.95 | 2.85 | 2.40 |
+| Walden | 2.63 | 1.85 | 2.24 |
+| Tessl + IIKit | 1.84 | 2.55 | 2.20 |
+| BMAD | 1.89 | 1.80 | 1.85 |
+| OpenSpec | 1.74 | 1.95 | 1.84 |
+| Spec Kitty | 1.68 | 1.95 | 1.82 |
+| Superpowers | 1.16 | 1.95 | 1.55 |
+| Traycer | 1.37 | 1.55 | 1.46 |
+| GitHub Spec Kit | 1.37 | 0.60 | 0.98 |
+| Kiro | 1.16 | 0.60 | 0.88 |
 
-**Caveat on the aggregate.** Matrix A is selected on Drydock's own feature set, so Drydock's 4.75
+**Caveat on the aggregate.** Matrix A is selected on Drydock's own feature set, so Drydock's 4.74
 there is partly definitional and should not be read as market dominance. The honest signal is the
-delta: Drydock is far ahead on governance, context economics, and evidence, and roughly a full
-point behind the field's better tools on execution mechanics and test integrity.
+delta: Drydock is far ahead on governance, context economics, and evidence, and well behind the
+field's better tools on execution mechanics and test integrity.
 
 ## Strategic Read
 
 **Drydock's defensible moat** is the combination nobody else has: token-priced story planning
-(A4) + context-aware stacking (A3) + audience-based compaction (A15) + evidence-bound scoring
+(A4) + context-aware stacking (A3) + audience-based compaction (A14) + evidence-bound scoring
 that penalizes model judgment (A7, A8). That is a genuinely differentiated position — Drydock is
 the only tool in the field that treats *context as an economic resource* and *model judgment as a
 liability to be discounted*. Nothing in the backlog should compromise that.

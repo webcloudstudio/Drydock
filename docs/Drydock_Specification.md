@@ -97,6 +97,45 @@ flowchart LR
 | Sea Trials | Product-level objectives and proof-of-delivery criteria. |
 | Refit | Change process that maps updates into the manifest. |
 
+## Drydock Features
+
+Drydock is DevOps for specifications: a governed build pipeline with gates. It runs the same process on a one-page specification and a hundred-page specification.
+
+**Model and cost**
+- Works with your LLM subscription. No API keys, no per-token billing.
+- Builds effectively on low-end models (Sonnet, GPT-5.4). The pipeline does the work, not the model.
+- Compresses specifications by audience so each build step stays small.
+- Stacks each build step to a token budget.
+- Prices each story in tokens.
+
+**Method**
+- Decomposes specifications into features, stories, blockers, and acceptance criteria.
+- Builds against acceptance criteria under test-driven development.
+- QuarterDeck is a Commander-to-LLM portal tuned for Agile and test-driven development.
+- Halts and asks when a decision is missing.
+- Builds only what is ready and only what changed, off a dependency graph.
+
+**Governance**
+- Typed specification files with fixed roles.
+- EARS acceptance criteria, grammar-validated.
+- Guardrails enforced by a hard gate.
+- Sealed foundational specifications that require a change ticket to alter.
+- Rigging injects enterprise build rules and house voice into every build.
+
+**Verification**
+- `drydock score` is deterministic: no model call, no network.
+- Scores bind to Git HEAD and content hashes.
+- Model-judged verification is discounted against deterministic proof.
+- Vacuous and tautological proofs are demoted to unverified.
+- Gates every story before it counts as complete.
+
+**Change**
+- Refit runs specification edits and change tickets through the same governed build pipeline as new work.
+- Rebuilds only the impacted stories.
+
+**Output**
+- Generates project documentation and renders it to a publishable site.
+
 ## The drydock CLI
 
 ```text
@@ -714,7 +753,6 @@ Drydock stores its own state under `$DRYDOCK_WORKSPACE/targets/<Target>`. The bu
 ```text
 $DRYDOCK_WORKSPACE/                       # explicit config/env or Git top-level — required
 ├── logs/
-│   ├── ships_log.jsonl                   # workspace product/design decision ledger
 │   ├── history.jsonl                     # append-only command-invocation log
 │   └── run.log, run.log.1 … run.log.5    # rotating per-command execution logs
 │
