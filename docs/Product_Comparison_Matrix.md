@@ -18,8 +18,11 @@ copyright: Copyright © 2026 Web Cloud Studio. All rights reserved.
 **Analyst:** Principal Developer review
 **Subject:** Drydock benchmarked against ten current spec-driven development systems
 **Method:** Documentation review of primary sources (vendor docs, repositories, published
-benchmarks) plus three independent analyses. Scores are documentation-derived judgment, not
-hands-on execution benchmarks. No tool below was run as part of this analysis.
+benchmarks) plus independent analyses. Scores are documentation-derived judgment, not hands-on
+execution benchmarks. No tool below was run as part of this analysis.
+**Validation refresh:** 2026-07-17 against the currently published public documentation for
+OpenSpec, BMAD-METHOD, Spec Kitty, Walden, Superpowers, GSD, Traycer, Tessl intent-integrity-kit,
+spec-compare, Böckeler's Fowler article, and the 2026 arXiv SDD taxonomy paper.
 
 ## Scoring Legend
 
