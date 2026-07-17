@@ -13,7 +13,8 @@ copyright: Copyright © 2026 Web Cloud Studio. All rights reserved. No part of t
 ideas_title: The SAIL Method
 ideas_layout: sail
 sail_lead:
-  - You are the Commander (product owner) and the LLM is your agile best practices team.
+  - You are the Commander (product owner)
+  - The LLM is your agile and test driven best practices team.
   - The QuarterDeck web server enables communication with your team
   - Your Compass (constitution/intent) guides your build
   - A Ship's Log preserves material decisions and milestones
@@ -32,6 +33,7 @@ ideas:
   - title: "**I** — Implement"
     sub_list:
       - drydock build - implement your software plan in managed chunks using the Manifest
+      - drydock score - evaluate acceptance and release readiness
       - drydock rigging - manage your enterprise branding and build rules
   - title: "**L** — Loop"
     sub_list:
@@ -43,15 +45,17 @@ ideas:
 
 Drydock is a governed Blueprint-driven software delivery system built around the **SAIL methodology**.
 
-**The Commander.** Drydock addresses its operator as the Commander.  Drydock uses agile best practices and the Commander is the product owner. The QuarterDeck enables the Commander to own intent, review evidence and decisions, and to provide feedback at each stage.  That feedback guides the work and command reruns will incorprate that user intent.  This document uses "Commander" as synonym for user. The Commander has the role of agile project owner.
+**The Commander.** Drydock addresses its operator as the Commander.  Drydock uses agile/tdd best practices and the Commander is the product owner. The QuarterDeck (web interface) enables the Commander to own intent, review evidence and decisions, and to provide feedback at each stage.  Guided feedback persists and enables control of every stage of the pipeline.  document uses "Commander" as synonym for user.
 
-**Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns imported specifications into Blueprints ready for execution.  `drydock plan` creates a **Manifest** and defines your typed specification files into a simple graph database suited for **context optimized builds**.
+**Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns imported specifications into Blueprints ready for execution and creates a **Manifest** which maps blueprints into a graph database suited for **context optimized builds**.
 
-Context management is the KEY to reproducable specification driven builds.  `drydock build` uses a **dependency graph** to deliver working software using a use context-size-aware file stacking strategy that ensures the work is done accurately.  In Story Planning, the Agile LLM provides EXACT story points (token cost) to implement each story.  In Story Planning, you group similar stories in the QuarterDeck to optimizes build token cost.
+Context management is the KEY to reproducable specification driven builds.  The build process stacks prompts from your specifications with **Rigging** which are your business rules (voice, stack, and best practices) to deliver working software with guardrails for quality at each story and at the project level.  The Agile LLM **KNOWS the exact story points (token cost)** required to implement each story.  The Commander can group similar stories in the QuarterDeck to manually optimizes the build for delivery/testing and other business reasons.
 
-**Enterprise branding and stack rules** are injected using Rigging.  Rigging is applied using the concept Builder / User.  Feature builders need the whole specification to implement.  Feature users use markdown compaction to recieve only how to use the feature.  They do not need to know what it does or why.
+Rigging is applied using the concept Builder / User.  Feature builders need to implement and require the whole specification.  Feature users use compaction and only need to know how to use the feature.  They do not need to know what it does or why.
 
-The loop phase lets the Commander **update and iterate** the application while preserving the specification as the source of truth.
+The loop phase lets the Commander **update and iterate** the application while preserving the specification as the source of truth.  Edit specifications or add change tickets.  `drydock refit` maps them into your graph and the changes can be built using the normal build process.
+
+Quality is measured at the project level using `drydock score`.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -63,11 +67,12 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SETUP["Set Up"]:::script --> ANALYZE["Analyze"]:::script
+  SETUP["Set Up"]:::script --> ANALYZE["Analyze & Plan"]:::script
   ANALYZE --> IMPLEMENT["Implement"]:::script
   IMPLEMENT --> TARGET(["Working Software"]):::dir
   TARGET --> LOOP["Loop"]:::script
-  LOOP -.-> ANALYZE
+  LOOP -.-> IMPLEMENT
+  LOOP -.-> SCORE([Score]):::script
 ```
 
 ### Glossary
@@ -85,7 +90,7 @@ flowchart LR
 | Soundings | The acceptance checklist and implementation evidence ledger. |
 | Sea Trials | Product-level objectives and proof-of-delivery criteria. |
 | Ship's Log | The append-only ledger of material decisions and milestones. |
-| Refit | The Loop-phase change process that keeps the Blueprint and the software aligned. |
+| Refit | Change process that maps updates into the manifest. |
 
 ## The drydock CLI
 
@@ -114,9 +119,9 @@ positional arguments:
     build     Build or inspect build state.
     refit     Update Blueprint and target software together.
     analyze   Decompose imported sources into stories, blockers, and acceptance milestones.
-    survey    Score a target's build process against its acceptance criteria.
     run       Start a Drydock service.
-    import    Reverse-engineer a project into a Blueprint.
+    import    Copy your Specifications into the workspace.
+    score     Evaluate acceptance and release readiness.
 
 options:
   -h, --help  show this help message and exit
@@ -199,7 +204,7 @@ drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 
 `drydock status` is the primary orientation command. With no arguments it shows the workspace
 dashboard across all initialized Targets. With a `<Target>` argument it filters to that Target,
-showing its validation state, plan progress, and current runnable frontier.
+showing its validation state, plan progress, and current runnable step.
 
 ### drydock config
 
@@ -208,12 +213,13 @@ showing its validation state, plan progress, and current runnable frontier.
 
 | Variable | Purpose |
 |---|---|
-| `DRYDOCK_BUILD_DIRECTORY` | `drydock build` builds `$DRYDOCK_BUILD_DIRECTORY/<Target>`; defaults to `$DRYDOCK_WORKSPACE/build`. |
-| `DRYDOCK_WORKSPACE` | Drydock workspace root; set explicitly or resolved from the Git top-level. Required — commands error when neither is available. |
-| `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
-| `PROMPT_WARN_TOKENS` | Build-block prompt-size warning threshold in tokens |
-| `MODEL` | LLM model - gpt-5.4, gpt-5.5, sonnet, opus  |
-| `QUARTERDECK_PORT` | Default QuarterDeck service port |
+| `drydock_build_directory` | Build root. Drydock builds `$DRYDOCK_BUILD_DIRECTORY/<Target>` and defaults this location under the workspace when unset. |
+| `drydock_workspace` | Drydock workspace root. Commands require a resolved workspace. |
+| `drydock_model` | Default model name passed to the configured subscription-authenticated CLI. |
+| `llm_provider` | Subscription CLI provider: `claude` or `codex`. |
+| `codex_sandbox` | Codex execution sandbox mode for Codex-backed Drydock agent runs. |
+| `prompt_warn_tokens` | Prompt-size warning threshold in tokens. |
+| `quarterdeck_port` | Default QuarterDeck service port. |
 
 ### drydock init
 
@@ -226,9 +232,9 @@ The Analyze phase turns imported source material into an Analysis for review, th
 1. `drydock import` brings source material under Drydock control.
 2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions
 3. `drydock run quarterdeck` lets the product owner review, approve, and answer questions
-4. `drydock plan` consumes the reviewed analysis and creates Blueprint files and the Manifest.
+4. `drydock plan` consumes the analysis and creates Blueprint files and the Manifest.
 
-> **Definition — Compass**
+> **Definition — Compass Files**
 >
 > Compass files contains Commander overrides marked `Important:`. They are the intent of the Commander.
 > `COMPASS.md` is inserted into every command. 
@@ -269,9 +275,8 @@ flowchart LR
 ### drydock import
 
 `drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>` is the intake step.
-It brings external material under Drydock control.  Drydock can import data from other specification systems or can import
-a compass file.  The data is copied as is into `blueprint/sources/`; compass imports instead write
-`COMPASS.md` at the Target root.
+It brings external material under Drydock control. Drydock copies the selected source material into
+the Target workspace for later analysis. Compass imports write `COMPASS.md` at the Target root.
 
 `drydock import <Target> <Source File> --format markdown` imports general markdown specifications
 
@@ -280,11 +285,8 @@ a compass file.  The data is copied as is into `blueprint/sources/`; compass imp
 `drydock import <Target> <Source> --format <source|speckit>` imports specifications from other systems
 
 `drydock import <Target> <Source> --format compass` normalizes the source into the canonical
-`COMPASS.md` format and writes it to the Target root. This is the only `drydock import` form that
-runs an LLM; `--llm-provider` and `--model` select the provider. The normalization preserves the
-Commander's vocabulary and reformats only. The written `COMPASS.md` is final and Commander-owned;
-`drydock analyze` never rewrites a populated `COMPASS.md`. An existing `COMPASS.md` is preserved
-unless `--force` is given.
+`COMPASS.md` format and writes it to the Target root. An existing `COMPASS.md` is preserved unless
+`--force` is given.
 
 ### drydock analyze
 
@@ -317,37 +319,14 @@ The LLM gives a verdict on the condition of the build.  The most important guard
 Commander's answers guide the LLM on the next run, and the cycle repeats until no blockers remain.
 
 `SEA_TRIALS.md` contains criteria with stable `st-*` IDs. Each criterion declares `Type`,
-`Required`, `Criterion`, and `Verification`. Types are `technical`, `behavioral`, `qualitative`,
-`outcome`, or `guardrail`. Verification methods are `proof`, `measurement`, `evidence`, or `llm`.
+`Required`, `Criterion`, and `Verification`. Types are `technical`, `behavioral`, `qualitative`, `guardrail`,
+or `outcome`. Verification methods are `proof`, `measurement`, `evidence`, or `llm`.
 Measurement criteria use either a JSON argv `Command` executed without a shell in the build
 directory or an `Evidence` file contained by the Target. Measurement output is a JSON object with
 a numeric `value` and optional `unit`; `Operator` and `Target` define the deterministic verdict.
 Unknown baselines, targets, workloads, or business measures remain in a literal `QUESTIONS:` block
 with stable `q-*` IDs. Analyze projects these questions into
 `QuarterDeck/questionnaires/discovery-sea-trials.json` and preserves existing answers on rerun.
-Analyze writes that projection; the file is never an analyze output block.
-
-`technical`, `behavioral`, and `guardrail` criteria are assertions. Each declares a `Pattern` and
-states its `Criterion` in the EARS shape that `Pattern` names:
-
-| Pattern | Shape |
-|---|---|
-| `ubiquitous` | `The <system> shall <response>` |
-| `event` | `When <trigger>, the <system> shall <response>` |
-| `state` | `While <state>, the <system> shall <response>` |
-| `option` | `Where <feature>, the <system> shall <response>` |
-| `unwanted` | `If <trigger>, then the <system> shall <mitigation>` |
-
-A criterion whose wording does not match its declared `Pattern` invalidates the analysis.
-`qualitative` and `outcome` criteria declare no `Pattern` and state the criterion in plain English.
-
-A `guardrail` is an absolute prohibition. It uses `Pattern: unwanted`, requires no implementing
-story, and reports as `HELD` or `BREACHED`.
-
-`SEA_TRIALS.md` embeds Drydock-owned reader documentation as `###` blocks describing the Sea
-Trials contract, EARS notation, the types, guardrails, the fields, and the `QUESTIONS:` block.
-Analyze replaces these blocks on every write. The QuarterDeck renders them as standout notes.
-Sea Trials are not approved; advancing a stage accepts the risk they state.
 
 | Quality | Meaning |
 |---|---|
@@ -425,7 +404,7 @@ Implement the Blueprint using the Manifest
 
 * The Manifest exposes the phases with `drydock build status <Target>`.
 * Iterate through the build phases with `drydock build <Target>`.
-* Measure delivery health with `drydock build score`.
+* Measure delivery health with `drydock score`.
 * The rigging implements company standards and branding.
 
 ### Commands
@@ -438,7 +417,8 @@ drydock build <Target> --normalize-order
 drydock build <Target> --step <STEP>
 drydock build <Target> --step <STEP> --force
 drydock build status <Target>
-drydock build score <Target>
+drydock score ac <Target>
+drydock score release <Target>
 
 drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
@@ -605,94 +585,42 @@ Conceptually the Build Review screen is similar to the `drydock build status` co
 drydock build status <Target>   # print per-block state and current runnable frontier
 ```
 
-### drydock build score
+### drydock score
 
 ```text
-drydock build score <Target>
+drydock score ac <Target>
+drydock score release <Target>
 ```
 
 **Behavior description**
 
-`drydock build score` verifies the current build against two independent axes. The technical axis
-scores specification completeness, implementation coverage, test coverage, documentation
-coverage, Blueprint drift, build quality, and acceptance criteria coverage from 0 through 100.
-The project-acceptance axis judges every criterion in `SEA_TRIALS.md` as `PASS`, `FAIL`, or
-`INCONCLUSIVE`.
+`drydock score ac <Target>` verifies the Target's acceptance criteria from `SOUNDINGS.md`.
 
-The command reruns Blueprint `Programmatic Acceptance`, executes declared measurements, loads
-declared evidence files, and supplies those facts to the configured subscription-authenticated LLM.
-Deterministic proof and measurement verdicts override LLM verdicts. The command binds evidence to
-the current Git HEAD and content hashes of `SEA_TRIALS.md`, `MANIFEST.md`, and every Blueprint file.
-`drydock build status` reports persisted score evidence as `none`, `current`, or `stale`.
-
-The command discounts the acceptance-criteria-coverage dimension by the share of required
-`technical`, `behavioral`, and `guardrail` criteria whose `Verification` is neither `proof` nor
-`measurement`. A contract of required assertions resting wholly on model judgment scores half the
-model's value. `qualitative` and `outcome` criteria are exempt from the discount.
-
-The aggregate completion gate passes only when the equal-weight technical score is at least 80,
-every technical dimension is at least 60, every required Sea Trial is `PASS`, every guardrail is
-`HELD`, all executable Manifest work is `closed/verified`, the build Git worktree is clean, and no
-deterministic blocker exists. A guardrail is `HELD` only when its verdict is `PASS`; a `FAIL` or
-`INCONCLUSIVE` guardrail is `BREACHED` and fails the gate regardless of every score. `SCORECARD.md`
-reports guardrail verdicts as `HELD` or `BREACHED`. Failed and inconclusive findings become ranked
-Scorecard recommendations. They do not create change tickets.
+`drydock score release <Target>` evaluates overall release approval against `SEA_TRIALS.md` and
+the Target's current acceptance state.
 
 **Input files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `SEA_TRIALS.md` | Target root | Project acceptance criteria, measurement contracts, and required verdicts |
-| `MANIFEST.md` | Target root | Build completion state and criterion implementation references |
-| `blueprint/*.md` | Target Blueprint | Typed Specifications and code-bound Programmatic Acceptance proofs |
-| Declared evidence files | Target root subtree | Criterion evidence and measurement observations |
-| Built application | Configured build directory | Git identity and executable proof subject |
+| `SOUNDINGS.md` | Target root | Acceptance criteria and implementation state |
+| `SEA_TRIALS.md` | Target root | Release-level acceptance criteria |
+| `MANIFEST.md` | Target root | Current build and acceptance state |
 
 **Output files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `SCORECARD.md` | Target root | Human-readable technical score, project verdicts, blockers, and ranked improvements |
-| `build-score.json` | `evidence/` | Reproducible facts, identities, measurements, proof results, model execution ID, and aggregate verdict |
+| `SCORECARD.md` | Target root | Human-readable acceptance and release scoring results |
+| `build-score.json` | `evidence/` | Reproducible scoring evidence and verdict data |
 
 **Exit codes**
 
 | Code | Meaning |
 |---:|---|
-| `0` | Aggregate completion gate passes |
-| `1` | Aggregate completion gate fails or scoring cannot complete |
+| `0` | Scoring completes successfully |
+| `1` | Scoring cannot complete or the Target does not satisfy the evaluated gate |
 | `2` | Command syntax is invalid |
-
-### drydock survey
-
-TODO: Drydock survey was the mechanism i used to have Claude and Codex judge each others prompt and iterate them.  I
-have not decided it it is strategic though it certainly is of value.  I built the prompts with opus then iterated from
-weak/er models through stronger models to have them determine the ideal prompt that met the needs defined.
-
-```text
-drydock survey <Target>             # render the latest scoreboard
-drydock survey <Target> --run       # score (LLM-assisted) and append results
-drydock survey <Target> --import D   # re-read a Blueprint/sources directory and regenerate AC
-drydock survey <Target> --command status   # filter to one command
-```
-
-A Target carries one Surveyor workspace at `survey/`: per-command acceptance-criteria
-files under `survey/ac/SURVEY-<command>.md`, an append-only `survey/scores.jsonl`, and the scoring
-`survey/RUBRIC.md`. Each command is scored on five weighted dimensions — behavioral correctness,
-specification quality, process integrity, evidence/reproducibility, and contract conformance — to a
-0–100 score and a band (`SEAWORTHY`, `SEA_TRIALS`, `TAKING_WATER`, `DRY_DOCK`). A guardrail breach
-or regression caps the band regardless of the number.
-
-The scoring math is deterministic and lives in the command. An LLM judges each acceptance
-criterion and synthesizes recommendations; the command computes the scores and writes the files, so
-runs need no file-write permission and tests substitute a fake runner. `--import` regenerates the
-acceptance-criteria files from the specification so the process can iterate on its own definitions.
-
-1. `drydock survey <Target> --run` — judge each command against its AC; record one scored entry
-   per command with root-cause flags and generalized recommended fixes.
-2. The scoreboard surfaces which dimension of which command is dragging; a flag recurring across
-   commands (e.g. `unresolved-uncertainty`) signals a *process* defect to fix in the prompt or
-   command contract, not a one-off code fix.
 
 ### drydock document
 
@@ -818,7 +746,7 @@ flowchart LR
 
 **Dependency inheritance.** A change ticket's `Depends On:` field equals the parent spec's `Depends On:` set plus the parent spec filename itself. `drydock refit` computes this deterministically from the parent spec header before the LLM call and injects the resolved list into the prompt.
 
-**Role boundary.** `drydock refit` is a targeted patch: it processes only tickets in `blueprint/changes/` and inserts or replaces pending manifest rows for those tickets. `drydock plan create` is a full regeneration: it reads all Blueprint inputs and rewrites `MANIFEST.md` with state-preserving merge. Run `drydock plan create` after `drydock refit` when the full plan graph must be recomputed.
+**Role boundary.** `drydock refit` is a targeted patch: it processes only tickets in `blueprint/changes/` and inserts or replaces pending manifest rows for those tickets. `drydock plan` is a full regeneration: it reads all Blueprint inputs and rewrites `MANIFEST.md` with state-preserving merge. Run `drydock plan` after `drydock refit` when the full plan graph must be recomputed.
 
 **Behavior.** Scans `blueprint/changes/*.md`. For each ticket: reads `Amends:`, resolves parent spec dependencies, runs one LLM call to normalize the ticket header and generate manifest rows, writes the updated ticket, and patches `MANIFEST.md`. Tickets without an `Amends:` field are skipped with a warning. After the ticket pass, refit runs a deterministic drift reconciliation over the Manifest's `applied_specs` registry.
 
@@ -832,13 +760,11 @@ flowchart LR
 
 **Exit codes.** `0` success or no-op; `1` operational failure or unticketed foundational drift; `2` usage error.
 
-TODO: The refit can roll the change tickets into the primary specification files.
-
 ## Artifact I/O Matrix 
 
 What drydock operations read/write
 
-| Artifact | Location | analyze | plan | build | build score | refit |
+| Artifact | Location | analyze | plan | build | score | refit |
 |---|---|---|---|---|---|---|
 | ANALYSIS.md | Target root | O | I | · | · | · |
 | ANALYZE_COMPASS.md | Target root | C/I | · | · | · | · |
@@ -986,9 +912,7 @@ rules-based on block type. `scope:` declares whether a story changes the Bluepri
 software, or both.
 `accepts:` lists stable `SEA_TRIALS.md` IDs implemented by the story. Every required technical or
 behavioral Sea Trial is referenced by an implementing story or a Blueprint Programmatic Acceptance
-proof. Unknown references and missing required coverage invalidate a generated plan. `guardrail`,
-`qualitative`, and `outcome` criteria require no `accepts:` reference; `drydock build score` judges
-them at the end of the build.
+proof. Guardrails require no story or proof reference.  Unknown references and missing required coverage invalidate a generated plan.
 
 ### Feature Blocks
 
@@ -1168,75 +1092,6 @@ replace the Blueprint, `MANIFEST.md`, or build engine.
 project has no `BLOCKERS.md`. When present, the Blockers section appears first in the sidebar. The
 product owner answers the questions and re-runs `drydock analyze`; when all blockers are resolved
 the file is deleted. Blockers are mandatory gate conditions, distinct from spikes.
-
-## The Ship's Log — Your Decision Log
-
-The Ship's Log is a conceptual decision-log view backed only by Drydock's
-`logs/ships_log.jsonl`. It records material decisions and milestones from development of the
-Drydock application, not mechanics: what was decided or reached, why, what evidence supported it,
-and what it supersedes. Commit identifiers, file hashes, routine edits, commands, and test runs
-belong to execution logs. The QuarterDeck renders the JSONL through its reusable `jsonl` page type;
-downstream publishing tools consume the same canonical records directly. No `SHIPS_LOG.md` artifact
-exists.
-
-```json
-{"schema_version":1,"event_id":"uuid","recorded_at":"2026-06-11T18:32:00Z","event_type":"decision","title":"Decision title","summary":"What was decided.","rationale":"Why, including material rejected alternatives.","source":{"type":"agent","command":"drydock build","provider":"codex"},"affected_scope":[],"alternatives":[],"evidence":[],"supersedes":[],"tags":[]}
-```
-
-Drydock development agents are instructed by the required repository-local
-`SHIPS_LOG_PROCESS.md`, not shared Rigging or target-project injection. An agent evaluates capture
-immediately after a material decision or milestone and performs a final capture review before
-commit or task completion. The agent invokes `python bin/ships_log.py record`; users are not
-expected to record events manually, and event recording is not part of the public `drydock`
-CLI. Publishing recorded events as development-log posts is: see `drydock shipslog`.
-
-The repository-local utility validates and appends entries. Entries are never rewritten or
-deleted; a reversed decision appends a new event whose `supersedes` list references earlier event
-IDs. Agents use the existing `tags` list to classify applicable records as `open-item`,
-`deferred-item`, or `accepted-risk`; QuarterDeck displays those tags in its Ship's Log JSONL view.
-
-Standard agent-driven capture during Drydock-managed target design and build workflows remains an
-intended product capability so users can review and publish their decision history. Target-project
-injection and the supporting decision backend are deferred until this Drydock-only workflow has
-been validated.
-
-**Audit by diff.** Because every Blueprint lives in git, the log can be cross-checked: diff the
-specification files between commits and produce an English analysis of what changed, inferring the
-decisions the changes imply. Inference is lossy — a diff shows what changed, not why — so diff
-analysis is the audit trail and backfill mechanism, not the primary capture. `drydock analyze`
-reports specification changes not covered by a Ship's Log entry.
-
-### drydock shipslog
-
-```text
-drydock shipslog [--dir <path>] [--dry-run]
-```
-
-`drydock shipslog` generates development-log posts from unpublished Ship's Log decision and
-milestone events. Posts cover aligned seven-day windows that begin on Thursday and end on
-Wednesday, matching the published development-log history. The command generates one post per
-window that has fully elapsed and contains at least one unpublished event; the week in progress is
-never published, and windows with no eligible events are skipped. Because windows are aligned and
-contiguous, the published index reads as a continuous chronological record. Post generation runs
-through the Ship's Log posts package, which performs one subscription-authenticated LLM rewrite
-per post, enforces the disclosure rules, renders a Slate-branded HTML preview, and rebuilds the
-posts index. The package's saved cursor advances only after a successful rewrite, so a failed week
-stops the run and is retried on the next invocation.
-
-The posts package directory is resolved from `--dir`, then the `shipslog_dir` configuration key,
-then a `ShipsLog/` directory in the working directory. `--dry-run` reports the eligible windows
-without generating posts.
-
-Input files: `logs/ships_log.jsonl`, the posts package configuration (`blog.config.sh`), its
-generation and disclosure contracts, and Rigging voice guidance (`BRANDING_POSTS.md`,
-`BRANDING_MAIN.md`).
-
-Output files: one material batch, one Markdown post, and one HTML preview per generated week under
-the posts package's `blog/` tree, plus the rebuilt `blog/posts/index.html` and the advanced
-cursor.
-
-Exit codes: `0` when all eligible weeks generate (including when no week is eligible); `1` when a
-week fails to generate; `2` on usage error.
 
 ## Drydock Rigging — Portfolio Governance
 
@@ -1531,11 +1386,11 @@ updated by `drydock refit` as specification files and application code evolve.
   signal, story count, stack, and next recommended step
   - Created: `drydock analyze <Target>` on first run; updated when lifecycle state advances
 
-- **`SCORECARD.md`** — Technical quality scores, project acceptance verdicts, completion blockers, and ranked improvements
-  - Created and updated: `drydock build score`
+- **`SCORECARD.md`** — Acceptance and release scoring results, approval blockers, and ranked improvements
+  - Created and updated: `drydock score`
 
-- **`evidence/build-score.json`** — Code-bound aggregate gate evidence with input hashes, Git identity, deterministic observations, proof results, and LLM execution identity
-  - Created and updated: `drydock build score`
+- **`evidence/build-score.json`** — Code-bound scoring evidence with input hashes, Git identity, deterministic observations, proof results, and LLM execution identity
+  - Created and updated: `drydock score`
 
 - **`logs/ships_log.jsonl`** — Drydock's append-only JSONL ledger of product and design events; see
   "The Ship's Log"
