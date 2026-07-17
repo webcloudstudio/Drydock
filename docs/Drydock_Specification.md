@@ -55,7 +55,7 @@ Rigging provides governed business rules, stack guidance, branding, and compact 
 
 The loop phase lets the Commander update the product while preserving the specification as the source of truth. Edit specifications or add change tickets, run `drydock refit`, and rebuild only the impacted work.
 
-Quality is verified deterministically with `drydock score` based on programatic acceptance criteria or using the LLM to evaluate
+Quality is verified deterministically with `drydock score` based on programmatic acceptance criteria or using the LLM to evaluate
 the completed build.  `drydock score ac` retests and shows `✓ PASS` / `✗ FAIL` / `— UNVERIFIED` verdict into Soundings while
 demoting a vacuous proof (an empty body, a constant assertion,
 a self-comparison) proofs.  
@@ -99,50 +99,64 @@ flowchart LR
 
 ## Drydock Features
 
-**Drydock is DevOps for specifications** and provides a governed build pipeline with gates to create working software from your imported specifications.
+**Drydock is DevOps for specifications** and provides a governed build pipeline with gates to create working software from your imported specifications. 
 
-**Model and cost**
+**Model and **
 - Works with your LLM subscription. No API keys, no per-token billing.
 - Trivially portable to any LLM CLI system (Claude, Codex).
 - Builds effectively with low-end models (Sonnet, GPT-5.4).
-- Compresses specifications as needed.
+- Context optimization at every step — LLM usage minimized.
 
 **Methodology**
 - Agile story points are token costs.
 - Decomposes specifications into features, stories, blockers, and acceptance criteria.
 - Builds against programmatic acceptance criteria using test-driven development.
-- QuarterDeck is a Commander-to-Crew web portal.
-- Surfaces questionnaires for Commander review, and halts rather than guessing when a decision is missing.
-- Builds an optimized dependency graph and executes only the ready, changed frontier.
-- Context optimization at every step — LLM usage minimized.
+- QuarterDeck is a Commander to Crew web portal.
+- Surfaces questions for Commander review in the Quarterdeck
+- Builds an optimized dependency graph and executes only the stories ready for work
+- Builds sets of stories together to optimize context
+- Compresses specifications as needed.
+
+**The Quarterdeck**
+- Web Server shows the user Markdown using "Pretty" templates
+- Persists decisions
+- Enables Full Build Control
+- Provides a clean UI for Questions from Your Crew
+- Surfaces Blockers and Build Failures for review - in a web browser not in markdown
+- Shows your Raw Specifications and the Converted Blueprints in a clean format.
+- Eliminates the need to read markdown
 
 **Governance**
 - Typed specification files with fixed roles.
 - EARS acceptance criteria, grammar-validated.
 - Acceptance criteria verified programmatically for each story.
-- Guardrails are absolute prohibitions enforced by a hard gate; any that cannot be verified deterministically fail closed.
+- Guardrails are permanent prohibitions checked for each story; any that cannot be verified deterministically fail closed at the release gate.
 - Sealed foundational specifications that require a change ticket to alter.
+- Mandatory persistence encapsulation to prevent forced large rebuilds for trivial changes 
 - Rigging injects enterprise conventions, build rules, and voice.
-- Writes durable, reviewable evidence for every story.
+- Writes reviewable build evidence for completed work.
 
 **Verification**
-- `drydock score` verifies acceptance deterministically — no LLM call, no network (SOUNDINGS.md).
-- `drydock score release` is the CI-portable gate over project criteria (SEA_TRIALS.md): the same inputs yield the same exit code in every environment.
-- `drydock build score` performs the model- and human-judged evaluation; deterministic proof takes precedence.
+- `drydock score ac` verifies story acceptance deterministically (SOUNDINGS.md).
+- `drydock score release` verifies project acceptance using the LLM (SEA_TRIALS.md)
 - Scores bind to Git HEAD and content hashes.
-- Vacuous and tautological proofs are demoted to unverified.
-- Gates every story before it counts as complete.
+- Vacuous and unneeded AC are demoted to unverified.
+- Gates story builds with AC before it counts as complete.
 
 **Complete change-management methodology**
-- Refit updates the build graph for specification edits and change tickets.
-- Changes build through the normal process using minimal context.
+- Build tracks cksum and git commit id 
+- Refit detects changes to specifications or change tickets
+- Refit updates the graph database for specification edits and change tickets.
+- Build changes using normal `drydock build`
 
 **Import**
+- Copies your specifications into the drydock workspace
 - Greenfield: imports specification documents into a governed Blueprint.
 - Brownfield: reverse-engineers an existing codebase into specifications.
+- Imports poorly written Specifications and surfaces questions for the Commander in `drydock analyze`.  
 
 **Add-ons**
-- Generates consistent project documentation in your voice and renders it to a browsable site (HTML/PDF).
+- Generates consistent project documentation in your voice 
 
 ## The drydock CLI
 
@@ -560,21 +574,20 @@ drydock score release <Target>
 
 **Behavior description**
 
-`drydock score` verifies acceptance deterministically, with no LLM call and no network. It is the
-trust-but-verify complement to the model-assisted `drydock build score`: the Commander scans
-checkmarks instead of granting approvals.
+`drydock score` has two modes. The Commander scans checkmarks in the QuarterDeck instead of
+granting approvals.
 
-`drydock score ac` runs each acceptance criterion's Programmatic Acceptance, applies proof-integrity
-analysis, and records a `✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` verdict per criterion in
-`SOUNDINGS.md` with a timestamp. A criterion whose proof is vacuous — an empty body, a constant
-assertion, or a self-comparison — is demoted to `UNVERIFIED` rather than trusted.
+`drydock score ac` verifies acceptance deterministically, with no LLM call and no network. It runs
+each acceptance criterion's Programmatic Acceptance, applies proof-integrity analysis, and records a
+`✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` verdict per criterion in `SOUNDINGS.md` with a timestamp. A
+criterion whose proof is vacuous — an empty body, a constant assertion, or a self-comparison — is
+demoted to `UNVERIFIED` rather than trusted.
 
-`drydock score release` re-runs the deterministic subset of the completion gate: Programmatic
-Acceptance with integrity, measurements, guardrails, Manifest completion, and a clean build
-worktree. Model- and human-judged criteria defer to `drydock build score`; a guardrail that cannot
-be verified deterministically fails the gate. The same inputs yield the same exit code in every
-environment, so any CI system gates on it directly. A vacuous or pre-passing proof is reported as
-weak evidence and does not block release completion by itself.
+`drydock score release` evaluates the project-level criteria in `SEA_TRIALS.md`. Because those
+criteria are expressed in EARS notation, the release gate is LLM-assisted: it judges each project
+criterion against the completed build and reports the release verdict. Deterministic `score ac`
+proofs and guardrail results feed the gate; a guardrail that cannot be verified deterministically
+fails it.
 
 **Input files**
 
