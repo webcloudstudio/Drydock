@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 class DrydockArgumentParser(argparse.ArgumentParser):
     """Argument parser that shows full help on syntax errors."""
 
+    def format_help(self) -> str:
+        text = super().format_help()
+        kept = [line for line in text.splitlines() if "==SUPPRESS==" not in line]
+        return "\n".join(kept) + ("\n" if text.endswith("\n") else "")
+
     def error(self, message: str) -> NoReturn:
         self.print_help(sys.stderr)
         self.exit(2, f"\nerror: {message}\n")
@@ -1764,7 +1769,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── survey ────────────────────────────────────────────────────────────────
     p_survey = sub.add_parser(
         "survey",
-        help="Score a target's build process against its acceptance criteria.",
+        help=argparse.SUPPRESS,
         description=(
             "drydock survey <Target>            — render the latest scoreboard\n"
             "drydock survey <Target> --run      — score (LLM-assisted) and append results\n"
@@ -1797,7 +1802,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_survey.add_argument("--raw", action="store_true", help="Print raw score records as JSON.")
 
     # ── prompt ────────────────────────────────────────────────────────────────
-    p_prompt = sub.add_parser("prompt", help="Review Drydock prompt contracts.")
+    p_prompt = sub.add_parser("prompt", help=argparse.SUPPRESS)
     _add_llm_override_flags(p_prompt)
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", metavar="<subcommand>")
     p_prompt_review = prompt_sub.add_parser(

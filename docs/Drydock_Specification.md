@@ -16,8 +16,7 @@ sail_lead:
   - You are the Commander (product owner)
   - The LLM is your agile and test driven best practices team.
   - The QuarterDeck web server enables communication with your team
-  - Your Compass (constitution/intent) guides your build
-  - A Ship's Log preserves material decisions and milestones
+  - Your Compass guides the build
   - The Drydock build process is simple and obvious
 ideas:
   - title: "**S** — Setup and Install Drydock"
@@ -45,15 +44,15 @@ ideas:
 
 Drydock is a governed Blueprint-driven software delivery system built around the **SAIL methodology**.
 
-**The Commander.** Drydock addresses its operator as the Commander.  Drydock uses agile/tdd best practices and the Commander is the product owner. The QuarterDeck (web interface) enables the Commander to own intent, review evidence and decisions, and to provide feedback at each stage.  Guided feedback persists and enables control of every stage of the pipeline.  document uses "Commander" as synonym for user.
+**The Commander.** Drydock addresses its operator as the Commander. The Commander owns the product direction, reviews the work, and approves decisions in the QuarterDeck.
 
-**Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns imported specifications into Blueprints ready for execution and creates a **Manifest** which maps blueprints into a graph database suited for **context optimized builds**.
+**Drydock Blueprints** are the authoritative, living definition of a software product. Blueprints are composed of **Typed Specification Files** with prescribed roles. `drydock plan` turns imported source material into Blueprints and writes a **Manifest** that tracks dependency-aware build order, runnable work, and incremental rebuild scope.
 
-Context management is the KEY to reproducable specification driven builds.  The build process stacks prompts from your specifications with **Rigging** which are your business rules (voice, stack, and best practices) to deliver working software with guardrails for quality at each story and at the project level.  The Agile LLM **KNOWS the exact story points (token cost)** required to implement each story.  The Commander can group similar stories in the QuarterDeck to manually optimizes the build for delivery/testing and other business reasons.
+Drydock builds with the product specification, the applicable Rigging, and the current plan. It groups related work to keep builds context-aware and reviewable.
 
-Rigging is applied using the concept Builder / User.  Feature builders need to implement and require the whole specification.  Feature users use compaction and only need to know how to use the feature.  They do not need to know what it does or why.
+Rigging provides governed business rules, stack guidance, branding, and compact derivatives that keep downstream builds focused on how to use a capability instead of reloading full authoring context every time.
 
-The loop phase lets the Commander **update and iterate** the application while preserving the specification as the source of truth.  Edit specifications or add change tickets.  `drydock refit` maps them into your graph and the changes can be built using the normal build process.
+The loop phase lets the Commander update the product while preserving the specification as the source of truth. Edit specifications or add change tickets, run `drydock refit`, and rebuild only the impacted work.
 
 Quality is measured at the project level using `drydock score`.
 
@@ -85,11 +84,10 @@ flowchart LR
 | Manifest | The executable build plan and dependency graph, `MANIFEST.md`. |
 | Frontier | The set of Manifest blocks that are runnable now. |
 | QuarterDeck | The web review console between the Commander and the LLM process. |
-| Compass | Persistent Commander intent injected into command prompts. |
+| Compass | Persistent project guidance used by Drydock commands. |
 | Rigging | Shared branding, stack rules, templates, and compact context derivatives. |
 | Soundings | The acceptance checklist and implementation evidence ledger. |
 | Sea Trials | Product-level objectives and proof-of-delivery criteria. |
-| Ship's Log | The append-only ledger of material decisions and milestones. |
 | Refit | Change process that maps updates into the manifest. |
 
 ## The drydock CLI
@@ -195,7 +193,7 @@ drydock --help
 drydock --version
 drydock config show
 drydock config set <key> <value>
-drydock init <Target>
+drydock init <Target> [--display-name <name>] [--description <desc>]
 drydock status [<Target>]
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
@@ -217,13 +215,12 @@ showing its validation state, plan progress, and current runnable step.
 | `drydock_workspace` | Drydock workspace root. Commands require a resolved workspace. |
 | `drydock_model` | Default model name passed to the configured subscription-authenticated CLI. |
 | `llm_provider` | Subscription CLI provider: `claude` or `codex`. |
-| `codex_sandbox` | Codex execution sandbox mode for Codex-backed Drydock agent runs. |
 | `prompt_warn_tokens` | Prompt-size warning threshold in tokens. |
 | `quarterdeck_port` | Default QuarterDeck service port. |
 
 ### drydock init
 
-`drydock init <Target>` creates the temporary workspace for the <target> under targets/.  It populates the artifacts such that you can proceed with the workflow. `drydock init` creates `$DRYDOCK_WORKSPACE` when it does not exist. Target-consuming commands require an initialized Target and direct the Commander to `drydock init <Target>` otherwise.
+`drydock init <Target>` creates the temporary workspace for the Target under `targets/`. `drydock init` creates `$DRYDOCK_WORKSPACE` when it does not exist. Use `--display-name` to set a human-readable project name and `--description` to seed the one-line project summary in Target metadata.
 
 ## SAIL Phase 2 — Agile Analyze: Charting the Course
 
@@ -236,7 +233,7 @@ The Analyze phase turns imported source material into an Analysis for review, th
 
 > **Definition — Compass Files**
 >
-> Compass files contains Commander overrides marked `Important:`. They are the intent of the Commander.
+> Compass files hold Commander guidance for the project and for specific phases.
 > `COMPASS.md` is inserted into every command. 
 > `PLAN_COMPASS.md` is inserted into `drydock plan`. 
 > `ANALYZE_COMPASS.md` is inserted into `drydock analyze`. 
@@ -245,10 +242,10 @@ The Analyze phase turns imported source material into an Analysis for review, th
 ### Commands
 
 ```text
-drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>
+drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass> [--force]
 drydock analyze <Target>
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
-drydock plan <Target>
+drydock plan [--overwrite] [--no-conform] <Target>
 ```
 
 ```mermaid
@@ -290,16 +287,16 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 
 ### drydock analyze
 
-`drydock analyze` is Agile Decomposition, the phase where the Agile Epic is split into features and stories and the plan is created. The LLM decomposes `blueprint/sources/` into a set of markdown artifacts using its role as an Agile Best Practices Team. It prepares the following files for Commander review.
+`drydock analyze` decomposes imported source material into reviewable planning artifacts. It prepares the files the Commander uses to confirm scope, resolve blockers, answer questions, and approve the build direction before planning.
 
 **Input files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
 | `sources/*` | `blueprint/` | Imported source material; read-only planning context |
-| `*COMPASS.md` | Target root | Project intent - Note that the COMPASS.md is injected into EVERY prompt |
-| `ANALYZE_COMPASS.md` | Target root | Commanders Feedback: Update it - injected every run |
-| `BLOCKERS.md` | Target root | Created by `drydock analyze`. Blockers identify gaps or required information and the Commander edits file to address these concerns. |
+| `*COMPASS.md` | Target root | Project guidance and command guidance |
+| `ANALYZE_COMPASS.md` | Target root | Commander guidance for repeated analyze runs |
+| `BLOCKERS.md` | Target root | Commander-edited blocker answers from prior runs |
 | `questionnaires/*.json` | `QuarterDeck/` | Created by `drydock analyze`. Persistent answers consumed on re-run |
 
 **Output files**
@@ -308,25 +305,13 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 |---|---|---|
 | `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existence implies blockers.  Edit to resolve them. |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
-| `SEA_TRIALS.md` | Target root | Structured project acceptance criteria with stable IDs, verification methods, and unresolved measurement questions |
+| `SEA_TRIALS.md` | Target root | Project-level acceptance criteria and release objectives |
 | `SOUNDINGS.md` | Target root | Acceptance tests and milestones  |
-| `COMPASS.md` | Target root | Created if it does not Exist. The master project intent file.   Always imported.  Review it if one was automatically created. |
+| `COMPASS.md` | Target root | Created if absent. Review it if one was automatically created. |
 | `questionnaires/*.json` | `QuarterDeck/` | Review questionnaires for unresolved decisions and genuine research spikes |
 | `commanders_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
-The LLM gives a verdict on the condition of the build.  The most important guard is `BLOCKERS.md`.  If
-`BLOCKERS.md` exists, the Commander edits it to answer the questions and reruns `drydock analyze`. The
-Commander's answers guide the LLM on the next run, and the cycle repeats until no blockers remain.
-
-`SEA_TRIALS.md` contains criteria with stable `st-*` IDs. Each criterion declares `Type`,
-`Required`, `Criterion`, and `Verification`. Types are `technical`, `behavioral`, `qualitative`, `guardrail`,
-or `outcome`. Verification methods are `proof`, `measurement`, `evidence`, or `llm`.
-Measurement criteria use either a JSON argv `Command` executed without a shell in the build
-directory or an `Evidence` file contained by the Target. Measurement output is a JSON object with
-a numeric `value` and optional `unit`; `Operator` and `Target` define the deterministic verdict.
-Unknown baselines, targets, workloads, or business measures remain in a literal `QUESTIONS:` block
-with stable `q-*` IDs. Analyze projects these questions into
-`QuarterDeck/questionnaires/discovery-sea-trials.json` and preserves existing answers on rerun.
+The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commander edits it and reruns `drydock analyze` until the blockers are cleared. `SEA_TRIALS.md` captures release-level success criteria. `SOUNDINGS.md` captures acceptance coverage and implementation milestones.
 
 | Quality | Meaning |
 |---|---|
@@ -343,27 +328,19 @@ with stable `q-*` IDs. Analyze projects these questions into
 
 `drydock run quarterdeck` starts a web console for the Commander (product owner).  It is your helm or cockpit.  Navigate to the listed host and port.
 
-At this stage, each story will be presented in its feature/story heirarchy with acceptance criteria.  Blockers have been identified and should be reconciled.  The QuarterDeck shows the artifacts, blockers, questions, questionnaires, and activity that need review in the planning session.  Review the tabs. When you are ready and ok with the plan move to the next step.  Change the instructions by filling out the Questionaires, Compass, or Analyze Compass.
+At this stage, the QuarterDeck shows the artifacts, blockers, questions, questionnaires, and activity that need review in the planning session. Review the tabs, answer blockers, and adjust Compass guidance before moving to `drydock plan`.
 
 Questionnaires and BLOCKERS.md can be edited directly or modified in the QuarterDeck to respond.  Responses are used on the next run of `drydock analyze`.
 
 Commander responses in the QuarterDeck are preserved for the build (by writing them to the appropriate markdown file).
 
-The QuarterDeck calls out blockers and action items.  It also enables the Commander to review core decisions such as the process the LLM intends to use to decompose the imported material into Blueprints.  This review indicates how well the application builds.  The Agile process continues this decomposition until the plan holds a list of actionable stories ready to implement.
+The QuarterDeck calls out blockers and action items and gives the Commander a single place to review the current planning state.
 
 ### drydock plan
 
-`drydock plan` is Sprint Story planning.  Imported source files are re-read and reformatted according to the
-analysis.  This step creates Typed Specification files under `blueprint/`, writes `BUILD_COMPASS.md`, and drafts `MANIFEST.md`.
+`drydock plan` converts the reviewed analysis into Typed Specification files under `blueprint/`, writes `BUILD_COMPASS.md`, and drafts `MANIFEST.md`.
 
-The headers of the blueprints are structured as a dependency graph and the runnable frontier is established.
-
-The plan contains Acceptance Criteria, Spikes and Specification Tickets for features, screens, and scaffolding.
-
-One major goal of the decomposition is for MANIFEST.md to contain a graph database of your work.  The configuration variable
-`PROMPT_WARN_TOKENS` (default 50,000 tokens) sets a maximum total context size for each build.  Each step stacks
-multiple files into a prompt for execution — including `COMPASS.md`, the applicable subsets of the stack, and
-the task instructions.  Similar tasks are grouped together to save context.
+`MANIFEST.md` is the executable build plan. It records dependency-aware build order, the runnable frontier, and the work that must be revisited after change.
 
 **Input files**
 
@@ -371,8 +348,8 @@ the task instructions.  Similar tasks are grouped together to save context.
 |---|---|---|
 | `sources/*` | `blueprint/` | Imported source files, re-read and reformatted into Typed Specifications |
 | `ANALYSIS.md` | Target root | The reviewed analysis that drives decomposition |
-| `PLAN_COMPASS.md` | Target root | Human Editable important block for `build plan`, re-injected every run |
-| `COMPASS.md` | Target root | Project intent |
+| `PLAN_COMPASS.md` | Target root | Commander guidance for planning and grouping |
+| `COMPASS.md` | Target root | Project guidance |
 | `questionnaires/*.json` | `QuarterDeck/` | Resolved planning decisions |
 | `SEA_TRIALS.md` | Target root | Structured project acceptance criteria and stable IDs |
 
@@ -387,16 +364,7 @@ the task instructions.  Similar tasks are grouped together to save context.
 
 **Replan behavior**
 
-`drydock plan` is rerun-safe. When a prior `MANIFEST.md` exists, the following merge rules apply:
-
-- `applied_specs` is restored verbatim — it is the build graph database and is never regenerated by `plan`.
-- Blueprint files whose sha256 matches their `applied_specs` record (clean) are protected: `plan` does not overwrite them with the LLM-generated version.
-- Block states are preserved for any block whose `implements:` files are all clean.
-- Blocks with any dirty `implements:` file (sha256 changed since application) are reset to `pending` for re-execution.
-- Spike `finding:` text is preserved regardless of dirty state.
-- `BUILD_COMPASS.md` and `PLAN_COMPASS.md` are never overwritten.
-
-A Commander dirties a file explicitly — via the QuarterDeck or by editing it directly — to force re-application of its story on the next `drydock build`.
+`drydock plan` is rerun-safe. It preserves reviewed work where possible, rebuilds planning artifacts when inputs changed, and never overwrites Commander-owned Compass files.
 
 ## SAIL Phase 3 — Implement: Sailing the Frontier
 
@@ -410,11 +378,11 @@ Implement the Blueprint using the Manifest
 ### Commands
 
 ```text
-drydock build <Target>
-drydock build <Target> --dry-run
-drydock build <Target> --reset-failed
-drydock build <Target> --normalize-order
-drydock build <Target> --step <STEP>
+drydock build <Target> [--build-dir <path>]
+drydock build <Target> --dry-run [--show-prompt] [--build-dir <path>]
+drydock build <Target> --reset-failed [--build-dir <path>]
+drydock build <Target> --normalize-order [--build-dir <path>]
+drydock build <Target> --step <STEP> [--build-dir <path>]
 drydock build <Target> --step <STEP> --force
 drydock build status <Target>
 drydock score ac <Target>
@@ -422,14 +390,15 @@ drydock score release <Target>
 
 drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
+drydock document assemble readme <Target>
 drydock document <Target> [--model <model>] [--theme <theme>]
 
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
+drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf] [--pdf-output <Output.pdf>]
 
 drydock validate <Target> [--verbose]
 
 drydock rigging compact <Target> [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
-drydock rigging update <Target>
+drydock rigging update <Target> [--dry-run]
 drydock rigging verify <Target>
 ```
 
@@ -462,8 +431,7 @@ Passing programmatic acceptance unlocks the next set of dependent operations.
 ### drydock build
 
 Build executes the work blocks in `MANIFEST.md` based on their dependency graph. `BUILD_COMPASS.md`
-is the story-planning input that defines the authored grouping and build order. The Manifest and
-its Typed Specifications execute in the steps or phases the plan lists.
+is the story-planning input that defines the authored grouping and build order.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -498,78 +466,13 @@ flowchart LR
 | `evidence/` | Target root | Reviewable build evidence written for completed work |
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
-`drydock build <Target>` executes the dependency-ready frontier and builds the application in the target working directory `$DRYDOCK_BUILD_DIRECTORY/<Target>`.
-`drydock build <Target> --reset-failed` resets all failed Manifest blocks to `pending`, clears their
-findings, and then executes the normal dependency-ready frontier.
-`drydock build <Target> --normalize-order` normalizes Manifest group order and then executes the
-normal dependency-ready frontier.
-`drydock build <Target> --dry-run` resolves the same build block, assembles the same prompt,
-prints build diagnostics, assembled-file names, prompt size, and estimated tokens, and exits without
-compact refresh, LLM execution, file writes, evidence writes, Manifest state changes, QuarterDeck
-refresh, README generation, or git initialization/commit. `--dry-run` does not print file contents
-or the full prompt by default. `--show-prompt` prints the full assembled prompt only when explicitly
-combined with `--dry-run`.
-Before executing any agent, `drydock build` compares every previously applied Blueprint
-Specification in the Manifest's `applied_specs` registry against the current Blueprint file
-content. A changed or missing previously applied Specification blocks the build and reports the
-stale file, recorded commit, current commit, recorded hash, and current hash. New unapplied
-Specification files do not block build.
+`drydock build <Target>` executes the dependency-ready frontier and writes the application into `$DRYDOCK_BUILD_DIRECTORY/<Target>`. `--build-dir` overrides the output directory for the current run.
 
-`ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` are sealed foundational Specifications;
-their compact derivatives carry the same sealing. When a sealed foundational Specification is
-stale, the block message names it and instructs the Commander to create a change ticket in
-`blueprint/changes/` with `Amends: <file>` and run `drydock refit`. For a stale ordinary
-Specification, the block message instructs the Commander to run `drydock refit`.
+`--reset-failed` resets failed Manifest blocks and retries them. `--normalize-order` normalizes authored Manifest group order before building. `--step <STEP>` builds one named step, and `--force` resets that step and its child acceptance checks before rebuilding it.
 
-### drydock build - PseudoCode State Machine
+`--dry-run` previews the next build step without invoking the LLM or writing files. `--show-prompt` prints the full assembled prompt only when combined with `--dry-run`.
 
-  ```pseudocode
-  states:
-    pending = not built
-    implemented = legacy built state awaiting review
-    closed/verified = built and programmatic acceptance passed
-    closed/failed = build or programmatic acceptance failed
-
-  status_labels:
-    pending -> [pending]
-    implemented -> [review]
-    closed/verified -> [done]
-    closed/failed -> [FAILED]
-
-  next_buildable_block:
-    for block in manifest:
-      if block has child stories_or_spikes:
-        pending_children = child stories_or_spikes where child.state == pending
-        if pending_children is empty: continue
-        if any(external dep.state != closed/verified for dep in block.depends): stop blocked
-        if any(external dep.state != closed/verified for dep in pending_children.depends): stop blocked
-        return block with pending_children
-      if block is story_or_spike and block.state == pending:
-        if any(dep.state != closed/verified for dep in block.depends): stop blocked
-        return block
-    return none
-
-  build:
-    block = selected_block or next_buildable_block()
-    if block is none: stop
-    run_agent(block)
-    if agent_failed or no_files_written:
-      block.pending_children.state = closed/failed
-    else if programmatic_acceptance_fails(block.pending_children.implements):
-      block.pending_children.state = closed/failed
-    else:
-      block.pending_children.state = closed/verified
-      if all block child stories_or_spikes are closed/verified:
-        block.state = closed/verified
-
-  force_rebuild(block):
-    block.state = pending
-    for child in block.child_stories_or_spikes:
-      child.state = pending
-    for ac in block.child_acs:
-      ac.state = pending
-    build(block)
-```
+Before executing work, `drydock build` checks previously applied Blueprint files for drift. If a governing specification changed, build stops and directs the Commander to run `drydock refit`. Foundational specifications such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require an explicit change ticket.
 
 ### Agile Build Review with drydock run quarterdeck
 
@@ -690,16 +593,15 @@ Supported theme names are `slate`, `harbor`, and `paper`.
 
 ### drydock publish
 
-Drydock publish enables you to convert arbitrary markdown into html or pdfs.  Use this for white papers and other
-artifacts.  Your markdown should have appropriate frontmatter.
+Drydock publish converts arbitrary Markdown into HTML or PDF. Use it for white papers and other published artifacts. Your Markdown should have appropriate frontmatter.
 
 ```text
 drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
 ```
 
-`drydock publish` deterministically renders a frontmatter Markdown document into publishable HTML.  It uses document frontmatter for title, author, studio, cover text, theme, and other formatting.  It does not call an LLM. Supported themes are `sail`, `slate`, and `paper`.
+`drydock publish` deterministically renders a frontmatter Markdown document into publishable HTML. It uses document frontmatter for title, author, studio, cover text, theme, and other formatting. It does not call an LLM. Supported themes are `sail`, `slate`, and `paper`.
 
-`--pdf` also renders a PDF from the generated HTML using the local browser renderer.
+`--flatten` publishes H1 and H2 sections as separate HTML pages with navigation. `--pdf` also renders a PDF from the generated HTML using the local browser renderer.
 
 Example:
 ```bash
@@ -709,13 +611,7 @@ Example:
 
 ## SAIL Phase 4 — Loop: The Refit
 
-A Refit lets the Commander update the application.  The process updates the Blueprint and optionally the Target. Blueprints changes
-are kept in sync with the application with a `drydock build`.
-
-The post-build refit for an existing project keeps the code and Blueprints aligned.  Drydock provides two methods for this.  The first
-uses change tickets which have the same dependency graph as do the other Blueprints.  This enables it to be chunked with `drydock build` after
-a new plan is built.  The alternative tracks the git commit of the build and can use git to identify files which have been changed and which
-can rerun only those files.
+A Refit lets the Commander update the application while keeping the Blueprint and built software aligned. Change tickets become first-class build inputs and drifted specifications are mapped back into the normal build loop.
 
 ### Commands
 
@@ -740,23 +636,15 @@ flowchart LR
 ```
 ### drydock refit
 
-`drydock refit` conforms change tickets in `blueprint/changes/` to the Drydock build process. The Commander (or an external ticketing system) places `TICKET-NNN-{Name}.md` files in that directory. Refit normalizes each ticket's typed spec header, generates or refines stories and acceptance criteria, and patches `MANIFEST.md` with new story rows for those tickets. The ticket pass never touches applied manifest rows; only the drift reconciliation pass resets them.
+`drydock refit` processes change tickets in `blueprint/changes/`, normalizes them into the Drydock build flow, updates the Manifest, and resets impacted work so it can be rebuilt in dependency order.
 
-**Change ticket format.** A change ticket is a Typed Specification file with FileType `CHANGE`. It carries an `Amends:` header field that names the parent Blueprint spec the ticket modifies (e.g. `Amends: FEATURE-Copy.md`). `drydock refit` reads this field to resolve dependency inheritance and to inject the parent spec as context.
+Each change ticket is a Typed Specification file with an `Amends:` header that names the Blueprint file it changes. Refit uses that relationship to map the ticket into the existing plan.
 
-**Dependency inheritance.** A change ticket's `Depends On:` field equals the parent spec's `Depends On:` set plus the parent spec filename itself. `drydock refit` computes this deterministically from the parent spec header before the LLM call and injects the resolved list into the prompt.
+Refit also checks the current Blueprint for drift against previously applied work. If a specification changed, Refit reopens the affected Manifest work so the next `drydock build` can rebuild it. Foundational files such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit change tickets.
 
-**Role boundary.** `drydock refit` is a targeted patch: it processes only tickets in `blueprint/changes/` and inserts or replaces pending manifest rows for those tickets. `drydock plan` is a full regeneration: it reads all Blueprint inputs and rewrites `MANIFEST.md` with state-preserving merge. Run `drydock plan` after `drydock refit` when the full plan graph must be recomputed.
+**Input files.** `blueprint/changes/*.md`, Blueprint files, `MANIFEST.md`, and `COMPASS.md`.
 
-**Behavior.** Scans `blueprint/changes/*.md`. For each ticket: reads `Amends:`, resolves parent spec dependencies, runs one LLM call to normalize the ticket header and generate manifest rows, writes the updated ticket, and patches `MANIFEST.md`. Tickets without an `Amends:` field are skipped with a warning. After the ticket pass, refit runs a deterministic drift reconciliation over the Manifest's `applied_specs` registry.
-
-**Drift reconciliation.** Refit compares every `applied_specs` record against the current Blueprint file content. For each drifted file, refit computes the reset cascade: every block whose `implements:` or `context:` references the file or one of its compact derivatives, every transitive dependent of those blocks through `depends:`, and every child of a reset block. Refit sets each cascaded block's `state:` to `pending`, reopens the parent feature of each reset step, removes the drifted file's `applied_specs` records, and removes every record stamped by a reset block. The next `drydock build` rebuilds the reset blocks in dependency order.
-
-**Sealed foundational Specifications.** A drifted `ARCHITECTURE.md`, `DATABASE.md`, or `UI-GENERAL.md` (or a compact derivative of one) resets its cascade only when a ticket in the same refit run amends it. Without such a ticket, refit reports the file as blocked with the instruction to create a change ticket carrying `Amends: <file>`, leaves its blocks and records untouched, and exits 1. A foundational reset cascades to every dependent block; a foundational change rebuilds the application.
-
-**Input files.** `blueprint/changes/*.md`, `blueprint/<parent-spec>.md`, `blueprint/*.md` (drift comparison), `MANIFEST.md`, `COMPASS.md`, `MANIFEST_CONTRACT.md`.
-
-**Output files.** Updated `blueprint/changes/*.md` (headers normalized); patched `MANIFEST.md` (ticket rows, cascaded `state:` resets, pruned `applied_specs` records).
+**Output files.** Updated `blueprint/changes/*.md` and patched `MANIFEST.md`.
 
 **Exit codes.** `0` success or no-op; `1` operational failure or unticketed foundational drift; `2` usage error.
 
@@ -1112,29 +1000,13 @@ inherit from it.
 
 ### Compaction
 
-Compaction creates a `<file>_compact.md` from `<file>.md`.  It extracts only the callable surface of the input file — routes, signatures, typed parameters, one-line summaries — discarding rationale and examples.  Once compacted, the file will be recompacted if `drydock rigging compact --all` is called.  
+Compaction creates a `<file>_compact.md` from `<file>.md`. It keeps the callable surface of the source file and drops explanatory detail that downstream build steps do not need.
 
-The manifest understands how to use compact files.  It divides stories into those that consume the file and those that build it.  Consumer stories receive the compact derivative.
+Consumer stories receive the compact derivative. This lets Drydock build with focused context instead of restacking full specifications for every dependent change.
 
-If a required compact derivative is absent, the build stops with a directive to run
-`drydock rigging compact <Target>`. `drydock plan` warns when a source is newer than its derivative.
+If a required compact derivative is absent, the build stops with a directive to run `drydock rigging compact <Target>`. `drydock plan` warns when a source is newer than its derivative.
 
-**Rigging compaction.** `Rigging/` ships with pre-built compact derivatives. 
-
-The `--all` argument recompacts all files previously compacted if the file is newer than the compact version.  Compaction cascades rebuild invalidation across every story that references those files via `context:`.
-Do not edit Rigging files unless the governing source actually changed.
-
-Files without callable surface are classified by the compaction agent and skipped (`no-surface`).
-`_compact.md` files are never treated as sources.
-
-**Compact stability.** When a compact derivative already exists, the compaction prompt receives
-it alongside the source and reproduces it verbatim unless the source contains a structural change
-to the extracted contract. When the regenerated body matches the existing derivative, compaction
-keeps the existing file bytes, refreshes its modification time, and reports the file as
-`skipped-unchanged`. An unchanged derivative keeps its `applied_specs` hash and triggers no
-rebuild cascade.
-
-`rigging compact` runs in three forms - the ARCHITECTURE.md role, the DATABASE.md role, and the evrything else role  The ARCHITECTURE and DATABASE components are repeatedly reinjected and should be special compaction when they are created is our solution.
+`Rigging/` ships with pre-built compact derivatives. `--all` also refreshes Drydock's own Rigging compacts. Files without a callable surface are skipped. `_compact.md` files are never treated as sources.
 
 ### Commands
 
@@ -1142,7 +1014,7 @@ rebuild cascade.
 drydock rigging compact <Target> [--all] [--force]
                                  [--include-file <file.md>] [--exclude-file <file.md>]
                                  [--include-dir <dir>]
-drydock rigging update <Target>
+drydock rigging update <Target> [--dry-run]
 drydock rigging verify <Target>
 ```
 
@@ -1154,9 +1026,7 @@ drydock rigging verify <Target>
 | `--exclude-file <file.md>` | Remove a file from the auto-discovered set (repeatable) |
 | `--include-dir <dir>` | Add all Markdown files under a directory (repeatable) |
 
-`drydock rigging update` injects `BUSINESS_RULES_compact.md` and standard templates into the target
-project's `AGENTS.md` in an idempotent manner. `drydock rigging verify` checks target compliance
-with the Rigging contract.
+`drydock rigging update` injects `BUSINESS_RULES_compact.md` and standard templates into the target project's `AGENTS.md` in an idempotent manner. `--dry-run` previews those changes without writing files. `drydock rigging verify` checks target compliance with the Rigging contract.
 
 ## Drydock Document - Project Documentation
 
@@ -1193,7 +1063,7 @@ Edit build `DOC-*.md` files directly to refine documentation without re-running 
 run `drydock document assemble` to regenerate the HTML. The Target root `documentation.yaml`
 stores the navigation order and default theme.
 
-4. `drydock document assemble readme <Target>` will create a readme.  This is done in a hook when build is done but sometimes you might manually wish to run it.
+4. `drydock document assemble readme <Target>` regenerates `README.md` for the built project when needed outside the normal build hook.
 
 ### Spec Kit Import Contract
 
@@ -1304,12 +1174,12 @@ not authored as specification files.
   - Created: `drydock import` conversion; Manual; other
   - Updated: Product owner
 
-**Human-authored** — the product intent explicitly owned by the product owner.
+**Human-authored** — product guidance explicitly owned by the product owner.
 
-- **`COMPASS.md`** — Project guidance: intent, constraints, and guardrails. Lives at the Target
+- **`COMPASS.md`** — Project guidance: constraints, guardrails, and definition of done. Lives at the Target
   root (not inside `blueprint/`). Injected into every LLM run as ambient project context.
   Created by `drydock analyze` (generated from spec if absent) or by
-  `drydock import --format compass` (user-supplied intent, LLM-normalized at import).
+  `drydock import --format compass` (user-supplied guidance, normalized at import).
   - Auto Generate: `drydock analyze` (auto-generated)
   - Created: `drydock import --format compass` (user-supplied, normalized at import)
   - Updated: Product owner
@@ -1391,11 +1261,6 @@ updated by `drydock refit` as specification files and application code evolve.
 
 - **`evidence/build-score.json`** — Code-bound scoring evidence with input hashes, Git identity, deterministic observations, proof results, and LLM execution identity
   - Created and updated: `drydock score`
-
-- **`logs/ships_log.jsonl`** — Drydock's append-only JSONL ledger of product and design events; see
-  "The Ship's Log"
-  - Created and updated: agents developing Drydock, according to `SHIPS_LOG_PROCESS.md`, through
-    the repository-local validated persistence utility
 
 - **`logs/history.jsonl`** — append-only command-invocation log; one JSON record per command with
   the command line, timestamp, target, and return code. Pure-report commands are excluded
