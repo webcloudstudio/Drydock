@@ -426,6 +426,41 @@ class TestAnalyzeCommand:
         assert seen["target_dir"] == target_dir
         assert seen["kwargs"]["llm_provider"] == "codex"
 
+    def test_analyze_prints_sea_trials_blocker_as_warning(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target_dir = tmp_target_root / "Proj"
+        (target_dir / "blueprint").mkdir(parents=True)
+        result = SimpleNamespace(
+            ok=True,
+            target_dir=target_dir,
+            analysis_path=target_dir / "ANALYSIS.md",
+            sea_trials_path=target_dir / "SEA_TRIALS.md",
+            sea_trials_created=False,
+            warnings=("SEA_TRIALS.md was not created: analyze returned no acceptance criteria.",),
+            compass_path=None,
+            discovery_paths=(),
+            commanders_chair_path=None,
+            quality="Blocked",
+            story_count=0,
+            feature_count=0,
+            question_count=0,
+            blocker_count=1,
+            screen_count=0,
+            stack="python",
+        )
+        monkeypatch.setattr("drydock.analyze.analyze", lambda *args, **kwargs: result)
+
+        rc, out, err = run_cli("analyze", "Proj")
+
+        assert rc == 0
+        assert "SEA_TRIALS.md" not in out
+        assert "Quality: ✗  Blocked" in out
+        assert "Warning: SEA_TRIALS.md was not created" in err
+
 
 class TestLlmOverrideFlags:
     def test_status_help_lists_llm_flags(self):

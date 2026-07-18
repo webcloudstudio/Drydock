@@ -780,14 +780,14 @@ class TestParseOutput:
         with pytest.raises(Exception, match="Text appeared outside"):
             _parse_output(truncated)
 
-    def test_missing_sea_trials_raises(self):
-        truncated = _VALID_LLM_OUTPUT.replace("=== SEA_TRIALS.md ===", "").replace(
-            "=== END SEA_TRIALS.md ===", ""
+    def test_missing_sea_trials_returns_no_acceptance_contract(self):
+        truncated = _VALID_LLM_OUTPUT.replace(
+            f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===\n\n", ""
         )
-        with pytest.raises(Exception, match="Text appeared outside"):
-            _parse_output(truncated)
+        _, sea_trials, *_ = _parse_output(truncated)
+        assert sea_trials is None
 
-    def test_malformed_sea_trials_raises(self):
+    def test_malformed_sea_trials_is_deferred_to_blocker_handling(self):
         broken = _VALID_LLM_OUTPUT.replace(
             _SEA_TRIALS_CONTENT,
             """# Sea Trials: TestProject
@@ -798,8 +798,8 @@ Required: yes
 Criterion: The system is operational.
 Verification: proof""",
         )
-        with pytest.raises(SpecificationError, match="is missing Pattern"):
-            _parse_output(broken)
+        _, sea_trials, *_ = _parse_output(broken)
+        assert sea_trials is not None
 
     def test_model_owned_sea_trials_questionnaire_is_rejected(self):
         intruding = _VALID_LLM_OUTPUT.replace(
@@ -1220,8 +1220,7 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.sea_trials_path == target_dir / "SEA_TRIALS.md"
 
-    def test_malformed_sea_trials_writes_nothing_and_fails_the_run(self, tmp_path):
-        """Validation precedes every target write, so a rejected contract leaves no artifacts."""
+    def test_malformed_sea_trials_is_a_blocker_without_failing_analyze(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         broken = _VALID_LLM_OUTPUT.replace(
             _SEA_TRIALS_CONTENT,
@@ -1237,11 +1236,33 @@ Pattern: ubiquitous""",
 
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=broken))
 
-        assert result.ok is False
-        assert "must use Pattern: unwanted" in result.error
+        assert result.ok is True
+        assert result.sea_trials_created is False
+        assert result.warnings == (
+            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 is a guardrail and must use "
+            "Pattern: unwanted (If <trigger>, then the <system> shall <mitigation>)",
+        )
         assert not (target_dir / "SEA_TRIALS.md").exists()
-        assert not (target_dir / "ANALYSIS.md").exists()
+        assert (target_dir / "ANALYSIS.md").exists()
+        blockers = (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
+        assert "blocker-sea-trials" in blockers
+        assert "must use Pattern: unwanted" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
+
+    def test_missing_sea_trials_block_is_a_blocker_without_failing_analyze(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _VALID_LLM_OUTPUT.replace(
+            f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===\n\n", ""
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+
+        assert result.ok is True
+        assert result.sea_trials_created is False
+        assert result.quality == "Blocked"
+        assert "returned no acceptance criteria" in result.warnings[0]
+        assert not (target_dir / "SEA_TRIALS.md").exists()
+        assert "blocker-sea-trials" in (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
 
     def test_emitted_sea_trials_carry_the_reader_documentation(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

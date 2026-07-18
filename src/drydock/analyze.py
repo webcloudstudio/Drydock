@@ -85,6 +85,7 @@ _ANALYSIS_NOTES_HEADING_RE = re.compile(
 )
 _QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
 _STACK_BLOCKER_ID = "blocker-stack-selection"
+_SEA_TRIALS_BLOCKER_ID = "blocker-sea-trials"
 
 
 class CompletedRun(Protocol):
@@ -118,6 +119,8 @@ class AnalyzeResult:
     ok: bool
     error: str | None = None
     blockers_path: Path | None = None
+    warnings: tuple[str, ...] = ()
+    sea_trials_created: bool = True
 
     def exit_code(self) -> int:
         return 0 if self.ok else 1
@@ -765,9 +768,26 @@ def _ensure_stack_blocker(blockers: str | None, *, stack_selected: bool) -> str 
     )
 
 
+def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
+    """Add the acceptance-contract gate when Analyze could not create Sea Trials."""
+    if blockers and _SEA_TRIALS_BLOCKER_ID in _BLOCKER_ID_RE.findall(blockers):
+        return blockers
+    sea_trials_blocker = (
+        "## blocker-sea-trials: Define project acceptance criteria\n"
+        "SEA_TRIALS.md was not created because analyze could not derive valid project "
+        f"acceptance criteria ({reason}). This blocks planning and final scoring. "
+        "Update the Blueprint inputs, then re-run analyze."
+    )
+    return (
+        f"{blockers.rstrip()}\n\n{sea_trials_blocker}"
+        if blockers
+        else ("# Blockers: Project Acceptance\n\n" + sea_trials_blocker)
+    )
+
+
 def _parse_output(
     text: str,
-) -> tuple[str, str, str | None, str | None, dict[str, dict], str, dict[str, str]]:
+) -> tuple[str, str | None, str | None, str | None, dict[str, dict], str, dict[str, str]]:
     """Return (analysis, sea_trials, compass_or_none, blockers_or_none, discoveries,
     quality, summary).
 
@@ -783,7 +803,7 @@ def _parse_output(
         allowed_prefixes=("discovery-",),
     )
 
-    for required in ("ANALYSIS.md", "SEA_TRIALS.md"):
+    for required in ("ANALYSIS.md",):
         if required not in blocks:
             raise ValueError(f"LLM output missing === {required} === block")
 
@@ -800,10 +820,10 @@ def _parse_output(
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{name} block is not valid JSON: {exc}") from exc
 
-    # Validate and document the Sea Trials before any caller writes them: a malformed contract
-    # must fail the run with nothing on disk.
-    sea_trials_text = normalize_sea_trials_text(blocks["SEA_TRIALS.md"])
-    parse_sea_trials_text(sea_trials_text)
+    # Sea Trials are a project gate, not an Analyze execution failure. The caller validates this
+    # optional model output and turns an absent or malformed contract into a QuarterDeck blocker.
+    sea_trials_raw = blocks.get("SEA_TRIALS.md")
+    sea_trials_text = normalize_sea_trials_text(sea_trials_raw) if sea_trials_raw else None
 
     analysis_text = _remove_open_questions_section(blocks["ANALYSIS.md"])
     analysis_text = _remove_tuning_options_section(analysis_text)
@@ -950,6 +970,18 @@ def analyze(
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
 
+    sea_trials_warning: str | None = None
+    if sea_trials_text is None:
+        sea_trials_warning = (
+            "SEA_TRIALS.md was not created: analyze returned no acceptance criteria."
+        )
+    else:
+        try:
+            parse_sea_trials_text(sea_trials_text)
+        except SpecificationError as exc:
+            sea_trials_warning = f"SEA_TRIALS.md was not created: {exc}"
+            sea_trials_text = None
+
     if compass_pending and not compass_text:
         return _fail("Imported COMPASS.md was not normalized by analyze output")
 
@@ -986,7 +1018,8 @@ def analyze(
     questionnaires_dir.mkdir(parents=True, exist_ok=True)
 
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
-    sea_trials_path.write_text(sea_trials_text + "\n", encoding="utf-8", newline="\n")
+    if sea_trials_text is not None:
+        sea_trials_path.write_text(sea_trials_text + "\n", encoding="utf-8", newline="\n")
 
     written_compass: Path | None = None
     if compass_text and (not compass_exists or compass_pending):
@@ -1003,12 +1036,13 @@ def analyze(
         discovery_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
         discovery_paths.append(discovery_path)
 
-    sea_questions_path = project_questions(
-        parse_sea_trials_text(sea_trials_text),
-        questionnaires_dir / SEA_TRIALS_QUESTIONNAIRE,
-    )
-    if sea_questions_path is not None:
-        discovery_paths.append(sea_questions_path)
+    if sea_trials_text is not None:
+        sea_questions_path = project_questions(
+            parse_sea_trials_text(sea_trials_text),
+            questionnaires_dir / SEA_TRIALS_QUESTIONNAIRE,
+        )
+        if sea_questions_path is not None:
+            discovery_paths.append(sea_questions_path)
 
     # The stack questionnaire always exists after analyze — its content is deterministic
     # (the full Rigging catalog), so it never depends on the LLM choosing to emit it.
@@ -1024,6 +1058,8 @@ def analyze(
         blockers_text_out,
         stack_selected=_has_stack_selection(questionnaires_dir),
     )
+    if sea_trials_warning:
+        blockers_text_out = _ensure_sea_trials_blocker(blockers_text_out, sea_trials_warning)
 
     # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
     # Its presence is the flag that halts the pipeline; written when present, deleted otherwise
@@ -1073,4 +1109,6 @@ def analyze(
         execution_id=exec_id,
         ok=True,
         blockers_path=written_blockers,
+        warnings=(sea_trials_warning,) if sea_trials_warning else (),
+        sea_trials_created=sea_trials_text is not None,
     )

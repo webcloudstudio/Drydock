@@ -488,7 +488,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         return 1
     tdir = result.target_dir
     print(f"  ANALYSIS.md   →  {result.analysis_path.relative_to(tdir)}")
-    print(f"  SEA_TRIALS.md →  {result.sea_trials_path.relative_to(tdir)}")
+    if getattr(result, "sea_trials_created", True):
+        print(f"  SEA_TRIALS.md →  {result.sea_trials_path.relative_to(tdir)}")
+    for warning in getattr(result, "warnings", ()):
+        print(f"Warning: {warning}", file=sys.stderr)
     if result.compass_path:
         print(f"  COMPASS.md    →  {result.compass_path.relative_to(tdir)}  (created)")
     for discovery_path in result.discovery_paths:
