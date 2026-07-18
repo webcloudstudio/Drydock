@@ -2,11 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-16 V8 |
+| Version | 2026-07-18 V9 |
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
 | Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V8 adds ANALYSIS.md tab-structure redesign: merge Overview+Summary, drop Blockers tab, wire Open Questions to spike files. |
-| Pending spec | 16 approved items | 22 items || Pending impl | 0 unimplemented sections | 0 |
+| Pending spec | 17 approved items |
+| Pending impl | 3 unimplemented sections |
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
 `drydock plan create`. The two commands have a tight interface and are designed together.
 `notes_plan.md` carries `plan create` implementation detail; this file owns the shared model.
@@ -453,6 +454,55 @@ QuarterDeck tabs from `##` headings in ANALYSIS.md. Four decisions agreed in ses
    spike connection visible to the PO.
 
 4. **Final ANALYSIS.md tab structure:** `Overview / Story List / Open Questions / Notes` — driven
-   entirely by `##` headings. All changes are prompt-only edits to `prompts/analyze.md`.
+entirely by `##` headings. All changes are prompt-only edits to `prompts/analyze.md`.
+
+### Analyze Documentation Contract Alignment
+`2026-07-18` · `spec:approved` · `impl:na`
+
+The canonical `drydock analyze` section records the actual command contract: CLI syntax including
+the LLM options, exit codes, re-run inputs, and material target-side effects. It does not identify
+`SOUNDINGS.md` as an Analyze artifact. The input inventory includes prior `SEA_TRIALS.md`, the
+Rigging manifest, `EXCLUDE_FILES.md`, and target metadata identity fields where those supply
+Analyze job context. `EXCLUDE_FILES.md` excludes exact imported-source filenames from Analyze and
+Plan prompt injection.
+
+### Rigging Manifest Injection
+`2026-07-18` · `spec:na` · `impl:unimplemented`
+
+`Rigging/MANIFEST.md` is the compact catalog injected into `drydock analyze`. It replaces the
+filename-only Rigging catalog. It is created from the current stack README and active Rigging
+inventory; every selectable `Rigging/stack/*.md` source file (excluding README and compact
+derivatives) and every `Rigging/BRA*.md` file has an entry. Each entry supplies filename,
+category, concise purpose, and prerequisites where known. Unknown prerequisites remain visibly
+unset for Commander review; the manifest does not invent them.
+
+Analyze receives the manifest but never opens each component rule file. The Commander owns later
+manifest corrections.
+
+### Stack Selection Is a Planning Gate
+`2026-07-18` · `spec:approved` · `impl:unimplemented`
+
+Analyze always provides `discovery-stack.json` as a multi-select checkbox questionnaire over real
+manifest components. It has no synthetic `other` option. The LLM may recommend a small relevant
+subset, but that recommendation is not an answer.
+
+An empty stack selection is the stable `blocker-stack-selection` planning gate. Any non-empty
+Commander selection in QuarterDeck confirms the stack; no approval button and no Analyze re-run
+are required solely to clear this gate. Plan consumes the persisted selection directly. Other
+blockers keep the existing answer-and-re-analyze workflow.
+
+### Analyze Prompt: One Semantic Contract and One Output Protocol
+`2026-07-18` · `spec:na` · `impl:unimplemented`
+
+Tighten `prompts/analyze.md` without turning it into documentation. Each behavioral rule has one
+authoritative home: semantic analysis policy, ordered task flow, output schemas, or hard protocol
+rules. Remove contradictions and stale terms: `TYPED_SPEC` becomes imported-source context; a
+questionnaire never resolves a blocker; source-named technology informs a recommendation but does
+not itself confirm a stack; strategic goals and criteria are derived only where stated or directly
+implied.
+
+The output protocol names the exact order: `ANALYSIS.md`, `SEA_TRIALS.md`, conditional
+`BLOCKERS.md`, conditional `COMPASS.md`, conditional identity questionnaire, mandatory stack
+questionnaire, then conditional gap and other discovery questionnaires in stable lexical order.
 
 ---
