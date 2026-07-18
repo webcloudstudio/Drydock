@@ -27,13 +27,16 @@ You will be creating a set of Agile features and stories. Features group stories
 only grouping unit used by `ANALYSIS.md` and the Commanders Chair.
 You raise anything the human must decide as either a blocker or a discovery questionnaire.  A
 blocker stops the pipeline; a discovery questionnaire does not.  Both are carried as questions for
-the human to answer.
+the human to answer. Stack selection is a blocking question: planning cannot proceed until the
+Commander selects the applicable Rigging components.
 
 A story is an atomic testable unit of work that might have acceptance criteria and guardrails at a later stage. Stories include user interface screens, the routes used to service those screens, cli options, api served, batch scripts needed, import/export operations, and other atomic units of work according to agile best practices. Do not create a separate Screens grouping or count; UI screens are stories under the relevant Agile feature.
 
 You will note the interrelationships between these elements — for example, a user interface screen uses api calls, and an export depends on the data it reads.  Note them to inform how you cut stories; do not build a dependency graph.  The graph is constructed later, by `plan create`.
 
-You will also look at the technologies mentioned in the sources and create a list.  If a needed technology is implied but never named — for example a web server is required but none is chosen — surface that as a question.
+You will also look at the technologies mentioned in the sources and create a list. If a needed
+technology is implied but never named — for example a web server is required but none is chosen —
+surface that as a blocking stack question.
 
 When you look at a story that you have created, if it is complex, attempt to break it up into smaller stories.  In the agile process, it is preferable to use multiple smaller stories rather than one larger one.
 
@@ -53,7 +56,7 @@ Finally - we use our COMPASS to guide the build.
 *only the human can answer* — a decision the team genuinely cannot make from the sources. Raise
 one only when the answer turns on something the sources do not contain: business priority, product
 taste, an external or regulatory constraint, an irreversible trade-off, or a genuinely absent fact
-(no stack named, no auth model stated for a product that clearly needs one).
+(for example, no auth model stated for a product that clearly needs one).
 
 Anything you can derive from the sources, you **must derive** — into the story list,
 Surfaced Acceptance Criteria, or SEA_TRIALS. Never ask the human to supply work the team owns. In particular,
@@ -253,7 +256,9 @@ decision; it never resolves a blocker. Do not duplicate a questionnaire question
   `blocker-stack-selection` in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
   `discovery-gaps.json`; split into `discovery-gaps-2.json`, etc. only past 5–6 questions in this
   run. Do not emit a questionnaire for a matter the sources or prior answers have already settled.
-  Do not emit a questionnaire that duplicates an existing unanswered questionnaire.
+  Do not emit a questionnaire that duplicates an existing unanswered questionnaire. Existing
+  questionnaires are preserved indefinitely and never rewritten or replaced. On re-analysis, emit
+  each genuinely new, non-duplicate question in a new `discovery-<slug>.json` file.
 
 **10. Emit all output blocks.** See Output Format below. Emit the `BLOCKERS.md` block only when
 blockers exist; emit the `COMPASS.md` block when `COMPASS_EXISTS: false` or
@@ -537,6 +542,8 @@ stable `blocker-stack-selection` blocker.
 - Never re-ask a question already settled by `ANALYZE_COMPASS.md`, a prior `BLOCKERS.md`, or an
   existing questionnaire answer. Never emit a duplicate or reworded version of an existing
   unanswered questionnaire.
+- Preserve every existing questionnaire indefinitely. Never rewrite or replace an existing
+  questionnaire; emit genuinely new, non-duplicate questions in new `discovery-<slug>.json` files.
 - Always emit `discovery-stack.json` with `"input": "checkbox_grid"`. Options are the complete,
   alphabetized injected manifest component filenames. Never emit `"other"`; never open individual
   component rule files. Use `proposed` for the recommended subset and preserve a prior Commander
@@ -573,11 +580,12 @@ stable `blocker-stack-selection` blocker.
 - Never emit a `discovery-sea-trials.json` block. Sea Trials questions live in the SEA_TRIALS.md
   `QUESTIONS:` block; Drydock projects them into that questionnaire itself.
 - All questionnaire JSON must be valid JSON.
-- Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources only — there are no
+- Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources — there are no
   typed spec files at analyze time, so do not inspect or invent them.
 - Do not fabricate requirements or problems the sources do not imply. A genuinely absent decision
-  (e.g. no auth model stated) is a real gap — surface it as a questionnaire, not an invented requirement.
+  (e.g. no auth model stated) is a real gap — route it under this prompt's blocker and questionnaire
+  rules, not as an invented requirement.
 
 ---
 
-The job metadata, prior answers (if any), and imported source files follow below.
+Use the preceding job metadata, prior answers (if any), and imported source files for this run.
