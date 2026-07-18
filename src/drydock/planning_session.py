@@ -26,6 +26,7 @@ from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
 
+from drydock.acceptance import all_programmatic_acceptance
 from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
 from drydock.errors import SpecificationError
@@ -51,6 +52,7 @@ from drydock.sea_trials import parse_sea_trials_text
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
+    write_plan_soundings,
 )
 
 PROMPT_NAME = "plan_create"
@@ -1651,9 +1653,9 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck = target_dir / "QuarterDeck"
     quarterdeck.mkdir(parents=True, exist_ok=True)
     ensure_standard_artifacts(plan.project, target_dir)
-    # SOUNDINGS.md is written only by ``drydock score ac``; planning never creates it.
-    # The QuarterDeck runtime is served from the package; only console state is
-    # written into the Target (see quarterdeck_run.run_quarterdeck).
+    # SOUNDINGS.md is projected at plan time by ``create_plan`` (all assertions UNVERIFIED) and
+    # refreshed by ``drydock score ac``. The QuarterDeck runtime is served from the package; only
+    # console state is written into the Target (see quarterdeck_run.run_quarterdeck).
     (quarterdeck / "planning-session.md").write_text(
         f"# Planning Session: {plan.project}\n\n"
         "Review the proposed decomposition, build order, and acceptance gates on the Kanban Board. "
@@ -1933,6 +1935,10 @@ def create_plan(
 
     # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)
+
+    # 5. Project the acceptance board at plan time: one UNVERIFIED row per Blueprint assertion,
+    #    reviewable in the QuarterDeck before any build. `drydock score ac` refreshes it.
+    write_plan_soundings(all_programmatic_acceptance(plan, blueprint_dir), target_dir)
 
     changed = prior_manifest != (plan_path.read_text(encoding="utf-8"))
     quarterdeck = _write_quarterdeck(plan, target_dir)

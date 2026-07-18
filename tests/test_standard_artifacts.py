@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from drydock.acceptance import ProgrammaticAcceptance
 from drydock.build_plan import parse_build_plan
-from drydock.standard_artifacts import Sounding, load_soundings, render_console, sync_plan_soundings
+from drydock.standard_artifacts import (
+    VERIFIED_UNVERIFIED,
+    Sounding,
+    load_soundings,
+    project_soundings,
+    render_console,
+    write_plan_soundings,
+)
 
 
 def test_render_console_places_sea_trials_before_soundings(tmp_path):
@@ -127,88 +135,69 @@ def test_render_console_groups_artifacts_by_phase():
     assert items["refit_status"]["type"] == "refit"
 
 
-def test_sync_plan_soundings_projects_acceptance_and_preserves_review(tmp_path):
-    target = tmp_path / "Target"
-    target.mkdir()
-    plan_path = target / "MANIFEST.md"
-    plan_path.write_text(
-        """# MANIFEST: Example
-state: draft
-
-## story 1: Work
-id: work
-state: pending
-
-## ac 1: System starts
-id: system-starts
-parent: work
-state: pending
-""",
-        encoding="utf-8",
-    )
-    soundings = target / "SOUNDINGS.md"
-    soundings.write_text(
-        "# Soundings\n\n"
-        "| ID | Summary | Verified | Evidence | Verified At |\n"
-        "|---|---|---|---|---|\n"
-        "| system-starts | Old wording | ✓ PASS | features.md:starts | 2026-07-17T10:00:00+00:00 |\n"
-        "| gone | Removed criterion | ✓ PASS | x | 2026-07-17T10:00:00+00:00 |\n",
-        encoding="utf-8",
+def test_project_soundings_one_row_per_assertion_all_unverified():
+    checks = (
+        ProgrammaticAcceptance(
+            "catalog-200", "FEATURE-Catalog.md", "GET /catalog returns 200", "1"
+        ),
+        ProgrammaticAcceptance("catalog-writes", "FEATURE-Catalog.md", "POST persists item", "1"),
+        ProgrammaticAcceptance("home-loads", "SCREEN-Home.md", "Home renders", "1"),
     )
 
-    sync_plan_soundings(parse_build_plan(plan_path), target)
+    rows = project_soundings(checks)
 
-    # Summary refreshes from the plan; verified status, evidence, and timestamp are preserved;
-    # the criterion no longer in the plan is dropped.
-    assert load_soundings(soundings) == {
-        "system-starts": Sounding(
-            "system-starts",
-            "System starts",
-            "✓ PASS",
-            "features.md:starts",
-            "2026-07-17T10:00:00+00:00",
+    # One row per Blueprint assertion, tagged with its source file, all UNVERIFIED at plan time.
+    assert [r.criterion_id for r in rows] == ["catalog-200", "catalog-writes", "home-loads"]
+    assert [r.blueprint for r in rows] == [
+        "FEATURE-Catalog.md",
+        "FEATURE-Catalog.md",
+        "SCREEN-Home.md",
+    ]
+    assert all(r.verified == VERIFIED_UNVERIFIED for r in rows)
+    assert all(r.evidence == "" and r.verified_at == "" for r in rows)
+
+
+def test_write_plan_soundings_round_trips_with_blueprint_column(tmp_path):
+    checks = (
+        ProgrammaticAcceptance(
+            "catalog-200", "FEATURE-Catalog.md", "GET /catalog returns 200", "1"
+        ),
+    )
+
+    write_plan_soundings(checks, tmp_path)
+
+    assert load_soundings(tmp_path / "SOUNDINGS.md") == {
+        "catalog-200": Sounding(
+            criterion_id="catalog-200",
+            blueprint="FEATURE-Catalog.md",
+            summary="GET /catalog returns 200",
+            verified=VERIFIED_UNVERIFIED,
         )
     }
 
 
-def test_sync_plan_soundings_resets_dirty_and_adds_new_as_unverified(tmp_path):
-    from drydock.standard_artifacts import VERIFIED_UNVERIFIED
+def test_all_programmatic_acceptance_gathers_implemented_specs_deduped(tmp_path):
+    from drydock.acceptance import all_programmatic_acceptance
 
     target = tmp_path / "Target"
-    target.mkdir()
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    (blueprint / "FEATURE-Catalog.md").write_text(
+        "# FEATURE: Catalog\n\n## Programmatic Acceptance\n\n"
+        "### catalog responds\n\n```python\nassert True\n```\n\n"
+        "### catalog writes\n\n```python\nassert True\n```\n",
+        encoding="utf-8",
+    )
     plan_path = target / "MANIFEST.md"
     plan_path.write_text(
-        """# MANIFEST: Example
-state: draft
-
-## story 1: Work
-id: work
-state: pending
-
-## ac 1: System starts
-id: system-starts
-parent: work
-state: pending
-
-## ac 2: New gate
-id: new-gate
-parent: work
-state: pending
-""",
-        encoding="utf-8",
-    )
-    soundings = target / "SOUNDINGS.md"
-    soundings.write_text(
-        "# Soundings\n\n"
-        "| ID | Summary | Verified | Evidence | Verified At |\n"
-        "|---|---|---|---|---|\n"
-        "| system-starts | System starts | ✓ PASS | e | 2026-07-17T10:00:00+00:00 |\n",
+        "# MANIFEST: Example\nstate: draft\n\n"
+        "## story 1: Catalog\nid: catalog\nimplements: FEATURE-Catalog.md\nstate: pending\n",
         encoding="utf-8",
     )
 
-    sync_plan_soundings(parse_build_plan(plan_path), target, reset_ids=frozenset({"system-starts"}))
+    checks = all_programmatic_acceptance(parse_build_plan(plan_path), blueprint)
 
-    rows = load_soundings(soundings)
-    # A dirtied criterion loses its stale checkmark; a brand-new criterion starts unverified.
-    assert rows["system-starts"] == Sounding("system-starts", "System starts", VERIFIED_UNVERIFIED)
-    assert rows["new-gate"] == Sounding("new-gate", "New gate", VERIFIED_UNVERIFIED)
+    assert [(c.source, c.check_id) for c in checks] == [
+        ("FEATURE-Catalog.md", "catalog-responds"),
+        ("FEATURE-Catalog.md", "catalog-writes"),
+    ]

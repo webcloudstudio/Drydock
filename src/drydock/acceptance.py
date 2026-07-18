@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.build_plan import PlanBlock
+from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.proof_integrity import analyze_proof
 
 SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
@@ -149,6 +149,34 @@ def programmatic_acceptance_for_step(
         path = blueprint_dir / name
         if path.is_file():
             checks.extend(parse_programmatic_acceptance(path))
+    return tuple(checks)
+
+
+def all_programmatic_acceptance(
+    plan: BuildPlan, blueprint_dir: Path
+) -> tuple[ProgrammaticAcceptance, ...]:
+    """Every Blueprint assertion the plan implements, deduped by ``(source, check_id)``.
+
+    This is the projection source for ``SOUNDINGS.md``: one entry per individual Programmatic
+    Acceptance assertion across the Blueprint spec files the plan's stories implement.
+    """
+    checks: list[ProgrammaticAcceptance] = []
+    seen: set[tuple[str, str]] = set()
+    for block in plan.blocks:
+        if block.block_type != "story":
+            continue
+        for name in block.fields.get("implements", ()):
+            if not isinstance(name, str):
+                continue
+            path = blueprint_dir / name
+            if not path.is_file():
+                continue
+            for check in parse_programmatic_acceptance(path):
+                key = (check.source, check.check_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                checks.append(check)
     return tuple(checks)
 
 

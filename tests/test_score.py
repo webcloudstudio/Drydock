@@ -105,11 +105,13 @@ def test_verify_acs_marks_pass_and_stamps_soundings(tmp_path):
 
     assert report.exit_code() == 0
     verdict = report.verdicts[0]
-    assert verdict.criterion_id == "system-starts"
+    # Rows are keyed by the Blueprint assertion, tagged with its source file — not the ac block.
+    assert verdict.criterion_id == "built-marker"
     assert verdict.status == "PASS"
     rows = load_soundings(target_dir / "SOUNDINGS.md")
-    assert rows["system-starts"].verified == "✓ PASS"
-    assert rows["system-starts"].verified_at == report.verified_at
+    assert rows["built-marker"].blueprint == "FEATURES.md"
+    assert rows["built-marker"].verified == "✓ PASS"
+    assert rows["built-marker"].verified_at == report.verified_at
 
 
 def test_verify_acs_marks_fail_and_exits_nonzero(tmp_path):
@@ -119,7 +121,7 @@ def test_verify_acs_marks_fail_and_exits_nonzero(tmp_path):
 
     assert report.exit_code() == 1
     assert report.verdicts[0].status == "FAIL"
-    assert load_soundings(target_dir / "SOUNDINGS.md")["system-starts"].verified == "✗ FAIL"
+    assert load_soundings(target_dir / "SOUNDINGS.md")["built-marker"].verified == "✗ FAIL"
 
 
 def test_verify_acs_demotes_vacuous_proof_to_unverified(tmp_path):
@@ -131,7 +133,7 @@ def test_verify_acs_demotes_vacuous_proof_to_unverified(tmp_path):
     verdict = report.verdicts[0]
     assert verdict.status == "UNVERIFIED"
     assert "integrity" in verdict.evidence
-    row = load_soundings(target_dir / "SOUNDINGS.md")["system-starts"]
+    row = load_soundings(target_dir / "SOUNDINGS.md")["built-marker"]
     assert row.verified == "— UNVERIFIED"
     assert row.verified_at == ""
 

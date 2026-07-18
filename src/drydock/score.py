@@ -21,9 +21,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from drydock.acceptance import (
-    ProgrammaticAcceptance,
+    AcceptanceObservation,
+    all_programmatic_acceptance,
+    observe_programmatic_acceptance,
     parse_programmatic_acceptance,
-    programmatic_acceptance_for_step,
     run_programmatic_acceptance,
 )
 from drydock.build_plan import parse_build_plan, stale_applied_specs
@@ -89,32 +90,28 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _story_verdict(
-    checks: tuple[ProgrammaticAcceptance, ...],
-    *,
-    build_dir: Path,
-    target_dir: Path,
-    blueprint_dir: Path,
-) -> tuple[str, str]:
-    """Deterministic verdict for one story's proofs: PASS, FAIL, or UNVERIFIED with evidence."""
-    if not checks:
-        return UNVERIFIED, "no Programmatic Acceptance proves this story"
-    integrity = [analyze_proof(check.code) for check in checks]
-    valid = [check for check, integ in zip(checks, integrity, strict=True) if integ.ok]
-    if not valid:
-        reasons = "; ".join(reason for integ in integrity for reason in integ.reasons)
+def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str]:
+    """Map a per-assertion observation to a board ``(status, evidence)`` pair.
+
+    A passing proof that fails integrity analysis is demoted to ``UNVERIFIED`` (vacuous), so a
+    green checkmark always reflects a proof that actually exercises behavior.
+    """
+    if not obs.passed:
+        tail = obs.stderr.strip().splitlines()[-1] if obs.stderr.strip() else "FAIL"
+        return FAIL, obs.error or tail
+    if not obs.integrity_ok:
+        reasons = "; ".join(obs.integrity_reasons)
         return UNVERIFIED, f"proof failed integrity: {reasons or 'no effective failure path'}"
-    results = run_programmatic_acceptance(
-        tuple(valid), build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
-    )
-    failed = [r for r in results if not r.passed]
-    if failed:
-        return FAIL, "; ".join(f"{r.check_id}={r.error or 'FAIL'}" for r in failed)
-    return PASS, ", ".join(f"{r.source}:{r.check_id}" for r in results)
+    return PASS, ""
 
 
 def verify_acs(target: str, target_dir: Path) -> AcReport:
-    """Verify every acceptance criterion deterministically and write results to Soundings."""
+    """Verify every Blueprint acceptance assertion deterministically and write Soundings.
+
+    One verdict and one Soundings row per Blueprint Programmatic Acceptance assertion. Rewrites
+    ``SOUNDINGS.md`` in full from fresh results; the board is a pure projection of the current
+    Blueprint assertions.
+    """
     manifest_path = target_dir / "MANIFEST.md"
     blueprint_dir = target_dir / "blueprint"
     plan = parse_build_plan(manifest_path)
@@ -122,34 +119,31 @@ def verify_acs(target: str, target_dir: Path) -> AcReport:
     if not build_dir.is_dir():
         raise SpecificationError(f"build directory not found: {build_dir}")
 
-    by_id = plan.by_id()
     verified_at = _now()
-
-    # One verdict per parent story, cached so shared stories run their proofs once.
-    story_cache: dict[str, tuple[str, str]] = {}
-
-    def story_verdict(story_id: str) -> tuple[str, str]:
-        if story_id not in story_cache:
-            story = by_id.get(story_id)
-            checks = (
-                programmatic_acceptance_for_step(story, blueprint_dir) if story is not None else ()
-            )
-            story_cache[story_id] = _story_verdict(
-                checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
-            )
-        return story_cache[story_id]
+    checks = all_programmatic_acceptance(plan, blueprint_dir)
+    observations = observe_programmatic_acceptance(
+        checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
+    )
 
     verdicts: list[AcVerdict] = []
     rows: list[Sounding] = []
-    for block in plan.blocks:
-        if block.block_type != "ac":
-            continue
-        status, evidence = story_verdict(block.parent or "")
-        verdicts.append(AcVerdict(block.block_id, block.name, status, evidence))
+    for obs in observations:
+        status, evidence = _observation_verdict(obs)
         stamp = verified_at if status != UNVERIFIED else ""
-        rows.append(Sounding(block.block_id, block.name, _VERIFIED_LABEL[status], evidence, stamp))
+        verdicts.append(AcVerdict(obs.check_id, obs.intent, status, evidence))
+        rows.append(
+            Sounding(
+                criterion_id=obs.check_id,
+                blueprint=obs.source,
+                summary=obs.intent,
+                verified=_VERIFIED_LABEL[status],
+                evidence=evidence,
+                verified_at=stamp,
+            )
+        )
 
     soundings_path = target_dir / "SOUNDINGS.md"
+    soundings_path.parent.mkdir(parents=True, exist_ok=True)
     soundings_path.write_text(render_soundings(rows), encoding="utf-8", newline="\n")
     return AcReport(target, tuple(verdicts), soundings_path, verified_at)
 
