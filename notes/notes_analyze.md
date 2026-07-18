@@ -6,7 +6,7 @@
 | Route | analyze / plan create |
 | Status | Working notes — not canonical specification |
 | Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V8 adds ANALYSIS.md tab-structure redesign: merge Overview+Summary, drop Blockers tab, wire Open Questions to spike files. |
-| Pending spec | 17 approved items |
+| Pending spec | 18 approved items |
 | Pending impl | 3 unimplemented sections |
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
 `drydock plan create`. The two commands have a tight interface and are designed together.
