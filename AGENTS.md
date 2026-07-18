@@ -1,27 +1,23 @@
 # AGENTS.md — Drydock
 
-IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO docs/Drydock_Specification.md unless specifically authorized by the user.  Each block edit must be approved individually.  There are no exceptions.  STOP OVERWRITING MY MAIN ARTIFACT AND SCREWING IT UP - YOU DO NOT UNDERSTAND MY VOICE. YOU ALSO SEEM TO **WANT** to give away my trade secrets.  STOP IT!!!
-
 Drydock is a specification-driven software design and delivery methodology implemented as an
 installable Python CLI. It plans, builds, tests, reviews, and evolves software from Blueprints
 expressed as Typed Specifications.
 
-## Authority: `docs/Drydock_Specification.md`
+## Authority: Canonical Specification at `docs/Drydock_Specification.md`
 
-`docs/Drydock_Specification.md` is the sole authoritative product specification and the
-target architecture. It defines intended behavior, scope, and contracts. Treat it as canonical.
+IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO docs/Drydock_Specification.md unless specifically authorized by the user.  Each block edit must be approved individually.  There are no exceptions.  STOP OVERWRITING MY MAIN ARTIFACT AND SCREWING IT UP - YOU DO NOT UNDERSTAND MY VOICE. YOU ALSO SEEM TO **WANT** to give away my trade secrets.  STOP IT!!!
+
+`docs/Drydock_Specification.md` is the sole authoritative product specification and the target architecture. It defines intended behavior, scope, and contracts. Treat it as canonical. It is not a detailed documentation - it is a user facing - and it must be precise on syntax and high level activity.  It does not need to explain how.
 
 **Editing protocol** — Obtain the author's explicit approval before any edits.
 
-**Content** — normative statements of intended behavior only. No rationale, reasoning, open
-questions, status, history, alternatives, or hedging ("we could / should probably / might /
-plan to"). Reasoning, questions, and options belong in `notes/notes_<command>.md`; the
-specification is the conclusion, never the deliberation. Never alter already-specified syntax
-or behavior. If the specification diverges from implemented behavior, surface the conflict and
-let the author decide.
+**Content** — normative statements of intended behavior only. No rationale, reasoning, open questions, status, history, alternatives, or hedging ("we could / should probably / might /
+plan to").
 
-**Voice** — present-tense, declarative, third-person ("`drydock build` executes the
-Manifest."). No future, no conditional, no first person.
+If the document diverges from implemented behavior, surface the conflict and let the author decide.
+
+**Voice** — present-tense, declarative, third-person ("`drydock build` executes the Manifest."). No future, no conditional, no first person.
 
 **Command-entry template** — every command section uses this exact structure and order, with no
 added or reordered sections:
@@ -33,10 +29,10 @@ added or reordered sections:
 
 One section per command; duplicate or overlapping command headings are violations to fix.
 
-**Workspace Layout** reflects the current on-disk file set. The Blueprint file inventory states
-each file's purpose and whether it is human-editable.
+**Git Behavior**
+At the completion of any operations, the file should be committed in git. Author works in multiple sessions and is fine with over committing.
 
-At the completion of any edits, the file should be committed in git.
+**Workspace Layout** reflects the current on-disk file set. The Blueprint file inventory states each file's purpose and whether it is human-editable.
 
 ## Project Layout
 
@@ -50,7 +46,6 @@ Drydock/
   docs/              Authoritative specification, Soundings, Sea Trials, and owned documentation
   dist/              Build artifacts; not committed
 ```
-
 Business logic belongs in importable `src/drydock/` modules. Shell and PowerShell files in `bin/`
 only locate the environment and invoke the package entry point.
 

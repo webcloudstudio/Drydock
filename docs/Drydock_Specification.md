@@ -99,63 +99,76 @@ flowchart LR
 
 ## Drydock Features
 
-**Drydock is DevOps for specifications** and provides a governed build pipeline with gates to create working software from your imported specifications. 
+**Drydock is DevOps for specifications** and provides a governed build pipeline to create working software from your imported specifications. 
 
-**Model and **
+**Overview**
 - Works with your LLM subscription. No API keys, no per-token billing.
-- Trivially portable to any LLM CLI system (Claude, Codex).
-- Builds effectively with low-end models (Sonnet, GPT-5.4).
+- Trivially portable to **Any** LLM CLI system 
+- Build large projects with low-end models (Sonnet, GPT-5.4).
 - Context optimization at every step — LLM usage minimized.
+- drydock is spec devops - spec creation is out of scope
 
-**Methodology**
-- Agile story points are token costs.
+**Agile Methodology**
+- Your Crew uses Agile Best bractice
+- Exploration phase to surface gaps and questionaires
 - Decomposes specifications into features, stories, blockers, and acceptance criteria.
+- Agile story points are token costs.
+
+**Test Driven Develoment**
+- Your Crew uses Test Driven Development
 - Builds against programmatic acceptance criteria using test-driven development.
-- QuarterDeck is a Commander to Crew web portal.
 - Surfaces questions for Commander review in the Quarterdeck
 - Builds an optimized dependency graph and executes only the stories ready for work
 - Builds sets of stories together to optimize context
-- Compresses specifications as needed.
+- EARS-notation acceptance criteria with grammar validation
+- Tests derived from Checklist
 
 **The Quarterdeck**
-- Web Server shows the user Markdown using "Pretty" templates
-- Persists decisions
-- Enables Full Build Control
-- Provides a clean UI for Questions from Your Crew
-- Surfaces Blockers and Build Failures for review - in a web browser not in markdown
-- Shows your Raw Specifications and the Converted Blueprints in a clean format.
-- Eliminates the need to read markdown
+- QuarterDeck is a custom Commander to Crew web portal.
+- Portal displays Markdown using "Pretty" templates
+- Commander decisions are Persisted for future commands
+- Clean UI using Questionaires to provide Your Crew with feedback
+- Surface Blockers and Build Failures for review 
+
+**Import**
+- Copy specifications into the drydock workspace 
+- Assume source spec are in arbitrary formats and conforms them
+- Surface questions for the Commander in `drydock analyze`.  
+
+**Context Optimization**
+- Dependency-graph build plan with runnable frontier
+- Context optimization at every stage
+- Blueprint Stacking using best practices
+- Quarterdeck Enables Full Build Control
+- Context-size-aware prompt stacking and compaction
 
 **Governance**
-- Typed specification files with fixed roles.
+- Explore / Spikes defined during `drydock analyze`
+- Persistent intent injection at each process stage 
+- Typed specifications with prescibed roles.
 - EARS acceptance criteria, grammar-validated.
-- Acceptance criteria verified programmatically for each story.
-- Guardrails are permanent prohibitions checked for each story; any that cannot be verified deterministically fail closed at the release gate.
-- Sealed foundational specifications that require a change ticket to alter.
-- Mandatory persistence encapsulation to prevent forced large rebuilds for trivial changes 
-- Rigging injects enterprise conventions, build rules, and voice.
+- Programatic Acceptance criteria for each story.
+- Sealed foundational specifications require a change ticket to alter.
+- Mandatory persistence encapsulation to prevent forced large rebuilds 
+- Rigging injects enterprise standards, stack rules, and voice.
 - Writes reviewable build evidence for completed work.
+- Guardrails as absolute prohibitions with a hard gate
 
 **Verification**
 - `drydock score ac` verifies story acceptance deterministically (SOUNDINGS.md).
 - `drydock score release` verifies project acceptance using the LLM (SEA_TRIALS.md)
-- Scores bind to Git HEAD and content hashes.
-- Vacuous and unneeded AC are demoted to unverified.
+- Pre-Build RED->GREEN enforcement - Vacuous and unneeded AC are demoted to unverified.
 - Gates story builds with AC before it counts as complete.
+- Evidence-bound scoring against build outputs and content hashes
 
 **Complete change-management methodology**
-- Build tracks cksum and git commit id 
-- Refit detects changes to specifications or change tickets
-- Refit updates the graph database for specification edits and change tickets.
-- Build changes using normal `drydock build`
+- Blueprint drift detection and stale-plan reset
+- Build tracks cksum and git commit id for built blueprints
+- Refit detects new specs, changes to spec, and change tickets
+- Refit updates the Manifest for specification edits and change tickets.
+- Changes are Built using `drydock build`
 
-**Import**
-- Copies your specifications into the drydock workspace
-- Greenfield: imports specification documents into a governed Blueprint.
-- Brownfield: reverse-engineers an existing codebase into specifications.
-- Imports poorly written Specifications and surfaces questions for the Commander in `drydock analyze`.  
-
-**Add-ons**
+**Additional Features**
 - Generates consistent project documentation in your voice 
 
 ## The drydock CLI
@@ -178,10 +191,10 @@ positional arguments:
     init      Initialize a target workspace.
     status    Show project status and orientation.
     validate  Validate a Blueprint's Typed Specification.
-    document  Generate and assemble Blueprint documentation.
+    document  Generate projdct documentation from Blueprints
     publish   Render frontmatter Markdown into publishable HTML.
     rigging   Manage Drydock Rigging.
-    plan      Manage the build plan.
+    plan      Create the Manifest and Blueprints
     build     Build or inspect build state.
     refit     Update Blueprint and target software together.
     analyze   Decompose imported sources into stories, blockers, and acceptance milestones.
@@ -374,12 +387,11 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 | `BLOCKERS.md` | Target root | Questions on any blockers the LLM has found. Existence implies blockers.  Edit to resolve them. |
 | `ANALYSIS.md` | Target root | Summary of the decomposition, story list, blockers, questions, and recommendations |
 | `SEA_TRIALS.md` | Target root | Project-level acceptance criteria and release objectives |
-| `SOUNDINGS.md` | Target root | Per-criterion verification board: ID, Summary, Verified, Evidence, Verified At |
 | `COMPASS.md` | Target root | Created if absent. Review it if one was automatically created. |
 | `questionnaires/*.json` | `QuarterDeck/` | Review questionnaires for unresolved decisions and genuine research spikes |
 | `commanders_chair.html` | `QuarterDeck/` | QuarterDeck summary view for the current state |
 
-The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commander edits it and reruns `drydock analyze` until the blockers are cleared. `SEA_TRIALS.md` captures release-level success criteria. `SOUNDINGS.md` is the per-story acceptance-criterion verification board; `drydock score ac` sets its Verified column and `drydock plan`/`drydock analyze` preserve it per ID.
+The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commander edits it and reruns `drydock analyze` until the blockers are cleared. `SEA_TRIALS.md` captures release-level success criteria. 
 
 | Quality | Meaning |
 |---|---|
@@ -428,7 +440,7 @@ The QuarterDeck calls out blockers and action items and gives the Commander a si
 | `ARCHITECTURE.md`,<br> `DATABASE.md`,<br> `FEATURE-{Name}.md`,<br> `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files |
 | `BUILD_COMPASS.md` | Target root | Story-planning grouping and build-order input for `drydock build` |
 | `MANIFEST.md` | Target root | The executable build plan |
-| `SOUNDINGS.md` | Target root | Acceptance criteria projected by stable ID, verified status preserved |
+| `SOUNDINGS.md` | Target root | Acceptance criteria projected by stable ID, `drydock score ac` sets its Verified column |
 
 **Replan behavior**
 
@@ -603,6 +615,7 @@ fails it.
 | Artifact | Location | Purpose |
 |---|---|---|
 | `SOUNDINGS.md` | Target root | Per-criterion verified status, evidence, and timestamp (`score ac`) |
+| `SCORECARD.md` | Target root | Release scoring results, verdicts, and blockers (`score release`) |
 
 **Exit codes**
 
@@ -756,7 +769,7 @@ What drydock operations read/write
 | SCORECARD.md | Target root | · | · | · | O | · |
 | SCREEN-{Name}.md | blueprint/ | · | O | I | I | I |
 | SEA_TRIALS.md | Target root | O | · | · | · | · |
-| SOUNDINGS.md | Target root | O | O/I | O | I | · |
+| SOUNDINGS.md | Target root | · | O | O/I | I | · |
 | changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
 | sources/* | blueprint/sources/ | I | I | · | · | · |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |

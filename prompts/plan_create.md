@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260714 V10
+version: 20260717 V11
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -78,6 +78,9 @@ the job block; the rest are fenced sections.
 - **`ANALYSIS.md`** — the reviewed plan: quality signal, the **story list (treat as the file
   map)**, open questions, tuning options, and notes. Each analyzed story names the durable file(s)
   it becomes; honor that mapping rather than re-deriving it from scratch.
+- **`## Surfaced Acceptance Criteria`** in `ANALYSIS.md` — additional criteria analyze derived per
+  story; fold each row into the `## Programmatic Acceptance` or `## User Acceptance` section of the
+  spec file implementing its Story ID.
 - **`SYSTEM_SHAPE`** — the determined project type (`web|api|cli|library|pipeline|event-driven`),
   parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
@@ -150,8 +153,9 @@ Each authored file must be build-usable. Write concrete sections, not placeholde
 source material genuinely leaves an item open; then put it under `## Open Questions`.
 
 **5. Author programmatic acceptance (test-driven).**
-- *Consumes:* each authored spec's routes, interfaces, reads, writes, guardrails, and any tests
-  carried in the imported source material.
+- *Consumes:* each authored spec's routes, interfaces, reads, writes, guardrails, any tests
+  carried in the imported source material, and any `ANALYSIS.md ## Surfaced Acceptance Criteria`
+  rows tied to this spec's Story ID.
 - *Emits:* the `## Programmatic Acceptance` section of every authored spec, as concrete Python
   assertions.
 

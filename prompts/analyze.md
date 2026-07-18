@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260717 V14
+version: 20260717 V15
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -114,22 +114,54 @@ action items distinguish the two but do not gate.
 
 ---
 
-## Completeness Checklist
+## Gap Checklist
 
 Run this checklist over the **imported sources** (and the `ANALYZE_COMPASS.md` standing directive,
 if injected). There are no typed spec files at analyze time — judge each item solely against what the
-sources state. Each unmet item → one question (unless the team cannot proceed without it → blocker
-instead):
+sources state. An item the team cannot proceed without at all is a blocker (see step 3); every other
+unmet item routes to exactly one of three places — never leave one unrouted, never route it twice:
 
-- [ ] Product goal is stated in the sources (what the product is and why)
+| The team can derive the answer, and it is... | Goes to |
+|---|---|
+| scoped to one story | a row in `## Surfaced Acceptance Criteria` (step 6) |
+| project-wide (a guardrail, outcome, or cross-cutting behavior) | a `SEA_TRIALS.md` criterion (step 7) |
+| only the human can decide (the Ownership test, see above) | a discovery questionnaire question (step 9) |
+
+### Product
+- [ ] Product goal is stated (what the product is and why)
 - [ ] Short description is present (one-sentence summary of what the product is)
-- [ ] Stack is named in the sources or prior answers (not empty or TBD)
-- [ ] Persistence model is described in the sources (if the product persists data)
-- [ ] Auth model is named in the sources (if user accounts or protected resources are described)
-- [ ] Success criteria are stated in the sources
+- [ ] Success criteria are stated
 - [ ] Acceptance criteria are stated per described feature or screen
-- [ ] Deployment target is stated in the sources
-- [ ] UI structure is described clearly enough to decompose (for web products)
+- [ ] Primary workflows are enumerated, not just individual screens or endpoints
+
+### Security
+- [ ] Auth/authz model is named for any protected resource
+- [ ] Sensitive data handling (PII, secrets, compliance) is addressed where implied
+
+### User Experience
+- [ ] Empty, loading, and error states are described for interactive features
+- [ ] UI structure is described clearly enough to decompose (web products only)
+- [ ] A first-time user could complete the primary flow from the sources alone
+
+### Architecture
+- [ ] Stack is named in the sources or prior answers (not empty or TBD)
+- [ ] Persistence model is described, if the product persists data
+- [ ] External service calls have defined timeout/failure behavior
+- [ ] Deployment target is stated
+
+### Edge Cases
+- [ ] Negative paths are addressed (invalid input, auth failure, not-found)
+- [ ] Concurrency/race conditions are addressed where the sources describe shared state
+
+### Core Baseline
+Apply only the row matching the project type detected in step 2.
+
+| Type | Check |
+|---|---|
+| `web` | Primary entry point/landing page is defined; help/support is reachable from navigation |
+| `cli` | Every command/sub-verb has help text defined |
+| `api` / `library` | A reference/discovery entry point is defined |
+| `pipeline` / `event-driven` | Primary trigger and output/consumer are both defined |
 
 ---
 
@@ -185,26 +217,44 @@ question in `ANALYSIS.md`.
 - *Emits:* high-level acceptance criteria in `ANALYSIS.md` Story List rows. Do not emit
   `SOUNDINGS.md` — it is written only by `drydock score ac`.
 
-**6. Derive SEA_TRIALS project acceptance.**
-- *Consumes:* the story list + the COMPASS (existing file or the COMPASS you will emit in step 9).
+**6. Derive Surfaced Acceptance Criteria from the Gap Checklist.**
+- *Consumes:* the Gap Checklist findings routed to "scoped to one story".
+- *Emits:* the `## Surfaced Acceptance Criteria` rows in `ANALYSIS.md` (see Output Format), each
+  tied to a real Story ID from the Story List.
+- Before finalizing, confirm coverage:
+  - [ ] Every Gap Checklist item routed as story-scoped has a corresponding row
+  - [ ] Every row references a real Story ID from the Story List
+  - [ ] No row restates an AC already explicit in the sources
+
+**7. Derive SEA_TRIALS project acceptance.**
+- *Consumes:* the story list + the Gap Checklist findings routed to "project-wide" + the COMPASS
+  (existing file or the COMPASS you will emit in step 10).
 - *Emits:* structured SEA_TRIALS.md project criteria with stable IDs, one observable behavior or
   outcome per criterion, EARS wording and a `Pattern` for technical/behavioral/guardrail criteria,
   a `guardrail` for each prohibition the sources state or imply, and unresolved measurement facts
   under `QUESTIONS:`.
+- Before finalizing, confirm coverage:
+  - [ ] A guardrail exists for every explicit or clearly implied prohibition
+  - [ ] A timeout/failure criterion exists for every external service call the sources describe
+  - [ ] An outcome criterion exists for every stated business/success goal
+  - [ ] A security/compliance criterion exists where sensitive data or auth is implied
 
-**7. Compute the quality signal.**
+**8. Compute the quality signal.**
 - *Consumes:* the blocker and question counts from step 3.
-- *Emits:* `Blocked | Questions | Ready` per the Quality Signal table.
+- *Emits:* `Blocked | Questions | Ready` per the Quality Signal table. Surfaced Acceptance Criteria
+  and SEA_TRIALS criteria do not affect this count — only blockers and open questionnaire questions do.
 
-**8. Build the discovery questionnaires.**
-- *Consumes:* the project type + questionnaire action-item list + injected Rigging catalog filenames.
+**9. Build the discovery questionnaires.**
+- *Consumes:* the project type + questionnaire action-item list (including Gap Checklist findings
+  routed to "only the human can decide") + injected Rigging catalog filenames.
 - *Emits:* one `discovery-<slug>.json` per open important question. Emit a stack questionnaire only
   when the stack is not already decided; its options are the injected catalog filenames filtered
-  to the project type (see Hard Rules). Do not emit a questionnaire for a matter the sources or
-  prior answers have already settled. Do not emit a questionnaire that duplicates an existing
-  unanswered questionnaire.
+  to the project type (see Hard Rules). Gap Checklist questions default to one consolidated
+  `discovery-gaps.json`; split into `discovery-gaps-2.json`, etc. only past 5–6 questions in this
+  run. Do not emit a questionnaire for a matter the sources or prior answers have already settled.
+  Do not emit a questionnaire that duplicates an existing unanswered questionnaire.
 
-**9. Emit all output blocks.** See Output Format below. Emit the `BLOCKERS.md` block only when
+**10. Emit all output blocks.** See Output Format below. Emit the `BLOCKERS.md` block only when
 blockers exist; emit the `COMPASS.md` block when `COMPASS_EXISTS: false` or
 `COMPASS_PENDING_FORMAT: true`.
 
@@ -229,6 +279,15 @@ across all feature tables.
 | ID | Story | High-level AC |
 |---|---|---|
 | {FEATURE-SLUG}-001 | {Story title} | {High-level acceptance signal} |
+
+## Surfaced Acceptance Criteria
+
+The analyze step has surfaced these acceptance criteria for `drydock plan` to fold into the
+relevant story's typed specification. "None." if the Gap Checklist surfaced no story-scoped items.
+
+| ID | Story ID | Criterion |
+|---|---|---|
+| AC-001 | {FEATURE-SLUG}-001 | {One observable behavior the story must satisfy} |
 
 ## Analysis Notes
 
@@ -342,11 +401,14 @@ human-owned decision open:
 - **stack** — the technology stack (see the stack rule below)
 - **guardrails** — security, compliance, scale, or performance constraints the sources do not state
   but the human must set
+- **gaps** — Gap Checklist findings routed to "only the human can decide"; consolidate into one
+  `discovery-gaps.json` by default, splitting only past 5–6 questions in a run (step 9)
 - plus any genuine project-specific decision only the human owns
 
-Do **not** emit a "gaps" or "acceptance criteria" questionnaire. Underspecified acceptance
-criteria, success evidence, smoke checks, build gates, and test sequences are outputs you
-synthesize (into the story list and SEA_TRIALS), never questions you ask.
+Underspecified acceptance criteria, success evidence, smoke checks, build gates, and test sequences
+that the team can derive are outputs you synthesize (into Surfaced Acceptance Criteria or
+SEA_TRIALS), never questions you ask. Only a Gap Checklist finding that fails the Ownership test
+becomes a `discovery-gaps.json` question.
 
 Each questionnaire uses this shape:
 
@@ -462,6 +524,12 @@ list plus `"other"`, sorted alphabetically.
   Synthesize intent, constraints, and guardrails only.
 - Do not include `## Open Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
   questions live only in `discovery-*.json` questionnaire action items.
+- `## Surfaced Acceptance Criteria` is always present in `ANALYSIS.md`, "None." when empty. Its row
+  count is never counted toward the Quality Signal or the `questions`/`blockers` summary fields.
+- Every Gap Checklist finding routes to exactly one of: `## Surfaced Acceptance Criteria`,
+  `SEA_TRIALS.md`, or a `discovery-gaps.json` question — never more than one, never left unrouted.
+- Gap Checklist questions default to one `discovery-gaps.json`; split into numbered continuations
+  only past 5–6 questions in a single run.
 - Emit a `discovery-*.json` questionnaire only for a decision only the human can make (the
   Ownership test). Never emit one for a matter the sources or prior answers have already decided,
   never as a generic catch-all, and never for work the team can derive itself (acceptance criteria,
