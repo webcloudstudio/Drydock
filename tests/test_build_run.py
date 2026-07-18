@@ -12,7 +12,7 @@ import pytest
 from drydock.build_plan import parse_build_plan
 from drydock.build_run import build_target
 from drydock.dependency_gate import RegistryPackageInfo
-from drydock.errors import SpecificationError
+from drydock.errors import SpecificationError, write_error_record
 
 
 @pytest.fixture(autouse=True)
@@ -198,6 +198,40 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert result.git_commit is not None
     assert result.git_commit_message is not None
     assert result.git_commit_message.startswith("drydock build Demo ")
+
+
+def test_build_failure_writes_current_error_and_retry_clears_prior_error(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    write_error_record(
+        target_dir,
+        command="build",
+        phase="LLM execution",
+        classification="old error",
+        detail="old",
+        recovery="retry",
+    )
+    failed = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(ok=False, stderr="rate limit")
+    )
+
+    assert failed.exit_code() == 1
+    error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert "LLM execution failed" in error_text
+    assert "old error" not in error_text
+    assert "State: Error" in error_text
+
+    (build_dir / "foundation.txt").unlink()
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+        force=True,
+    )
+
+    assert result.exit_code() == 0
+    assert not (target_dir / "ERRORS.md").exists()
 
 
 def test_builds_feature_group_in_one_runner_call(tmp_path):

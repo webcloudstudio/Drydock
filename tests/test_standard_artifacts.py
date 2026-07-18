@@ -30,6 +30,7 @@ def test_render_console_commanders_chair_is_document_type():
     assert "type: document" in config
     assert "path_html: commanders_chair.html" in config
     assert "commanders_chair" in config
+    assert 'label: "⛔ BIG ERRORS — action required"' in config
     assert "pages/overview.md" not in config
 
 

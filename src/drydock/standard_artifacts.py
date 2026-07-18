@@ -156,7 +156,8 @@ sections:
 items:
   - {{ id: blockers_doc, label: "Blockers", section: setup, type: editable_markdown, path: ../BLOCKERS.md, order: 1, help_text: {json.dumps(blockers.help_text)}, prompt_text: {json.dumps(blockers.prompt_text)} }}
   - {{ id: commanders_chair, label: "Commanders Chair", section: setup, type: document, path_html: commanders_chair.html, order: 2, help_text: {json.dumps(commanders_chair_help)} }}
-  - {{ id: compass_edit, label: "Compass", section: setup, type: editable_markdown, path: ../COMPASS.md, order: 3, help_text: {json.dumps(compass.help_text)}, prompt_text: {json.dumps(compass.prompt_text)} }}
+  - {{ id: big_errors, label: "⛔ BIG ERRORS — action required", section: setup, type: markdown, path: ../ERRORS.md, order: 3, help_text: "Current post-LLM recovery record. Resolve the prescribed action and rerun the command." }}
+  - {{ id: compass_edit, label: "Compass", section: setup, type: editable_markdown, path: ../COMPASS.md, order: 4, help_text: {json.dumps(compass.help_text)}, prompt_text: {json.dumps(compass.prompt_text)} }}
   - {{ id: analyze_compass, label: "Analyze Compass", section: setup, type: editable_markdown, path: ../ANALYZE_COMPASS.md, order: 4, help_text: {json.dumps(analyze_compass.help_text)}, prompt_text: {json.dumps(analyze_compass.prompt_text)} }}
   - {{ id: exclude_files, label: "Exclude Files", section: setup, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 5, help_text: {json.dumps(exclude_files.help_text)}, prompt_text: {json.dumps(exclude_files.prompt_text)} }}
   - {{ id: analysis, label: "Analysis", section: analyze, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 1, help_text: {json.dumps(analysis.help_text if analysis else "")} }}

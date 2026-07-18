@@ -66,6 +66,10 @@ def refresh_commanders_chair(target_dir: Path) -> Path | None:
             return None
         template = template_path.read_text(encoding="utf-8")
         today = date.today().isoformat()
+        # Status owns the target projection; the Chair only renders it.
+        from drydock.status import target_status
+
+        projection = target_status(target_dir)
         phase = get_build_state(target_dir)
 
         if phase in ("init", "analyzed"):
@@ -78,12 +82,26 @@ def refresh_commanders_chair(target_dir: Path) -> Path | None:
         if html is None:
             return None
 
+        if projection.active_error is not None:
+            html = _with_error_panel(html, projection.active_error)
         chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
         chair_path.parent.mkdir(parents=True, exist_ok=True)
         chair_path.write_text(html, encoding="utf-8", newline="\n")
         return chair_path
     except Exception:
         return None
+
+
+def _with_error_panel(html: str, error) -> str:
+    """Place the current deterministic recovery signal directly below the Chair title."""
+    panel = (
+        '<section class="big-error-panel">'
+        f"<strong>{escape(error.state)}: {escape(error.classification)}</strong>"
+        f"<span>Command: {escape(error.command)}. Open <b>BIG ERRORS</b> for recovery.</span>"
+        "</section>"
+    )
+    marker = '</div>\n\n<section class="question-lead">'
+    return html.replace(marker, "</div>\n" + panel + '\n<section class="question-lead">', 1)
 
 
 # ---------------------------------------------------------------------------

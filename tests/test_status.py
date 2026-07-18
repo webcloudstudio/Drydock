@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from drydock.errors import write_error_record
 from drydock.status import StatusResult, status_blueprint, status_blueprint_target, status_current
 
 ANALYSIS_READY = """\
@@ -127,6 +128,27 @@ class TestStatusBlueprintTarget:
         assert result.target_info is not None
         assert result.target_info.phase == "Arrange"
         assert "review the Planning Session build tree" in result.target_info.phase_detail
+        assert result.target_info.next_operation == "drydock run quarterdeck TestTarget"
+
+    def test_active_error_overrides_normal_projection(self, tmp_target_root):
+        tgt = self._setup(tmp_target_root)
+        write_error_record(
+            tgt,
+            command="build",
+            phase="LLM execution",
+            classification="provider rate limit",
+            detail="retry later",
+            recovery="Run drydock build TestTarget",
+            state="Error",
+        )
+
+        result = status_blueprint_target(
+            "TestProject", "TestTarget", tgt / "blueprint", tmp_target_root
+        )
+
+        assert result.target_info is not None
+        assert result.target_info.active_error is not None
+        assert result.target_info.phase_detail == "Error: provider rate limit"
         assert result.target_info.next_operation == "drydock run quarterdeck TestTarget"
 
     def test_authored_blueprint_count_excludes_agents_md(self, tmp_target_root):

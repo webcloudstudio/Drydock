@@ -29,7 +29,7 @@ from typing import Protocol, cast
 from drydock.acceptance import all_programmatic_acceptance
 from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
-from drydock.errors import SpecificationError
+from drydock.errors import RecordedError, SpecificationError, clear_error_record, write_error_record
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
@@ -1827,17 +1827,35 @@ def create_plan(
         # test-driven assertions. Runs before normalization so the reuse prompt and the
         # MANIFEST are built from already-conformed specs.
         if conform:
-            conformed_specs, conform_warnings = conform_specs(
-                existing_specs,
-                blueprint_dir,
-                today=today,
-                target=target,
-                runner=runner,
-                model=model,
-                llm_provider=llm_provider,
-                log_dir=log_dir,
-                on_text=on_text,
-            )
+            # Conformance is itself an LLM call in reuse mode. Its inputs are now
+            # fully preflighted, so it follows the same current-error lifecycle.
+            clear_error_record(target_dir)
+            try:
+                conformed_specs, conform_warnings = conform_specs(
+                    existing_specs,
+                    blueprint_dir,
+                    today=today,
+                    target=target,
+                    runner=runner,
+                    model=model,
+                    llm_provider=llm_provider,
+                    log_dir=log_dir,
+                    on_text=on_text,
+                )
+            except Exception as exc:
+                record = write_error_record(
+                    target_dir,
+                    command="plan",
+                    phase="LLM conformance",
+                    classification="LLM conformance failed",
+                    detail=str(exc),
+                    evidence=log_dir,
+                    recovery=f"Correct the conformance failure, then run: drydock plan {target}",
+                )
+                from drydock.quarterdeck_state import refresh_commanders_chair
+
+                refresh_commanders_chair(target_dir)
+                raise RecordedError(record) from exc
             if conformed_specs:
                 existing_specs = _collect_existing_typed_specs(
                     blueprint_dir, excluded_filenames=excluded_filenames
@@ -1864,34 +1882,93 @@ def create_plan(
         typed_spec_paths=reusable_spec_paths,
     )
 
-    result = cast(
-        CompletedRun,
-        run(
-            prompt_assembly.rendered_text,
+    # Preflight is complete. A retry now retires the prior current error immediately
+    # before its replacement LLM call; failed preflight attempts never reach here.
+    clear_error_record(target_dir)
+    try:
+        result = cast(
+            CompletedRun,
+            run(
+                prompt_assembly.rendered_text,
+                target_dir,
+                llm=llm_provider,
+                model=model or prompt.model,
+                command_name="plan",
+                parameters={"target": target, "blueprint": str(blueprint_dir)},
+                log_dir=log_dir,
+                target=target,
+                on_text=on_text,
+                prompt_assembly=prompt_assembly,
+            ),
+        )
+    except Exception as exc:
+        record = write_error_record(
             target_dir,
-            llm=llm_provider,
-            model=model or prompt.model,
-            command_name="plan",
-            parameters={"target": target, "blueprint": str(blueprint_dir)},
-            log_dir=log_dir,
-            target=target,
-            on_text=on_text,
-            prompt_assembly=prompt_assembly,
-        ),
-    )
+            command="plan",
+            phase="LLM execution",
+            classification="LLM execution failed",
+            detail=str(exc),
+            recovery=f"Correct the provider or execution issue, then run: drydock plan {target}",
+        )
+        from drydock.quarterdeck_state import refresh_commanders_chair
+
+        refresh_commanders_chair(target_dir)
+        raise RecordedError(record) from exc
     exec_id = getattr(result, "execution_id", None)
     if not result.ok or not result.text.strip():
         detail = result.text.strip() or result.stderr.strip()
-        _raise_llm_failure("plan", detail, result.execution_id)
+        record = write_error_record(
+            target_dir,
+            command="plan",
+            phase="LLM execution",
+            classification="LLM execution failed",
+            detail=detail,
+            execution_id=result.execution_id,
+            evidence=log_dir,
+            recovery=f"Inspect the execution evidence, then run: drydock plan {target}",
+        )
+        from drydock.quarterdeck_state import refresh_commanders_chair
+
+        refresh_commanders_chair(target_dir)
+        raise RecordedError(record)
 
     try:
         blocks = _parse_strict_blocks(result.text, result)
     except SpecificationError:
         recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
         if not recovered:
-            raise
+            record = write_error_record(
+                target_dir,
+                command="plan",
+                phase="post-output validation",
+                classification="model artifact contract failed",
+                detail="The model output did not contain a complete plan artifact.",
+                execution_id=exec_id,
+                evidence=log_dir,
+                recovery=f"Inspect the execution evidence, correct the plan input if needed, then run: drydock plan {target}",
+            )
+            from drydock.quarterdeck_state import refresh_commanders_chair
+
+            refresh_commanders_chair(target_dir)
+            raise RecordedError(record)
         blocks = recovered
-    plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
+    try:
+        plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
+    except Exception as exc:
+        record = write_error_record(
+            target_dir,
+            command="plan",
+            phase="post-output validation",
+            classification="plan output validation failed",
+            detail=str(exc),
+            execution_id=exec_id,
+            evidence=log_dir,
+            recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
+        )
+        from drydock.quarterdeck_state import refresh_commanders_chair
+
+        refresh_commanders_chair(target_dir)
+        raise RecordedError(record) from exc
 
     # Applied Blueprint files whose sha256 hasn't changed are protected: the LLM's
     # regenerated version is discarded so the file sha256 stays stable and the

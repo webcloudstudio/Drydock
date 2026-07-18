@@ -60,7 +60,7 @@ from drydock.dependency_gate import (
     RegistryClient,
     check_python_dependency_manifests,
 )
-from drydock.errors import SpecificationError
+from drydock.errors import SpecificationError, clear_error_record, write_error_record
 from drydock.llm import render_rate_limit_error_block, run_prompt
 from drydock.manifest_edit import set_block_fields
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
@@ -1209,6 +1209,7 @@ def build_target(
             _reset_step_for_rebuild(manifest_path, step_id)
 
     steps: list[BuildStepResult] = []
+    runner_started = False
     guard = 0
     while True:
         plan = preview_plan if preview_plan is not None else parse_build_plan(manifest_path)
@@ -1361,23 +1362,44 @@ def build_target(
             if remaining_weak:
                 _emit(on_text, "  GREEN (prepassed): " + ", ".join(remaining_weak))
         before_files = _snapshot_files(resolved_build_dir)
-        result = run(
-            prompt_assembly.rendered_text,
-            resolved_build_dir,
-            llm=llm_provider,
-            model=model or prompt.model,
-            command_name="build",
-            parameters={
-                "step": unit.block_id,
-                "step_type": unit.block_type,
-                "steps": tuple(block.block_id for block in unit.steps),
-            },
-            allow_tools=True,
-            log_dir=log_dir,
-            target=target,
-            on_text=None,
-            prompt_assembly=prompt_assembly,
-        )
+        # All deterministic build preflight has passed for this executable block.
+        # Retire a prior current error only when a new LLM attempt actually starts.
+        clear_error_record(target_dir)
+        runner_started = True
+        try:
+            result = run(
+                prompt_assembly.rendered_text,
+                resolved_build_dir,
+                llm=llm_provider,
+                model=model or prompt.model,
+                command_name="build",
+                parameters={
+                    "step": unit.block_id,
+                    "step_type": unit.block_type,
+                    "steps": tuple(block.block_id for block in unit.steps),
+                },
+                allow_tools=True,
+                log_dir=log_dir,
+                target=target,
+                on_text=None,
+                prompt_assembly=prompt_assembly,
+            )
+        except Exception as exc:
+            evidence_path = evidence_dir / f"{unit.block_id}.md"
+            write_error_record(
+                target_dir,
+                command="build",
+                phase="LLM execution",
+                classification="LLM execution failed",
+                detail=str(exc),
+                evidence=evidence_path,
+                recovery=f"Inspect the execution evidence, then run: drydock build {target}",
+                state="Error",
+            )
+            from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+            _refresh_chair(target_dir)
+            raise
         after_files = _snapshot_files(resolved_build_dir)
         changed_files = _written_files(before_files, after_files)
 
@@ -1479,6 +1501,32 @@ def build_target(
             failure_detail=failure_detail,
         )
         finding = _failure_finding(status, error, result, acceptance)
+        if status == "failed":
+            failure_state = (
+                "Failed"
+                if error
+                and (
+                    error.startswith("programmatic acceptance failed")
+                    or error.startswith("agent-reported failure")
+                    or error.startswith("dependency legitimacy gate failed")
+                )
+                else "Error"
+            )
+            write_error_record(
+                target_dir,
+                command="build",
+                phase="build step" if failure_state == "Failed" else "LLM execution",
+                classification=error or "build failed",
+                detail=failure_detail or finding or "The build block did not complete.",
+                execution_id=execution_id,
+                evidence=evidence_path,
+                recovery=(
+                    f"Review the evidence, correct the failure, then run: drydock build {target}"
+                    if failure_state == "Failed"
+                    else f"Inspect the execution evidence, correct the execution issue, then run: drydock build {target}"
+                ),
+                state=failure_state,
+            )
         for block in unit.steps:
             block_fields: dict[str, str | None] = {
                 "state": state,
@@ -1581,11 +1629,28 @@ def build_target(
             break
 
     build_failed = any(step.status == "failed" for step in steps)
-    git_commit, git_commit_message = (
-        (None, None)
-        if dry_run or build_failed
-        else _commit_build_dir(resolved_build_dir, target, today)
-    )
+    try:
+        git_commit, git_commit_message = (
+            (None, None)
+            if dry_run or build_failed
+            else _commit_build_dir(resolved_build_dir, target, today)
+        )
+    except Exception as exc:
+        if runner_started:
+            write_error_record(
+                target_dir,
+                command="build",
+                phase="post-model Git commit",
+                classification="post-model Git failure",
+                detail=str(exc),
+                evidence=target_dir / "evidence",
+                recovery=f"Correct the Git failure, then run: drydock build {target}",
+                state="Error",
+            )
+            from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+            _refresh_chair(target_dir)
+        raise
     drydock_commit_skipped_after_build = git_commit is None and any(
         step.status in {"built", "implemented"} and step.written_files for step in steps
     )

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from drydock import __copyright__, __version__
-from drydock.errors import DrydockError, UsageError
+from drydock.errors import DrydockError, RecordedError, UsageError
 from drydock.stubs import not_implemented
 
 logger = logging.getLogger(__name__)
@@ -1341,6 +1341,12 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"README: {result.readme_path}")
     label = "DRY RUN RESULT" if result.dry_run else "RESULT"
     print(f"{label}: {len(result.built())} built, {len(result.failed())} failed")
+    if result.failed() and not result.dry_run:
+        print("=" * 72)
+        print("POST-LLM FAILURE: see current recovery record")
+        print(f"ERRORS.md: {target_dir / 'ERRORS.md'}")
+        print(f"Open: drydock run quarterdeck {args.Target}")
+        print("=" * 72)
     return result.exit_code()
 
 
@@ -2247,6 +2253,20 @@ def main(argv: list[str] | None = None) -> None:
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 2
+    except RecordedError as exc:
+        record = exc.record
+        border = "=" * 72
+        print(border, file=sys.stderr)
+        print(f"POST-LLM FAILURE: {record.classification}", file=sys.stderr)
+        from drydock.config import get_target_directory
+
+        target = getattr(args, "Target", "<Target>")
+        print(f"ERRORS.md: {get_target_directory() / target / 'ERRORS.md'}", file=sys.stderr)
+        print(
+            "Open: drydock run quarterdeck " + getattr(args, "Target", "<Target>"), file=sys.stderr
+        )
+        print(border, file=sys.stderr)
+        exit_code = 1
     except DrydockError as exc:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 1

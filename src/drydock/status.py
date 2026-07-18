@@ -53,6 +53,7 @@ class TargetInfo:
     history: list[dict] = field(default_factory=list)
     history_path: Path | None = None
     compact_recs: list = field(default_factory=list)
+    active_error: object | None = None
 
 
 @dataclass
@@ -215,6 +216,9 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     authored_blueprints = _count_authored_blueprints(blueprint_dir)
     analysis = _read_analysis_summary(target_dir)
     blockers_present = (target_dir / "BLOCKERS.md").is_file()
+    from drydock.errors import read_error_record
+
+    active_error = read_error_record(target_dir)
     questionnaire_count = _count_questionnaires(target_dir)
 
     logger.debug("Reading %s", blueprint_dir)
@@ -239,6 +243,9 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
             phase = "Arrange"
             detail = "MANIFEST.md could not be parsed — check its format"
             next_op = f"drydock plan {name}"
+            if active_error is not None:
+                detail = f"{active_error.state}: {active_error.classification}"
+                next_op = f"drydock run quarterdeck {name}"
             return TargetInfo(
                 name=name,
                 target_dir=target_dir,
@@ -258,6 +265,7 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
                 history=history,
                 history_path=history_path,
                 compact_recs=[],
+                active_error=active_error,
             )
 
         assert plan_summary is not None
@@ -309,6 +317,10 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
             phase = "Arrange"
             detail = "Blueprint artifacts present — plan not yet created"
             next_op = f"drydock plan {name}"
+    if active_error is not None:
+        phase = "Implement"
+        detail = f"{active_error.state}: {active_error.classification}"
+        next_op = f"drydock run quarterdeck {name}"
     return TargetInfo(
         name=name,
         target_dir=target_dir,
@@ -328,7 +340,13 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         history=history,
         history_path=history_path,
         compact_recs=compact_recs,
+        active_error=active_error,
     )
+
+
+def target_status(target_dir: Path) -> TargetInfo:
+    """Return the canonical deterministic status projection for one Target."""
+    return _analyze_target(target_dir, target_dir.parent.parent)
 
 
 def status_workspace(
