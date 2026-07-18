@@ -5,7 +5,7 @@ version: 20260717 V15
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
-inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, TYPED_SPEC
+inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
 output: ANALYSIS.md, SEA_TRIALS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
 ---
 
@@ -40,7 +40,8 @@ When you look at a story that you have created, if it is complex, attempt to bre
 A very good way to understand this is that the stories you are identifying will eventually, in another command, become markdown files with their specifications included.  That markdown will have Acceptance Criteria, GuardRails, and interrelationships.  Do not calculate these now; when
 you define the stories, use the natural boundaries provided within the input files for accuracy of breakdown.  Content rearranged at a later step is costly, so cut along the natural groupings that occur within the input.
 
-Track strategic goals when analyzing.  If the user is building a payments system, create strategic goals to implement a successful payment system including obvious business criteria such as "test transaction successful".
+Derive strategic goals and success criteria only where the sources state or directly imply them.
+Do not invent business outcomes, thresholds, or acceptance commitments.
 
 Be sure to understand the architecture and component structure.
 
@@ -55,7 +56,7 @@ taste, an external or regulatory constraint, an irreversible trade-off, or a gen
 (no stack named, no auth model stated for a product that clearly needs one).
 
 Anything you can derive from the sources, you **must derive** — into the story list,
-SEA_TRIALS, or a tuning option. Never ask the human to supply work the team owns. In particular,
+Surfaced Acceptance Criteria, or SEA_TRIALS. Never ask the human to supply work the team owns. In particular,
 acceptance criteria, smoke checks, build gates, and test sequences are *outputs you synthesize*,
 not questions you ask. Outcome baselines, business thresholds, observation windows, and external
 measurement sources are different: never invent them. Record the criterion and emit a stable-ID
@@ -85,9 +86,9 @@ questionnaires have already decided, nor for anything you can derive yourself.
   `=== COMPASS.md ===` block. `false`: if `COMPASS_EXISTS: true`, omit the block.
 - **DISPLAY_NAME** — current `display_name` value from METADATA.md, or `(blank)` when not yet set.
 - **SHORT_DESCRIPTION** — current `short_description` value from METADATA.md, or `(blank)` when not yet set.
-- **Rigging catalog** — a filename list (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, excluding
-  `README.md`), injected below if available. These filenames are the selectable options for the
-  stack questionnaire. You never open the files themselves — list their names only.
+- **Rigging manifest** — `Rigging/MANIFEST.md`, injected below. It names the real selectable
+  components with their category, purpose, and prerequisites. Use it to recommend a small subset;
+  never open the individual component rule files.
 
 ---
 
@@ -198,9 +199,8 @@ Mixed signals → `ambiguous`.
 - *Emits:* the blocker list and the questionnaire action-item list.
 
 Blockers halt the pipeline; you write `BLOCKERS.md` only when one or more exist. Questions are
-carried forward only as discovery questionnaires. A discovery questionnaire is a valid resolution
-for a blocker — schedule it, mark the blocker answered, carry on. Do not duplicate a questionnaire
-question in `ANALYSIS.md`.
+carried forward only as discovery questionnaires. A questionnaire records a non-blocking Commander
+decision; it never resolves a blocker. Do not duplicate a questionnaire question in `ANALYSIS.md`.
 
 **4. Derive the feature and story list.**
 - *Consumes:* the sources + role notes + project type.
@@ -246,10 +246,11 @@ question in `ANALYSIS.md`.
 
 **9. Build the discovery questionnaires.**
 - *Consumes:* the project type + questionnaire action-item list (including Gap Checklist findings
-  routed to "only the human can decide") + injected Rigging catalog filenames.
-- *Emits:* one `discovery-<slug>.json` per open important question. Emit a stack questionnaire only
-  when the stack is not already decided; its options are the injected catalog filenames filtered
-  to the project type (see Hard Rules). Gap Checklist questions default to one consolidated
+  routed to "only the human can decide") + injected Rigging manifest.
+- *Emits:* `discovery-stack.json` on every run plus one `discovery-<slug>.json` per other open
+  important question. The stack questionnaire contains every real manifest component and a proposed
+  subset; only a Commander selection is an answer. When no prior stack selection exists, emit
+  `blocker-stack-selection` in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
   `discovery-gaps.json`; split into `discovery-gaps-2.json`, etc. only past 5–6 questions in this
   run. Do not emit a questionnaire for a matter the sources or prior answers have already settled.
   Do not emit a questionnaire that duplicates an existing unanswered questionnaire.
@@ -262,7 +263,10 @@ blockers exist; emit the `COMPASS.md` block when `COMPASS_EXISTS: false` or
 
 ## Output Format
 
-Emit exactly these blocks in order. COMPASS.md block is conditional.
+Emit blocks only in this order. Conditional blocks are omitted when their condition is false:
+`ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, `COMPASS.md`, `discovery-identity.json`,
+`discovery-stack.json`, then `discovery-gaps*.json` and other `discovery-<slug>.json` blocks in
+lexical filename order.
 **Nothing outside the blocks.** No preamble, no explanation, no commentary, no tool calls, no `<invoke>` XML. Start your response with `=== ANALYSIS.md ===`.
 
 ```
@@ -469,25 +473,12 @@ emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` 
 === END discovery-identity.json ===
 ```
 
-**Stack questionnaire rule.** The stack `options` are the **complete** injected Rigging catalog
-filenames (`Rigging/BRA*.md` plus `Rigging/stack/*.md`, no `README.md`, no `_compact` variants),
-always ending with `"other"`. Do **not** filter the list to the detected project type — the
-Product Owner sees every available component and picks freely. Never open the per-technology
-files — list their names only. Drydock tooling normalizes the persisted questionnaire and groups
-the options by category for display; you emit the flat list only.
-
-Always emit `discovery-stack.json` (Drydock writes a default one when you do not, so never skip
-it to save space). Use `"input": "checkbox_grid"` with `options` = the complete injected filename
-list plus `"other"`, sorted alphabetically.
-
-- If a source names a technology **and** a matching catalog file exists, treat the choice as
-  decided: record the technology, pre-fill the stack questionnaire's `answer` with the matching
-  filenames (comma-separated) so the Commander confirms or adjusts, and do **not** raise it as a
-  separate open question.
-- If a source names a technology with **no** matching catalog file, raise it as a discovery
-  questionnaire (a gap: no stack guidance exists for it). Use `"input": "textarea"` for the gap
-  question — never `select`; a `select` without `options` is unanswerable.
-- If the sources are silent on the stack, set `"answer": ""`; do not guess stack selections.
+**Stack questionnaire rule.** Always emit `discovery-stack.json`. Its `options` are every real
+component in the injected Rigging manifest, alphabetized. Never emit a synthetic `"other"` option.
+Use the manifest and sources to propose a small applicable subset, but leave `answer` empty unless
+the injected prior questionnaire already contains a Commander selection. A source-named technology
+is evidence for the proposal, not a confirmed stack decision. When the selection is empty, emit the
+stable `blocker-stack-selection` blocker.
 
 ```
 === discovery-stack.json ===
@@ -499,9 +490,10 @@ list plus `"other"`, sorted alphabetically.
     {
       "id": "stack_components",
       "label": "Stack Components",
-      "prompt": "Select all Rigging stack guidance components that apply. Leave blank when undecided.",
+      "prompt": "Select all Rigging components that apply. A selection confirms the stack for planning.",
       "input": "checkbox_grid",
-      "options": ["{alphabetized injected Rigging catalog filename}", "other"],
+      "options": ["{alphabetized injected Rigging manifest component filename}"],
+      "proposed": "{Comma-separated LLM recommendation, or empty string}",
       "answer": ""
     }
   ]
@@ -545,15 +537,14 @@ list plus `"other"`, sorted alphabetically.
 - Never re-ask a question already settled by `ANALYZE_COMPASS.md`, a prior `BLOCKERS.md`, or an
   existing questionnaire answer. Never emit a duplicate or reworded version of an existing
   unanswered questionnaire.
-- Always emit `discovery-stack.json` with `"input": "checkbox_grid"`. Options are the complete
-  injected catalog filenames (no `_compact` variants), alphabetized, plus `"other"` — never
-  filtered to the detected project type. Never open the per-technology stack files — list their
-  names only. Pre-fill `answer` with the catalog filenames matching technologies the sources
-  name; otherwise leave `answer` as an empty string.
+- Always emit `discovery-stack.json` with `"input": "checkbox_grid"`. Options are the complete,
+  alphabetized injected manifest component filenames. Never emit `"other"`; never open individual
+  component rule files. Use `proposed` for the recommended subset and preserve a prior Commander
+  `answer` only when it is already present.
 - Never emit a `select` or `multiselect` question without a non-empty `options` list. A free-text
   decision uses `"input": "textarea"`.
-- A named technology with a matching catalog file is decided (do not ask); a named technology with
-  no matching file is a discovery questionnaire.
+- A named technology with a matching manifest component informs the proposal; it is not a confirmed
+  selection. A named technology with no matching component is a discovery questionnaire.
 - Story List high-level AC: use acceptance criteria stated in the sources where present; otherwise
   synthesize one milestone per feature area / screen / persistence area.
 - SEA_TRIALS.md criteria are project-level and use stable `st-*` IDs. Preserve prior IDs for the

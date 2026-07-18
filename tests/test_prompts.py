@@ -71,7 +71,8 @@ class TestInputTokens:
             "BLOCKERS.md",
             "SEA_TRIALS.md",
             "EXISTING_SPIKES",
-            "TYPED_SPEC",
+            "RIGGING_MANIFEST",
+            "IMPORTED_SOURCES",
         )
 
     def test_analyze_prompt_keeps_questions_out_of_analysis_markdown(self):

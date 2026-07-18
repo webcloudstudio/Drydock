@@ -223,7 +223,7 @@ _DISCOVERY_STACK = json.dumps(
                 "label": "Stack",
                 "prompt": "What stack?",
                 "input": "textarea",
-                "options": ["other", "flask.md", "python.md"],
+                "options": ["flask.md", "python.md"],
             }
         ],
     },
@@ -594,9 +594,31 @@ class TestAssemblePrompt:
             "2026-06-14",
             compass_exists=False,
             feedback_text="Steer this way.",
-            input_tokens=("TYPED_SPEC", "ANALYZE_COMPASS.md"),
+            input_tokens=("IMPORTED_SOURCES", "ANALYZE_COMPASS.md"),
         )
         assert result.index("Imported source files") < result.index("ANALYZE_COMPASS.md")
+
+    def test_rigging_manifest_is_injected_as_selection_context(self, tmp_path, monkeypatch):
+        bp = tmp_path / "blueprint"
+        bp.mkdir()
+        rigging = tmp_path / "Rigging"
+        rigging.mkdir()
+        (rigging / "MANIFEST.md").write_text(
+            "# Rigging Manifest\n\n| File | Purpose |\n|---|---|\n| `python.md` | Python |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("drydock.analyze.get_rigging_root", lambda: rigging)
+
+        result = _assemble_prompt(
+            "body",
+            bp,
+            "2026-06-14",
+            compass_exists=False,
+            input_tokens=("RIGGING_MANIFEST",),
+        )
+
+        assert 'filename="MANIFEST.md"' in result
+        assert "| `python.md` | Python |" in result
 
     def test_compass_token_injects_no_content_section(self, tmp_path):
         # COMPASS.md is the COMPASS_EXISTS flag for analyze, not a fenced content block.
@@ -1140,7 +1162,6 @@ def test_normalize_discovery_replaces_stack_options_with_full_catalog(monkeypatc
         "flask.md",
         "python.md",
         "sqlite.md",
-        "other",
     ]
     assert question["groups"] == [
         {"label": "Web Server", "options": ["flask.md"]},
@@ -1148,7 +1169,6 @@ def test_normalize_discovery_replaces_stack_options_with_full_catalog(monkeypatc
         {"label": "AWS", "options": ["aws-s3.md"]},
         {"label": "Technologies", "options": ["python.md"]},
         {"label": "Branding", "options": ["BRANDING_MAIN.md"]},
-        {"label": "Other", "options": ["other"]},
     ]
     assert question["answer"] == ""
 
@@ -1170,7 +1190,7 @@ def test_normalize_discovery_stack_falls_back_to_sorted_llm_options(monkeypatch)
 
     question = normalized["questions"][0]
     assert question["input"] == "checkbox_grid"
-    assert question["options"] == ["flask.md", "other", "python.md"]
+    assert question["options"] == ["flask.md", "python.md"]
     assert "groups" not in question
     assert question["answer"] == ""
 
@@ -1263,17 +1283,20 @@ QUESTIONS:
         assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_quality_signal_in_result(self, tmp_path):
-        # The always-written stack questionnaire is an open question until answered.
+        # The empty always-written stack questionnaire is a planning blocker.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.quality == "Questions"
+        assert result.quality == "Blocked"
+        assert "## blocker-stack-selection:" in (target_dir / "BLOCKERS.md").read_text(
+            encoding="utf-8"
+        )
 
     def test_summary_counts_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.story_count == 5
         assert result.feature_count == 4
-        assert result.blocker_count == 0
+        assert result.blocker_count == 1
         assert result.question_count == 1  # the always-written stack questionnaire
         assert result.screen_count == 4
         assert result.stack == "python/flask"
@@ -1380,8 +1403,8 @@ QUESTIONS:
         data = json.loads(result.discovery_paths[0].read_text(encoding="utf-8"))
         question = data["questions"][0]
         assert question["input"] == "checkbox_grid"
-        assert question["options"][-1] == "other"
-        assert [g["label"] for g in question["groups"]][-1] == "Other"
+        assert "other" not in question["options"]
+        assert "Other" not in [g["label"] for g in question["groups"]]
         assert question["answer"] == ""
 
     def test_spike_paths_in_result(self, tmp_path):
@@ -1526,7 +1549,6 @@ QUESTIONS:
             "flask.md",
             "python.md",
             "sqlite.md",
-            "other",
         ]
         assert [g["label"] for g in question["groups"]] == [
             "Web Server",
@@ -1534,7 +1556,6 @@ QUESTIONS:
             "AWS",
             "Technologies",
             "Branding",
-            "Other",
         ]
         assert question["answer"] == ""
 

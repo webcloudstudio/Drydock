@@ -71,6 +71,8 @@ _IGNORABLE_OUTSIDE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
+_BLOCKER_HEADING_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
+_STACK_BLOCKER_ID = "blocker-stack-selection"
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
 _RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
@@ -782,6 +784,38 @@ def _collect_discoveries(target_dir: Path) -> list[Path]:
     if not qd.is_dir():
         return []
     return sorted(qd.glob("discovery-*.json"))
+
+
+def _has_stack_selection(target_dir: Path) -> bool:
+    """Return whether QuarterDeck has persisted a non-empty stack selection."""
+    path = target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for question in data.get("questions", []):
+        if question.get("id") != "stack_components":
+            continue
+        answer = question.get("answer", "")
+        if isinstance(answer, str):
+            return bool(answer.strip())
+        if isinstance(answer, list):
+            return any(str(value).strip() for value in answer)
+        return bool(answer)
+    return False
+
+
+def _blockers_require_reanalysis(target_dir: Path, blockers_text: str) -> bool:
+    """Return whether a persisted blocker remains a Plan gate.
+
+    A sole ``blocker-stack-selection`` is resolved by any persisted Commander stack
+    selection. All malformed, unknown, or additional blocker entries remain fail-closed
+    and require the existing answer-and-re-analyze loop.
+    """
+    blocker_ids = _BLOCKER_HEADING_RE.findall(blockers_text)
+    if blocker_ids == [_STACK_BLOCKER_ID] and _has_stack_selection(target_dir):
+        return False
+    return True
 
 
 def _answered_discovery(path: Path) -> dict | None:
@@ -1699,13 +1733,18 @@ def create_plan(
             f"ANALYSIS.md not found: {analysis_path}\n  Run: drydock analyze {target}"
         )
 
-    if (target_dir / "BLOCKERS.md").is_file():
+    blockers_path = target_dir / "BLOCKERS.md"
+    blockers_text = _read_if(blockers_path)
+    stack_blocker_resolved = blockers_path.is_file() and not _blockers_require_reanalysis(
+        target_dir, blockers_text
+    )
+    if blockers_path.is_file() and not stack_blocker_resolved:
         raise SpecificationError(
             "BLOCKERS.md is present — planning is blocked. Answer the blockers and re-run "
             f"`drydock analyze {target}` before `drydock plan {target}`."
         )
     quality_match = _QUALITY_RE.search(analysis_text)
-    if quality_match and quality_match.group(1).lower() == "blocked":
+    if quality_match and quality_match.group(1).lower() == "blocked" and not stack_blocker_resolved:
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )

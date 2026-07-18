@@ -949,6 +949,70 @@ def test_blockers_file_present_refuses(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
+def test_confirmed_stack_selection_resolves_only_stack_blocker(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "BLOCKERS.md").write_text(
+        "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n",
+        encoding="utf-8",
+    )
+    questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+    questionnaires.mkdir(parents=True)
+    (questionnaires / "discovery-stack.json").write_text(
+        json.dumps({
+            "id": "discovery-stack",
+            "questions": [
+                {"id": "stack_components", "input": "checkbox_grid", "answer": "python.md"}
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert result.plan.blocks
+
+
+def test_empty_stack_selection_keeps_stack_blocker_closed(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "BLOCKERS.md").write_text(
+        "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n",
+        encoding="utf-8",
+    )
+    questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+    questionnaires.mkdir(parents=True)
+    (questionnaires / "discovery-stack.json").write_text(
+        json.dumps({
+            "id": "discovery-stack",
+            "questions": [{"id": "stack_components", "input": "checkbox_grid", "answer": ""}],
+        }),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SpecificationError, match="BLOCKERS.md"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+
+def test_confirmed_stack_selection_does_not_clear_other_blockers(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "BLOCKERS.md").write_text(
+        "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n\n"
+        "## blocker-intent: Confirm product intent\nClarify the product.\n",
+        encoding="utf-8",
+    )
+    questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+    questionnaires.mkdir(parents=True)
+    (questionnaires / "discovery-stack.json").write_text(
+        json.dumps({
+            "id": "discovery-stack",
+            "questions": [{"id": "stack_components", "answer": "python.md"}],
+        }),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SpecificationError, match="BLOCKERS.md"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+
 def test_missing_analysis_refuses(tmp_path):
     _make_target(tmp_path, analysis=None)
     with pytest.raises(SpecificationError, match="ANALYSIS.md"):

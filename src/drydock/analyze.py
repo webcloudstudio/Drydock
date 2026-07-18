@@ -71,6 +71,7 @@ _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
 # A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
 _BLOCKER_ENTRY_RE = re.compile(r"^## \S", re.MULTILINE)
+_BLOCKER_ID_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
 _OPEN_QUESTIONS_SECTION_RE = re.compile(
     r"^## Open Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
 )
@@ -83,6 +84,7 @@ _ANALYSIS_NOTES_HEADING_RE = re.compile(
     r"^## (?:Analysis notes|Notes)\s*$", re.MULTILINE | re.IGNORECASE
 )
 _QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
+_STACK_BLOCKER_ID = "blocker-stack-selection"
 
 
 class CompletedRun(Protocol):
@@ -207,6 +209,20 @@ def _rigging_catalog_names() -> list[str]:
     return [name for name, _ in _rigging_catalog()]
 
 
+def _rigging_manifest() -> str:
+    """Return the compact Rigging selection catalog injected into Analyze."""
+    try:
+        path = get_rigging_root() / "MANIFEST.md"
+    except Exception:
+        return ""
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def _default_stack_questionnaire() -> dict:
     """Return the canonical stack questionnaire shell.
 
@@ -238,16 +254,14 @@ def _stack_option_groups(catalog: list[tuple[str, str]]) -> list[dict]:
     """Group catalog options by category for the stack questionnaire.
 
     Known categories render in ``_STACK_CATEGORY_ORDER``; unknown categories follow
-    alphabetically. A trailing ``Other`` group carries the free-choice ``other`` option.
+    alphabetically.
     """
     by_category: dict[str, list[str]] = {}
     for name, category in catalog:
         by_category.setdefault(category, []).append(name)
     ordered = [c for c in _STACK_CATEGORY_ORDER if c in by_category]
     ordered += sorted(c for c in by_category if c not in _STACK_CATEGORY_ORDER)
-    groups = [{"label": c, "options": sorted(by_category[c])} for c in ordered]
-    groups.append({"label": "Other", "options": ["other"]})
-    return groups
+    return [{"label": c, "options": sorted(by_category[c])} for c in ordered]
 
 
 _EMPTY_LINE = frozenset({"", "- None.", "- None"})
@@ -510,22 +524,6 @@ def _assemble_prompt_assembly(
 
     def typed_spec_parts() -> list:
         parts_list = []
-        catalog = _rigging_catalog_names()
-        if catalog:
-            parts_list.append(
-                lines_part(
-                    "Rigging catalog",
-                    [
-                        "## Rigging catalog (filenames only)",
-                        "",
-                        "Selectable stack options for discovery-stack.json. Names only — never open these files.",
-                        "",
-                        *[f"- {name}" for name in catalog],
-                        "",
-                    ],
-                    kind="section",
-                )
-            )
         parts_list.append(
             lines_part(
                 "Imported source file header", ["## Imported source files", ""], kind="section"
@@ -546,13 +544,25 @@ def _assemble_prompt_assembly(
             )
         return parts_list
 
+    def rigging_manifest_parts() -> list:
+        manifest = _rigging_manifest()
+        if not manifest:
+            return []
+        return _managed_doc_parts(
+            filename="MANIFEST.md",
+            content=manifest,
+            content_role="Rigging stack selection catalog",
+            path=get_rigging_root() / "MANIFEST.md",
+        )
+
     renderers: dict[str, Callable[[], list]] = {
         "COMPASS.md": compass_parts,
         "ANALYZE_COMPASS.md": feedback_parts,
         "BLOCKERS.md": blocker_parts,
         "SEA_TRIALS.md": sea_trials_parts,
         "EXISTING_SPIKES": discovery_parts,
-        "TYPED_SPEC": typed_spec_parts,
+        "RIGGING_MANIFEST": rigging_manifest_parts,
+        "IMPORTED_SOURCES": typed_spec_parts,
     }
     for token in input_tokens:
         render = renderers.get(token)
@@ -697,22 +707,62 @@ def _normalize_discovery(name: str, data: dict) -> dict:
             if proposed and not str(question.get("answer", "")).strip():
                 question["answer"] = proposed
         if name == "discovery-stack.json":
+            question["id"] = "stack_components"
             question["input"] = "checkbox_grid"
             catalog = _rigging_catalog()
             if catalog:
                 # The option list is deterministic: the full Rigging catalog grouped by
                 # category, regardless of what the LLM emitted. The LLM must not filter
                 # the choices offered to the Commander.
-                question["options"] = [name_ for name_, _ in catalog] + ["other"]
+                question["options"] = [name_ for name_, _ in catalog]
                 question["groups"] = _stack_option_groups(catalog)
             else:
                 options = question.get("options", [])
                 if isinstance(options, list):
                     question["options"] = sorted(str(option) for option in options)
-            question.setdefault("answer", "")
+            # Stack selection is Commander-owned. A model may recommend components
+            # through ``proposed`` but cannot pre-fill the persisted answer.
+            question["answer"] = ""
         questions.append(question)
     normalized["questions"] = questions
     return normalized
+
+
+def _has_stack_selection(questionnaires_dir: Path) -> bool:
+    """Return whether a persisted stack questionnaire has a Commander selection."""
+    path = questionnaires_dir / "discovery-stack.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for question in data.get("questions", []):
+        if question.get("id") != "stack_components":
+            continue
+        answer = question.get("answer", "")
+        if isinstance(answer, str):
+            return bool(answer.strip())
+        if isinstance(answer, list):
+            return any(str(value).strip() for value in answer)
+        return bool(answer)
+    return False
+
+
+def _ensure_stack_blocker(blockers: str | None, *, stack_selected: bool) -> str | None:
+    """Add the required stack gate when no Commander selection exists."""
+    if stack_selected:
+        return blockers
+    if blockers and _STACK_BLOCKER_ID in _BLOCKER_ID_RE.findall(blockers):
+        return blockers
+    stack_blocker = (
+        "## blocker-stack-selection: Confirm technology stack\n"
+        "Select one or more Rigging components in the Technology Stack questionnaire before "
+        "planning. The Commander selection is the authoritative stack decision."
+    )
+    return (
+        f"{blockers.rstrip()}\n\n{stack_blocker}"
+        if blockers
+        else ("# Blockers: Stack Selection\n\n" + stack_blocker)
+    )
 
 
 def _parse_output(
@@ -969,6 +1019,11 @@ def analyze(
             json.dumps(stack_data, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
         discovery_paths.append(stack_path)
+
+    blockers_text_out = _ensure_stack_blocker(
+        blockers_text_out,
+        stack_selected=_has_stack_selection(questionnaires_dir),
+    )
 
     # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
     # Its presence is the flag that halts the pipeline; written when present, deleted otherwise

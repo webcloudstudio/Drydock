@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | Design notes for the SAIL Arrange pipeline: drydock analyze outputs, agent structure, and plan create interface. V8 adds ANALYSIS.md tab-structure redesign: merge Overview+Summary, drop Blockers tab, wire Open Questions to spike files. |
 | Pending spec | 18 approved items |
-| Pending impl | 3 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 **Scope:** the whole Arrange pipeline — `drydock analyze` → PO review (CLI or QuarterDeck) →
 `drydock plan create`. The two commands have a tight interface and are designed together.
 `notes_plan.md` carries `plan create` implementation detail; this file owns the shared model.
@@ -467,7 +467,7 @@ Analyze job context. `EXCLUDE_FILES.md` excludes exact imported-source filenames
 Plan prompt injection.
 
 ### Rigging Manifest Injection
-`2026-07-18` · `spec:na` · `impl:unimplemented`
+`2026-07-18` · `spec:na` · `impl:implemented`
 
 `Rigging/MANIFEST.md` is the compact catalog injected into `drydock analyze`. It replaces the
 filename-only Rigging catalog. It is created from the current stack README and active Rigging
@@ -480,7 +480,7 @@ Analyze receives the manifest but never opens each component rule file. The Comm
 manifest corrections.
 
 ### Stack Selection Is a Planning Gate
-`2026-07-18` · `spec:approved` · `impl:unimplemented`
+`2026-07-18` · `spec:approved` · `impl:implemented`
 
 Analyze always provides `discovery-stack.json` as a multi-select checkbox questionnaire over real
 manifest components. It has no synthetic `other` option. The LLM may recommend a small relevant
@@ -492,7 +492,7 @@ are required solely to clear this gate. Plan consumes the persisted selection di
 blockers keep the existing answer-and-re-analyze workflow.
 
 ### Analyze Prompt: One Semantic Contract and One Output Protocol
-`2026-07-18` · `spec:na` · `impl:unimplemented`
+`2026-07-18` · `spec:na` · `impl:implemented`
 
 Tighten `prompts/analyze.md` without turning it into documentation. Each behavioral rule has one
 authoritative home: semantic analysis policy, ordered task flow, output schemas, or hard protocol
