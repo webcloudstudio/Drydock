@@ -475,6 +475,8 @@ drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten]
 
 drydock validate <Target> [--verbose]
 
+drydock rigging --add --file <path>
+drydock rigging --add --dir <path>
 drydock rigging compact <Target> [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
 drydock rigging update <Target> [--dry-run]
 drydock rigging verify <Target>
@@ -1107,6 +1109,8 @@ If a required compact derivative is absent, the build stops with a directive to 
 ### Commands
 
 ```
+drydock rigging --add --file <path>
+drydock rigging --add --dir <path>
 drydock rigging compact <Target> [--all] [--force]
                                  [--include-file <file.md>] [--exclude-file <file.md>]
                                  [--include-dir <dir>]
