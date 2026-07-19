@@ -10,6 +10,7 @@ from pathlib import Path
 
 from drydock.errors import DrydockError
 from drydock.paths import get_quarterdeck_root
+from drydock.standard_artifacts import render_console
 
 DEFAULT_PORT = 8080
 DEFAULT_HOST = "127.0.0.1"
@@ -18,6 +19,35 @@ DEFAULT_HOST = "127.0.0.1"
 @dataclass
 class QuarterDeckRunResult:
     exit_code: int
+
+
+def ensure_quarterdeck_state(target_dir: Path) -> Path:
+    """Restore missing QuarterDeck state for an initialized Target.
+
+    QuarterDeck is a regenerable presentation layer. A failed command must not
+    make blocker recovery impossible merely because its ``console.yaml`` was
+    absent. ``METADATA.md`` remains the initialization authority, so arbitrary
+    directories are still rejected.
+    """
+    state_dir = target_dir / "QuarterDeck"
+    console_path = state_dir / "console.yaml"
+    if console_path.is_file():
+        return state_dir
+    if not (target_dir / "METADATA.md").is_file():
+        raise DrydockError(
+            f"QuarterDeck not initialized at {state_dir}\n  Run: drydock init <Target>"
+        )
+    state_dir.mkdir(parents=True, exist_ok=True)
+    plan_path = target_dir / "MANIFEST.md"
+    console_path.write_text(
+        render_console(target_dir.name, plan_path=plan_path if plan_path.is_file() else None),
+        encoding="utf-8",
+        newline="\n",
+    )
+    from drydock.quarterdeck_state import refresh_commanders_chair
+
+    refresh_commanders_chair(target_dir)
+    return state_dir
 
 
 def run_quarterdeck(
@@ -35,11 +65,7 @@ def run_quarterdeck(
     ``QUARTERDECK_PROJECT_ROOT``. Uvicorn must be installed in the active Python
     environment (``pip install uvicorn[standard]``).
     """
-    state_dir = target_dir / "QuarterDeck"
-    if not (state_dir / "console.yaml").is_file():
-        raise DrydockError(
-            f"QuarterDeck not initialized at {state_dir}\n  Run: drydock init <Target>"
-        )
+    state_dir = ensure_quarterdeck_state(target_dir)
 
     runtime = runtime_root or get_quarterdeck_root()
     if not (runtime / "app.py").is_file():

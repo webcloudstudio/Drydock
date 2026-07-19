@@ -70,6 +70,24 @@ def test_run_quarterdeck_uninitialized_state_raises(tmp_path):
         quarterdeck_run.run_quarterdeck(target_dir)
 
 
+def test_run_quarterdeck_restores_missing_state_for_initialized_target(tmp_path, monkeypatch):
+    target_dir = tmp_path / "targets" / "Example"
+    target_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text("name: Example\n", encoding="utf-8")
+    runtime = tmp_path / "pkg" / "QuarterDeck"
+    _make_runtime(runtime)
+
+    class _Result:
+        returncode = 0
+
+    monkeypatch.setattr(quarterdeck_run.subprocess, "run", lambda *args, **kwargs: _Result())
+
+    result = quarterdeck_run.run_quarterdeck(target_dir, runtime_root=runtime)
+
+    assert result.exit_code == 0
+    assert (target_dir / "QuarterDeck" / "console.yaml").is_file()
+
+
 def test_run_quarterdeck_missing_runtime_raises(tmp_path):
     target_dir = tmp_path / "targets" / "Example"
     target_dir.mkdir(parents=True)
