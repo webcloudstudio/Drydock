@@ -535,7 +535,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print("Review QuarterDeck action items, then run:")
         print(f"  drydock plan {args.Target}")
     else:
-        print("Resolve blockers, then re-run:")
+        print("Resolve blockers in QuarterDeck:")
+        print(f"  drydock run quarterdeck {args.Target}")
+        print("Then re-run:")
         print(f"  drydock analyze {args.Target}")
     return 0
 

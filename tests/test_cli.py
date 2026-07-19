@@ -459,6 +459,10 @@ class TestAnalyzeCommand:
         assert rc == 0
         assert "SEA_TRIALS.md" not in out
         assert "Quality: ✗  Blocked" in out
+        assert "Resolve blockers in QuarterDeck:" in out
+        assert "drydock run quarterdeck Proj" in out
+        assert "Then re-run:" in out
+        assert "drydock analyze Proj" in out
         assert "Warning: SEA_TRIALS.md was not created" in err
 
 
