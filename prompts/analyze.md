@@ -298,6 +298,43 @@ relevant story's typed specification. "None." if the Gap Checklist surfaced no s
 |---|---|---|
 | AC-001 | {FEATURE-SLUG}-001 | {One observable behavior the story must satisfy} |
 
+## Relationship Model
+
+Infer cross-file delivery relationships from the imported corpus. Supporting implementation,
+helper, fixture, and test files are evidence for the capability they enable, not independent
+stories. Use concise cited paths such as `sources/tests/test_parser.py`.
+
+| Source or group | Relationship type | Related source or group | Evidence | Delivery implication |
+|---|---|---|---|---|
+| {source path/group} | {instruction-to-test | test-kit-to-implementation | implementation-to-helper | reference-to-replacement | parser-to-normalizer | dependency} | {source path/group} | {specific cited evidence} | {planning consequence} |
+
+## Planning Instructions
+
+### Delivery Shape
+
+State the inferred system/pipeline, major inputs and outputs, and required execution flow.
+
+### Story Realization Map
+
+For every Story ID, state the durable Blueprint scope(s), cited `sources/...` evidence, related
+files, and whether it requires a capability, integration, migration, test harness, or acceptance
+contract.
+
+### Test and Acceptance Strategy
+
+State test kits, fixtures, reference tests, commands, expected behavior, and programmatic
+acceptance that Plan must embed in the durable Blueprint scopes.
+
+### Sequencing and Dependencies
+
+State Manifest ordering constraints, including build-before-test, parser-before-normalizer,
+fixture-before-verification, and external dependencies.
+
+### Source Conflicts and Gaps
+
+State contradictions or missing information that must remain blockers or questionnaires. Do not
+silently resolve them.
+
 ## Analysis Notes
 
 generated: {ISO date}

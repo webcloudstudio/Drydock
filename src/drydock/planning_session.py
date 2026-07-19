@@ -29,6 +29,7 @@ from typing import Protocol, cast
 from drydock.acceptance import all_programmatic_acceptance
 from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
+from drydock.corpus import CorpusFile, discover_corpus
 from drydock.errors import RecordedError, SpecificationError, clear_error_record, write_error_record
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
@@ -73,6 +74,8 @@ _IGNORABLE_OUTSIDE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
+_PLANNING_INSTRUCTIONS_RE = re.compile(r"^## Planning Instructions\s*$", re.MULTILINE)
+_SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.-])(sources/[A-Za-z0-9_./-]+)")
 _BLOCKER_HEADING_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
 _STACK_BLOCKER_ID = "blocker-stack-selection"
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
@@ -502,12 +505,45 @@ def _merge_prior_state(
 def _collect_sources(
     blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
 ) -> list[Path]:
-    sources_dir = blueprint_dir / "sources"
-    if not sources_dir.is_dir():
+    return [
+        entry.path
+        for entry in discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
+        if entry.text is not None
+    ]
+
+
+def _source_evidence_bundle(
+    blueprint_dir: Path,
+    analysis_text: str,
+    *,
+    excluded_filenames: frozenset[str],
+) -> list[CorpusFile] | None:
+    """Return Analyze-cited prompt evidence; ``None`` preserves legacy full-corpus plans."""
+    if not _PLANNING_INSTRUCTIONS_RE.search(analysis_text):
+        return None
+    corpus = discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
+    if not corpus:
         return []
-    return sorted(
-        p for p in sources_dir.rglob("*.md") if p.is_file() and p.name not in excluded_filenames
-    )
+    cited = set(_SOURCE_CITATION_RE.findall(analysis_text))
+    if not cited:
+        raise SpecificationError(
+            "ANALYSIS.md Planning Instructions contain no `sources/...` evidence citations. "
+            "Re-run analyze or add cited source evidence before planning."
+        )
+    by_path = {entry.relative_path: entry for entry in corpus}
+    missing = sorted(cited - set(by_path))
+    if missing:
+        raise SpecificationError(
+            "ANALYSIS.md cites source path(s) not present in the imported corpus: "
+            + ", ".join(missing)
+        )
+    unusable = sorted(path for path in cited if by_path[path].text is None)
+    if unusable:
+        raise SpecificationError(
+            "ANALYSIS.md cites source path(s) that cannot be injected as readable evidence: "
+            + ", ".join(unusable)
+        )
+    return [entry for entry in corpus if entry.relative_path in cited and entry.text is not None]
 
 
 def _collect_changes(
@@ -959,6 +995,7 @@ def _assemble_prompt_assembly(
     input_tokens: tuple[str, ...] | None = None,
     excluded_filenames: frozenset[str] = frozenset(),
     typed_spec_paths: list[Path] | None = None,
+    source_evidence: list[CorpusFile] | None = None,
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -1077,16 +1114,36 @@ def _assemble_prompt_assembly(
                 "Imported source file header", ["## Imported source files", ""], kind="section"
             )
         ]
-        source_paths = typed_spec_paths
-        if source_paths is None:
-            source_paths = _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames)
-        for path_obj in source_paths:
-            label = path_obj.relative_to(blueprint_dir).as_posix()
+        if source_evidence is not None:
+            corpus = source_evidence
+        elif typed_spec_paths is not None:
+            corpus = [
+                CorpusFile(
+                    path_obj,
+                    path_obj.relative_to(blueprint_dir).as_posix(),
+                    "markdown",
+                    "analyzed",
+                    "selected",
+                    path_obj.read_text(encoding="utf-8"),
+                    "markdown",
+                )
+                for path_obj in typed_spec_paths
+            ]
+        else:
+            corpus = [
+                entry
+                for entry in discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
+                if entry.text is not None
+            ]
+        for entry in corpus:
+            path_obj = entry.path
+            label = entry.relative_path
             parts_list.extend(
-                contextual_markdown_parts(
+                contextual_fenced_parts(
                     label,
-                    path_obj.read_text(encoding="utf-8").rstrip(),
-                    filename=path_obj.name,
+                    entry.text.rstrip() if entry.text else "",
+                    filename=label,
+                    fence=entry.fence,
                     role="source file",
                     path=path_obj,
                 )
@@ -1880,6 +1937,9 @@ def create_plan(
         input_tokens=prompt.input_tokens,
         excluded_filenames=excluded_filenames,
         typed_spec_paths=reusable_spec_paths,
+        source_evidence=_source_evidence_bundle(
+            blueprint_dir, analysis_text, excluded_filenames=excluded_filenames
+        ),
     )
 
     # Preflight is complete. A retry now retires the prior current error immediately

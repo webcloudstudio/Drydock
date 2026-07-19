@@ -24,6 +24,7 @@ from drydock.compass_sources import (
     compass_import_pending,
     seed_compass_from_sources,
 )
+from drydock.corpus import CorpusFile, discover_corpus, inventory_markdown
 from drydock.errors import DrydockError, SpecificationError
 from drydock.exclude_files import (
     append_suggested_exclusions,
@@ -138,9 +139,11 @@ def _collect_blueprint_files(
     sources_dir = blueprint_dir / _SOURCES_SUBDIR
     if not sources_dir.is_dir():
         return []
-    return sorted(
-        p for p in sources_dir.rglob("*.md") if p.is_file() and p.name not in excluded_filenames
-    )
+    return [
+        entry.path
+        for entry in discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
+        if entry.path.suffix.lower() == ".md" and entry.text is not None
+    ]
 
 
 def ensure_feedback_file(target_dir: Path) -> str:
@@ -532,19 +535,31 @@ def _assemble_prompt_assembly(
                 "Imported source file header", ["## Imported source files", ""], kind="section"
             )
         )
-        for path_obj in _collect_blueprint_files(
-            blueprint_dir, excluded_filenames=excluded_filenames
-        ):
-            label = path_obj.relative_to(blueprint_dir).as_posix()
-            parts_list.extend(
-                contextual_markdown_parts(
-                    label,
-                    path_obj.read_text(encoding="utf-8"),
-                    filename=path_obj.name,
-                    role="source file",
-                    path=path_obj,
-                )
+        corpus = discover_corpus(blueprint_dir)
+        parts_list.append(
+            lines_part(
+                "Corpus inventory", inventory_markdown(corpus).splitlines() + [""], kind="section"
             )
+        )
+        for entry in corpus:
+            if entry.path.name in excluded_filenames:
+                continue
+            for index, chunk in enumerate(entry.prompt_chunks, start=1):
+                suffix = (
+                    f" (chunk {index}/{len(entry.prompt_chunks)})"
+                    if len(entry.prompt_chunks) > 1
+                    else ""
+                )
+                parts_list.extend(
+                    contextual_fenced_parts(
+                        entry.relative_path + suffix,
+                        chunk,
+                        filename=entry.relative_path,
+                        fence=entry.fence,
+                        role="source file",
+                        path=entry.path,
+                    )
+                )
         return parts_list
 
     def rigging_manifest_parts() -> list:
@@ -667,6 +682,24 @@ def _normalize_analysis_layout(analysis_text: str) -> str:
         body = "\n\n".join(part for part in (body, "## Analysis Notes\n\n" + intro) if part)
 
     return "\n\n".join(part for part in (title, body.strip()) if part)
+
+
+def _attach_corpus_handoff(analysis_text: str, corpus: list[CorpusFile]) -> str:
+    """Add deterministic corpus coverage and preserve required planning handoff sections."""
+    text = re.sub(
+        r"^## Source Inventory\s*$.*?(?=^## |\Z)",
+        "",
+        analysis_text,
+        flags=re.MULTILINE | re.DOTALL,
+    ).strip()
+    for heading in ("Relationship Model", "Planning Instructions"):
+        if not re.search(rf"^## {re.escape(heading)}\s*$", text, re.MULTILINE):
+            text += f"\n\n## {heading}\n\nNone identified."
+    # Inventory is tool-derived evidence, not a model assertion. Place it before the
+    # relationship and planning sections so QuarterDeck renders coverage prominently.
+    inventory = inventory_markdown(corpus)
+    relationship_heading = "## Relationship Model"
+    return text.replace(relationship_heading, inventory + "\n\n" + relationship_heading, 1)
 
 
 def _count_open_discoveries(questionnaires_dir: Path) -> int:
@@ -894,6 +927,9 @@ def analyze(
     ensure_exclude_file(target_dir)
     append_suggested_exclusions(target_dir, source_files)
     excluded_filenames = load_excluded_filenames(target_dir)
+    # Inventory proves coverage of every imported file. EXCLUDE_FILES controls only prompt
+    # injection, never the immutable corpus record rendered into ANALYSIS.md.
+    corpus = discover_corpus(blueprint_dir)
 
     run = runner if runner is not None else run_prompt
     prompt = load_prompt(PROMPT_NAME)
@@ -1080,6 +1116,7 @@ def analyze(
         blockers=blocker_count,
         questions=question_count,
     )
+    analysis_text = _attach_corpus_handoff(analysis_text, corpus)
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
 
     # Lifecycle state, sub-state, and date stamp — always written on success.

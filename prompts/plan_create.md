@@ -81,6 +81,13 @@ the job block; the rest are fenced sections.
 - **`## Surfaced Acceptance Criteria`** in `ANALYSIS.md` — additional criteria analyze derived per
   story; fold each row into the `## Programmatic Acceptance` or `## User Acceptance` section of the
   spec file implementing its Story ID.
+- **`## Relationship Model`** and **`## Planning Instructions`** in `ANALYSIS.md` — primary
+  Analyze-to-Plan handoff. Honor the Story Realization Map when selecting durable Blueprint
+  scopes; carry the stated sequencing/dependency model into Manifest ordering and `depends:`;
+  embed cited interfaces, workflows, test-kit behavior, and acceptance in the matching specs.
+  The imported evidence bundle contains only paths cited by Analyze. Do not assume uncited source
+  content is available; surface a conflict or gap through the existing blocker/questionnaire
+  mechanisms rather than inventing it.
 - **`SYSTEM_SHAPE`** — the determined project type (`web|api|cli|library|pipeline|event-driven`),
   parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
