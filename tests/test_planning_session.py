@@ -1539,6 +1539,29 @@ def test_assemble_prompt_reorders_when_tokens_reordered(tmp_path):
     assert result.index('filename="ANALYSIS.md"') < result.index('filename="COMPASS.md"')
 
 
+def test_assemble_prompt_injects_resolved_blocker_history(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    analysis = _ANALYSIS + (
+        "\n## Resolved Blockers\n\n"
+        "### blocker-intent: Confirm intent\n\n"
+        "#### Commander Resolution\n\n"
+        "The CLI converts CommonMark documents to HTML.\n"
+    )
+
+    result = _assemble_prompt(
+        "BODY",
+        target_dir,
+        blueprint_dir,
+        analysis,
+        "2026-06-17",
+        input_tokens=("ANALYSIS.md",),
+    )
+
+    assert "Resolved Blockers" in result
+    assert "The CLI converts CommonMark documents to HTML." in result
+
+
 def test_assemble_prompt_injects_plan_compass_instruction_block(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"

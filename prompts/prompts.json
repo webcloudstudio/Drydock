@@ -4,8 +4,8 @@
       "item_id": "blockers_doc",
       "label": "Blockers",
       "default_text": null,
-      "help_text": "This file is injected into `drydock analyze` and `drydock plan create` when it exists. Answer the blocking questions directly in this file; use it to record resolved guidance and clear it when the blockers no longer apply.",
-      "prompt_text": "existing blockers and user responses to the stated concern. Use answers as resolved guidance and do not re-raise them unless still unresolved."
+      "help_text": "This file is injected into `drydock analyze` while active. Record each decision under its `### Commander Resolution` heading, then rerun Analyze; resolved blockers are archived in ANALYSIS.md and this gate file is removed.",
+      "prompt_text": "Active blockers and user responses recorded as Commander resolutions. Treat a non-empty `### Commander Resolution` as settled guidance; do not re-raise it unless the resolution is insufficient."
     },
     "COMPASS.md": {
       "item_id": "compass_edit",

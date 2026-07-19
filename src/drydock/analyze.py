@@ -73,6 +73,18 @@ _SUMMARY_FIELD_RE = re.compile(r"^  (\w+):\s*(.+?)$", re.MULTILINE)
 # A genuine BLOCKERS.md block carries at least one "## " blocker entry (see prompts/analyze.md).
 _BLOCKER_ENTRY_RE = re.compile(r"^## \S", re.MULTILINE)
 _BLOCKER_ID_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
+_BLOCKER_SECTION_RE = re.compile(
+    r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:\s*(?P<title>.*?)\s*$"
+    r"\n?(?P<body>.*?)(?=^##\s|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+_COMMANDER_RESOLUTION_RE = re.compile(
+    r"^### Commander Resolution\s*$\n?(?P<answer>.*)\Z", re.MULTILINE | re.DOTALL
+)
+_RESOLVED_BLOCKERS_SECTION_RE = re.compile(
+    r"^## Resolved Blockers\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
+)
+_RESOLUTION_PLACEHOLDER = "<!-- Enter the decision that resolves this blocker, then re-run Analyze. -->"
 _OPEN_QUESTIONS_SECTION_RE = re.compile(
     r"^## Open Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
 )
@@ -125,6 +137,16 @@ class AnalyzeResult:
 
     def exit_code(self) -> int:
         return 0 if self.ok else 1
+
+
+@dataclass(frozen=True)
+class BlockerRecord:
+    blocker_id: str
+    title: str
+    full_text: str
+    original_text: str
+    resolution: str | None
+    has_resolution_field: bool
 
 
 def _parse_blocks(text: str) -> dict[str, str]:
@@ -609,6 +631,149 @@ def _validate_blockers(raw: str | None) -> str | None:
     return stripped
 
 
+def _parse_blocker_records(raw: str | None) -> list[BlockerRecord]:
+    """Extract active blocker records and any Commander resolutions."""
+    if not raw:
+        return []
+    records: list[BlockerRecord] = []
+    for match in _BLOCKER_SECTION_RE.finditer(raw.strip()):
+        body = match.group("body").strip()
+        resolution_match = _COMMANDER_RESOLUTION_RE.search(body)
+        resolution = None
+        original = body
+        has_resolution_field = resolution_match is not None
+        if resolution_match is not None:
+            original = body[: resolution_match.start()].strip()
+            candidate = resolution_match.group("answer").strip()
+            if candidate and candidate != _RESOLUTION_PLACEHOLDER:
+                resolution = candidate
+        records.append(
+            BlockerRecord(
+                blocker_id=match.group("id"),
+                title=match.group("title").strip(),
+                full_text=match.group(0).strip(),
+                original_text=original,
+                resolution=resolution,
+                has_resolution_field=has_resolution_field,
+            )
+        )
+    return records
+
+
+def _ensure_blocker_resolution_fields(raw: str | None) -> str | None:
+    """Add the Commander-owned resolution field to every active blocker."""
+    if not raw:
+        return raw
+
+    def add_field(match: re.Match[str]) -> str:
+        section = match.group(0).strip()
+        if _COMMANDER_RESOLUTION_RE.search(match.group("body").strip()):
+            return section
+        return section + "\n\n### Commander Resolution\n\n" + _RESOLUTION_PLACEHOLDER
+
+    return _BLOCKER_SECTION_RE.sub(add_field, raw).strip()
+
+
+def _retain_unanswered_structured_blockers(
+    previous: str | None, current: str | None
+) -> str | None:
+    """Keep unanswered structured blockers active if the model omits their IDs."""
+    prior_records = _parse_blocker_records(previous)
+    current_records = _parse_blocker_records(current)
+    current_ids = {record.blocker_id for record in current_records}
+    retained = [
+        record.full_text
+        for record in prior_records
+        if record.has_resolution_field and record.resolution is None and record.blocker_id not in current_ids
+    ]
+    if not retained:
+        return current
+    if current:
+        return current.rstrip() + "\n\n" + "\n\n".join(retained)
+    return "# Blockers: Awaiting Commander Resolution\n\n" + "\n\n".join(retained)
+
+
+def _resolved_blocker_history(
+    prior_analysis: str | None,
+    previous_blockers: str | None,
+    current_blockers: str | None,
+    *,
+    resolved_on: str,
+) -> str:
+    """Append newly cleared blockers to existing deterministic analysis history."""
+    previous_records = _parse_blocker_records(previous_blockers)
+    current_ids = {record.blocker_id for record in _parse_blocker_records(current_blockers)}
+    entries = _extract_resolved_blocker_history(prior_analysis)
+    if not previous_records and previous_blockers and not current_blockers:
+        entries.append(
+            "\n".join(
+                (
+                    "### legacy-unstructured-blocker",
+                    "",
+                    f"Resolved: {resolved_on}",
+                    "Status: legacy unstructured resolution",
+                    "",
+                    "#### Legacy Final Blocker Markdown",
+                    "",
+                    "```markdown",
+                    previous_blockers.strip(),
+                    "```",
+                )
+            )
+        )
+    for record in previous_records:
+        if record.blocker_id in current_ids:
+            continue
+        if record.resolution is not None:
+            entries.append(
+                "\n".join(
+                    (
+                        f"### {record.blocker_id}: {record.title}",
+                        "",
+                        f"Resolved: {resolved_on}",
+                        "Status: resolved",
+                        "",
+                        "#### Original Blocker",
+                        "",
+                        record.original_text or "(No additional blocker detail.)",
+                        "",
+                        "#### Commander Resolution",
+                        "",
+                        record.resolution,
+                    )
+                )
+            )
+        elif not record.has_resolution_field:
+            entries.append(
+                "\n".join(
+                    (
+                        f"### {record.blocker_id}: {record.title}",
+                        "",
+                        f"Resolved: {resolved_on}",
+                        "Status: legacy unstructured resolution",
+                        "",
+                        "#### Legacy Final Blocker Markdown",
+                        "",
+                        "```markdown",
+                        record.full_text,
+                        "```",
+                    )
+                )
+            )
+    return "\n\n".join(entries)
+
+
+def _extract_resolved_blocker_history(analysis_text: str | None) -> list[str]:
+    if not analysis_text:
+        return []
+    match = _RESOLVED_BLOCKERS_SECTION_RE.search(analysis_text)
+    if not match:
+        return []
+    body = match.group(0).split("\n", 1)
+    content = body[1].strip() if len(body) == 2 else ""
+    return [entry.strip() for entry in re.split(r"(?=^### )", content, flags=re.MULTILINE) if entry.strip()]
+
+
 def _parse_summary_fields(analysis_text: str) -> dict[str, str]:
     """Extract the indented sub-fields under '## Analysis Summary'."""
     fields: dict[str, str] = {}
@@ -684,20 +849,25 @@ def _normalize_analysis_layout(analysis_text: str) -> str:
     return "\n\n".join(part for part in (title, body.strip()) if part)
 
 
-def _attach_corpus_handoff(analysis_text: str, corpus: list[CorpusFile]) -> str:
-    """Add deterministic corpus coverage and preserve required planning handoff sections."""
+def _attach_corpus_handoff(
+    analysis_text: str, corpus: list[CorpusFile], *, resolved_blockers: str = ""
+) -> str:
+    """Add deterministic corpus, blocker history, and planning-handoff sections."""
     text = re.sub(
         r"^## Source Inventory\s*$.*?(?=^## |\Z)",
         "",
         analysis_text,
         flags=re.MULTILINE | re.DOTALL,
     ).strip()
+    text = _RESOLVED_BLOCKERS_SECTION_RE.sub("", text).strip()
     for heading in ("Relationship Model", "Planning Instructions"):
         if not re.search(rf"^## {re.escape(heading)}\s*$", text, re.MULTILINE):
             text += f"\n\n## {heading}\n\nNone identified."
     # Inventory is tool-derived evidence, not a model assertion. Place it before the
     # relationship and planning sections so QuarterDeck renders coverage prominently.
     inventory = inventory_markdown(corpus)
+    if resolved_blockers:
+        inventory += "\n\n## Resolved Blockers\n\n" + resolved_blockers
     relationship_heading = "## Relationship Model"
     return text.replace(relationship_heading, inventory + "\n\n" + relationship_heading, 1)
 
@@ -896,6 +1066,9 @@ def analyze(
 
     questionnaires_dir = target_dir / "QuarterDeck" / "questionnaires"
     analysis_path = target_dir / "ANALYSIS.md"
+    prior_analysis_text = (
+        analysis_path.read_text(encoding="utf-8") if analysis_path.is_file() else None
+    )
     sea_trials_path = target_dir / "SEA_TRIALS.md"
     compass_target = target_dir / "COMPASS.md"
 
@@ -1096,6 +1269,14 @@ def analyze(
     )
     if sea_trials_warning:
         blockers_text_out = _ensure_sea_trials_blocker(blockers_text_out, sea_trials_warning)
+    blockers_text_out = _retain_unanswered_structured_blockers(blockers_text, blockers_text_out)
+    blockers_text_out = _ensure_blocker_resolution_fields(blockers_text_out)
+    resolved_blockers = _resolved_blocker_history(
+        prior_analysis_text,
+        blockers_text,
+        blockers_text_out,
+        resolved_on=today,
+    )
 
     # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
     # Its presence is the flag that halts the pipeline; written when present, deleted otherwise
@@ -1116,7 +1297,9 @@ def analyze(
         blockers=blocker_count,
         questions=question_count,
     )
-    analysis_text = _attach_corpus_handoff(analysis_text, corpus)
+    analysis_text = _attach_corpus_handoff(
+        analysis_text, corpus, resolved_blockers=resolved_blockers
+    )
     analysis_path.write_text(analysis_text + "\n", encoding="utf-8", newline="\n")
 
     # Lifecycle state, sub-state, and date stamp — always written on success.

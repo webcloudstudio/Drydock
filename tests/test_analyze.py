@@ -1460,6 +1460,7 @@ QUESTIONS:
         assert blockers_path.exists()
         assert result.blockers_path == blockers_path
         assert "No project name" in blockers_path.read_text(encoding="utf-8")
+        assert "### Commander Resolution" in blockers_path.read_text(encoding="utf-8")
 
     def test_blockers_md_not_written_when_no_blockers(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1474,6 +1475,78 @@ QUESTIONS:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.ok
         assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_resolved_blocker_is_archived_in_analysis(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "BLOCKERS.md").write_text(
+            "# Blockers: Test\n\n"
+            "## blocker-intent: Confirm intent\n"
+            "The product purpose is missing.\n\n"
+            "### Commander Resolution\n\n"
+            "The CLI converts CommonMark documents to HTML.\n",
+            encoding="utf-8",
+        )
+        questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+        questionnaires.mkdir(parents=True)
+        (questionnaires / "discovery-stack.json").write_text(
+            json.dumps(
+                {"questions": [{"id": "stack_components", "answer": "python.md"}]}
+            ),
+            encoding="utf-8",
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        assert result.quality in {"Ready", "Questions"}
+        assert not (target_dir / "BLOCKERS.md").exists()
+        analysis = result.analysis_path.read_text(encoding="utf-8")
+        assert "## Resolved Blockers" in analysis
+        assert "### blocker-intent: Confirm intent" in analysis
+        assert "The CLI converts CommonMark documents to HTML." in analysis
+
+    def test_unanswered_structured_blocker_remains_active(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "BLOCKERS.md").write_text(
+            "# Blockers: Test\n\n"
+            "## blocker-intent: Confirm intent\n"
+            "The product purpose is missing.\n\n"
+            "### Commander Resolution\n\n"
+            "<!-- Enter the decision that resolves this blocker, then re-run Analyze. -->\n",
+            encoding="utf-8",
+        )
+        questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+        questionnaires.mkdir(parents=True)
+        (questionnaires / "discovery-stack.json").write_text(
+            json.dumps(
+                {"questions": [{"id": "stack_components", "answer": "python.md"}]}
+            ),
+            encoding="utf-8",
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        assert result.quality == "Blocked"
+        assert (target_dir / "BLOCKERS.md").is_file()
+        assert "blocker-intent" in (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
+
+    def test_legacy_blocker_is_archived_verbatim_when_cleared(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        legacy = "# Blockers\n\nCommander chose local-only processing.\n"
+        (target_dir / "BLOCKERS.md").write_text(legacy, encoding="utf-8")
+        questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+        questionnaires.mkdir(parents=True)
+        (questionnaires / "discovery-stack.json").write_text(
+            json.dumps(
+                {"questions": [{"id": "stack_components", "answer": "python.md"}]}
+            ),
+            encoding="utf-8",
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        analysis = result.analysis_path.read_text(encoding="utf-8")
+        assert "Status: legacy unstructured resolution" in analysis
+        assert legacy.strip() in analysis
 
     def test_placeholder_blockers_block_not_written(self, tmp_path):
         # FIX-10: a placeholder block must not create a file (its existence would falsely halt

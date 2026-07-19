@@ -350,7 +350,8 @@ Quality: {Ready | Questions | Blocked}
   short_description: {one-sentence product description derived from the sources, or "not proposed" when SHORT_DESCRIPTION is already set}
 
 {Non-conformant headers, ambiguous signals, observations. "None." if clean.
-Do not add an ## Overview section or any other sections not listed here.}
+Do not add an ## Overview section or any other sections not listed here. Drydock deterministically
+adds Source Inventory and Resolved Blockers after this output; do not emit either section.}
 === END ANALYSIS.md ===
 
 === SEA_TRIALS.md ===
@@ -390,13 +391,16 @@ block with placeholder text (e.g. "none", "(omitted)") in place of real blockers
 === BLOCKERS.md ===
 # Blockers: {ProjectName}
 
-Each blocker is a question the human must answer before `plan create` runs. Answer inline under
-each item; the next `drydock analyze` run reads the answers.
+Each blocker is a question the human must answer before `plan create` runs. The Commander records
+the decision only under `### Commander Resolution`; the next `drydock analyze` run reads it. Do
+not remove the blocker heading or write an answer outside that subsection.
 
 ## blocker-001: {Short title}
 {What is blocking and why the team cannot proceed without it.}
 
-**Answer:** {left blank for the human}
+### Commander Resolution
+
+<!-- Enter the decision that resolves this blocker, then re-run Analyze. -->
 === END BLOCKERS.md ===
 ```
 
