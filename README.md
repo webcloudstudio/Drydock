@@ -233,7 +233,7 @@ command surface and Typed Specification contracts remain unstable during the `0.
 - Manifest-frontier build execution, evidence capture, and human verification.
 - Refit change-ticket conformance and applied-spec drift reconciliation.
 - QuarterDeck runtime for review and process navigation.
-- Rigging compaction, update, and verification.
+- Rigging manifest registration, compaction, update, and verification.
 - Target documentation generation and assembly.
 - Deterministic Markdown publishing to HTML and optional PDF.
 - Deterministic acceptance verification and release-gate evaluation.

@@ -469,6 +469,25 @@ def cmd_rigging_verify(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_rigging_add(args: argparse.Namespace) -> int:
+    from drydock.paths import get_rigging_root
+    from drydock.rigging_manifest import add_to_manifest
+
+    result = add_to_manifest(
+        files=[Path(path) for path in args.file or []],
+        directories=[Path(path) for path in args.dir or []],
+        rigging_root=get_rigging_root(),
+    )
+    for path in result.added:
+        print(f"  ADDED     {path.as_posix()}")
+    for path in result.existing:
+        print(f"  EXISTS    {path.as_posix()}")
+    if not result.added and not result.existing:
+        print("  Nothing to add.")
+    print(f"Manifest: {result.manifest_path}")
+    return 0
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
     from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
@@ -1682,6 +1701,22 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── rigging ──────────────────────────────────────────────────────────────
     p_rig = sub.add_parser("rigging", help="Manage Drydock Rigging.")
     _add_llm_override_flags(p_rig)
+    p_rig.add_argument(
+        "--add", action="store_true", help="Add supplied Rigging files to its selection manifest."
+    )
+    rigging_add_group = p_rig.add_mutually_exclusive_group()
+    rigging_add_group.add_argument(
+        "--file",
+        action="append",
+        metavar="<path>",
+        help="Register one regular file under Rigging/ (repeatable).",
+    )
+    rigging_add_group.add_argument(
+        "--dir",
+        action="append",
+        metavar="<path>",
+        help="Register all regular files below a directory under Rigging/ (repeatable).",
+    )
     rig_sub = p_rig.add_subparsers(dest="rigging_command", metavar="<subcommand>")
     p_rig_c = rig_sub.add_parser(
         "compact", help="Compact stale rules/data/spec files to _compact.md siblings."
@@ -2123,6 +2158,14 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "rigging":
         sub = getattr(args, "rigging_command", None)
+        if args.add:
+            if sub is not None:
+                raise UsageError("--add cannot be combined with a rigging subcommand")
+            if not (args.file or args.dir):
+                raise UsageError("--add requires exactly one of --file or --dir")
+            return cmd_rigging_add(args)
+        if args.file or args.dir:
+            raise UsageError("--file and --dir require --add")
         if sub == "compact":
             rc = cmd_rigging_compact(args)
             if rc == 0:
