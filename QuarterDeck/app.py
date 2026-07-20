@@ -281,10 +281,37 @@ def load_config(
         )
     try:
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        _add_drydock_runtime_items(config, project_root=project_root)
         _expand_sources(config, base_dir=base_dir, project_root=project_root)
         return config, None
     except yaml.YAMLError as exc:
         return {}, f"QuarterDeck config at {config_path} is invalid YAML: {exc}"
+
+
+def _add_drydock_runtime_items(config: dict[str, Any], *, project_root: Path) -> None:
+    """Supply standard items to legacy Drydock consoles without changing console.yaml.
+
+    Navigation is file-existence driven, so the injected Blockers item becomes
+    visible on a browser refresh when Analyze writes ``BLOCKERS.md`` and hides
+    again when the file is removed.
+    """
+    if not (project_root / "METADATA.md").is_file():
+        return
+    section_ids = {str(section.get("id", "")) for section in config.get("sections", [])}
+    if "setup" not in section_ids:
+        return
+    items = config.setdefault("items", [])
+    if any(item.get("id") == "blockers_doc" for item in items):
+        return
+    items.append({
+        "id": "blockers_doc",
+        "label": "Blockers",
+        "section": "setup",
+        "type": "editable_markdown",
+        "path": "../BLOCKERS.md",
+        "order": 1,
+        "help_text": "Resolve these planning gates, then re-run drydock analyze.",
+    })
 
 
 def _expand_sources(

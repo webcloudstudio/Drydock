@@ -470,6 +470,39 @@ def test_item_file_exists_document_no_paths_always_visible(tmp_path, monkeypatch
     assert quarterdeck._item_file_exists(item)
 
 
+def test_legacy_drydock_console_surfaces_blockers_on_refresh_without_rewrite(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "Example"
+    base_dir = target_dir / "QuarterDeck"
+    base_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text("name: Example\n", encoding="utf-8")
+    console_path = base_dir / "console.yaml"
+    console_text = "sections:\n  - { id: setup, label: Setup }\nitems: []\nsources: []\n"
+    console_path.write_text(console_text, encoding="utf-8")
+
+    config, error = quarterdeck.load_config(base_dir=base_dir, project_root=target_dir)
+
+    assert error is None
+    assert console_path.read_text(encoding="utf-8") == console_text
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", base_dir)
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target_dir)
+    monkeypatch.setattr(quarterdeck, "CONFIG", config)
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    assert all(
+        item["id"] != "blockers_doc"
+        for section in quarterdeck.nav_model()
+        for item in section["items"]
+    )
+
+    (target_dir / "BLOCKERS.md").write_text("# Blockers\n", encoding="utf-8")
+
+    assert any(
+        item["id"] == "blockers_doc"
+        for section in quarterdeck.nav_model()
+        for item in section["items"]
+    )
+
+
 # ── sources expansion ────────────────────────────────────────────────────────
 
 
