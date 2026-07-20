@@ -252,8 +252,8 @@ decision; it never resolves a blocker. Do not duplicate a questionnaire question
   routed to "only the human can decide") + injected Rigging manifest.
 - *Emits:* `discovery-stack.json` on every run plus one `discovery-<slug>.json` per other open
   important question. The stack questionnaire contains every real manifest component and a proposed
-  subset; only a Commander selection is an answer. When no prior stack selection exists, emit
-  `blocker-stack-selection` in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
+  subset; only a Commander selection is an answer. An unanswered stack selection is a required
+  questionnaire gate and is never emitted in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
   `discovery-gaps.json`; split into `discovery-gaps-2.json`, etc. only past 5–6 questions in this
   run. Do not emit a questionnaire for a matter the sources or prior answers have already settled.
   Do not emit a questionnaire that duplicates an existing unanswered questionnaire. Existing
@@ -523,8 +523,8 @@ emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` 
 component in the injected Rigging manifest, alphabetized. Never emit a synthetic `"other"` option.
 Use the manifest and sources to propose a small applicable subset, but leave `answer` empty unless
 the injected prior questionnaire already contains a Commander selection. A source-named technology
-is evidence for the proposal, not a confirmed stack decision. When the selection is empty, emit the
-stable `blocker-stack-selection` blocker.
+is evidence for the proposal, not a confirmed stack decision. An empty selection remains a required
+questionnaire gate before planning; do not emit a stack-selection blocker.
 
 ```
 === discovery-stack.json ===

@@ -1304,20 +1304,31 @@ QUESTIONS:
         assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_quality_signal_in_result(self, tmp_path):
-        # The empty always-written stack questionnaire is a planning blocker.
+        # The empty always-written stack questionnaire is a required planning gate,
+        # but it is not a BLOCKERS.md entry.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.quality == "Blocked"
-        assert "## blocker-stack-selection:" in (target_dir / "BLOCKERS.md").read_text(
-            encoding="utf-8"
+        assert result.quality == "Questions"
+        assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_reanalysis_removes_legacy_stack_blocker(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        (target_dir / "BLOCKERS.md").write_text(
+            "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n",
+            encoding="utf-8",
         )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        assert result.quality == "Questions"
+        assert not (target_dir / "BLOCKERS.md").exists()
 
     def test_summary_counts_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.story_count == 5
         assert result.feature_count == 4
-        assert result.blocker_count == 1
+        assert result.blocker_count == 0
         assert result.question_count == 1  # the always-written stack questionnaire
         assert result.screen_count == 4
         assert result.stack == "python/flask"

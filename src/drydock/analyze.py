@@ -97,7 +97,6 @@ _ANALYSIS_NOTES_HEADING_RE = re.compile(
     r"^## (?:Analysis notes|Notes)\s*$", re.MULTILINE | re.IGNORECASE
 )
 _QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
-_STACK_BLOCKER_ID = "blocker-stack-selection"
 _SEA_TRIALS_BLOCKER_ID = "blocker-sea-trials"
 
 
@@ -934,41 +933,18 @@ def _normalize_discovery(name: str, data: dict) -> dict:
     return normalized
 
 
-def _has_stack_selection(questionnaires_dir: Path) -> bool:
-    """Return whether a persisted stack questionnaire has a Commander selection."""
-    path = questionnaires_dir / "discovery-stack.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    for question in data.get("questions", []):
-        if question.get("id") != "stack_components":
-            continue
-        answer = question.get("answer", "")
-        if isinstance(answer, str):
-            return bool(answer.strip())
-        if isinstance(answer, list):
-            return any(str(value).strip() for value in answer)
-        return bool(answer)
-    return False
-
-
-def _ensure_stack_blocker(blockers: str | None, *, stack_selected: bool) -> str | None:
-    """Add the required stack gate when no Commander selection exists."""
-    if stack_selected:
+def _remove_legacy_stack_blocker(blockers: str | None) -> str | None:
+    """Remove the retired synthetic stack blocker from persisted blocker content."""
+    if not blockers:
+        return None
+    if "blocker-stack-selection" not in _BLOCKER_ID_RE.findall(blockers):
         return blockers
-    if blockers and _STACK_BLOCKER_ID in _BLOCKER_ID_RE.findall(blockers):
-        return blockers
-    stack_blocker = (
-        "## blocker-stack-selection: Confirm technology stack\n"
-        "Select one or more Rigging components in the Technology Stack questionnaire before "
-        "planning. The Commander selection is the authoritative stack decision."
-    )
-    return (
-        f"{blockers.rstrip()}\n\n{stack_blocker}"
-        if blockers
-        else ("# Blockers: Stack Selection\n\n" + stack_blocker)
-    )
+
+    def remove(match: re.Match[str]) -> str:
+        return "" if match.group("id") == "blocker-stack-selection" else match.group(0)
+
+    cleaned = _BLOCKER_SECTION_RE.sub(remove, blockers).strip()
+    return _validate_blockers(cleaned)
 
 
 def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
@@ -1089,7 +1065,7 @@ def analyze(
 
     # Inject prior blocker answers if the Commander has filled in BLOCKERS.md.
     blockers_md_path = target_dir / "BLOCKERS.md"
-    blockers_text = (
+    blockers_text = _remove_legacy_stack_blocker(
         blockers_md_path.read_text(encoding="utf-8") if blockers_md_path.is_file() else None
     )
 
@@ -1263,10 +1239,7 @@ def analyze(
         )
         discovery_paths.append(stack_path)
 
-    blockers_text_out = _ensure_stack_blocker(
-        blockers_text_out,
-        stack_selected=_has_stack_selection(questionnaires_dir),
-    )
+    blockers_text_out = _remove_legacy_stack_blocker(blockers_text_out)
     if sea_trials_warning:
         blockers_text_out = _ensure_sea_trials_blocker(blockers_text_out, sea_trials_warning)
     blockers_text_out = _retain_unanswered_structured_blockers(blockers_text, blockers_text_out)
