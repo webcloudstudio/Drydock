@@ -924,6 +924,62 @@ def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     assert not (target_dir / "blueprint" / "DATABASE_compact.md").exists()
 
 
+def test_compass_routed_source_is_dropped_from_manifest_context(tmp_path):
+    """A sources/ context ref to a compass-routed (non-promoted) file is dropped, not rewritten.
+
+    ED_INSTRUCTIONS.md is author intent: analyze routes it to COMPASS.md and it is never
+    emitted into blueprint/. The LLM still references ``sources/ED_INSTRUCTIONS.md`` as build
+    context. The written Manifest must not carry a phantom ``ED_INSTRUCTIONS.md`` context that
+    points at nothing in blueprint/.
+    """
+    analysis = _ANALYSIS + (
+        "\n## Source Roles\n\n"
+        "| path | role | plan | build |\n"
+        "|---|---|---|---|\n"
+        "| sources/ED_INSTRUCTIONS.md | instruction | compass | none |\n"
+    )
+    target_dir = _make_target(tmp_path, analysis=analysis)
+    (target_dir / "blueprint" / "sources" / "ED_INSTRUCTIONS.md").write_text(
+        "# Author Intent\n\nBuild it exactly this way.\n", encoding="utf-8"
+    )
+    manifest = _manifest().replace(
+        "scope: both\nstate: pending",
+        "scope: both\ncontext: sources/ED_INSTRUCTIONS.md\nstate: pending",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "ED_INSTRUCTIONS.md" not in text
+    assert "sources/" not in text
+    # It landed in the Compass, which is correct.
+    assert "Build it exactly this way." in (target_dir / "COMPASS.md").read_text(encoding="utf-8")
+    assert not (target_dir / "blueprint" / "ED_INSTRUCTIONS.md").exists()
+    assert any("ED_INSTRUCTIONS.md" in w for w in result.warnings)
+
+
+def test_promoted_source_context_keeps_stripped_blueprint_path(tmp_path):
+    """A sources/ context ref that WAS promoted into blueprint/ keeps its stripped path."""
+    analysis = _ANALYSIS + (
+        "\n## Source Roles\n\n"
+        "| path | role | plan | build |\n"
+        "|---|---|---|---|\n"
+        "| sources/corpus.json | corpus | promote | stage |\n"
+    )
+    target_dir = _make_target(tmp_path, analysis=analysis)
+    (target_dir / "blueprint" / "sources" / "corpus.json").write_text("[]\n", encoding="utf-8")
+    manifest = _manifest().replace(
+        "scope: both\nstate: pending",
+        "scope: both\ncontext: sources/corpus.json\nstate: pending",
+    )
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "context: corpus.json" in text
+    assert (target_dir / "blueprint" / "corpus.json").is_file()
+
+
 def test_replan_preserves_spike_finding(tmp_path):
     spike_manifest = """# MANIFEST: Example
 updated: 2026-06-16

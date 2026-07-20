@@ -1746,26 +1746,56 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
 
 
-def _normalize_manifest_contexts(plan_path: Path, blueprint_dir: Path) -> None:
-    """Rewrite MANIFEST context fields to Drydock's deterministic compact policy."""
+def _resolve_context_name(name: str, blueprint_dir: Path) -> str | None:
+    """Resolve an authored context name to a real Blueprint reference, or None to drop it.
+
+    A ``sources/<x>`` entry is valid only when analyze promoted ``<x>`` into ``blueprint/``;
+    then the prefix is stripped. A source routed to the Compass (author intent) or otherwise
+    not promoted is never emitted into ``blueprint/``, so it cannot be build context and is
+    dropped. ``*_compact.md`` derivatives are generated at build time, so they are kept even
+    though they do not exist at plan time. Any other name is left untouched.
+    """
+    if name.startswith("sources/"):
+        stripped = name.removeprefix("sources/")
+        return stripped if (blueprint_dir / stripped).is_file() else None
+    return name
+
+
+def _normalize_manifest_contexts(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...]:
+    """Rewrite MANIFEST context fields to Drydock's deterministic compact policy.
+
+    Returns warnings for context entries dropped because they name a source that was never
+    emitted into ``blueprint/`` (only files that exist in the Blueprint may appear in the plan).
+    """
     plan = parse_build_plan(plan_path)
     updates: dict[str, dict[str, str | None]] = {}
+    warnings: list[str] = []
     from drydock.build import normalize_context_names
 
     for block in plan.blocks:
         if block.block_type not in {"story", "spike"}:
             continue
-        normalized = tuple(
-            name.removeprefix("sources/") for name in normalize_context_names(block, blueprint_dir)
-        )
+        normalized: list[str] = []
+        for name in normalize_context_names(block, blueprint_dir):
+            resolved = _resolve_context_name(name, blueprint_dir)
+            if resolved is None:
+                warnings.append(
+                    f"{block.block_id}: dropped context {name!r} — not present in blueprint/ "
+                    "(source routed to the Compass or never promoted); the Manifest may reference "
+                    "only files that exist in the Blueprint"
+                )
+                continue
+            normalized.append(resolved)
+        normalized_tuple = tuple(normalized)
         current = block.fields.get("context", ())
         current_tuple = current if isinstance(current, tuple) else ()
-        if normalized == current_tuple:
+        if normalized_tuple == current_tuple:
             continue
         updates[block.block_id] = {
-            "context": ", ".join(normalized) if normalized else None,
+            "context": ", ".join(normalized_tuple) if normalized_tuple else None,
         }
     batch_set_block_fields(plan_path, updates)
+    return tuple(warnings)
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────────────
@@ -2054,7 +2084,7 @@ def create_plan(
     #    a replan. Dirty blocks (implements: sha256 changed) are left at pending.
     _write_text(plan_path, blocks["MANIFEST.md"])
     _merge_prior_state(plan_path, blueprint_dir, prior_applied_specs, prior_block_states)
-    _normalize_manifest_contexts(plan_path, blueprint_dir)
+    context_warnings = _normalize_manifest_contexts(plan_path, blueprint_dir)
 
     # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)
@@ -2081,7 +2111,7 @@ def create_plan(
         quarterdeck_dir=quarterdeck,
         changed=changed,
         authored_files=tuple(sorted({*authored, *normalized_existing, *conformed_specs})),
-        warnings=tuple([*conform_warnings, *warnings]),
+        warnings=tuple([*conform_warnings, *warnings, *context_warnings]),
         execution_id=exec_id,
         plan_mode=plan_mode,
         conformed_files=tuple(conformed_specs),
