@@ -1,5 +1,17 @@
+#
+# GENERIC DRIVER TO REBUILD A FULL PROJECT
+#   - usage $0 <target>
+#   - you need to import your own stuff not mine
+#
+
+# echo commands to the screen
 set -x
+
+# auto commit because we need that to build
+git add --all;git commit -m auto-commit-by-driver;
+
 export PROJECT=commonmark
+[ -n "$1" ] && PROJECT=$1
 export SOURCE=/mnt/c/Users/barlo/projects/commonmark-spec
 export OPTS="--llm-provider codex --model gpt-5.6-luna"
 
@@ -22,7 +34,11 @@ echo  "Running Analyze"
 cd /mnt/c/Users/barlo/projects/drydock
 drydock analyze commonmark $OPTS
 drydock status $PROJECT $OPTS
+echo  "Analyze Done - QUARTERDECK REVIEW"
 read
 
-# drydock plan $PROJECT $OPTS_HI
-# read
+drydock plan $PROJECT $OPTS
+echo  "Plan Done - QUARTERDECK REVIEW"
+read
+
+drydock build $PROJECT $OPTS
