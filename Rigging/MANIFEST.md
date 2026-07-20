@@ -6,19 +6,19 @@ not open individual component files.
 
 | File | Category | Purpose | Prerequisites |
 |---|---|---|---|
-| `BRANDING_DOCUMENTATION.md` | Branding | Documentation voice, structure, and presentation rules. | — |
-| `BRANDING_MAIN.md` | Branding | Core product branding and visual identity rules. | — |
+| `BRANDING_DOCUMENTATION.md` | Branding | The users voice for Documentation voice, structure, and presentation rules. | — |
+| `BRANDING_MAIN.md` | Branding | Core product branding (colors pallette etc ) and visual identity rules. | — |
 | `BRANDING_POSTS.md` | Branding | Social and announcement post branding rules. | `BRANDING_MAIN.md` |
 | `BRANDING_WEBSITE.md` | Branding | Website branding, voice, and presentation rules. | `BRANDING_MAIN.md` |
 | `BRANDING_WHITEPAPERS.md` | Branding | Whitepaper branding and long-form presentation rules. | `BRANDING_MAIN.md` |
-| `alexa-skills-kit.md` | AWS | Alexa Skill configuration, interaction models, and intent handling. | `common.md`, `python.md` |
-| `aws-api-gateway.md` | AWS | AWS HTTP API routing, IAM/SigV4 authorization, and Lambda proxy patterns. | `aws-lambda.md` |
-| `aws-dynamodb.md` | AWS | DynamoDB single-table catalog and state patterns. | `cloud-client-library.md` |
+| `alexa-skills-kit.md` | AWS | Alexa Skill kit configuration, interaction models, and intent handling. | `common.md`, `python.md` |
+| `aws-api-gateway.md` | AWS | AWS HTTP API Gateway Rules. | `aws-lambda.md` |
+| `aws-dynamodb.md` | AWS | AWS DynamoDB single-table catalog and state patterns. | `cloud-client-library.md` |
 | `aws-lambda.md` | AWS | AWS Lambda handlers, packaging, IAM, and testing patterns. | `python.md` |
 | `aws-s3.md` | AWS | Private encrypted S3 storage and prefix-scoped sharing patterns. | `cloud-client-library.md` |
 | `aws-sqs.md` | AWS | SQS durable queue, polling, and error-handling patterns. | `aws-lambda.md` |
 | `bootstrap5.md` | Web Server | Bootstrap 5 layout, components, and form conventions. | — |
-| `cloud-client-library.md` | AWS | Project-owned cloud client boundary; application code never uses raw boto3. | `python.md`, `persistence.md` |
+| `cloud-client-library.md` | AWS | Encapsulated AWS library for use in applications; application dont uses boto3. | `python.md`, `persistence.md` |
 | `common.md` | Technologies | Common project layout, scripts, Git hygiene, and development workflow. | — |
 | `django.md` | Web Server | Django settings, ORM, migrations, admin, and web application patterns. | `common.md`, `python.md` |
 | `env_variables_and_secrets.md` | Technologies | Secret hygiene, environment validation, and `.env` discipline. | `common.md` |
