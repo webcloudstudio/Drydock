@@ -26,7 +26,7 @@ from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
 
-from drydock.acceptance import all_programmatic_acceptance
+from drydock.acceptance import PYTHON_FENCE_RE, all_programmatic_acceptance
 from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
 from drydock.corpus import CorpusFile, discover_corpus
@@ -1292,24 +1292,23 @@ def _uncovered_routes(text: str) -> tuple[str, ...]:
 def _acceptance_status(text: str) -> tuple[int, bool]:
     """Inspect a spec's Programmatic Acceptance section.
 
-    Returns (assertion_count, justified_none): the number of concrete assertion
-    bullets, and whether an empty section carries an inline justification
-    (``- None. <reason>``) rather than a bare ``- None.``.
+    Returns (assertion_count, justified_none): the number of concrete acceptance
+    checks — the canonical ``### {check-id}`` + fenced ``python`` blocks the build
+    engine actually executes — and whether an empty section carries an inline
+    justification (``- None. <reason>``) rather than a bare ``- None.``.
     """
     section = _extract_terminal_section(text, "Programmatic Acceptance")
-    count = 0
+    if section is None:
+        return 0, False
+    count = len(PYTHON_FENCE_RE.findall(section))
     justified_none = False
-    for line in (section or "").splitlines():
+    for line in section.splitlines():
         stripped = line.strip()
         if not stripped.startswith("- "):
             continue
-        body = stripped[2:].strip()
-        first, _, remainder = body.partition(" ")
-        if first.rstrip(".,:").lower() == "none":
-            if remainder.strip(" .,:"):
-                justified_none = True
-            continue
-        count += 1
+        first, _, remainder = stripped[2:].strip().partition(" ")
+        if first.rstrip(".,:").lower() == "none" and remainder.strip(" .,:"):
+            justified_none = True
     return count, justified_none
 
 

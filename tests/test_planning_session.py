@@ -28,6 +28,28 @@ from drydock.planning_session import (
 )
 
 
+def _pa(*intents: str) -> str:
+    """Render a canonical Programmatic Acceptance body.
+
+    Each intent becomes one ``### check-N`` heading plus a fenced ``python``
+    assertion block — the format the build engine executes and the plan gate
+    counts. One intent yields one counted check.
+    """
+    blocks = []
+    for index, intent in enumerate(intents, start=1):
+        blocks.append(f"### check-{index}\n{intent}\n\n```python\nassert True\n```")
+    return "\n\n".join(blocks)
+
+
+def _pa_code(*snippets: str) -> str:
+    """Like ``_pa`` but each fenced block holds a caller-supplied assertion line,
+    so route paths appear inside the section for test-driven route coverage."""
+    blocks = []
+    for index, code in enumerate(snippets, start=1):
+        blocks.append(f"### check-{index}\nRoute acceptance {index}.\n\n```python\n{code}\n```")
+    return "\n\n".join(blocks)
+
+
 def test_default_feedback_heading_is_plan_compass(tmp_path):
     assert ensure_feedback_file(tmp_path) == "# Plan Compass\n"
 
@@ -74,7 +96,20 @@ Project type: `cli`
 | status | Status command | FEATURE-Status.md |
 """
 
-_SPEC_HEADER = """# {ftype}: {name}
+# The canonical Programmatic Acceptance body for the shared spec fixture: two
+# ``### check-N`` + fenced ``python`` blocks — the format the build engine runs
+# and the plan gate counts. Named so tests can swap it for `- None.` variants.
+_SPEC_HEADER_PA_BODY = (
+    "### check-1\n"
+    "The {name} route responds with HTTP 200.\n\n"
+    "```python\nassert True\n```\n\n"
+    "### check-2\n"
+    "The {name} handler returns the documented payload keys.\n\n"
+    "```python\nassert True\n```"
+)
+
+_SPEC_HEADER = (
+    """# {ftype}: {name}
 
 | Field       | Value |
 |-------------|-------|
@@ -86,8 +121,9 @@ _SPEC_HEADER = """# {ftype}: {name}
 
 ## Programmatic Acceptance
 
-- assert the {name} route responds with HTTP 200.
-- assert the {name} handler returns the documented payload keys.
+"""
+    + _SPEC_HEADER_PA_BODY
+    + """
 
 ## User Acceptance
 
@@ -101,6 +137,7 @@ _SPEC_HEADER = """# {ftype}: {name}
 
 - None.
 """
+)
 
 
 def _manifest(story_state: str = "pending", implements: str = "FEATURE-Status.md") -> str:
@@ -153,8 +190,9 @@ _ARCH_CONFORMANT = (
     "| Version     | 20260630 V1 |\n| Description | Existing architecture |\n"
     "| Depends On  | |\n| Provides    | |\n| Phase       | 1 |\n\n"
     "## Modules\n\n- Architecture body.\n\n"
-    "## Programmatic Acceptance\n\n- assert the architecture package imports cleanly.\n\n"
-    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+    "## Programmatic Acceptance\n\n"
+    + _pa("The architecture package imports cleanly.")
+    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
 )
 
 _FEATURE_EMPTY_ACCEPTANCE = (
@@ -175,9 +213,11 @@ _FEATURE_CONFORMED_BODY = (
     "| Depends On  | ARCHITECTURE.md |\n| Provides    | drydock status |\n| Phase       | 2 |\n\n"
     "## Trigger\n\n- User runs drydock status.\n\n"
     "## Programmatic Acceptance\n\n"
-    "- assert the status command exits with code 0.\n"
-    "- assert the status output names the current build state.\n\n"
-    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+    + _pa(
+        "The status command exits with code 0.",
+        "The status output names the current build state.",
+    )
+    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
 )
 
 _REUSE_TWO_STORY_MANIFEST = (
@@ -376,8 +416,7 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "| Phase       | 1 |\n\n"
         "## Modules\n\n"
         "- Preserve this architecture body.\n\n"
-        "## Programmatic Acceptance\n\n"
-        "- assert the architecture package imports cleanly.\n",
+        "## Programmatic Acceptance\n\n" + _pa("The architecture package imports cleanly.") + "\n",
         encoding="utf-8",
     )
     feature.write_text(
@@ -392,8 +431,11 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "## Trigger\n\n"
         "- Preserve this feature body.\n\n"
         "## Programmatic Acceptance\n\n"
-        "- assert the status route responds with HTTP 200.\n"
-        "- assert the status payload names the current build state.\n",
+        + _pa(
+            "The status route responds with HTTP 200.",
+            "The status payload names the current build state.",
+        )
+        + "\n",
         encoding="utf-8",
     )
     prompt_texts: list[str] = []
@@ -537,7 +579,7 @@ def test_conform_authors_acceptance_for_empty_imported_spec(tmp_path):
     assert "conforming 1 spec(s)" in "".join(progress)
 
     feature_text = feature.read_text(encoding="utf-8")
-    assert "assert the status command exits with code 0." in feature_text
+    assert "The status command exits with code 0." in feature_text
     assert "User runs drydock status." in feature_text  # imported substance preserved
     assert "## Test" not in feature_text  # imported test prose folded into acceptance
 
@@ -546,8 +588,11 @@ def test_conform_skips_already_conformant_spec(tmp_path):
     conformant_feature = _FEATURE_EMPTY_ACCEPTANCE.replace(
         "## Programmatic Acceptance\n\n- None.\n",
         "## Programmatic Acceptance\n\n"
-        "- assert the status route responds with HTTP 200.\n"
-        "- assert the status payload names the current build state.\n",
+        + _pa(
+            "The status route responds with HTTP 200.",
+            "The status payload names the current build state.",
+        )
+        + "\n",
     )
     _seed_conform_target(tmp_path, feature_text=conformant_feature)
     seen: list[str] = []
@@ -568,9 +613,11 @@ def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
     # The model returns the spec but leaves Programmatic Acceptance empty.
     still_empty = _FEATURE_CONFORMED_BODY.replace(
         "## Programmatic Acceptance\n\n"
-        "- assert the status command exits with code 0.\n"
-        "- assert the status output names the current build state.\n",
-        "## Programmatic Acceptance\n\n- None.\n",
+        + _pa(
+            "The status command exits with code 0.",
+            "The status output names the current build state.",
+        ),
+        "## Programmatic Acceptance\n\n- None.",
     )
     block = f"=== FEATURE-Status.md ===\n{still_empty}\n=== END FEATURE-Status.md ===\n"
 
@@ -1226,11 +1273,7 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
     _make_target(tmp_path)
     # A programmatic-surface spec (Provides: drydock status) shipped with bare `- None.`
     # acceptance is a hard emission gate — the plan must not write.
-    bare = _SPEC_HEADER.replace(
-        "- assert the {name} route responds with HTTP 200.\n"
-        "- assert the {name} handler returns the documented payload keys.",
-        "- None.",
-    )
+    bare = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, "- None.")
     arch = bare.format(ftype="ARCHITECTURE", name="Example", ac="None.")
     feature = bare.format(ftype="FEATURE", name="Status", ac="Status command exits successfully.")
     out = (
@@ -1246,8 +1289,7 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
 def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
     _make_target(tmp_path)
     justified = _SPEC_HEADER.replace(
-        "- assert the {name} route responds with HTTP 200.\n"
-        "- assert the {name} handler returns the documented payload keys.",
+        _SPEC_HEADER_PA_BODY,
         "- None. Visual-only surface; behavior covered by its backing feature.",
     )
     arch = justified.format(ftype="ARCHITECTURE", name="Example", ac="None.")
@@ -1263,6 +1305,33 @@ def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
     assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+
+
+def test_fenced_python_acceptance_counts_toward_surface_gate(tmp_path):
+    # Regression: the plan gate must count canonical ``### check-id`` + fenced
+    # ``python`` blocks — the format the build engine executes and the model
+    # emits — not legacy ``- assert`` bullets. Two fenced checks clear the gate.
+    target_dir = _make_target(tmp_path)
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+    arch_text = (target_dir / "blueprint" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "```python" in arch_text
+
+
+def test_acceptance_status_counts_fenced_blocks_not_bullets():
+    from drydock.planning_session import _acceptance_status
+
+    fenced = (
+        "## Programmatic Acceptance\n\n"
+        + _pa("First check.", "Second check.")
+        + "\n\n## User Acceptance\n\n- None.\n"
+    )
+    assert _acceptance_status(fenced) == (2, False)
+    # Legacy bullets are not runnable acceptance and must count as zero.
+    bullets = "## Programmatic Acceptance\n\n- assert x == 1\n- assert y == 2\n"
+    assert _acceptance_status(bullets) == (0, False)
+    # Justified bare-None is still recognized.
+    assert _acceptance_status("## Programmatic Acceptance\n\n- None. Manual only.\n") == (0, True)
 
 
 def _screen_output(pa_lines: str, *, provides: str = "GET /welcome", consumes: str = "") -> str:
@@ -1291,8 +1360,10 @@ def _screen_output(pa_lines: str, *, provides: str = "GET /welcome", consumes: s
 def test_screen_route_not_called_in_acceptance_is_fatal(tmp_path):
     _make_target(tmp_path)
     out = _screen_output(
-        "- `assert client.get('/other').status_code == 200`\n"
-        "- `assert 'Welcome' in client.get('/other').text`",
+        _pa_code(
+            "assert client.get('/other').status_code == 200",
+            "assert 'Welcome' in client.get('/other').text",
+        ),
     )
     with pytest.raises(SpecificationError, match="never calls route"):
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
@@ -1301,8 +1372,10 @@ def test_screen_route_not_called_in_acceptance_is_fatal(tmp_path):
 def test_screen_consumed_route_not_called_in_acceptance_is_fatal(tmp_path):
     _make_target(tmp_path)
     out = _screen_output(
-        "- `assert client.get('/welcome').status_code == 200`\n"
-        "- `assert 'Welcome' in client.get('/welcome').text`",
+        _pa_code(
+            "assert client.get('/welcome').status_code == 200",
+            "assert 'Welcome' in client.get('/welcome').text",
+        ),
         consumes="GET /api/welcome-summary",
     )
     with pytest.raises(SpecificationError, match="never calls route"):
@@ -1312,8 +1385,10 @@ def test_screen_consumed_route_not_called_in_acceptance_is_fatal(tmp_path):
 def test_screen_routes_called_in_acceptance_passes(tmp_path):
     _make_target(tmp_path)
     out = _screen_output(
-        "- `assert client.get('/welcome').status_code == 200`\n"
-        "- `assert client.get('/api/welcome-summary').status_code == 200`",
+        _pa_code(
+            "assert client.get('/welcome').status_code == 200",
+            "assert client.get('/api/welcome-summary').status_code == 200",
+        ),
         consumes="GET /api/welcome-summary",
     )
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
