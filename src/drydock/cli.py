@@ -720,15 +720,19 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     td = get_target_directory()
 
+    def print_import_result(
+        source_path: Path, imported: tuple[Path, ...] | list[Path], destination: Path
+    ) -> None:
+        print(f" - Source: {source_path}")
+        print(f" - Target: {destination}/")
+        for path in imported:
+            print(f"  {Path(path).relative_to(destination)}")
+
     if fmt == "markdown":
         from drydock.import_markdown import import_markdown
 
         result = import_markdown(args.Target, args.Target, source, td)
-        print(f"Blueprint: {result.blueprint_dir}")
-        print(f"Source: {result.source}")
-        for path in result.imported:
-            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
-            print(f"  SAVED AS  {path}")
+        print_import_result(result.source, result.imported, result.blueprint_dir / "sources")
         _print_next_step("import", args.Target)
         return 0
 
@@ -736,11 +740,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         from drydock.import_source import import_source
 
         source_result = import_source(args.Target, args.Target, source, td)
-        print(f"Blueprint: {source_result.blueprint_dir}")
-        print(f"Source: {source_result.source}")
-        for path in source_result.imported:
-            print(f"  IMPORTED  {path.relative_to(source_result.blueprint_dir)}")
-            print(f"  SAVED AS  {path}")
+        print_import_result(
+            source_result.source, source_result.imported, source_result.blueprint_dir / "sources"
+        )
         _print_next_step("import", args.Target)
         return 0
 
@@ -748,12 +750,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         from drydock.import_speckit import import_speckit
 
         speckit_result = import_speckit(args.Target, args.Target, source, td)
-        print(f"Blueprint: {speckit_result.blueprint_dir}")
-        print(f"Source: {speckit_result.source}")
-        print(f"Features: {', '.join(speckit_result.features_found) or '(none)'}")
-        for path in speckit_result.imported:
-            print(f"  IMPORTED  {path.relative_to(speckit_result.blueprint_dir)}")
-            print(f"  SAVED AS  {path}")
+        print_import_result(
+            speckit_result.source, speckit_result.imported, speckit_result.blueprint_dir / "sources"
+        )
         _print_next_step("import", args.Target)
         return 0
 
@@ -770,14 +769,8 @@ def cmd_import(args: argparse.Namespace) -> int:
             llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
             log_dir=get_workspace() / "logs",
         )
-        print(f"Blueprint: {result.blueprint_dir}")
-        print(f"Source: {result.source}")
-        for path in result.imported:
-            print(f"  IMPORTED  {path.relative_to(result.blueprint_dir)}")
-            print(f"  SAVED AS  {path}")
-        print()
-        print("COMPASS.md normalized and placed at Target root. Review it; it is Commander-owned.")
-        print("Run: drydock analyze", args.Target)
+        print_import_result(result.source, result.imported, result.blueprint_dir)
+        _print_next_step("import", args.Target)
         return 0
 
     raise UsageError(f"Unknown format: {fmt!r}")
