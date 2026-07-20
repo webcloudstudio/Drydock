@@ -30,7 +30,9 @@ added or reordered sections:
 One section per command; duplicate or overlapping command headings are violations to fix.
 
 **Git Behavior**
-At the completion of any operations, the file should be committed in git. Author works in multiple sessions and is fine with over committing.
+At the completion of any operations, all files should be committed in git. Author works in multiple sessions and is fine with over committing. Commit everything even if you did not touch it.  Do not complain that other processes are working on files - just commit.
+
+Do notifiy and stop on any merge issues.
 
 **Workspace Layout** reflects the current on-disk file set. The Blueprint file inventory states each file's purpose and whether it is human-editable.
 

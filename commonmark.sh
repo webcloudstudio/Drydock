@@ -16,6 +16,7 @@ export SOURCE=/mnt/c/Users/barlo/projects/commonmark-spec
 export OPTS="--llm-provider codex --model gpt-5.6-luna"
 
 echo "Clearing Target"
+rm -rf /mnt/c/Users/barlo/projects/$PROJECT
 cd /mnt/c/Users/barlo/projects/drydock
 rm -rf targets/$PROJECT 2>/dev/null || cmd.exe /c "rmdir /s /q targets" 2>/dev/null || true
 
