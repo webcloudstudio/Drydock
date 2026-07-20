@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
-from drydock.errors import SpecificationError
+from drydock.errors import RecordedError, SpecificationError
 from drydock.planning_session import (
     _answered_discovery,
     _assemble_prompt,
@@ -288,6 +288,23 @@ class FakeRun:
     text: str = ""
     stderr: str = ""
     execution_id: str = "exec-fake"
+
+
+def _assert_recorded_error(
+    excinfo: pytest.ExceptionInfo[RecordedError],
+    target_dir: Path,
+    *,
+    classification: str,
+    detail: str,
+) -> None:
+    record = excinfo.value.record
+    assert record.command == "plan"
+    assert record.phase in {"LLM execution", "post-output validation"}
+    assert record.classification == classification
+    assert detail in record.detail
+    error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert classification in error_text
+    assert detail in error_text
 
 
 @pytest.fixture(autouse=True)
@@ -623,13 +640,19 @@ def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
 
     # Acceptance is mandatory: a surface-declaring spec still lacking assertions after
     # a failed conform pass aborts the plan instead of writing with a warning.
-    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan(
             "Example",
             "Example",
             tmp_path,
             runner=_conform_runner(block),
         )
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="Programmatic Acceptance assertion",
+    )
 
     # Original imported content is left intact when conform fails to author acceptance.
     assert "Verify status prints the build state." in feature.read_text(encoding="utf-8")
@@ -641,7 +664,7 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
 
     # Conform is suppressed, so the surface-declaring spec keeps its bare `- None.`
     # acceptance and the mandatory-acceptance gate aborts the plan.
-    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan(
             "Example",
             "Example",
@@ -649,6 +672,12 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
             conform=False,
             runner=_conform_runner("unused", seen=seen),
         )
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="Programmatic Acceptance assertion",
+    )
 
     assert seen == []  # conform pass suppressed
     # No conform pass ran, so no assertions were authored into the spec.
@@ -702,74 +731,6 @@ def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
     assert "## Programmatic Acceptance" in arch_text
     assert feature_text.startswith("# FEATURE: Status")
     assert "## Open Questions" in feature_text
-
-
-def test_plan_adopts_typed_source_specs_then_reuses_them(tmp_path):
-    target_dir = _make_target(tmp_path)
-    sources_dir = target_dir / "blueprint" / "sources"
-    (sources_dir / "ARCHITECTURE.md").write_text(
-        "# ARCHITECTURE: Imported Architecture\n\n## Modules\n\n- Imported architecture body.\n",
-        encoding="utf-8",
-    )
-    (sources_dir / "FEATURE-Status.md").write_text(
-        "# FEATURE: Imported Status\n\n## Trigger\n\n- Imported feature body.\n",
-        encoding="utf-8",
-    )
-    progress: list[str] = []
-    manifest = (
-        "# MANIFEST: Example\n"
-        "updated: 2026-06-16\n"
-        "plan_hash: test\n"
-        "state: draft\n\n"
-        "## feature 1: Status\n"
-        "id: feature-status\n"
-        "summary: Deliver the status command.\n"
-        "state: pending\n\n"
-        "## story 1: Architecture Foundation\n"
-        "id: foundation\n"
-        "parent: feature-status\n"
-        "summary: Keep the architecture specification as the foundation.\n"
-        "implements: ARCHITECTURE.md\n"
-        "scope: both\n"
-        "state: pending\n\n"
-        "## ac 1: Architecture foundation exists\n"
-        "id: ac-foundation\n"
-        "parent: foundation\n"
-        "kind: assertion\n"
-        "state: pending\n\n"
-        "## story 2: Deliver Status\n"
-        "id: story-status\n"
-        "parent: feature-status\n"
-        "summary: Build the status command.\n"
-        "implements: FEATURE-Status.md\n"
-        "scope: both\n"
-        "depends: foundation\n"
-        "state: pending\n\n"
-        "## ac 2: Status command exits successfully\n"
-        "id: ac-status-exits\n"
-        "parent: story-status\n"
-        "kind: assertion\n"
-        "state: pending\n"
-    )
-
-    create_plan(
-        "Example",
-        "Example",
-        tmp_path,
-        runner=_fake(f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"),
-        on_text=progress.append,
-    )
-
-    blueprint_dir = target_dir / "blueprint"
-    arch = blueprint_dir / "ARCHITECTURE.md"
-    feature = blueprint_dir / "FEATURE-Status.md"
-    assert arch.is_file()
-    assert feature.is_file()
-    joined = "".join(progress)
-    assert "mode=reuse-manifest-first" in joined
-    assert "adopted 2 typed spec file(s) from blueprint/sources into blueprint/" in joined
-    assert "Imported architecture body." in arch.read_text(encoding="utf-8")
-    assert "Imported feature body." in feature.read_text(encoding="utf-8")
 
 
 def test_cli_overrides_are_passed_to_runner(tmp_path):
@@ -941,7 +902,7 @@ def test_replan_restores_applied_specs(tmp_path):
     assert plan.applied_specs["FEATURE-Status.md"].applied_by == "story-status"
 
 
-def test_plan_normalizes_feature_context_and_auto_compacts(tmp_path):
+def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
     target_dir = _make_target(tmp_path)
     db = _SPEC_HEADER.format(ftype="DATABASE", name="Example Data", ac="None.")
     manifest = _manifest().replace(
@@ -959,8 +920,8 @@ def test_plan_normalizes_feature_context_and_auto_compacts(tmp_path):
 
     text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
     assert "context: README.md, ARCHITECTURE_compact.md, DATABASE_compact.md" in text
-    assert (target_dir / "blueprint" / "ARCHITECTURE_compact.md").is_file()
-    assert (target_dir / "blueprint" / "DATABASE_compact.md").is_file()
+    assert not (target_dir / "blueprint" / "ARCHITECTURE_compact.md").exists()
+    assert not (target_dir / "blueprint" / "DATABASE_compact.md").exists()
 
 
 def test_replan_preserves_spike_finding(tmp_path):
@@ -1143,10 +1104,16 @@ def test_missing_analysis_refuses(tmp_path):
 
 
 def test_plan_create_blocked_block_refuses(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     out = "=== PLAN_CREATE_BLOCKED.txt ===\nBlocked.\n=== END PLAN_CREATE_BLOCKED.txt ===\n"
-    with pytest.raises(SpecificationError, match="cannot proceed"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="Planning cannot proceed",
+    )
 
 
 def test_plan_create_error_block_refuses_without_writes(tmp_path):
@@ -1162,8 +1129,14 @@ def test_plan_create_error_block_refuses_without_writes(tmp_path):
         "=== END PLAN_CREATE_ERROR.txt ===\n"
     )
 
-    with pytest.raises(SpecificationError, match="could not produce a complete plan"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="could not produce a complete plan",
+    )
 
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
@@ -1173,20 +1146,32 @@ def test_plan_create_error_block_refuses_without_writes(tmp_path):
 def test_integrity_missing_implements_is_fatal(tmp_path):
     target_dir = _make_target(tmp_path)
     out = _llm_output(_manifest(implements="GHOST.md"))
-    with pytest.raises(SpecificationError, match="implements missing spec file"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="implements missing spec file",
+    )
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
     assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
 
 
 def test_integrity_unknown_dependency_is_fatal(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     manifest = _manifest().replace(
         "scope: both\nstate: pending", "scope: both\ndepends: ghost-id\nstate: pending"
     )
-    with pytest.raises(SpecificationError, match="unknown id"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="unknown id",
+    )
 
 
 def test_required_sea_trial_requires_manifest_or_proof_traceability(tmp_path):
@@ -1204,8 +1189,14 @@ Pattern: ubiquitous
         encoding="utf-8",
     )
 
-    with pytest.raises(SpecificationError, match="lack implementation/proof coverage"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="lack implementation/proof coverage",
+    )
 
 
 def test_manifest_accepts_provides_required_sea_trial_traceability(tmp_path):
@@ -1262,15 +1253,21 @@ state: pending
 
 
 def test_story_without_acceptance_is_fatal(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     # Drop the ac block — a story with no acceptance gate must not be emitted.
     manifest = _manifest().split("## ac 1:")[0].rstrip() + "\n"
-    with pytest.raises(SpecificationError, match="no acceptance check"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="no acceptance check",
+    )
 
 
 def test_missing_programmatic_acceptance_is_fatal(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     # A programmatic-surface spec (Provides: drydock status) shipped with bare `- None.`
     # acceptance is a hard emission gate — the plan must not write.
     bare = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, "- None.")
@@ -1282,8 +1279,14 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
         f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
     )
 
-    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="Programmatic Acceptance assertion",
+    )
 
 
 def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
@@ -1358,19 +1361,25 @@ def _screen_output(pa_lines: str, *, provides: str = "GET /welcome", consumes: s
 
 
 def test_screen_route_not_called_in_acceptance_is_fatal(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     out = _screen_output(
         _pa_code(
             "assert client.get('/other').status_code == 200",
             "assert 'Welcome' in client.get('/other').text",
         ),
     )
-    with pytest.raises(SpecificationError, match="never calls route"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="never calls route",
+    )
 
 
 def test_screen_consumed_route_not_called_in_acceptance_is_fatal(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     out = _screen_output(
         _pa_code(
             "assert client.get('/welcome').status_code == 200",
@@ -1378,8 +1387,14 @@ def test_screen_consumed_route_not_called_in_acceptance_is_fatal(tmp_path):
         ),
         consumes="GET /api/welcome-summary",
     )
-    with pytest.raises(SpecificationError, match="never calls route"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="never calls route",
+    )
 
 
 def test_screen_routes_called_in_acceptance_passes(tmp_path):
@@ -1455,17 +1470,29 @@ def test_forward_dependency_order_warns(tmp_path):
 def test_missing_manifest_block_refuses(tmp_path):
     target_dir = _make_target(tmp_path)
     out = "=== ARCHITECTURE.md ===\n# ARCHITECTURE: X\n=== END ARCHITECTURE.md ===\n"
-    with pytest.raises(SpecificationError, match="missing === MANIFEST.md"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="missing === MANIFEST.md",
+    )
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
 
 
 def test_missing_required_block_explains_required_response_contract(tmp_path):
-    _make_target(tmp_path)
+    target_dir = _make_target(tmp_path)
     out = "=== ARCHITECTURE.md ===\n# ARCHITECTURE: X\n=== END ARCHITECTURE.md ===\n"
 
-    with pytest.raises(SpecificationError, match="only delimited artifact blocks"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="only delimited artifact blocks",
+    )
 
 
 def test_leading_preamble_is_stripped_and_recovered(tmp_path):
@@ -1488,8 +1515,14 @@ def test_preamble_containing_delimiter_fragment_still_refuses(tmp_path):
     target_dir = _make_target(tmp_path)
     out = "Note: I use === delimiters below.\n\n" + _llm_output()
 
-    with pytest.raises(SpecificationError, match="Text appeared outside"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="complete plan artifact",
+    )
 
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "FEATURE-Status.md").exists()
@@ -1567,8 +1600,14 @@ def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
         f"=== MANIFEST.md ===\n{_manifest(implements='ARCHITECTURE.md')}\n=== END MANIFEST.md ===\n"
     )
 
-    with pytest.raises(SpecificationError, match="Duplicate artifact block"):
+    with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="complete plan artifact",
+    )
 
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
@@ -1596,11 +1635,17 @@ def test_simulated_write_calls_are_recovered(tmp_path):
 
 
 def test_failed_run_refuses(tmp_path):
-    _make_target(tmp_path)
-    with pytest.raises(SpecificationError, match="execution failed"):
+    target_dir = _make_target(tmp_path)
+    with pytest.raises(RecordedError) as excinfo:
         create_plan(
             "Example", "Example", tmp_path, runner=lambda *a, **k: FakeRun(ok=False, text="")
         )
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="LLM execution failed",
+        detail="No additional safe diagnostic was available.",
+    )
 
 
 def _write_discovery(path: Path, questions: list[dict]) -> Path:

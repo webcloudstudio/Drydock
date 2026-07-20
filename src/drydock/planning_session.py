@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -694,34 +693,6 @@ def _collect_existing_typed_specs(
             continue
         specs.append(_parse_existing_spec(path))
     return specs
-
-
-def _collect_typed_source_specs(
-    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
-) -> list[Path]:
-    sources_dir = blueprint_dir / "sources"
-    if not sources_dir.is_dir():
-        return []
-    return sorted(
-        path
-        for path in sources_dir.glob("*.md")
-        if path.name not in excluded_filenames and _is_typed_blueprint_filename(path.name)
-    )
-
-
-def _adopt_source_specs_into_blueprint(
-    blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
-) -> list[Path]:
-    adopted: list[Path] = []
-    for source_path in _collect_typed_source_specs(
-        blueprint_dir, excluded_filenames=excluded_filenames
-    ):
-        dest = blueprint_dir / source_path.name
-        if dest.exists():
-            continue
-        shutil.copyfile(source_path, dest)
-        adopted.append(dest)
-    return adopted
 
 
 def _is_speckit_source(blueprint_dir: Path) -> bool:
@@ -1875,15 +1846,6 @@ def create_plan(
     existing_specs = _collect_existing_typed_specs(
         blueprint_dir, excluded_filenames=excluded_filenames
     )
-    adopted_source_specs: list[Path] = []
-    if not existing_specs:
-        adopted_source_specs = _adopt_source_specs_into_blueprint(
-            blueprint_dir, excluded_filenames=excluded_filenames
-        )
-        if adopted_source_specs:
-            existing_specs = _collect_existing_typed_specs(
-                blueprint_dir, excluded_filenames=excluded_filenames
-            )
     # `--overwrite` forces a full rewrite: ignore existing specs for mode selection so
     # the Blueprint is regenerated from the analysis rather than preserved.
     reuse_mode = not overwrite and _is_reuse_candidate(existing_specs)
@@ -1908,11 +1870,6 @@ def create_plan(
         )
         forced = " (forced by --overwrite)" if overwrite else ""
         on_text(f"[plan] {mode_label}{forced}\n")
-        if adopted_source_specs:
-            on_text(
-                f"[plan] adopted {len(adopted_source_specs)} typed spec file(s) from "
-                "blueprint/sources into blueprint/\n"
-            )
     conformed_specs: list[Path] = []
     conform_warnings: list[str] = []
     if reuse_mode:
@@ -2123,9 +2080,7 @@ def create_plan(
         target_dir=target_dir,
         quarterdeck_dir=quarterdeck,
         changed=changed,
-        authored_files=tuple(
-            sorted({*authored, *normalized_existing, *adopted_source_specs, *conformed_specs})
-        ),
+        authored_files=tuple(sorted({*authored, *normalized_existing, *conformed_specs})),
         warnings=tuple([*conform_warnings, *warnings]),
         execution_id=exec_id,
         plan_mode=plan_mode,
