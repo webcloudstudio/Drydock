@@ -153,9 +153,8 @@ Criterion: When an order is placed, the system shall record it.
 Verification: proof
 Pattern: event
 
-### Fields
-Type: this field declares the category.
-Verification: llm means independent judgment.
+### Guardrails
+A guardrail is permanent.
 """
     )
 
@@ -180,10 +179,30 @@ Verification: llm
     normalized = normalize_sea_trials_text(source)
 
     assert "Stale heading" not in normalized
-    assert "### Notation — EARS" in normalized
+    assert "### Guardrails" in normalized
+    assert "### Notation — EARS" not in normalized
+    assert "### Types" not in normalized
+    assert "### Fields" not in normalized
     assert normalized.startswith("# Sea Trials: Demo")
     assert normalize_sea_trials_text(normalized) == normalized
     assert parse_sea_trials_text(normalized).trials[0].criterion_id == "st-001"
+
+
+def test_normalization_formats_populated_fields_on_aligned_lines():
+    normalized = normalize_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-001: Privacy
+Type: guardrail Required: yes Criterion: If personal data is logged, then the system shall omit it. Verification: proof Pattern: unwanted Command: Evidence: Baseline: Operator: Target: Unit:
+"""
+    )
+
+    assert "Type:      guardrail" in normalized
+    assert "Required:  yes" in normalized
+    assert "Criterion: If personal data is logged, then the system shall omit it." in normalized
+    assert "Verification: proof" in normalized
+    assert "Pattern:   unwanted" in normalized
+    assert "Command:" not in normalized
 
 
 def test_projects_questions_and_preserves_answers(tmp_path):

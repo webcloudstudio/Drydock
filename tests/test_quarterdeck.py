@@ -368,7 +368,7 @@ def test_sea_trials_renderer_boxes_documentation_blocks(tmp_path, monkeypatch):
     md_file.write_text(
         "# Sea Trials: Demo\n\n"
         "### About Sea Trials\nWhat they are.\n\n"
-        "### Notation — EARS\nHow they are written.\n\n"
+        "### Guardrails\nWhat they prohibit.\n\n"
         "## st-001: Catalog responds\n"
         "Type: behavioral\nPattern: event\n",
         encoding="utf-8",

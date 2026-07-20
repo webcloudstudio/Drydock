@@ -368,13 +368,16 @@ Type: {technical | behavioral | qualitative | outcome | guardrail}
 Required: {yes | no}
 Criterion: {One observable behavior or outcome. EARS-shaped for technical, behavioral, and guardrail; plain English for qualitative and outcome.}
 Verification: {proof | measurement | evidence | llm}
-Pattern: {ubiquitous | event | state | option | unwanted — technical/behavioral/guardrail only; blank otherwise}
-Command: {JSON argv array, or blank}
-Evidence: {target-relative evidence file, or blank}
-Baseline: {numeric value, or blank}
-Operator: {< | <= | == | >= | >, or blank}
-Target: {numeric value, or blank}
-Unit: {unit, or blank}
+Pattern: {ubiquitous | event | state | option | unwanted — technical/behavioral/guardrail only}
+
+Emit only populated optional fields. Each field occupies its own line; align values after the
+field names. Do not combine fields on one line.
+Command: {JSON argv array}
+Evidence: {target-relative evidence file}
+Baseline: {numeric value}
+Operator: {< | <= | == | >= | >}
+Target: {numeric value}
+Unit: {unit}
 
 {Repeat one section per criterion.}
 

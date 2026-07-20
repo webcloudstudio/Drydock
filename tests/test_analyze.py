@@ -815,7 +815,8 @@ Verification: proof""",
         _, sea_trials_text, *_ = _parse_output(_VALID_LLM_OUTPUT)
 
         assert "### About Sea Trials" in sea_trials_text
-        assert "### Notation — EARS" in sea_trials_text
+        assert "### Guardrails" in sea_trials_text
+        assert "### Notation — EARS" not in sea_trials_text
 
     def test_no_spikes_is_tolerated(self):
         # Spikes are emitted dynamically; an analysis with nothing open is valid.

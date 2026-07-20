@@ -35,6 +35,20 @@ EARS_SHAPES: dict[str, str] = {
 _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", re.I)
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
 _QUESTION_RE = re.compile(r"^-\s+(?P<id>q-[a-z0-9-]+):\s*(?P<text>.+?)\s*$", re.I)
+_FIELD_NAMES = (
+    "Type",
+    "Required",
+    "Criterion",
+    "Verification",
+    "Pattern",
+    "Command",
+    "Evidence",
+    "Baseline",
+    "Operator",
+    "Target",
+    "Unit",
+)
+_INLINE_FIELD_RE = re.compile(r"(?:^|\s)(?P<key>" + "|".join(_FIELD_NAMES) + r"):", re.I)
 
 
 @dataclass(frozen=True)
@@ -85,34 +99,6 @@ against.
 Stories carry an `accepts:` field naming the criteria they implement, so most criteria are also
 checked during the build. A criterion needs no implementing story to be judged at the end.
 
-### Notation — EARS
-
-Technical, behavioral, and guardrail criteria are written in EARS (Easy Approach to Requirements
-Syntax). Each declares a `Pattern` and its `Criterion` matches that pattern's shape. The
-constrained wording gives every criterion an explicit subject, trigger, and response, which is
-what makes an independent verdict possible.
-
-| Pattern | Shape |
-|---|---|
-| `ubiquitous` | The <system> shall <response> |
-| `event` | When <trigger>, the <system> shall <response> |
-| `state` | While <state>, the <system> shall <response> |
-| `option` | Where <feature>, the <system> shall <response> |
-| `unwanted` | If <trigger>, then the <system> shall <mitigation> |
-
-Qualitative and outcome criteria do not use EARS and declare no `Pattern`. They are measurement
-contracts stated in plain English and settled by `Baseline`, `Operator`, `Target`, and `Unit`.
-
-### Types
-
-| Type | Meaning |
-|---|---|
-| `technical` | An assertion about the built system. EARS. |
-| `behavioral` | An assertion about observable product behavior. EARS. |
-| `qualitative` | A judged quality of the delivery. No EARS. |
-| `outcome` | A business or operational result. No EARS. |
-| `guardrail` | An absolute prohibition. EARS `unwanted` only. |
-
 ### Guardrails
 
 A guardrail is a permanent *never* — a thing the project may not do regardless of how well it
@@ -121,23 +107,6 @@ outright, independent of every score. A guardrail whose evidence is missing is `
 and also fails the gate: an unproven *never* is not held.
 
 Guardrails are exempt from `accepts:` coverage. No story builds a prohibition.
-
-### Fields
-
-| Field | Meaning |
-|---|---|
-| `Type` | The category above. |
-| `Required` | `yes` criteria gate completion. `no` criteria are reported only. |
-| `Criterion` | The observable behavior or outcome. EARS-shaped for assertion types. |
-| `Verification` | `proof` (Blueprint Programmatic Acceptance), `measurement` (a command or evidence file producing a number), `evidence` (a declared file), or `llm` (independent judgment). |
-| `Pattern` | The EARS pattern. Assertion types only. |
-| `Command` | JSON argv array executed without a shell, for `measurement`. |
-| `Evidence` | Target-relative evidence file. |
-| `Baseline` / `Operator` / `Target` / `Unit` | The deterministic measurement verdict. |
-
-`proof` and `measurement` verdicts are computed by Drydock and override any model judgment.
-Required technical, behavioral, and guardrail criteria verified only by `llm` reduce the
-acceptance-criteria-coverage score; a required assertion is expected to be provable.
 
 ### Questions
 
@@ -333,13 +302,54 @@ def _strip_documentation(text: str) -> str:
     return "\n".join(kept)
 
 
+def _format_trial_fields(text: str) -> str:
+    """Put populated criterion fields on aligned, individual lines."""
+    lines = text.splitlines()
+    formatted: list[str] = []
+    index = 0
+    while index < len(lines):
+        if not _HEADING_RE.match(lines[index]):
+            formatted.append(lines[index])
+            index += 1
+            continue
+
+        formatted.append(lines[index])
+        index += 1
+        field_lines: list[str] = []
+        while (
+            index < len(lines)
+            and not lines[index].lstrip().startswith("#")
+            and lines[index].strip() != "QUESTIONS:"
+        ):
+            field_lines.append(lines[index].strip())
+            index += 1
+
+        field_text = " ".join(field_lines)
+        matches = list(_INLINE_FIELD_RE.finditer(field_text))
+        fields: dict[str, str] = {}
+        for position, match in enumerate(matches):
+            value_end = matches[position + 1].start() if position + 1 < len(matches) else None
+            fields[match.group("key").lower()] = field_text[match.end() : value_end].strip()
+        if fields:
+            for name in _FIELD_NAMES:
+                value = fields.get(name.lower(), "")
+                if value:
+                    label = name + ":"
+                    formatted.append(
+                        f"{label:<11}{value}" if len(label) < 11 else f"{label} {value}"
+                    )
+        else:
+            formatted.extend(field_lines)
+    return "\n".join(formatted)
+
+
 def normalize_sea_trials_text(text: str) -> str:
     """Return the document with exactly the canonical documentation blocks after the title."""
     lines = _strip_documentation(text).splitlines()
     title = ""
     if lines and lines[0].startswith("# Sea Trials:"):
         title, lines = lines[0], lines[1:]
-    body = "\n".join(lines).strip()
+    body = _format_trial_fields("\n".join(lines)).strip()
     sections = [section for section in (title, SEA_TRIALS_DOC, body) if section]
     return "\n\n".join(sections) + "\n"
 
