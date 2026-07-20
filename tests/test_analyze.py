@@ -1515,7 +1515,19 @@ QUESTIONS:
         assert "### blocker-intent: Confirm intent" in analysis
         assert "The CLI converts CommonMark documents to HTML." in analysis
 
-    def test_unanswered_structured_blocker_remains_active(self, tmp_path):
+        (target_dir / "BLOCKERS.md").write_text(
+            "# Blockers: Test\n\n"
+            "## blocker-intent: Confirm intent\n"
+            "The product purpose is missing.\n\n"
+            "### Commander Resolution\n\n"
+            "The CLI converts CommonMark documents to HTML.\n",
+            encoding="utf-8",
+        )
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+        analysis = result.analysis_path.read_text(encoding="utf-8")
+        assert analysis.count("#### Blocker\n\nThe product purpose is missing.") == 1
+
+    def test_unanswered_structured_blocker_is_archived_then_reassessed(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         (target_dir / "BLOCKERS.md").write_text(
             "# Blockers: Test\n\n"
@@ -1536,9 +1548,11 @@ QUESTIONS:
 
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
 
-        assert result.quality == "Blocked"
-        assert (target_dir / "BLOCKERS.md").is_file()
-        assert "blocker-intent" in (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
+        assert result.quality in {"Ready", "Questions"}
+        assert not (target_dir / "BLOCKERS.md").exists()
+        analysis = result.analysis_path.read_text(encoding="utf-8")
+        assert "The product purpose is missing." in analysis
+        assert "_Not provided._" in analysis
 
     def test_legacy_blocker_is_archived_verbatim_when_cleared(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1556,7 +1570,7 @@ QUESTIONS:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
 
         analysis = result.analysis_path.read_text(encoding="utf-8")
-        assert "Status: legacy unstructured resolution" in analysis
+        assert "### Prior Blockers" in analysis
         assert legacy.strip() in analysis
 
     def test_placeholder_blockers_block_not_written(self, tmp_path):

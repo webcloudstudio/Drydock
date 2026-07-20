@@ -102,7 +102,7 @@ After analysis, compute one of three quality values:
 | Quality | Condition | Pipeline |
 |---|---|---|
 | `Blocked` | One or more blockers exist (`BLOCKERS.md` is written) | Halts — `plan create` must not proceed |
-| `Questions` | No blockers; open questions remain | `plan create` may proceed |
+| `Questions` | No blockers; open questions remain | `plan create` may proceed after the required Stack questionnaire is answered |
 | `Ready` | No blockers; no open questions | `plan create` may proceed |
 
 **Blocker** — the team genuinely cannot proceed without this. Examples: no project name, no
@@ -111,10 +111,11 @@ blockers means you write `BLOCKERS.md`; its existence is the flag that halts the
 stays `Blocked` until the human clears it.
 
 **Question** — an open item that does not stop decomposition. Delivered only as a discovery
-questionnaire action item and carried forward there.
+questionnaire action item and carried forward there. The Technology Stack questionnaire is the
+one required questionnaire gate for planning.
 
-Only blockers halt the pipeline. Both `Questions` and `Ready` permit `plan create`; questionnaire
-action items distinguish the two but do not gate.
+Only blockers halt the pipeline. The required Technology Stack questionnaire also gates `plan create`;
+other questionnaire action items distinguish `Questions` from `Ready` but do not gate.
 
 ---
 

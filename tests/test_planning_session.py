@@ -964,7 +964,7 @@ def test_blockers_file_present_refuses(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
-def test_confirmed_stack_selection_resolves_only_stack_blocker(tmp_path):
+def test_blockers_file_requires_reanalysis_even_when_stack_is_selected(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "BLOCKERS.md").write_text(
         "# Blockers\n\n## blocker-001: Technology stack selection\nSelect a stack.\n",
@@ -982,12 +982,11 @@ def test_confirmed_stack_selection_resolves_only_stack_blocker(tmp_path):
         encoding="utf-8",
     )
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    with pytest.raises(SpecificationError, match="BLOCKERS.md"):
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
-    assert result.plan.blocks
 
-
-def test_empty_stack_selection_blocks_planning_as_required_questionnaire(tmp_path):
+def test_blockers_file_precedes_stack_questionnaire_gate(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "BLOCKERS.md").write_text(
         "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n",
@@ -1003,7 +1002,7 @@ def test_empty_stack_selection_blocks_planning_as_required_questionnaire(tmp_pat
         encoding="utf-8",
     )
 
-    with pytest.raises(SpecificationError, match="Technology Stack questionnaire"):
+    with pytest.raises(SpecificationError, match="BLOCKERS.md"):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 

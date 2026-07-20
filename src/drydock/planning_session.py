@@ -76,10 +76,6 @@ _IGNORABLE_OUTSIDE_LINE_RE = re.compile(
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _PLANNING_INSTRUCTIONS_RE = re.compile(r"^## Planning Instructions\s*$", re.MULTILINE)
 _SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.-])(sources/[A-Za-z0-9_./-]+)")
-_BLOCKER_HEADING_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
-_BLOCKER_TITLE_RE = re.compile(
-    r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:\s*(?P<title>.*?)\s*$", re.MULTILINE
-)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
 _RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
@@ -843,28 +839,6 @@ def _has_stack_selection(target_dir: Path) -> bool:
             return any(str(value).strip() for value in answer)
         return bool(answer)
     return False
-
-
-def _blockers_require_reanalysis(blockers_text: str) -> bool:
-    """Return whether a persisted blocker remains a Plan gate.
-
-    ``blocker-stack-selection`` was a retired synthetic projection of the Technology
-    Stack questionnaire. It never requires a BLOCKERS.md edit. All malformed, unknown,
-    or additional blocker entries remain fail-closed and require re-analysis.
-    """
-    headings = list(_BLOCKER_TITLE_RE.finditer(blockers_text))
-    return not headings or any(
-        not _is_legacy_stack_blocker_heading(heading) for heading in headings
-    )
-
-
-def _is_legacy_stack_blocker_heading(match: re.Match[str]) -> bool:
-    if match.group("id") == "blocker-stack-selection":
-        return True
-    return match.group("title").strip().casefold() in {
-        "technology stack selection",
-        "confirm technology stack",
-    }
 
 
 def _answered_discovery(path: Path) -> dict | None:
@@ -1804,21 +1778,13 @@ def create_plan(
         )
 
     blockers_path = target_dir / "BLOCKERS.md"
-    blockers_text = _read_if(blockers_path)
-    legacy_stack_blocker_only = blockers_path.is_file() and not _blockers_require_reanalysis(
-        blockers_text
-    )
-    if blockers_path.is_file() and not legacy_stack_blocker_only:
+    if blockers_path.is_file():
         raise SpecificationError(
             "BLOCKERS.md is present — planning is blocked. Answer the blockers and re-run "
             f"`drydock analyze {target}` before `drydock plan {target}`."
         )
     quality_match = _QUALITY_RE.search(analysis_text)
-    if (
-        quality_match
-        and quality_match.group(1).lower() == "blocked"
-        and not legacy_stack_blocker_only
-    ):
+    if quality_match and quality_match.group(1).lower() == "blocked":
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )

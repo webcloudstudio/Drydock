@@ -673,92 +673,50 @@ def _ensure_blocker_resolution_fields(raw: str | None) -> str | None:
     return _BLOCKER_SECTION_RE.sub(add_field, raw).strip()
 
 
-def _retain_unanswered_structured_blockers(
-    previous: str | None, current: str | None
-) -> str | None:
-    """Keep unanswered structured blockers active if the model omits their IDs."""
-    prior_records = _parse_blocker_records(previous)
-    current_records = _parse_blocker_records(current)
-    current_ids = {record.blocker_id for record in current_records}
-    retained = [
-        record.full_text
-        for record in prior_records
-        if record.has_resolution_field and record.resolution is None and record.blocker_id not in current_ids
-    ]
-    if not retained:
-        return current
-    if current:
-        return current.rstrip() + "\n\n" + "\n\n".join(retained)
-    return "# Blockers: Awaiting Commander Resolution\n\n" + "\n\n".join(retained)
-
-
 def _resolved_blocker_history(
-    prior_analysis: str | None,
-    previous_blockers: str | None,
-    current_blockers: str | None,
-    *,
-    resolved_on: str,
+    prior_analysis: str | None, previous_blockers: str | None, *, archived_on: str
 ) -> str:
-    """Append newly cleared blockers to existing deterministic analysis history."""
+    """Archive all prior blocker entries exactly once in ANALYSIS.md."""
     previous_records = _parse_blocker_records(previous_blockers)
-    current_ids = {record.blocker_id for record in _parse_blocker_records(current_blockers)}
     entries = _extract_resolved_blocker_history(prior_analysis)
-    if not previous_records and previous_blockers and not current_blockers:
-        entries.append(
-            "\n".join(
-                (
-                    "### legacy-unstructured-blocker",
-                    "",
-                    f"Resolved: {resolved_on}",
-                    "Status: legacy unstructured resolution",
-                    "",
-                    "#### Legacy Final Blocker Markdown",
-                    "",
-                    "```markdown",
-                    previous_blockers.strip(),
-                    "```",
-                )
-            )
-        )
+    if not previous_records and previous_blockers:
+        entry = "\n".join((
+            "### Prior Blockers",
+            "",
+            f"Archived: {archived_on}",
+            "",
+            "```markdown",
+            previous_blockers.strip(),
+            "```",
+        ))
+        if not any(
+            "```markdown\n" + previous_blockers.strip() + "\n```" in item for item in entries
+        ):
+            entries.append(entry)
     for record in previous_records:
-        if record.blocker_id in current_ids:
-            continue
-        if record.resolution is not None:
-            entries.append(
-                "\n".join(
-                    (
-                        f"### {record.blocker_id}: {record.title}",
-                        "",
-                        f"Resolved: {resolved_on}",
-                        "Status: resolved",
-                        "",
-                        "#### Original Blocker",
-                        "",
-                        record.original_text or "(No additional blocker detail.)",
-                        "",
-                        "#### Commander Resolution",
-                        "",
-                        record.resolution,
-                    )
-                )
-            )
-        elif not record.has_resolution_field:
-            entries.append(
-                "\n".join(
-                    (
-                        f"### {record.blocker_id}: {record.title}",
-                        "",
-                        f"Resolved: {resolved_on}",
-                        "Status: legacy unstructured resolution",
-                        "",
-                        "#### Legacy Final Blocker Markdown",
-                        "",
-                        "```markdown",
-                        record.full_text,
-                        "```",
-                    )
-                )
-            )
+        blocker_text = record.original_text or "(No additional blocker detail.)"
+        resolution_text = record.resolution or "_Not provided._"
+        entry = "\n".join((
+            f"### {record.blocker_id}: {record.title}",
+            "",
+            f"Archived: {archived_on}",
+            "",
+            "#### Blocker",
+            "",
+            blocker_text,
+            "",
+            "#### Commander Resolution",
+            "",
+            resolution_text,
+        ))
+        archive_body = (
+            "#### Blocker\n\n"
+            + blocker_text
+            + "\n\n#### Commander Resolution\n\n"
+            + resolution_text
+        )
+        if not any(archive_body in item for item in entries):
+            entries.append(entry)
     return "\n\n".join(entries)
 
 
@@ -933,29 +891,6 @@ def _normalize_discovery(name: str, data: dict) -> dict:
     return normalized
 
 
-def _remove_legacy_stack_blocker(blockers: str | None) -> str | None:
-    """Remove the retired synthetic stack blocker from persisted blocker content."""
-    if not blockers:
-        return None
-    matches = list(_BLOCKER_SECTION_RE.finditer(blockers))
-    if not any(_is_legacy_stack_blocker(match) for match in matches):
-        return blockers
-
-    def remove(match: re.Match[str]) -> str:
-        return "" if _is_legacy_stack_blocker(match) else match.group(0)
-
-    cleaned = _BLOCKER_SECTION_RE.sub(remove, blockers).strip()
-    return _validate_blockers(cleaned)
-
-
-def _is_legacy_stack_blocker(match: re.Match[str]) -> bool:
-    """Recognize both stable and historical generic-ID stack projections."""
-    if match.group("id") == "blocker-stack-selection":
-        return True
-    title = match.group("title").strip().casefold()
-    return title in {"technology stack selection", "confirm technology stack"}
-
-
 def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
     """Add the acceptance-contract gate when Analyze could not create Sea Trials."""
     if blockers and _SEA_TRIALS_BLOCKER_ID in _BLOCKER_ID_RE.findall(blockers):
@@ -1074,7 +1009,7 @@ def analyze(
 
     # Inject prior blocker answers if the Commander has filled in BLOCKERS.md.
     blockers_md_path = target_dir / "BLOCKERS.md"
-    blockers_text = _remove_legacy_stack_blocker(
+    blockers_text = (
         blockers_md_path.read_text(encoding="utf-8") if blockers_md_path.is_file() else None
     )
 
@@ -1248,16 +1183,13 @@ def analyze(
         )
         discovery_paths.append(stack_path)
 
-    blockers_text_out = _remove_legacy_stack_blocker(blockers_text_out)
     if sea_trials_warning:
         blockers_text_out = _ensure_sea_trials_blocker(blockers_text_out, sea_trials_warning)
-    blockers_text_out = _retain_unanswered_structured_blockers(blockers_text, blockers_text_out)
     blockers_text_out = _ensure_blocker_resolution_fields(blockers_text_out)
     resolved_blockers = _resolved_blocker_history(
         prior_analysis_text,
         blockers_text,
-        blockers_text_out,
-        resolved_on=today,
+        archived_on=today,
     )
 
     # BLOCKERS.md — written only when _validate_blockers accepted a genuine, structured block.
