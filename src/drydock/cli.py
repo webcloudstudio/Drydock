@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import textwrap
 import time
 import traceback
 from datetime import datetime
@@ -2264,6 +2265,49 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
     append_command_history(get_workspace(), cmd_str, target=target, return_code=rc)
 
 
+def _render_recorded_error(record, *, errors_file: str, quarterdeck_hint: str) -> str:
+    """Format a post-LLM failure for the terminal: the diagnostic itself, not just a filename."""
+    width = 72
+    border = "=" * width
+    indent = "  "
+
+    def _block(text: str, pad: str = indent) -> list[str]:
+        wrapped: list[str] = []
+        for paragraph in text.splitlines() or [""]:
+            paragraph = paragraph.rstrip()
+            if not paragraph:
+                wrapped.append("")
+                continue
+            wrapped.extend(
+                textwrap.wrap(
+                    paragraph,
+                    width=width - len(pad),
+                    initial_indent=pad,
+                    subsequent_indent=pad,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [pad + paragraph]
+            )
+        return wrapped
+
+    heading = f"POST-LLM FAILURE  ·  {record.command}  ·  {record.classification}"
+    lines = [border, heading, border, ""]
+    lines += _block(record.detail.strip())
+    if record.recovery.strip():
+        lines += ["", indent + "Recovery"]
+        lines += _block(record.recovery.strip(), pad=indent + "  ")
+    lines += [
+        "",
+        f"{indent}ERRORS.md",
+        f"{indent}  {errors_file}",
+        f"{indent}Review",
+        f"{indent}  {quarterdeck_hint}",
+        border,
+    ]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     raw_argv = argv if argv is not None else sys.argv[1:]
@@ -2293,18 +2337,17 @@ def main(argv: list[str] | None = None) -> None:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 2
     except RecordedError as exc:
-        record = exc.record
-        border = "=" * 72
-        print(border, file=sys.stderr)
-        print(f"POST-LLM FAILURE: {record.classification}", file=sys.stderr)
         from drydock.config import get_target_directory
 
         target = getattr(args, "Target", "<Target>")
-        print(f"ERRORS.md: {get_target_directory() / target / 'ERRORS.md'}", file=sys.stderr)
         print(
-            "Open: drydock run quarterdeck " + getattr(args, "Target", "<Target>"), file=sys.stderr
+            _render_recorded_error(
+                exc.record,
+                errors_file=str(get_target_directory() / target / "ERRORS.md"),
+                quarterdeck_hint=f"drydock run quarterdeck {target}",
+            ),
+            file=sys.stderr,
         )
-        print(border, file=sys.stderr)
         exit_code = 1
     except DrydockError as exc:
         print(f"error: {exc}", file=sys.stderr)

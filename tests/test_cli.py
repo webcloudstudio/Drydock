@@ -1807,3 +1807,62 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "A", "B", "C")
         assert rc == 2
+
+
+def test_render_recorded_error_shows_diagnostic_and_recovery():
+    from drydock.cli import _render_recorded_error
+    from drydock.errors import ErrorRecord
+
+    detail = (
+        "Plan integrity check failed: architecture: 0 Programmatic Acceptance "
+        "assertion(s) across its implemented spec(s), which declare a programmatic "
+        "surface; author several concrete Python assertions or justify None inline."
+    )
+    record = ErrorRecord(
+        command="plan",
+        phase="post-output validation",
+        timestamp="t",
+        classification="plan output validation failed",
+        detail=detail,
+        recovery="Correct the plan input, then run: drydock plan commonmark",
+    )
+    out = _render_recorded_error(
+        record,
+        errors_file="/ws/targets/commonmark/ERRORS.md",
+        quarterdeck_hint="drydock run quarterdeck commonmark",
+    )
+
+    # The diagnostic itself is on screen, not just the filename.
+    assert "Plan integrity check failed" in out
+    assert "author several concrete Python assertions" in out
+    assert "POST-LLM FAILURE  ·  plan  ·  plan output validation failed" in out
+    assert "Recovery" in out
+    assert "Correct the plan input, then run: drydock plan commonmark" in out
+    assert "/ws/targets/commonmark/ERRORS.md" in out
+    assert "drydock run quarterdeck commonmark" in out
+    # The long diagnostic is wrapped: its start and end land on different lines.
+    lines = out.splitlines()
+    start = next(i for i, line in enumerate(lines) if "Plan integrity check failed" in line)
+    end = next(i for i, line in enumerate(lines) if "justify None inline" in line)
+    assert end > start
+    # Every line except the standalone file-path/command lines (indented 4 spaces) fits the border.
+    assert all(len(line) <= 72 for line in lines if not line.startswith("    "))
+
+
+def test_render_recorded_error_omits_recovery_when_empty():
+    from drydock.cli import _render_recorded_error
+    from drydock.errors import ErrorRecord
+
+    record = ErrorRecord(
+        command="analyze",
+        phase="post-output validation",
+        timestamp="t",
+        classification="analysis failed",
+        detail="Something went wrong.",
+        recovery="",
+    )
+    out = _render_recorded_error(
+        record, errors_file="/ws/ERRORS.md", quarterdeck_hint="drydock run quarterdeck X"
+    )
+    assert "Recovery" not in out
+    assert "Something went wrong." in out
