@@ -470,6 +470,19 @@ def test_item_file_exists_document_no_paths_always_visible(tmp_path, monkeypatch
     assert quarterdeck._item_file_exists(item)
 
 
+def test_item_file_exists_refit_requires_manifest(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "Example"
+    target_dir.mkdir()
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target_dir)
+
+    item = {"id": "refit_status", "type": "refit"}
+    assert not quarterdeck._item_file_exists(item)
+
+    (target_dir / "MANIFEST.md").write_text("# MANIFEST: Example\n", encoding="utf-8")
+    assert quarterdeck._item_file_exists(item)
+
+
 def test_legacy_drydock_console_surfaces_blockers_on_refresh_without_rewrite(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     target_dir = tmp_path / "Example"

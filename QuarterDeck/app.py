@@ -511,6 +511,8 @@ def _item_file_exists(item: dict[str, Any]) -> bool:
     item_type = item.get("type", "")
     if item_type in _UNTRACKED_TYPES:
         return True
+    if item_type == "refit":
+        return (_current_project_root() / "MANIFEST.md").is_file()
     if item_type == "compass":
         # Always visible: the renderer offers to seed when the file is absent.
         return True
