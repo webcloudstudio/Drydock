@@ -31,7 +31,7 @@ import math
 import re
 import stat
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
@@ -117,6 +117,7 @@ class StepFile:
     missing: bool
     source: Path | None = None
     compact_substituted: bool = False
+    prompt_role: str | None = None
 
 
 @dataclass(frozen=True)
@@ -378,6 +379,20 @@ def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> Step
     return _measure(canonical, role, roots)
 
 
+def _context_roles(block: PlanBlock) -> dict[str, str]:
+    raw = block.fields.get("context_roles", "")
+    if not isinstance(raw, str):
+        return {}
+    roles: dict[str, str] = {}
+    for line in raw.splitlines():
+        if ":" not in line:
+            continue
+        name, value = line.split(":", 1)
+        if name.strip() and value.strip():
+            roles[name.strip()] = value.strip()
+    return roles
+
+
 def _role_names(
     block: PlanBlock, role: str, *, blueprint_dir: Path | None = None
 ) -> tuple[str, ...]:
@@ -434,7 +449,10 @@ def assemble_step(
                     names.append(name)
         for name in names:
             if role == "context":
-                files.append(_measure_compact(name, role, roots.roots_for(role)))
+                measured = _measure_compact(name, role, roots.roots_for(role))
+                files.append(
+                    replace(measured, prompt_role=_context_roles(block).get(name, "context"))
+                )
             elif compact_stack is not None and name in compact_stack:
                 files.append(_measure_compact(name, role, roots.roots_for(role)))
             else:
@@ -593,13 +611,14 @@ def render_build_prompt_assembly(
             except OSError:
                 continue
             header = prompt_header_for_file(step_file.name)
+            prompt_role = step_file.prompt_role or step_file.role
             if header is not None:
                 parts.extend(
                     contextual_markdown_parts(
                         step_file.name,
                         content.rstrip(),
                         filename=step_file.name,
-                        role=step_file.role,
+                        role=prompt_role,
                         path=source,
                     )
                 )
@@ -608,7 +627,7 @@ def render_build_prompt_assembly(
                 part(
                     step_file.name,
                     (
-                        f'<pblock filename="{step_file.name}" role="{step_file.role}"'
+                        f'<pblock filename="{step_file.name}" role="{prompt_role}"'
                         + f' path="{source}"'
                         + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
                     ),
@@ -750,6 +769,21 @@ def _unique_group_files(steps: tuple[StepAssembly, ...], role: str) -> tuple[Ste
     return tuple(files)
 
 
+def _group_render_files(steps: tuple[StepAssembly, ...], role: str) -> tuple[StepFile, ...]:
+    """Group files for one role, suppressing compact duplicates of any full source."""
+    full_sources = {
+        _group_file_key(item)
+        for step in steps
+        for item in step.files
+        if not item.missing and not item.compact_substituted
+    }
+    return tuple(
+        item
+        for item in _unique_group_files(steps, role)
+        if not (item.compact_substituted and _group_file_key(item) in full_sources)
+    )
+
+
 def render_build_group_prompt_assembly(
     body: str,
     group: StepGroup,
@@ -806,7 +840,7 @@ def render_build_group_prompt_assembly(
     for role in _PROMPT_RENDER_ROLE_ORDER:
         role_files = tuple(
             step_file
-            for step_file in _unique_group_files(group.steps, role)
+            for step_file in _group_render_files(group.steps, role)
             if not step_file.missing and step_file.source is not None
         )
         if not role_files:
@@ -832,13 +866,14 @@ def render_build_group_prompt_assembly(
             except OSError:
                 continue
             header = prompt_header_for_file(step_file.name)
+            prompt_role = step_file.prompt_role or step_file.role
             if header is not None:
                 parts.extend(
                     contextual_markdown_parts(
                         step_file.name,
                         content.rstrip(),
                         filename=step_file.name,
-                        role=step_file.role,
+                        role=prompt_role,
                         path=source,
                     )
                 )
@@ -847,7 +882,7 @@ def render_build_group_prompt_assembly(
                 part(
                     step_file.name,
                     (
-                        f'<pblock filename="{step_file.name}" role="{step_file.role}"'
+                        f'<pblock filename="{step_file.name}" role="{prompt_role}"'
                         + f' path="{source}"'
                         + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n</pblock>\n\n"
                     ),

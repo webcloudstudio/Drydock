@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from drydock.acceptance import PYTHON_FENCE_RE, all_programmatic_acceptance
-from drydock.build import required_plan_auto_compact_sources
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -54,8 +53,8 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
-from drydock.rigging_compact import ensure_compact_files
 from drydock.sea_trials import parse_sea_trials_text
+from drydock.source_roles import parse_source_roles, promote_imported_sources
 from drydock.standard_artifacts import (
     ensure_standard_artifacts,
     render_console,
@@ -1550,6 +1549,18 @@ def _integrity_check(
                 "its implemented spec(s), which declare a programmatic surface; author several "
                 "concrete Python assertions (test-driven acceptance) or justify `- None.` inline"
             )
+        for name in targets:
+            text = spec_text(name) if name else None
+            if (
+                text
+                and "spec_tests.py" in text
+                and "--pattern" not in text
+                and "--number" not in text
+            ):
+                fatal.append(
+                    f"{block.block_id}: Programmatic Acceptance invokes an unbounded "
+                    "conformance corpus; keep it in SEA_TRIALS.md final measurement"
+                )
 
     sea_path = blueprint_dir.parent / "SEA_TRIALS.md"
     sea_text = sea_path.read_text(encoding="utf-8") if sea_path.is_file() else ""
@@ -1773,7 +1784,9 @@ def _normalize_manifest_contexts(plan_path: Path, blueprint_dir: Path) -> None:
     for block in plan.blocks:
         if block.block_type not in {"story", "spike"}:
             continue
-        normalized = normalize_context_names(block, blueprint_dir)
+        normalized = tuple(
+            name.removeprefix("sources/") for name in normalize_context_names(block, blueprint_dir)
+        )
         current = block.fields.get("context", ())
         current_tuple = current if isinstance(current, tuple) else ()
         if normalized == current_tuple:
@@ -2075,24 +2088,16 @@ def create_plan(
         _write_text(dest, content)
         authored.append(dest)
 
+    # Imported sources remain immutable provenance.  Planning projects build-facing assets
+    # into Blueprint paths and routes author intent into the persistent Compass.
+    promote_imported_sources(blueprint_dir, parse_source_roles(analysis_text), target_dir)
+
     # 2. The executable plan. Write the LLM output, then merge prior block states and
     #    restore applied_specs so that closed/verified work and the graph database survive
     #    a replan. Dirty blocks (implements: sha256 changed) are left at pending.
     _write_text(plan_path, blocks["MANIFEST.md"])
     _merge_prior_state(plan_path, blueprint_dir, prior_applied_specs, prior_block_states)
     _normalize_manifest_contexts(plan_path, blueprint_dir)
-
-    normalized_plan = parse_build_plan(plan_path)
-    ensure_compact_files(
-        blueprint_dir,
-        sources=list(required_plan_auto_compact_sources(normalized_plan.blocks, blueprint_dir)),
-        reason="created after plan",
-        log_dir=log_dir,
-        target=target,
-        on_text=on_text,
-        model=model,
-        llm_provider=llm_provider,
-    )
 
     # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)

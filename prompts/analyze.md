@@ -242,6 +242,9 @@ decision; it never resolves a blocker. Do not duplicate a questionnaire question
   - [ ] A timeout/failure criterion exists for every external service call the sources describe
   - [ ] An outcome criterion exists for every stated business/success goal
   - [ ] A security/compliance criterion exists where sensitive data or auth is implied
+- Any statement of complete project behavior, release threshold, end-to-end verification command,
+  or project-wide deterministic outcome belongs only in `SEA_TRIALS.md`. Do not emit it as a
+  story-scoped acceptance criterion.
 
 **8. Compute the quality signal.**
 - *Consumes:* the blocker and question counts from step 3.
@@ -309,6 +312,16 @@ stories. Use concise cited paths such as `sources/tests/test_parser.py`.
 |---|---|---|---|---|
 | {source path/group} | {instruction-to-test | test-kit-to-implementation | implementation-to-helper | reference-to-replacement | parser-to-normalizer | dependency} | {source path/group} | {specific cited evidence} | {planning consequence} |
 
+## Source Roles
+
+Classify every imported file cited above. `author intent` is routed to COMPASS and is not a
+standalone build-context file. Test corpora and harnesses are context/staged assets, never
+implements files.
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| {sources/path} | {author intent | normative specification and conformance corpus | conformance harness | test helper | reference implementation | source reference | asset} | {compass | context | exclude} | {stage | prompt-only | none} |
+
 ## Planning Instructions
 
 ### Delivery Shape
@@ -323,8 +336,8 @@ contract.
 
 ### Test and Acceptance Strategy
 
-State test kits, fixtures, reference tests, commands, expected behavior, and programmatic
-acceptance that Plan must embed in the durable Blueprint scopes.
+State focused story tests separately from final Sea Trial verification. Programmatic acceptance
+must be finite and story-scoped; complete-corpus or release verification stays in SEA_TRIALS.
 
 ### Sequencing and Dependencies
 

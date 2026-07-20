@@ -16,6 +16,8 @@ from drydock.build import (
     band_of,
     group_duplicate_flags,
     group_steps,
+    make_step_group,
+    render_build_group_prompt_assembly,
     required_auto_compact_sources,
     step_incremental_story_points,
 )
@@ -214,6 +216,47 @@ state: pending
 
 
 class TestAssembleSteps:
+    def test_group_prompt_suppresses_compact_when_full_source_is_present(self, tmp_path):
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## feature 1: Foundation
+id: foundation
+state: pending
+
+## story 2: Architecture
+id: architecture
+parent: foundation
+implements: ARCHITECTURE.md
+state: pending
+
+## story 3: Consumer
+id: consumer
+parent: foundation
+implements: FEATURE-Consumer.md
+context: ARCHITECTURE_compact.md
+state: pending
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "ARCHITECTURE_compact.md").write_text("compact", encoding="utf-8")
+        (roots.blueprint_dir / "FEATURE-Consumer.md").write_text("feature", encoding="utf-8")
+        plan = parse_build_plan(path)
+        steps = tuple(
+            assemble_step(plan.by_id()[block_id], roots)
+            for block_id in ("architecture", "consumer")
+        )
+        prompt = render_build_group_prompt_assembly(
+            "Build.",
+            make_step_group(feature_id="foundation", name="Foundation", steps=steps),
+            target="Demo",
+            build_dir=tmp_path / "build",
+            today="2026-07-20",
+        )
+        assert 'filename="ARCHITECTURE.md"' in prompt.rendered_text
+        assert 'filename="ARCHITECTURE_compact.md"' not in prompt.rendered_text
+
     def test_only_story_and_spike_are_steps(self, tmp_path):
         plan = _plan(tmp_path)
         steps = assemble_steps(plan, _roots(tmp_path))

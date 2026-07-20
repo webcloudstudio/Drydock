@@ -14,6 +14,9 @@ output: Blueprint specification files, MANIFEST.md
 Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
 story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Trials:` line.
 Never invent or rename Sea Trial IDs.
+Do not turn a final project measurement, release threshold, or complete-suite command into a
+story Programmatic Acceptance assertion or child `ac` block. Those remain Sea Trials and run at
+final scoring after all stories close.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 
@@ -352,6 +355,9 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   - `state: pending`
 - Add `parent`, `context`, `stack`, `rules`, `copy`, `depends`, `evidence`, and `scope` only
   when appropriate.
+- For context files classified in `ANALYSIS.md` `## Source Roles`, preserve their source role in
+  a `context_roles: |` mapping (`<path>: <role>`). Use promoted Blueprint paths, never
+  `sources/...` paths. A corpus or harness is `context`, never `implements`.
 - `scope` should usually be:
   - `blueprint` when the story chiefly authors or revises specs
   - `target` when it chiefly builds software from an already-authoritative spec
@@ -371,7 +377,8 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   SCREEN spec's assertions call every route the screen provides and consumes; a FEATURE spec's
   assertions exercise every route, interface, read, and write it provides.
 - The child `ac` block is the build gate: a smoke check that runs the project test suite, or a
-  sharper story-scoped command when one exists. Do not duplicate individual `Programmatic
+  sharper story-scoped command when one exists. It must be bounded to the implementing story;
+  never use a complete project corpus or final release measurement. Do not duplicate individual `Programmatic
   Acceptance` assertions as `ac` blocks.
 - Feature-level `ac` blocks are optional group gates for orchestration checks that cannot be
   represented in a Blueprint spec.
