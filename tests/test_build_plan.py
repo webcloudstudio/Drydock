@@ -14,6 +14,7 @@ from drydock.build_plan import (
     cascade_reset_ids,
     compact_recommendations,
     compact_source,
+    disambiguate_manifest_ids,
     foundational_source,
     parse_build_plan,
     set_applied_registry,
@@ -762,3 +763,88 @@ class TestStaleAndCascade:
         assert set(cascade_reset_ids(plan, ["DATABASE_compact.md"])) == set(
             cascade_reset_ids(plan, ["DATABASE.md"])
         )
+
+
+# A feature and its sole same-named story sharing one id, with an ac child and a
+# downstream story that depends on the colliding story — the exact shape the
+# planning LLM produced for commonmark.
+_COLLIDING_MANIFEST = (
+    "# MANIFEST: Demo\n"
+    "state: approved\n\n"
+    "## feature 1: Block Parsing\n"
+    "id:      block-parsing\n"
+    "summary: Block parsing feature.\n"
+    "state:   pending\n\n"
+    "## story 1: Block Parsing\n"
+    "id:           block-parsing\n"
+    "parent:       block-parsing\n"
+    "implements:   FEATURE-Blocks.md\n"
+    "depends:\n"
+    "state:        pending\n"
+    "scope:        both\n\n"
+    "## ac 1: Block parsing check\n"
+    "id:       block-parsing-check\n"
+    "parent:   block-parsing\n"
+    "kind:     smoke\n"
+    "check:    true\n"
+    "state:    pending\n\n"
+    "## story 2: Inline Parsing\n"
+    "id:           inline-parsing\n"
+    "parent:       block-parsing\n"
+    "implements:   FEATURE-Inlines.md\n"
+    "depends:      block-parsing\n"
+    "state:        pending\n"
+    "scope:        both\n"
+)
+
+
+class TestDisambiguateManifestIds:
+    def _parse(self, tmp_path, text):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(text, encoding="utf-8")
+        return parse_build_plan(path)
+
+    def test_feature_story_collision_is_resolved(self, tmp_path):
+        fixed = disambiguate_manifest_ids(_COLLIDING_MANIFEST)
+        plan = self._parse(tmp_path, fixed)
+        ids = [b.block_id for b in plan.blocks]
+        assert len(ids) == len(set(ids))  # every id unique
+        by_id = plan.by_id()
+        # The feature and story now carry type-prefixed ids.
+        assert "feature-block-parsing" in by_id
+        assert by_id["feature-block-parsing"].block_type == "feature"
+        assert by_id["story-block-parsing"].block_type == "story"
+
+    def test_references_repoint_by_hierarchy(self, tmp_path):
+        plan = self._parse(tmp_path, disambiguate_manifest_ids(_COLLIDING_MANIFEST))
+        by_id = plan.by_id()
+        story = by_id["story-block-parsing"]
+        ac = by_id["block-parsing-check"]
+        downstream = by_id["inline-parsing"]
+        # story.parent -> the feature; ac.parent -> the story; depends -> the story.
+        assert story.parent == "feature-block-parsing"
+        assert ac.parent == "story-block-parsing"
+        assert downstream.depends == ("story-block-parsing",)
+
+    def test_unresolvable_reference_is_left_for_parser(self, tmp_path):
+        # Two stories share an id AND a third block depends on it: the reference
+        # cannot be resolved structurally, so the text is returned untouched and
+        # the parser reports the duplicate rather than the guard guessing.
+        ambiguous = (
+            "# MANIFEST: Demo\nstate: approved\n\n"
+            "## story 1: A\nid: dup\nparent: feat\nstate: pending\n\n"
+            "## story 2: B\nid: dup\nparent: feat\nstate: pending\n\n"
+            "## story 3: C\nid: c\nparent: feat\ndepends: dup\nstate: pending\n"
+        )
+        assert disambiguate_manifest_ids(ambiguous) == ambiguous
+        with pytest.raises(SpecificationError, match="Duplicate block id"):
+            self._parse(tmp_path, ambiguous)
+
+    def test_unique_manifest_is_unchanged(self, tmp_path):
+        # With distinct ids the disambiguator is a verbatim no-op.
+        text = (
+            "# MANIFEST: Demo\nstate: approved\n\n"
+            "## feature 1: X\nid: feat-x\nstate: pending\n\n"
+            "## story 1: Y\nid: story-y\nparent: feat-x\nstate: pending\n"
+        )
+        assert disambiguate_manifest_ids(text) == text

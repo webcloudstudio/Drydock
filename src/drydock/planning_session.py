@@ -28,7 +28,13 @@ from typing import Protocol, cast
 
 from drydock.acceptance import PYTHON_FENCE_RE, all_programmatic_acceptance
 from drydock.build import required_plan_auto_compact_sources
-from drydock.build_plan import AppliedSpecRecord, BuildPlan, parse_build_plan, set_applied_specs
+from drydock.build_plan import (
+    AppliedSpecRecord,
+    BuildPlan,
+    disambiguate_manifest_ids,
+    parse_build_plan,
+    set_applied_specs,
+)
 from drydock.corpus import CorpusFile, discover_corpus
 from drydock.errors import RecordedError, SpecificationError, clear_error_record, write_error_record
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
@@ -1663,6 +1669,10 @@ def _validate_plan_output(
             )
         )
 
+    # Guarantee unique block ids before validation: the model may reuse one slug
+    # for a feature and its sole same-named story. Disambiguate in place so the
+    # unique-id manifest is what gets validated and written to the target.
+    blocks["MANIFEST.md"] = disambiguate_manifest_ids(blocks["MANIFEST.md"])
     plan = _parse_plan_text(blocks["MANIFEST.md"])
 
     emitted_specs = frozenset(name for name in blocks if name not in _RESERVED_BLOCKS)

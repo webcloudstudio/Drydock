@@ -403,6 +403,163 @@ def _normalize_story_depends(blocks: tuple[PlanBlock, ...]) -> tuple[PlanBlock, 
     return tuple(normalized)
 
 
+@dataclass
+class _IdBlock:
+    """Line-anchored view of one MANIFEST block for id disambiguation."""
+
+    block_type: str
+    block_id: str
+    id_line: int
+    parent: str
+    parent_line: int
+    depends: tuple[str, ...]
+    depends_line: int
+
+
+# The structurally valid target block type(s) for a reference, keyed by the
+# referring block's type. A ``depends`` entry always names a runnable unit; a
+# ``parent`` names the enclosing container for its referrer.
+_DEPENDS_TARGETS = ("story", "spike")
+_PARENT_TARGETS = {
+    "ac": ("story", "spike"),
+    "story": ("feature",),
+    "spike": ("feature",),
+}
+
+
+def _scan_id_blocks(lines: list[str]) -> list[_IdBlock]:
+    """Collect each block's id/parent/depends fields with their line indices.
+
+    Only column-zero field lines are inspected, so indented block-scalar
+    continuation text (``instructions: |`` bodies) is never mistaken for a field.
+    """
+    blocks: list[_IdBlock] = []
+    current: dict[str, object] | None = None
+
+    def flush() -> None:
+        if current is None:
+            return
+        blocks.append(
+            _IdBlock(
+                block_type=str(current["block_type"]),
+                block_id=str(current.get("id", "")),
+                id_line=int(current.get("id_line", -1)),
+                parent=str(current.get("parent", "")),
+                parent_line=int(current.get("parent_line", -1)),
+                depends=tuple(current.get("depends", ())),  # type: ignore[arg-type]
+                depends_line=int(current.get("depends_line", -1)),
+            )
+        )
+
+    for index, line in enumerate(lines):
+        header = _HEADER_RE.match(line)
+        if header:
+            flush()
+            current = {"block_type": header.group(1)}
+            continue
+        if current is None:
+            continue
+        field_match = _FIELD_RE.match(line)
+        if not field_match:
+            continue
+        key, value = field_match.group(1).lower(), field_match.group(2).strip()
+        if key == "id" and "id" not in current:
+            current["id"], current["id_line"] = value, index
+        elif key == "parent" and "parent" not in current:
+            current["parent"], current["parent_line"] = value, index
+        elif key == "depends" and "depends" not in current:
+            current["depends"], current["depends_line"] = _split_depends(value), index
+    flush()
+    return blocks
+
+
+def disambiguate_manifest_ids(text: str) -> str:
+    """Return MANIFEST text with every block id unique.
+
+    The planning LLM occasionally reuses one slug for a feature and its sole
+    same-named story. Each colliding id is renamed to ``<type>-<id>`` and every
+    ``parent``/``depends`` reference is repointed to the structurally-correct
+    block: an ``ac``'s parent to a story/spike, a story's parent to a feature,
+    any ``depends`` to a runnable story/spike. Collisions that cannot be resolved
+    structurally (e.g. two stories sharing an id) are left untouched so the parser
+    reports the duplicate rather than guessing.
+    """
+    lines = text.splitlines()
+    blocks = _scan_id_blocks(lines)
+
+    groups: dict[str, list[_IdBlock]] = {}
+    for block in blocks:
+        if block.block_id:
+            groups.setdefault(block.block_id, []).append(block)
+    duplicates = {old: bs for old, bs in groups.items() if len(bs) > 1}
+    if not duplicates:
+        return text
+
+    used = {block.block_id for block in blocks if block.block_id}
+    # rename: id(block) -> new id. resolve: old id -> {block_type -> new id | None}.
+    rename: dict[int, str] = {}
+    resolve: dict[str, dict[str, str | None]] = {}
+    for old, bs in duplicates.items():
+        type_map: dict[str, str | None] = {}
+        for block in bs:
+            base = f"{block.block_type}-{old}"
+            candidate, suffix = base, 2
+            while candidate in used:
+                candidate, suffix = f"{base}-{suffix}", suffix + 1
+            used.add(candidate)
+            rename[id(block)] = candidate
+            type_map[block.block_type] = None if block.block_type in type_map else candidate
+        resolve[old] = type_map
+
+    def resolved(old: str, targets: tuple[str, ...]) -> str | None:
+        type_map = resolve.get(old)
+        if type_map is None:
+            return old  # not a duplicated id; leave the reference untouched
+        matches = {type_map[t] for t in targets if type_map.get(t) is not None}
+        return matches.pop() if len(matches) == 1 else None
+
+    edits: dict[int, str] = {}
+    for block in blocks:
+        if id(block) in rename and block.id_line >= 0:
+            edits[block.id_line] = _rewrite_field_value(lines[block.id_line], rename[id(block)])
+        if block.parent and block.parent in duplicates and block.parent_line >= 0:
+            target = resolved(block.parent, _PARENT_TARGETS.get(block.block_type, ()))
+            if target is None:
+                return text  # ambiguous — defer to the parser's duplicate-id error
+            edits[block.parent_line] = _rewrite_field_value(lines[block.parent_line], target)
+        if block.depends and block.depends_line >= 0:
+            new_tokens = []
+            changed = False
+            for token in block.depends:
+                if token in duplicates:
+                    target = resolved(token, _DEPENDS_TARGETS)
+                    if target is None:
+                        return text
+                    new_tokens.append(target)
+                    changed = changed or target != token
+                else:
+                    new_tokens.append(token)
+            if changed:
+                edits[block.depends_line] = _rewrite_field_value(
+                    lines[block.depends_line], ", ".join(new_tokens)
+                )
+
+    for index, new_line in edits.items():
+        lines[index] = new_line
+    result = "\n".join(lines)
+    if text.endswith("\n"):
+        result += "\n"
+    return result
+
+
+def _rewrite_field_value(line: str, value: str) -> str:
+    """Replace a field line's value, preserving its ``key:`` prefix and spacing."""
+    match = _FIELD_RE.match(line)
+    if not match:
+        return line
+    return line[: match.start(2)] + value
+
+
 def parse_build_plan(path: Path) -> BuildPlan:
     """Parse one MANIFEST.md and validate its structural execution contract."""
     if not path.is_file():
