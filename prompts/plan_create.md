@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260717 V11
+version: 20260719 V12
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -409,7 +409,7 @@ or an existing Blueprint spec file from the input context. If `MANIFEST.md` name
 that file must exist as an emitted file block in the same response unless it already exists in the
 input Blueprint.
 
-Use this wrapper for every emitted file:
+Wrap **every** emitted file — including `MANIFEST.md` — in a matching open/END delimiter pair:
 
 ```text
 === relative/path/from/blueprint/or/target ===
@@ -417,14 +417,26 @@ Use this wrapper for every emitted file:
 === END relative/path/from/blueprint/or/target ===
 ```
 
-Examples:
+The `=== END NAME ===` line is mandatory for every file, not only for `MANIFEST.md`. The open name
+and the END name must be identical. Never separate files with a bare opening delimiter.
 
-- `=== ARCHITECTURE.md ===`
-- `=== FEATURE-Catalog.md ===`
-- `=== SCREEN-Catalog.md ===`
-- `=== MANIFEST.md ===`
+Every file type is wrapped the same way. For example:
 
-The final block in Success Mode must be:
+```text
+=== ARCHITECTURE.md ===
+{full file contents}
+=== END ARCHITECTURE.md ===
+=== FEATURE-Catalog.md ===
+{full file contents}
+=== END FEATURE-Catalog.md ===
+=== SCREEN-Catalog.md ===
+{full file contents}
+=== END SCREEN-Catalog.md ===
+```
+
+The same applies to `DATABASE.md`, `UI-GENERAL.md`, and every other authored Blueprint file.
+
+`MANIFEST.md` is the last file block, wrapped identically:
 
 ```text
 === MANIFEST.md ===

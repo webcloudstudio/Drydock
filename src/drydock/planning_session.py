@@ -256,7 +256,36 @@ def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
     if repaired is not None:
         text = repaired
     text = _strip_leading_preamble(text)
-    return _parse_strict_blocks_by_line(text, result)
+    blocks = _parse_strict_blocks_by_line(text, result)
+    _reject_unpaired_end_delimiters(text, blocks, result)
+    return blocks
+
+
+def _reject_unpaired_end_delimiters(
+    text: str, blocks: dict[str, str], result: CompletedRun
+) -> None:
+    """Fail loudly when an ``=== END X ===`` line has no matching parsed ``=== X ===`` block.
+
+    When the model emits only opening delimiters between files (closing just the final block), the
+    line parser silently absorbs every later delimiter into the first still-open block, collapsing
+    the whole response into one artifact. The orphan END lines are the unambiguous signal: an END
+    delimiter whose name never became a block means the files were not paired. A stray
+    ``=== END X ===`` inside a body is already a contract violation, so this cannot false-positive
+    on well-formed output.
+    """
+    for match in _END_BLOCK_LINE_RE.finditer(text):
+        name = match.group("name").strip()
+        if name not in blocks:
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                    f"  Delimiter pairing mismatch: found `=== END {name} ===` with no matching "
+                    f"`=== {name} ===` block.\n"
+                    "  Every file must be wrapped in a paired open/END delimiter.\n"
+                    "  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
 
 
 def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, str]:

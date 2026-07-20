@@ -19,6 +19,7 @@ from drydock.planning_session import (
     _assemble_prompt,
     _load_prior_plan_state,
     _parse_blocks,
+    _parse_strict_blocks,
     _repair_missing_leading_delimiter,
     _spec_is_conformant,
     _spec_is_dirty,
@@ -259,6 +260,59 @@ def fake_compactor(monkeypatch):
 
 def _fake(text: str):
     return lambda *a, **k: FakeRun(text=text)
+
+
+# Delimiter pairing contract: every emitted file must be wrapped in a matching open/END pair.
+# Regression for the commonmark plan failure where the model emitted open-only delimiters between
+# files plus a single trailing `=== END MANIFEST.md ===`, silently collapsing the whole response
+# into the first block so MANIFEST.md never parsed.
+
+_OPEN_ONLY_OUTPUT = (
+    "=== ARCHITECTURE.md ===\n"
+    "# ARCHITECTURE\n"
+    "=== FEATURE-Filter-Contract.md ===\n"
+    "# FEATURE: Filter Contract\n"
+    "=== MANIFEST.md ===\n"
+    "# MANIFEST\n"
+    "=== END MANIFEST.md ===\n"
+)
+
+_PAIRED_OUTPUT = (
+    "=== ARCHITECTURE.md ===\n"
+    "# ARCHITECTURE\n"
+    "=== END ARCHITECTURE.md ===\n"
+    "=== FEATURE-Filter-Contract.md ===\n"
+    "# FEATURE: Filter Contract\n"
+    "=== END FEATURE-Filter-Contract.md ===\n"
+    "=== MANIFEST.md ===\n"
+    "# MANIFEST\n"
+    "=== END MANIFEST.md ===\n"
+)
+
+
+def test_strict_blocks_reject_open_only_delimiters():
+    with pytest.raises(SpecificationError) as excinfo:
+        _parse_strict_blocks(_OPEN_ONLY_OUTPUT, FakeRun(text=_OPEN_ONLY_OUTPUT))
+    message = str(excinfo.value)
+    assert "Delimiter pairing mismatch" in message
+    assert "=== END MANIFEST.md ===" in message
+
+
+def test_strict_blocks_parse_paired_delimiters():
+    blocks = _parse_strict_blocks(_PAIRED_OUTPUT, FakeRun(text=_PAIRED_OUTPUT))
+    assert set(blocks) == {
+        "ARCHITECTURE.md",
+        "FEATURE-Filter-Contract.md",
+        "MANIFEST.md",
+    }
+
+
+def test_strict_blocks_end_names_match_block_keys():
+    from drydock.planning_session import _END_BLOCK_LINE_RE
+
+    blocks = _parse_strict_blocks(_PAIRED_OUTPUT, FakeRun(text=_PAIRED_OUTPUT))
+    end_names = {m.group("name").strip() for m in _END_BLOCK_LINE_RE.finditer(_PAIRED_OUTPUT)}
+    assert end_names == set(blocks)
 
 
 def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:
