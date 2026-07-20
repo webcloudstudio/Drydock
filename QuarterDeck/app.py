@@ -305,7 +305,7 @@ def _add_drydock_runtime_items(config: dict[str, Any], *, project_root: Path) ->
         return
     items.append({
         "id": "blockers_doc",
-        "label": "Blockers",
+        "label": "⛔ Blockers",
         "section": "setup",
         "type": "editable_markdown",
         "path": "../BLOCKERS.md",
@@ -2727,7 +2727,17 @@ def index(request: Request = None) -> str:
       setActive(itemId);
       const res = await fetch(`/api/document/${{itemId}}`);
       const data = await res.json();
-      if (!res.ok) {{ contentEl.innerHTML = `<p style="color:#991b1b">${{data.detail || 'Error'}}</p>`; return; }}
+      if (!res.ok) {{
+        // ERRORS.md is removed after recovery. A restored browser tab must fall
+        // back to a visible item rather than treat that normal absence as an error.
+        const fallback = document.querySelector('button.doc-btn[data-item]')?.dataset.item;
+        if (res.status === 404 && fallback && fallback !== itemId) {{
+          loadDoc(fallback);
+          return;
+        }}
+        contentEl.innerHTML = `<p style="color:#991b1b">${{data.detail || 'Error'}}</p>`;
+        return;
+      }}
       localStorage.setItem(lastItemKey, itemId);
       contentEl.innerHTML = data.html;
       const form = contentEl.querySelector('form[data-questionnaire]');

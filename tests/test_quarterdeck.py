@@ -530,6 +530,25 @@ def test_legacy_drydock_console_surfaces_blockers_on_refresh_without_rewrite(tmp
     assert "ns-done" in quarterdeck.render_nav()
 
 
+def test_legacy_drydock_console_blocker_uses_critical_error_marker(tmp_path):
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "Example"
+    base_dir = target_dir / "QuarterDeck"
+    base_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text("name: Example\n", encoding="utf-8")
+    (target_dir / "BLOCKERS.md").write_text("# Blockers\n", encoding="utf-8")
+    (base_dir / "console.yaml").write_text(
+        "sections:\n  - { id: setup, label: Setup }\nitems: []\nsources: []\n",
+        encoding="utf-8",
+    )
+
+    config, error = quarterdeck.load_config(base_dir=base_dir, project_root=target_dir)
+
+    assert error is None
+    blocker = next(item for item in config["items"] if item["id"] == "blockers_doc")
+    assert blocker["label"] == "⛔ Blockers"
+
+
 # ── sources expansion ────────────────────────────────────────────────────────
 
 

@@ -154,7 +154,7 @@ sections:
   - {{ id: refit, label: "Refit", dot: "#d97706" }}
 
 items:
-  - {{ id: blockers_doc, label: "Blockers", section: setup, type: editable_markdown, path: ../BLOCKERS.md, order: 1, help_text: {json.dumps(blockers.help_text)}, prompt_text: {json.dumps(blockers.prompt_text)} }}
+  - {{ id: blockers_doc, label: "⛔ Blockers", section: setup, type: editable_markdown, path: ../BLOCKERS.md, order: 1, help_text: {json.dumps(blockers.help_text)}, prompt_text: {json.dumps(blockers.prompt_text)} }}
   - {{ id: commanders_chair, label: "Commanders Chair", section: setup, type: document, path_html: commanders_chair.html, order: 2, help_text: {json.dumps(commanders_chair_help)} }}
   - {{ id: big_errors, label: "⛔ BIG ERRORS — action required", section: setup, type: markdown, path: ../ERRORS.md, order: 3, help_text: "Current post-LLM recovery record. Resolve the prescribed action and rerun the command." }}
   - {{ id: compass_edit, label: "Compass", section: setup, type: editable_markdown, path: ../COMPASS.md, order: 4, help_text: {json.dumps(compass.help_text)}, prompt_text: {json.dumps(compass.prompt_text)} }}
