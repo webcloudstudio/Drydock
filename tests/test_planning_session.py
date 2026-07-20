@@ -967,7 +967,7 @@ def test_blockers_file_present_refuses(tmp_path):
 def test_confirmed_stack_selection_resolves_only_stack_blocker(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "BLOCKERS.md").write_text(
-        "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n",
+        "# Blockers\n\n## blocker-001: Technology stack selection\nSelect a stack.\n",
         encoding="utf-8",
     )
     questionnaires = target_dir / "QuarterDeck" / "questionnaires"

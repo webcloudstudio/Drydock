@@ -1314,7 +1314,7 @@ QUESTIONS:
     def test_reanalysis_removes_legacy_stack_blocker(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         (target_dir / "BLOCKERS.md").write_text(
-            "# Blockers\n\n## blocker-stack-selection: Confirm technology stack\nSelect a stack.\n",
+            "# Blockers\n\n## blocker-001: Technology stack selection\nSelect a stack.\n",
             encoding="utf-8",
         )
 

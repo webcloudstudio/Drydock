@@ -77,6 +77,9 @@ _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _PLANNING_INSTRUCTIONS_RE = re.compile(r"^## Planning Instructions\s*$", re.MULTILINE)
 _SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.-])(sources/[A-Za-z0-9_./-]+)")
 _BLOCKER_HEADING_RE = re.compile(r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:", re.MULTILINE)
+_BLOCKER_TITLE_RE = re.compile(
+    r"^##\s+(?P<id>[A-Za-z0-9][A-Za-z0-9_-]*)\s*:\s*(?P<title>.*?)\s*$", re.MULTILINE
+)
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
 _RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
@@ -849,10 +852,19 @@ def _blockers_require_reanalysis(blockers_text: str) -> bool:
     Stack questionnaire. It never requires a BLOCKERS.md edit. All malformed, unknown,
     or additional blocker entries remain fail-closed and require re-analysis.
     """
-    blocker_ids = _BLOCKER_HEADING_RE.findall(blockers_text)
-    return not blocker_ids or any(
-        blocker_id != "blocker-stack-selection" for blocker_id in blocker_ids
+    headings = list(_BLOCKER_TITLE_RE.finditer(blockers_text))
+    return not headings or any(
+        not _is_legacy_stack_blocker_heading(heading) for heading in headings
     )
+
+
+def _is_legacy_stack_blocker_heading(match: re.Match[str]) -> bool:
+    if match.group("id") == "blocker-stack-selection":
+        return True
+    return match.group("title").strip().casefold() in {
+        "technology stack selection",
+        "confirm technology stack",
+    }
 
 
 def _answered_discovery(path: Path) -> dict | None:

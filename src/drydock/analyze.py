@@ -937,14 +937,23 @@ def _remove_legacy_stack_blocker(blockers: str | None) -> str | None:
     """Remove the retired synthetic stack blocker from persisted blocker content."""
     if not blockers:
         return None
-    if "blocker-stack-selection" not in _BLOCKER_ID_RE.findall(blockers):
+    matches = list(_BLOCKER_SECTION_RE.finditer(blockers))
+    if not any(_is_legacy_stack_blocker(match) for match in matches):
         return blockers
 
     def remove(match: re.Match[str]) -> str:
-        return "" if match.group("id") == "blocker-stack-selection" else match.group(0)
+        return "" if _is_legacy_stack_blocker(match) else match.group(0)
 
     cleaned = _BLOCKER_SECTION_RE.sub(remove, blockers).strip()
     return _validate_blockers(cleaned)
+
+
+def _is_legacy_stack_blocker(match: re.Match[str]) -> bool:
+    """Recognize both stable and historical generic-ID stack projections."""
+    if match.group("id") == "blocker-stack-selection":
+        return True
+    title = match.group("title").strip().casefold()
+    return title in {"technology stack selection", "confirm technology stack"}
 
 
 def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
