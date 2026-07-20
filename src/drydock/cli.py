@@ -2273,7 +2273,8 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
 
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
-    normalized_argv, global_overrides = _extract_global_llm_overrides(argv)
+    raw_argv = argv if argv is not None else sys.argv[1:]
+    normalized_argv, global_overrides = _extract_global_llm_overrides(raw_argv)
     args = parser.parse_args(normalized_argv)
     for key, value in global_overrides.items():
         if getattr(args, key, None) is None:

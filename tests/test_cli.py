@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -472,6 +473,34 @@ class TestLlmOverrideFlags:
         assert rc == 0
         assert "--llm-provider" in out
         assert "--model" in out
+
+    def test_status_accepts_global_llm_overrides_from_installed_entrypoint(
+        self, isolated_config, monkeypatch
+    ):
+        seen = []
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "drydock",
+                "status",
+                "Example",
+                "--llm-provider",
+                "codex",
+                "--model",
+                "gpt-5.6-luna",
+            ],
+        )
+        monkeypatch.setattr(
+            "drydock.cli.cmd_status_blueprint_target",
+            lambda blueprint, target: seen.append((blueprint, target)) or 0,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 0
+        assert seen == [("Example", "Example")]
 
     def test_plan_help_lists_llm_flags(self):
         rc, out, _ = run_cli("plan", "--help")

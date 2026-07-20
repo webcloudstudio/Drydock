@@ -21,6 +21,31 @@ class QuarterDeckRunResult:
     exit_code: int
 
 
+def _add_missing_blockers_item(console_path: Path, target: str) -> bool:
+    """Add the standard Blockers item to a legacy target console without rewriting it."""
+    text = console_path.read_text(encoding="utf-8")
+    if "id: blockers_doc" in text:
+        return False
+
+    standard = render_console(target)
+    marker = "\n  - { id: blockers_doc,"
+    start = standard.find(marker)
+    end = standard.find("\n", start + 1)
+    if start < 0 or end < 0:
+        return False
+    item = standard[start + 1 : end]
+
+    sources_marker = "\nsources:\n"
+    if sources_marker not in text:
+        return False
+    console_path.write_text(
+        text.replace(sources_marker, f"\n{item}{sources_marker}", 1),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return True
+
+
 def ensure_quarterdeck_state(target_dir: Path) -> Path:
     """Restore missing QuarterDeck state for an initialized Target.
 
@@ -32,6 +57,10 @@ def ensure_quarterdeck_state(target_dir: Path) -> Path:
     state_dir = target_dir / "QuarterDeck"
     console_path = state_dir / "console.yaml"
     if console_path.is_file():
+        _add_missing_blockers_item(console_path, target_dir.name)
+        from drydock.quarterdeck_state import refresh_commanders_chair
+
+        refresh_commanders_chair(target_dir)
         return state_dir
     if not (target_dir / "METADATA.md").is_file():
         raise DrydockError(

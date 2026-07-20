@@ -88,6 +88,23 @@ def test_run_quarterdeck_restores_missing_state_for_initialized_target(tmp_path,
     assert (target_dir / "QuarterDeck" / "console.yaml").is_file()
 
 
+def test_ensure_quarterdeck_state_adds_blockers_to_legacy_console(tmp_path):
+    target_dir = tmp_path / "targets" / "Example"
+    target_dir.mkdir(parents=True)
+    _make_state(target_dir)
+    console_path = target_dir / "QuarterDeck" / "console.yaml"
+    console_path.write_text(
+        "sections:\n  - { id: setup, label: Setup }\nitems:\n\nsources:\n",
+        encoding="utf-8",
+    )
+
+    quarterdeck_run.ensure_quarterdeck_state(target_dir)
+
+    console = console_path.read_text(encoding="utf-8")
+    assert "id: blockers_doc" in console
+    assert console.index("id: blockers_doc") < console.index("sources:")
+
+
 def test_run_quarterdeck_missing_runtime_raises(tmp_path):
     target_dir = tmp_path / "targets" / "Example"
     target_dir.mkdir(parents=True)
