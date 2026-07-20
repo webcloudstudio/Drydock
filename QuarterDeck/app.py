@@ -1920,6 +1920,20 @@ def item_pending(item: dict[str, Any]) -> bool:
             return str(data.get("state", "open")) not in _DONE_STATES
         except Exception:
             return True
+    if item.get("id") == "blockers_doc":
+        path = item.get("path")
+        if not path:
+            return True
+        try:
+            text = (_current_base_dir() / path).resolve().read_text(encoding="utf-8")
+        except OSError:
+            return True
+        resolutions = re.findall(
+            r"^### Commander Resolution\s*$\n(?P<value>.*?)(?=^## |\Z)",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        return not resolutions or any(not value.strip() or "<!--" in value for value in resolutions)
     return False
 
 
@@ -2227,9 +2241,11 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
     documents, boards, logs, links) are labels, not action items — flagging
     them all as done buries the few things that genuinely need attention.
     """
-    if item.get("type", "") != "questionnaire":
-        return None
-    return "pending" if item_pending(item) else "done"
+    if item.get("type", "") == "questionnaire":
+        return "pending" if item_pending(item) else "done"
+    if item.get("id") == "blockers_doc":
+        return "pending" if item_pending(item) else "done"
+    return None
 
 
 def render_target_switcher() -> str:
@@ -2285,17 +2301,19 @@ def render_nav() -> str:
                 iid = html.escape(item["id"])
                 icon = _NAV_STATUS_HTML.get(item_nav_status(item) or "", "")
                 item_flag = _ITEM_FLAGS.get(item["id"], "")
+                blockers_btn_cls = " blockers-btn" if item.get("id") == "blockers_doc" else ""
                 if item.get("type") == "link":
                     href = item.get("href", "")
                     url = href if re.match(r"^https?://", href) else f"/raw/{iid}"
                     btn = (
-                        f"<a class='doc-btn' href='{html.escape(url)}' "
+                        f"<a class='doc-btn{blockers_btn_cls}' href='{html.escape(url)}' "
                         f"target='_blank' rel='noopener'>{icon}{item_flag}{lbl}"
                         "<span class='ext-arrow'>↗</span></a>"
                     )
                 else:
                     btn = (
-                        f"<button class='doc-btn' data-item='{iid}'>{icon}{item_flag}{lbl}</button>"
+                        f"<button class='doc-btn{blockers_btn_cls}' data-item='{iid}'>"
+                        f"{icon}{item_flag}{lbl}</button>"
                     )
                 item_htmls.append(f"<div class='nav-item-row'>{btn}</div>")
             btns = "".join(item_htmls)
@@ -2504,6 +2522,12 @@ _STYLE = """
   .sec-blockers .doc-btn { color:#dc2626; }
   .sec-blockers .doc-btn:hover { background:#fef2f2; }
   .sec-blockers .doc-btn.active { background:#dc2626; color:#fff; }
+  .doc-btn.blockers-btn { background:#b94a48; color:#fff; border-color:#9f3d3b; font-weight:800;
+                           letter-spacing:.025em; box-shadow:inset 3px 0 0 #fca5a5; }
+  .doc-btn.blockers-btn:hover { background:#a53f3d; }
+  .doc-btn.blockers-btn.active { background:#7f1d1d; border-color:#7f1d1d; }
+  .doc-btn.blockers-btn .ns-pending { background:#fff1f2; color:#b91c1c; border-color:#fecdd3; }
+  .doc-btn.blockers-btn .ns-done { background:#dcfce7; color:#166534; border-color:#86efac; }
   .q-autosave-hint { font-size:12.5px; color:#64748b; margin:6px 0 16px; }
   .q-save-status { display:inline-block; min-height:18px; margin-top:12px; font-size:13px;
                    font-weight:600; color:#16a34a; }

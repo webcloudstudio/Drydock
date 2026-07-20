@@ -494,13 +494,27 @@ def test_legacy_drydock_console_surfaces_blockers_on_refresh_without_rewrite(tmp
         for item in section["items"]
     )
 
-    (target_dir / "BLOCKERS.md").write_text("# Blockers\n", encoding="utf-8")
+    blockers_path = target_dir / "BLOCKERS.md"
+    blockers_path.write_text("# Blockers\n", encoding="utf-8")
 
-    assert any(
-        item["id"] == "blockers_doc"
+    blocker_item = next(
+        item
         for section in quarterdeck.nav_model()
         for item in section["items"]
+        if item["id"] == "blockers_doc"
     )
+    assert quarterdeck.item_nav_status(blocker_item) == "pending"
+    rendered = quarterdeck.render_nav()
+    assert "blockers-btn" in rendered
+    assert "ns-pending" in rendered
+
+    blockers_path.write_text(
+        "## blocker-one: Confirm decision\n\n### Commander Resolution\n\nUse option A.\n",
+        encoding="utf-8",
+    )
+
+    assert quarterdeck.item_nav_status(blocker_item) == "done"
+    assert "ns-done" in quarterdeck.render_nav()
 
 
 # ── sources expansion ────────────────────────────────────────────────────────
