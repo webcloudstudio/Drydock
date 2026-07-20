@@ -757,3 +757,33 @@ def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeyp
     assert "parts=" not in stderr
     assert "[llm]" in stderr
     assert "elapsed=" in stderr
+
+
+def test_done_line_falls_back_to_requested_model():
+    # Providers that do not report the model in their result stats (e.g. codex) must still show
+    # the requested model on the DONE line rather than a bare `-`.
+    from drydock.llm import LlmStats, _performance_summary
+
+    line = _performance_summary(
+        llm="codex",
+        command_name="plan",
+        execution_id="exec-1",
+        returncode=0,
+        stats=LlmStats(model=None, elapsed_ms=1000),
+        requested_model="gpt-5.6-luna",
+    )
+    assert "[llm] DONE plan codex/gpt-5.6-luna" in line
+
+
+def test_done_line_prefers_reported_model_over_requested():
+    from drydock.llm import LlmStats, _performance_summary
+
+    line = _performance_summary(
+        llm="claude",
+        command_name="plan",
+        execution_id="exec-1",
+        returncode=0,
+        stats=LlmStats(model="claude-opus-4-8", elapsed_ms=1000),
+        requested_model="sonnet",
+    )
+    assert "[llm] DONE plan claude/claude-opus-4-8" in line

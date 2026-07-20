@@ -291,8 +291,9 @@ def _performance_summary(
     execution_id: str,
     returncode: int,
     stats: LlmStats,
+    requested_model: str | None = None,
 ) -> str:
-    model = stats.model or "-"
+    model = stats.model or requested_model or "-"
     elapsed = _format_ms(stats.elapsed_ms) or "-"
     parts = [
         f"[llm] DONE {command_name} {llm}/{model}",
@@ -429,6 +430,7 @@ def _print_performance_summary(
     execution_id: str,
     returncode: int,
     stats: LlmStats,
+    requested_model: str | None = None,
 ) -> None:
     print(
         _performance_summary(
@@ -437,6 +439,7 @@ def _print_performance_summary(
             execution_id=execution_id,
             returncode=returncode,
             stats=stats,
+            requested_model=requested_model,
         ),
         file=sys.stderr,
         flush=True,
@@ -1119,6 +1122,7 @@ def run_prompt(
             execution_id=artifacts.execution_id,
             returncode=returncode,
             stats=stats,
+            requested_model=model,
         )
         return LlmResult(
             execution_id=artifacts.execution_id,
