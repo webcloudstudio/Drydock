@@ -65,6 +65,13 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "Never emit `AGENTS.md`." in prompt
 
 
+def test_plan_prompt_separates_final_sea_trial_traceability_from_story_execution():
+    prompt = (Path(__file__).parents[1] / "prompts" / "plan_create.md").read_text(encoding="utf-8")
+
+    assert "`accepts:` is traceability metadata, not a child acceptance command." in prompt
+    assert "perform an exhaustive traceability audit" in prompt
+
+
 def test_validate_plan_output_rejects_agents_artifact(tmp_path):
     from drydock.planning_session import _validate_plan_output
 
