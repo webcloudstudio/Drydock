@@ -67,7 +67,6 @@ from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
 from drydock.rigging_compact import ensure_compact_files
-from drydock.source_roles import stage_context_file
 
 BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to rerun this step"
 
@@ -1258,17 +1257,6 @@ def build_target(
         assemblies = tuple(
             assemble_step(block, roots, compact_stack=compact_stack) for block in unit.steps
         )
-        if not dry_run:
-            for assembly in assemblies:
-                for step_file in assembly.files:
-                    if step_file.role != "context" or step_file.source is None:
-                        continue
-                    stage_context_file(
-                        step_file.source,
-                        step_file.name,
-                        blueprint_dir=blueprint_dir,
-                        build_dir=resolved_build_dir,
-                    )
         group = make_step_group(
             feature_id=unit.block_id if unit.is_group else None,
             name=unit.name,

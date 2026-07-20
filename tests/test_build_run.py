@@ -1554,3 +1554,33 @@ state: pending
         assert "Amends: DATABASE.md" in message
         assert "drydock refit" in message
         assert "SCREEN-A.md" in message
+
+
+_CONTEXT_STORY = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+context: sources/spec.txt
+instructions: |
+  Build the database.
+state: pending
+"""
+
+
+def test_build_does_not_stage_context_assets_into_build_dir(tmp_path):
+    """Context source assets reach the agent inline; they must not be copied into
+    the deliverable. Only explicit copy directives place source files in the tree."""
+    target_dir, build_dir = _setup(tmp_path, manifest=_CONTEXT_STORY)
+    sources = target_dir / "blueprint" / "sources"
+    sources.mkdir(parents=True)
+    (sources / "spec.txt").write_text("CORPUS\n", encoding="utf-8")
+
+    runner = make_runner()
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert result.exit_code() == 0
+    assert not (build_dir / "sources").exists()
+    assert not (build_dir / "blueprint").exists()
+    assert not (build_dir / "spec.txt").exists()

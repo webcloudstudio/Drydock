@@ -88,19 +88,3 @@ def _append_compass(compass: Path, source: Path) -> None:
     compass.write_text(
         existing.rstrip() + suffix + marker + "\n\n" + content + "\n", encoding="utf-8"
     )
-
-
-def stage_context_file(
-    source: Path, name: str, *, blueprint_dir: Path, build_dir: Path
-) -> Path | None:
-    """Copy a promoted context asset into the build tree, preserving its manifest path."""
-    try:
-        source.relative_to(blueprint_dir)
-    except ValueError:
-        return None
-    if not source.is_file() or source.suffix == ".md":
-        return None
-    destination = build_dir / name
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return destination
