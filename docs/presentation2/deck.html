@@ -234,6 +234,85 @@
     }
     .agenda li::before { content: "› "; color: var(--green); font-weight: 900; }
 
+    .process-flow {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      width: min(85vw, 1540px);
+      margin: 8vh auto 0;
+    }
+    .process-flow::before {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      top: 3.1vh;
+      left: 8.33%;
+      right: 8.33%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--green), var(--blue), var(--purple));
+    }
+    .process-step {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+    .process-marker {
+      width: 6.2vh;
+      height: 6.2vh;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 2vh;
+      border: 2px solid var(--green);
+      border-radius: 50%;
+      color: var(--deep);
+      background: var(--green);
+      font-size: 2vh;
+      font-weight: 900;
+      box-shadow: 0 0 0 7px rgba(44, 182, 125, .08);
+    }
+    .process-step:first-child .process-marker { border-color: var(--gold); background: var(--gold); }
+    .process-step:nth-child(5) .process-marker { border-color: var(--blue); background: var(--blue); color: var(--paper); }
+    .process-step:nth-child(6) .process-marker { border-color: var(--purple); background: var(--purple); color: var(--paper); }
+    .process-step h3 {
+      max-width: 15ch;
+      margin: 0 auto;
+      font-size: 2.2vh;
+      line-height: 1.18;
+    }
+    .process-step p {
+      max-width: 19ch;
+      margin: 1vh auto 0;
+      color: var(--muted);
+      font-size: 1.55vh;
+      line-height: 1.35;
+    }
+    .planning-contract {
+      display: grid;
+      gap: .7vh;
+      width: 17vw;
+      margin: 2.2vh auto 0;
+      color: var(--paper);
+      font-size: 1.55vh;
+      font-weight: 750;
+      text-align: left;
+    }
+    .planning-contract span::before {
+      content: "✓";
+      margin-right: .55vw;
+      color: var(--green);
+      font-weight: 900;
+    }
+    .process-summary {
+      margin-top: 8vh;
+      color: var(--muted);
+      font-size: 2.15vh;
+      font-weight: 750;
+      letter-spacing: .04em;
+      text-align: center;
+    }
+    .process-summary strong { color: var(--paper); }
+    .process-summary .arrow { margin: 0 1.2vw; color: var(--green); }
+
     .close-grid {
       display: grid;
       grid-template-columns: 1.2fr .8fr;
@@ -287,6 +366,8 @@
     @media (max-width: 900px) {
       .sail-stop p { font-size: 1.3vh; }
       .feature-hook { font-size: 1.8vh; }
+      .process-step h3 { font-size: 1.75vh; }
+      .process-step p, .planning-contract { font-size: 1.25vh; }
       .agenda { gap: 1vw; }
       .agenda article { padding: 2vh 1.5vw; }
     }
@@ -397,6 +478,56 @@
     </div>
   </section>
 
+  <section class="slide" aria-label="Drydock process slide">
+    <div>
+      <div class="eyebrow">The process</div>
+      <h2>From Epic to <span class="accent">working software.</span></h2>
+      <div class="process-flow" aria-label="Agile and test-driven delivery process">
+        <div class="process-step">
+          <div class="process-marker">1</div>
+          <h3>Epic Refinement</h3>
+          <p>Intent, outcomes, boundaries</p>
+        </div>
+        <div class="process-step">
+          <div class="process-marker">2</div>
+          <h3>Feature Planning</h3>
+          <p>Capabilities and dependencies</p>
+        </div>
+        <div class="process-step">
+          <div class="process-marker">3</div>
+          <h3>Story Planning &amp; Estimation</h3>
+          <p>Grooming</p>
+          <div class="planning-contract">
+            <span>Definition of Done</span>
+            <span>Acceptance Criteria (AC)</span>
+          </div>
+        </div>
+        <div class="process-step">
+          <div class="process-marker">4</div>
+          <h3>Sprint Planning</h3>
+          <p>Order, grouping, runnable frontier</p>
+        </div>
+        <div class="process-step">
+          <div class="process-marker">5</div>
+          <h3>Build Working Software</h3>
+          <p>Focused implementation</p>
+        </div>
+        <div class="process-step">
+          <div class="process-marker">6</div>
+          <h3>Testing &amp; Review</h3>
+          <p>Evidence, acceptance, Commander review</p>
+        </div>
+      </div>
+      <div class="process-summary">
+        <strong>Refine</strong><span class="arrow">→</span>
+        <strong>Plan</strong><span class="arrow">→</span>
+        <strong>Build</strong><span class="arrow">→</span>
+        <strong>Verify</strong><span class="arrow">→</span>
+        <strong>Repeat</strong>
+      </div>
+    </div>
+  </section>
+
   <section class="slide center" aria-label="Closing slide">
     <div class="close-grid">
       <div class="brand-copy">
@@ -423,7 +554,7 @@
     </div>
   </section>
 
-  <div class="footer" id="page">1 / 4</div>
+  <div class="footer" id="page">1 / 5</div>
   <div class="progress" id="progress"></div>
 
   <script>

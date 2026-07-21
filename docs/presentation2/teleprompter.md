@@ -4,7 +4,7 @@
 
 **Recording:** one numbered segment per clip
 
-**Target runtime:** 18–24 minutes after editing
+**Target runtime:** 19–25 minutes after editing
 
 **Clip ceiling:** 90 seconds; split any longer take
 
@@ -148,10 +148,43 @@
   - Real terminal, files, QuarterDeck, and application
   - Long-running model calls shown as start/result cuts
 - **Transition:**
-  - “First, the one-minute mental model.”
+  - “Before the live system, here is the development process Drydock operationalizes.”
+- **Cut:** clean pause; advance to slide 4
+
+## Clip 03 — The Process
+
+- **Length:** 45–60 seconds
+- **Scene:** deck slide 4
+- **Talking points:**
+  - Epic Refinement
+    - intent
+    - outcomes
+    - boundaries
+  - Feature Planning
+    - capabilities
+    - dependencies
+  - Story Planning & Estimation — grooming
+    - Definition of Done
+    - Acceptance Criteria (AC)
+  - Sprint Planning
+    - order
+    - grouping
+    - runnable frontier
+  - Build Working Software
+    - focused implementation
+  - Testing and Review
+    - evidence
+    - acceptance
+    - Commander review
+- **Process summary:**
+  - Refine → Plan → Build → Verify → Repeat
+  - Existing Agile and TDD practices
+  - Drydock artifacts make the practices observable and repeatable
+- **Transition:**
+  - “Now I will show where each step appears in the live system.”
 - **Cut:** switch from deck to Web Cloud Studio
 
-## Clip 03 — Context: What Drydock Adds
+## Clip 04 — Context: What Drydock Adds
 
 - **Length:** 55–75 seconds
 - **Scene:** Web Cloud Studio Drydock documentation or project page
@@ -179,7 +212,7 @@
 - **Transition:**
   - “The process has four phases: Set Up, Analyze, Implement, Loop.”
 
-## Clip 04 — Project Orientation and Honest Status
+## Clip 05 — Project Orientation and Honest Status
 
 - **Length:** 55–75 seconds
 - **Scene:** GitHub repository landing page
@@ -204,7 +237,7 @@
 - **Transition:**
   - “Now I will run that command sequence against one prepared Target.”
 
-## Clip 05 — S: Installation and Configuration
+## Clip 06 — S: Installation and Configuration
 
 - **Length:** 60–80 seconds
 - **Scene:** terminal
@@ -236,7 +269,7 @@
 - **Visible proof:** version + sanitized configuration + Target list
 - **Cut point:** command output stable on screen
 
-## Clip 06 — S: Initialize the Target
+## Clip 07 — S: Initialize the Target
 
 - **Length:** 40–60 seconds
 - **Scene:** terminal, then editor file tree
@@ -262,7 +295,7 @@
 - **Transition:**
   - “A Target is empty governance; source material gives it intent.”
 
-## Clip 07 — A: Import Source Material
+## Clip 08 — A: Import Source Material
 
 - **Length:** 55–75 seconds
 - **Scene:** editor, then terminal
@@ -286,7 +319,7 @@
 - **Transition:**
   - “Import preserves the material; analyze turns it into a planning session.”
 
-## Clip 08 — A: Analyze Into Agile Work
+## Clip 09 — A: Analyze Into Agile Work
 
 - **Length:** 70–90 seconds
 - **Scene:** terminal invocation; hard cut; editor result
@@ -317,7 +350,7 @@
   - No `BLOCKERS.md` — planning may proceed
 - **Edit:** remove model wait; retain command start and completion summary
 
-## Clip 09 — A: Commander Review in QuarterDeck
+## Clip 10 — A: Commander Review in QuarterDeck
 
 - **Length:** 75–90 seconds
 - **Scene:** QuarterDeck browser
@@ -355,7 +388,7 @@
 - **Transition:**
   - “Review resolves the decisions; plan turns them into authority and execution order.”
 
-## Clip 10 — A: Plan the Blueprint
+## Clip 11 — A: Plan the Blueprint
 
 - **Length:** 65–85 seconds
 - **Scene:** terminal invocation; hard cut; editor file tree
@@ -388,7 +421,7 @@
   - Blueprint — what the product is
   - Manifest — how the build proceeds
 
-## Clip 11 — A: Read the Manifest as a Graph
+## Clip 12 — A: Read the Manifest as a Graph
 
 - **Length:** 75–90 seconds
 - **Scene:** QuarterDeck Build Compass or editor `MANIFEST.md`
@@ -419,7 +452,7 @@
 - **Transition:**
   - “Implement walks only the runnable frontier.”
 
-## Clip 12 — I: Preview the Build Context
+## Clip 13 — I: Preview the Build Context
 
 - **Length:** 55–75 seconds
 - **Scene:** terminal
@@ -449,7 +482,7 @@
 - **Transition:**
   - “The preview explains the work; the next command executes it.”
 
-## Clip 13 — I: Build One Frontier
+## Clip 14 — I: Build One Frontier
 
 - **Length:** 65–90 seconds
 - **Scene:** terminal invocation; hard cut; editor and terminal result
@@ -480,7 +513,7 @@
 - **Core proof:** code + test + Manifest state + evidence
 - **Recovery:** live provider failure — show previously completed block and recorded evidence; state “completed run”
 
-## Clip 14 — I: Verify Acceptance and Evidence
+## Clip 15 — I: Verify Acceptance and Evidence
 
 - **Length:** 65–85 seconds
 - **Scene:** terminal, then QuarterDeck or editor
@@ -507,7 +540,7 @@
 - **Transition:**
   - “Artifacts prove the process; the application proves the result.”
 
-## Clip 15 — I: Run the Working Application
+## Clip 16 — I: Run the Working Application
 
 - **Length:** 75–90 seconds
 - **Scene:** application browser; optional terminal inset
@@ -529,7 +562,7 @@
 - **Avoid:** broad product tour of the demo application
 - **Cut point:** successful feature result held for two beats
 
-## Clip 16 — Cross-Cutting: Rigging and Context Control
+## Clip 17 — Cross-Cutting: Rigging and Context Control
 
 - **Length:** 55–75 seconds
 - **Scene:** editor split view
@@ -556,7 +589,7 @@
 - **Anchor:**
   - “Context is selected by role, not accumulated by habit.”
 
-## Clip 17 — L: Refit a Controlled Change
+## Clip 18 — L: Refit a Controlled Change
 
 - **Length:** 75–90 seconds
 - **Scene:** editor, QuarterDeck, terminal
@@ -586,7 +619,7 @@
 - **Transition:**
   - “The same acceptance path now proves the changed product.”
 
-## Clip 18 — L: Prove the Change
+## Clip 19 — L: Prove the Change
 
 - **Length:** 55–80 seconds
 - **Scene:** tests, application, and Manifest state
@@ -606,7 +639,7 @@
 - **Anchor:**
   - “This is the maintenance loop: specify, map, rebuild, verify.”
 
-## Clip 19 — Status: What Exists Now
+## Clip 20 — Status: What Exists Now
 
 - **Length:** 60–80 seconds
 - **Scene:** GitHub README “Current Release Status”
@@ -633,12 +666,12 @@
   - build a small real Target
   - report issues with reproducible artifacts
   - contribute Rigging for tested stacks
-- **Transition:** return to deck slide 4
+- **Transition:** return to deck slide 5
 
-## Clip 20 — Closer: Take It for a Sail
+## Clip 21 — Closer: Take It for a Sail
 
 - **Length:** 35–55 seconds
-- **Scene:** deck slide 4; optional talking-head inset
+- **Scene:** deck slide 5; optional talking-head inset
 - **Closer beats:**
   - Drydock claim — process layer for SDD
   - Proof shown
@@ -660,17 +693,19 @@
 ## Edit Assembly
 
 - 01–02 — 2:00 maximum
-- 03–04 — 2:30 maximum
-- 05–07 — Set Up and intake — 3:00 maximum
-- 08–11 — Analyze and plan — 5:00 maximum
-- 12–16 — Implement and proof — 6:30 maximum
-- 17–18 — Loop and changed proof — 3:00 maximum
-- 19–20 — Status and close — 2:00 maximum
-- Final target — 18–24 minutes
+- 03 — process — 1:00 maximum
+- 04–05 — context and status — 2:30 maximum
+- 06–08 — Set Up and intake — 3:00 maximum
+- 09–12 — Analyze and plan — 5:00 maximum
+- 13–17 — Implement and proof — 6:30 maximum
+- 18–19 — Loop and changed proof — 3:00 maximum
+- 20–21 — Status and close — 2:00 maximum
+- Final target — 19–25 minutes
 
 ## Required Cutaways
 
 - SAIL section in public documentation
+- process timeline
 - GitHub install example
 - imported source specification
 - `ANALYSIS.md`
