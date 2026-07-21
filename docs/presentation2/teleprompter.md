@@ -92,22 +92,45 @@
   - Follow-up to the Drydock launch overview
   - Previous video — why the process exists
   - This video — how the process works on a real project
-  - Starting point — human-readable specifications
-  - Ending point — running, tested software
-  - Harder proof — controlled change after the first build
+  - SAIL — full specification delivery lifecycle
+    - Set Up — install, configure, initialize
+    - Agile Analyze — import, analyze, Commander review, plan
+    - Implement — build, score, document
+    - Loop — refit, rebuild, verify
+  - Existing foundations
+    - Agile Methodology
+    - Test-Driven Development
 - **Visual beats:**
-  - Trace slide pipeline left to right
-  - Pause on “Commander review”
-  - Pause on “Working software”
+  - Trace SAIL route left to right
+  - Pause on “Agile Analyze”
+  - Land on Agile + TDD foundation
 - **Anchor line:**
   - “This time, the product does the talking.”
 - **Cut:** clean pause; advance to slide 2
 
-## Clip 02 — Agenda and SAIL Route
+## Clip 02 — Features and Agenda
 
-- **Length:** 30–45 seconds
-- **Scene:** deck slide 2
-- **Talking points:**
+- **Length:** 65–85 seconds
+- **Scene:** deck slides 2 and 3
+- **Slide 2 — feature hooks:**
+  - Agile Methodology
+  - Test-Driven Development
+  - Existing Best Practices
+  - Simple and Obvious
+  - Graph Database
+  - Change Management
+  - Observability
+  - Governance
+  - Full SDLC
+  - DevOps for Specs
+- **Feature relationships:**
+  - Agile + TDD — proven delivery disciplines
+  - Graph Database — executable build order and dependencies
+  - Governance + Observability — decisions, state, evidence, logs
+  - Change Management — governed maintenance after first build
+  - Full SDLC — intake through refit
+  - DevOps for Specs — repeatable operational pipeline around specifications
+- **Advance to slide 3 — agenda:**
   - Intro
     - Specification-driven development gap
     - Drydock operating model
@@ -610,12 +633,12 @@
   - build a small real Target
   - report issues with reproducible artifacts
   - contribute Rigging for tested stacks
-- **Transition:** return to deck slide 3
+- **Transition:** return to deck slide 4
 
 ## Clip 20 — Closer: Take It for a Sail
 
 - **Length:** 35–55 seconds
-- **Scene:** deck slide 3; optional talking-head inset
+- **Scene:** deck slide 4; optional talking-head inset
 - **Closer beats:**
   - Drydock claim — process layer for SDD
   - Proof shown
@@ -636,7 +659,7 @@
 
 ## Edit Assembly
 
-- 01–02 — 1:15 maximum
+- 01–02 — 2:00 maximum
 - 03–04 — 2:30 maximum
 - 05–07 — Set Up and intake — 3:00 maximum
 - 08–11 — Analyze and plan — 5:00 maximum
