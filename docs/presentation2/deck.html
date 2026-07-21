@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drydock — Live Walkthrough</title>
+  <style>
+    :root {
+      --deep: #06120d;
+      --navy: #071b2b;
+      --paper: #f4efe2;
+      --muted: #a8bbb1;
+      --green: #2cb67d;
+      --green-dark: #0a5c38;
+      --gold: #d4a017;
+      --blue: #3b5fc0;
+      --purple: #8b5cf6;
+      --red: #fb7185;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      color: var(--paper);
+      background: var(--deep);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .slide {
+      position: fixed;
+      inset: 0;
+      display: none;
+      padding: 7vh 8vw;
+      background:
+        radial-gradient(circle at 82% 14%, rgba(44, 182, 125, .14), transparent 34%),
+        radial-gradient(circle at 9% 96%, rgba(59, 95, 192, .20), transparent 40%),
+        linear-gradient(145deg, var(--deep), var(--navy));
+    }
+    .slide.active { display: grid; animation: enter .32s ease-out; }
+    .slide.center { place-content: center; text-align: center; }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .eyebrow {
+      margin-bottom: 2vh;
+      color: var(--green);
+      font-size: 1.8vh;
+      font-weight: 800;
+      letter-spacing: .28em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(3.4rem, 8vh, 7rem); line-height: .98; letter-spacing: -.045em; }
+    h2 { font-size: clamp(2.8rem, 6vh, 5.4rem); line-height: 1; letter-spacing: -.035em; }
+    .lead { margin-top: 2.3vh; color: #dce7e1; font-size: 2.7vh; line-height: 1.35; }
+    .muted { color: var(--muted); }
+    .accent { color: var(--gold); }
+
+    .brand {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 4vh;
+    }
+    .brand img {
+      width: min(19vh, 180px);
+      filter: drop-shadow(0 16px 30px rgba(0, 0, 0, .35));
+    }
+    .brand-copy { text-align: left; }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(9rem, 1fr));
+      gap: 1.4vw;
+      width: min(84vw, 1500px);
+      margin: 6vh auto 0;
+      align-items: center;
+    }
+    .pipeline .node {
+      position: relative;
+      min-height: 10vh;
+      display: grid;
+      place-content: center;
+      padding: 1.8vh 1vw;
+      border: 1px solid rgba(255, 255, 255, .13);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .055);
+      font-size: 2vh;
+      font-weight: 750;
+      box-shadow: 0 14px 28px rgba(0, 0, 0, .22);
+    }
+    .pipeline .node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -1.35vw;
+      top: 50%;
+      color: var(--green);
+      transform: translate(50%, -52%);
+      font-size: 2.5vh;
+    }
+    .pipeline small {
+      display: block;
+      margin-top: .7vh;
+      color: var(--muted);
+      font-size: 1.45vh;
+      font-weight: 600;
+    }
+    .pipeline .spec { border-top: 5px solid var(--gold); }
+    .pipeline .review { border-top: 5px solid var(--red); }
+    .pipeline .graph { border-top: 5px solid var(--purple); }
+    .pipeline .build { border-top: 5px solid var(--blue); }
+    .pipeline .software { border-top: 5px solid var(--green); }
+
+    .agenda {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2.2vw;
+      margin-top: 6vh;
+    }
+    .agenda article {
+      min-height: 31vh;
+      padding: 3.2vh 2.2vw;
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, .05);
+    }
+    .agenda .number {
+      width: 5vh;
+      height: 5vh;
+      display: grid;
+      place-items: center;
+      margin-bottom: 2.2vh;
+      border-radius: 50%;
+      color: #06120d;
+      background: var(--green);
+      font-size: 2.2vh;
+      font-weight: 900;
+    }
+    .agenda h3 { font-size: 3.2vh; }
+    .agenda ul { margin: 2.2vh 0 0; padding: 0; list-style: none; }
+    .agenda li {
+      margin-top: 1.3vh;
+      color: var(--muted);
+      font-size: 2.05vh;
+      line-height: 1.35;
+    }
+    .agenda li::before { content: "› "; color: var(--green); font-weight: 900; }
+
+    .sail {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1vw;
+      margin-top: 4vh;
+    }
+    .sail span {
+      padding: 1.4vh 1vw;
+      border-radius: 999px;
+      color: #dce7e1;
+      background: rgba(255, 255, 255, .07);
+      font-size: 1.75vh;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-align: center;
+    }
+    .sail b { color: var(--gold); font-size: 2.4vh; }
+
+    .close-grid {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 5vw;
+      align-items: center;
+      width: min(84vw, 1500px);
+    }
+    .status-card {
+      padding: 3vh;
+      border: 1px solid rgba(44, 182, 125, .3);
+      border-radius: 20px;
+      background: rgba(10, 92, 56, .2);
+      text-align: left;
+    }
+    .status-card strong { display: block; color: var(--green); font-size: 2.7vh; }
+    .status-card p { margin-top: 1.1vh; color: #dce7e1; font-size: 2vh; line-height: 1.4; }
+    .links { display: grid; gap: 1.8vh; }
+    .links a {
+      display: block;
+      padding: 2.1vh 2vw;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 14px;
+      color: var(--paper);
+      background: rgba(255, 255, 255, .055);
+      font-size: 2vh;
+      font-weight: 750;
+      text-decoration: none;
+      text-align: left;
+    }
+    .links a:hover, .links a:focus { border-color: var(--green); background: rgba(44, 182, 125, .12); }
+    .links small { display: block; margin-top: .5vh; color: var(--muted); font-size: 1.45vh; font-weight: 600; }
+
+    .footer {
+      position: fixed;
+      right: 3vw;
+      bottom: 2.4vh;
+      color: #789086;
+      font-size: 1.35vh;
+      letter-spacing: .08em;
+    }
+    .progress {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 4px;
+      width: 0;
+      background: var(--green);
+      transition: width .22s ease;
+    }
+
+    @media (max-width: 900px) {
+      .pipeline { grid-template-columns: 1fr; margin-top: 3vh; }
+      .pipeline .node { min-height: auto; }
+      .pipeline .node:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -1.3vh; transform: translate(50%, 50%); }
+      .agenda { gap: 1vw; }
+      .agenda article { padding: 2vh 1.5vw; }
+    }
+  </style>
+</head>
+<body>
+  <section class="slide active center" aria-label="Opening slide">
+    <div>
+      <div class="brand">
+        <img src="../drydock_logo.png" alt="Drydock logo">
+        <div class="brand-copy">
+          <div class="eyebrow">Live project walkthrough</div>
+          <h1>Drydock</h1>
+          <p class="lead">Specification → governed build → working software</p>
+        </div>
+      </div>
+      <div class="pipeline" aria-label="Drydock delivery flow">
+        <div class="node spec">Source material<small>intent + specifications</small></div>
+        <div class="node review">Commander review<small>QuarterDeck</small></div>
+        <div class="node graph">Blueprint + Manifest<small>truth + executable graph</small></div>
+        <div class="node build">Build + verify<small>frontier + evidence</small></div>
+        <div class="node software">Working software<small>refit and repeat</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" aria-label="Agenda slide">
+    <div>
+      <div class="eyebrow">Today’s route</div>
+      <h2>Intro. Walkthrough. Status.</h2>
+      <div class="agenda">
+        <article>
+          <div class="number">1</div>
+          <h3>Intro</h3>
+          <ul>
+            <li>The missing process layer</li>
+            <li>Commander, Crew, Blueprint</li>
+            <li>Agile + TDD + evidence</li>
+          </ul>
+        </article>
+        <article>
+          <div class="number">2</div>
+          <h3>Walkthrough</h3>
+          <ul>
+            <li>Real Target and source material</li>
+            <li>QuarterDeck and Manifest</li>
+            <li>Build, proof, and Refit</li>
+          </ul>
+        </article>
+        <article>
+          <div class="number">3</div>
+          <h3>Status</h3>
+          <ul>
+            <li>Implemented alpha path</li>
+            <li>Current boundaries</li>
+            <li>Install, inspect, contribute</li>
+          </ul>
+        </article>
+      </div>
+      <div class="sail" aria-label="SAIL methodology">
+        <span><b>S</b> · SET UP</span>
+        <span><b>A</b> · ANALYZE</span>
+        <span><b>I</b> · IMPLEMENT</span>
+        <span><b>L</b> · LOOP</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide center" aria-label="Closing slide">
+    <div class="close-grid">
+      <div class="brand-copy">
+        <div class="eyebrow">Take it for a sail</div>
+        <h2>Inspect the process.<br><span class="accent">Build something real.</span></h2>
+        <p class="lead muted">Open source · MIT licensed · alpha Commanders welcome</p>
+      </div>
+      <div>
+        <div class="status-card">
+          <strong>Drydock 0.1.4 · Alpha</strong>
+          <p>Primary SAIL path implemented. Command and Typed Specification contracts remain unstable during the 0.x series.</p>
+        </div>
+        <div class="links" style="margin-top:2vh">
+          <a href="https://webcloudstudio.com/" target="_blank" rel="noreferrer">
+            Web Cloud Studio
+            <small>webcloudstudio.com</small>
+          </a>
+          <a href="https://github.com/webcloudstudio/Drydock" target="_blank" rel="noreferrer">
+            Drydock on GitHub
+            <small>github.com/webcloudstudio/Drydock</small>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer" id="page">1 / 3</div>
+  <div class="progress" id="progress"></div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const page = document.getElementById("page");
+    const progress = document.getElementById("progress");
+    let current = 0;
+
+    function show(index) {
+      current = Math.max(0, Math.min(slides.length - 1, index));
+      slides.forEach((slide, number) => slide.classList.toggle("active", number === current));
+      page.textContent = `${current + 1} / ${slides.length}`;
+      progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+      history.replaceState(null, "", `#${current + 1}`);
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+        show(current + 1);
+        event.preventDefault();
+      } else if (["ArrowLeft", "PageUp"].includes(event.key)) {
+        show(current - 1);
+        event.preventDefault();
+      } else if (event.key === "Home") {
+        show(0);
+      } else if (event.key === "End") {
+        show(slides.length - 1);
+      } else if (event.key.toLowerCase() === "f") {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
+      show(event.clientX < window.innerWidth * .25 ? current - 1 : current + 1);
+    });
+
+    const requestedSlide = Number.parseInt(location.hash.slice(1), 10);
+    show(Number.isNaN(requestedSlide) ? 0 : requestedSlide - 1);
+  </script>
+</body>
+</html>
