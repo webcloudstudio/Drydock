@@ -17,7 +17,7 @@ sail_lead:
   - The LLM is your agile and test driven best practices team.
   - The QuarterDeck web server enables communication with your team
   - Your Compass guides the build
-  - The Drydock build process is simple and obvious
+  - The Drydock process is simple and obvious
 ideas:
   - title: "**S** — Setup and Install Drydock"
     sub_list:
@@ -56,7 +56,7 @@ Rigging provides governed business rules, stack guidance, branding, and compact 
 The loop phase lets the Commander update the product while preserving the specification as the source of truth. Edit specifications or add change tickets, run `drydock refit`, and rebuild normally.
 
 Quality is verified deterministically with `drydock score ac` based on programmatic acceptance criteria. Project Quality is
-verified by the LLM using `drydock score build` to evaluate the completed build.  
+verified by the LLM using `drydock score release` to evaluate the completed build.  
 
 **Trust But Verify** - the Commander reviews in the Quarterdeck - running the next step in the process indicates approval.
 
@@ -97,26 +97,25 @@ flowchart LR
 
 ## Drydock Features
 
-**Drydock is DevOps for specifications** and provides a governed build pipeline to create working software from your imported specifications. 
+**Drydock is a DevOps/Build process for specifications** and provides a governed build pipeline to create working software from your imported specifications. 
 
 **Overview**
 - Works with your LLM subscription. No API keys, no per-token billing. (Trivial port to other LLM CLIs)
 - Build large projects with low-end models 
-- Context optimization at every step — LLM usage minimized.
-- drydock is a devops/build process for Specifications - spec creation is out of scope
+- Context optimization — LLM usage minimized.
+- Drydock builds - Specification creation is out of scope
 
 **Agile Methodology**
-- Your Crew (LLM) uses Agile Best bractice
+- Your Crew (LLM) uses Agile Best practice
 - The Story Planning phase surface blockers and questions
 - The Decomposition phase turns specifications into features and stories
 - Agile story points are token costs.
-
-**Test Driven Develoment**
-- Your Crew (LLM) uses Test Driven Development
-- Create programmatic acceptance criteria before building using a checklist
 - Surface questions for Commander review in the Quarterdeck
-- Surface project acceptance criteria as SEA_TRIALS.md
-- Can use EARS-notation acceptance criteria with grammar validation
+
+**Test Driven Development**
+- Your Crew (LLM) uses Test Driven Development
+- Programmatic acceptance criteria created using a checklist in (SOUNDINGS.md)
+- Use EARS-notation acceptance criteria with grammar validation for Project level AC (SEA_TRIALS.md)
 
 **The Quarterdeck**
 - QuarterDeck is a custom Commander to Crew web portal.
@@ -140,9 +139,9 @@ flowchart LR
 **Governance**
 - `drydock analyze` is Story Planning and surfaces any gaps
 - Persistent intent injection at each process stage 
-- `drydock plan` creates typed specifications with prescibed roles.
+- `drydock plan` creates typed specifications with prescribed roles.
 - EARS acceptance criteria, grammar-validated.
-- Programatic Acceptance criteria for each story.
+- Programmatic Acceptance criteria for each story.
 - Sealed foundational specifications require a change ticket to alter.
 - Persistence encapsulation (library) prevent forced large rebuilds 
 - Rigging injects enterprise standards, stack rules, and voice.
@@ -150,7 +149,7 @@ flowchart LR
 
 **Verification**
 - Story Guardrails/AC are absolute prohibitions with a hard gate 
-- Project Guardrails/AC validated using `drydock score relase` by the crew
+- Project Guardrails/AC validated using `drydock score release` by the crew
 - `drydock score ac` re-verifies story deterministic AC (SOUNDINGS.md).
 - `drydock score release` re-verifies project acceptance using the LLM (SEA_TRIALS.md)
 - Pre-Build RED->GREEN enforcement - Vacuous and unneeded AC are demoted 
@@ -185,7 +184,7 @@ positional arguments:
     init      Initialize a target workspace.
     status    Show project status and orientation.
     validate  Validate a Blueprint's Typed Specification.
-    document  Generate projdct documentation from Blueprints
+    document  Generate project documentation from Blueprints
     publish   Render frontmatter Markdown into publishable HTML.
     rigging   Manage Drydock Rigging.
     plan      Create the Manifest and Blueprints
@@ -486,7 +485,7 @@ The manifest is your final Plan - The Commander can rearrange stories at their
 whim in the QuarterDeck.
 
 In the Build Compass you review the build plan in the Manifest.   The manifest will group similar steps
-to reduce your context and will set the stories up in a meaningful implementaton plan of Foundation -> Data and Persistence -> Features -> User Interface.  Each step will display its estimated counts and the Commander can:
+to reduce your context and will set the stories up in a meaningful implementation plan of Foundation -> Data and Persistence -> Features -> User Interface.  Each step will display its estimated counts and the Commander can:
 * reorder stories so important/testable steps are done first
 * re group stories so they can be run by a single agent
 * review Blueprint programmatic and user acceptance
@@ -506,15 +505,12 @@ Passing programmatic acceptance unlocks the next set of dependent operations.
 
 ### drydock build
 
-Build executes the work blocks in `MANIFEST.md` based on their dependency graph. 
+Build converts blueprints to code based on the `MANIFEST.md` or dependency graph. 
 
-Build also validates changed Python dependency manifests as part of build acceptance. Registry-backed
-dependency names must resolve legitimately before a build block is accepted; suspicious dependency
-names stop the block and surface a reviewable failure.
+Individual stories are validated once created using the deterministic acceptance criteria they contain.
 
-Each Manifest build step is quality-gated at the story or grouped-block level. Drydock shows
-per-story acceptance observations in build evidence and operator output. Pre-build proof passes are
-informational. Post-build proof failures fail the step.
+The build is done in "blocks" of stories.  This grouping is created by `drydock plan`. The commander can control
+grouping and build order in the Quarterdeck.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -544,23 +540,24 @@ flowchart LR
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `evidence/` | Target root | Reviewable build evidence written for completed work |
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
 
-`drydock build <Target>` executes the dependency-ready frontier and writes the application into `$DRYDOCK_BUILD_DIRECTORY/<Target>`. `--build-dir` overrides the output directory for the current run.
+`drydock build <Target>` executes the dependency-ready frontier and writes the application into `$DRYDOCK_BUILD_DIRECTORY/<Target>`. 
 
-`--reset-failed` resets failed Manifest blocks and retries them. `--normalize-order` normalizes authored Manifest group order before building. `--step <STEP>` builds one named step, and `--force` resets that step and its child acceptance checks before rebuilding it.
+```text
+  `--build-dir` overrides the output directory for the current run.
+  `--reset-failed` resets failed Manifest blocks and retries them. 
+  `--normalize-order` normalizes authored Manifest group order before building. 
+  `--step <STEP>` builds one named step 
+  `--force` resets that step and its child acceptance checks before rebuilding it.
+  `--dry-run` previews the next build step without invoking the LLM or writing files. 
+  `--show-prompt` prints the full assembled prompt only when combined with `--dry-run`.
+```
 
-`--dry-run` previews the next build step without invoking the LLM or writing files. `--show-prompt` prints the full assembled prompt only when combined with `--dry-run`.
+Before executing work, `drydock build` checks previously applied Blueprint files for drift. If they have changed, the build stops and directs the Commander to run `drydock refit`. Foundational specifications such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit 
+change tickets to modify.
 
-Before executing work, `drydock build` checks previously applied Blueprint files for drift. If a governing specification changed, build stops and directs the Commander to run `drydock refit`. Foundational specifications such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require an explicit change ticket.
-Before acceptance closes a build block, `drydock build` also validates newly introduced or changed registry-backed Python dependency names. Dependency legitimacy failures are written through the normal build evidence and failure path.
-
-### Agile Build Review with drydock run quarterdeck
-
-The QuarterDeck guides the Commander through the agile process.  The build review lets the user see evidence, demos, and questions needed for a decision.
-
-Conceptually the Build Review screen is similar to the `drydock build status` command.
+Build status can be viewed on the Manifest page in the quarterdeck or with `drydock build status`.
 
 ### drydock build status
 
@@ -569,30 +566,24 @@ Conceptually the Build Review screen is similar to the `drydock build status` co
 ```text
 drydock build status <Target>   # print per-block state and current runnable frontier
 ```
-
 ### drydock score
+
+`drydock score` rates the build and can run in two modes. 
 
 ```text
 drydock score ac <Target>
 drydock score release <Target>
 ```
 
-**Behavior description**
+The Commander scans checkmarks in the QuarterDeck instead of granting approvals.
 
-`drydock score` has two modes. The Commander scans checkmarks in the QuarterDeck instead of
-granting approvals.
+`drydock score ac` verifies acceptance deterministically, with no LLM call by running the acceptance criterion. It writes the 
+blueprint acceptance criteria to SOUNDINGS.md with a status of `✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` and a timestamp.
+Criteria with vacuous proof — an empty body, a constant assertion, or a self-comparison — is demoted to `UNVERIFIED` rather than trusted.
+`drydock score ac` is deterministic.
 
-`drydock score ac` verifies acceptance deterministically, with no LLM call and no network. It runs
-each acceptance criterion's Programmatic Acceptance, applies proof-integrity analysis, and records a
-`✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` verdict per criterion in `SOUNDINGS.md` with a timestamp. A
-criterion whose proof is vacuous — an empty body, a constant assertion, or a self-comparison — is
-demoted to `UNVERIFIED` rather than trusted.
-
-`drydock score release` evaluates the project-level criteria in `SEA_TRIALS.md`. Because those
-criteria are expressed in EARS notation, the release gate is LLM-assisted: it judges each project
-criterion against the completed build and reports the release verdict. Deterministic `score ac`
-proofs and guardrail results feed the gate; a guardrail that cannot be verified deterministically
-fails it.
+`drydock score release` is an LLM pass to evaluates the project-level criteria in `SEA_TRIALS.md`. 
+`SEA_TRIALS.md` contains criteria are expressed in EARS notation. The LLM  judges the project and reports the release verdict. 
 
 **Input files**
 
@@ -620,26 +611,23 @@ fails it.
 
 ### drydock document
 
+`drydock document` creates Target documentation from the Target Blueprint.
+
 ```text
 drydock document generate <Target> [--model <model>]
 drydock document assemble <Target> [--theme <theme>]
 drydock document <Target> [--model <model>] [--theme <theme>]
 ```
 
-`drydock document` creates Target documentation from the Target Blueprint.
+`drydock document generate <Target>` reads the Target Blueprint files and documentation configuration to create project
+documentation in `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`. It creates Markdown.
 
-`drydock document generate <Target>` reads the Target Blueprint, `METADATA.md`, `MANIFEST.md`,
-and documentation configuration and writes the standard Target documentation set under
-`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/`.
-
-`drydock document assemble <Target>` reads existing `DOC-*.md` files under
-`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/` and renders one browsable documentation site at
-`$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/index.html`.
+`drydock document assemble <Target>` reads `DOC-*.md` from `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/` and deterministically
+creates browsable documentation.
 
 `drydock document <Target>` runs `generate` and then `assemble` as one documentation pipeline.
 
-The Target documentation configuration lives at
-`$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`.
+Documentation configuration lives in `$DRYDOCK_WORKSPACE/targets/<Target>/documentation.yaml`.
 
 ```yaml
 theme: slate
@@ -654,8 +642,7 @@ sections:
   - SIGNALS
 ```
 
-The `sections:` order defines the documentation navigation order. CLI flags override configuration
-values for the current run.
+The `sections:` order defines the documentation navigation order. CLI flags override configuration values for the current run.
 
 Supported theme names are `slate`, `harbor`, and `paper`.
 
@@ -686,7 +673,8 @@ Supported theme names are `slate`, `harbor`, and `paper`.
 
 ### drydock publish
 
-Drydock publish converts arbitrary Markdown into HTML or PDF. Use it for white papers and other published artifacts. Your Markdown should have appropriate frontmatter.
+Drydock publish converts arbitrary Markdown into HTML or PDF. It uses front matter for the first section.
+Use it for white papers and other published artifacts. 
 
 ```text
 drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--pdf] [--pdf-output <Output.pdf>]
@@ -722,22 +710,24 @@ flowchart LR
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  CHANGE(["Change Request"]):::dir --> REFIT["refit"]:::script
+  CHANGE(["Changed Blueprints"]):::dir --> REFIT["refit"]:::script
   Ticket(["Change Ticket"]):::dir --> REFIT
   REFIT --> SPECOUT(["Updated Blueprint"]):::dir
   REFIT --> SOFTWARE(["Working Software"]):::output
 ```
 ### drydock refit
 
-`drydock refit` processes change tickets in `blueprint/changes/`, normalizes them into the Drydock build flow, updates the Manifest, and resets impacted work so it can be rebuilt in dependency order.
+The `drydock refit` processes change tickets in `blueprint/changes/`, updates the Manifest, and resets impacted work so it can be 
+rebuilt in dependency order.  It also modifies MANIFEST.md.
 
-Each change ticket is a Typed Specification file with an `Amends:` header that names the Blueprint file it changes. Refit uses that relationship to map the ticket into the existing plan.
+The Refit modifies change tickets with an `Amends:` header that names the Blueprint file it changes. **A change ticket may only
+modify a single blueprint so change tickets must be created based on features or screens.  
 
-Refit also checks the current Blueprint for drift against previously applied work. If a specification changed, Refit reopens the affected Manifest work so the next `drydock build` can rebuild it. Foundational files such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit change tickets.
+Change tickets must be placed into `blueprint/changes/*.md`.
 
-**Input files.** `blueprint/changes/*.md`, Blueprint files, `MANIFEST.md`, and `COMPASS.md`.
+Refit also detects changed Blueprint files. It compares the cksum and git commit hashes to detect the changes.  If a specification has changed, Refit marks the affected Manifest work so the next `drydock build` will rebuild it. 
 
-**Output files.** Updated `blueprint/changes/*.md` and patched `MANIFEST.md`.
+Foundational files such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit change tickets.
 
 **Exit codes.** `0` success or no-op; `1` operational failure or unticketed foundational drift; `2` usage error.
 
@@ -774,13 +764,18 @@ Human-authored feedback artifacts (`ANALYZE_COMPASS.md`, `PLAN_COMPASS.md`, answ
 
 ## Directory Layout
 
-Drydock stores its own state under `$DRYDOCK_WORKSPACE/targets/<Target>`. The built application lives under `$DRYDOCK_BUILD_DIRECTORY/<Target>`. The QuarterDeck is configuration driven and uses files from the Drydock-managed Target tree.
+Drydock uses a per-target workspace stored in `$DRYDOCK_WORKSPACE/targets/<Target>`. 
+
+Drydock builds applications into `$DRYDOCK_BUILD_DIRECTORY/<Target>`. 
+
+The QuarterDeck is driven by configuration files and markdown from `targets/<Target>`.
 
 ```text
 $DRYDOCK_WORKSPACE/                       # explicit config/env or Git top-level — required
 ├── logs/
 │   ├── history.jsonl                     # append-only command-invocation log
 │   └── run.log, run.log.1 … run.log.5    # rotating per-command execution logs
+│   └── Other                             # all commands and llm operations are logged
 │
 └── targets/
     └── <Target>/                         # one self-contained project
@@ -806,8 +801,6 @@ $DRYDOCK_WORKSPACE/                       # explicit config/env or Git top-level
         │   └── changes/
         │       └── TICKET-NNN-{Name}.md
         │
-        ├── evidence/                     # reviewable build evidence, named by build object
-        │
         └── QuarterDeck/                  # console state only; runtime served from the package
             ├── console.yaml
             ├── pages/
@@ -823,17 +816,13 @@ $DRYDOCK_BUILD_DIRECTORY/
 ```
 
 
-## The Manifest — (a Graph Build Plan)
+## The Manifest Graph Database
 
-`MANIFEST.md` is the single generated execution view of the Blueprint. It determines order,
-selects only required context, keeps work within useful context limits, identifies stale work, and
-preserves unaffected accepted work. It is not a second product definition.
+`MANIFEST.md` is created by `drydock plan` and can be modified in the QuarterDeck. It groups stories into blocks or sets of stories.
+This determines build order.  `MANIFEST.md` contains story required context and build status.
 
-The Manifest manages the full product lifecycle:
-
-- specifications for individual components like screens can be changed resulting in
-  context-minimized incremental builds
-- new files (such as change tickets) can be discovered and applied
+The Manifest controls the build.  Ordering is important because the Commander will want to prioritize some work over other. Grouping
+is important to save context when building similar blueprints.
 
 Each Manifest contains four block types:
 
@@ -841,8 +830,7 @@ Each Manifest contains four block types:
 - `story` builds something. A Drydock story is an enriched Spec Kit task: it has states,
   `depends:`, Blueprint acceptance, and prompt-assembly fields.
 - `spike` answers a question. Results feed future iterations
-- `ac` is a legacy block type retained for existing Manifests. Durable acceptance lives in the
-  Blueprint.
+- `ac` is a legacy block type retained for existing Manifests. Durable acceptance lives in the Blueprint.
 
 ### Plan Header
 
@@ -854,8 +842,8 @@ applied_specs: |
   DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
 ```
 
-Build execution evidence lives in the execution log. The Manifest preamble carries build-state
-provenance required to detect stale previously applied Blueprint Specifications.
+Manifest contains the build-state provenance required to detect stale previously applied Blueprint Specifications.
+
 `applied_specs` records one line per Blueprint Specification file that has been applied by a
 successful story or spike. The path is relative to `blueprint/`. `sha256` is the authoritative
 dirty signal. `commit` is the latest git commit that touched that file, or `-` when unavailable.
@@ -891,10 +879,9 @@ software, or both.
 behavioral Sea Trial is referenced by an implementing story or a Blueprint Programmatic Acceptance
 proof. Guardrails require no story or proof reference.  Unknown references and missing required coverage invalidate a generated plan.
 
-### Feature Blocks
+### Grouping Blocks
 
-A feature is an optional grouping block. Small plans do not require features. Build execution uses
-the grouping block as the atomic build unit: if a pending child story or spike depends on another
+Blocks group stories. Build execution uses the grouping block as the atomic build unit: if a pending child story or spike depends on another
 child story or spike inside the same feature, that dependency is internal sequencing and does not
 block the feature from running. A feature can run only when every dependency outside the feature is
 `closed/verified`. A feature closes only after all required child stories, spikes, and feature-level
@@ -938,7 +925,7 @@ they are never positioned among steps, only run after their parent story builds.
 
 ### Block States
 
-All four block types use the same four states:
+All block types use the same four states:
 
 | State | Meaning |
 |---|---|
@@ -1030,15 +1017,15 @@ state:        pending
 ## The QuarterDeck — Agile Development Console
 
 The QuarterDeck is the command surface where the product owner reviews LLM build output and makes
-decisions. Evidence is presented using Agile methodology — the same structured handoff between
-builder and owner, without the meeting.
+decisions. Evidence is presented using screens that track the Agile methodology.
 
-The QuarterDeck is configuration-driven: a console rendered from a single `QuarterDeck/console.yaml`
-index file over Markdown and JSON inputs. It holds no logic of its own; it shows the artifacts a
-project produces and routes the few that require a decision to the product owner. Full configuration
-reference, page-type schemas, and API surface are documented in `QuarterDeck/README.md`.
+The QuarterDeck is configuration-driven.  It uses a single `QuarterDeck/console.yaml` and per Target
+Markdown and JSON inputs. It holds no logic of its own; it renders the LLM output using templates which allow
+the Commander to change the markdown cleanly.  
 
-**Page types.** Each item in `console.yaml` declares one renderer:
+The QuarterDeck is documented in `QuarterDeck/README.md`.
+
+**Page types.** 
 
 | Type | Purpose |
 |---|---|
@@ -1052,23 +1039,18 @@ reference, page-type schemas, and API surface are documented in `QuarterDeck/REA
 | `command_status` | Derived read-only acceptance-readiness view from Core Docs. |
 | `compass` | The Build Compass: the live `MANIFEST.md` work graph — grouped, costed, state-badged (buildable now / review / done / failed with reason), and editable (reorder/regroup/rename/split). |
 
-**Standard artifacts.** Every Drydock QuarterDeck carries three pinned source-of-truth artifacts
-in Drydock Core, shown by file existence:
+**Standard artifacts.** Drydock QuarterDeck uses standard artifacts including:
 
 | Artifact | Purpose |
 |---|---|
 | **Commanders Chair** | Orientation and default view: mission and current state at a glance. |
 | **Soundings** | Acceptance-criteria checklist — each capability, its state, and evidence. |
 | **Sea Trials** | Objectives and success criteria — what the project must achieve to be declared delivered. |
+| **COMPASS Files** | Persistent Commander guidance. |
 
-`drydock init <Target>` creates these artifacts without overwriting existing files. `drydock plan`
-preserves them and projects acceptance gates into Soundings by stable ID.
+`drydock init <Target>` enables the QuarterDeck for a `<Target>`. 
 
-**Decisions write back.** Review decisions made in the QuarterDeck are written to `MANIFEST.md` by
-the same decision writer used by the CLI. The `compass` page is the Build Compass — the live work
-graph with per-step lifecycle state and constrained structure editing. The QuarterDeck renders plan
-state and records decisions; it does not
-replace the Blueprint, `MANIFEST.md`, or build engine.
+Artifacts are idempotent and use ID fields to prevent status from being overwritten.
 
 **Blockers.** `drydock analyze` emits `BLOCKERS.md` only when questions prevent planning; a healthy
 project has no `BLOCKERS.md`. When present, the Blockers section appears first in the sidebar. The
@@ -1077,30 +1059,46 @@ the file is deleted. Blockers are mandatory gate conditions, distinct from spike
 
 ## Drydock Rigging — Portfolio Governance
 
-Drydock Rigging is the enterprise conformance layer shipped with Drydock. Organizations customize it
-once; every project built by Drydock conforms automatically.
+Drydock Rigging is the enterprise rules specifying application behavior.  The Commander will populate
+a mandatory questionnaire as to which Rigging to add after `drydock analyze`.  
+
+The Rigging that ships with Drydock are the Authors build rules. Organizations should review and provide their own
+stack and branding and best practice files. Every project built by Drydock conforms to Rigging automatically.
+
+**Drydock only ships with Pythonic Rigging** - COLLABORATORS should create Rigging for other implementation languages.  The 
+Author of Drydock works in python and has no ability to test other Rigging and therefore they are not currently included
+in the project.  
 
 Three layers govern agent behavior: business rules, technology stack rules, and branding.
 
 **Business rules.** `BUSINESS_RULES.md` defines how agents must behave — git workflow, project
-layout, script conventions, error handling. Agents receive the compact derivative
+layout, script conventions, error handling. It is injected into AGENTS.md in the <Target> receive a compacted derivative
 `BUSINESS_RULES_compact.md`; the full source stays in `Rigging/`.
 
 **Stack rules.** `Rigging/stack/` holds one file per technology, prescriptive and standalone.
 
 **Branding.** `BRANDING_MAIN.md` defines the master palette, typography, and design philosophy.
 Per-medium files (`BRANDING_DOCUMENTATION.md`, `BRANDING_WHITEPAPERS.md`, `BRANDING_WEBSITE.md`)
-inherit from it.
+inherit from it.  Branding contains, for example, the color palette used by the built software and will be used unless that
+is specified in the imported specifications. If that is the case, do not import BRANDING. 
+
+Rigging is a flexible layer designed for your Best Practices and Enterprise software conformance.
 
 ### Compaction
 
-Compaction creates a `<file>_compact.md` from `<file>.md`. It keeps the callable surface of the source file and drops explanatory detail that downstream build steps do not need.
+Compaction creates a `<file>_compact.md` from `<file>.md`. The compacted file is the callable surface of the source file with no explanatory detail.
 
-Consumer stories receive the compact derivative. This lets Drydock build with focused context instead of restacking full specifications for every dependent change.
+Stories building a feature may require the full version of the markdown but once that is built, additional stories need only use the compact derivative. This lets Drydock build with focused context instead of restacking full specifications for every dependent change.
 
-If a required compact derivative is absent, the build stops with a directive to run `drydock rigging compact <Target>`. `drydock plan` warns when a source is newer than its derivative.
+Use of Full files and Compact files is determined automatically by the build graph.
 
-`Rigging/` ships with pre-built compact derivatives. `--all` also refreshes Drydock's own Rigging compacts. Files without a callable surface are skipped. `_compact.md` files are never treated as sources.
+When needed, `drydock build` will automatically create compacted files.
+
+`drydock plan` warns when a source is newer than its derivative.  You should recompact those files.  This may entail a rebuild.  To control
+this you can `touch` the files to change the compacted file create time to later than the main file. 
+
+Drydock track compaction.  Rerun with `--all` to refresh all compaction including Drydock's own Rigging compacts. 
+Files without a callable surface are skipped and that is marked in the file name. 
 
 ### Commands
 
@@ -1126,10 +1124,10 @@ drydock rigging verify <Target>
 
 ## Drydock Document - Project Documentation
 
-Generates project documentation from a Blueprint's Typed Specification files in two phases. The AI
-phase writes `DOC-*.md` summaries per Specification section; the assembly phase renders them into a
-versioned `$DRYDOCK_BUILD_DIRECTORY/<Target>/docs/index.html`. The two phases run independently so
-hand-edited build `DOC-*.md` files survive re-assembly without being overwritten.
+Generate project documentation from a Blueprint's Typed Specification using `drydock document`. The generate 
+phase uses the LLM to write `DOC-*.md` summaries to `docs/`.  The assemble phase renders them into a
+versioned renderable content in html and pdf format.  The two phases run independently so
+hand-edited `DOC-*.md` files survive re-assembly without being overwritten.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -1200,16 +1198,15 @@ not silently discard ambiguous or conflicting source content.
 
 ## Drydock Security
 
-The following explains the current implementation of drydock security.  The surface most exposed is the llm
-parsing and below is how drydock currently implements for claude and codex.
+This section explains drydock security.  
 
 Drydock also applies a dependency legitimacy guardrail during build to reduce hallucinated or suspicious package-name supply-chain exposure.
 
-For stronger encapsulation, wrapping this command in bwrap (bubblewrap) confines the build's filesystem to the config home and working directory — recommended as an added safety layer but out of scope for the current implementation.  A pipeline sandbox should limit read/write to the two main directories in scope for this work - namely DRYDOCK_BUILD_DIRECTORY and DRYDOCK_WORKSPACE.
+For enterprise security encapsulation, use Docker or bwrap (bubblewrap) to restrict what the process can touch. Drydock only requires access
+to DRYDOCK_BUILD_DIRECTORY and DRYDOCK_WORKSPACE.  Encapsulation is required to protect you from poorly written or malicious specifications. Drydock
+trusts the imported material and **WILL** run it.
 
-### Claude Implementation
-
-Drydock encapsulates the llm when claude is chosen via:
+### Claude Security Details
 
 Drydock invokes the Claude CLI as a non-interactive build agent inside an isolated configuration home. HOME / CLAUDE_CONFIG_DIR are set per-subprocess to a dedicated ~/.drydock/claude-home, seeded only with the subscription credentials, so the agent reads none of the user's settings, plugins, MCP servers, history, or state. -p runs in print (headless) mode — single prompt in, response out, no interactive session.
 
@@ -1230,9 +1227,9 @@ Drydock invokes the Claude CLI as a non-interactive build agent inside an isolat
       --model <model> selects the configured model.
 
 
-### Codex Implementation
+### Codex Security Details 
 
-When the provider is codex, Drydock isolates Codex's configuration and identity — not its command execution. 
+Drydock isolates Codex's configuration and identity — not its command execution. 
 
  CODEX_HOME=/tmp/drydock-codex-home-XXXX codex exec \
      --ignore-user-config \
