@@ -77,7 +77,7 @@ def test_drydock_console_exposes_existing_owned_documents():
     items = {item["id"]: item for item in config["items"]}
 
     # Simple items that resolve to a single file path
-    simple_items = {"soundings", "master_blueprint", "rendered_docs"}
+    simple_items = {"master_blueprint", "rendered_docs"}
     assert simple_items <= items.keys()
     for item_id in simple_items:
         item = items[item_id]
@@ -85,13 +85,12 @@ def test_drydock_console_exposes_existing_owned_documents():
         assert relative, item_id
         assert (root / "QuarterDeck" / relative).resolve().is_file(), item_id
 
-    # Document items (multi-variant)
-    sea_trials = items["sea_trials"]
-    assert sea_trials["type"] == "document"
-    assert sea_trials["section"] == "core"
-    assert (root / "QuarterDeck" / sea_trials["path_md"]).resolve().is_file()
-    assert (root / "QuarterDeck" / sea_trials["path_html"]).resolve().is_file()
-    assert (root / "QuarterDeck" / sea_trials["path_pdf"]).resolve().is_file()
+    # SOUNDINGS.md and SEA_TRIALS.md are Target artifacts — Soundings is written by
+    # `drydock score` against a scored Target. The Drydock repository is not a Target,
+    # so its own console carries neither. See tests/test_standard_artifacts.py for the
+    # generated Target console, which does pin them.
+    assert "soundings" not in items
+    assert "sea_trials" not in items
 
     pypi = items["pypi_reservation"]
     assert pypi["type"] == "document"
@@ -99,11 +98,10 @@ def test_drydock_console_exposes_existing_owned_documents():
     assert (root / "QuarterDeck" / pypi["path_pdf"]).resolve().is_file()
 
 
-def test_drydock_console_pins_the_three_standard_artifacts_in_core():
+def test_drydock_console_pins_the_commanders_chair_in_core():
     config = _console_config()
     items = {item["id"]: item for item in config["items"]}
-    for standard in ("commanders_chair", "soundings", "sea_trials"):
-        assert items[standard]["section"] == "core", standard
+    assert items["commanders_chair"]["section"] == "core"
     assert items["commanders_chair"]["label"] == "Commanders Chair"
 
 
@@ -205,17 +203,15 @@ def test_command_status_requires_exactly_one_core_soundings_table(monkeypatch):
     assert "Expected exactly one Core Doc Soundings table; found 2" in rendered
 
 
-def test_drydock_command_status_renders_current_soundings():
+def test_drydock_command_status_reports_no_soundings_for_the_repository_console():
+    """Command Status projects a Target's Soundings board. The Drydock repository is
+    not a scored Target, so its console has no Soundings core doc and must say so
+    rather than invent totals."""
     quarterdeck = _load_quarterdeck()
 
     rendered = quarterdeck.render_command_status({"label": "Command Status"})
 
-    assert "Total criteria</strong><br>49" in rendered
-    assert "DONE (33)" in rendered
-    assert "IMPLEMENTED (16)" in rendered
-    assert "STUBBED (0)" in rendered
-    assert "NOT STARTED (0)" in rendered
-    assert "no structured findings" in rendered
+    assert "Expected exactly one Core Doc Soundings table; found 0" in rendered
 
 
 def test_drydock_console_core_artifact_order():
@@ -228,8 +224,6 @@ def test_drydock_console_core_artifact_order():
     assert [item["id"] for item in core] == [
         "commanders_chair",
         "master_blueprint",
-        "sea_trials",
-        "soundings",
         "board",
     ]
 
