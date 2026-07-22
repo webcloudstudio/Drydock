@@ -62,3 +62,8 @@ Drydock_Video.mp4
 *.m4a
 *.aac
 .pre-commit-cache-codex
+
+commonmark.sh
+dry.sh
+mar.sh
+stim.sh
