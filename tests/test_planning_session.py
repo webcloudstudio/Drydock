@@ -1267,6 +1267,28 @@ def test_corpus_named_in_prose_outside_acceptance_is_not_fatal(tmp_path):
     assert "story-status" in result.plan.by_id()
 
 
+def test_corpus_staged_but_not_run_inside_acceptance_is_not_fatal(tmp_path):
+    """Asserting the corpus file is staged is not running it. Only execution counts."""
+    _make_target(tmp_path)
+    staged = (
+        "### check-corpus-staged\nThe supplied verification assets are present.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "import importlib.util\n\n"
+        'assert Path("sources/spec_tests.py").is_file()\n'
+        'assert Path("sources/normalize.py").is_file()\n'
+        'spec = importlib.util.spec_from_file_location("normalize", "sources/normalize.py")\n'
+        "```\n\n"
+    )
+    out = _llm_output().replace(
+        "## Programmatic Acceptance\n\n", "## Programmatic Acceptance\n\n" + staged
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert "story-status" in result.plan.by_id()
+
+
 def test_unbounded_corpus_inside_acceptance_is_fatal(tmp_path):
     target_dir = _make_target(tmp_path)
     feature = _SPEC_HEADER.format(

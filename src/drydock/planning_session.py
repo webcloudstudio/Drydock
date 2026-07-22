@@ -1327,6 +1327,36 @@ def _acceptance_status(text: str) -> tuple[int, bool]:
     return count, justified_none
 
 
+# Markers that indicate an acceptance check executes a script rather than merely
+# referring to it. Naming the corpus file — asserting it is staged, or importing a
+# helper beside it — is not execution.
+_CORPUS_INVOCATION_RE = re.compile(
+    r"subprocess|sys\.executable|os\.system|check_output|check_call|Popen|runpy"
+    r"|\bpython[\d.]*\b|\bpytest\b",
+    re.IGNORECASE,
+)
+
+
+def _invokes_unbounded_corpus(acceptance: str) -> bool:
+    """Report whether the acceptance section runs the whole conformance corpus.
+
+    The imported corpus (``spec_tests.py``) belongs to the final SEA_TRIALS.md
+    measurement; a story may stage it or select a bounded slice (``--pattern`` /
+    ``--number``) but must not execute the full suite as a story gate.
+    """
+    if "--pattern" in acceptance or "--number" in acceptance:
+        return False
+    lines = acceptance.splitlines()
+    for index, line in enumerate(lines):
+        if "spec_tests.py" not in line:
+            continue
+        # A call may span lines, so inspect a small window around the reference.
+        window = "\n".join(lines[max(0, index - 3) : index + 4])
+        if _CORPUS_INVOCATION_RE.search(window):
+            return True
+    return False
+
+
 # A programmatic story should carry at least this many assertions before it stops
 # drawing a test-driven-acceptance warning.
 _MIN_ASSERTIONS_PER_STORY = 2
@@ -1566,12 +1596,7 @@ def _integrity_check(
             acceptance = (
                 _extract_terminal_section(text, "Programmatic Acceptance") if text else None
             )
-            if (
-                acceptance
-                and "spec_tests.py" in acceptance
-                and "--pattern" not in acceptance
-                and "--number" not in acceptance
-            ):
+            if acceptance and _invokes_unbounded_corpus(acceptance):
                 fatal.append(
                     f"{block.block_id}: Programmatic Acceptance invokes an unbounded "
                     "conformance corpus; keep it in SEA_TRIALS.md final measurement"
