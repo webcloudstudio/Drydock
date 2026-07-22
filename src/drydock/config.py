@@ -20,7 +20,11 @@ _KEY_MAP = {
     "codex_sandbox": "DRYDOCK_CODEX_SANDBOX",
     "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
     "quarterdeck_port": "QUARTERDECK_PORT",
+    "diagnose": "DRYDOCK_DIAGNOSE",
 }
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_FALSE_VALUES = {"0", "false", "no", "off"}
 
 DEFAULT_MODEL = "sonnet"
 DEFAULT_PROMPT_WARN_TOKENS = 50_000
@@ -217,6 +221,16 @@ def get_quarterdeck_port() -> int:
     return port
 
 
+def get_diagnose_enabled() -> bool:
+    """Whether an opaque failure triggers a standoff diagnosis by the selected LLM.
+
+    Resolution order: DRYDOCK_DIAGNOSE (env or config file) → enabled. The ``--no-diagnose``
+    flag suppresses the diagnosis for a single invocation and is handled by the CLI.
+    """
+    value, _source = _get("DRYDOCK_DIAGNOSE", "true")
+    return (value or "").strip().lower() not in _FALSE_VALUES
+
+
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
     ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
@@ -239,6 +253,7 @@ def config_show() -> list[tuple[str, str, str]]:
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
+        ("diagnose", "DRYDOCK_DIAGNOSE", "true"),
     ):
         value, source = _get(key_upper, default)
         rows.append((display_key, value or "(not set)", source))
@@ -305,6 +320,13 @@ def config_set(key: str, value: str) -> Path:
                 f"Invalid prompt_warn_tokens: {value!r}\n  Expected a positive integer (tokens)."
             )
         stored_value = value
+    elif upper == "DRYDOCK_DIAGNOSE":
+        stored_value = value.strip().lower()
+        if stored_value not in _TRUE_VALUES | _FALSE_VALUES:
+            raise ConfigurationError(
+                f"Invalid diagnose: {value!r}\n"
+                f"  Valid values: {', '.join(sorted(_TRUE_VALUES | _FALSE_VALUES))}"
+            )
     elif upper == "QUARTERDECK_PORT":
         try:
             port = int(value)

@@ -1906,3 +1906,142 @@ def test_render_recorded_error_omits_recovery_when_empty():
     )
     assert "Recovery" not in out
     assert "Something went wrong." in out
+
+
+class TestStandoffDiagnosis:
+    """The CLI's opaque-failure hook: banner, diagnosis, persistence, and suppression."""
+
+    @staticmethod
+    def _args(target: str, **overrides):
+        import argparse
+
+        values = {
+            "Target": target,
+            "no_diagnose": False,
+            "llm_provider": "claude",
+            "model": "sonnet",
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
+    @staticmethod
+    def _runner(text="CAUSE: the agent wrote no files.\nDO: rerun drydock build widgets"):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeRun:
+            ok: bool = True
+            text: str = ""
+            execution_id: str = "exec-fake"
+
+        def run(prompt, working_directory, **kwargs):
+            run.seen.append(prompt)
+            return FakeRun(text=text)
+
+        run.seen = []  # type: ignore[attr-defined]
+        return run
+
+    @pytest.fixture()
+    def target_dir(self, tmp_workspace, tmp_target_root, isolated_config, monkeypatch):
+        from drydock.diagnose import reset_diagnosis_guard
+        from drydock.errors import write_error_record
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        reset_diagnosis_guard()
+        tgt = tmp_target_root / "widgets"
+        tgt.mkdir(parents=True)
+        write_error_record(
+            tgt,
+            command="build",
+            phase="LLM execution",
+            classification="no build files written",
+            detail="The agent finished but produced nothing.",
+            recovery="Rerun the block.",
+        )
+        yield tgt
+        reset_diagnosis_guard()
+
+    def test_opaque_failure_prints_banner_and_persists_diagnosis(self, target_dir, capsys):
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import read_error_record, write_error_record
+
+        record = write_error_record(
+            target_dir,
+            command="build",
+            phase="LLM execution",
+            classification="no build files written",
+            detail="The agent finished but produced nothing.",
+            recovery="Rerun the block.",
+        )
+        _standoff_diagnosis(
+            self._args("widgets"),
+            ["build", "widgets"],
+            record=record,
+            runner=self._runner(),
+        )
+
+        err = capsys.readouterr().err
+        assert "A MAJOR ERROR HAS OCCURRED" in err
+        assert "claude/sonnet is diagnosing" in err
+        assert "CAUSE: the agent wrote no files." in err
+
+        persisted = read_error_record(target_dir)
+        assert persisted is not None
+        assert "DO: rerun drydock build widgets" in persisted.diagnosis
+        assert persisted.recovery == "Rerun the block."
+
+    def test_no_diagnose_flag_suppresses_the_call(self, target_dir, capsys):
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import read_error_record
+
+        runner = self._runner()
+        _standoff_diagnosis(
+            self._args("widgets", no_diagnose=True),
+            ["build", "widgets"],
+            record=read_error_record(target_dir),
+            runner=runner,
+        )
+
+        assert runner.seen == []
+        assert "A MAJOR ERROR HAS OCCURRED" not in capsys.readouterr().err
+
+    def test_config_disables_the_call(self, target_dir, capsys, monkeypatch):
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import read_error_record
+
+        monkeypatch.setenv("DRYDOCK_DIAGNOSE", "false")
+        runner = self._runner()
+        _standoff_diagnosis(
+            self._args("widgets"),
+            ["build", "widgets"],
+            record=read_error_record(target_dir),
+            runner=runner,
+        )
+
+        assert runner.seen == []
+        assert "A MAJOR ERROR HAS OCCURRED" not in capsys.readouterr().err
+
+    def test_blocked_classification_is_not_diagnosed(self, target_dir, capsys):
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import write_error_record
+
+        record = write_error_record(
+            target_dir,
+            command="build",
+            phase="build step",
+            classification="dependency legitimacy gate failed: 2 issue(s)",
+            detail="Two packages are unpublished.",
+            recovery="Remove them.",
+        )
+        runner = self._runner()
+        _standoff_diagnosis(
+            self._args("widgets"), ["build", "widgets"], record=record, runner=runner
+        )
+
+        assert runner.seen == []
+        assert "A MAJOR ERROR HAS OCCURRED" not in capsys.readouterr().err
+
+    def test_usage_error_still_exits_2_without_a_banner(self):
+        rc, _out, err = run_cli("build")
+        assert rc == 2
+        assert "A MAJOR ERROR HAS OCCURRED" not in err

@@ -150,6 +150,8 @@ def _print_findings(result, verbose: bool) -> None:
         for finding in visible:
             icon = _SEVERITY_ICON.get(finding.severity.value, "?")
             print(f"  {icon}  {finding.message}")
+            if getattr(finding, "remediation", ""):
+                print(f"     → {finding.remediation}")
 
     print()
     total_fail = len(result.failures())
@@ -1088,6 +1090,8 @@ def _render_status(result) -> None:
                 if finding.severity != Severity.PASS:
                     icon = _SEVERITY_ICON.get(finding.severity.value, "?")
                     print(f"    {icon}  {finding.section}: {finding.message}")
+                    if getattr(finding, "remediation", ""):
+                        print(f"       → {finding.remediation}")
 
     if result.plan is not None:
         counts = result.plan.state_counts()
@@ -1585,6 +1589,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Show full traceback on unexpected errors.",
+    )
+    parser.add_argument(
+        "--no-diagnose",
+        action="store_true",
+        default=False,
+        help="Do not call the LLM to diagnose an opaque failure.",
     )
 
     sub = parser.add_subparsers(
@@ -2334,6 +2344,61 @@ def _render_recorded_error(record, *, errors_file: str, quarterdeck_hint: str) -
     return "\n".join(lines)
 
 
+def _standoff_diagnosis(
+    args,
+    argv: list[str] | None,
+    *,
+    record=None,
+    exc: BaseException | None = None,
+    runner=None,
+) -> None:
+    """Have the selected LLM diagnose an opaque failure, then print and persist the result.
+
+    Advisory only: any failure here is swallowed so the original error and exit code stand.
+    """
+    try:
+        from drydock.config import get_diagnose_enabled, get_llm_provider, get_model
+        from drydock.diagnose import diagnose, render_standoff_banner, should_diagnose
+
+        if getattr(args, "no_diagnose", False) or not get_diagnose_enabled():
+            return
+        if not should_diagnose(record=record, exc=exc):
+            return
+
+        from drydock.config import get_target_directory
+        from drydock.errors import append_diagnosis
+
+        target = getattr(args, "Target", "") or ""
+        target_dir = get_target_directory() / target if target else Path.cwd()
+        tokens = argv if argv is not None else sys.argv[1:]
+        command = "drydock " + " ".join(tokens)
+        llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+        model = get_model(getattr(args, "model", None))
+
+        print(
+            render_standoff_banner(llm=llm_provider, model=model, command=command),
+            file=sys.stderr,
+        )
+        text = diagnose(
+            target_dir,
+            command=command,
+            target=target,
+            record=record,
+            exc=exc,
+            llm=llm_provider,
+            model=model,
+            runner=runner,
+        )
+        if not text:
+            print("  No diagnosis was available.", file=sys.stderr)
+            return
+        print(text, file=sys.stderr)
+        print("=" * 72, file=sys.stderr)
+        append_diagnosis(target_dir, text)
+    except Exception:  # noqa: BLE001 - diagnosis must never change the command's outcome
+        return
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     raw_argv = argv if argv is not None else sys.argv[1:]
@@ -2375,6 +2440,7 @@ def main(argv: list[str] | None = None) -> None:
             file=sys.stderr,
         )
         exit_code = 1
+        _standoff_diagnosis(args, argv, record=exc.record)
     except DrydockError as exc:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 1
@@ -2387,6 +2453,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
             print("Run with --debug for a full traceback.", file=sys.stderr)
         exit_code = 1
+        _standoff_diagnosis(args, argv, exc=exc)
 
     try:
         _log_command_history(args, argv, exit_code)

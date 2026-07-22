@@ -546,6 +546,19 @@ def _is_rate_limit_error(*texts: str | None) -> bool:
     return "rate limit" in haystack or "session limit" in haystack
 
 
+def provider_unavailable_reason(*texts: str | None) -> str | None:
+    """Why a further provider call would certainly fail, or None when one is worth making.
+
+    Callers that want to spend a second LLM call after a failure — the standoff diagnosis —
+    consult this first so an exhausted or unauthenticated provider is never called twice.
+    """
+    if _is_authentication_error(*texts):
+        return "provider authentication required"
+    if _is_rate_limit_error(*texts):
+        return "provider rate limit"
+    return None
+
+
 def render_fatal_provider_error_block(
     *,
     llm: str,

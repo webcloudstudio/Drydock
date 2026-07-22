@@ -94,9 +94,12 @@ def refresh_commanders_chair(target_dir: Path) -> Path | None:
 
 def _with_error_panel(html: str, error) -> str:
     """Place the current deterministic recovery signal directly below the Chair title."""
+    diagnosis = getattr(error, "diagnosis", "")
+    diagnosis_html = f"<span>{escape(diagnosis)}</span>" if diagnosis else ""
     panel = (
         '<section class="big-error-panel">'
         f"<strong>{escape(error.state)}: {escape(error.classification)}</strong>"
+        f"{diagnosis_html}"
         f"<span>Command: {escape(error.command)}. Open <b>BIG ERRORS</b> for recovery.</span>"
         "</section>"
     )

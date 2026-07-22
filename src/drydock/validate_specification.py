@@ -22,6 +22,7 @@ class Finding:
     section: str
     severity: Severity
     message: str
+    remediation: str = ""
 
 
 @dataclass
@@ -47,6 +48,16 @@ class ValidationResult:
 
 
 _VALID_STATUSES = {"IDEA", "PROTOTYPE", "ACTIVE", "PRODUCTION", "ARCHIVED"}
+
+#: Deterministic single-cause findings state their own fix; they never reach standoff diagnosis.
+_METADATA_FIELD_REMEDIATION = {
+    "name": "Set `name: {target}` in {path}.",
+    "display_name": "Set `display_name:` in {path} to the human-readable project name.",
+    "short_description": (
+        "Set `short_description:` in {path} to one line describing the project, "
+        "or run `drydock analyze {target}` to have one proposed from the imported sources."
+    ),
+}
 
 _ALLOWED_ROOT_NAMES = {
     "METADATA.md",
@@ -148,8 +159,8 @@ def validate_specification(
     def w(section: str, msg: str) -> None:
         result.findings.append(Finding(section, Severity.WARN, msg))
 
-    def f(section: str, msg: str) -> None:
-        result.findings.append(Finding(section, Severity.FAIL, msg))
+    def f(section: str, msg: str, remediation: str = "") -> None:
+        result.findings.append(Finding(section, Severity.FAIL, msg, remediation))
 
     # --- Forbidden blueprint files ---
     section = "Blueprint inventory"
@@ -208,7 +219,11 @@ def validate_specification(
             if val:
                 p(section, f"{key}: {val}")
             else:
-                f(section, f"{key} not set in METADATA.md")
+                f(
+                    section,
+                    f"{key} not set in METADATA.md",
+                    _METADATA_FIELD_REMEDIATION[key].format(path=metadata_path, target=spec_name),
+                )
 
         # name matches spec_name
         meta_name = get_field(metadata, "name")

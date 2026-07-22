@@ -48,6 +48,7 @@ class ErrorRecord:
     execution_id: str = ""
     evidence: str = ""
     state: str = "Error"
+    diagnosis: str = ""
 
 
 class RecordedError(DrydockError):
@@ -116,6 +117,24 @@ def write_error_record(
     return record
 
 
+DIAGNOSIS_HEADING = "## Diagnosis"
+
+
+def append_diagnosis(target_dir: Path, text: str) -> bool:
+    """Append a standoff diagnosis section to the Target's current error record."""
+    path = errors_path(target_dir)
+    body = text.strip()
+    if not body or not path.is_file():
+        return False
+    existing = path.read_text(encoding="utf-8").rstrip("\n")
+    if DIAGNOSIS_HEADING in existing:
+        existing = existing.partition(f"\n{DIAGNOSIS_HEADING}\n")[0].rstrip("\n")
+    path.write_text(
+        f"{existing}\n\n{DIAGNOSIS_HEADING}\n\n{body}\n", encoding="utf-8", newline="\n"
+    )
+    return True
+
+
 def clear_error_record(target_dir: Path) -> bool:
     """Remove only the current generated error after preflight has passed."""
     path = errors_path(target_dir)
@@ -123,6 +142,14 @@ def clear_error_record(target_dir: Path) -> bool:
         return False
     path.unlink()
     return True
+
+
+def _until_next_section(text: str) -> str:
+    """Take a section body up to the next ``## `` heading so later sections do not bleed in."""
+    for index, line in enumerate(text.splitlines()):
+        if line.startswith("## "):
+            return "\n".join(text.splitlines()[:index]).strip()
+    return text.strip()
 
 
 def read_error_record(target_dir: Path) -> ErrorRecord | None:
@@ -136,7 +163,8 @@ def read_error_record(target_dir: Path) -> ErrorRecord | None:
             key, value = line[2:].split(": ", 1)
             fields[key.lower()] = value.strip().strip("`")
     diagnostic = text.partition("## Diagnostic\n")[2].partition("## Recovery")[0].strip()
-    recovery = text.partition("## Recovery\n")[2].strip()
+    recovery = _until_next_section(text.partition("## Recovery\n")[2])
+    diagnosis = _until_next_section(text.partition(f"{DIAGNOSIS_HEADING}\n")[2])
     return ErrorRecord(
         command=fields.get("command", ""),
         phase=fields.get("phase", ""),
@@ -147,4 +175,5 @@ def read_error_record(target_dir: Path) -> ErrorRecord | None:
         execution_id=fields.get("execution id", ""),
         evidence=fields.get("evidence / logs", ""),
         state=fields.get("state", "Error"),
+        diagnosis=diagnosis,
     )

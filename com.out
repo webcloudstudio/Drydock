@@ -1,0 +1,68 @@
+  drydock_build_directory        /mnt/c/Users/barlo/projects  (config file)
+  drydock_workspace              /mnt/c/Users/barlo/projects/drydock  (config file)
+  drydock_model                  gpt-5.6-luna  (config file)
+  llm_provider                   codex  (config file)
+  codex_sandbox                  danger-full-access  (default)
+  prompt_warn_tokens             50000  (default)
+  quarterdeck_port               8080  (default)
+Target: /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2
+  CREATED  blueprint/sources/.gitkeep
+  CREATED  blueprint/changes/.gitkeep
+  CREATED  evidence/.gitkeep
+  CREATED  logs/.gitkeep
+  CREATED  QuarterDeck/data/.gitkeep
+  CREATED  METADATA.md
+  CREATED  QuarterDeck/console.yaml
+
+Next steps:
+  1. Import source material:  drydock import commonmark_2 <source> --format markdown
+  2. Analyze the spec:        drydock analyze commonmark_2
+  3. Create a plan:           drydock plan commonmark_2
+  4. Review the build tree:   drydock run quarterdeck commonmark_2
+ - Source: /mnt/c/Users/barlo/projects/commonmark-spec/INSTRUCTIONS.md
+ - Target: /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2/blueprint/sources/
+  INSTRUCTIONS.md
+
+Next step: drydock analyze commonmark_2
+ - Source: /mnt/c/Users/barlo/projects/commonmark-spec/spec.txt
+ - Target: /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2/blueprint/sources/
+  spec.txt
+
+Next step: drydock analyze commonmark_2
+ - Source: /mnt/c/Users/barlo/projects/commonmark-spec/test/spec_tests.py
+ - Target: /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2/blueprint/sources/
+  spec_tests.py
+
+Next step: drydock analyze commonmark_2
+ - Source: /mnt/c/Users/barlo/projects/commonmark-spec/test/cmark.py
+ - Target: /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2/blueprint/sources/
+  cmark.py
+
+Next step: drydock analyze commonmark_2
+ - Source: /mnt/c/Users/barlo/projects/commonmark-spec/test/normalize.py
+ - Target: /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2/blueprint/sources/
+  normalize.py
+
+Next step: drydock analyze commonmark_2
+Analyzing Blueprint: commonmark
+Running analysis...
+
+  ANALYSIS.md   →  ANALYSIS.md
+  SEA_TRIALS.md →  SEA_TRIALS.md
+  COMPASS.md    →  COMPASS.md  (created)
+  commanders_chair  →  QuarterDeck/commanders_chair.html  (lifecycle: analyzed)
+
+Quality: ✓  Ready  (4 features · 9 stories · 0 questionnaires · 0 blockers)
+
+Next step: drydock plan commonmark
+Drydock status — commonmark_2 / commonmark_2
+
+  Target          /mnt/c/Users/barlo/projects/drydock/targets/commonmark_2
+  Phase           Arrange
+  State           Source material imported — analysis not yet run
+  Metadata        init
+  Sources         6 imported · 0 authored blueprint files
+  Blueprint       ✗  1 errors · 0 warnings
+    ✗  METADATA fields: short_description not set in METADATA.md
+  Plan            not created
+  Next step       drydock analyze commonmark_2
