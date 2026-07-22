@@ -81,6 +81,25 @@ def _stream_stdout(text: str) -> None:
     _stream_stdout._at_line_start = text.endswith(("\n", "\r"))  # type: ignore[attr-defined]
 
 
+def _stream_status_only(text: str) -> None:
+    """Stream Drydock progress lines and drop model text.
+
+    Scoring commands consume the model's output as a JSON payload: Drydock parses it,
+    renders the Scorecard, and prints the summary itself. Echoing the raw deltas dumps
+    that JSON into the console, so only Drydock's own status lines pass through here.
+    """
+    if text.startswith(_STREAM_STATUS_PREFIXES):
+        _stream_stdout(text)
+
+
+def _print_dimensions(dimensions: dict[str, int]) -> None:
+    """Print the scored quality dimensions, marking those under the 60 gate."""
+    width = max((len(name) for name in dimensions), default=0)
+    for name, value in dimensions.items():
+        mark = "" if value >= 60 else "   BELOW GATE"
+        print(f"  {name.ljust(width)}  {value:3d}{mark}")
+
+
 def _wall_time() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
@@ -1392,10 +1411,11 @@ def cmd_build_score(args: argparse.Namespace) -> int:
         model=get_model(getattr(args, "model", None)),
         llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
         log_dir=get_workspace() / "logs",
-        on_text=_stream_stdout,
+        on_text=_stream_status_only,
     )
     print()
     print(f"Build score: {result.score}/100")
+    _print_dimensions(result.dimensions)
     print(f"Completion gate: {'COMPLETE' if result.complete else 'INCOMPLETE'}")
     print(f"Scorecard: {result.scorecard_path}")
     print(f"Evidence: {result.evidence_path}")
@@ -1440,11 +1460,12 @@ def cmd_score_release(target: str) -> int:
         model=get_model(None),
         llm_provider=get_llm_provider(None),
         log_dir=get_workspace() / "logs",
-        on_text=_stream_stdout,
+        on_text=_stream_status_only,
     )
     refresh_commanders_chair(target_dir)
     print()
     print(f"Release score: {result.score}/100")
+    _print_dimensions(result.dimensions)
     print(f"Release gate: {target}  {'COMPLETE' if result.complete else 'INCOMPLETE'}")
     print(f"Scorecard: {result.scorecard_path}")
     print(f"Evidence: {result.evidence_path}")

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from drydock import __copyright__, __version__
-from drydock.cli import _stream_stdout, main
+from drydock.cli import _print_dimensions, _stream_status_only, _stream_stdout, main
 
 
 def run_cli(*args: str) -> tuple[int, str, str]:
@@ -50,6 +50,21 @@ class TestHelpAndVersion:
         _stream_stdout("BUILD QUEUE: 1 ready block")
 
         assert capsys.readouterr().out == "partial\nBUILD QUEUE: 1 ready block\n"
+
+    def test_stream_status_only_drops_model_json_payload(self, capsys):
+        """Scoring commands parse the model's JSON; the console must not echo it."""
+        _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
+        _stream_status_only('{"dimensions": {"build_quality": 0}}')
+        _stream_status_only("AUTO-COMPACT: fresh")
+
+        assert capsys.readouterr().out == "AUTO-COMPACT: fresh\n"
+
+    def test_print_dimensions_marks_scores_under_the_gate(self, capsys):
+        _print_dimensions({"build_quality": 0, "test_coverage": 90})
+
+        out = capsys.readouterr().out
+        assert "build_quality    0   BELOW GATE" in out
+        assert "test_coverage   90\n" in out
 
     def test_help_shows_copyright(self):
         rc, out, err = run_cli("--help")
@@ -1410,6 +1425,7 @@ class TestBuildScore:
             "drydock.build_score.score_target",
             lambda *args, **kwargs: SimpleNamespace(
                 score=84,
+                dimensions={"build_quality": 40, "test_coverage": 90},
                 complete=False,
                 scorecard_path=target / "SCORECARD.md",
                 evidence_path=target / "evidence" / "build-score.json",
@@ -1422,6 +1438,7 @@ class TestBuildScore:
 
         assert rc == 1, err
         assert "Build score: 84/100" in out
+        assert "build_quality   40   BELOW GATE" in out
         assert "Completion gate: INCOMPLETE" in out
         assert "Required Sea Trial st-one is FAIL" in out
 
