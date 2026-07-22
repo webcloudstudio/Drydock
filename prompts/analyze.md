@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260717 V15
+version: 20260722 V16
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -322,6 +322,18 @@ implements files.
 |---|---|---|---|
 | {sources/path} | {author intent | normative specification and conformance corpus | conformance harness | test helper | reference implementation | source reference | asset} | {compass | context | exclude} | {stage | prompt-only | none} |
 
+Build disposition governs what exists on disk when the build agent runs and when acceptance
+executes:
+
+- `stage` places the file in the build directory at `sources/{path relative to sources/}`. Every
+  assertion, `ac` check, and Sea Trial `Command:` references it by that build-relative path.
+  A corpus or harness the project must execute is always `stage` — a file present only in the
+  prompt can be read but not run.
+- `prompt-only` supplies the file as prompt context and places nothing on disk.
+- `none` neither stages nor supplies it.
+
+Markdown is never staged; use `prompt-only` for it.
+
 ## Planning Instructions
 
 ### Delivery Shape
@@ -336,8 +348,15 @@ contract.
 
 ### Test and Acceptance Strategy
 
-State focused story tests separately from final Sea Trial verification. Programmatic acceptance
-must be finite and story-scoped; complete-corpus or release verification stays in SEA_TRIALS.
+State focused story tests separately from final Sea Trial verification. Programmatic acceptance is
+finite and story-scoped by default.
+
+When the imported sources include a conformance harness and its corpus, one terminal verification
+story gates on the complete corpus. That story depends on every implementation story, and its
+acceptance assertion declares `Corpus: full` in its heading block so the full run is deliberate.
+Every other story stays bounded — a sample proves a unit works, never that the project is correct.
+
+State the measured release threshold as a Sea Trial, not as a story assertion.
 
 ### Sequencing and Dependencies
 
@@ -386,11 +405,27 @@ Pattern: {ubiquitous | event | state | option | unwanted — technical/behaviora
 Emit only populated optional fields. Each field occupies its own line; align values after the
 field names. Do not combine fields on one line.
 Command: {JSON argv array}
+Extract: {regex whose first capture group is the measured number in the command's stdout}
 Evidence: {target-relative evidence file}
 Baseline: {numeric value}
 Operator: {< | <= | == | >= | >}
 Target: {numeric value}
 Unit: {unit}
+
+A `measurement` criterion carries `Command:` plus either `Extract:` or `Evidence:`. Without them it
+is INCONCLUSIVE and can never settle.
+
+`Command:` is a literal argv that runs from the build directory. It never contains a `<placeholder>`
+— Drydock does not resolve one, and a placeholder argv silently never runs. Name the staged harness
+by its build path (`sources/{name}`) and the deliverable by its real entry point.
+
+`Extract:` lets Drydock read the value from a harness that reports in human-readable text; without
+it the command must print `{"value": <number>, "unit": "<unit>"}`. Prefer `Extract:` over asking the
+project to emit JSON — a wrapper that computes its own score can report anything.
+
+When the sources supply a conformance harness, emit exactly one `measurement` criterion that
+executes it against the full corpus. `Baseline`, `Target`, and `Unit` may defer to `QUESTIONS:` when
+the author owns the threshold; `Command:` and `Extract:` may not.
 
 {Repeat one section per criterion.}
 

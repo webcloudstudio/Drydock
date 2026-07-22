@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260621 V1
+version: 20260722 V2
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 model: opus
@@ -26,6 +26,12 @@ Operating contract:
    build working directory.
 2. Start by inspecting the build working directory. Preserve existing application
    files unless this step's specifications require a change.
+   Its `sources/` subdirectory holds staged build assets — imported test corpora,
+   conformance harnesses, and fixtures — placed there for you. They are read-only
+   inputs: run them, import them, and write code against them, but never create,
+   rewrite, trim, regenerate, or substitute one, even to make a check pass. A step
+   that modifies a staged asset fails and the asset is restored. If an asset you
+   expect is absent, report that; do not author a replacement.
 3. Implement only this step. Use `context`, `stack`, and `rules` as constraints,
    not as additional work to perform.
 4. Follow the stack and rules for languages, structure, naming, and branding.

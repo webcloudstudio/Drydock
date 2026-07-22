@@ -10,6 +10,22 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-22: `drydock build` now stages declared build assets into the build directory. Analyze
+  classifies every imported source with a build disposition; a source marked `stage` is placed at
+  `sources/<name>` in the build directory, copied from the immutable import. Previously the
+  disposition was parsed and discarded, so an imported test kit never reached the build tree —
+  and because acceptance runs there, build agents authored substitutes to satisfy existence
+  assertions and then graded themselves against them. Staged assets are digest-checked: a step
+  that rewrites one fails and the asset is restored, and `drydock score` reports substitution as a
+  release blocker without altering the artifact under judgment.
+- 2026-07-22: a deterministic conformance corpus can now gate delivery. `SEA_TRIALS.md`
+  measurement criteria accept `Extract:`, a regex capturing the measured value from a harness's
+  own stdout, so a harness that reports in human-readable text and exits non-zero on failures is
+  measurable without a project-authored wrapper. A single terminal verification story may gate on
+  a complete corpus by declaring `Corpus: full` in its Programmatic Acceptance heading block;
+  story acceptance remains bounded by default. A Sea Trial `Command:` containing an unresolved
+  `<placeholder>` is now rejected rather than silently never running.
+
 - 2026-07-17: reworked scoring to match the specification. `drydock score release` is now an
   LLM-assisted release gate that judges the project criteria in `SEA_TRIALS.md` and writes
   `SCORECARD.md` (prompt contract `prompts/score_release.md`); deterministic proofs, measurements,

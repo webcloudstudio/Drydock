@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260720 V13
+version: 20260722 V14
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -363,8 +363,13 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - Add `parent`, `context`, `stack`, `rules`, `copy`, `depends`, `evidence`, and `scope` only
   when appropriate.
 - For context files classified in `ANALYSIS.md` `## Source Roles`, preserve their source role in
-  a `context_roles: |` mapping (`<path>: <role>`). Use promoted Blueprint paths, never
-  `sources/...` paths. A corpus or harness is `context`, never `implements`.
+  a `context_roles: |` mapping (`<path>: <role>`). Key it by the promoted Blueprint name, never a
+  `sources/...` path — write `spec.txt: normative specification and conformance corpus`, not
+  `sources/spec.txt: ...`. A corpus or harness is `context`, never `implements`.
+- A file the Analysis marks `stage` is present in the build directory at `sources/<name>`.
+  Reference it by that build-relative path in `Programmatic Acceptance` and in `ac` `check:`
+  commands. Never reference a `blueprint/` path or an absolute path, and never author, rewrite,
+  or trim a staged asset — it is a read-only input.
 - `scope` should usually be:
   - `blueprint` when the story chiefly authors or revises specs
   - `target` when it chiefly builds software from an already-authoritative spec
@@ -384,9 +389,14 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   SCREEN spec's assertions call every route the screen provides and consumes; a FEATURE spec's
   assertions exercise every route, interface, read, and write it provides.
 - The child `ac` block is the build gate: a smoke check that runs the project test suite, or a
-  sharper story-scoped command when one exists. It must be bounded to the implementing story;
-  never use a complete project corpus or final release measurement. Do not duplicate individual `Programmatic
-  Acceptance` assertions as `ac` blocks.
+  sharper story-scoped command when one exists. It is bounded to the implementing story and does
+  not restate a final release measurement. Do not duplicate individual `Programmatic Acceptance`
+  assertions as `ac` blocks.
+- When the Analysis states a terminal verification story, that one story gates on the complete
+  corpus: its `Programmatic Acceptance` assertion declares `Corpus: full` on its own line in the
+  heading block, above the fenced code, and it `depends` on every implementation story. Without
+  that declaration a full-corpus run is rejected. Every other story stays bounded — a sample
+  proves a unit works, never that the project is correct.
 - Feature-level `ac` blocks are optional group gates for orchestration checks that cannot be
   represented in a Blueprint spec.
 
