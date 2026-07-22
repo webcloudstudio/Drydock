@@ -562,6 +562,29 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert "Blueprint: ExampleTarget" in out
 
+    def test_build_forwards_global_llm_overrides_to_cmd_build(self, isolated_config, monkeypatch):
+        """``drydock build <Target>`` has its global LLM flags stripped from argv before
+        the build sub-parser runs, so the dispatcher must carry them onto the build
+        namespace. Without this the build silently runs on the configured default model."""
+        seen: dict[str, str | None] = {}
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["drydock", "build", "Example", "--llm-provider", "codex", "--model", "gpt-5.6-luna"],
+        )
+        monkeypatch.setattr(
+            "drydock.cli.cmd_build",
+            lambda build_args: (
+                seen.update(model=build_args.model, llm_provider=build_args.llm_provider) or 0
+            ),
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 0
+        assert seen == {"model": "gpt-5.6-luna", "llm_provider": "codex"}
+
     def test_plan_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 

@@ -2091,6 +2091,11 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         return rc
     else:
         build_args = _parse_build_args(tokens)
+        # Invocation-wide --model/--llm-provider are stripped from argv before the
+        # build sub-parser runs, so carry them across unless a token set them here.
+        for key in ("model", "llm_provider"):
+            if getattr(build_args, key, None) is None:
+                setattr(build_args, key, getattr(args, key, None))
         rc = cmd_build(build_args)
         if rc == 0:
             from drydock.config import record_activity
