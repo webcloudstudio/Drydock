@@ -2057,3 +2057,30 @@ def test_assemble_prompt_omits_change_ticket_section_when_no_changes(tmp_path):
 
     assert "Change tickets" not in result
     assert "ignore me" not in result
+
+
+def test_full_corpus_acceptance_is_accepted_when_declared(tmp_path):
+    """The terminal verification story gates on the real corpus by declaring it. The default
+    stays fatal so an ordinary check cannot invoke a whole suite by accident."""
+    _make_target(tmp_path)
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    ).replace(
+        "## Programmatic Acceptance\n\n",
+        "## Programmatic Acceptance\n\n"
+        "### conformance-full\nCorpus: full\nThe full conformance corpus passes.\n\n"
+        "```python\n"
+        "import subprocess, sys\n"
+        'subprocess.run([sys.executable, "sources/spec_tests.py"], check=True)\n'
+        "```\n\n",
+    )
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert "story-status" in result.plan.by_id()

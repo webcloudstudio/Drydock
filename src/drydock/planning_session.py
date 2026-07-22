@@ -1332,13 +1332,17 @@ _CORPUS_INVOCATION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Explicit opt-in that makes a full-corpus story gate deliberate rather than accidental.
+_CORPUS_FULL_RE = re.compile(r"^Corpus:\s*full\s*$", re.MULTILINE | re.IGNORECASE)
+
 
 def _invokes_unbounded_corpus(acceptance: str) -> bool:
-    """Report whether the acceptance section runs the whole conformance corpus.
+    """Report whether the acceptance section runs a conformance corpus it never declared.
 
-    The imported corpus (``spec_tests.py``) belongs to the final SEA_TRIALS.md
-    measurement; a story may stage it or select a bounded slice (``--pattern`` /
-    ``--number``) but must not execute the full suite as a story gate.
+    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
+    whole suite: it may stage the corpus, or select a slice with ``--pattern`` / ``--number``.
+    The terminal verification story gates on the real corpus by declaring ``Corpus: full`` in
+    the assertion's heading block, which makes the full run deliberate and reviewable.
     """
     if "--pattern" in acceptance or "--number" in acceptance:
         return False
@@ -1348,8 +1352,12 @@ def _invokes_unbounded_corpus(acceptance: str) -> bool:
             continue
         # A call may span lines, so inspect a small window around the reference.
         window = "\n".join(lines[max(0, index - 3) : index + 4])
-        if _CORPUS_INVOCATION_RE.search(window):
-            return True
+        if not _CORPUS_INVOCATION_RE.search(window):
+            continue
+        # The declaration sits in the heading block above the fenced code.
+        if _CORPUS_FULL_RE.search("\n".join(lines[: index + 1])):
+            continue
+        return True
     return False
 
 

@@ -37,7 +37,8 @@ DIMENSIONS = (
     "acceptance_criteria_coverage",
 )
 VALID_VERDICTS = frozenset({"PASS", "FAIL", "INCONCLUSIVE"})
-MEASUREMENT_TIMEOUT = 60
+# A release measurement runs a full corpus, not a unit test.
+MEASUREMENT_TIMEOUT = 900
 
 
 def _coverage_penalty(
@@ -181,6 +182,44 @@ def _measurement_payload(text: str) -> tuple[float, str]:
     return float(payload["value"]), str(payload.get("unit", ""))
 
 
+def _compare_measurement(
+    trial: SeaTrial,
+    value: float,
+    unit: str,
+    source: str,
+    return_code: int | None,
+) -> MeasurementResult:
+    """Compare a measured value against the trial's declared threshold."""
+    if trial.unit and unit and trial.unit != unit:
+        return MeasurementResult(
+            trial.criterion_id,
+            "INCONCLUSIVE",
+            value=value,
+            unit=unit,
+            source=source,
+            return_code=return_code,
+            detail=f"unit mismatch: expected {trial.unit}, got {unit}",
+        )
+    if trial.target is None or trial.operator not in {"<", "<=", "==", ">=", ">"}:
+        return MeasurementResult(
+            trial.criterion_id,
+            "INCONCLUSIVE",
+            value=value,
+            unit=unit,
+            source=source,
+            return_code=return_code,
+            detail="target or comparison operator missing",
+        )
+    return MeasurementResult(
+        trial.criterion_id,
+        "PASS" if _compare(value, trial.operator, trial.target) else "FAIL",
+        value=value,
+        unit=unit or trial.unit,
+        source=source,
+        return_code=return_code,
+    )
+
+
 def _measure(trial: SeaTrial, *, target_dir: Path, build_dir: Path) -> MeasurementResult:
     if trial.verification != "measurement":
         return MeasurementResult(trial.criterion_id, "not-applicable")
@@ -202,7 +241,10 @@ def _measure(trial: SeaTrial, *, target_dir: Path, build_dir: Path) -> Measureme
                 trial.criterion_id, "INCONCLUSIVE", source=source, detail=str(exc)
             )
         return_code = result.returncode
-        if result.returncode != 0:
+        # A conformance harness signals its failure count through its exit status, so a non-zero
+        # exit is a measurement, not a malfunction, whenever the trial declares how to read the
+        # value out of stdout.
+        if result.returncode != 0 and not trial.extract:
             detail = (result.stderr or result.stdout).strip() or "measurement command failed"
             return MeasurementResult(
                 trial.criterion_id,
@@ -229,6 +271,27 @@ def _measure(trial: SeaTrial, *, target_dir: Path, build_dir: Path) -> Measureme
         return MeasurementResult(
             trial.criterion_id, "INCONCLUSIVE", detail="measurement command or evidence missing"
         )
+    if trial.extract:
+        match = re.search(trial.extract, text, re.MULTILINE)
+        if match is None:
+            return MeasurementResult(
+                trial.criterion_id,
+                "INCONCLUSIVE",
+                source=source,
+                return_code=return_code,
+                detail=f"Extract pattern did not match the measurement output: {text[:200]!r}",
+            )
+        try:
+            value, unit = float(match.group(1)), trial.unit
+        except (TypeError, ValueError):
+            return MeasurementResult(
+                trial.criterion_id,
+                "INCONCLUSIVE",
+                source=source,
+                return_code=return_code,
+                detail=f"Extract captured a non-numeric value: {match.group(1)!r}",
+            )
+        return _compare_measurement(trial, value, unit, source, return_code)
     try:
         value, unit = _measurement_payload(text)
     except (json.JSONDecodeError, ValueError) as exc:
@@ -239,32 +302,7 @@ def _measure(trial: SeaTrial, *, target_dir: Path, build_dir: Path) -> Measureme
             return_code=return_code,
             detail=str(exc),
         )
-    if trial.unit and unit and trial.unit != unit:
-        return MeasurementResult(
-            trial.criterion_id,
-            "INCONCLUSIVE",
-            value=value,
-            unit=unit,
-            source=source,
-            detail=f"unit mismatch: expected {trial.unit}, got {unit}",
-        )
-    if trial.target is None or trial.operator not in {"<", "<=", "==", ">=", ">"}:
-        return MeasurementResult(
-            trial.criterion_id,
-            "INCONCLUSIVE",
-            value=value,
-            unit=unit,
-            source=source,
-            detail="target or comparison operator missing",
-        )
-    return MeasurementResult(
-        trial.criterion_id,
-        "PASS" if _compare(value, trial.operator, trial.target) else "FAIL",
-        value=value,
-        unit=unit or trial.unit,
-        source=source,
-        return_code=return_code,
-    )
+    return _compare_measurement(trial, value, unit, source, return_code)
 
 
 def _evidence_fact(trial: SeaTrial, target_dir: Path) -> dict[str, object] | None:

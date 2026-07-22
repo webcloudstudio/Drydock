@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.build_score import score_evidence_state, score_target
+from drydock.build_score import _measure, score_evidence_state, score_target
 
 
 @dataclass
@@ -258,3 +258,99 @@ def test_required_assertions_judged_only_by_the_model_lose_coverage_score(tmp_pa
     assert result.dimensions["acceptance_criteria_coverage"] == 45
     assert result.complete is False
     assert "Technical dimensions below 60: acceptance_criteria_coverage" in result.blockers
+
+
+# ---------------------------------------------------------------------------
+# Extract: reading a measurement from a harness's own stdout
+# ---------------------------------------------------------------------------
+
+
+# Reproduces the real CommonMark harness contract: human-readable stdout, and an exit status
+# carrying the failure count.
+def _harness(passed: int, failed: int) -> str:
+    return (
+        f"import sys; print('{passed} passed, {failed} failed, 0 errored, 0 skipped'); "
+        f"sys.exit({failed})"
+    )
+
+
+def _corpus_trial(passed: int, failed: int, *, target: float, extract: str = r"^(\d+) passed"):
+    from drydock.sea_trials import parse_sea_trials_text
+
+    command = json.dumps([sys.executable, "-c", _harness(passed, failed)])
+    text = f"""# Sea Trials: Demo
+
+## st-corpus: Correctness score
+Type: outcome
+Required: yes
+Criterion: The converter achieves the passing-example threshold.
+Verification: measurement
+Command: {command}
+Extract: {extract}
+Operator: >=
+Target: {target}
+Unit: examples
+"""
+    return parse_sea_trials_text(text).trials[0]
+
+
+def test_extract_reads_the_count_from_a_failing_harness(tmp_path):
+    """The harness exits non-zero because examples failed. That is the measurement, not a
+    malfunction -- the old code discarded it as INCONCLUSIVE before reading stdout."""
+    trial = _corpus_trial(640, 12, target=652)
+
+    result = _measure(trial, target_dir=tmp_path, build_dir=tmp_path)
+
+    assert result.status == "FAIL"
+    assert result.value == 640.0
+    assert result.unit == "examples"
+    assert result.return_code == 12
+
+
+def test_extract_passes_when_the_threshold_is_met(tmp_path):
+    trial = _corpus_trial(652, 0, target=652)
+
+    result = _measure(trial, target_dir=tmp_path, build_dir=tmp_path)
+
+    assert result.status == "PASS"
+    assert result.value == 652.0
+
+
+def test_extract_below_a_relaxed_threshold_still_passes(tmp_path):
+    trial = _corpus_trial(640, 12, target=600)
+
+    assert _measure(trial, target_dir=tmp_path, build_dir=tmp_path).status == "PASS"
+
+
+def test_non_matching_extract_is_inconclusive_not_a_silent_pass(tmp_path):
+    trial = _corpus_trial(640, 12, target=652, extract=r"^(\d+) conforming")
+
+    result = _measure(trial, target_dir=tmp_path, build_dir=tmp_path)
+
+    assert result.status == "INCONCLUSIVE"
+    assert "did not match" in result.detail
+
+
+def test_without_extract_a_failing_command_remains_inconclusive(tmp_path):
+    """Regression: the JSON measurement path is unchanged."""
+    from drydock.sea_trials import parse_sea_trials_text
+
+    command = json.dumps([sys.executable, "-c", "import sys; print('nope'); sys.exit(3)"])
+    trial = parse_sea_trials_text(
+        f"""# Sea Trials: Demo
+
+## st-x: Thing
+Type: outcome
+Required: yes
+Criterion: A thing is measured.
+Verification: measurement
+Command: {command}
+Operator: >=
+Target: 1
+"""
+    ).trials[0]
+
+    result = _measure(trial, target_dir=tmp_path, build_dir=tmp_path)
+
+    assert result.status == "INCONCLUSIVE"
+    assert result.return_code == 3

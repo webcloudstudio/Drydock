@@ -34,6 +34,7 @@ EARS_SHAPES: dict[str, str] = {
 
 _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", re.I)
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
+_PLACEHOLDER_RE = re.compile(r"<[^<>]+>")
 _QUESTION_RE = re.compile(r"^-\s+(?P<id>q-[a-z0-9-]+):\s*(?P<text>.+?)\s*$", re.I)
 _FIELD_NAMES = (
     "Type",
@@ -42,6 +43,7 @@ _FIELD_NAMES = (
     "Verification",
     "Pattern",
     "Command",
+    "Extract",
     "Evidence",
     "Baseline",
     "Operator",
@@ -61,6 +63,7 @@ class SeaTrial:
     verification: str
     pattern: str = ""
     command: tuple[str, ...] = ()
+    extract: str = ""
     evidence: str = ""
     baseline: float | None = None
     operator: str = ""
@@ -147,7 +150,36 @@ def _command(value: str, criterion_id: str) -> tuple[str, ...]:
         raise SpecificationError(
             f"SEA_TRIALS.md {criterion_id} Command must be a non-empty JSON string array"
         )
+    for element in parsed:
+        if _PLACEHOLDER_RE.search(element):
+            raise SpecificationError(
+                f"SEA_TRIALS.md {criterion_id} Command must be a literal argv; "
+                f"Drydock does not resolve the placeholder {element!r}"
+            )
     return tuple(parsed)
+
+
+def _extract(value: str, criterion_id: str) -> str:
+    """Validate the optional measurement Extract pattern.
+
+    ``Extract`` lets Drydock read the measured value out of a harness's own stdout, so no
+    project-authored code stands between the harness and the score it is judged by. The pattern
+    must capture the number in its first group.
+    """
+    pattern = value.strip()
+    if not pattern:
+        return ""
+    try:
+        compiled = re.compile(pattern)
+    except re.error as exc:
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} Extract is not a valid regular expression: {exc}"
+        ) from exc
+    if compiled.groups < 1:
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} Extract must capture the measured value in a group"
+        )
+    return pattern
 
 
 def _pattern(value: str, *, trial_type: str, criterion: str, criterion_id: str) -> str:
@@ -242,6 +274,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                         criterion_id=criterion_id,
                     ),
                     command=_command(fields.get("command", ""), criterion_id),
+                    extract=_extract(fields.get("extract", ""), criterion_id),
                     evidence=fields.get("evidence", ""),
                     baseline=_number(
                         fields.get("baseline", ""), field="Baseline", criterion_id=criterion_id

@@ -16,6 +16,8 @@ SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
 PYTHON_FENCE_RE = re.compile(r"```python\s*\n(?P<code>.*?)\n```", re.DOTALL)
 HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 TIMEOUT_SECONDS = 60
+# A full-corpus check runs a complete conformance suite; a story timeout would kill it.
+CORPUS_TIMEOUT_SECONDS = 900
 
 
 def _timeout_output_text(value: bytes | str | None) -> str:
@@ -33,6 +35,12 @@ class ProgrammaticAcceptance:
     intent: str
     code: str
     sea_trials: tuple[str, ...] = ()
+    full_corpus: bool = False
+
+    @property
+    def timeout_seconds(self) -> int:
+        """A full-corpus check runs a whole conformance suite, not a story unit test."""
+        return CORPUS_TIMEOUT_SECONDS if self.full_corpus else TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -97,12 +105,24 @@ def _intent(prefix: str, title: str | None) -> str:
     lines = []
     for raw in prefix.splitlines():
         line = raw.strip()
-        if not line or line.startswith("###") or re.match(r"Sea Trials:", line, re.I):
+        if not line or line.startswith("###"):
+            continue
+        if re.match(r"(Sea Trials|Corpus):", line, re.I):
             continue
         lines.append(line)
     if lines:
         return " ".join(lines)
     return title or "Programmatic acceptance assertion"
+
+
+def _full_corpus(prefix: str) -> bool:
+    """Whether the assertion opts in to running a complete conformance corpus.
+
+    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
+    whole suite. The terminal verification story declares ``Corpus: full`` to gate on the real
+    corpus rather than a sample of it.
+    """
+    return bool(re.search(r"^Corpus:\s*full\s*$", prefix, re.MULTILINE | re.IGNORECASE))
 
 
 def _sea_trials(prefix: str) -> tuple[str, ...]:
@@ -132,6 +152,7 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
                 intent=_intent(prefix, title),
                 code=match.group("code").strip(),
                 sea_trials=_sea_trials(prefix),
+                full_corpus=_full_corpus(prefix),
             )
         )
         previous_end = match.end()
@@ -207,7 +228,7 @@ def run_programmatic_acceptance(
                 env=env,
                 capture_output=True,
                 text=True,
-                timeout=TIMEOUT_SECONDS,
+                timeout=check.timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
             results.append(
@@ -219,7 +240,7 @@ def run_programmatic_acceptance(
                     return_code=None,
                     stdout=_timeout_output_text(exc.stdout),
                     stderr=_timeout_output_text(exc.stderr),
-                    error=f"timed out after {TIMEOUT_SECONDS}s",
+                    error=f"timed out after {check.timeout_seconds}s",
                 )
             )
             continue

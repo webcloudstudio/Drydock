@@ -256,3 +256,58 @@ QUESTIONS:
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["state"] == "answered"
     assert payload["questions"][0]["answer"] == "Known workload"
+
+
+# ---------------------------------------------------------------------------
+# Extract: and literal-argv Command:
+# ---------------------------------------------------------------------------
+
+_MEASUREMENT = """# Sea Trials: Demo
+
+## st-004: Correctness score
+Type: outcome
+Required: yes
+Criterion: The converter achieves the passing-example threshold.
+Verification: measurement
+Command: ["python3", "sources/spec_tests.py", "--spec", "sources/spec.txt"]
+Extract: ^(\\d+) passed
+Operator: >=
+Target: 652
+Unit: examples
+"""
+
+
+def test_extract_round_trips_through_parse():
+    trial = parse_sea_trials_text(_MEASUREMENT).trials[0]
+
+    assert trial.extract == r"^(\d+) passed"
+    assert trial.command == ("python3", "sources/spec_tests.py", "--spec", "sources/spec.txt")
+    assert trial.target == 652.0
+
+
+def test_extract_is_optional():
+    text = _MEASUREMENT.replace("Extract: ^(\\d+) passed\n", "")
+
+    assert parse_sea_trials_text(text).trials[0].extract == ""
+
+
+def test_invalid_extract_regex_is_rejected():
+    text = _MEASUREMENT.replace("Extract: ^(\\d+) passed", "Extract: ^(\\d+ passed")
+
+    with pytest.raises(SpecificationError, match="not a valid regular expression"):
+        parse_sea_trials_text(text)
+
+
+def test_extract_without_a_capture_group_is_rejected():
+    text = _MEASUREMENT.replace("Extract: ^(\\d+) passed", "Extract: ^\\d+ passed")
+
+    with pytest.raises(SpecificationError, match="must capture the measured value"):
+        parse_sea_trials_text(text)
+
+
+def test_command_placeholder_is_rejected():
+    """Nothing resolves <candidate-command>; a placeholder silently never runs."""
+    text = _MEASUREMENT.replace('"--spec", "sources/spec.txt"', '"<candidate-command>"')
+
+    with pytest.raises(SpecificationError, match="literal argv"):
+        parse_sea_trials_text(text)
