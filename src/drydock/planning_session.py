@@ -1522,11 +1522,16 @@ def _integrity_check(
             )
         for name in targets:
             text = spec_text(name) if name else None
+            # Scope to the acceptance section. A spec may name the corpus in prose
+            # (a Test Strategy bullet) without any story check ever executing it.
+            acceptance = (
+                _extract_terminal_section(text, "Programmatic Acceptance") if text else None
+            )
             if (
-                text
-                and "spec_tests.py" in text
-                and "--pattern" not in text
-                and "--number" not in text
+                acceptance
+                and "spec_tests.py" in acceptance
+                and "--pattern" not in acceptance
+                and "--number" not in acceptance
             ):
                 fatal.append(
                     f"{block.block_id}: Programmatic Acceptance invokes an unbounded "

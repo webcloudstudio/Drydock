@@ -254,14 +254,14 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             continue
         if lines[index].strip() == "QUESTIONS:":
             index += 1
-            while index < len(lines):
+            while index < len(lines) and not lines[index].lstrip().startswith("#"):
                 match = _QUESTION_RE.match(lines[index].strip())
                 if match:
                     questions.append(
                         SeaTrialQuestion(match.group("id").lower(), match.group("text"))
                     )
                 index += 1
-            break
+            continue
         index += 1
 
     if not trials:

@@ -1237,6 +1237,53 @@ def test_integrity_unknown_dependency_is_fatal(tmp_path):
     )
 
 
+def test_corpus_named_in_prose_outside_acceptance_is_not_fatal(tmp_path):
+    """A spec may name the conformance corpus in prose. Only a Programmatic Acceptance
+    check that actually runs it unbounded violates the gate."""
+    _make_target(tmp_path)
+    prose = (
+        "## Test Strategy\n\n"
+        "- The imported `spec_tests.py` corpus is staged for final measurement and "
+        "limited story-scoped checks, not for per-story full-suite execution.\n\n"
+    )
+    header = "## Programmatic Acceptance"
+    out = _llm_output().replace(header, prose + header)
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert "story-status" in result.plan.by_id()
+
+
+def test_unbounded_corpus_inside_acceptance_is_fatal(tmp_path):
+    target_dir = _make_target(tmp_path)
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    ).replace(
+        "## Programmatic Acceptance\n\n",
+        "## Programmatic Acceptance\n\n"
+        "### check-0\nThe full conformance corpus passes.\n\n"
+        "```python\n"
+        "import subprocess, sys\n"
+        'subprocess.run([sys.executable, "tests/spec_tests.py"], check=True)\n'
+        "```\n\n",
+    )
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="unbounded conformance corpus",
+    )
+
+
 def test_required_sea_trial_requires_manifest_or_proof_traceability(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "SEA_TRIALS.md").write_text(

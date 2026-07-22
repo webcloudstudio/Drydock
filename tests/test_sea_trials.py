@@ -48,6 +48,32 @@ QUESTIONS:
     assert document.questions[0].question_id == "q-latency-baseline"
 
 
+def test_trial_after_questions_block_is_parsed():
+    document = parse_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-001: First
+Type: technical
+Required: yes
+Criterion: When the system starts, the system shall log a ready message.
+Verification: proof
+Pattern: event
+QUESTIONS:
+- q-st-001-target: Which environment defines the baseline?
+
+## st-002: Second
+Type: technical
+Required: yes
+Criterion: When the system stops, the system shall flush its buffers.
+Verification: proof
+Pattern: event
+"""
+    )
+
+    assert [trial.criterion_id for trial in document.trials] == ["st-001", "st-002"]
+    assert document.questions[0].question_id == "q-st-001-target"
+
+
 def test_legacy_table_is_imported_as_qualitative_acceptance():
     document = parse_sea_trials_text(
         """# Sea Trials: Demo
