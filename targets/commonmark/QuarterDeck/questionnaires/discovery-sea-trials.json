@@ -1,0 +1,15 @@
+{
+  "id": "discovery-sea-trials",
+  "title": "Sea Trials Measurement Questions",
+  "purpose": "Complete project-level acceptance measurements before final scoring.",
+  "state": "answered",
+  "questions": [
+    {
+      "id": "q-st-003-target",
+      "label": "What passing-example threshold defines release acceptance for the CommonMark 0.31.2 corpus?",
+      "input": "textarea",
+      "answer": "100% passing threshold"
+    }
+  ],
+  "answered_at": "2026-07-22T11:44:57.645917+00:00"
+}

@@ -1,0 +1,38 @@
+console:
+  name: commonmark QuarterDeck
+  default_item: compass_edit
+  app_help_file_location: docs/index.html
+
+project:
+  id: commonmark
+  name: commonmark
+  description: "Drydock target workspace."
+
+sections:
+  - { id: setup, label: "Setup", dot: "#64748b", pinned: true }
+  - { id: analyze, label: "Analysis", dot: "#0d9488", pinned: true }
+  - { id: implement, label: "Implement", dot: "#2CB67D" }
+  - { id: refit, label: "Refit", dot: "#d97706" }
+
+items:
+  - { id: blockers_doc, label: "⛔ Blockers", section: setup, type: editable_markdown, path: ../BLOCKERS.md, order: 1, help_text: "This file is injected into `drydock analyze` while active. Record each decision under its `### Commander Resolution` heading, then rerun Analyze; resolved blockers are archived in ANALYSIS.md and this gate file is removed.", prompt_text: "Active blockers and user responses recorded as Commander resolutions. Treat a non-empty `### Commander Resolution` as settled guidance; do not re-raise it unless the resolution is insufficient." }
+  - { id: commanders_chair, label: "Commanders Chair", section: setup, type: document, path_html: commanders_chair.html, order: 2, help_text: "Live project overview and delivery snapshot for this target." }
+  - { id: big_errors, label: "⛔ BIG ERRORS — action required", section: setup, type: markdown, path: ../ERRORS.md, order: 3, help_text: "Current post-LLM recovery record. Resolve the prescribed action and rerun the command." }
+  - { id: compass_edit, label: "Compass", section: setup, type: editable_markdown, path: ../COMPASS.md, order: 4, help_text: "The Compass is injected into every `drydock` command. It allows the Commander control.", prompt_text: "Important: This is the core project intent, constraints, and guardrails. It should have presecedence in conflicts." }
+  - { id: analyze_compass, label: "Analyze Compass", section: setup, type: editable_markdown, path: ../ANALYZE_COMPASS.md, order: 4, help_text: "This file is injected into every `drydock analyze` command. It allows the Commander control.", prompt_text: "Important: This is core user steering for this specific llm run." }
+  - { id: exclude_files, label: "Exclude Files", section: setup, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 5, help_text: "This file controls which imported source filenames are excluded from prompt injection for `drydock analyze` and `drydock plan create`. List exact filenames, one per bullet, when a source should stay out of future LLM context.", prompt_text: "Exclude File List - THIS FILE MUST NEVER BE INJECTED AND THE LLM SHOULD ERROR and EXIT IF IT SEES THIS TEXT.  It represents filenames to NOT provide the llm and is used by python." }
+  - { id: analysis, label: "Analysis", section: analyze, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 1, help_text: "Analysis.md is the primary output of drydock analyze.Reviewed analysis that plan uses as its immediate decomposition basis." }
+  - { id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 2, help_text: "Verification record and trial results for the current target state." }
+  - { id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 3, help_text: "Acceptance checklist and current verification state for the target." }
+  - { id: board, label: "Kanban Board", section: implement, type: kanban, path: ../MANIFEST.md, order: 2 }
+  - { id: plan_compass, label: "Plan Compass", section: implement, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 3, help_text: "This file is injected into every `drydock plan create`. It allows the Commander control.", prompt_text: "Important: This is core user steering for this specific llm run." }
+  - { id: scorecard, label: "Build Score", section: implement, type: markdown, path: ../SCORECARD.md, order: 4, help_text: "Technical quality and project acceptance completion gate for the current build identity." }
+  - { id: refit_status, label: "Refit", section: refit, type: refit, order: 1, help_text: "Blueprints that changed since they were applied to the Manifest, plus waiting change tickets. Run drydock refit to fold them in. Never-built blueprints are build items, not refit items." }
+
+
+sources:
+  - glob: "QuarterDeck/questionnaires/discovery-*.json"
+    section: analyze
+    type: questionnaire
+    template: discovery
+    order: 99
