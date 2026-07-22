@@ -2,106 +2,77 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V4 |
-| Description | Block parsing recognizes CommonMark leaf and container structures and document-wide link reference definitions. |
+| Version     | 20260722 V1 |
+| Description | Defines CommonMark block structure, containers, lists, and reference-definition collection. |
 | Depends On  | ARCHITECTURE.md, FEATURE-Filter-Execution.md |
-| Provides    | commonmark.blocks.parse_document, commonmark.blocks.collect_reference_definitions |
+| Provides    | block parsing, container parsing, link reference collection |
 | Phase       | 3 |
 
 ## Purpose
 
-This feature defines phase-one parsing for the CommonMark document tree, including leaf blocks,
-container blocks, list tightness, and reference-definition collection.
+The block parser builds document structure before inline parsing. It handles paragraphs, headings, thematic breaks, indented and fenced code, HTML blocks, block quotes, lists, nesting, laziness, tightness, and link reference definitions.
 
-## Trigger
+## Behavior
 
-`commonmark.api.convert()` receives a Markdown document and invokes the block parser before any
-inline parsing occurs.
-
-## Sequence
-
-1. Classify each input line against the currently open block stack.
-2. Open, continue, or close block quotes, list items, paragraphs, headings, code blocks, thematic
-   breaks, HTML blocks, and other supported block types according to CommonMark precedence.
-3. Preserve block raw text until the block structure is complete.
-4. Extract link reference definitions with document-wide scope and first-definition precedence.
-5. Produce a document tree plus a normalized reference-definition map for phase-two inline parsing.
-
-## Reads
-
-- Input document lines.
-- Existing open block stack state.
-
-## Writes
-
-- Block syntax tree.
-- Reference-definition map keyed by normalized labels.
-
-## Operational Behavior
-
-- Block structure takes precedence over inline markers.
-- Setext heading precedence over thematic breaks is preserved.
-- Lists handle nesting, laziness, and tight versus loose rendering semantics.
-- HTML blocks preserve raw HTML according to the seven CommonMark HTML block forms.
-- Link reference definitions can be declared within block containers and still apply document-wide.
+Block structure takes precedence over inline syntax. Code blocks and HTML blocks retain literal content according to CommonMark 0.31.2. Link reference definitions are collected across the document and containers, with the first matching normalized definition taking precedence.
 
 ## Programmatic Acceptance
 
-### block-atx-and-thematic-break
-Representative ATX heading and thematic break inputs render with the expected block structure.
+### block-leaf-structures
+Representative leaf blocks render with the expected structure.
 
 ```python
-from commonmark.api import convert
-
-html = convert("# Title\n\n***\n")
-assert html == "<h1>Title</h1>\n<hr />\n"
+from mycommonmark import convert
+html = convert("# Heading\n\n---\n\n    literal\n\n```\ncode\n```\n")
+assert "<h1>Heading</h1>" in html
+assert "<hr />" in html
+assert "<pre><code>literal\n</code></pre>" in html
+assert "<pre><code>code\n</code></pre>" in html
 ```
 
-### block-list-and-blockquote
-Nested list and block quote structures preserve container boundaries and item nesting.
+### block-container-structures
+Nested block containers preserve list and block quote structure.
 
 ```python
-from commonmark.api import convert
-
-markdown = "> - one\n> - two\n"
-html = convert(markdown)
-
-assert html == "<blockquote>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</blockquote>\n"
+from mycommonmark import convert
+html = convert("> quote\n>\n> - one\n> - two\n")
+assert "<blockquote>" in html
+assert "<ul>" in html
+assert "<li>one</li>" in html
+assert "<li>two</li>" in html
+assert "</blockquote>" in html
 ```
 
-### block-fenced-code-literal
-Fenced code blocks preserve literal content and do not parse Markdown inside the fence.
+### block-code-literal
+Fenced code content is not parsed as Markdown.
 
 ```python
-from commonmark.api import convert
-
-markdown = "```python\n*not emphasis*\n```\n"
-html = convert(markdown)
-
-assert html == '<pre><code class="language-python">*not emphasis*\\n</code></pre>\\n'
+from mycommonmark import convert
+html = convert("```\n*literal*\n# literal\n```\n")
+assert "<em>" not in html
+assert "<h1>" not in html
+assert "*literal*" in html
 ```
 
-### block-reference-definition-precedence
-Reference definitions are collected across the document and the first matching definition wins.
+### block-reference-precedence
+The first matching reference definition resolves a reference link.
 
 ```python
-from commonmark.api import convert
-
-markdown = "[foo]\\n\\n[foo]: /first\\n[foo]: /second\\n"
-html = convert(markdown)
-
-assert html == '<p><a href="/first">foo</a></p>\\n'
+from mycommonmark import convert
+html = convert("[foo]\n\n[foo]: /first\n[foo]: /second\n")
+assert '<a href="/first">foo</a>' in html
+assert "/second" not in html
 ```
 
 ## User Acceptance
 
-- None.
+- Nested lists and block quotes have visibly correct HTML structure.
 
 ## Guardrails
 
-- Block parsing does not render HTML directly.
-- Code blocks remain literal content and are not re-parsed as Markdown.
-- Reference-definition extraction does not discard non-definition paragraph content incorrectly.
+- Block parsing precedes inline parsing.
+- Code blocks are never interpreted as Markdown.
+- HTML blocks preserve required raw content.
 
 ## Open Questions
 

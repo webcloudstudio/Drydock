@@ -1,152 +1,148 @@
 # MANIFEST: CommonMark
-updated:     2026-07-22T00:00:00
-plan_hash:   draft
+updated:     2026-07-22
+plan_hash:   pending
 applied_specs: |
 
 ## feature 1: Parser Foundation
 id:      parser-foundation
-summary: Defines parser module boundaries and execution interfaces.
+summary: Establishes the executable filter and architecture boundary.
 state:   pending
 
-## story 1: Architecture
+## story 1: Architecture Boundary
 id:           architecture
 parent:       parser-foundation
-summary:      Establish the parser package boundaries and conversion interfaces.
+summary:      Establish the CommonMark executable boundary and conversion entry point.
 implements:   ARCHITECTURE.md
 accepts:      st-001
-context:      COMPASS.md, METADATA.md
-stack:        python.md
+context:      COMPASS.md, SEA_TRIALS.md
 instructions: |
-  Implement the documented CommonMark package entry points, module boundaries, and stdin-to-stdout execution flow.
+  Build the standalone Python executable and importable conversion entry point described by ARCHITECTURE.md. Keep stdin/stdout behavior, argument handling, and side-effect boundaries explicit.
 depends:
 state:        pending
 evidence:     commonmark/evidence/architecture.md
-scope:        target
+scope:        both
 
-## ac 1: Architecture modules (smoke: python -c "import commonmark.__main__, commonmark.api, commonmark.blocks, commonmark.inlines, commonmark.render")
-id:       architecture-modules
+## ac 1: Architecture smoke
+id:       architecture-smoke
 parent:   architecture
-summary:  Architecture modules are importable.
+summary:  Architecture entry point and subprocess contract work
 kind:     smoke
-check:    python -c "import commonmark.__main__, commonmark.api, commonmark.blocks, commonmark.inlines, commonmark.render"
+check:    python3 -c "from mycommonmark import convert; assert '<h1>Heading</h1>' in convert('# Heading')"
 state:    pending
-evidence: commonmark/evidence/architecture-modules.md
+evidence: commonmark/evidence/architecture-smoke.md
 
-## feature 2: Filter Execution
-id:      feature-filter-execution
-summary: Provides the standalone stdin-to-stdout parser filter.
+## feature 2: Filter Conversion
+id:      filter-conversion
+summary: Implements stdin-to-stdout conversion and input safety.
 state:   pending
 
 ## story 2: Filter Execution
-id:           story-filter-execution
-parent:       feature-filter-execution
-summary:      Implement the argument-free CommonMark stdin-to-stdout filter.
+id:           filter-execution
+parent:       filter-conversion
+summary:      Implement Markdown filter execution and NUL replacement.
 implements:   FEATURE-Filter-Execution.md
 accepts:      st-001, st-005
-context: COMPASS.md, ARCHITECTURE_compact.md
-stack:        python.md
+context: COMPASS.md, SEA_TRIALS.md, ARCHITECTURE_compact.md
 instructions: |
-  Implement the executable filter and conversion orchestration. Read UTF-8 standard input, replace NUL characters with U+FFFD, convert Markdown to HTML, write only HTML to standard output, reject unexpected arguments, and avoid configuration, filesystem side effects, and external services.
+  Implement the filter contract in FEATURE-Filter-Execution.md. Read all stdin, replace NUL characters with U+FFFD, invoke the parser, and write only UTF-8 HTML to stdout. Reject unexpected arguments and avoid configuration or side effects.
 depends:      architecture
 state:        pending
 evidence:     commonmark/evidence/filter-execution.md
 scope:        target
 
-## ac 2: Filter contract (smoke: python -m commonmark <<< '# Title' | python -c "import sys; assert sys.stdin.read() == '<h1>Title</h1>\\n'")
-id:       filter-contract
-parent:   story-filter-execution
-summary:  The parser converts standard input to standard output.
+## ac 2: Filter smoke
+id:       filter-smoke
+parent:   filter-execution
+summary:  Filter converts stdin and replaces NUL characters
 kind:     smoke
-check:    python -m commonmark <<< '# Title' | python -c "import sys; assert sys.stdin.read() == '<h1>Title</h1>\\n'"
+check:    python3 -c "import subprocess; p=subprocess.run(['python3','mycommonmark.py'],input=b'# H\\x00\\n',capture_output=True); assert p.returncode == 0; assert '�' in p.stdout.decode()"
 state:    pending
-evidence: commonmark/evidence/filter-contract.md
+evidence: commonmark/evidence/filter-smoke.md
 
-## feature 3: Block Parsing
-id:      feature-block-parsing
-summary: Parses CommonMark block structure and reference definitions.
+## feature 3: Block Structure
+id:      block-structure
+summary: Implements CommonMark block parsing and reference collection.
 state:   pending
 
 ## story 3: Block Parsing
-id:           story-block-parsing
-parent:       feature-block-parsing
-summary:      Implement CommonMark leaf blocks, containers, lists, and reference definitions.
+id:           block-parsing
+parent:       block-structure
+summary:      Implement leaf blocks, containers, lists, code blocks, HTML blocks, and references.
 implements:   FEATURE-Block-Parsing.md
 accepts:      st-001
-context: FEATURE-Filter-Execution.md, spec.txt, ARCHITECTURE_compact.md
-stack:        python.md
+context: COMPASS.md, SEA_TRIALS.md, ARCHITECTURE_compact.md
 instructions: |
-  Implement phase-one block parsing, including headings, thematic breaks, paragraphs, indented and fenced code, HTML blocks, block quotes, lists, lazy continuation, tight and loose rendering metadata, and document-wide first-wins reference-definition collection.
-depends:      story-filter-execution
+  Implement the block phase described by FEATURE-Block-Parsing.md. Follow CommonMark 0.31.2 precedence, indentation, lazy continuation, list tightness, container boundaries, literal code handling, raw HTML block rules, and first-definition reference precedence.
+depends:      filter-execution
 state:        pending
 evidence:     commonmark/evidence/block-parsing.md
 scope:        target
 
-## ac 3: Block parsing tests (smoke: python -m pytest -q tests -k 'block')
-id:       block-parsing-tests
-parent:   story-block-parsing
-summary:  Focused block parsing tests pass.
+## ac 3: Block smoke
+id:       block-smoke
+parent:   block-parsing
+summary:  Block structures render correctly
 kind:     smoke
-check:    python -m pytest -q tests -k 'block'
+check:    python3 -c "from mycommonmark import convert; h=convert('> q\\n\\n- a\\n'); assert '<blockquote>' in h and '<li>a</li>' in h"
 state:    pending
-evidence: commonmark/evidence/block-parsing-tests.md
+evidence: commonmark/evidence/block-smoke.md
 
-## feature 4: Inline Parsing
-id:      feature-inline-parsing
-summary: Parses CommonMark inline structure and renders inline HTML.
+## feature 4: Inline Structure
+id:      inline-structure
+summary: Implements CommonMark inline parsing and rendering.
 state:   pending
 
 ## story 4: Inline Parsing
-id:           story-inline-parsing
-parent:       feature-inline-parsing
-summary:      Implement CommonMark inline parsing and rendering.
+id:           inline-parsing
+parent:       inline-structure
+summary:      Implement inline syntax, links, images, autolinks, and raw HTML.
 implements:   FEATURE-Inline-Parsing.md
 accepts:      st-001
-context: FEATURE-Block-Parsing.md, spec.txt, ARCHITECTURE_compact.md
-stack:        python.md
+context: COMPASS.md, SEA_TRIALS.md, ARCHITECTURE_compact.md
 instructions: |
-  Implement phase-two inline parsing and HTML rendering for escapes, entities, code spans, emphasis, strong emphasis, links, images, autolinks, raw HTML, hard breaks, and soft breaks, using the completed document-wide reference map.
-depends:      story-block-parsing
+  Implement the inline phase described by FEATURE-Inline-Parsing.md. Apply delimiter-run processing and precedence rules for escapes, entities, code spans, emphasis, links, images, references, autolinks, HTML, and line breaks.
+depends:      block-parsing
 state:        pending
 evidence:     commonmark/evidence/inline-parsing.md
 scope:        target
 
-## ac 4: Inline parsing tests (smoke: python -m pytest -q tests -k 'inline')
-id:       inline-parsing-tests
-parent:   story-inline-parsing
-summary:  Focused inline parsing tests pass.
+## ac 4: Inline smoke
+id:       inline-smoke
+parent:   inline-parsing
+summary:  Inline structures render correctly
 kind:     smoke
-check:    python -m pytest -q tests -k 'inline'
+check:    python3 -c "from mycommonmark import convert; h=convert('**bold** [x](u)\\n'); assert '<strong>bold</strong>' in h and '<a href=\"u\">x</a>' in h"
 state:    pending
-evidence: commonmark/evidence/inline-parsing-tests.md
+evidence: commonmark/evidence/inline-smoke.md
 
 ## feature 5: Conformance Verification
 id:      feature-conformance-verification
-summary: Stages and executes the supplied CommonMark conformance harness.
+summary: Verifies selected subprocess behavior using supplied assets.
 state:   pending
 
 ## story 5: Conformance Verification
 id:           story-conformance-verification
 parent:       feature-conformance-verification
-summary:      Stage the imported corpus and verify clean subprocess harness execution.
+summary:      Integrate focused subprocess verification with the supplied harness assets.
 implements:   FEATURE-Conformance-Verification.md
-accepts:      st-002, st-003
-context: FEATURE-Filter-Execution.md, FEATURE-Block-Parsing.md, FEATURE-Inline-Parsing.md, spec.txt, spec_tests.py, normalize.py, ARCHITECTURE_compact.md
-stack:        python.md
-copy:         sources/spec.txt -> tests/conformance/spec.txt
-copy:         sources/spec_tests.py -> tests/conformance/spec_tests.py
-copy:         sources/normalize.py -> tests/conformance/normalize.py
+accepts:      st-002
+context: COMPASS.md, SEA_TRIALS.md, spec.txt, spec_tests.py, normalize.py, ARCHITECTURE_compact.md
+context_roles: |
+  sources/spec.txt: context
+  sources/spec_tests.py: context
+  sources/normalize.py: context
 instructions: |
-  Stage the supplied conformance corpus and helpers under tests/conformance. Add integration coverage for subprocess execution and run focused harness verification without requiring network access or API credentials. Preserve the full-corpus command for final Sea Trials scoring at the answered 100% threshold.
-depends:      story-inline-parsing
+  Preserve the supplied harness compatibility and add bounded verification for selected examples. Do not convert the complete corpus threshold into a story gate; final scoring measures the complete suite.
+depends:      inline-parsing
 state:        pending
 evidence:     commonmark/evidence/conformance-verification.md
 scope:        both
 
-## ac 5: Conformance harness (smoke: test -f tests/conformance/spec.txt && test -f tests/conformance/spec_tests.py && test -f tests/conformance/normalize.py && python tests/conformance/spec_tests.py --spec tests/conformance/spec.txt --program 'python -m commonmark' --pattern 'ATX headings')
-id:       conformance-harness
+## ac 5: Focused conformance smoke
+id:       focused-conformance-smoke
 parent:   story-conformance-verification
-summary:  The staged conformance harness executes without errors.
+summary:  A selected conformance example completes without execution error
 kind:     smoke
-check:    test -f tests/conformance/spec.txt && test -f tests/conformance/spec_tests.py && test -f tests/conformance/normalize.py && python tests/conformance/spec_tests.py --spec tests/conformance/spec.txt --program 'python -m commonmark' --pattern 'ATX headings'
+check:    python3 blueprint/sources/spec_tests.py --spec blueprint/sources/spec.txt --program "python3 mycommonmark.py" --number 1
 state:    pending
-evidence: commonmark/evidence/conformance-harness.md
+evidence: commonmark/evidence/focused-conformance-smoke.md

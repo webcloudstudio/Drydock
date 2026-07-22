@@ -2,109 +2,80 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V4 |
-| Description | Inline parsing resolves CommonMark text structure including escapes, emphasis, links, images, autolinks, raw HTML, and line breaks. |
+| Version     | 20260722 V1 |
+| Description | Defines CommonMark inline parsing and HTML rendering for inline constructs. |
 | Depends On  | ARCHITECTURE.md, FEATURE-Block-Parsing.md |
-| Provides    | commonmark.inlines.parse_inlines, commonmark.render.render_inlines |
+| Provides    | inline parsing, link and image rendering, autolinks, raw HTML |
 | Phase       | 4 |
 
 ## Purpose
 
-This feature defines phase-two inline parsing over completed block text using the document-wide
-reference-definition map collected during block parsing.
+The inline parser converts paragraph and heading content into CommonMark inline elements. It handles escapes, entities, code spans, emphasis, strong emphasis, links, images, reference links, autolinks, raw HTML, hard breaks, and soft breaks.
 
-## Trigger
+## Behavior
 
-The block parser closes a paragraph, heading, or other inline-bearing node and the conversion
-pipeline dispatches its raw text to the inline parser.
-
-## Sequence
-
-1. Scan text left-to-right for code spans, raw HTML tags, autolinks, delimiter runs, brackets, and
-   escaped punctuation.
-2. Resolve entity and numeric character references outside code spans and code blocks.
-3. Parse emphasis and strong emphasis using delimiter-run rules and the no-backtracking stack
-   strategy from the CommonMark appendix.
-4. Resolve inline, full-reference, collapsed-reference, and shortcut-reference links and images.
-5. Render the resulting inline tree with correct escaping, alt text extraction, and line-break
-   behavior.
-
-## Reads
-
-- Raw inline text from paragraphs, headings, and other inline-bearing blocks.
-- Normalized reference-definition map from block parsing.
-
-## Writes
-
-- Inline syntax tree nodes.
-- HTML inline fragments rendered into the final document output.
-
-## Operational Behavior
-
-- Backslash escapes apply to ASCII punctuation outside code spans, autolinks, and raw HTML.
-- Entity and numeric character references decode outside code spans and code blocks.
-- Links cannot contain links, but image descriptions may contain links for alt-text extraction.
-- Hard and soft line breaks follow CommonMark rules for trailing spaces and backslashes.
+Inline parsing follows CommonMark delimiter and precedence rules. Code spans, links, images, HTML tags, and autolinks bind more tightly than emphasis. Destinations and titles are escaped and URL-encoded as required. Image `alt` text contains only the plain description text.
 
 ## Programmatic Acceptance
 
-### inline-code-span-and-emphasis
-Code spans bind more tightly than emphasis and render literal content.
+### inline-code-emphasis
+Code spans remain literal while emphasis is rendered.
 
 ```python
-from commonmark.api import convert
-
-markdown = "*a `*`*\n"
-html = convert(markdown)
-
-assert html == "<p><em>a <code>*</code></em></p>\n"
+from mycommonmark import convert
+html = convert("`*code*` and *emphasis*\n")
+assert "<code>*code*</code>" in html
+assert "<em>emphasis</em>" in html
+assert "<code><em>" not in html
 ```
 
 ### inline-reference-link
-Reference links resolve against normalized labels collected during block parsing.
+Reference links resolve normalized labels.
 
 ```python
-from commonmark.api import convert
-
-markdown = "[Foo][]\n\n[foo]: /url \"title\"\n"
-html = convert(markdown)
-
-assert html == '<p><a href="/url" title="title">Foo</a></p>\n'
+from mycommonmark import convert
+html = convert("[Display][FOO]\n\n[foo]: /target \"Title\"\n")
+assert '<a href="/target" title="Title">Display</a>' in html
 ```
 
-### inline-autolink-and-raw-html
-Autolinks and raw HTML are preserved according to CommonMark precedence and escaping rules.
+### inline-autolink-html
+Autolinks render as links and raw HTML remains unescaped.
 
 ```python
-from commonmark.api import convert
-
-markdown = "<https://example.com>\n\n<a href=\"/raw\">raw</a>\n"
-html = convert(markdown)
-
-assert html == '<p><a href="https://example.com">https://example.com</a></p>\n<p><a href="/raw">raw</a></p>\n'
+from mycommonmark import convert
+html = convert("<https://example.com> and <span>raw</span>\n")
+assert '<a href="https://example.com">https://example.com</a>' in html
+assert "<span>raw</span>" in html
 ```
 
-### inline-image-alt-text
-Image descriptions render plain-string alt text rather than nested Markdown syntax.
+### inline-image-alt
+Image descriptions render plain-string alt text.
 
 ```python
-from commonmark.api import convert
+from mycommonmark import convert
+html = convert("![foo *bar*](image.png)\n")
+assert '<img src="image.png" alt="foo bar" />' in html
+```
 
-markdown = "![foo *bar*](train.jpg)\n"
-html = convert(markdown)
+### inline-hard-break
+Two trailing spaces create a hard line break.
 
-assert html == '<p><img src="train.jpg" alt="foo bar" /></p>\n'
+```python
+from mycommonmark import convert
+html = convert("first  \nsecond\n")
+assert "<br />" in html
+assert "first<br />" in html
 ```
 
 ## User Acceptance
 
-- None.
+- Inline formatting, links, images, autolinks, and raw HTML render according to the CommonMark examples.
 
 ## Guardrails
 
-- Inline parsing does not run until block structure and reference definitions are complete.
-- Links do not nest inside other links.
-- Raw HTML tags that satisfy CommonMark inline HTML grammar are not escaped.
+- Code spans are not parsed for inline syntax.
+- Raw HTML is not escaped when CommonMark requires preservation.
+- Link nesting restrictions are enforced.
 
 ## Open Questions
 
