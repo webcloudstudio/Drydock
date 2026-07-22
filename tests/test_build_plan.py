@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -743,6 +744,25 @@ class TestStaleAndCascade:
         (blueprint / "SCREEN-A.md").unlink()
         stale = {s.rel_path: s.reason for s in stale_applied_specs(plan, blueprint)}
         assert stale == {"DATABASE.md": "changed", "SCREEN-A.md": "missing"}
+
+    def test_missing_generated_derivative_is_not_stale_while_its_source_stands(self, tmp_path):
+        """A *_compact.md record survives deletion of the derivative: it is regenerable."""
+        plan, blueprint = self._plan(tmp_path)
+        applied = dict(plan.applied_specs)
+        applied["DATABASE_compact.md"] = replace(applied["DATABASE.md"], path="DATABASE_compact.md")
+        plan = replace(plan, applied_specs=applied)
+
+        assert stale_applied_specs(plan, blueprint) == ()
+
+    def test_missing_derivative_is_stale_when_its_source_is_gone_too(self, tmp_path):
+        plan, blueprint = self._plan(tmp_path)
+        applied = dict(plan.applied_specs)
+        applied["DATABASE_compact.md"] = replace(applied["DATABASE.md"], path="DATABASE_compact.md")
+        plan = replace(plan, applied_specs=applied)
+        (blueprint / "DATABASE.md").unlink()
+
+        stale = {s.rel_path: s.reason for s in stale_applied_specs(plan, blueprint)}
+        assert stale == {"DATABASE.md": "missing", "DATABASE_compact.md": "missing"}
 
     def test_cascade_resets_consumers_dependents_children_and_parent_feature(self, tmp_path):
         plan, _ = self._plan(tmp_path)

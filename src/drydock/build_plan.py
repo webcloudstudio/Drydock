@@ -726,11 +726,20 @@ class StaleSpec:
 
 
 def stale_applied_specs(plan: BuildPlan, blueprint_dir: Path) -> tuple[StaleSpec, ...]:
-    """Applied Blueprint files that changed or disappeared since they were stamped."""
+    """Applied Blueprint files that changed or disappeared since they were stamped.
+
+    A missing ``*_compact.md`` derivative whose source still exists is not stale: derivatives
+    are build-generated and regenerable, and drift in the underlying specification is caught by
+    the source's own record. Only a missing source — or a derivative whose source is also gone —
+    is reported.
+    """
     stale: list[StaleSpec] = []
     for rel_path, record in sorted(plan.applied_specs.items()):
         source = blueprint_dir / rel_path
         if not source.is_file():
+            regenerable = rel_path != compact_source(rel_path)
+            if regenerable and (blueprint_dir / compact_source(rel_path)).is_file():
+                continue
             stale.append(StaleSpec(rel_path=rel_path, record=record, reason="missing"))
             continue
         current = hashlib.sha256(source.read_bytes()).hexdigest()
