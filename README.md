@@ -290,6 +290,7 @@ Configuration keys:
 | `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` | Prompt-size warning threshold in tokens |
 | `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
+| `diagnose` | `DRYDOCK_DIAGNOSE` | Standoff diagnosis of opaque failures; `--no-diagnose` suppresses it for one run |
 
 ## Public Documentation
 

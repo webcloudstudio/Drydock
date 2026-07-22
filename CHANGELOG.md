@@ -8,6 +8,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-07-22: Standoff diagnosis. When a command fails in a way its author cannot interpret — a
+  post-LLM failure such as `no build files written`, or an unclassified exception — Drydock stops,
+  states that a major error has occurred, and has the selected provider and model diagnose it. The
+  result is one `CAUSE` line and up to three `DO` lines, printed and appended to the Target's
+  `ERRORS.md`. Deterministic failures never trigger it: usage errors, provider authentication and
+  rate-limit blocks, and any classification that already carries its own remediation are answered
+  without an LLM call. Validation findings now state their own fix instead — a blank
+  `short_description` names the file to edit and the command that fills it. `--no-diagnose` and the
+  `diagnose` configuration key disable the feature.
+
 ### Changed
 
 - 2026-07-22: Unsatisfiable Programmatic Acceptance assertions are rejected before they cost a

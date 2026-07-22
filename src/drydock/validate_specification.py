@@ -55,7 +55,7 @@ _METADATA_FIELD_REMEDIATION = {
     "display_name": "Set `display_name:` in {path} to the human-readable project name.",
     "short_description": (
         "Set `short_description:` in {path} to one line describing the project, "
-        "or run `drydock analyze {target}` to have one proposed from the imported sources."
+        "or run `drydock analyze {target}` to have one proposed from the sources."
     ),
 }
 
@@ -222,7 +222,9 @@ def validate_specification(
                 f(
                     section,
                     f"{key} not set in METADATA.md",
-                    _METADATA_FIELD_REMEDIATION[key].format(path=metadata_path, target=spec_name),
+                    _METADATA_FIELD_REMEDIATION[key].format(
+                        path=f"{spec_name}/METADATA.md", target=spec_name
+                    ),
                 )
 
         # name matches spec_name
