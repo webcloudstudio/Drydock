@@ -252,3 +252,50 @@ def test_linked_proof_guardrail_holds(tmp_path):
     assert verdicts["st-never"] == "PASS"
     assert not any("st-never" in blocker for blocker in result.blockers)
     assert "| absolute | HELD |" in (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+
+
+_STAGED_ANALYSIS = """# ANALYSIS
+
+## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/spec.txt | normative specification and conformance corpus | context | stage |
+"""
+
+
+def _with_staged_kit(tmp_path, *, build_content: str) -> Path:
+    target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF, committed=False)
+    sources = target_dir / "blueprint" / "sources"
+    sources.mkdir(parents=True)
+    (sources / "spec.txt").write_text("CORPUS\n" * 200, encoding="utf-8")
+    (target_dir / "ANALYSIS.md").write_text(_STAGED_ANALYSIS, encoding="utf-8")
+    (build_dir / "sources").mkdir(parents=True, exist_ok=True)
+    (build_dir / "sources" / "spec.txt").write_text(build_content, encoding="utf-8")
+    _git(build_dir, "add", ".")
+    _git(build_dir, "commit", "-m", "build")
+    return target_dir
+
+
+def test_release_score_blocks_when_a_staged_asset_was_substituted(tmp_path):
+    """The 117-byte-corpus regression: a build that graded itself against a kit it authored
+    must not be scorable."""
+    target_dir = _with_staged_kit(tmp_path, build_content="# 2 examples\n")
+
+    result = score_release("Demo", target_dir, runner=_runner())
+
+    assert not result.complete
+    assert any("Staged build asset was modified" in b for b in result.blockers)
+    assert any("sources/spec.txt" in b for b in result.blockers)
+    # Scoring reports; it never repairs the artifact under judgment.
+    build_spec = tmp_path / "build" / "Demo" / "sources" / "spec.txt"
+    assert build_spec.read_text(encoding="utf-8") == "# 2 examples\n"
+
+
+def test_release_score_accepts_an_intact_staged_kit(tmp_path):
+    target_dir = _with_staged_kit(tmp_path, build_content="CORPUS\n" * 200)
+
+    result = score_release("Demo", target_dir, runner=_runner())
+
+    assert not any("Staged build asset" in b for b in result.blockers)
+    assert result.complete

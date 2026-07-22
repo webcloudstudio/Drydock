@@ -50,6 +50,7 @@ from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import DETERMINISTIC_VERIFICATION, load_sea_trials
+from drydock.source_roles import tampered_build_assets
 from drydock.standard_artifacts import (
     VERIFIED_FAIL,
     VERIFIED_PASS,
@@ -193,6 +194,13 @@ def score_release(
         blockers.append("Build directory has uncommitted changes")
     if document.questions:
         blockers.append("Sea Trials has unresolved QUESTIONS")
+
+    # A staged test kit is a read-only input. At scoring time the artifact under judgment is
+    # fixed, so a substituted asset is reported rather than repaired — repairing it would change
+    # what is being scored.
+    tampered = tampered_build_assets(target_dir, blueprint_dir, build_dir)
+    if tampered:
+        blockers.append("Staged build asset was modified: " + ", ".join(tampered))
 
     checks = tuple(
         check

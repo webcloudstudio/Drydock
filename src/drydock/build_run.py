@@ -67,6 +67,13 @@ from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
 from drydock.rigging_compact import ensure_compact_files
+from drydock.source_roles import (
+    SourceRole,
+    StagedAsset,
+    parse_source_roles,
+    stage_build_assets,
+    verify_staged_assets,
+)
 
 BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to rerun this step"
 
@@ -567,6 +574,14 @@ def _written_files(
         if before.get(rel) != fp:
             changed.append(rel)
     return tuple(changed)
+
+
+def _source_roles(target_dir: Path) -> dict[str, SourceRole]:
+    """Read the Analysis source-role table. No analysis means no declared assets to stage."""
+    analysis = target_dir / "ANALYSIS.md"
+    if not analysis.is_file():
+        return {}
+    return parse_source_roles(analysis.read_text(encoding="utf-8"))
 
 
 def _file_sha256(path: Path) -> str:
@@ -1182,6 +1197,21 @@ def build_target(
 
     stack_dir = get_stack_dir()
     blueprint_dir = blueprint_dir_for(target_dir)
+
+    # Place the imported build assets the Analysis marked `stage` before anything observes the
+    # build directory. Acceptance checks run with the build directory as their working
+    # directory, so a test kit that exists only in the prompt cannot be executed — and an agent
+    # that finds it missing will author a substitute to satisfy an existence assertion.
+    staged_assets: tuple[StagedAsset, ...] = ()
+    if not dry_run:
+        staged_assets, restaged = stage_build_assets(
+            blueprint_dir, _source_roles(target_dir), resolved_build_dir
+        )
+        if staged_assets:
+            _emit(on_text, f"Staged build assets: {len(staged_assets)}")
+        for path in restaged:
+            _emit(on_text, f"Restored modified build asset: {path}")
+
     roots = StepRoots(
         target_dir=target_dir,
         blueprint_dir=blueprint_dir,
@@ -1441,6 +1471,25 @@ def build_target(
             )
         else:
             _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
+
+        # Restore any staged asset the step rewrote, before acceptance runs. A step that edits
+        # its own test kit would otherwise be graded against a corpus of its own making. The
+        # snapshot above already recorded the write, so the evidence survives the restore.
+        if staged_assets and status != "failed":
+            tampered = verify_staged_assets(staged_assets, resolved_build_dir)
+            if tampered:
+                state, status = "closed/failed", "failed"
+                error = "staged build asset modified: " + ", ".join(tampered)
+                failure_detail = (
+                    "The step rewrote imported build assets, which have been restored from the "
+                    "Blueprint. Staged assets are read-only inputs.\n  " + "\n  ".join(tampered)
+                )
+                _emit(
+                    on_text,
+                    f"STAGED ASSET MODIFIED: {unit.name} [{unit.block_id}]  "
+                    f"{len(tampered)} restored",
+                )
+
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         if status != "failed":
             try:
