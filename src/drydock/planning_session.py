@@ -1350,8 +1350,13 @@ def _invokes_unbounded_corpus(acceptance: str) -> bool:
     for index, line in enumerate(lines):
         if "spec_tests.py" not in line:
             continue
-        # A call may span lines, so inspect a small window around the reference.
-        window = "\n".join(lines[max(0, index - 3) : index + 4])
+        # A call may span lines, so inspect a small window around the reference. A fence
+        # delimiter carries a language tag ("```python") that is not an invocation.
+        window = "\n".join(
+            line
+            for line in lines[max(0, index - 3) : index + 4]
+            if not line.lstrip().startswith("```")
+        )
         if not _CORPUS_INVOCATION_RE.search(window):
             continue
         # The declaration sits in the heading block above the fenced code.

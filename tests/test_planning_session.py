@@ -1286,6 +1286,27 @@ def test_corpus_staged_but_not_run_inside_acceptance_is_not_fatal(tmp_path):
     assert "story-status" in result.plan.by_id()
 
 
+def test_corpus_staged_directly_below_python_fence_is_not_fatal(tmp_path):
+    """The fence language tag is not an invocation: a python fence opened directly above a
+    staged-file assertion must not read as running the corpus."""
+    _make_target(tmp_path)
+    staged = (
+        "### check-corpus-staged\nThe supplied verification assets are present.\n\n"
+        "```python\n"
+        "from pathlib import Path\n\n"
+        'assert Path("sources/spec_tests.py").is_file()\n'
+        'assert Path("sources/normalize.py").is_file()\n'
+        "```\n\n"
+    )
+    out = _llm_output().replace(
+        "## Programmatic Acceptance\n\n", "## Programmatic Acceptance\n\n" + staged
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert "story-status" in result.plan.by_id()
+
+
 def test_unbounded_corpus_inside_acceptance_is_fatal(tmp_path):
     target_dir = _make_target(tmp_path)
     feature = _SPEC_HEADER.format(
