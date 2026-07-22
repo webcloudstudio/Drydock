@@ -21,7 +21,6 @@ Optional user-managed fields:
 from __future__ import annotations
 
 import re
-import shutil
 from datetime import date
 from pathlib import Path
 
@@ -194,27 +193,6 @@ def increment_version(target_dir: Path) -> str:
     new_version = f"{new_val:.2f}"
     set_field(path, "version", new_version, overwrite=True)
     return new_version
-
-
-# ---------------------------------------------------------------------------
-# Build output
-# ---------------------------------------------------------------------------
-
-
-def copy_metadata_to_build_dir(target_dir: Path, build_dir: Path) -> Path | None:
-    """Copy METADATA.md to the build output directory.
-
-    Called after a successful ``drydock build`` so the deployed artifact tree
-    carries the same project identity as the source target.  Returns the
-    destination path, or None if METADATA.md is absent.
-    """
-    src = target_dir / METADATA_NAME
-    if not src.exists():
-        return None
-    build_dir.mkdir(parents=True, exist_ok=True)
-    dest = build_dir / METADATA_NAME
-    shutil.copy2(src, dest)
-    return dest
 
 
 # ---------------------------------------------------------------------------

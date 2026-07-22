@@ -9,7 +9,6 @@ import pytest
 from drydock.metadata import (
     BUILD_STATE_LADDER,
     METADATA_NAME,
-    copy_metadata_to_build_dir,
     get_build_dir,
     get_build_state,
     increment_version,
@@ -308,27 +307,3 @@ def test_set_sub_state_writes_field(tmp_path):
     set_sub_state(target_dir, "complete")
     fields = parse_metadata(target_dir / METADATA_NAME)
     assert fields.get("build_sub_state") == "complete"
-
-
-# ---------------------------------------------------------------------------
-# copy_metadata_to_build_dir
-# ---------------------------------------------------------------------------
-
-
-def test_copy_metadata_to_build_dir(tmp_path):
-    target_dir = tmp_path / "T"
-    target_dir.mkdir()
-    (target_dir / METADATA_NAME).write_text(render_metadata("T", version="0.01"), encoding="utf-8")
-    build_dir = tmp_path / "build" / "T"
-    dest = copy_metadata_to_build_dir(target_dir, build_dir)
-    assert dest is not None
-    assert dest.exists()
-    assert "name: T" in dest.read_text(encoding="utf-8")
-
-
-def test_copy_metadata_to_build_dir_no_source(tmp_path):
-    target_dir = tmp_path / "T"
-    target_dir.mkdir()
-    build_dir = tmp_path / "build" / "T"
-    dest = copy_metadata_to_build_dir(target_dir, build_dir)
-    assert dest is None

@@ -388,6 +388,12 @@ def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> Step
 
 
 def _context_roles(block: PlanBlock) -> dict[str, str]:
+    """Map each context file to its authored role label.
+
+    Keys are normalized the way ``source_roles.parse_source_roles`` normalizes them, because a
+    plan may name an asset either bare (``spec.txt``) or by its import path
+    (``sources/spec.txt``) while ``context:`` always carries the bare name.
+    """
     raw = block.fields.get("context_roles", "")
     if not isinstance(raw, str):
         return {}
@@ -396,8 +402,9 @@ def _context_roles(block: PlanBlock) -> dict[str, str]:
         if ":" not in line:
             continue
         name, value = line.split(":", 1)
-        if name.strip() and value.strip():
-            roles[name.strip()] = value.strip()
+        key = name.strip().strip("`").removeprefix("sources/")
+        if key and value.strip():
+            roles[key] = value.strip()
     return roles
 
 

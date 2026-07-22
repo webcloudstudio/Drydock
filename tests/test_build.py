@@ -18,6 +18,7 @@ from drydock.build import (
     group_steps,
     make_step_group,
     render_build_group_prompt_assembly,
+    render_build_prompt_assembly,
     required_auto_compact_sources,
     step_incremental_story_points,
 )
@@ -640,3 +641,70 @@ class TestCompassNeverContextOrCompacted:
         compass = next(f for f in step.files if f.role == "compass")
         assert compass.name == "COMPASS.md"
         assert compass.compact_substituted is False
+
+
+_CONTEXT_ROLES_MANIFEST = """# MANIFEST: Example
+
+## story 1: Verification
+id: verify
+implements: FEATURE-Verification.md
+context: spec.txt, normalize.py
+context_roles: |
+  sources/spec.txt: normative specification and conformance corpus
+  normalize.py: test helper
+state: pending
+
+## ac 2: Smoke
+id: ac-verify
+parent: verify
+kind: smoke
+check: true
+state: pending
+"""
+
+
+class TestContextRoles:
+    """`context:` always carries the bare name, but a plan may key `context_roles:` by the
+    import path. Both forms must resolve to the authored role label."""
+
+    def _roots(self, tmp_path: Path) -> StepRoots:
+        target = tmp_path / "target"
+        blueprint = target / "blueprint"
+        rigging = tmp_path / "rigging"
+        for d in (blueprint, rigging / "stack"):
+            d.mkdir(parents=True, exist_ok=True)
+        (blueprint / "FEATURE-Verification.md").write_text("spec", encoding="utf-8")
+        (blueprint / "spec.txt").write_text("CORPUS", encoding="utf-8")
+        (blueprint / "normalize.py").write_text("helper", encoding="utf-8")
+        return StepRoots(
+            target_dir=target,
+            blueprint_dir=blueprint,
+            stack_dir=rigging / "stack",
+            rigging_dir=rigging,
+        )
+
+    def _step(self, tmp_path: Path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_CONTEXT_ROLES_MANIFEST, encoding="utf-8")
+        plan = parse_build_plan(path)
+        return assemble_step(plan.by_id()["verify"], self._roots(tmp_path))
+
+    def test_sources_prefixed_key_resolves(self, tmp_path):
+        files = {f.name: f for f in self._step(tmp_path).files}
+        assert files["spec.txt"].prompt_role == "normative specification and conformance corpus"
+
+    def test_bare_key_resolves(self, tmp_path):
+        files = {f.name: f for f in self._step(tmp_path).files}
+        assert files["normalize.py"].prompt_role == "test helper"
+
+    def test_authored_role_reaches_the_rendered_prompt(self, tmp_path):
+        assembly = render_build_prompt_assembly(
+            "BODY",
+            self._step(tmp_path),
+            target="Example",
+            build_dir=tmp_path / "build",
+            today="2026-07-22",
+        )
+        text = assembly.text if hasattr(assembly, "text") else str(assembly)
+        assert 'role="normative specification and conformance corpus"' in text
+        assert 'role="test helper"' in text
