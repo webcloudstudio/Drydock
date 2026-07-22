@@ -434,3 +434,52 @@ class TestEnsureCompactFiles:
         )
         assert result.items[0].status == "compacted"
         assert (root / name / "FEATURE-X_compact.md").is_file()
+
+
+class TestCompassNeverCompacted:
+    """The Compass files carry no contract surface and are never compaction sources."""
+
+    def test_autodiscovery_skips_compass_with_existing_sibling(self, tmp_path):
+        _, root = _blueprint(
+            tmp_path,
+            **{
+                "COMPASS.md": "intent",
+                "COMPASS_compact.md": "stale derivative",
+                "DATABASE.md": "db",
+            },
+        )
+        assert [p.name for p in discover(root / "bp")] == ["DATABASE.md"]
+
+    def test_explicit_include_cannot_force_compass_compaction(self, tmp_path):
+        _, root = _blueprint(
+            tmp_path,
+            **{
+                "COMPASS.md": "intent",
+                "PLAN_COMPASS.md": "plan direction",
+                "ANALYZE_COMPASS.md": "analyze direction",
+            },
+        )
+        spec = root / "bp"
+        names = [
+            p.name
+            for p in discover(
+                spec,
+                include_files=[
+                    spec / "COMPASS.md",
+                    spec / "PLAN_COMPASS.md",
+                    spec / "ANALYZE_COMPASS.md",
+                ],
+            )
+        ]
+        assert names == []
+
+    def test_ensure_compact_files_ignores_compass(self, tmp_path):
+        _, root = _blueprint(tmp_path, **{"COMPASS.md": "intent"})
+        spec = root / "bp"
+        runner = fake_runner()
+        result = ensure_compact_files(
+            spec, sources=[spec / "COMPASS.md"], reason="build", runner=runner
+        )
+        assert result.items == []
+        assert runner.seen == []
+        assert not (spec / "COMPASS_compact.md").exists()

@@ -35,6 +35,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.compass_sources import is_compass_file
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_markdown_parts,
@@ -301,8 +302,12 @@ def auto_context_files(block: PlanBlock, blueprint_dir: Path) -> tuple[str, ...]
 
 
 def normalize_context_names(block: PlanBlock, blueprint_dir: Path) -> tuple[str, ...]:
-    """Return authored context with managed architecture/database entries normalized."""
-    current = _context_names(block)
+    """Return authored context with managed architecture/database entries normalized.
+
+    Compass files are dropped from ``context``: COMPASS.md is injected whole by the
+    ``compass`` role for every step, so naming it as context only duplicates it.
+    """
+    current = tuple(name for name in _context_names(block) if not is_compass_file(name))
     if not (is_feature_step(block) or is_screen_step(block)):
         return current
     names: list[str] = [name for name in current if name not in _AUTO_CONTEXT_MANAGED]
@@ -358,8 +363,11 @@ def required_plan_auto_compact_sources(
 def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> StepFile:
     """Resolve a file, preferring the ``*_compact.md`` sibling when it exists on disk.
 
-    Falls through to the full file when no compact sibling is found.
+    Falls through to the full file when no compact sibling is found. Compass files are
+    never substituted: they are never compacted.
     """
+    if is_compass_file(canonical):
+        return _measure(canonical, role, roots)
     compact = _compact_sibling(canonical)
     if compact != canonical:
         for root in roots:

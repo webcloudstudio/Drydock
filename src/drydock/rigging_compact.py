@@ -18,6 +18,7 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
+from drydock.compass_sources import is_compass_file
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.paths import get_rigging_root
@@ -298,7 +299,9 @@ def discover(
     has a ``*_compact.md`` sibling. ``include_rigging`` adds existing-sibling refreshes from
     Drydock's own Rigging tree. ``include_files`` and ``include_dirs`` add explicit targets.
     ``exclude_files`` removes resolved paths from the candidate set. ``*_compact.md`` files are
-    never treated as sources. ``skip_autodiscovery`` suppresses the Blueprint-scope scan entirely,
+    never treated as sources, and neither are the Compass files (``COMPASS.md``,
+    ``PLAN_COMPASS.md``, ``ANALYZE_COMPASS.md``) — they carry no contract surface.
+    ``skip_autodiscovery`` suppresses the Blueprint-scope scan entirely,
     leaving only ``include_files`` and ``include_dirs`` as sources.
     """
     sources: list[Path] = []
@@ -306,6 +309,10 @@ def discover(
 
     def add(path: Path) -> None:
         resolved = path.resolve()
+        if is_compass_file(resolved):
+            # Compass files are human direction with no contract surface: never compacted,
+            # however they are named or included.
+            return
         if resolved not in seen and not _is_compact(resolved) and resolved.suffix == ".md":
             seen.add(resolved)
             sources.append(resolved)

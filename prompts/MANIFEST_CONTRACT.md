@@ -100,7 +100,7 @@ scope:        blueprint | target | both
 | `parent` | No | Parent feature id for hierarchy and QuarterDeck display |
 | `summary` | Yes | One-line description |
 | `implements` | Yes | The single Blueprint spec file this story builds — exactly one file; stories and Blueprint files are one-to-one |
-| `context` | No | Read-only support context files |
+| `context` | No | Read-only support context files. Never list `COMPASS.md`, `PLAN_COMPASS.md`, or `ANALYZE_COMPASS.md`: the Compass is injected into every step automatically and is never compacted |
 | `stack` | No | Rigging stack files to inject |
 | `rules` | No | Rigging rules files to inject |
 | `copy` | No | `source -> destination` file copies applied before build |
@@ -140,7 +140,7 @@ evidence: <Target>/evidence/<id>.md
 |-------|----------|-------------|
 | `id` | Yes | Stable unique slug |
 | `summary` | Yes | One-line description |
-| `context` | No | Read-only context files |
+| `context` | No | Read-only context files. Never list a Compass file |
 | `question` | Yes | The question this spike must answer |
 | `parent` | No | Parent feature id |
 | `finding` | No | Agent-written answer after execution |

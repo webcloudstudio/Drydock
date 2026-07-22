@@ -580,3 +580,63 @@ state: pending
         (roots.blueprint_dir / "ARCHITECTURE.md").write_text("arch" * 50, encoding="utf-8")
         sources = required_auto_compact_sources(plan.by_id()["spike-q"], roots.blueprint_dir)
         assert [p.name for p in sources] == ["ARCHITECTURE.md"]
+
+
+_COMPASS_CONTEXT_MANIFEST = """# MANIFEST: Demo
+state: approved
+
+## story 1: One
+id: s1
+implements: FEATURE-A.md
+context: COMPASS.md, FEATURE-B.md
+state: pending
+
+## spike 1: Question
+id: spike-q
+context: COMPASS.md, PLAN_COMPASS.md, ANALYZE_COMPASS.md
+state: pending
+"""
+
+
+class TestCompassNeverContextOrCompacted:
+    """COMPASS files are injected whole by the compass role and are never compacted."""
+
+    def _roots(self, tmp_path: Path) -> StepRoots:
+        target = tmp_path / "target"
+        blueprint = target / "blueprint"
+        stack = tmp_path / "rigging" / "stack"
+        rigging = tmp_path / "rigging"
+        for d in (blueprint, stack, rigging):
+            d.mkdir(parents=True, exist_ok=True)
+        for name in ("COMPASS.md", "PLAN_COMPASS.md", "ANALYZE_COMPASS.md"):
+            (target / name).write_text("compass" * 50, encoding="utf-8")
+        (blueprint / "COMPASS_compact.md").write_text("stale derivative", encoding="utf-8")
+        (blueprint / "FEATURE-A.md").write_text("feature-a" * 100, encoding="utf-8")
+        (blueprint / "FEATURE-B.md").write_text("feature-b" * 100, encoding="utf-8")
+        return StepRoots(
+            target_dir=target, blueprint_dir=blueprint, stack_dir=stack, rigging_dir=rigging
+        )
+
+    def _plan(self, tmp_path: Path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(_COMPASS_CONTEXT_MANIFEST, encoding="utf-8")
+        return parse_build_plan(path)
+
+    def test_compass_context_entry_is_dropped_not_duplicated(self, tmp_path):
+        step = assemble_step(self._plan(tmp_path).by_id()["s1"], self._roots(tmp_path))
+        assert [f.name for f in step.files if f.role == "context"] == ["FEATURE-B.md"]
+        assert [f.name for f in step.files if f.role == "compass"] == ["COMPASS.md"]
+
+    def test_compass_is_never_a_compaction_source(self, tmp_path):
+        plan = self._plan(tmp_path)
+        roots = self._roots(tmp_path)
+        for block_id in ("s1", "spike-q"):
+            sources = required_auto_compact_sources(plan.by_id()[block_id], roots.blueprint_dir)
+            assert not any("COMPASS" in p.name for p in sources)
+
+    def test_compass_never_substitutes_a_compact_sibling(self, tmp_path):
+        roots = self._roots(tmp_path)
+        step = assemble_step(self._plan(tmp_path).by_id()["s1"], roots)
+        compass = next(f for f in step.files if f.role == "compass")
+        assert compass.name == "COMPASS.md"
+        assert compass.compact_substituted is False

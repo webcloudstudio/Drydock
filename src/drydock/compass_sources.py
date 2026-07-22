@@ -6,6 +6,11 @@ import re
 from pathlib import Path
 
 _INTENT_FILENAMES = frozenset({"compass.md", "intent.md", "constitution.md"})
+
+# The Compass files are human direction, not technical surface. They are never
+# compacted and never carry a ``*_compact.md`` derivative: there is no contract
+# to extract from them, and COMPASS.md is injected into every build step whole.
+COMPASS_FILENAMES = frozenset({"COMPASS.md", "PLAN_COMPASS.md", "ANALYZE_COMPASS.md"})
 _COMPASS_STATE_FILENAME = ".drydock-compass"
 _SELF_IDENTIFY_RE = re.compile(
     r"(?im)"
@@ -47,6 +52,11 @@ def clear_compass_import_pending(target_dir: Path) -> None:
         _state_path(target_dir).unlink()
     except FileNotFoundError:
         pass
+
+
+def is_compass_file(name: str | Path) -> bool:
+    """Return True when a file name is one of the Compass files."""
+    return Path(name).name in COMPASS_FILENAMES
 
 
 def is_compass_source(path: Path) -> bool:
