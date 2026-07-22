@@ -230,10 +230,17 @@ def score_release(
     unknown_refs = sorted((manifest_refs | proof_refs) - known_trial_ids)
     if unknown_refs:
         blockers.append("Unknown Sea Trial references: " + ", ".join(unknown_refs))
+    # A required guardrail verified by proof is traceable work like any other: something must
+    # declare ``Sea Trials: <id>``. Without that link the guardrail can only ever be unproven,
+    # so the gap is reported here as missing coverage rather than surfacing as a bare breach.
     traceable_required = {
         trial.criterion_id
         for trial in document.trials
-        if trial.required and trial.trial_type in {"technical", "behavioral"}
+        if trial.required
+        and (
+            trial.trial_type in {"technical", "behavioral"}
+            or (trial.trial_type == "guardrail" and trial.verification == "proof")
+        )
     }
     uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
     if uncovered:
@@ -373,9 +380,15 @@ def score_release(
     for item in criteria:
         trial = trial_by_id[item.criterion_id]
         if trial.trial_type == "guardrail":
-            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE breaches too.
-            if item.verdict != "PASS":
+            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE blocks too —
+            # but it is reported as UNPROVEN, because no evidence showed the prohibition violated.
+            if item.verdict == "FAIL":
                 blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
+            elif item.verdict != "PASS":
+                detail = item.evidence[0] if item.evidence else "no evidence supplied"
+                blockers.append(
+                    f"Guardrail {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
+                )
             continue
         if trial.required and item.verdict != "PASS":
             blockers.append(f"Required Sea Trial {item.criterion_id} is {item.verdict}")

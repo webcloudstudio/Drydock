@@ -343,10 +343,12 @@ def _render_scorecard(
         trial = trials[result.criterion_id]
         evidence = "; ".join(result.evidence) or result.rationale
         guardrail = trial.trial_type == "guardrail"
-        # A guardrail is absolute: it is held or breached, and Required does not apply to it.
-        verdict = (
-            ("HELD" if result.verdict == "PASS" else "BREACHED") if guardrail else result.verdict
-        )
+        # A guardrail is absolute: it is held, breached, or unproven, and Required does not
+        # apply to it. UNPROVEN blocks release exactly as BREACHED does; it reports honestly
+        # that no evidence settled the prohibition either way.
+        verdict = result.verdict
+        if guardrail:
+            verdict = {"PASS": "HELD", "FAIL": "BREACHED"}.get(result.verdict, "UNPROVEN")
         required = "absolute" if guardrail else ("yes" if trial.required else "no")
         lines.append(
             f"| {result.criterion_id} | {trial.trial_type} | {trial.criterion.replace('|', '/')} | "
@@ -441,10 +443,17 @@ def score_target(
     unknown_refs = sorted((manifest_refs | proof_refs) - known_trial_ids)
     if unknown_refs:
         blockers.append("Unknown Sea Trial references: " + ", ".join(unknown_refs))
+    # A required guardrail verified by proof is traceable work like any other: something must
+    # declare ``Sea Trials: <id>``. Without that link the guardrail can only ever be unproven,
+    # so the gap is reported here as missing coverage rather than surfacing as a bare breach.
     traceable_required = {
         trial.criterion_id
         for trial in document.trials
-        if trial.required and trial.trial_type in {"technical", "behavioral"}
+        if trial.required
+        and (
+            trial.trial_type in {"technical", "behavioral"}
+            or (trial.trial_type == "guardrail" and trial.verification == "proof")
+        )
     }
     uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
     if uncovered:
@@ -582,10 +591,15 @@ def score_target(
     for item in criteria:
         trial = trial_by_id[item.criterion_id]
         if trial.trial_type == "guardrail":
-            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE breaches
-            # too, and Required does not apply.
-            if item.verdict != "PASS":
+            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE blocks
+            # too — reported as UNPROVEN — and Required does not apply.
+            if item.verdict == "FAIL":
                 blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
+            elif item.verdict != "PASS":
+                detail = item.evidence[0] if item.evidence else "no evidence supplied"
+                blockers.append(
+                    f"Guardrail {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
+                )
             continue
         if trial.required and item.verdict != "PASS":
             blockers.append(f"Required Sea Trial {item.criterion_id} is {item.verdict}")

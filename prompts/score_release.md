@@ -1,7 +1,7 @@
 ---
 name: score_release
 description: Evidence-bound release scoring and project acceptance judgment.
-version: 20260717 V1
+version: 20260722 V2
 intent: Judge the completed project only from supplied deterministic facts and evidence; never infer missing proof.
 command: drydock score release
 model: opus
@@ -16,26 +16,36 @@ evidence facts appended below are the complete assessment record. Do not claim t
 execute commands. Missing evidence is `INCONCLUSIVE`, never `PASS`. A deterministic blocker or
 failed proof cannot be overridden.
 
-Score these seven dimensions from 0 through 100:
+Score these seven dimensions from 0 through 100, each from the named evidence and nothing else:
 
-- `specification_completeness`
-- `implementation_coverage`
-- `test_coverage`
-- `documentation_coverage`
-- `blueprint_drift`
-- `build_quality`
-- `acceptance_criteria_coverage`
+| Dimension | Scored from |
+|---|---|
+| `specification_completeness` | Blueprint files present against the Sea Trials and Manifest work they must specify; unanswered Sea Trials QUESTIONS |
+| `implementation_coverage` | `manifest.verified` against `manifest.total_executable`; listed `incomplete` work |
+| `test_coverage` | Proportion of Sea Trials and Blueprint assertions backed by executed, non-vacuous Programmatic Acceptance |
+| `documentation_coverage` | Owned documentation evident in the supplied facts |
+| `blueprint_drift` | `blueprint.stale`; 100 when no applied specification is stale |
+| `build_quality` | Programmatic Acceptance pass rate, vacuous-proof warnings, failed checks, and unknown or dangling traceability references |
+| `acceptance_criteria_coverage` | Required criteria resting on proof or measurement rather than model judgment |
+
+Scoring anchors: `100` complete with no defect in evidence; `80` minor gaps; `60` material gaps;
+below `60` asserts a defect the evidence positively shows. Score `0` only when the evidence shows
+the dimension's subject is entirely absent — never as a way to express uncertainty, and never
+because a deterministic blocker already exists. Deterministic blockers (a dirty working tree,
+unresolved QUESTIONS, incomplete work) are reported by Drydock independently and must not be
+discounted a second time in a dimension.
 
 Judge every supplied Sea Trial exactly once. Use `PASS`, `FAIL`, or `INCONCLUSIVE` — including for
-`guardrail` criteria, which use the same vocabulary here; Drydock reports them as `HELD` or
-`BREACHED`. Measurement and proof verdicts are recomputed deterministically by Drydock, so report
-the evidence honestly rather than attempting to reinterpret numeric or proof results. Recommendations
-must be ranked, actionable, evidence-based improvements suitable for later conversion into refit
-tickets.
+`guardrail` criteria, which use the same vocabulary here; Drydock reports them as `HELD`,
+`BREACHED`, or `UNPROVEN`. Measurement and proof verdicts are recomputed deterministically by
+Drydock, so report the evidence honestly rather than attempting to reinterpret numeric or proof
+results. Recommendations must be ranked, actionable, evidence-based improvements suitable for
+later conversion into refit tickets.
 
 A `guardrail` is an absolute prohibition. Return `PASS` only when the supplied evidence positively
-shows the prohibition held; absent evidence is `INCONCLUSIVE`, which Drydock treats as a breach.
-Never infer that a guardrail held because nothing indicates otherwise.
+shows the prohibition held; absent evidence is `INCONCLUSIVE`, which Drydock reports as
+`UNPROVEN` and which fails the gate exactly as a breach does. Never infer that a guardrail held
+because nothing indicates otherwise.
 
 `acceptance_criteria_coverage` is discounted by Drydock when required technical, behavioral, and
 guardrail criteria rest on model judgment rather than proof or measurement. Score the dimension on

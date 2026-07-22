@@ -102,9 +102,11 @@ checked during the build. A criterion needs no implementing story to be judged a
 ### Guardrails
 
 A guardrail is a permanent *never* — a thing the project may not do regardless of how well it
-scores. Guardrails are reported as `HELD` or `BREACHED`. A breach fails the completion gate
-outright, independent of every score. A guardrail whose evidence is missing is `INCONCLUSIVE`
-and also fails the gate: an unproven *never* is not held.
+scores. Guardrails are reported as `HELD`, `BREACHED`, or `UNPROVEN`. A breach fails the completion
+gate outright, independent of every score. A guardrail whose evidence is missing is `UNPROVEN`
+and also fails the gate: an unproven *never* is not held. A guardrail verified by proof must be
+named by a Programmatic Acceptance `Sea Trials:` reference, or it is reported as lacking
+implementation/proof coverage.
 
 Guardrails are exempt from `accepts:` coverage. No story builds a prohibition.
 
