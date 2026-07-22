@@ -834,6 +834,52 @@ state: pending
         assert "rerun drydock build with --force to rerun this step" in out
         assert "Build failed; skipped final git commit." in out
 
+    def test_build_multi_story_failure_prints_one_banner_with_detail(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## feature 1: Catalog\nid: feature-catalog\nsummary: Catalog block.\n"
+            "state: pending\n\n"
+            "## story 2: Foundation\nid: foundation\nparent: feature-catalog\n"
+            "implements: DATABASE.md\ninstructions: |\n  Build it.\nstate: pending\n\n"
+            "## story 3: Service\nid: service\nparent: feature-catalog\n"
+            "implements: SERVICE.md\ninstructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        (target / "blueprint" / "SERVICE.md").write_text("Svc.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _run(*a, **k):
+            return SimpleNamespace(
+                ok=True,
+                text=(
+                    "RESULT: FAILURE\n"
+                    "FAILURE_SUMMARY: Full conformance requirement not met.\n"
+                    "FAILURE_DETAIL: The backend diverges from the spec.\n"
+                ),
+                stderr="",
+                execution_id="exec-fake",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
+
+        rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
+
+        assert rc == 1
+        # Both stories are accounted for, but the FATAL banner renders once per execution.
+        assert out.count("FATAL ERROR") == 1
+        assert "[foundation]" in out
+        assert "[service]" in out
+        assert "The backend diverges from the spec." in out
+
     def test_build_dry_run_prints_prompt_without_writes(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

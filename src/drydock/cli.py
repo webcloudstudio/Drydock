@@ -1262,22 +1262,30 @@ def cmd_build(args: argparse.Namespace) -> int:
         "dry-run": "[dry-run]",
     }
 
+    _fatal_shown: set[str] = set()
+
     def report(step: BuildStepResult) -> None:
         mark = _marks.get(step.status, f"[{step.status}]")
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
         print(f"  {mark:>9}  {step.name} [{step.block_id}]  SP {step.story_points}{extra}")
         if step.status == "failed":
-            border = "*" * 78
-            print(border)
-            print("* FATAL ERROR")
-            print(f"*   Build step failed: {step.name} [{step.block_id}]")
-            print(f"*   Details: {step.error or 'build failed'}")
-            if step.execution_id:
-                print(f"*   execution_id: {step.execution_id}")
-            if step.evidence_path is not None:
-                print(f"*   evidence: {step.evidence_path}")
-            print(f"*   {BUILD_FAILURE_FORCE_HINT}")
-            print(border)
+            # Stories in one block share a single execution: render the banner once.
+            fatal_key = step.execution_id or f"{step.block_id}:{step.error}"
+            if fatal_key not in _fatal_shown:
+                _fatal_shown.add(fatal_key)
+                border = "*" * 78
+                print(border)
+                print("* FATAL ERROR")
+                print(f"*   Build step failed: {step.name} [{step.block_id}]")
+                print(f"*   Details: {step.error or 'build failed'}")
+                for line in (step.failure_detail or "").strip().splitlines():
+                    print(f"*     {line}")
+                if step.execution_id:
+                    print(f"*   execution_id: {step.execution_id}")
+                if step.evidence_path is not None:
+                    print(f"*   evidence: {step.evidence_path}")
+                print(f"*   {BUILD_FAILURE_FORCE_HINT}")
+                print(border)
         if step.evidence_path is not None:
             print(f"      evidence: {step.evidence_path}")
         print(f"      files changed: {len(step.written_files)}")

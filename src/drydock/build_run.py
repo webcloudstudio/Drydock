@@ -282,6 +282,7 @@ class BuildStepResult:
     execution_id: str | None = None
     evidence_path: Path | None = None
     error: str | None = None
+    failure_detail: str = ""
     written_files: tuple[str, ...] = ()
     pre_acceptance: tuple[AcceptanceObservation, ...] = ()
     acceptance: tuple[AcceptanceRunResult, ...] = ()
@@ -1698,6 +1699,7 @@ def build_target(
                 execution_id=execution_id,
                 evidence_path=evidence_path,
                 error=error,
+                failure_detail=failure_detail,
                 written_files=changed_files,
                 pre_acceptance=pre_acceptance,
                 acceptance=acceptance,
