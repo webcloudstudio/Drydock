@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260618 V8
+version: 20260722 V9
 ---
 
 ## Overview
@@ -125,6 +125,14 @@ Every authored Specification file ends with these sections, using `- None.` when
 `Programmatic Acceptance` contains executable Python assertion snippets. Each check uses a stable
 `### {check-id}` heading, a short intent sentence, and one fenced `python` block that can run from
 the build directory after the story implementing the file completes.
+
+Every assertion must be satisfiable by a correct implementation. An expectation no implementation
+can meet is a defect, not a red baseline. String literals are the usual source of one: inside a raw
+literal, `\n` and `\r` are a backslash followed by a letter, not a control character, so
+`r"text\n"` asserts against six characters ending in a literal backslash. Write control characters
+in a normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
+backslash is genuinely intended. Drydock rejects this defect at `drydock validate` and blocks the
+build before the step runs.
 
 ````markdown
 ## Programmatic Acceptance

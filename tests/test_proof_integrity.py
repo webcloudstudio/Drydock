@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from drydock.proof_integrity import analyze_proof
+from drydock.proof_integrity import analyze_literals, analyze_proof
 
 
 def test_real_assertion_is_ok():
@@ -84,3 +84,41 @@ def test_vacuous_reasons_are_deduplicated():
     result = analyze_proof("assert True\nassert True")
     assert not result.ok
     assert len(result.reasons) == 1
+
+
+# --- analyze_literals -------------------------------------------------------
+
+
+def test_raw_literal_newline_is_reported():
+    code = 'assert convert(r"\\*literal\\*\\n") == "<p>*literal*</p>\\n"'
+    defects = analyze_literals(code)
+    assert len(defects) == 1
+    assert defects[0].sequence == "\\n"
+    assert "cannot" in defects[0].message
+
+
+def test_normal_literal_newline_is_clean():
+    assert analyze_literals('assert convert("a\\n") == "<p>a</p>\\n"') == ()
+
+
+def test_escaped_backslash_in_normal_literal_is_clean():
+    # ``"\\\\n"`` is a deliberate literal backslash-n and is the sanctioned spelling.
+    assert analyze_literals('assert render("\\\\n") == "\\\\n"') == ()
+
+
+def test_raw_literal_without_control_escape_is_clean():
+    assert analyze_literals('assert convert(r"\\*a\\*") == "<p>*a*</p>"') == ()
+
+
+def test_regex_pattern_argument_is_exempt():
+    code = 'import re\nassert re.search(r"a\\nb", text)'
+    assert analyze_literals(code) == ()
+
+
+def test_unparseable_code_reports_nothing():
+    assert analyze_literals("this is not python !!!") == ()
+
+
+def test_repeated_defect_is_reported_once():
+    code = 'assert f(r"a\\n")\nassert g(r"a\\n")'
+    assert len(analyze_literals(code)) == 1

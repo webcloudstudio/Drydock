@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260722 V14
+version: 20260722 V15
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -195,6 +195,11 @@ Rules:
   Acceptance assertions in the spec. Do not trust its format, copy it verbatim, or point at an
   external script in place of authoring assertions here — conform it even when it already looks
   correct.
+- Every assertion must be satisfiable by a correct implementation. Read each expectation back as
+  the exact bytes it produces. Inside a raw literal, `\n` and `\r` are a backslash and a letter,
+  not a control character: `r"text\n"` does not end in a newline. Write control characters in a
+  normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
+  backslash is intended. Drydock rejects the plan and blocks the build on this defect.
 - Write `- None.` only when the item genuinely has no programmatic surface (pure visual/manual
   UI, or a Commander-observed check). State the reason on the same line, e.g.
   `- None. Visual-only screen; behavior covered by its backing FEATURE spec.` Bare `- None.` on a

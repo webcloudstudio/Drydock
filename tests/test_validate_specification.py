@@ -187,3 +187,63 @@ class TestResultStructure:
         target_dir = _init(tmp_target_root)
         result = validate_specification("TestProject", target_dir, verbose=True)
         assert all(f.section for f in result.findings)
+
+
+class TestAcceptanceSnippets:
+    """An unsatisfiable Blueprint assertion is a validation failure, not a red baseline."""
+
+    _SPEC = """# Feature: Escapes
+
+| Field       | Value |
+|-------------|-------|
+| Version     | 20260722 V1 |
+| Description | Escapes render literally. |
+| Provides    | convert() |
+| Phase       | 1 |
+
+## Programmatic Acceptance
+
+### escapes
+Escapes render literally.
+
+```python
+from app import convert
+
+assert convert({literal}) == "<p>*a*</p>\\n"
+```
+
+## User Acceptance
+
+- None.
+
+## Guardrails
+
+- None.
+
+## Open Questions
+
+- None.
+"""
+
+    def _write_spec(self, target_dir: Path, literal: str) -> None:
+        (target_dir / "blueprint" / "FEATURE-ESCAPES.md").write_text(
+            self._SPEC.format(literal=literal), encoding="utf-8"
+        )
+
+    def test_raw_literal_newline_fails_validation(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        self._write_spec(target_dir, r'r"\*a\*\n"')
+        result = validate_specification("TestProject", target_dir)
+        messages = [f.message for f in result.failures()]
+        assert any("FEATURE-ESCAPES.md [escapes]" in m for m in messages), messages
+
+    def test_correctly_authored_literal_passes(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        self._write_spec(target_dir, r'"\\*a\\*\n"')
+        result = validate_specification("TestProject", target_dir)
+        sections = [f.section for f in result.failures()]
+        assert "Acceptance snippets" not in sections
+        assert any(
+            f.section == "Acceptance snippets" and f.severity == Severity.PASS
+            for f in result.findings
+        )

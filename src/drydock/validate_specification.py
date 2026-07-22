@@ -330,6 +330,24 @@ def validate_specification(
                     "COMPASS.md contains legacy ## Goals section — merge into ## Success Criteria",
                 )
 
+    # --- Programmatic Acceptance snippets ---
+    # An unsatisfiable assertion is worse than a missing one: the build spends a full LLM
+    # cycle trying to make correct code satisfy a check no implementation can pass.
+    section = "Acceptance snippets"
+    from drydock.acceptance import parse_programmatic_acceptance
+    from drydock.proof_integrity import analyze_literals
+
+    snippet_defects = 0
+    for md_file in sorted(spec_dir.glob("*.md")):
+        if "_compact." in md_file.name or md_file.name in _GENERATED_FILES:
+            continue
+        for check in parse_programmatic_acceptance(md_file):
+            for defect in analyze_literals(check.code):
+                f(section, f"{md_file.name} [{check.check_id}]: {defect.message}")
+                snippet_defects += 1
+    if snippet_defects == 0:
+        p(section, "No unsatisfiable literals in Programmatic Acceptance snippets")
+
     # --- Typed spec file headers ---
     section = "Typed headings"
     for md_file in sorted(spec_dir.glob("*.md")):

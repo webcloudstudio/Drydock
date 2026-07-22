@@ -1671,3 +1671,34 @@ def test_restaging_repairs_a_substituted_asset_on_the_next_build(tmp_path):
 
     assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS\n" * 500
     assert any("Restored modified build asset: sources/spec.txt" in m for m in messages)
+
+
+_UNSATISFIABLE_SPEC = """# FEATURE: Escapes
+
+## Programmatic Acceptance
+
+### escapes
+Escapes render literally.
+
+```python
+from app import convert
+
+assert convert(r"\\*a\\*\\n") == "<p>*a*</p>\\n"
+```
+"""
+
+
+def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_path):
+    """A mis-authored expectation is not a red baseline the agent can drive green. Blocking
+    here spends no LLM cycle and names the Blueprint file to repair."""
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNSATISFIABLE_SPEC, encoding="utf-8")
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    message = str(exc.value)
+    assert "unsatisfiable Programmatic Acceptance" in message
+    assert "DATABASE.md [escapes]" in message
+    assert runner.calls == []

@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-22: Unsatisfiable Programmatic Acceptance assertions are rejected before they cost a
+  build. A mis-authored expectation — most often a raw string literal carrying `\n`, which is a
+  backslash and a letter rather than a newline — cannot be satisfied by any correct
+  implementation, so the step burned a full agent cycle and closed `failed` against working code.
+  `drydock validate` now fails on the defect and `drydock build` blocks before the agent runs,
+  naming the Blueprint file and check to repair. Acceptance snippets also execute from a real file
+  instead of `python -c`, so a failing assertion appears verbatim in evidence rather than as a
+  bare `File "<string>", line 3`. The plan prompt contracts state the authoring rule.
+
 - 2026-07-22: `drydock build` now stages declared build assets into the build directory. Analyze
   classifies every imported source with a build disposition; a source marked `stage` is placed at
   `sources/<name>` in the build directory, copied from the immutable import. Previously the

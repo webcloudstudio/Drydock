@@ -1,7 +1,7 @@
 ---
 name: plan_conform
 description: Conform one imported or legacy typed Blueprint spec into Drydock format — preserve its substance, restructure into the standard header plus four terminal sections, and author test-driven Programmatic Acceptance assertions.
-version: 20260714 V2
+version: 20260722 V3
 intent: Act as an Agile Development Team conforming a single imported specification into Drydock format. Keep the spec's substance intact, restructure it into the standard typed header and the four terminal sections, and author several concrete Python-testable Programmatic Acceptance assertions from the spec body and any imported test material.
 command: drydock plan create
 model: sonnet
@@ -77,6 +77,11 @@ This is the point of the conform pass. Treat it as writing the failing tests fir
   Acceptance assertions. Do not trust its format, copy it verbatim, or point at an external script
   in place of authoring assertions here — conform it even when it already looks correct. Do not
   keep a residual `## Test` section; its intent moves into Programmatic Acceptance.
+- Every assertion must be satisfiable by a correct implementation. Read each expectation back as
+  the exact bytes it produces. Inside a raw literal, `\n` and `\r` are a backslash and a letter,
+  not a control character: `r"text\n"` does not end in a newline. Write control characters in a
+  normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
+  backslash is intended. Drydock rejects the plan and blocks the build on this defect.
 - Write `- None. <reason>` (reason on the same line) only when the item genuinely has no
   programmatic surface — a pure visual or manual concern. A bare `- None.` is not acceptable for a
   spec that provides anything.

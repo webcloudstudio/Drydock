@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +27,15 @@ def _timeout_output_text(value: bytes | str | None) -> str:
     if isinstance(value, bytes):
         return value.decode(errors="replace")
     return value
+
+
+def _scrub_script_path(text: str, script: Path) -> str:
+    """Replace the throwaway script's absolute path with its stable check name.
+
+    The path is a per-run temporary directory; leaving it in evidence makes otherwise
+    identical failures compare unequal across runs.
+    """
+    return text.replace(str(script), script.name)
 
 
 @dataclass(frozen=True)
@@ -221,29 +231,36 @@ def run_programmatic_acceptance(
         "PYTHONPATH": pythonpath,
     }
     for check in checks:
-        try:
-            completed = subprocess.run(
-                [sys.executable, "-c", check.code],
-                cwd=build_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=check.timeout_seconds,
-            )
-        except subprocess.TimeoutExpired as exc:
-            results.append(
-                AcceptanceRunResult(
-                    check_id=check.check_id,
-                    source=check.source,
-                    intent=check.intent,
-                    passed=False,
-                    return_code=None,
-                    stdout=_timeout_output_text(exc.stdout),
-                    stderr=_timeout_output_text(exc.stderr),
-                    error=f"timed out after {check.timeout_seconds}s",
+        # Run from a real file, never ``python -c``: a ``-c`` traceback reports
+        # ``File "<string>", line N`` with no source text, so a failing assertion names
+        # neither the assertion nor the expectation it asserted. Written to a file, the
+        # traceback carries the offending line and the failure is diagnosable in one pass.
+        with tempfile.TemporaryDirectory(prefix="drydock-acceptance-") as tmp:
+            script = Path(tmp) / f"{check.check_id or 'acceptance'}.py"
+            script.write_text(check.code + "\n", encoding="utf-8")
+            try:
+                completed = subprocess.run(
+                    [sys.executable, str(script)],
+                    cwd=build_dir,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=check.timeout_seconds,
                 )
-            )
-            continue
+            except subprocess.TimeoutExpired as exc:
+                results.append(
+                    AcceptanceRunResult(
+                        check_id=check.check_id,
+                        source=check.source,
+                        intent=check.intent,
+                        passed=False,
+                        return_code=None,
+                        stdout=_timeout_output_text(exc.stdout),
+                        stderr=_timeout_output_text(exc.stderr),
+                        error=f"timed out after {check.timeout_seconds}s",
+                    )
+                )
+                continue
         results.append(
             AcceptanceRunResult(
                 check_id=check.check_id,
@@ -252,7 +269,7 @@ def run_programmatic_acceptance(
                 passed=completed.returncode == 0,
                 return_code=completed.returncode,
                 stdout=completed.stdout,
-                stderr=completed.stderr,
+                stderr=_scrub_script_path(completed.stderr, script),
             )
         )
     return tuple(results)

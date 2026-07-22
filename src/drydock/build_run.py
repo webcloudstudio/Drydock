@@ -29,6 +29,7 @@ from pathlib import Path
 from drydock.acceptance import (
     AcceptanceObservation,
     AcceptanceRunResult,
+    ProgrammaticAcceptance,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
@@ -66,6 +67,7 @@ from drydock.manifest_edit import set_block_fields
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompts import load_prompt
+from drydock.proof_integrity import analyze_literals
 from drydock.rigging_compact import ensure_compact_files
 from drydock.source_roles import (
     SourceRole,
@@ -648,6 +650,26 @@ def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> None:
         lines.append("Run 'drydock refit' to reset the affected blocks for rebuild.")
     lines.extend(f"  - {detail}" for detail in _stale_applied_specs(plan_path, blueprint_dir))
     raise SpecificationError("\n".join(lines))
+
+
+def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...]) -> None:
+    """Block the build when a Blueprint assertion cannot pass by construction.
+
+    A mis-authored expectation is not a red baseline the build can drive green: no correct
+    implementation satisfies it, so the step would spend a full LLM cycle and fail. Fail here
+    instead, naming the Blueprint file to repair.
+    """
+    lines: list[str] = []
+    for check in checks:
+        for defect in analyze_literals(check.code):
+            lines.append(f"  - {check.source} [{check.check_id}]: {defect.message}")
+    if not lines:
+        return
+    raise SpecificationError(
+        "Build blocked: unsatisfiable Programmatic Acceptance assertion.\n"
+        + "\n".join(lines)
+        + "\nRepair the assertion in the Blueprint specification, then rerun the build."
+    )
 
 
 _RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)
@@ -1373,6 +1395,7 @@ def build_target(
             for block in unit.steps
             for check in programmatic_acceptance_for_step(block, blueprint_dir)
         )
+        _reject_unsatisfiable_acceptance(checks)
         pre_acceptance = observe_programmatic_acceptance(
             checks,
             build_dir=resolved_build_dir,

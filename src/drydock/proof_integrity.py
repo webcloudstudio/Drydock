@@ -14,6 +14,7 @@ execution remains the real gate, and a broken proof fails there.
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass
 
 # Call targets that raise on failure and therefore constitute a real check even without a bare
@@ -125,3 +126,86 @@ def analyze_proof(code: str) -> ProofIntegrity:
         # Every assertion present is vacuous and nothing else can fail.
         return ProofIntegrity(False, tuple(dict.fromkeys(vacuous_reasons)))
     return ProofIntegrity(False, ("proof contains no assertion, raise, or failing exit",))
+
+
+# --- Literal defects -------------------------------------------------------------------
+#
+# A proof can be perfectly non-vacuous and still be unsatisfiable, because its *expectation*
+# is mis-authored. The dominant instance is a raw string literal carrying an escape sequence
+# the author meant as a control character: ``r"...\n"`` is backslash-n, not a newline, so no
+# conforming implementation can ever satisfy the assertion. The build then burns a full LLM
+# cycle failing to make correct code pass a check that cannot pass. Catch it before the build.
+
+_RAW_PREFIX_RE = re.compile(r"""^[a-zA-Z]*[rR][a-zA-Z]*["']""")
+# Only sequences whose intended meaning is unambiguously a control character. ``\t`` is
+# excluded: a literal tab is visually indistinguishable in source, so raw ``\t`` is often
+# deliberate.
+_CONTROL_ESCAPE_RE = re.compile(r"\\[nr]")
+# Callables whose string argument is a pattern, where a raw escape is the correct authoring.
+_PATTERN_CALLS = frozenset({
+    "compile",
+    "match",
+    "fullmatch",
+    "search",
+    "sub",
+    "subn",
+    "split",
+    "findall",
+    "finditer",
+})
+
+
+@dataclass(frozen=True)
+class LiteralDefect:
+    """One mis-authored string literal in a proof body."""
+
+    literal: str
+    sequence: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"raw string literal {self.literal} contains {self.sequence}, which is a "
+            f"backslash followed by a letter, not a control character — the assertion cannot "
+            f"pass. Write the control character in a normal string "
+            f'(for example "line\\n"), or "\\\\n" when a literal backslash is intended.'
+        )
+
+
+def _pattern_literals(tree: ast.AST) -> set[int]:
+    """Node ids of string literals passed positionally to a regex-style callable."""
+    exempt: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _call_name(node) in _PATTERN_CALLS:
+            for arg in node.args:
+                exempt.add(id(arg))
+    return exempt
+
+
+def analyze_literals(code: str) -> tuple[LiteralDefect, ...]:
+    """Report string literals in a proof body that make it unsatisfiable by construction."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+
+    exempt = _pattern_literals(tree)
+    defects: list[LiteralDefect] = []
+    seen: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if id(node) in exempt:
+            continue
+        segment = ast.get_source_segment(code, node)
+        if not segment or not _RAW_PREFIX_RE.match(segment):
+            continue
+        match = _CONTROL_ESCAPE_RE.search(segment)
+        if match is None:
+            continue
+        key = (segment, match.group(0))
+        if key in seen:
+            continue
+        seen.add(key)
+        defects.append(LiteralDefect(literal=segment, sequence=match.group(0)))
+    return tuple(defects)
