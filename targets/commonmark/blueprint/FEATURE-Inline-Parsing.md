@@ -2,7 +2,7 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V1 |
+| Version     | 20260722 V4 |
 | Description | Inline parsing resolves CommonMark text structure including escapes, emphasis, links, images, autolinks, raw HTML, and line breaks. |
 | Depends On  | ARCHITECTURE.md, FEATURE-Block-Parsing.md |
 | Provides    | commonmark.inlines.parse_inlines, commonmark.render.render_inlines |

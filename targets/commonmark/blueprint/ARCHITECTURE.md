@@ -2,7 +2,7 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V1 |
+| Version     | 20260722 V4 |
 | Description | Module boundaries, execution flow, and verification interfaces for the CommonMark parser. |
 | Depends On  | COMPASS.md |
 | Provides    | commonmark.__main__:main, commonmark.api.convert, commonmark.blocks.parse_document, commonmark.inlines.parse_inlines, commonmark.render.render_document |

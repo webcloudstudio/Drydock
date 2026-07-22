@@ -2,7 +2,7 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V1 |
+| Version     | 20260722 V4 |
 | Description | The executable filter reads Markdown from standard input and writes rendered HTML to standard output. |
 | Depends On  | ARCHITECTURE.md, COMPASS.md |
 | Provides    | stdin -> stdout markdown filter, commonmark.api.convert |

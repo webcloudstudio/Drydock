@@ -2,7 +2,7 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V1 |
+| Version     | 20260722 V4 |
 | Description | Verification stages the imported CommonMark corpus and harness and proves clean subprocess execution before final scoring. |
 | Depends On  | ARCHITECTURE.md, FEATURE-Filter-Execution.md, FEATURE-Block-Parsing.md, FEATURE-Inline-Parsing.md |
 | Provides    | tests/test_conformance_harness.py, staged/spec.txt, staged/spec_tests.py, staged/normalize.py |

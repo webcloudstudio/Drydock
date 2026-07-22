@@ -1,11 +1,11 @@
 console:
-  name: commonmark QuarterDeck
+  name: CommonMark QuarterDeck
   default_item: compass_edit
   app_help_file_location: docs/index.html
 
 project:
   id: commonmark
-  name: commonmark
+  name: CommonMark
   description: "Drydock target workspace."
 
 sections:
@@ -28,6 +28,8 @@ items:
   - { id: plan_compass, label: "Plan Compass", section: implement, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 3, help_text: "This file is injected into every `drydock plan create`. It allows the Commander control.", prompt_text: "Important: This is core user steering for this specific llm run." }
   - { id: scorecard, label: "Build Score", section: implement, type: markdown, path: ../SCORECARD.md, order: 4, help_text: "Technical quality and project acceptance completion gate for the current build identity." }
   - { id: refit_status, label: "Refit", section: refit, type: refit, order: 1, help_text: "Blueprints that changed since they were applied to the Manifest, plus waiting change tickets. Run drydock refit to fold them in. Never-built blueprints are build items, not refit items." }
+
+  - { id: build_compass, label: "MANIFEST", section: implement, type: compass, path: ../MANIFEST.md, order: 1, help_text: "MANIFEST is the live work graph: feature groups, story-point cost, per-step lifecycle state (buildable now, review, done, failed with reason), and constrained reorder/regroup/rename/split editing." }
 
 
 sources:

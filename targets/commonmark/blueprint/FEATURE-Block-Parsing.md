@@ -2,7 +2,7 @@
 
 | Field       | Value |
 |-------------|-------|
-| Version     | 20260722 V1 |
+| Version     | 20260722 V4 |
 | Description | Block parsing recognizes CommonMark leaf and container structures and document-wide link reference definitions. |
 | Depends On  | ARCHITECTURE.md, FEATURE-Filter-Execution.md |
 | Provides    | commonmark.blocks.parse_document, commonmark.blocks.collect_reference_definitions |
