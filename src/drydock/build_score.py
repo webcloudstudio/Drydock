@@ -37,7 +37,8 @@ DIMENSIONS = (
     "acceptance_criteria_coverage",
 )
 VALID_VERDICTS = frozenset({"PASS", "FAIL", "INCONCLUSIVE"})
-# A release measurement runs a full corpus, not a unit test.
+# A release measurement runs a full corpus, not a unit test. A 655-example CommonMark
+# conformance run against a trivial converter measures ~45s, so this leaves real headroom.
 MEASUREMENT_TIMEOUT = 900
 
 

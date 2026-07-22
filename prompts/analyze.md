@@ -328,7 +328,9 @@ executes:
 - `stage` places the file in the build directory at `sources/{path relative to sources/}`. Every
   assertion, `ac` check, and Sea Trial `Command:` references it by that build-relative path.
   A corpus or harness the project must execute is always `stage` — a file present only in the
-  prompt can be read but not run.
+  prompt can be read but not run. **Everything a staged file needs at run time is also `stage`**:
+  a harness's imported modules, its normalizer, and its fixtures. Read each staged file's imports
+  and open() calls and stage what they name; a harness missing one dependency cannot run at all.
 - `prompt-only` supplies the file as prompt context and places nothing on disk.
 - `none` neither stages nor supplies it.
 
