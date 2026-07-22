@@ -695,6 +695,33 @@ def _collect_existing_typed_specs(
     return specs
 
 
+def _discard_unbuilt_specs(
+    blueprint_dir: Path,
+    applied_specs: dict[str, AppliedSpecRecord],
+    *,
+    excluded_filenames: frozenset[str] = frozenset(),
+) -> list[str]:
+    """Delete every typed Blueprint spec whose story has not been built.
+
+    A spec is *built* when ``drydock build`` recorded it in the Manifest's
+    ``applied_specs`` after a block completed without failing. Delivered code depends
+    on those specs, so a replan preserves them; everything else is prior plan output
+    that the replan regenerates. Scope matches ``_collect_existing_typed_specs``:
+    top-level typed specs only, never ``sources/`` or ``changes/``.
+
+    Returns the deleted filenames, sorted.
+    """
+    discarded: list[str] = []
+    for path in sorted(blueprint_dir.glob("*.md")):
+        if path.name in excluded_filenames or not _is_typed_blueprint_filename(path.name):
+            continue
+        if path.name in applied_specs:
+            continue
+        path.unlink()
+        discarded.append(path.name)
+    return discarded
+
+
 def _is_speckit_source(blueprint_dir: Path) -> bool:
     """True when blueprint/sources/ holds a Spec Kit tree from ``import --format speckit``."""
     sources_dir = blueprint_dir / "sources"
@@ -804,13 +831,25 @@ def _render_normalized_spec(spec: ExistingSpec, *, today: str, ui_general_exists
 
 
 def _normalize_existing_specs(
-    specs: list[ExistingSpec], *, today: str
+    specs: list[ExistingSpec],
+    *,
+    today: str,
+    built: frozenset[str] = frozenset(),
 ) -> tuple[list[Path], list[Path]]:
+    """Normalize reusable spec headers, leaving built specs untouched.
+
+    Normalizing stamps today's date into ``Version``, which changes the file's sha256.
+    For a built spec that would make it dirty and send its story back to ``pending``, so
+    a replan would rebuild delivered work on every run. Built means untouched.
+    """
     changed: list[Path] = []
     normalized_paths: list[Path] = []
     ui_general_exists = any(spec.filename == "UI-GENERAL.md" for spec in specs)
     for spec in specs:
         if not spec.reusable:
+            continue
+        if spec.filename in built:
+            normalized_paths.append(spec.path)
             continue
         normalized = _render_normalized_spec(spec, today=today, ui_general_exists=ui_general_exists)
         normalized_paths.append(spec.path)
@@ -1878,6 +1917,18 @@ def create_plan(
     run = runner if runner is not None else run_prompt
     today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
     excluded_filenames = load_excluded_filenames(target_dir)
+    # A replan preserves only what has been built; the rest is prior plan output and is
+    # regenerated. Deleting first means mode selection, the reuse prompt's "emit the
+    # missing files" instruction, and `typed_spec_paths` all see the built set alone.
+    # `--overwrite` cleared prior_applied_specs above, so it discards every spec.
+    discarded_specs = _discard_unbuilt_specs(
+        blueprint_dir, prior_applied_specs, excluded_filenames=excluded_filenames
+    )
+    if discarded_specs and on_text is not None:
+        on_text(
+            f"[plan] discarding {len(discarded_specs)} unbuilt Blueprint spec(s) for "
+            f"regeneration: {', '.join(discarded_specs)}\n"
+        )
     existing_specs = _collect_existing_typed_specs(
         blueprint_dir, excluded_filenames=excluded_filenames
     )
@@ -1947,7 +1998,7 @@ def create_plan(
                     blueprint_dir, excluded_filenames=excluded_filenames
                 )
         reusable_spec_paths, normalized_existing = _normalize_existing_specs(
-            existing_specs, today=today
+            existing_specs, today=today, built=frozenset(prior_applied_specs)
         )
         if on_text is not None:
             on_text(
@@ -2059,14 +2110,12 @@ def create_plan(
         refresh_commanders_chair(target_dir)
         raise RecordedError(record) from exc
 
-    # Applied Blueprint files whose sha256 hasn't changed are protected: the LLM's
-    # regenerated version is discarded so the file sha256 stays stable and the
-    # merge can confirm the story is still clean (no re-run needed).
-    _protected: frozenset[str] = frozenset(
-        name
-        for name in prior_applied_specs
-        if not _spec_is_dirty(name, blueprint_dir, prior_applied_specs)
-    )
+    # Applied (built) Blueprint files are protected: the LLM's regenerated version is
+    # discarded so delivered code keeps the spec it was built against. A clean file also
+    # keeps its sha256 stable, letting the merge confirm the story needs no re-run; a
+    # file the author edited keeps the author's content, and `_merge_prior_state` returns
+    # that block to `pending` so the story rebuilds against the edit.
+    _protected: frozenset[str] = frozenset(prior_applied_specs)
 
     # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
     authored: list[Path] = []

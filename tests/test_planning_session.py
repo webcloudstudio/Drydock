@@ -18,6 +18,7 @@ from drydock.planning_session import (
     _answered_discovery,
     _assemble_prompt,
     _load_prior_plan_state,
+    _normalize_existing_specs,
     _parse_blocks,
     _parse_strict_blocks,
     _repair_missing_leading_delimiter,
@@ -271,6 +272,8 @@ def _seed_conform_target(tmp_path: Path, *, feature_text: str) -> tuple[Path, Pa
     (blueprint_dir / "ARCHITECTURE.md").write_text(_ARCH_CONFORMANT, encoding="utf-8")
     feature = blueprint_dir / "FEATURE-Status.md"
     feature.write_text(feature_text, encoding="utf-8")
+    # Reuse requires built specs: a replan discards anything with no build record.
+    _mark_built(target_dir, "ARCHITECTURE.md", "FEATURE-Status.md")
     return target_dir, feature
 
 
@@ -398,6 +401,29 @@ def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:
     return target_dir
 
 
+def _mark_built(target_dir: Path, *spec_names: str, manifest: str | None = None) -> None:
+    """Record specs in MANIFEST.md ``applied_specs``, as ``drydock build`` does on success.
+
+    A replan preserves built specs and discards the rest, so a test that exercises reuse
+    must first establish that the specs it seeds were actually built against.
+    """
+    import hashlib
+
+    blueprint_dir = target_dir / "blueprint"
+    body = manifest if manifest is not None else _manifest()
+    lines = body.splitlines()
+    header_at = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
+    records = ["applied_specs: |"]
+    for name in sorted(spec_names):
+        digest = hashlib.sha256((blueprint_dir / name).read_bytes()).hexdigest()
+        records.append(
+            f"  {name} sha256={digest} commit=- applied_by=story-status "
+            "applied_at=2026-06-16T00:00:00"
+        )
+    lines[header_at:header_at] = [*records, ""]
+    (target_dir / "MANIFEST.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def test_authors_specs_compass_and_manifest(tmp_path):
     target_dir = _make_target(tmp_path)
     result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
@@ -496,6 +522,11 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "state: pending\n",
     )
 
+    # Reuse requires built specs: a replan discards anything with no build record.
+    _mark_built(target_dir, "ARCHITECTURE.md", "FEATURE-Status.md")
+    architecture_before = architecture.read_text(encoding="utf-8")
+    feature_before = feature.read_text(encoding="utf-8")
+
     def runner(prompt_text, *a, **k):
         prompt_texts.append(prompt_text)
         return FakeRun(text=f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n")
@@ -512,9 +543,10 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
     assert "Preserve this feature body." in prompt_texts[0]
     assert "Do not emit any existing conformant Blueprint file again." in prompt_texts[0]
     assert "## Programmatic Acceptance" in architecture.read_text(encoding="utf-8")
-    assert "## Guardrails" in feature.read_text(encoding="utf-8")
-    assert "Preserve this architecture body." in architecture.read_text(encoding="utf-8")
-    assert "Preserve this feature body." in feature.read_text(encoding="utf-8")
+    # Built specs are preserved verbatim — headers are not restamped and terminal
+    # sections are not completed, so the story stays clean and does not rebuild.
+    assert architecture.read_text(encoding="utf-8") == architecture_before
+    assert feature.read_text(encoding="utf-8") == feature_before
 
 
 def test_overwrite_forces_full_rewrite_over_existing_specs(tmp_path):
@@ -691,9 +723,16 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
     assert "assert the status command" not in feature.read_text(encoding="utf-8")
 
 
-def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
-    target_dir = _make_target(tmp_path)
-    blueprint_dir = target_dir / "blueprint"
+def test_normalize_existing_specs_repairs_unbuilt_and_skips_built(tmp_path):
+    """Header normalization repairs a malformed spec but never touches a built one.
+
+    Restamping `Version` changes the file sha256, which would mark a built spec dirty
+    and rebuild delivered work on every replan.
+    """
+    from drydock.planning_session import _collect_existing_typed_specs
+
+    blueprint_dir = tmp_path / "blueprint"
+    blueprint_dir.mkdir(parents=True)
     architecture = blueprint_dir / "ARCHITECTURE.md"
     architecture.write_text("Architecture overview only.\n", encoding="utf-8")
     feature = blueprint_dir / "FEATURE-Status.md"
@@ -701,43 +740,17 @@ def test_reuse_mode_normalizes_malformed_existing_spec_header(tmp_path):
         "# FEATURE: Status\n\n## Trigger\n\n- Existing feature content.\n",
         encoding="utf-8",
     )
-    manifest = (
-        "# MANIFEST: Example\n"
-        "updated: 2026-06-16\n"
-        "plan_hash: test\n"
-        "state: draft\n\n"
-        "## feature 1: Status\n"
-        "id: feature-status\n"
-        "summary: Deliver the status command.\n"
-        "state: pending\n\n"
-        "## story 1: Deliver Status\n"
-        "id: story-status\n"
-        "parent: feature-status\n"
-        "summary: Build the status command.\n"
-        "implements: FEATURE-Status.md\n"
-        "scope: both\n"
-        "state: pending\n\n"
-        "## ac 1: Status command exits successfully\n"
-        "id: ac-status-exits\n"
-        "parent: story-status\n"
-        "kind: assertion\n"
-        "state: pending\n"
-    )
+    built_before = feature.read_text(encoding="utf-8")
 
-    create_plan(
-        "Example",
-        "Example",
-        tmp_path,
-        runner=_fake(f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n"),
-    )
+    specs = _collect_existing_typed_specs(blueprint_dir)
+    _normalize_existing_specs(specs, today="2026-06-16", built=frozenset({"FEATURE-Status.md"}))
 
     arch_text = architecture.read_text(encoding="utf-8")
-    feature_text = feature.read_text(encoding="utf-8")
     assert arch_text.startswith("# ARCHITECTURE: Architecture")
     assert re.search(r"\| Version\s+\|\s+\d{8} V1 \|", arch_text)
     assert "## Programmatic Acceptance" in arch_text
-    assert feature_text.startswith("# FEATURE: Status")
-    assert "## Open Questions" in feature_text
+    # The built spec keeps its malformed header rather than being restamped.
+    assert feature.read_text(encoding="utf-8") == built_before
 
 
 def test_cli_overrides_are_passed_to_runner(tmp_path):
@@ -1282,6 +1295,74 @@ def test_unbounded_corpus_inside_acceptance_is_fatal(tmp_path):
         classification="plan output validation failed",
         detail="unbounded conformance corpus",
     )
+
+
+def test_unbuilt_specs_are_discarded_and_regenerated(tmp_path):
+    """Nothing built: every prior spec is prior plan output, so the replan rewrites it."""
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    (blueprint_dir / "ARCHITECTURE.md").write_text("STALE ARCHITECTURE\n", encoding="utf-8")
+    (blueprint_dir / "FEATURE-Status.md").write_text("STALE FEATURE\n", encoding="utf-8")
+    (blueprint_dir / "FEATURE-Ghost.md").write_text("ORPHAN SPEC\n", encoding="utf-8")
+    progress: list[str] = []
+
+    result = create_plan(
+        "Example", "Example", tmp_path, runner=_fake(_llm_output()), on_text=progress.append
+    )
+
+    assert result.plan_mode == "full-rewrite"
+    assert "STALE" not in (blueprint_dir / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "STALE" not in (blueprint_dir / "FEATURE-Status.md").read_text(encoding="utf-8")
+    # An unbuilt spec the replan does not re-author is removed, not left stale.
+    assert not (blueprint_dir / "FEATURE-Ghost.md").exists()
+    assert "discarding 3 unbuilt Blueprint spec(s)" in "".join(progress)
+
+
+def test_built_spec_is_preserved_and_unbuilt_sibling_regenerated(tmp_path):
+    """The guardrail: a spec delivered code was built against survives the replan."""
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    architecture = blueprint_dir / "ARCHITECTURE.md"
+    architecture.write_text(_ARCH_CONFORMANT, encoding="utf-8")
+    (blueprint_dir / "FEATURE-Status.md").write_text("STALE FEATURE\n", encoding="utf-8")
+    _mark_built(target_dir, "ARCHITECTURE.md")
+    before = architecture.read_text(encoding="utf-8")
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert architecture.read_text(encoding="utf-8") == before
+    assert "STALE" not in (blueprint_dir / "FEATURE-Status.md").read_text(encoding="utf-8")
+
+
+def test_author_edited_built_spec_is_not_overwritten(tmp_path):
+    """A built spec the author edited keeps the author's content; the LLM's is discarded."""
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    architecture = blueprint_dir / "ARCHITECTURE.md"
+    architecture.write_text(_ARCH_CONFORMANT, encoding="utf-8")
+    _mark_built(target_dir, "ARCHITECTURE.md")
+    # Author edits after the build: the applied_specs sha256 no longer matches.
+    edited = _ARCH_CONFORMANT.replace("Architecture body.", "AUTHOR EDIT — keep this.")
+    architecture.write_text(edited, encoding="utf-8")
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert architecture.read_text(encoding="utf-8") == edited
+
+
+def test_overwrite_discards_even_built_specs(tmp_path):
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    architecture = blueprint_dir / "ARCHITECTURE.md"
+    architecture.write_text(_ARCH_CONFORMANT, encoding="utf-8")
+    _mark_built(target_dir, "ARCHITECTURE.md")
+
+    result = create_plan(
+        "Example", "Example", tmp_path, runner=_fake(_llm_output()), overwrite=True
+    )
+
+    assert result.plan_mode == "full-rewrite"
+    assert "Architecture body." not in architecture.read_text(encoding="utf-8")
 
 
 def test_required_sea_trial_requires_manifest_or_proof_traceability(tmp_path):
