@@ -534,14 +534,21 @@ flowchart LR
 | `COMPASS.md` | Target root | Always Injected |
 | `MANIFEST.md` | Target root | Executable build plan and dependency graph |
 | `ARCHITECTURE.md`, `DATABASE.md`,<br> `FEATURE-{Name}.md`, <br>`SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files consumed for the current build step or phase |
+| Imported sources | `blueprint/sources/` | Assets the Analysis marks `stage` are copied into the build directory |
 
 **Output files**
 
 | Artifact | Location | Purpose |
 |---|---|---|
 | Built application files | `<Target>` | Target working directory for build<br>override in `METADATA.md` field `build_dir:` |
+| Staged build assets | `<Target>/sources/` | Imported test corpora, harnesses, and fixtures the build executes |
 
 `drydock build <Target>` executes the dependency-ready frontier and writes the application into `$DRYDOCK_BUILD_DIRECTORY/<Target>`. 
+
+Before the frontier runs, `drydock build` stages every imported source the Analysis marks build
+disposition `stage` into `<build_dir>/sources/`, copied from `blueprint/sources/`. Staged assets
+are read-only inputs recorded by content digest. A step that modifies one fails and the asset is
+restored; `drydock score` reports a modified staged asset as a release blocker.
 
 ```text
   `--build-dir` overrides the output directory for the current run.
@@ -583,6 +590,13 @@ Criteria with vacuous proof — an empty body, a constant assertion, or a self-c
 
 `drydock score release` is an LLM pass to evaluates the project-level criteria in `SEA_TRIALS.md`. 
 `SEA_TRIALS.md` contains criteria are expressed in EARS notation. The LLM  judges the project and reports the release verdict. 
+
+A `measurement` criterion carries `Command:`, a literal argv run from the build directory, and is
+compared against `Target:` using `Operator:`. `Extract:` supplies a regular expression whose first
+capture group reads the measured value from the command's standard output; without it the command
+prints `{"value": <number>, "unit": "<unit>"}`. When `Extract:` is present, a non-zero exit status
+is a measurement result rather than a failure. A `Command:` containing an unresolved `<placeholder>`
+is rejected.
 
 **Input files**
 
@@ -752,7 +766,7 @@ What drydock operations read/write
 | SEA_TRIALS.md | Target root | O | · | · | · | · |
 | SOUNDINGS.md | Target root | · | · | · | O | · |
 | changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
-| sources/* | blueprint/sources/ | I | I | · | · | · |
+| sources/* | blueprint/sources/ | I | I | I | I | · |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
@@ -861,7 +875,6 @@ context:      ARCHITECTURE.md
 stack:        common.md, python.md, sqlite.md
 rules:        CLAUDE_RULES.md
 accepts:      st-foundation, st-catalog
-copy:         Rigging/templates/common.sh -> bin/common.sh
 instructions: |
   Build persistence and the catalog service.
 depends:      select-parser
@@ -1397,6 +1410,7 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 ## Programmatic Acceptance
 ← Executable Python assertions. Each check has a stable heading, intent text, and a fenced `python` block.
 ← `Sea Trials: st-id, st-id` between the heading and fence binds the proof to project acceptance IDs.
+← `Corpus: full` between the heading and fence declares that the check runs a complete conformance corpus. One terminal verification story carries it; every other check is bounded to its story.
 
 ## User Acceptance
 ← Commander-observed checks that cannot be honestly automated.
