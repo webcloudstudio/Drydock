@@ -7,7 +7,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.acceptance import ProgrammaticAcceptance
 from drydock.prompt_headers import prompt_header_for_file, prompt_headers
 
 SOUNDINGS_HEADER = ("Status", "Blueprint", "AC Id", "Text", "Evidence", "Verified At")
@@ -82,27 +81,6 @@ def load_soundings(path: Path) -> dict[str, Sounding]:
             )
         return rows
     return {}
-
-
-def project_soundings(checks: tuple[ProgrammaticAcceptance, ...]) -> list[Sounding]:
-    """Project one ``— UNVERIFIED`` Soundings row per Blueprint Programmatic Acceptance assertion.
-
-    Pure function of the Blueprint assertions: no disk read, no verified status. ``drydock plan``
-    uses this to publish the board at plan time; ``drydock score ac`` overwrites it with fresh
-    deterministic verdicts.
-    """
-    return [
-        Sounding(criterion_id=check.check_id, blueprint=check.source, summary=check.intent)
-        for check in checks
-    ]
-
-
-def write_plan_soundings(checks: tuple[ProgrammaticAcceptance, ...], target_dir: Path) -> Path:
-    """Write ``SOUNDINGS.md`` as the unverified plan-time projection of Blueprint assertions."""
-    path = target_dir / "SOUNDINGS.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_soundings(project_soundings(checks)), encoding="utf-8", newline="\n")
-    return path
 
 
 def ensure_standard_artifacts(target: str, target_dir: Path) -> list[Path]:  # noqa: ARG001

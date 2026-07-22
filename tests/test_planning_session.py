@@ -433,12 +433,9 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     assert (bp / "FEATURE-Status.md").is_file()
     assert not (target_dir / "BUILD_COMPASS.md").exists()
     assert (target_dir / "MANIFEST.md").is_file()
-    # Plan projects the acceptance board (per-assertion schema) for early QuarterDeck review.
-    soundings = target_dir / "SOUNDINGS.md"
-    assert soundings.is_file()
-    assert "| Status | Blueprint | AC Id | Text | Evidence | Verified At |" in soundings.read_text(
-        encoding="utf-8"
-    )
+    # SOUNDINGS.md belongs to `drydock score ac`, which reads the Blueprint, runs the
+    # assertions, and emits the board with its verdicts. Plan does not write it.
+    assert not (target_dir / "SOUNDINGS.md").exists()
     assert result.plan.state == "draft"
     assert {p.name for p in result.authored_files} == {"ARCHITECTURE.md", "FEATURE-Status.md"}
     assert result.warnings == ()

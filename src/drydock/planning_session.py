@@ -25,7 +25,7 @@ from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
 
-from drydock.acceptance import PYTHON_FENCE_RE, all_programmatic_acceptance
+from drydock.acceptance import PYTHON_FENCE_RE
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -54,11 +54,7 @@ from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 from drydock.sea_trials import parse_sea_trials_text
 from drydock.source_roles import parse_source_roles, promote_imported_sources
-from drydock.standard_artifacts import (
-    ensure_standard_artifacts,
-    render_console,
-    write_plan_soundings,
-)
+from drydock.standard_artifacts import ensure_standard_artifacts, render_console
 
 PROMPT_NAME = "plan_create"
 
@@ -1784,9 +1780,8 @@ def _write_quarterdeck(plan: BuildPlan, target_dir: Path) -> Path:
     quarterdeck = target_dir / "QuarterDeck"
     quarterdeck.mkdir(parents=True, exist_ok=True)
     ensure_standard_artifacts(plan.project, target_dir)
-    # SOUNDINGS.md is projected at plan time by ``create_plan`` (all assertions UNVERIFIED) and
-    # refreshed by ``drydock score ac``. The QuarterDeck runtime is served from the package; only
-    # console state is written into the Target (see quarterdeck_run.run_quarterdeck).
+    # The QuarterDeck runtime is served from the package; only console state is written
+    # into the Target (see quarterdeck_run.run_quarterdeck).
     (quarterdeck / "planning-session.md").write_text(
         f"# Planning Session: {plan.project}\n\n"
         "Review the proposed decomposition, build order, and acceptance gates on the Kanban Board. "
@@ -2168,10 +2163,8 @@ def create_plan(
     # 4. Re-read the written Manifest so result paths reflect the target artifact.
     plan = parse_build_plan(plan_path)
 
-    # 5. Project the acceptance board at plan time: one UNVERIFIED row per Blueprint assertion,
-    #    reviewable in the QuarterDeck before any build. `drydock score ac` refreshes it.
-    write_plan_soundings(all_programmatic_acceptance(plan, blueprint_dir), target_dir)
-
+    # SOUNDINGS.md is not written here. `drydock score ac` reads the Blueprint, runs the
+    # assertions, and emits the board with its verdicts.
     changed = prior_manifest != (plan_path.read_text(encoding="utf-8"))
     quarterdeck = _write_quarterdeck(plan, target_dir)
 

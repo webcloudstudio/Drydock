@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-from drydock.acceptance import ProgrammaticAcceptance
 from drydock.build_plan import parse_build_plan
 from drydock.standard_artifacts import (
-    VERIFIED_UNVERIFIED,
-    Sounding,
-    load_soundings,
-    project_soundings,
     render_console,
-    write_plan_soundings,
 )
 
 
@@ -135,47 +129,6 @@ def test_render_console_groups_artifacts_by_phase():
     assert items["plan_compass"]["section"] == "implement"
     assert items["refit_status"]["section"] == "refit"
     assert items["refit_status"]["type"] == "refit"
-
-
-def test_project_soundings_one_row_per_assertion_all_unverified():
-    checks = (
-        ProgrammaticAcceptance(
-            "catalog-200", "FEATURE-Catalog.md", "GET /catalog returns 200", "1"
-        ),
-        ProgrammaticAcceptance("catalog-writes", "FEATURE-Catalog.md", "POST persists item", "1"),
-        ProgrammaticAcceptance("home-loads", "SCREEN-Home.md", "Home renders", "1"),
-    )
-
-    rows = project_soundings(checks)
-
-    # One row per Blueprint assertion, tagged with its source file, all UNVERIFIED at plan time.
-    assert [r.criterion_id for r in rows] == ["catalog-200", "catalog-writes", "home-loads"]
-    assert [r.blueprint for r in rows] == [
-        "FEATURE-Catalog.md",
-        "FEATURE-Catalog.md",
-        "SCREEN-Home.md",
-    ]
-    assert all(r.verified == VERIFIED_UNVERIFIED for r in rows)
-    assert all(r.evidence == "" and r.verified_at == "" for r in rows)
-
-
-def test_write_plan_soundings_round_trips_with_blueprint_column(tmp_path):
-    checks = (
-        ProgrammaticAcceptance(
-            "catalog-200", "FEATURE-Catalog.md", "GET /catalog returns 200", "1"
-        ),
-    )
-
-    write_plan_soundings(checks, tmp_path)
-
-    assert load_soundings(tmp_path / "SOUNDINGS.md") == {
-        "catalog-200": Sounding(
-            criterion_id="catalog-200",
-            blueprint="FEATURE-Catalog.md",
-            summary="GET /catalog returns 200",
-            verified=VERIFIED_UNVERIFIED,
-        )
-    }
 
 
 def test_all_programmatic_acceptance_gathers_implemented_specs_deduped(tmp_path):

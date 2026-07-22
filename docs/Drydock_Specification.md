@@ -114,7 +114,7 @@ flowchart LR
 
 **Test Driven Development**
 - Your Crew (LLM) uses Test Driven Development
-- Programmatic acceptance criteria created using a checklist in (SOUNDINGS.md)
+- Programmatic acceptance criteria created using a checklist 
 - Use EARS-notation acceptance criteria with grammar validation for Project level AC (SEA_TRIALS.md)
 
 **The Quarterdeck**
@@ -433,7 +433,6 @@ The QuarterDeck calls out blockers and action items and gives the Commander a si
 |---|---|---|
 | `ARCHITECTURE.md`,<br> `DATABASE.md`,<br> `FEATURE-{Name}.md`,<br> `SCREEN-{Name}.md`,<br> `UI-GENERAL.md` | `blueprint/` | Typed Specification files |
 | `MANIFEST.md` | Target root | The executable build plan |
-| `SOUNDINGS.md` | Target root | Acceptance criteria projected by stable ID, `drydock score ac` sets its Verified column |
 
 **Replan behavior**
 
@@ -751,7 +750,7 @@ What drydock operations read/write
 | SCORECARD.md | Target root | · | · | · | O | · |
 | SCREEN-{Name}.md | blueprint/ | · | O | I | I | I |
 | SEA_TRIALS.md | Target root | O | · | · | · | · |
-| SOUNDINGS.md | Target root | · | O | O/I | I | · |
+| SOUNDINGS.md | Target root | · | · | · | O | · |
 | changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
 | sources/* | blueprint/sources/ | I | I | · | · | · |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |
