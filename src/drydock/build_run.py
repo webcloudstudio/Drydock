@@ -812,6 +812,64 @@ def _classify_failure(
     return None
 
 
+def _assertion_summary(result: AcceptanceRunResult) -> str:
+    """The concrete reason a programmatic check failed, in one line.
+
+    A file-backed run's stderr carries the source line and the exception, so the failing
+    assertion is recoverable: ``assert a + b == c`` → ``AssertionError``. Falls back to the
+    check's own error (e.g. a timeout) when no traceback is present.
+    """
+    lines = [line.rstrip() for line in (result.stderr or "").splitlines() if line.strip()]
+    assertion = next(
+        (line.strip() for line in reversed(lines) if line.strip().startswith("assert ")), ""
+    )
+    exception = next(
+        (line.strip() for line in reversed(lines) if re.match(r"^\w+(Error|Exception)\b", line)),
+        "",
+    )
+    parts = [part for part in (assertion, exception) if part]
+    if parts:
+        return " → ".join(parts)
+    if result.error:
+        return result.error
+    return "failed with no diagnostic output"
+
+
+def _render_ac_failure_chain(
+    unit: BuildUnit,
+    failed: tuple[AcceptanceRunResult, ...],
+    story_by_check: dict[str, PlanBlock],
+) -> str:
+    """Render a Block → Story → AC failure chain naming the story that missed its own DoD.
+
+    The build unit is one step, but every acceptance check maps back to the story whose spec
+    declared it, so the report attributes each failure to the story that owns it and states the
+    concrete assertion that failed.
+    """
+    by_story: dict[str, list[AcceptanceRunResult]] = {}
+    order: list[str] = []
+    for result in failed:
+        story = story_by_check.get(result.check_id)
+        key = story.block_id if story is not None else "?"
+        if key not in by_story:
+            by_story[key] = []
+            order.append(key)
+        by_story[key].append(result)
+
+    lines = [f'Block "{unit.name}" [{unit.block_id}] failed its acceptance criteria.']
+    for key in order:
+        story = next(
+            (s for r in by_story[key] if (s := story_by_check.get(r.check_id)) is not None), None
+        )
+        label = f'"{story.name}" [{story.block_id}]' if story is not None else "(unattributed)"
+        lines.append(f"  Story {label} does not meet its own acceptance criteria:")
+        for result in by_story[key]:
+            intent = result.intent.strip() or result.check_id
+            lines.append(f"    - AC {result.check_id} — {intent}")
+            lines.append(f"        {_assertion_summary(result)}")
+    return "\n".join(lines)
+
+
 def _build_outcome(
     summary: str,
     *,
@@ -1391,11 +1449,13 @@ def build_target(
                 if on_step is not None:
                     on_step(step_result)
             break
-        checks = tuple(
-            check
-            for block in unit.steps
-            for check in programmatic_acceptance_for_step(block, blueprint_dir)
-        )
+        story_by_check: dict[str, PlanBlock] = {}
+        gathered_checks: list[ProgrammaticAcceptance] = []
+        for block in unit.steps:
+            for check in programmatic_acceptance_for_step(block, blueprint_dir):
+                gathered_checks.append(check)
+                story_by_check[check.check_id] = block
+        checks = tuple(gathered_checks)
         _reject_unsatisfiable_acceptance(checks)
         pre_acceptance = observe_programmatic_acceptance(
             checks,
@@ -1552,8 +1612,9 @@ def build_target(
                         error = "programmatic acceptance failed: " + ", ".join(
                             check.check_id for check in failed_checks
                         )
-                        # Per-check errors are already rendered in the evidence acceptance section.
-                        failure_detail = ""
+                        failure_detail = _render_ac_failure_chain(
+                            unit, failed_checks, story_by_check
+                        )
                     else:
                         state, status, error = "closed/verified", "built", None
                         failure_detail = ""

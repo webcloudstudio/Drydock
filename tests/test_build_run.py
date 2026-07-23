@@ -949,6 +949,32 @@ def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
     assert result.exit_code() == 1
 
 
+def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    (target_dir / "blueprint" / "SERVICE.md").write_text(
+        "SVC SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### service-adds\n"
+        "Service must add two numbers.\n\n"
+        "```python\n"
+        "assert 1 + 1 == 3\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert [s.block_id for s in result.steps] == ["foundation", "service"]
+    assert all(s.status == "failed" for s in result.steps)
+    assert result.steps[0].error == "programmatic acceptance failed: service-adds"
+    detail = result.steps[0].failure_detail
+    assert 'Block "Catalog" [feature-catalog] failed its acceptance criteria.' in detail
+    assert 'Story "Service" [service] does not meet its own acceptance criteria:' in detail
+    assert "AC service-adds — Service must add two numbers." in detail
+    assert "assert 1 + 1 == 3" in detail
+    assert "AssertionError" in detail
+
+
 def test_failed_step_marks_failed_and_stops(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(ok=False, text="", write_files=False)
