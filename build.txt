@@ -1,8 +1,6 @@
 Drydock 0.1.4  Copyright (c) 2026 Web Cloud Studio. All rights reserved.
 error: Build blocked: uncommitted changes exist in the Drydock repository. Commit or stash Drydock changes before running `drydock build`.
-  ?? analyze.txt
-  ?? build.txt
-  ?? plan.txt
+   M build.txt
 Building Target: commonmark
-BUILD COMMAND START: commonmark  started=2026-07-23 10:50:31 EDT
+BUILD COMMAND START: commonmark  started=2026-07-23 11:09:50 EDT
 LLM: codex/gpt-5.6-luna
