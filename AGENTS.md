@@ -1,8 +1,6 @@
 # AGENTS.md — Drydock
 
-Drydock is a specification-driven software design and delivery methodology implemented as an
-installable Python CLI. It plans, builds, tests, reviews, and evolves software from Blueprints
-expressed as Typed Specifications.
+Drydock is a specification-driven software design and delivery methodology implemented as an installable Python CLI. It plans, builds, tests, reviews, and evolves software from Blueprints expressed as Typed Specifications.
 
 ## Authority: Canonical Specification at `docs/Drydock_Specification.md`
 
@@ -29,12 +27,10 @@ added or reordered sections:
 
 One section per command; duplicate or overlapping command headings are violations to fix.
 
-**Git Behavior**
-At the completion of any operations, all files should be committed in git. Author works in multiple sessions and is fine with over committing. Commit everything even if you did not touch it.  Do not complain that other processes are working on files - just commit.
+## Git Behavior
+At the completion of any operations, all files should be committed in git even if you did not touch it.  Do not complain that other processes are working on files - just commit so the latest copy of the code is saved.
 
-Do notifiy and stop on any merge issues.
-
-**Workspace Layout** reflects the current on-disk file set. The Blueprint file inventory states each file's purpose and whether it is human-editable.
+Notifiy and stop on any merge issues.
 
 ## Project Layout
 
@@ -94,8 +90,7 @@ repository.
 - Multiple contributors may edit this directory concurrently. Before committing, inspect the
   current diff and preserve changes made by other writers. Never stage or commit changes outside
   the active task.
-- When constructing an agent prompt, include only the relevant specification sections. Do not
-  inject the full specification unless the task is cross-cutting.
+- When constructing an agent prompt, include only the relevant specification sections. Do not inject the full specification unless the task is cross-cutting.
 - Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
 - Never call an API-key-backed LLM provider. Use the subscription-authenticated `claude` CLI.
 - Do not add Typer, Click, Rich, Pydantic, databases, or application frameworks without approval.
@@ -184,12 +179,7 @@ Preferred implementation order:
 7. Documentation workflows
 8. Source and Spec Kit import adapters
 
-This is guidance, not authority. A user-requested capability can be implemented earlier when its
-dependencies are satisfied.
+This is guidance, not authority. A user-requested capability can be implemented earlier when its dependencies are satisfied.
 
 # Changelog
-CHANGELOG.md is the only maintained project history artifact. Record major deliverables, release-level
-behavior changes, milestone accomplishments, and other high-value changes. Keep it short, simple,
-and datestamped. Do not record minor fixes, routine refactors, test-only churn, or implementation
-mechanics. When a release is cut, add a version heading. Releases are cut with `publish_pypi.sh`
-after the version is updated manually.
+CHANGELOG.md is the only maintained project history artifact. Record major deliverables, release-level behavior changes, milestone accomplishments, and other high-value changes. Keep it short, simple, and datestamped. Do not record minor fixes, routine refactors, test-only churn, or implementation mechanics. When a release is cut, add a version heading. Releases are cut with `publish_pypi.sh` after the version is updated manually.

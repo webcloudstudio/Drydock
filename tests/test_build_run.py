@@ -769,7 +769,9 @@ def test_force_requires_step(tmp_path):
 def test_detects_agent_side_commit_when_drydock_has_no_commit(tmp_path, monkeypatch):
     import drydock.build_run as br
 
-    monkeypatch.setattr(br, "_commit_build_dir", lambda path, target, today: (None, None))
+    monkeypatch.setattr(
+        br, "_commit_build_dir", lambda path, target, today, *, failed=False: (None, None)
+    )
     target_dir, build_dir = _setup(tmp_path)
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
@@ -1017,7 +1019,10 @@ state: pending
     assert result.exit_code() == 1
 
 
-def test_failed_step_skips_final_build_commit_even_with_file_changes(tmp_path):
+def test_failed_step_commits_artifact_with_failed_marker(tmp_path):
+    # A failed build still commits the generated artifact so it is preserved for inspection,
+    # diagnosis, and the next rebuild rather than left as fragile uncommitted state. The commit
+    # subject carries a [FAILED] marker.
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(ok=False, text="", write_files=True)
 
@@ -1025,9 +1030,12 @@ def test_failed_step_skips_final_build_commit_even_with_file_changes(tmp_path):
 
     assert result.steps[0].status == "failed"
     assert result.steps[0].written_files == ("foundation.txt",)
-    assert result.git_commit is None
-    assert result.git_commit_message is None
+    assert result.git_commit is not None
+    assert result.git_commit_message is not None
+    assert result.git_commit_message.endswith("[FAILED]")
     assert result.exit_code() == 1
+    # The artifact survives on disk under the build directory.
+    assert (build_dir / "foundation.txt").is_file()
 
 
 def test_evidence_records_summary_and_state(tmp_path):
@@ -1125,6 +1133,86 @@ def test_explicit_failure_report_persists_finding(tmp_path):
     assert "## Failure" in evidence
     assert "could not resolve imports" in evidence
     assert "add it and rerun" in evidence
+
+
+_ONE_STORY = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+instructions: |
+  Build the database.
+state: pending
+"""
+
+_AGENT_FAILURE_REPORT = (
+    "RESULT: FAILURE\n"
+    "FAILURE_SUMMARY: full corpus is not 100% conformant\n"
+    "FAILURE_DETAIL: some corpus cases hang; 100% conformance is not achieved.\n"
+)
+
+
+def _write_foundation_check(target_dir, expected: str) -> None:
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-marker\n"
+        "Foundation writes the expected marker.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        f"assert Path('foundation.txt').read_text(encoding='utf-8') == {expected!r}\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+
+def test_agent_reported_failure_is_advisory_when_acceptance_passes(tmp_path):
+    # The agent self-declares FAILURE (editorializing about project-wide conformance) but the
+    # block's own acceptance criteria pass. The deterministic gate is authoritative: the block
+    # is built, and the self-report is recorded only as advisory evidence.
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    _write_foundation_check(target_dir, "built foundation\n")
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(text=_AGENT_FAILURE_REPORT, write_files=True),
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _finding(target_dir, "foundation") is None
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "## Agent self-report (advisory)" in evidence
+    assert "full corpus is not 100% conformant" in evidence
+    assert "PASS: foundation-marker" in evidence
+
+
+def test_agent_reported_failure_yields_measured_result_when_acceptance_fails(tmp_path):
+    # The agent self-declares FAILURE and the block's acceptance criteria also fail. The measured
+    # acceptance result is the authority: the finding names the failed check, not the agent's
+    # narrative, and both the measurement and the advisory self-report are recorded.
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    _write_foundation_check(target_dir, "wrong\n")
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(text=_AGENT_FAILURE_REPORT, write_files=True),
+    )
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "programmatic acceptance failed: foundation-marker"
+    finding = _finding(target_dir, "foundation")
+    assert finding is not None
+    assert finding.startswith("programmatic acceptance failed")
+    assert not finding.startswith("agent-reported failure")
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "FAIL: foundation-marker" in evidence
+    assert "## Agent self-report (advisory)" in evidence
 
 
 def test_execution_failure_traps_stderr_into_finding(tmp_path):

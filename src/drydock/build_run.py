@@ -226,8 +226,14 @@ def _ensure_git_repo(path: Path) -> bool:
     return True
 
 
-def _commit_build_dir(path: Path, target: str, today: str) -> tuple[str | None, str | None]:
-    """Commit dirty build-directory changes. Returns ``(commit, message)``."""
+def _commit_build_dir(
+    path: Path, target: str, today: str, *, failed: bool = False
+) -> tuple[str | None, str | None]:
+    """Commit dirty build-directory changes. Returns ``(commit, message)``.
+
+    A failed build still commits so the generated artifact is preserved for inspection,
+    diagnosis, and the next rebuild; the commit subject carries a ``[FAILED]`` marker.
+    """
     if not _is_dirty(path):
         return None, None
     try:
@@ -243,7 +249,7 @@ def _commit_build_dir(path: Path, target: str, today: str) -> tuple[str | None, 
         message = (add_result.stderr or add_result.stdout).strip() or "git add failed"
         raise SpecificationError(f"git add failed for build directory {path}: {message}")
 
-    message = f"drydock build {target} {today}"
+    message = f"drydock build {target} {today}" + (" [FAILED]" if failed else "")
     try:
         commit_result = subprocess.run(
             [
@@ -719,6 +725,10 @@ _FAILURE_DETAIL_RE = re.compile(
     r"^\s*FAILURE_DETAIL:\s*(.+)", re.IGNORECASE | re.MULTILINE | re.DOTALL
 )
 
+# Category prefix for a build agent's own declared failure. Such a self-report is advisory:
+# when the agent still wrote files, the deterministic acceptance gate is the authority.
+_AGENT_REPORTED_PREFIX = "agent-reported failure"
+
 
 def _parse_agent_failure(summary: str) -> tuple[str, str]:
     """Extract the agent's structured ``FAILURE_SUMMARY`` / ``FAILURE_DETAIL`` report."""
@@ -799,9 +809,9 @@ def _classify_failure(
             )
             return "target verification interrupted by build agent", detail
         category = (
-            f"agent-reported failure: {agent_summary}"
+            f"{_AGENT_REPORTED_PREFIX}: {agent_summary}"
             if agent_summary
-            else "agent-reported failure"
+            else _AGENT_REPORTED_PREFIX
         )
         detail = agent_detail or agent_summary or text.strip()
         return category, detail
@@ -1045,6 +1055,7 @@ def _write_group_evidence(
     today: str,
     failure_summary: str = "",
     failure_detail: str = "",
+    agent_report: tuple[str, str] | None = None,
 ) -> None:
     lines = [
         f"# Evidence: {unit.name} ({unit.block_id})",
@@ -1120,6 +1131,19 @@ def _write_group_evidence(
             if check.stderr.strip():
                 lines.append("  stderr:")
                 lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
+        lines.append("")
+    if agent_report is not None and (agent_report[0] or agent_report[1]):
+        agent_summary, agent_detail = agent_report
+        lines.append("## Agent self-report (advisory)")
+        lines.append(
+            "The build agent declared a failure. This is advisory only; the programmatic "
+            "acceptance above is the authority for this block's outcome."
+        )
+        if agent_summary:
+            lines.append(f"- summary: {agent_summary}")
+        if agent_detail:
+            lines.append("- detail:")
+            lines.extend(f"    {line}" for line in agent_detail.strip().splitlines())
         lines.append("")
     if state.endswith("failed") and (failure_summary or failure_detail):
         lines.append("## Failure")
@@ -1545,6 +1569,27 @@ def build_target(
             stderr=str(getattr(result, "stderr", "") or ""),
             provider_error=_result_provider_error(result),
         )
+        # A build agent's self-declared FAILURE is advisory, not authoritative. When the agent
+        # still wrote files and the block carries programmatic acceptance criteria, the
+        # deterministic gate below decides the outcome and produces a measured result. This stops
+        # an agent from failing a block whose own acceptance criteria it actually met by
+        # editorializing about work that is not this block's definition of done. With no checks to
+        # measure, the self-report stands; hard failures (sandbox, token limit, non-zero exit,
+        # empty/no output) are not prefixed ``agent-reported failure`` and stay terminal.
+        agent_report: tuple[str, str] | None = None
+        if (
+            status == "failed"
+            and (error or "").startswith(_AGENT_REPORTED_PREFIX)
+            and changed_files
+            and checks
+        ):
+            agent_report = _parse_agent_failure(summary)
+            _emit(
+                on_text,
+                f"AGENT SELF-REPORTED FAILURE (advisory): {unit.name} [{unit.block_id}]"
+                "  — deterministic acceptance is authoritative",
+            )
+            state, status, error, failure_detail = "", "", None, ""
         if changed_files:
             preview = ", ".join(changed_files[:5])
             suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
@@ -1641,6 +1686,7 @@ def build_target(
             today=today,
             failure_summary=error or "",
             failure_detail=failure_detail,
+            agent_report=agent_report,
         )
         finding = _failure_finding(status, error, result, acceptance)
         if status == "failed":
@@ -1649,7 +1695,7 @@ def build_target(
                 if error
                 and (
                     error.startswith("programmatic acceptance failed")
-                    or error.startswith("agent-reported failure")
+                    or error.startswith(_AGENT_REPORTED_PREFIX)
                     or error.startswith("dependency legitimacy gate failed")
                 )
                 else "Error"
@@ -1773,10 +1819,14 @@ def build_target(
 
     build_failed = any(step.status == "failed" for step in steps)
     try:
+        # Preserve the generated artifact even when the build fails. A failed build otherwise
+        # leaves the code as fragile uncommitted state that the next run's asset staging can
+        # wipe, and leaves the diagnostician and author with nothing to inspect or reproduce.
+        # A distinct commit subject marks the failure. Only a dry run skips the commit.
         git_commit, git_commit_message = (
             (None, None)
-            if dry_run or build_failed
-            else _commit_build_dir(resolved_build_dir, target, today)
+            if dry_run
+            else _commit_build_dir(resolved_build_dir, target, today, failed=build_failed)
         )
     except Exception as exc:
         if runner_started:

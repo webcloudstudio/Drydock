@@ -22,6 +22,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-23: `drydock build` treats a build agent's self-declared failure as advisory, not
+  authoritative. When the agent still wrote files and the block carries Programmatic Acceptance
+  criteria, Drydock runs the deterministic gate and lets the measured result decide the outcome —
+  so an agent can no longer fail a block whose own acceptance criteria it met by editorializing
+  about work outside that block's definition of done. The self-report is recorded in evidence under
+  `## Agent self-report (advisory)`, distinct from the measured `## Post-build programmatic
+  acceptance`. Blocks with no acceptance criteria, and hard execution failures (sandbox, token
+  limit, non-zero exit, empty output), remain terminal.
+
+- 2026-07-23: A failed `drydock build` now commits the build directory so the generated artifact is
+  preserved for inspection, diagnosis, and the next rebuild instead of lingering as fragile
+  uncommitted state that later asset staging can wipe. The commit subject carries a `[FAILED]`
+  marker.
+
 - 2026-07-22: Unsatisfiable Programmatic Acceptance assertions are rejected before they cost a
   build. A mis-authored expectation — most often a raw string literal carrying `\n`, which is a
   backslash and a letter rather than a newline — cannot be satisfied by any correct
