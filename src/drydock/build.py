@@ -56,6 +56,19 @@ def story_points_for(byte_count: int) -> int:
     return math.ceil(byte_count / 4)
 
 
+def _file_story_points(name: str, byte_count: int) -> int:
+    """Story points count authored markdown only.
+
+    Story points measure authored specification and documentation work, so a stacked
+    non-markdown asset — an imported conformance corpus, a source fixture, a test suite —
+    contributes zero even though it is still assembled into the prompt and staged into the
+    build. The measure is cosmetic; no build gate keys on it.
+    """
+    if not name.lower().endswith(".md"):
+        return 0
+    return story_points_for(byte_count)
+
+
 # Maximum assembled prompt cost, in tokens (story points), for one build step
 # before it is flagged. The stacking strategy groups similar work to stay under
 # this ceiling. Tokens, not bytes: it is the unit every cost is displayed in.
@@ -178,7 +191,7 @@ def _measure(name: str, role: str, roots: tuple[Path, ...]) -> StepFile:
             name=name,
             role=role,
             byte_count=byte_count,
-            story_points=story_points_for(byte_count),
+            story_points=_file_story_points(name, byte_count),
             missing=False,
             source=candidate,
         )
@@ -379,7 +392,7 @@ def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> Step
                 name=compact,
                 role=role,
                 byte_count=byte_count,
-                story_points=story_points_for(byte_count),
+                story_points=_file_story_points(compact, byte_count),
                 missing=False,
                 source=candidate,
                 compact_substituted=True,

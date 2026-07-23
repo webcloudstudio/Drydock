@@ -128,6 +128,45 @@ class TestAssembleStep:
         bad = next(f for f in step.files if f.name == "missing-context.md")
         assert bad.byte_count == 0 and bad.story_points == 0
 
+    def test_non_markdown_context_contributes_zero_story_points(self, tmp_path):
+        """Story points count authored markdown only; a staged non-markdown asset is present
+        in the assembly (non-zero bytes) but contributes zero story points."""
+        from drydock.build import _file_story_points
+
+        assert _file_story_points("SPEC.md", 4000) == 1000
+        assert _file_story_points("spec.txt", 4000) == 0
+        assert _file_story_points("spec_tests.py", 4000) == 0
+        assert _file_story_points("data.JSON", 4000) == 0
+
+        manifest = """# MANIFEST: Demo
+state: approved
+
+## story 1: Core
+id: core
+implements: ARCHITECTURE.md
+context: corpus.txt
+instructions: |
+  Build it.
+state: pending
+
+## ac 2: Works
+id: ac-core
+parent: core
+kind: smoke
+check: true
+state: pending
+"""
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "corpus.txt").write_text("z" * 4000, encoding="utf-8")
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        plan = parse_build_plan(path)
+
+        step = assemble_step(plan.by_id()["core"], roots)
+        corpus = next(f for f in step.files if f.name == "corpus.txt")
+        assert corpus.byte_count == 4000
+        assert corpus.story_points == 0
+
     def test_total_story_points_sum_of_parts(self, tmp_path):
         plan = _plan(tmp_path)
         step = assemble_step(plan.by_id()["core"], _roots(tmp_path))
