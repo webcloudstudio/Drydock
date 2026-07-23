@@ -165,10 +165,12 @@ done is never sampled.** Drydock builds each block in a single pass with no iter
 acceptance you author *is* the objective handed to the builder: sample the checks and the builder
 builds to the sample. When an authoritative, externally-authored test suite already defines
 "correct" for what a story builds — an imported conformance suite and its runner (for example a
-specification's example suite plus a `*_tests.py` runner) — the acceptance runs the **complete**
-suite and requires a full pass, never a hand-picked subset. Declare a complete run with
-`Corpus: full` in the check's heading block; this is the deliberate marker that the check gates on
-the whole suite rather than a story-scoped slice.
+specification's example suite plus a `*_tests.py` runner) — the acceptance runs that suite and
+requires a full pass over the story's scope, never a hand-picked subset. A feature story binds to
+the sections it owns and declares `Suite: scoped`; a terminal verification story gates on the whole
+suite and declares `Suite: full`. The marker sits on its own line in the check's heading block and
+tells the runner the check gates on a conformance suite rather than a story-scoped sample. (The
+legacy spelling `Corpus:` is still accepted.)
 
 Place a whole-project deterministic suite on the story that **completes the runnable capability**
 — never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it

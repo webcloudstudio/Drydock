@@ -190,11 +190,15 @@ Rules:
   `Provides` and `Consumes` (the plan is rejected otherwise); a FEATURE spec's assertions must
   exercise every route and interface it provides, naming each literal route path in at least one
   assertion.
-- Imported test material is **input, not output**. If the source carries tests, test scripts, or a
-  prose `## Test` section, review it and re-express the intended checks as Drydock Programmatic
-  Acceptance assertions in the spec. Do not trust its format, copy it verbatim, or point at an
-  external script in place of authoring assertions here — conform it even when it already looks
-  correct.
+- Imported test material is **input, not output — with one exception.** Ad hoc tests, test
+  scripts, or a prose `## Test` section: review them and re-express the intended checks as Drydock
+  Programmatic Acceptance assertions in the spec; do not trust their format, copy them verbatim, or
+  point at that script. **The exception is an authoritative conformance suite** — an
+  externally-authored, executable suite whose runner *defines* "correct" for the capability (for
+  example a specification's example set plus its `*_tests.py` runner). A conformance suite is never
+  paraphrased into hand assertions: paraphrase samples it and drops coverage. Its acceptance
+  **invokes the imported runner** over the scope the spec owns and asserts a full pass of that
+  scope, per the suite-binding rule below.
 - Every assertion must be satisfiable by a correct implementation. Read each expectation back as
   the exact bytes it produces. Inside a raw literal, `\n` and `\r` are a backslash and a letter,
   not a control character: `r"text\n"` does not end in a newline. Write control characters in a
@@ -398,10 +402,19 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   not restate a final release measurement. Do not duplicate individual `Programmatic Acceptance`
   assertions as `ac` blocks.
 - When the Analysis states a terminal verification story, that one story gates on the complete
-  corpus: its `Programmatic Acceptance` assertion declares `Corpus: full` on its own line in the
+  suite: its `Programmatic Acceptance` assertion declares `Suite: full` on its own line in the
   heading block, above the fenced code, and it `depends` on every implementation story. Without
-  that declaration a full-corpus run is rejected. Every other story stays bounded — a sample
-  proves a unit works, never that the project is correct.
+  that declaration a full-suite run is rejected.
+- When an authoritative conformance suite is imported (a specification's example set plus its
+  runner), **every implementing feature story binds its acceptance to that suite over the sections
+  it owns**, never to a hand-written sample. The assertion invokes the imported runner limited to
+  the feature's sections (the runner's section/pattern selector) and asserts a full pass of that
+  slice; it declares `Suite: scoped` on its own line so the check receives the suite timeout.
+  Partition the suite's sections so each is owned by exactly one feature; the union of the feature
+  slices plus the terminal `Suite: full` story reproduces the whole suite. A feature whose behavior
+  is defined by an external specification is never accepted by a curated sample of cases.
+- Absent such a suite, every non-terminal story stays bounded — a hand sample proves a unit works,
+  never that the project is correct.
 - Feature-level `ac` blocks are optional group gates for orchestration checks that cannot be
   represented in a Blueprint spec.
 

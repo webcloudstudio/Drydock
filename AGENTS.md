@@ -183,3 +183,8 @@ This is guidance, not authority. A user-requested capability can be implemented 
 
 # Changelog
 CHANGELOG.md is the only maintained project history artifact. Record major deliverables, release-level behavior changes, milestone accomplishments, and other high-value changes. Keep it short, simple, and datestamped. Do not record minor fixes, routine refactors, test-only churn, or implementation mechanics. When a release is cut, add a version heading. Releases are cut with `publish_pypi.sh` after the version is updated manually.
+
+# MODIFICATION RULES
+Editing files in these directories is pointless as it will be regenerated.
+ - Drydock/targets/ is directory containing the drydock workspace.
+ - The Build <TARGET> directory

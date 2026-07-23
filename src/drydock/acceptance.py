@@ -117,7 +117,7 @@ def _intent(prefix: str, title: str | None) -> str:
         line = raw.strip()
         if not line or line.startswith("###"):
             continue
-        if re.match(r"(Sea Trials|Corpus):", line, re.I):
+        if re.match(r"(Sea Trials|Suite|Corpus):", line, re.I):
             continue
         lines.append(line)
     if lines:
@@ -126,13 +126,17 @@ def _intent(prefix: str, title: str | None) -> str:
 
 
 def _full_corpus(prefix: str) -> bool:
-    """Whether the assertion opts in to running a complete conformance corpus.
+    """Whether the assertion runs a conformance suite rather than a bounded story check.
 
     Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
-    whole suite. The terminal verification story declares ``Corpus: full`` to gate on the real
-    corpus rather than a sample of it.
+    whole suite. A suite-bound check declares ``Suite: full`` (a terminal verification story
+    gating on the entire suite) or ``Suite: scoped`` (a feature story gating on the sections it
+    owns); both get the suite execution budget. ``Corpus:`` is accepted as the legacy spelling of
+    ``Suite:``.
     """
-    return bool(re.search(r"^Corpus:\s*full\s*$", prefix, re.MULTILINE | re.IGNORECASE))
+    return bool(
+        re.search(r"^(?:Suite|Corpus):\s*(?:full|scoped)\s*$", prefix, re.MULTILINE | re.IGNORECASE)
+    )
 
 
 def _sea_trials(prefix: str) -> tuple[str, ...]:

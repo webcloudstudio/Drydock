@@ -34,6 +34,24 @@ Every normative example converts correctly.
 import subprocess, sys
 subprocess.run([sys.executable, "sources/spec_tests.py"], check=True)
 ```
+
+### suite-full
+Suite: full
+Every normative example converts correctly.
+
+```python
+import subprocess, sys
+subprocess.run([sys.executable, "sources/spec_tests.py"], check=True)
+```
+
+### suite-scoped
+Suite: scoped
+The owned sections convert correctly.
+
+```python
+import subprocess, sys
+subprocess.run([sys.executable, "sources/spec_tests.py", "--pattern", "Hard line breaks"], check=True)
+```
 """
 
 
@@ -43,17 +61,22 @@ def _checks(tmp_path: Path):
     return {check.check_id: check for check in parse_programmatic_acceptance(path)}
 
 
-def test_corpus_full_marker_is_parsed(tmp_path):
+def test_suite_markers_are_parsed(tmp_path):
     checks = _checks(tmp_path)
 
+    # Suite: full/scoped both mark a conformance-suite check; Corpus: is the accepted legacy spelling.
+    assert checks["suite-full"].full_corpus is True
+    assert checks["suite-scoped"].full_corpus is True
     assert checks["conformance-full"].full_corpus is True
     assert checks["assets-present"].full_corpus is False
 
 
-def test_full_corpus_check_gets_the_long_execution_budget(tmp_path):
+def test_suite_check_gets_the_long_execution_budget(tmp_path):
     """A story timeout would kill a real conformance run partway and report a false failure."""
     checks = _checks(tmp_path)
 
+    assert checks["suite-full"].timeout_seconds == CORPUS_TIMEOUT_SECONDS
+    assert checks["suite-scoped"].timeout_seconds == CORPUS_TIMEOUT_SECONDS
     assert checks["conformance-full"].timeout_seconds == CORPUS_TIMEOUT_SECONDS
     assert checks["assets-present"].timeout_seconds == TIMEOUT_SECONDS
     assert CORPUS_TIMEOUT_SECONDS > TIMEOUT_SECONDS
@@ -65,6 +88,9 @@ def test_marker_lines_do_not_leak_into_the_stated_intent(tmp_path):
     assert checks["conformance-full"].intent == "Every normative example converts correctly."
     assert "Corpus:" not in checks["conformance-full"].intent
     assert "Sea Trials:" not in checks["conformance-full"].intent
+    assert checks["suite-full"].intent == "Every normative example converts correctly."
+    assert "Suite:" not in checks["suite-full"].intent
+    assert "Suite:" not in checks["suite-scoped"].intent
 
 
 def test_sea_trial_references_still_parse_alongside_the_corpus_marker(tmp_path):
