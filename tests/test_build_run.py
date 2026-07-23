@@ -14,6 +14,7 @@ from drydock.build_plan import parse_build_plan
 from drydock.build_run import (
     _is_repairable,
     _render_repair_feedback,
+    _resolve_step_selector,
     build_target,
 )
 from drydock.dependency_gate import RegistryPackageInfo
@@ -164,6 +165,29 @@ def _setup(tmp_path, manifest=_TWO_STORIES):
 def _state(target_dir, block_id):
     plan = parse_build_plan(target_dir / "MANIFEST.md")
     return plan.by_id()[block_id].state
+
+
+def test_resolve_step_selector_accepts_id_name_and_case(tmp_path):
+    target_dir, _ = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    # exact id
+    assert _resolve_step_selector(plan, "feature-catalog") == "feature-catalog"
+    # case-insensitive id
+    assert _resolve_step_selector(plan, "Feature-Catalog") == "feature-catalog"
+    # display name, case-insensitive
+    assert _resolve_step_selector(plan, "catalog") == "feature-catalog"
+    assert _resolve_step_selector(plan, "Foundation") == "foundation"
+
+
+def test_resolve_step_selector_unknown_lists_valid_ids(tmp_path):
+    target_dir, _ = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    with pytest.raises(SpecificationError) as exc:
+        _resolve_step_selector(plan, "Nope")
+    message = str(exc.value)
+    assert "Valid --step ids:" in message
+    assert "feature-catalog" in message
+    assert "foundation" in message
 
 
 class FakeRegistryClient:

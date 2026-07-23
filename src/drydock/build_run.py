@@ -391,6 +391,35 @@ def _containing_feature(block: PlanBlock, by_id: dict[str, PlanBlock]) -> PlanBl
     return parent
 
 
+def _resolve_step_selector(plan: BuildPlan, selector: str) -> str:
+    """Resolve a ``--step`` token to a canonical block id.
+
+    Accepts the block id exactly, the block id case-insensitively, or the block
+    display name case-insensitively, matched against feature/story/spike blocks.
+    On no match, raises with the valid selectors so the operator can retry.
+    """
+    by_id = plan.by_id()
+    if selector in by_id:
+        return selector
+    lowered = selector.strip().lower()
+    selectable = [b for b in plan.blocks if b.block_type in {"feature", "story", "spike"}]
+    for block in selectable:
+        if block.block_id.lower() == lowered:
+            return block.block_id
+    name_matches = [b for b in selectable if b.name.strip().lower() == lowered]
+    if len(name_matches) == 1:
+        return name_matches[0].block_id
+    if len(name_matches) > 1:
+        ids = ", ".join(b.block_id for b in name_matches)
+        raise SpecificationError(
+            f"--step {selector!r} matches multiple blocks by name; use an id: {ids}"
+        )
+    valid = ", ".join(b.block_id for b in selectable) or "(none)"
+    raise SpecificationError(
+        f"Build step {selector!r} not found in MANIFEST.md.\n  Valid --step ids: {valid}"
+    )
+
+
 def _select_build_unit(plan: BuildPlan, step_id: str | None, target: str) -> BuildUnit | None:
     by_id = plan.by_id()
     if step_id is not None:
@@ -1384,6 +1413,8 @@ def build_target(
     if stack_head is not None and _is_dirty(stack_dir):
         stack_head = None
     plan = parse_build_plan(manifest_path)
+    if step_id is not None:
+        step_id = _resolve_step_selector(plan, step_id)
     if dry_run:
         _emit(on_text, "DRY RUN: skipping build-block compact refresh")
     _ensure_applied_specs_current(manifest_path, blueprint_dir)

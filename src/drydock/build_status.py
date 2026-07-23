@@ -76,6 +76,16 @@ class BuildStatus:
     def steps_failed(self) -> int:
         return self._step_count("closed/failed")
 
+    @property
+    def failed_ids(self) -> tuple[str, ...]:
+        """Manifest-ordered ids of failed steps — the rebuild frontier."""
+        return tuple(
+            step.block.block_id
+            for group in self.groups
+            for step in group.steps
+            if step.block.state == "closed/failed"
+        )
+
     def percent_complete(self) -> int:
         if not self.steps_total:
             return 0

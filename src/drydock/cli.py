@@ -1517,6 +1517,9 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         print("Next: resolve legacy implemented steps by rebuilding or revising them")
     elif report.buildable_ids:
         print(f"Next: drydock build {target}")
+    elif report.failed_ids:
+        first = report.failed_ids[0]
+        print(f"Next: rebuild a failed step — drydock build {target} --step {first} --force")
     else:
         print("Next: (no actionable steps — all done or blocked)")
     print()
@@ -1529,7 +1532,12 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         print(f"Feature: {group.name}  [{group.verified}/{group.total} done]")
         for step in group.steps:
             mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
-            arrow = " <- next" if step.buildable else ""
+            if step.buildable:
+                arrow = " <- next"
+            elif step.block.state == "closed/failed":
+                arrow = " <- rebuild with --force"
+            else:
+                arrow = ""
             print(
                 f"  {mark:<9} {step.block.block_type:<5} {step.block.block_id}  {step.block.name}{arrow}"
             )
@@ -1550,6 +1558,8 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         f"({report.percent_complete()}% complete)"
     )
     print("Buildable now: " + (", ".join(report.buildable_ids) or "(none)"))
+    if report.failed_ids:
+        print("Failed (rebuild with --step <id> --force): " + ", ".join(report.failed_ids))
     score_state = score_evidence_state(target, target_path)
     detail = f" ({'; '.join(score_state.reasons)})" if score_state.reasons else ""
     print(f"Build score evidence: {score_state.state}{detail}")

@@ -144,6 +144,22 @@ def test_feature_rollup_counts_verified_over_total(tmp_path):
     assert (core.verified, core.total) == (1, 2)
 
 
+def test_failed_ids_lists_failed_steps_in_manifest_order(tmp_path):
+    manifest = _PLAN.replace(
+        "id: foundation\nparent: core\nstate: closed/verified",
+        "id: foundation\nparent: core\nstate: closed/failed",
+    ).replace(
+        "id: service\nparent: core\ndepends: foundation\nstate: pending",
+        "id: service\nparent: core\ndepends: foundation\nstate: closed/failed",
+    )
+    report = _report(tmp_path, manifest=manifest)
+    assert report.failed_ids == ("foundation", "service")
+
+
+def test_failed_ids_empty_when_no_failures(tmp_path):
+    assert _report(tmp_path).failed_ids == ()
+
+
 def test_empty_plan_has_no_groups_and_zero_percent(tmp_path):
     report = _report(tmp_path, manifest="# MANIFEST: Empty\nstate: draft\n")
     assert report.groups == ()
