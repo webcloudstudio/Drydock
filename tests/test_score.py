@@ -138,6 +138,96 @@ def test_verify_acs_demotes_vacuous_proof_to_unverified(tmp_path):
     assert row.verified_at == ""
 
 
+def _scoped_target(tmp_path: Path) -> Path:
+    """A two-feature target: Alpha's proof passes, Beta's fails. One proof per feature/story."""
+    target_dir = tmp_path / "targets" / "Demo"
+    blueprint_dir = target_dir / "blueprint"
+    build_dir = tmp_path / "build" / "Demo"
+    blueprint_dir.mkdir(parents=True)
+    build_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text(f"build_dir: {build_dir}\n", encoding="utf-8")
+    (target_dir / "MANIFEST.md").write_text(
+        """# MANIFEST: Demo
+state: closed
+
+## feature 1: Alpha
+id: feat-alpha
+state: closed/verified
+
+## story 1: Alpha work
+id: alpha
+parent: feat-alpha
+implements: ALPHA.md
+state: closed/verified
+
+## feature 2: Beta
+id: feat-beta
+state: closed/failed
+
+## story 2: Beta work
+id: beta
+parent: feat-beta
+implements: BETA.md
+state: closed/failed
+""",
+        encoding="utf-8",
+    )
+    (blueprint_dir / "ALPHA.md").write_text(
+        "# Alpha\n\n## Programmatic Acceptance\n\n### alpha-proof\nAlpha holds.\n\n"
+        '```python\nfrom pathlib import Path\nassert Path("marker.txt").read_text() == "built\\n"\n```\n',
+        encoding="utf-8",
+    )
+    (blueprint_dir / "BETA.md").write_text(
+        "# Beta\n\n## Programmatic Acceptance\n\n### beta-proof\nBeta holds.\n\n"
+        '```python\nfrom pathlib import Path\nassert Path("marker.txt").read_text() == "nope"\n```\n',
+        encoding="utf-8",
+    )
+    (build_dir / "marker.txt").write_text("built\n", encoding="utf-8")
+    return target_dir
+
+
+def test_verify_acs_scopes_to_a_named_feature_and_skips_soundings(tmp_path):
+    target_dir = _scoped_target(tmp_path)
+
+    report = verify_acs("Demo", target_dir, step_id="feat-beta")
+
+    # Only Beta's assertion is in scope; Alpha's is not verified in this run.
+    assert [v.criterion_id for v in report.verdicts] == ["beta-proof"]
+    assert report.verdicts[0].status == "FAIL"
+    assert report.verdicts[0].source == "BETA.md"
+    assert report.exit_code() == 1
+    assert report.scope == "feat-beta"
+    assert report.scope_name == "Beta"
+    # A scoped run is a read-only view; it must not rewrite the full board.
+    assert report.wrote_soundings is False
+    assert not (target_dir / "SOUNDINGS.md").exists()
+
+
+def test_verify_acs_scopes_to_a_single_story(tmp_path):
+    target_dir = _scoped_target(tmp_path)
+
+    report = verify_acs("Demo", target_dir, step_id="alpha")
+
+    assert [v.criterion_id for v in report.verdicts] == ["alpha-proof"]
+    assert report.verdicts[0].status == "PASS"
+    assert report.exit_code() == 0
+    assert report.scope == "alpha"
+
+
+def test_verify_acs_unknown_step_lists_valid_ids(tmp_path):
+    from drydock.errors import SpecificationError
+
+    target_dir = _scoped_target(tmp_path)
+
+    try:
+        verify_acs("Demo", target_dir, step_id="nope")
+    except SpecificationError as exc:
+        assert "unknown --step 'nope'" in str(exc)
+        assert "feat-beta" in str(exc)
+    else:
+        raise AssertionError("expected SpecificationError for unknown step")
+
+
 def test_release_score_completes_and_writes_scorecard(tmp_path):
     target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
 

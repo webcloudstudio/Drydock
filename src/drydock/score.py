@@ -25,9 +25,10 @@ from drydock.acceptance import (
     all_programmatic_acceptance,
     observe_programmatic_acceptance,
     parse_programmatic_acceptance,
+    programmatic_acceptance_for_step,
     run_programmatic_acceptance,
 )
-from drydock.build_plan import parse_build_plan, stale_applied_specs
+from drydock.build_plan import BuildPlan, parse_build_plan, stale_applied_specs
 from drydock.build_score import (
     DIMENSIONS,
     VALID_VERDICTS,
@@ -72,6 +73,7 @@ class AcVerdict:
     summary: str
     status: str  # PASS | FAIL | UNVERIFIED
     evidence: str
+    source: str = ""
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,13 @@ class AcReport:
     verdicts: tuple[AcVerdict, ...]
     soundings_path: Path
     verified_at: str
+    # ``scope`` is the resolved block id when the run was narrowed to one feature/story with
+    # ``--step``; ``None`` for a whole-target run. A scoped run reports only that block's
+    # acceptance and does not rewrite the SOUNDINGS.md board (``wrote_soundings`` is False),
+    # since the board is a full projection of every Blueprint assertion.
+    scope: str | None = None
+    scope_name: str = ""
+    wrote_soundings: bool = True
 
     def exit_code(self) -> int:
         # A FAIL is a hard failure; UNVERIFIED is surfaced but does not fail the run, since not
@@ -106,12 +115,52 @@ def _observation_verdict(obs: AcceptanceObservation) -> tuple[str, str]:
     return PASS, ""
 
 
-def verify_acs(target: str, target_dir: Path) -> AcReport:
-    """Verify every Blueprint acceptance assertion deterministically and write Soundings.
+def _resolve_scope_block(plan: BuildPlan, step_id: str):
+    """Resolve a ``--step`` selector to a block. An exact id match (case-insensitive) wins over a
+    display-name match, so a story id never loses to a feature that shares its display name."""
+    low = step_id.strip().lower()
+    for block in plan.blocks:
+        if block.block_id.lower() == low:
+            return block
+    for block in plan.blocks:
+        if (block.name or "").lower() == low:
+            return block
+    valid = ", ".join(
+        block.block_id for block in plan.blocks if block.block_type in {"feature", "story", "spike"}
+    )
+    raise SpecificationError(f"unknown --step '{step_id}'. Valid ids: {valid}")
 
-    One verdict and one Soundings row per Blueprint Programmatic Acceptance assertion. Rewrites
-    ``SOUNDINGS.md`` in full from fresh results; the board is a pure projection of the current
-    Blueprint assertions.
+
+def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block) -> tuple:
+    """Every Blueprint assertion owned by ``block`` — its own if a story, its stories' if a
+    feature — deduped by ``(source, check_id)``."""
+    if block.block_type == "feature":
+        stories = [
+            child
+            for child in plan.children(block.block_id)
+            if child.block_type in {"story", "spike"}
+        ]
+    else:
+        stories = [block]
+    checks: list = []
+    seen: set[tuple[str, str]] = set()
+    for story in stories:
+        for check in programmatic_acceptance_for_step(story, blueprint_dir):
+            key = (check.source, check.check_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            checks.append(check)
+    return tuple(checks)
+
+
+def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> AcReport:
+    """Verify Blueprint acceptance assertions deterministically.
+
+    One verdict per Blueprint Programmatic Acceptance assertion. A whole-target run (``step_id``
+    is ``None``) rewrites ``SOUNDINGS.md`` in full from fresh results; the board is a pure
+    projection of every current Blueprint assertion. A scoped run (``step_id`` names a feature or
+    story) verifies only that block's assertions and leaves the board untouched.
     """
     manifest_path = target_dir / "MANIFEST.md"
     blueprint_dir = target_dir / "blueprint"
@@ -121,7 +170,12 @@ def verify_acs(target: str, target_dir: Path) -> AcReport:
         raise SpecificationError(f"build directory not found: {build_dir}")
 
     verified_at = _now()
-    checks = all_programmatic_acceptance(plan, blueprint_dir)
+    scope_block = None
+    if step_id is None:
+        checks = all_programmatic_acceptance(plan, blueprint_dir)
+    else:
+        scope_block = _resolve_scope_block(plan, step_id)
+        checks = _scoped_checks(plan, blueprint_dir, scope_block)
     observations = observe_programmatic_acceptance(
         checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
     )
@@ -131,7 +185,7 @@ def verify_acs(target: str, target_dir: Path) -> AcReport:
     for obs in observations:
         status, evidence = _observation_verdict(obs)
         stamp = verified_at if status != UNVERIFIED else ""
-        verdicts.append(AcVerdict(obs.check_id, obs.intent, status, evidence))
+        verdicts.append(AcVerdict(obs.check_id, obs.intent, status, evidence, obs.source))
         rows.append(
             Sounding(
                 criterion_id=obs.check_id,
@@ -144,9 +198,19 @@ def verify_acs(target: str, target_dir: Path) -> AcReport:
         )
 
     soundings_path = target_dir / "SOUNDINGS.md"
-    soundings_path.parent.mkdir(parents=True, exist_ok=True)
-    soundings_path.write_text(render_soundings(rows), encoding="utf-8", newline="\n")
-    return AcReport(target, tuple(verdicts), soundings_path, verified_at)
+    wrote_soundings = scope_block is None
+    if wrote_soundings:
+        soundings_path.parent.mkdir(parents=True, exist_ok=True)
+        soundings_path.write_text(render_soundings(rows), encoding="utf-8", newline="\n")
+    return AcReport(
+        target,
+        tuple(verdicts),
+        soundings_path,
+        verified_at,
+        scope=scope_block.block_id if scope_block else None,
+        scope_name=scope_block.name if scope_block else "",
+        wrote_soundings=wrote_soundings,
+    )
 
 
 def score_release(

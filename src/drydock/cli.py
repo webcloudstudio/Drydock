@@ -1446,22 +1446,39 @@ def cmd_build_score(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
-def cmd_score_ac(target: str) -> int:
+def cmd_score_ac(target: str, step: str | None = None) -> int:
     from drydock.config import require_target_dir
     from drydock.score import UNVERIFIED, verify_acs
 
     target_dir = require_target_dir(target)
-    report = verify_acs(target, target_dir)
+    report = verify_acs(target, target_dir, step_id=step)
     passed = sum(1 for v in report.verdicts if v.status == "PASS")
     failed = sum(1 for v in report.verdicts if v.status == "FAIL")
     unverified = sum(1 for v in report.verdicts if v.status == UNVERIFIED)
     print()
     print(f"Acceptance verification: {target}  ({report.verified_at})")
-    print(f"  PASS {passed}   FAIL {failed}   UNVERIFIED {unverified}")
+    if report.scope:
+        print(f"  Scope: {report.scope_name}  [{report.scope}]")
+    print(
+        f"  PASS {passed}   FAIL {failed}   UNVERIFIED {unverified}   ({len(report.verdicts)} AC)"
+    )
+    if not report.verdicts:
+        print("  No programmatic acceptance assertions in scope.")
+    # List every non-passing AC with its owning Blueprint file, intent, and the failing detail,
+    # so a failed check is legible without opening the evidence.
     for verdict in report.verdicts:
-        if verdict.status != "PASS":
-            print(f"  {verdict.status}: {verdict.criterion_id} — {verdict.evidence}")
-    print(f"Soundings: {report.soundings_path}")
+        if verdict.status == "PASS":
+            continue
+        source = f"  ({verdict.source})" if verdict.source else ""
+        print()
+        print(f"  {verdict.status}  {verdict.criterion_id}{source}")
+        if verdict.summary.strip():
+            print(f"        intent: {verdict.summary.strip()}")
+        for line in (verdict.evidence or "").strip().splitlines() or ["(no detail captured)"]:
+            print(f"        {line}")
+    if report.wrote_soundings:
+        print()
+        print(f"Soundings: {report.soundings_path}")
     return report.exit_code()
 
 
@@ -1528,29 +1545,37 @@ def cmd_build_status(blueprint: str, target: str) -> int:
 
     print(f"Blueprint: {report.project}")
     print(f"Target: {target_path}")
+    # Each row reads: <state> <type>  <Name>  [<id>]. The Name is the human label; the bracketed
+    # [<id>] is the token to pass to drydock build --step <id> and drydock score ac --step <id>.
+    print("Rows: <state> <type>  <Name>  [<id>]   — pass [<id>] to --step")
     if not report.groups:
         print("  No build steps in the plan.")
     for group in report.groups:
-        print(f"Feature: {group.name}  [{group.verified}/{group.total} done]")
+        feature_id = group.feature.block_id if group.feature else "ungrouped"
+        print(
+            f"\nFeature: {group.name}  [{feature_id}]"
+            f"   — {group.verified}/{group.total} stories done"
+        )
         for step in group.steps:
             mark = _BUILD_STATE_MARK.get(step.block.state, step.block.state)
-            if step.buildable:
-                arrow = " <- next"
-            elif step.block.state == "closed/failed":
-                arrow = " <- resume (repairs in place)"
+            if step.block.state == "closed/failed":
+                arrow = "  <- resume (repairs in place)"
+            elif step.buildable:
+                arrow = "  <- next"
             else:
                 arrow = ""
             print(
-                f"  {mark:<9} {step.block.block_type:<5} {step.block.block_id}  {step.block.name}{arrow}"
+                f"  {mark:<9} {step.block.block_type:<6} "
+                f"{step.block.name}  [{step.block.block_id}]{arrow}"
             )
             for ac in step.acs:
                 ac_mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
-                print(f"      {ac_mark:<9} ac    {ac.block_id}  {ac.name}")
+                print(f"      {ac_mark:<9} ac     {ac.name}  [{ac.block_id}]")
         for ac in group.feature_acs:
             mark = _BUILD_STATE_MARK.get(ac.state, ac.state)
-            print(f"    {mark:<9} ac    {ac.block_id}  {ac.name}")
-        print()
+            print(f"    {mark:<9} ac     {ac.name}  [{ac.block_id}]")
 
+    print()
     print(
         f"Steps: {report.steps_total} total — "
         f"{report.steps_verified} done, "
@@ -1875,8 +1900,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "score",
         help="Verify acceptance criteria (deterministic) and judge the release gate (LLM).",
         description=(
-            "drydock score ac <Target>       — verify each acceptance criterion, update Soundings\n"
-            "drydock score release <Target>  — LLM release gate over Sea Trials; writes SCORECARD.md"
+            "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
+            "                                            or scoped to one feature/story), update Soundings\n"
+            "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2197,14 +2223,39 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         return rc
 
 
+def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
+    """Parse ``<Target> [--step <id>]`` for ``drydock score ac``."""
+    step: str | None = None
+    positional: list[str] = []
+    index = 0
+    while index < len(rest):
+        token = rest[index]
+        if token == "--step":
+            if index + 1 >= len(rest):
+                raise UsageError("Usage: drydock score ac <Target> [--step <id>]")
+            step = rest[index + 1]
+            index += 2
+            continue
+        if token.startswith("--step="):
+            step = token.split("=", 1)[1]
+            index += 1
+            continue
+        positional.append(token)
+        index += 1
+    if len(positional) != 1:
+        raise UsageError("Usage: drydock score ac <Target> [--step <id>]")
+    return positional[0], step
+
+
 def _dispatch_score(args: argparse.Namespace) -> int:
     tokens = args.args
     first = tokens[0] if tokens else ""
-    if first == "ac" and len(tokens) == 2:
-        rc = cmd_score_ac(tokens[1])
+    if first == "ac":
+        target, step = _parse_score_ac_args(tokens[1:])
+        rc = cmd_score_ac(target, step=step)
         from drydock.config import record_activity
 
-        record_activity("score ac", tokens[1], tokens[1])
+        record_activity("score ac", target, target)
         return rc
     if first == "release" and len(tokens) == 2:
         rc = cmd_score_release(tokens[1])

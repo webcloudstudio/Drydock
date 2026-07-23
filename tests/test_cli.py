@@ -108,6 +108,34 @@ class TestHelpAndVersion:
         assert rc == 2
         assert "ac|release" in err
 
+    def test_parse_score_ac_args_accepts_step_flag(self):
+        from drydock.cli import _parse_score_ac_args
+
+        assert _parse_score_ac_args(["Demo"]) == ("Demo", None)
+        assert _parse_score_ac_args(["Demo", "--step", "block-parsing"]) == (
+            "Demo",
+            "block-parsing",
+        )
+        assert _parse_score_ac_args(["--step", "block-parsing", "Demo"]) == (
+            "Demo",
+            "block-parsing",
+        )
+        assert _parse_score_ac_args(["Demo", "--step=block-parsing"]) == (
+            "Demo",
+            "block-parsing",
+        )
+
+    def test_parse_score_ac_args_requires_one_target(self):
+        from drydock.cli import UsageError, _parse_score_ac_args
+
+        for bad in ([], ["a", "b"], ["Demo", "--step"]):
+            try:
+                _parse_score_ac_args(bad)
+            except UsageError:
+                pass
+            else:
+                raise AssertionError(f"expected UsageError for {bad!r}")
+
     def test_version_shows_version_and_copyright(self):
         rc, out, err = run_cli("--version")
         # argparse prints version to stdout
