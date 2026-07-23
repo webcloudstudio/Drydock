@@ -2,12 +2,24 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-07-23 V1 |
+| Version | 2026-07-23 V2 |
 | Route | build / plan (acceptance-criteria gating) |
 | Status | Working notes — not canonical specification |
 | Description | Acceptance criteria are the definition of done; deterministic ACs are never sampled, tested at story/block build and mirrored into Sea Trials. |
 | Pending spec | 7 approved items |
-| Pending impl | 7 unimplemented sections |
+| Pending impl | 4 unimplemented sections |
+
+## Implementation status (2026-07-23)
+- **Done:** Block → Story → AC failure chain (`build_run._render_ac_failure_chain`, commit
+  732875e). Opaque build failures routed through the LLM standoff diagnosis into ERRORS.md and
+  the evidence file (commit 464da26). Generation guidance in the Blueprint authoring contract and
+  build prompt: acceptance is the complete definition of done, never sampled; a full deterministic
+  suite belongs on the completing block (`Corpus: full`) and mirrored into Sea Trials; stub/absent
+  is a defect (commit 05149c9).
+- **Pending:** a deterministic Plan-time gate that rejects a *dishonest* `Corpus: full` (declares
+  full but samples via `--pattern`/`--number`/slice) and a *missing* gate when an authoritative
+  suite is imported. Deferred because reliable "suite is present" detection and per-check honesty
+  scoping risk false positives; generation guidance carries the intent for now.
 
 ## Goal
 Build conformance gating the correct way: acceptance criteria are the definition of done, at
@@ -28,7 +40,7 @@ of AC count. "100%" is not an exotic bar — it is just what "definition of done
 with failing ACs is not done.
 
 ### Two acceptance levels, both tested
-`2026-07-23` · `spec:approved` · `impl:unimplemented`
+`2026-07-23` · `spec:approved` · `impl:implemented`
 
 Story/block acceptance criteria (in the Blueprint) and project acceptance criteria (Sea Trials)
 are both real and both tested — not either/or. Sea Trials are the LLM-judged project layer and
@@ -36,7 +48,7 @@ are naturally small (a reasonable project is not 100 LLM-evaluated criteria). Th
 rule therefore bites on the programmatic ACs, not on Sea Trials.
 
 ### The block is the test unit; failures report a Block → Story → AC chain
-`2026-07-23` · `spec:approved` · `impl:unimplemented`
+`2026-07-23` · `spec:applied` · `impl:implemented`
 
 Multiple stories build together in one step (the block). After the block builds, the block's
 entire AC set runs once. Because every AC maps to its story, a failure is attributed per story
@@ -45,7 +57,7 @@ its stated intent, and the concrete assertion (e.g. "must add two numbers, but a
 per-story execution; per-story attribution.
 
 ### Strong gates, fail fast; `score ac` stays manual
-`2026-07-23` · `spec:approved` · `impl:unimplemented`
+`2026-07-23` · `spec:approved` · `impl:implemented`
 
 The gate's job is to stop a wrong story from propagating: halting and redoing a mis-built step
 is cheaper than diagnosing a large finished project. The story/block-stage AC test during build
