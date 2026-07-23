@@ -1,0 +1,2 @@
+[plan] mode=full-rewrite prompt=plan_create existing_specs=0 imported_sources=7
+[plan] OVERWRITE mode: regenerating Blueprint specs and MANIFEST.md from the analysis

@@ -1,0 +1,40 @@
+Drydock 0.1.4  Copyright (c) 2026 Web Cloud Studio. All rights reserved.
+[llm] START plan codex/gpt-5.6-luna  started=2026-07-23 10:45:32 EDT
+[llm] DONE plan codex/gpt-5.6-luna  rc=0  elapsed=1m 58.2s  in=102513  cached=8960  out=6299  out_tps=53.3  id=20260723T144532227057Z-6d030653  completed=2026-07-23 10:47:30 EDT
+[plan] mode=full-rewrite prompt=plan_create existing_specs=0 imported_sources=7
+[plan] OVERWRITE mode: regenerating Blueprint specs and MANIFEST.md from the analysis
+
+Mode: OVERWRITE (Blueprint specs regenerated from analysis)
+Blueprint: CommonMark Parser
+Plan: /mnt/c/Users/barlo/projects/drydock/targets/commonmark/MANIFEST.md
+Planning Session: /mnt/c/Users/barlo/projects/drydock/targets/commonmark/QuarterDeck
+Authored 7 Blueprint spec file(s):
+  blueprint/ARCHITECTURE.md
+  blueprint/FEATURE-Block-Parsing.md
+  blueprint/FEATURE-CLI-Filter.md
+  blueprint/FEATURE-Conformance-Staging.md
+  blueprint/FEATURE-Full-Conformance.md
+  blueprint/FEATURE-HTML-Rendering.md
+  blueprint/FEATURE-Inline-Parsing.md
+
+  PENDING         feature parser-foundation        Parser Foundation
+  PENDING         story architecture             Parser architecture
+  PENDING         ac    architecture-smoke       Architecture smoke
+  PENDING         story block-parsing            Block parsing
+  PENDING         ac    block-parsing-smoke      Block parsing smoke
+  PENDING         feature inline-output            Inline and HTML Output
+  PENDING         story inline-parsing           Inline parsing
+  PENDING         ac    inline-parsing-smoke     Inline parsing smoke
+  PENDING         story html-rendering           HTML rendering
+  PENDING         ac    html-rendering-smoke     HTML rendering smoke
+  PENDING         story cli-filter               CLI filter
+  PENDING         ac    cli-filter-smoke         CLI filter smoke
+  PENDING         feature verification             Verification
+  PENDING         story conformance-staging      Conformance staging
+  PENDING         ac    conformance-staging-smoke Conformance staging smoke
+  PENDING         story full-conformance         Full conformance verification
+  PENDING         ac    final-scoring-handoff    Final scoring handoff
+
+Summary: pending=17, implemented=0, closed/verified=0, closed/failed=0
+
+Next step: review the manifest build tree in the Planning Session.
