@@ -1239,7 +1239,13 @@ def cmd_status_current() -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     from drydock.build_run import BUILD_FAILURE_FORCE_HINT, BuildStepResult, build_target
-    from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.config import (
+        get_escalate_model,
+        get_llm_provider,
+        get_model,
+        get_workspace,
+        require_target_dir,
+    )
     from drydock.manifest_edit import (
         count_failed_blocks,
         normalize_order,
@@ -1252,6 +1258,10 @@ def cmd_build(args: argparse.Namespace) -> int:
     target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    escalate_model = get_escalate_model(getattr(args, "escalate_model", None))
+    repair_attempts = int(getattr(args, "repair_attempts", 1) or 0)
+    if repair_attempts < 0:
+        raise UsageError("--repair-attempts must be zero or greater.")
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
     log_dir = get_workspace() / "logs"
 
@@ -1309,7 +1319,10 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_started = time.monotonic()
     print(f"Building Target: {args.Target}")
     print(f"BUILD COMMAND START: {args.Target}  started={_wall_time()}")
-    print(f"LLM: {llm_provider}/{model}")
+    print(
+        f"LLM: {llm_provider}/{model}  repair_attempts={repair_attempts}  "
+        f"escalate={escalate_model or 'off'}"
+    )
     if getattr(args, "step", None):
         print(f"Building step: {args.step}")
     if getattr(args, "force", False) and getattr(args, "dry_run", False):
@@ -1355,6 +1368,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         force=bool(getattr(args, "force", False)),
         dry_run=bool(getattr(args, "dry_run", False)),
         show_prompt=bool(getattr(args, "show_prompt", False)),
+        repair_attempts=repair_attempts,
+        escalate_model=escalate_model,
     )
     print()
     print(
@@ -2053,6 +2068,22 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         dest="show_prompt",
         action="store_true",
         help="With --dry-run, print the full assembled prompt including file contents.",
+    )
+    p.add_argument(
+        "--repair-attempts",
+        dest="repair_attempts",
+        type=int,
+        default=1,
+        metavar="<n>",
+        help="Repair passes after a failed block (0 disables; default 1).",
+    )
+    p.add_argument(
+        "--escalate-model",
+        dest="escalate_model",
+        default=None,
+        metavar="<model>",
+        help="Model used on the final repair attempt "
+        "(default: DRYDOCK_BUILD_ESCALATE_MODEL env or off).",
     )
     p.add_argument(
         "--model",

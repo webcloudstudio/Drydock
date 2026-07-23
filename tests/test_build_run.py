@@ -9,8 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from drydock.acceptance import AcceptanceRunResult
 from drydock.build_plan import parse_build_plan
-from drydock.build_run import build_target
+from drydock.build_run import (
+    _is_repairable,
+    _render_repair_feedback,
+    build_target,
+)
 from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError, write_error_record
 
@@ -1816,6 +1821,179 @@ from app import convert
 assert convert(r"\\*a\\*\\n") == "<p>*a*</p>\\n"
 ```
 """
+
+
+def _marker_spec(expected: str) -> str:
+    return (
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-file\n"
+        "Foundation writes its output marker.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        f"assert Path('foundation.txt').read_text(encoding='utf-8') == {expected!r}\n"
+        "```\n"
+    )
+
+
+def make_attempt_runner(*, fix_at: int | None):
+    """Runner whose written marker becomes correct at attempt ``fix_at`` (None = never)."""
+    calls: list[dict] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        Path(working_directory).mkdir(parents=True, exist_ok=True)
+        good = fix_at is not None and attempt >= fix_at
+        (Path(working_directory) / "foundation.txt").write_text(
+            "ok\n" if good else "bad\n", encoding="utf-8"
+        )
+        calls.append({"prompt": prompt, "attempt": attempt, **kwargs})
+        return FakeResult(text=_success_report(changed=("foundation.txt",)))
+
+    runner.calls = calls  # type: ignore[attr-defined]
+    return runner
+
+
+def test_repair_loop_fixes_failed_acceptance_on_second_pass(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=1)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=1,
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    # The repair pass carries the failure feedback as the recency anchor; the first does not.
+    assert "# Repair Feedback" not in runner.calls[0]["prompt"]
+    assert "# Repair Feedback" in runner.calls[1]["prompt"]
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "## Repair attempts" in evidence
+    assert "attempt 1 (repair 1)" in evidence
+
+
+def test_repair_loop_exhausts_budget_and_fails(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=None)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=2,
+    )
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "programmatic acceptance failed: foundation-file"
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    from drydock.errors import read_error_record
+
+    record = read_error_record(target_dir)
+    assert record is not None
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "attempt 2 (repair 2)" in evidence
+
+
+def test_repair_attempts_zero_is_single_pass(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=None)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=0,
+    )
+
+    assert result.steps[0].status == "failed"
+    assert [c["attempt"] for c in runner.calls] == [0]
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "## Repair attempts" not in evidence
+
+
+def test_terminal_failure_is_not_repaired(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    runner = make_runner(ok=False, write_files=False, stderr="boom")
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].status == "failed"
+    # An LLM execution failure is terminal: the loop never spends a repair pass on it.
+    assert len(runner.calls) == 1
+
+
+def test_repair_escalates_model_on_final_attempt_only(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=None)
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        model="sonnet",
+        step_id="foundation",
+        repair_attempts=2,
+        escalate_model="opus",
+    )
+
+    models = [c["model"] for c in runner.calls]
+    assert models == ["sonnet", "sonnet", "opus"]
+
+
+def test_is_repairable_only_for_acceptance_and_agent_reports():
+    assert _is_repairable("programmatic acceptance failed: x") is True
+    assert _is_repairable("agent-reported failure: incomplete") is True
+    assert _is_repairable("context/token limit") is False
+    assert _is_repairable("dependency legitimacy gate failed: 1 issue(s)") is False
+    assert _is_repairable("staged build asset modified: kit.py") is False
+    assert _is_repairable(None) is False
+
+
+def test_repair_feedback_names_failing_checks_and_caps_size():
+    class _Unit:
+        name = "Foundation"
+        block_id = "foundation"
+
+    failed = (
+        AcceptanceRunResult(
+            check_id="foundation-file",
+            source="DATABASE.md",
+            intent="Foundation writes its marker.",
+            passed=False,
+            return_code=1,
+            stdout="211 passed, 75 failed",
+            stderr="assert result.returncode == 0\nAssertionError",
+        ),
+    )
+    text = _render_repair_feedback(_Unit(), failed, ("done", "note"), ("foundation.txt",), {})
+    assert "## Repair pass" in text
+    assert "foundation-file" in text
+    assert "AssertionError" in text
+    assert "211 passed, 75 failed" in text
+    assert "foundation.txt" in text
 
 
 def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_path):

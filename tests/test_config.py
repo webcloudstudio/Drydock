@@ -15,6 +15,7 @@ from drydock.config import (
     config_show,
     get_build_directory,
     get_codex_sandbox,
+    get_escalate_model,
     get_llm_provider,
     get_model,
     get_prompt_warn_tokens,
@@ -92,9 +93,10 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_eight_rows(self, isolated_config):
+    def test_show_returns_nine_rows(self, isolated_config):
         rows = config_show()
-        assert len(rows) == 8
+        assert len(rows) == 9
+        assert "drydock_build_escalate_model" in {row[0] for row in rows}
 
     def test_show_includes_codex_sandbox(self, isolated_config):
         keys = {row[0] for row in config_show()}
@@ -233,6 +235,28 @@ class TestGetModel:
 
         with pytest.raises(ConfigurationError, match="must not be empty"):
             config_set("drydock_model", "")
+
+
+class TestEscalateModel:
+    def test_defaults_to_none(self, isolated_config):
+        assert get_escalate_model() is None
+
+    def test_cli_override_wins(self, isolated_config):
+        assert get_escalate_model("opus") == "opus"
+
+    def test_empty_cli_override_is_none(self, isolated_config):
+        assert get_escalate_model("") is None
+
+    def test_config_set_persists_and_clears(self, isolated_config):
+        config_set("drydock_build_escalate_model", "opus")
+        assert get_escalate_model() == "opus"
+        config_set("drydock_build_escalate_model", "")
+        assert get_escalate_model() is None
+
+    def test_environment_overrides_file(self, isolated_config, monkeypatch):
+        config_set("drydock_build_escalate_model", "sonnet")
+        monkeypatch.setenv("DRYDOCK_BUILD_ESCALATE_MODEL", "opus")
+        assert get_escalate_model() == "opus"
 
 
 class TestGetters:

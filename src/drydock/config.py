@@ -16,6 +16,7 @@ _KEY_MAP = {
     "drydock_build_directory": "DRYDOCK_BUILD_DIRECTORY",
     "drydock_workspace": "DRYDOCK_WORKSPACE",
     "drydock_model": "DRYDOCK_MODEL",
+    "drydock_build_escalate_model": "DRYDOCK_BUILD_ESCALATE_MODEL",
     "llm_provider": "LLM_PROVIDER",
     "codex_sandbox": "DRYDOCK_CODEX_SANDBOX",
     "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
@@ -152,6 +153,19 @@ def get_model(cli_override: str | None = None) -> str:
     return (value or DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
 
+def get_escalate_model(cli_override: str | None = None) -> str | None:
+    """Resolve the fallback model used on a build's final repair attempt.
+
+    Resolution order: cli_override → DRYDOCK_BUILD_ESCALATE_MODEL (env or config
+    file) → unset. An empty or unset value returns ``None``: no escalation, the
+    repair loop stays on the base model for every attempt.
+    """
+    if cli_override is not None:
+        return cli_override.strip() or None
+    value, _source = _get("DRYDOCK_BUILD_ESCALATE_MODEL")
+    return (value or "").strip() or None
+
+
 def get_llm_provider(cli_override: str | None = None) -> str:
     """Resolve the LLM provider for this invocation.
 
@@ -249,6 +263,7 @@ def config_show() -> list[tuple[str, str, str]]:
     rows.append(("drydock_workspace", ws_value, ws_source))
     for display_key, key_upper, default in (
         ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
+        ("drydock_build_escalate_model", "DRYDOCK_BUILD_ESCALATE_MODEL", "(not set)"),
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
@@ -301,6 +316,9 @@ def config_set(key: str, value: str) -> Path:
         stored_value = value.strip()
         if not stored_value:
             raise ConfigurationError("drydock_model must not be empty.")
+    elif upper == "DRYDOCK_BUILD_ESCALATE_MODEL":
+        # Empty clears the setting: no escalation. A non-empty value is a model name.
+        stored_value = value.strip()
     elif upper == "LLM_PROVIDER":
         stored_value = value.lower()
         if stored_value not in {"claude", "codex"}:

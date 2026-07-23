@@ -66,6 +66,7 @@ from drydock.llm import render_rate_limit_error_block, run_prompt
 from drydock.manifest_edit import set_block_fields
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
+from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_literals
 from drydock.rigging_compact import ensure_compact_files
@@ -852,6 +853,117 @@ def _clip(text: str, limit: int = 240) -> str:
     return collapsed if len(collapsed) <= limit else collapsed[: limit - 1].rstrip() + "…"
 
 
+@dataclass(frozen=True)
+class AttemptRecord:
+    """One build pass over a block: attempt 0 is the initial build, 1.. are repairs."""
+
+    index: int
+    execution_id: str | None
+    model: str | None
+    passed_checks: int
+    total_checks: int
+    status: str
+
+
+_REPAIR_FEEDBACK_CAP = 4000
+
+
+def _is_repairable(error: str | None) -> bool:
+    """True when a failed block can be driven green by another informed LLM pass.
+
+    Only a programmatic-acceptance miss or a surviving agent-reported failure is
+    repairable: the build directory holds the partial work and the failing checks name
+    what remains. Every other classification (token/context limit, sandbox unavailable,
+    provider error, dependency gate, staged-asset tamper, no files written) is terminal
+    and never loops — re-running it only wastes a pass.
+    """
+    if not error:
+        return False
+    return error.startswith("programmatic acceptance failed") or error.startswith(
+        _AGENT_REPORTED_PREFIX
+    )
+
+
+def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
+    """Return the most informative tail of a failed check's captured output.
+
+    A conformance suite prints its ``N passed, M failed`` tally to stdout; a bare
+    assertion carries its traceback on stderr. Prefer whichever stream has content.
+    """
+    source = result.stdout if result.stdout.strip() else result.stderr
+    lines = [line.rstrip() for line in source.splitlines() if line.strip()]
+    return lines[-max_lines:]
+
+
+def _render_repair_feedback(
+    unit: BuildUnit,
+    failed_checks: tuple[AcceptanceRunResult, ...],
+    agent_report: tuple[str, str] | None,
+    changed_files: tuple[str, ...],
+    story_by_check: dict[str, PlanBlock],
+) -> str:
+    """Compose the repair-pass feedback appended as the prompt's recency anchor.
+
+    The build directory already holds the previous attempt's partial work; this block
+    tells the agent to iterate it toward green, names each failing check with its
+    distilled assertion and output tail, and echoes the agent's own failure note.
+    Content is capped so the repair prompt cannot itself trip the token gate.
+    """
+    lines: list[str] = [
+        "## Repair pass",
+        "",
+        "A previous build pass wrote partial work into BUILD_DIRECTORY and did not pass",
+        "every deterministic acceptance check. Iterate the existing files in",
+        "BUILD_DIRECTORY to make the checks below pass. Do not restart from scratch, do",
+        "not weaken or remove any declared acceptance assertion, and keep every check",
+        "that already passes green.",
+        "",
+    ]
+    if failed_checks:
+        lines.append("### Still failing")
+        for result in failed_checks:
+            story = story_by_check.get(result.check_id)
+            owner = f" (story {story.block_id})" if story is not None else ""
+            intent = result.intent.strip() or result.check_id
+            lines.append(f"- {result.check_id}{owner}: {intent}")
+            lines.append(f"    assertion: {_assertion_summary(result)}")
+            tail = _output_tail(result)
+            if tail:
+                lines.append("    output:")
+                lines.extend(f"      {line}" for line in tail)
+        lines.append("")
+    if agent_report is not None and (agent_report[0] or agent_report[1]):
+        lines.append("### Previous agent note")
+        if agent_report[0]:
+            lines.append(f"- {agent_report[0]}")
+        if agent_report[1]:
+            lines.extend(f"  {line}" for line in agent_report[1].strip().splitlines())
+        lines.append("")
+    if changed_files:
+        preview = list(changed_files[:12])
+        lines.append("### Files written so far")
+        lines.extend(f"- {name}" for name in preview)
+        if len(changed_files) > len(preview):
+            lines.append(f"- ... (+{len(changed_files) - len(preview)} more)")
+        lines.append("")
+    text = "\n".join(lines).rstrip()
+    if len(text) > _REPAIR_FEEDBACK_CAP:
+        text = text[:_REPAIR_FEEDBACK_CAP].rstrip() + "\n… (feedback truncated)"
+    return text + "\n\n"
+
+
+def _repair_prompt_assembly(base: PromptAssembly, feedback: str) -> PromptAssembly:
+    """Layer the repair feedback onto the block prompt as the final recency anchor."""
+    return replace(
+        base,
+        parts=(
+            *base.parts,
+            section_heading_part("# Repair Feedback"),
+            part("Repair feedback", feedback, kind="repair"),
+        ),
+    )
+
+
 def _failure_finding(
     status: str,
     error: str | None,
@@ -977,6 +1089,7 @@ def _write_group_evidence(
     failure_summary: str = "",
     failure_detail: str = "",
     agent_report: tuple[str, str] | None = None,
+    attempts: tuple[AttemptRecord, ...] = (),
 ) -> None:
     lines = [
         f"# Evidence: {unit.name} ({unit.block_id})",
@@ -1052,6 +1165,21 @@ def _write_group_evidence(
             if check.stderr.strip():
                 lines.append("  stderr:")
                 lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
+        lines.append("")
+    if len(attempts) > 1:
+        lines.append("## Repair attempts")
+        for record in attempts:
+            label = "initial build" if record.index == 0 else f"repair {record.index}"
+            checks_note = (
+                f"{record.passed_checks}/{record.total_checks} checks"
+                if record.total_checks
+                else "no checks"
+            )
+            model_note = f" model={record.model}" if record.model else ""
+            lines.append(
+                f"- attempt {record.index} ({label}): {record.status}; {checks_note}"
+                f"{model_note}; execution {record.execution_id or '-'}"
+            )
         lines.append("")
     if agent_report is not None and (agent_report[0] or agent_report[1]):
         agent_summary, agent_detail = agent_report
@@ -1199,6 +1327,8 @@ def build_target(
     force: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
+    repair_attempts: int = 1,
+    escalate_model: str | None = None,
     dependency_registry_client: RegistryClient | None = None,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates.
@@ -1429,169 +1559,233 @@ def build_target(
             remaining_weak = [check for check in weak_checks if check not in vacuous_checks]
             if remaining_weak:
                 _emit(on_text, "  GREEN (prepassed): " + ", ".join(remaining_weak))
+        # Snapshot once before the first attempt so ``changed_files`` reflects everything
+        # the block wrote across all passes, then retire any prior current error.
         before_files = _snapshot_files(resolved_build_dir)
-        # All deterministic build preflight has passed for this executable block.
-        # Retire a prior current error only when a new LLM attempt actually starts.
         clear_error_record(target_dir)
-        try:
-            result = run(
-                prompt_assembly.rendered_text,
-                resolved_build_dir,
-                llm=llm_provider,
-                model=model or prompt.model,
-                command_name="build",
-                parameters={
-                    "step": unit.block_id,
-                    "step_type": unit.block_type,
-                    "steps": tuple(block.block_id for block in unit.steps),
-                },
-                allow_tools=True,
-                log_dir=log_dir,
-                target=target,
-                on_text=None,
-                prompt_assembly=prompt_assembly,
-            )
-        except Exception as exc:
-            evidence_path = evidence_dir / f"{unit.block_id}.md"
-            write_error_record(
-                target_dir,
-                command="build",
-                phase="LLM execution",
-                classification="LLM execution failed",
-                detail=str(exc),
-                evidence=evidence_path,
-                recovery=f"Inspect the execution evidence, then run: drydock build {target}",
-                state="Error",
-            )
-            from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
-            _refresh_chair(target_dir)
-            raise
-        after_files = _snapshot_files(resolved_build_dir)
-        changed_files = _written_files(before_files, after_files)
-
-        ok = bool(getattr(result, "ok", False))
-        summary = str(getattr(result, "text", "") or "")
-        execution_id = getattr(result, "execution_id", None)
-        returncode = getattr(result, "returncode", None)
-        execution_bits = [f"ok={ok}"]
-        if returncode is not None:
-            execution_bits.append(f"rc={returncode}")
-        if execution_id:
-            execution_bits.append(f"id={execution_id}")
-        _emit(
-            on_text,
-            f"BUILD BLOCK RETURNED: {unit.name} [{unit.block_id}]  " + "  ".join(execution_bits),
-        )
-        state, status, error, failure_detail = _build_outcome(
-            summary,
-            ok=ok,
-            wrote_files=changed_files,
-            stderr=str(getattr(result, "stderr", "") or ""),
-            provider_error=_result_provider_error(result),
-        )
-        # A build agent's self-declared FAILURE is advisory, not authoritative. When the agent
-        # still wrote files and the block carries programmatic acceptance criteria, the
-        # deterministic gate below decides the outcome and produces a measured result. This stops
-        # an agent from failing a block whose own acceptance criteria it actually met by
-        # editorializing about work that is not this block's definition of done. With no checks to
-        # measure, the self-report stands; hard failures (sandbox, token limit, non-zero exit,
-        # empty/no output) are not prefixed ``agent-reported failure`` and stay terminal.
-        agent_report: tuple[str, str] | None = None
-        if (
-            status == "failed"
-            and (error or "").startswith(_AGENT_REPORTED_PREFIX)
-            and changed_files
-            and checks
-        ):
-            agent_report = _parse_agent_failure(summary)
-            _emit(
-                on_text,
-                f"AGENT SELF-REPORTED FAILURE (advisory): {unit.name} [{unit.block_id}]"
-                "  — deterministic acceptance is authoritative",
-            )
-            state, status, error, failure_detail = "", "", None, ""
-        if changed_files:
-            preview = ", ".join(changed_files[:5])
-            suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
-            _emit(
-                on_text,
-                f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  "
-                f"{len(changed_files)} changed: {preview}{suffix}",
-            )
-        else:
-            _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
-
-        # Restore any staged asset the step rewrote, before acceptance runs. A step that edits
-        # its own test kit would otherwise be graded against a corpus of its own making. The
-        # snapshot above already recorded the write, so the evidence survives the restore.
-        if staged_assets and status != "failed":
-            tampered = verify_staged_assets(staged_assets, resolved_build_dir)
-            if tampered:
-                state, status = "closed/failed", "failed"
-                error = "staged build asset modified: " + ", ".join(tampered)
-                failure_detail = (
-                    "The step rewrote imported build assets, which have been restored from the "
-                    "Blueprint. Staged assets are read-only inputs.\n  " + "\n  ".join(tampered)
-                )
-                _emit(
-                    on_text,
-                    f"STAGED ASSET MODIFIED: {unit.name} [{unit.block_id}]  "
-                    f"{len(tampered)} restored",
-                )
-
+        base_model = model or prompt.model
+        max_attempt = max(0, repair_attempts)
+        attempt_records: list[AttemptRecord] = []
+        # Loop invariant: each attempt runs one full LLM pass and grades it. A failed pass
+        # whose classification is repairable, with budget remaining, feeds its own failure
+        # diagnostics back and re-runs against the persisted partial work. Any other outcome
+        # (green, or a terminal failure) ends the loop.
+        state = status = error = failure_detail = ""
         acceptance: tuple[AcceptanceRunResult, ...] = ()
-        if status != "failed":
-            try:
-                dependency_gate = check_python_dependency_manifests(
-                    resolved_build_dir,
-                    changed_files,
-                    client=dependency_registry_client,
-                    today=date.today(),
-                )
-            except Exception as exc:
-                state, status = "closed/failed", "failed"
-                error = "dependency legitimacy gate failed: registry lookup error"
-                failure_detail = str(exc)
+        agent_report: tuple[str, str] | None = None
+        changed_files: tuple[str, ...] = ()
+        execution_id: str | None = None
+        summary = ""
+        feedback_checks: tuple[AcceptanceRunResult, ...] = ()
+        attempt = 0
+        while True:
+            if attempt == 0:
+                active_assembly = prompt_assembly
+                attempt_model = base_model
             else:
-                if dependency_gate.blocked:
-                    state, status = "closed/failed", "failed"
-                    error, failure_detail = _dependency_gate_failure(dependency_gate)
+                attempt_model = base_model
+                if attempt == max_attempt and escalate_model:
+                    attempt_model = escalate_model
                     _emit(
                         on_text,
-                        f"DEPENDENCY GATE FAILED: {unit.name} [{unit.block_id}]  "
-                        f"{len(dependency_gate.issues)} issue(s)",
+                        f"REPAIR ESCALATION: final attempt using {attempt_model}",
                     )
+                _emit(
+                    on_text,
+                    f"REPAIR ATTEMPT {attempt}/{max_attempt}: "
+                    f"{len(feedback_checks) or 'agent-reported'} failing check(s)",
+                )
+                active_assembly = _repair_prompt_assembly(
+                    prompt_assembly,
+                    _render_repair_feedback(
+                        unit, feedback_checks, agent_report, changed_files, story_by_check
+                    ),
+                )
+            try:
+                result = run(
+                    active_assembly.rendered_text,
+                    resolved_build_dir,
+                    llm=llm_provider,
+                    model=attempt_model,
+                    command_name="build",
+                    parameters={
+                        "step": unit.block_id,
+                        "step_type": unit.block_type,
+                        "steps": tuple(block.block_id for block in unit.steps),
+                        "attempt": attempt,
+                    },
+                    allow_tools=True,
+                    log_dir=log_dir,
+                    target=target,
+                    on_text=None,
+                    prompt_assembly=active_assembly,
+                )
+            except Exception as exc:
+                evidence_path = evidence_dir / f"{unit.block_id}.md"
+                write_error_record(
+                    target_dir,
+                    command="build",
+                    phase="LLM execution",
+                    classification="LLM execution failed",
+                    detail=str(exc),
+                    evidence=evidence_path,
+                    recovery=f"Inspect the execution evidence, then run: drydock build {target}",
+                    state="Error",
+                )
+                from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
+
+                _refresh_chair(target_dir)
+                raise
+            after_files = _snapshot_files(resolved_build_dir)
+            changed_files = _written_files(before_files, after_files)
+
+            ok = bool(getattr(result, "ok", False))
+            summary = str(getattr(result, "text", "") or "")
+            execution_id = getattr(result, "execution_id", None)
+            returncode = getattr(result, "returncode", None)
+            execution_bits = [f"ok={ok}"]
+            if returncode is not None:
+                execution_bits.append(f"rc={returncode}")
+            if execution_id:
+                execution_bits.append(f"id={execution_id}")
+            _emit(
+                on_text,
+                f"BUILD BLOCK RETURNED: {unit.name} [{unit.block_id}]  "
+                + "  ".join(execution_bits),
+            )
+            state, status, error, failure_detail = _build_outcome(
+                summary,
+                ok=ok,
+                wrote_files=changed_files,
+                stderr=str(getattr(result, "stderr", "") or ""),
+                provider_error=_result_provider_error(result),
+            )
+            # A build agent's self-declared FAILURE is advisory, not authoritative. When the
+            # agent still wrote files and the block carries programmatic acceptance criteria,
+            # the deterministic gate below decides the outcome and produces a measured result.
+            # This stops an agent from failing a block whose own acceptance criteria it actually
+            # met by editorializing about work that is not this block's definition of done. With
+            # no checks to measure, the self-report stands; hard failures (sandbox, token limit,
+            # non-zero exit, empty/no output) are not prefixed ``agent-reported failure`` and
+            # stay terminal.
+            agent_report = None
+            if (
+                status == "failed"
+                and (error or "").startswith(_AGENT_REPORTED_PREFIX)
+                and changed_files
+                and checks
+            ):
+                agent_report = _parse_agent_failure(summary)
+                _emit(
+                    on_text,
+                    f"AGENT SELF-REPORTED FAILURE (advisory): {unit.name} [{unit.block_id}]"
+                    "  — deterministic acceptance is authoritative",
+                )
+                state, status, error, failure_detail = "", "", None, ""
+            elif status == "failed" and (error or "").startswith(_AGENT_REPORTED_PREFIX):
+                # A surviving agent-reported failure (no checks, or no files) carries the note
+                # into the repair feedback so a rerun sees what the agent claimed went wrong.
+                agent_report = _parse_agent_failure(summary)
+            if changed_files:
+                preview = ", ".join(changed_files[:5])
+                suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
+                _emit(
+                    on_text,
+                    f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  "
+                    f"{len(changed_files)} changed: {preview}{suffix}",
+                )
+            else:
+                _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
+
+            # Restore any staged asset the step rewrote, before acceptance runs. A step that
+            # edits its own test kit would otherwise be graded against a corpus of its own
+            # making. The snapshot above already recorded the write, so evidence survives it.
+            if staged_assets and status != "failed":
+                tampered = verify_staged_assets(staged_assets, resolved_build_dir)
+                if tampered:
+                    state, status = "closed/failed", "failed"
+                    error = "staged build asset modified: " + ", ".join(tampered)
+                    failure_detail = (
+                        "The step rewrote imported build assets, which have been restored from "
+                        "the Blueprint. Staged assets are read-only inputs.\n  "
+                        + "\n  ".join(tampered)
+                    )
+                    _emit(
+                        on_text,
+                        f"STAGED ASSET MODIFIED: {unit.name} [{unit.block_id}]  "
+                        f"{len(tampered)} restored",
+                    )
+
+            acceptance = ()
+            if status != "failed":
+                try:
+                    dependency_gate = check_python_dependency_manifests(
+                        resolved_build_dir,
+                        changed_files,
+                        client=dependency_registry_client,
+                        today=date.today(),
+                    )
+                except Exception as exc:
+                    state, status = "closed/failed", "failed"
+                    error = "dependency legitimacy gate failed: registry lookup error"
+                    failure_detail = str(exc)
                 else:
-                    if checks:
-                        _emit(on_text, "")
-                        _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
-                    acceptance = run_programmatic_acceptance(
-                        checks,
-                        build_dir=resolved_build_dir,
-                        target_dir=target_dir,
-                        blueprint_dir=blueprint_dir,
-                    )
-                    failed_checks = tuple(check for check in acceptance if not check.passed)
-                    if failed_checks:
+                    if dependency_gate.blocked:
                         state, status = "closed/failed", "failed"
-                        error = "programmatic acceptance failed: " + ", ".join(
-                            check.check_id for check in failed_checks
-                        )
-                        failure_detail = _render_ac_failure_chain(
-                            unit, failed_checks, story_by_check
+                        error, failure_detail = _dependency_gate_failure(dependency_gate)
+                        _emit(
+                            on_text,
+                            f"DEPENDENCY GATE FAILED: {unit.name} [{unit.block_id}]  "
+                            f"{len(dependency_gate.issues)} issue(s)",
                         )
                     else:
-                        state, status, error = "closed/verified", "built", None
-                        failure_detail = ""
-                    if checks:
-                        passed = sum(1 for check in acceptance if check.passed)
-                        _emit(on_text, f"  {passed}/{len(checks)} Unit Tests passed")
+                        if checks:
+                            _emit(on_text, "")
+                            _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
+                        acceptance = run_programmatic_acceptance(
+                            checks,
+                            build_dir=resolved_build_dir,
+                            target_dir=target_dir,
+                            blueprint_dir=blueprint_dir,
+                        )
+                        failed_checks = tuple(check for check in acceptance if not check.passed)
                         if failed_checks:
-                            _emit(
-                                on_text,
-                                "  FAILED: " + ", ".join(check.check_id for check in failed_checks),
+                            state, status = "closed/failed", "failed"
+                            error = "programmatic acceptance failed: " + ", ".join(
+                                check.check_id for check in failed_checks
                             )
+                            failure_detail = _render_ac_failure_chain(
+                                unit, failed_checks, story_by_check
+                            )
+                        else:
+                            state, status, error = "closed/verified", "built", None
+                            failure_detail = ""
+                        if checks:
+                            passed = sum(1 for check in acceptance if check.passed)
+                            _emit(on_text, f"  {passed}/{len(checks)} Unit Tests passed")
+                            if failed_checks:
+                                _emit(
+                                    on_text,
+                                    "  FAILED: "
+                                    + ", ".join(check.check_id for check in failed_checks),
+                                )
+
+            attempt_records.append(
+                AttemptRecord(
+                    index=attempt,
+                    execution_id=execution_id,
+                    model=attempt_model,
+                    passed_checks=sum(1 for check in acceptance if check.passed),
+                    total_checks=len(checks),
+                    status=status or "built",
+                )
+            )
+            feedback_checks = tuple(check for check in acceptance if not check.passed)
+            if status == "failed" and _is_repairable(error) and attempt < max_attempt:
+                attempt += 1
+                continue
+            break
 
         evidence_path = evidence_dir / f"{unit.block_id}.md"
         _write_group_evidence(
@@ -1608,6 +1802,7 @@ def build_target(
             failure_summary=error or "",
             failure_detail=failure_detail,
             agent_report=agent_report,
+            attempts=tuple(attempt_records),
         )
         finding = _failure_finding(status, error, result, acceptance)
         if status == "failed":
