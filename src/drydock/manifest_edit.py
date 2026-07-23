@@ -645,6 +645,39 @@ def reset_failed_states(path: Path) -> int:
     return count
 
 
+def reset_all_blocks(doc: ManifestDoc) -> int:
+    """Turn every feature/story/spike and its ACs back into pending work.
+
+    This is the full-project reset behind ``drydock build <T> --reset`` with no selector:
+    a clean slate that discards all prior build state (findings included) regardless of
+    whether a block was verified, implemented, or failed. The build directory is wiped
+    separately by the caller.
+    """
+    by_id = doc.by_id()
+    reset = 0
+    for block in doc.blocks:
+        if block.block_type not in {"feature", *_STEP_TYPES}:
+            continue
+        if (_scan_field(block.lines, "state") or "pending") != "pending":
+            reset += 1
+        _set_field_line(block, "state", "pending")
+        _set_field_line(block, "finding", None)
+        for ac_id in _acs_by_parent(doc).get(block.block_id, []):
+            if ac_id in by_id:
+                ac = by_id[ac_id]
+                _set_field_line(ac, "state", "pending")
+                _set_field_line(ac, "finding", None)
+    return reset
+
+
+def reset_all_states(path: Path) -> int:
+    """Persistently reset every MANIFEST block to pending. Returns non-pending count reset."""
+    doc = split_manifest(path)
+    count = reset_all_blocks(doc)
+    write_manifest(doc)
+    return count
+
+
 def _drop_empty_retry_features(doc: ManifestDoc) -> None:
     """Remove stale retry wrapper groups that no longer own executable work."""
     steps_by_feature = _steps_by_feature(doc)

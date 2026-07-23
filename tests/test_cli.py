@@ -397,9 +397,13 @@ class TestAnalyzeCommand:
     def test_build_help_lists_reset_normalize_and_dry_run_flags(self):
         rc, out, _ = run_cli("build", "--help")
         assert rc == 0
-        assert "--reset-failed" in out
+        assert "--reset" in out
+        assert "--story" in out
+        assert "--continue" in out
         assert "--normalize-order" in out
         assert "--dry-run" in out
+        assert "--reset-failed" not in out
+        assert "--force" not in out
 
     def test_analyze_passes_cli_provider_override(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -830,7 +834,7 @@ state: pending
         assert "Build step failed: Foundation [foundation]" in out
         assert "LLM execution failed" in out
         assert "rerun drydock build to continue this step" in out
-        assert "add --force to reset it" in out
+        assert "add --reset to discard its work" in out
 
     def test_build_multi_story_failure_prints_one_banner_with_detail(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1046,7 +1050,7 @@ state: pending
         assert "- BUILD_SCOPE: exactly one MANIFEST.md step" in out
         assert "DB." in out
 
-    def test_build_step_force_rebuilds_selected_step(
+    def test_build_step_reset_rebuilds_selected_step(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         from types import SimpleNamespace
@@ -1080,19 +1084,19 @@ state: pending
             "ExampleTarget",
             "--step",
             "foundation",
-            "--force",
+            "--reset",
             "--build-dir",
             str(tmp_path / "out"),
         )
 
         assert rc == 0, err
         assert "Building step: foundation" in out
-        assert "Force rebuild: resetting foundation and child ACs to pending" in out
+        assert "Reset requested: foundation" in out
         assert "[built]" in out
         assert "foundation" in out
         assert "RESULT: 1 built, 0 failed" in out
 
-    def test_build_reset_failed_resets_all_failures_then_builds_frontier(
+    def test_build_reset_resets_whole_project_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
         from types import SimpleNamespace
@@ -1129,17 +1133,92 @@ state: pending
         rc, out, err = run_cli(
             "build",
             "ExampleTarget",
-            "--reset-failed",
+            "--reset",
             "--build-dir",
             str(tmp_path / "out"),
         )
 
         assert rc == 0, err
-        assert "Reset failed: reset 3 failed block(s) to pending" in out
+        assert "Reset requested: entire project (all blocks + build directory)" in out
+        assert "Full reset:" in out
         assert "[built]" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert "finding: failed" not in text
         assert "state: closed/failed" not in text
+
+    def test_build_step_and_story_are_mutually_exclusive(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, _out, err = run_cli(
+            "build", "ExampleTarget", "--step", "foundation", "--story", "foundation"
+        )
+        assert rc == 2
+        assert "--step and --story are mutually exclusive" in err
+
+    def test_build_continue_and_reset_are_mutually_exclusive(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, _out, err = run_cli("build", "ExampleTarget", "--continue", "--reset")
+        assert rc == 2
+        assert "--continue and --reset are mutually exclusive" in err
+
+    def test_build_continue_behaves_as_default(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _run(*a, **k):
+            out_dir = Path(a[1])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "foundation.txt").write_text("built\n", encoding="utf-8")
+            return SimpleNamespace(
+                ok=True,
+                text="RESULT: SUCCESS\n\nFILES CHANGED:\n- foundation.txt\n\nSUMMARY:\nBuilt.\n",
+                execution_id="exec-fake",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _run)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
+
+        rc, out, err = run_cli(
+            "build", "ExampleTarget", "--continue", "--build-dir", str(tmp_path / "out")
+        )
+        assert rc == 0, err
+        assert "[built]" in out
 
     def test_build_normalize_order_reorders_manifest_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

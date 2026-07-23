@@ -244,7 +244,7 @@ def test_build_failure_writes_current_error_and_retry_clears_prior_error(tmp_pat
         build_dir=build_dir,
         runner=make_runner(),
         step_id="foundation",
-        force=True,
+        reset=True,
     )
 
     assert result.exit_code() == 0
@@ -556,7 +556,7 @@ def test_dry_run_show_prompt_prints_full_prompt(tmp_path):
     assert any("DB SPEC CONTENT" in line for line in log)
 
 
-def test_force_dry_run_previews_reset_without_manifest_write(tmp_path):
+def test_scoped_reset_dry_run_previews_reset_without_manifest_write(tmp_path):
     manifest = _FEATURE_GROUP_MANIFEST.replace("state: pending", "state: closed/verified")
     target_dir, build_dir = _setup(tmp_path, manifest=manifest)
     original_manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
@@ -570,7 +570,7 @@ def test_force_dry_run_previews_reset_without_manifest_write(tmp_path):
         runner=runner,
         on_text=log.append,
         step_id="service",
-        force=True,
+        reset=True,
         dry_run=True,
     )
 
@@ -728,7 +728,7 @@ def test_step_selection_rejects_dependency_blocked_step(tmp_path):
         )
 
 
-def test_force_rebuild_resets_step_and_child_acs(tmp_path):
+def test_scoped_reset_rebuilds_step_and_child_acs(tmp_path):
     manifest = """# MANIFEST: Demo
 state: draft
 
@@ -763,7 +763,7 @@ state: closed/verified
         build_dir=build_dir,
         runner=runner,
         step_id="foundation",
-        force=True,
+        reset=True,
     )
 
     assert [s.block_id for s in result.steps] == ["foundation"]
@@ -774,13 +774,72 @@ state: closed/verified
     assert _state(target_dir, "service") == "pending"
 
 
-def test_force_requires_step(tmp_path):
-    from drydock.errors import SpecificationError
+def test_full_reset_resets_all_blocks_and_wipes_build_dir(tmp_path):
+    manifest = _FEATURE_GROUP_MANIFEST.replace("state: pending", "state: closed/verified")
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    stale = build_dir / "stale.txt"
+    stale.write_text("old work\n", encoding="utf-8")
+    runner = make_runner()
 
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner, reset=True)
+
+    # Every block was reset to pending and rebuilt; the stale artifact was wiped.
+    assert not stale.exists()
+    assert result.exit_code() == 0
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/verified"
+
+
+def test_full_reset_dry_run_previews_wipe_without_deleting(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    keep = build_dir / "keep.txt"
+    keep.write_text("work\n", encoding="utf-8")
+    original_manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    log: list[str] = []
 
-    with pytest.raises(SpecificationError, match="--force requires --step"):
-        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), force=True)
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        reset=True,
+        dry_run=True,
+        on_text=log.append,
+    )
+
+    assert keep.exists()
+    assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
+    assert any("would reset all blocks to pending and wipe" in line for line in log)
+
+
+def test_story_selection_builds_single_story_inside_feature(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    runner = make_runner()
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, story_id="foundation"
+    )
+
+    # Only the one story built — no feature-group promotion, sibling untouched.
+    assert [s.block_id for s in result.steps] == ["foundation"]
+    assert result.steps[0].block_type == "story"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "pending"
+
+
+def test_story_selector_rejects_a_feature(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+
+    with pytest.raises(SpecificationError, match="is not a story or spike"):
+        build_target(
+            "Demo",
+            target_dir,
+            build_dir=build_dir,
+            runner=make_runner(),
+            story_id="feature-catalog",
+        )
 
 
 def test_prompt_stacks_spec_content_and_instructions(tmp_path):

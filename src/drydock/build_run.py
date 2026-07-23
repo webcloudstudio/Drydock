@@ -18,6 +18,7 @@ are used.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -63,7 +64,7 @@ from drydock.dependency_gate import (
 )
 from drydock.errors import SpecificationError, clear_error_record, write_error_record
 from drydock.llm import render_rate_limit_error_block, run_prompt
-from drydock.manifest_edit import set_block_fields
+from drydock.manifest_edit import reset_all_states, set_block_fields
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
@@ -78,9 +79,9 @@ from drydock.source_roles import (
     verify_staged_assets,
 )
 
-BUILD_FAILURE_FORCE_HINT = (
+BUILD_FAILURE_HINT = (
     "rerun drydock build to continue this step (repairs in place); "
-    "add --force to reset it and rebuild from scratch"
+    "add --reset to discard its work and rebuild from scratch"
 )
 
 PROMPT_NAME = "build"
@@ -252,8 +253,8 @@ def _child_ac_ids(blocks: tuple[PlanBlock, ...], block_id: str) -> tuple[str, ..
 
 # A step is a selection candidate when it is unbuilt (``pending``) or when it failed a
 # prior pass (``closed/failed``). A failed step is resumed in place: continue is the
-# default, and the reset paths (``--reset-failed`` / ``--step --force``) flip a step back
-# to ``pending`` before selection, so a reset step is selected as a fresh build.
+# default, and the reset path (``--reset``, optionally with ``--step``/``--story``) flips a
+# block back to ``pending`` before selection, so a reset block is selected as a fresh build.
 SELECTABLE_STATES = frozenset({"pending", "closed/failed"})
 
 
@@ -440,8 +441,28 @@ def _resolve_step_selector(plan: BuildPlan, selector: str) -> str:
     )
 
 
-def _select_build_unit(plan: BuildPlan, step_id: str | None, target: str) -> BuildUnit | None:
+def _select_build_unit(
+    plan: BuildPlan, step_id: str | None, target: str, story_id: str | None = None
+) -> BuildUnit | None:
     by_id = plan.by_id()
+    if story_id is not None:
+        # Single-story selection: build exactly this story/spike, even when it sits inside a
+        # feature. This deliberately bypasses feature-group promotion so the operator can
+        # rebuild one story alone; buildability (verified dependencies) is still enforced.
+        block = by_id.get(story_id)
+        if block is None:
+            raise SpecificationError(f"Build step {story_id!r} not found in MANIFEST.md")
+        if block.block_type not in {"story", "spike"} or not _is_buildable(block, by_id):
+            raise SpecificationError(
+                f"{_block_label(block)} is not buildable; state={block.state!r}, "
+                "dependencies must be closed/verified"
+            )
+        return BuildUnit(
+            block_id=block.block_id,
+            name=block.name,
+            block_type=block.block_type,
+            steps=(block,),
+        )
     if step_id is not None:
         block = by_id.get(step_id)
         if block is None:
@@ -1288,8 +1309,8 @@ def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
                 set_block_fields(manifest_path, child.block_id, state="pending")
 
 
-def _preview_force_reset(plan: BuildPlan, step_id: str) -> BuildPlan:
-    """Return an in-memory plan with the same reset semantics as ``--force``."""
+def _preview_reset(plan: BuildPlan, step_id: str) -> BuildPlan:
+    """Return an in-memory plan with the same reset semantics as a scoped ``--reset``."""
     block = plan.by_id().get(step_id)
     if block is None:
         raise SpecificationError(f"Build step {step_id!r} not found in {plan.path}")
@@ -1373,7 +1394,8 @@ def build_target(
     llm_provider: str | None = None,
     log_dir: Path | None = None,
     step_id: str | None = None,
-    force: bool = False,
+    story_id: str | None = None,
+    reset: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
     repair_attempts: int = 1,
@@ -1395,6 +1417,25 @@ def build_target(
         )
 
     resolved_build_dir = build_dir or build_dir_for(target)
+
+    # Full reset (``--reset`` with no selector): a clean slate. Reset every block to pending
+    # and wipe the build directory before anything is staged or observed, so the rebuild
+    # starts from scratch with no prior work to resume. Scoped resets (``--step``/``--story``
+    # + ``--reset``) reset only the selected block and are applied after selection below.
+    if reset and step_id is None and story_id is None:
+        if dry_run:
+            _emit(
+                on_text,
+                f"DRY RUN: would reset all blocks to pending and wipe {resolved_build_dir}",
+            )
+        else:
+            reset_count = reset_all_states(manifest_path)
+            shutil.rmtree(resolved_build_dir, ignore_errors=True)
+            _emit(
+                on_text,
+                f"Full reset: {reset_count} block(s) to pending; wiped {resolved_build_dir}",
+            )
+
     if not dry_run:
         resolved_build_dir.mkdir(parents=True, exist_ok=True)
         evidence_dir = target_dir / "evidence"
@@ -1435,6 +1476,13 @@ def build_target(
     plan = parse_build_plan(manifest_path)
     if step_id is not None:
         step_id = _resolve_step_selector(plan, step_id)
+    if story_id is not None:
+        story_id = _resolve_step_selector(plan, story_id)
+        story_block = plan.by_id().get(story_id)
+        if story_block is None or story_block.block_type not in {"story", "spike"}:
+            raise SpecificationError(
+                f"--story {story_id!r} is not a story or spike; use --step for a feature block"
+            )
     if dry_run:
         _emit(on_text, "DRY RUN: skipping build-block compact refresh")
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
@@ -1446,20 +1494,19 @@ def build_target(
         set_sub_state(target_dir, "running")
 
     preview_plan: BuildPlan | None = None
-    if force and step_id is None:
-        raise SpecificationError("--force requires --step <step-id>")
-    if force and step_id is not None:
+    scoped_selector = story_id if story_id is not None else step_id
+    if reset and scoped_selector is not None:
         if dry_run:
-            _emit(on_text, f"DRY RUN: would reset {step_id} and child ACs to pending")
-            preview_plan = _preview_force_reset(parse_build_plan(manifest_path), step_id)
+            _emit(on_text, f"DRY RUN: would reset {scoped_selector} and child ACs to pending")
+            preview_plan = _preview_reset(parse_build_plan(manifest_path), scoped_selector)
         else:
-            _reset_step_for_rebuild(manifest_path, step_id)
+            _reset_step_for_rebuild(manifest_path, scoped_selector)
 
     steps: list[BuildStepResult] = []
     guard = 0
     while True:
         plan = preview_plan if preview_plan is not None else parse_build_plan(manifest_path)
-        unit = _select_build_unit(plan, step_id, target)
+        unit = _select_build_unit(plan, step_id, target, story_id=story_id)
         if unit is None:
             break
         guard += 1
@@ -1908,7 +1955,7 @@ def build_target(
             )
             # A failed block is left ``closed/failed``; a plain ``drydock build`` resumes it in
             # place, seeding the first pass with the live failure. Name the exact continue command
-            # so recovery is one copy-paste; ``--force`` resets the step instead of continuing.
+            # so recovery is one copy-paste; ``--reset`` discards its work instead of continuing.
             rebuild_cmd = f"drydock build {target} --step {unit.block_id}"
             write_error_record(
                 target_dir,
@@ -2024,7 +2071,7 @@ def build_target(
             steps.append(step_result)
             if on_step is not None:
                 on_step(step_result)
-        if status == "failed" or step_id is not None:
+        if status == "failed" or step_id is not None or story_id is not None:
             break
 
     build_failed = any(step.status == "failed" for step in steps)

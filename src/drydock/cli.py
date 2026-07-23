@@ -1238,7 +1238,7 @@ def cmd_status_current() -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    from drydock.build_run import BUILD_FAILURE_FORCE_HINT, BuildStepResult, build_target
+    from drydock.build_run import BUILD_FAILURE_HINT, BuildStepResult, build_target
     from drydock.config import (
         get_escalate_model,
         get_llm_provider,
@@ -1247,15 +1247,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         require_target_dir,
     )
     from drydock.manifest_edit import (
-        count_failed_blocks,
         normalize_order,
         render_manifest,
-        reset_failed_states,
         split_manifest,
         write_manifest,
     )
 
     target_dir = require_target_dir(args.Target)
+    if getattr(args, "step", None) and getattr(args, "story", None):
+        raise UsageError("--step and --story are mutually exclusive.")
+    if getattr(args, "continue_", False) and getattr(args, "reset", False):
+        raise UsageError("--continue and --reset are mutually exclusive.")
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     escalate_model = get_escalate_model(getattr(args, "escalate_model", None))
@@ -1294,7 +1296,7 @@ def cmd_build(args: argparse.Namespace) -> int:
                     print(f"*   execution_id: {step.execution_id}")
                 if step.evidence_path is not None:
                     print(f"*   evidence: {step.evidence_path}")
-                print(f"*   {BUILD_FAILURE_FORCE_HINT}")
+                print(f"*   {BUILD_FAILURE_HINT}")
                 print(border)
         if step.evidence_path is not None:
             print(f"      evidence: {step.evidence_path}")
@@ -1323,18 +1325,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"LLM: {llm_provider}/{model}  repair_attempts={repair_attempts}  "
         f"escalate={escalate_model or 'off'}"
     )
-    if getattr(args, "step", None):
+    if getattr(args, "story", None):
+        print(f"Building story: {args.story}")
+    elif getattr(args, "step", None):
         print(f"Building step: {args.step}")
-    if getattr(args, "force", False) and getattr(args, "dry_run", False):
-        print(f"Force rebuild dry run: would reset {args.step} and child ACs to pending")
-    elif getattr(args, "force", False):
-        print(f"Force rebuild: resetting {args.step} and child ACs to pending")
-    if getattr(args, "reset_failed", False) and getattr(args, "dry_run", False):
-        failed_count = count_failed_blocks(target_dir / "MANIFEST.md")
-        print(f"Reset failed dry run: would reset {failed_count} failed block(s) to pending")
-    elif getattr(args, "reset_failed", False):
-        reset_count = reset_failed_states(target_dir / "MANIFEST.md")
-        print(f"Reset failed: reset {reset_count} failed block(s) to pending")
+    if getattr(args, "reset", False):
+        scope = (
+            getattr(args, "story", None)
+            or getattr(args, "step", None)
+            or "entire project (all blocks + build directory)"
+        )
+        print(f"Reset requested: {scope}")
     if getattr(args, "normalize_order", False):
         manifest_path = target_dir / "MANIFEST.md"
         doc = split_manifest(manifest_path)
@@ -1365,7 +1366,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         on_text=_stream_stdout,
         on_step=report,
         step_id=getattr(args, "step", None),
-        force=bool(getattr(args, "force", False)),
+        story_id=getattr(args, "story", None),
+        reset=bool(getattr(args, "reset", False)),
         dry_run=bool(getattr(args, "dry_run", False)),
         show_prompt=bool(getattr(args, "show_prompt", False)),
         repair_attempts=repair_attempts,
@@ -1560,7 +1562,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     print("Buildable now: " + (", ".join(report.buildable_ids) or "(none)"))
     if report.failed_ids:
         print(
-            "Failed (resume with drydock build, or --step <id>; --force resets instead): "
+            "Failed (resume with drydock build, or --step <id>; --reset discards work instead): "
             + ", ".join(report.failed_ids)
         )
     score_state = score_evidence_state(target, target_path)
@@ -1851,10 +1853,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "build",
         help="Build or inspect build state.",
         description=(
-            "drydock build <Target>          — build next frontier; failed steps resume in place\n"
-            "drydock build <Target> --step <id>     — build/resume only that step\n"
-            "drydock build <Target> --step <id> --force  — reset that step to pending, then rebuild\n"
-            "drydock build <Target> --reset-failed  — reset all failed blocks to pending, then build\n"
+            "drydock build <Target>          — build/resume the frontier (failed blocks resume in place)\n"
+            "drydock build <Target> --continue      — explicit alias for the default resume behavior\n"
+            "drydock build <Target> --step <id>     — build/resume only that block\n"
+            "drydock build <Target> --story <id>    — build/resume exactly one story, even in a feature\n"
+            "drydock build <Target> --reset         — reset all blocks + wipe build dir, then rebuild\n"
+            "drydock build <Target> --step <id> --reset  — reset that block, then rebuild clean\n"
             "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
             "drydock build <Target> --dry-run       — preview next build block without writes\n"
             "drydock build status <Target>   — show build state\n"
@@ -2051,21 +2055,30 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         "--step",
         dest="step",
         default=None,
-        metavar="<step-id>",
-        help="Build only the named MANIFEST story/spike.",
+        metavar="<id|name>",
+        help="Build only the named MANIFEST block (a feature group, or a story/spike "
+        "resolved to its containing block).",
     )
     p.add_argument(
-        "--force",
-        action="store_true",
-        help="With --step, reset the step and child ACs to pending before rebuilding, "
-        "instead of resuming its partial work.",
+        "--story",
+        dest="story",
+        default=None,
+        metavar="<id|name>",
+        help="Build exactly one story/spike, even inside a feature group. "
+        "Mutually exclusive with --step.",
     )
     p.add_argument(
-        "--reset-failed",
-        dest="reset_failed",
+        "--continue",
+        dest="continue_",
         action="store_true",
-        help="Reset all failed MANIFEST blocks to pending before building, "
-        "instead of resuming them in place.",
+        help="Resume in place (the default): explicit alias for the default build behavior.",
+    )
+    p.add_argument(
+        "--reset",
+        dest="reset",
+        action="store_true",
+        help="Discard prior work and rebuild clean. With --step/--story resets that block; "
+        "with no selector resets every block and wipes the build directory.",
     )
     p.add_argument(
         "--normalize-order",
