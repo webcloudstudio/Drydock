@@ -17,8 +17,8 @@ SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
 PYTHON_FENCE_RE = re.compile(r"```python\s*\n(?P<code>.*?)\n```", re.DOTALL)
 HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 TIMEOUT_SECONDS = 60
-# A full-corpus check runs a complete conformance suite; a story timeout would kill it.
-CORPUS_TIMEOUT_SECONDS = 900
+# A suite-bound check runs a complete conformance suite; a story timeout would kill it.
+SUITE_TIMEOUT_SECONDS = 900
 
 
 def _timeout_output_text(value: bytes | str | None) -> str:
@@ -45,12 +45,12 @@ class ProgrammaticAcceptance:
     intent: str
     code: str
     sea_trials: tuple[str, ...] = ()
-    full_corpus: bool = False
+    full_suite: bool = False
 
     @property
     def timeout_seconds(self) -> int:
-        """A full-corpus check runs a whole conformance suite, not a story unit test."""
-        return CORPUS_TIMEOUT_SECONDS if self.full_corpus else TIMEOUT_SECONDS
+        """A suite-bound check runs a whole conformance suite, not a story unit test."""
+        return SUITE_TIMEOUT_SECONDS if self.full_suite else TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,7 @@ def _intent(prefix: str, title: str | None) -> str:
     return title or "Programmatic acceptance assertion"
 
 
-def _full_corpus(prefix: str) -> bool:
+def _full_suite(prefix: str) -> bool:
     """Whether the assertion runs a conformance suite rather than a bounded story check.
 
     Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
@@ -166,7 +166,7 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
                 intent=_intent(prefix, title),
                 code=match.group("code").strip(),
                 sea_trials=_sea_trials(prefix),
-                full_corpus=_full_corpus(prefix),
+                full_suite=_full_suite(prefix),
             )
         )
         previous_end = match.end()

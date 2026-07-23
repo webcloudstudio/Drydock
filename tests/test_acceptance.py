@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from drydock.acceptance import (
-    CORPUS_TIMEOUT_SECONDS,
+    SUITE_TIMEOUT_SECONDS,
     TIMEOUT_SECONDS,
     ProgrammaticAcceptance,
     parse_programmatic_acceptance,
@@ -65,21 +65,21 @@ def test_suite_markers_are_parsed(tmp_path):
     checks = _checks(tmp_path)
 
     # Suite: full/scoped both mark a conformance-suite check; Corpus: is the accepted legacy spelling.
-    assert checks["suite-full"].full_corpus is True
-    assert checks["suite-scoped"].full_corpus is True
-    assert checks["conformance-full"].full_corpus is True
-    assert checks["assets-present"].full_corpus is False
+    assert checks["suite-full"].full_suite is True
+    assert checks["suite-scoped"].full_suite is True
+    assert checks["conformance-full"].full_suite is True
+    assert checks["assets-present"].full_suite is False
 
 
 def test_suite_check_gets_the_long_execution_budget(tmp_path):
     """A story timeout would kill a real conformance run partway and report a false failure."""
     checks = _checks(tmp_path)
 
-    assert checks["suite-full"].timeout_seconds == CORPUS_TIMEOUT_SECONDS
-    assert checks["suite-scoped"].timeout_seconds == CORPUS_TIMEOUT_SECONDS
-    assert checks["conformance-full"].timeout_seconds == CORPUS_TIMEOUT_SECONDS
+    assert checks["suite-full"].timeout_seconds == SUITE_TIMEOUT_SECONDS
+    assert checks["suite-scoped"].timeout_seconds == SUITE_TIMEOUT_SECONDS
+    assert checks["conformance-full"].timeout_seconds == SUITE_TIMEOUT_SECONDS
     assert checks["assets-present"].timeout_seconds == TIMEOUT_SECONDS
-    assert CORPUS_TIMEOUT_SECONDS > TIMEOUT_SECONDS
+    assert SUITE_TIMEOUT_SECONDS > TIMEOUT_SECONDS
 
 
 def test_marker_lines_do_not_leak_into_the_stated_intent(tmp_path):

@@ -2080,9 +2080,10 @@ def test_assemble_prompt_omits_change_ticket_section_when_no_changes(tmp_path):
     assert "ignore me" not in result
 
 
-def test_full_corpus_acceptance_is_accepted_when_declared(tmp_path):
-    """The terminal verification story gates on the real corpus by declaring it. The default
-    stays fatal so an ordinary check cannot invoke a whole suite by accident."""
+def test_suite_bound_acceptance_is_accepted_when_declared(tmp_path):
+    """The terminal verification story gates on the real suite by declaring it (here via the
+    legacy ``Corpus:`` spelling, which stays accepted). The default stays fatal so an ordinary
+    check cannot invoke a whole suite by accident."""
     _make_target(tmp_path)
     feature = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."
