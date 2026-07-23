@@ -1355,7 +1355,6 @@ def cmd_build(args: argparse.Namespace) -> int:
         force=bool(getattr(args, "force", False)),
         dry_run=bool(getattr(args, "dry_run", False)),
         show_prompt=bool(getattr(args, "show_prompt", False)),
-        no_git=bool(getattr(args, "no_git", False)),
     )
     print()
     print(
@@ -1363,23 +1362,6 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"elapsed={_elapsed_text(time.monotonic() - build_started)}"
     )
     print()
-    if result.dry_run:
-        print("DRY RUN: skipped git setup and commit.")
-    elif result.no_git:
-        print("Git disabled (--no-git): skipped build-directory setup and commit.")
-    elif result.git_initialized:
-        print(f"Setting up git directory in {result.build_dir}")
-    if result.git_commit:
-        print(f"Ran git commit to commit changes ({result.git_commit})")
-    elif result.failed() and not result.no_git:
-        print("Build failed; skipped final git commit.")
-    elif not result.dry_run and not result.no_git:
-        print("No git changes to commit.")
-        if result.drydock_commit_skipped_after_build:
-            print(
-                "  WARNING: Build files changed but Drydock did not create the final commit. "
-                "Check whether the agent committed directly."
-            )
     if not result.steps:
         print("  Nothing buildable — no pending step has all dependencies verified.")
         reviewable = _reviewable_build_steps(target_dir)
@@ -1845,7 +1827,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock build <Target> --reset-failed  — reset failed blocks to pending, then build\n"
             "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
             "drydock build <Target> --dry-run       — preview next build block without writes\n"
-            "drydock build <Target> --no-git        — skip build-dir git init and commit\n"
             "drydock build status <Target>   — show build state\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),
@@ -2072,12 +2053,6 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
         dest="show_prompt",
         action="store_true",
         help="With --dry-run, print the full assembled prompt including file contents.",
-    )
-    p.add_argument(
-        "--no-git",
-        dest="no_git",
-        action="store_true",
-        help="Skip build-directory git init and the final commit (avoids the tee race).",
     )
     p.add_argument(
         "--model",

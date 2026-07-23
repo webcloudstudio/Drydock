@@ -775,7 +775,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
@@ -792,8 +791,8 @@ state: pending
         )
         assert "[built]" in out
         assert "foundation" in out
-        assert "Setting up git directory in" in out
-        assert "Ran git commit to commit changes" in out
+        # The build performs no git operations, so it prints no git status lines.
+        assert "git" not in out.lower()
         assert (target / "evidence" / "foundation.md").is_file()
 
     def test_build_failure_prints_force_hint(
@@ -821,7 +820,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
@@ -832,7 +830,6 @@ state: pending
         assert "Build step failed: Foundation [foundation]" in out
         assert "LLM execution failed" in out
         assert "rerun drydock build with --force to rerun this step" in out
-        assert "Build failed; skipped final git commit." in out
 
     def test_build_multi_story_failure_prints_one_banner_with_detail(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -868,7 +865,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
@@ -921,7 +917,6 @@ state: pending
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _build)
         monkeypatch.setattr("drydock.llm.run_prompt", _diagnose)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
@@ -949,7 +944,6 @@ state: pending
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
         (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
 
         def _run(*a, **k):
             raise AssertionError("dry-run must not invoke the LLM runner")
@@ -1003,7 +997,6 @@ state: pending
         config_set("llm_provider", "codex")
         config_set("drydock_model", "gpt-5.4")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
 
         def _run(*a, **k):
             raise AssertionError("dry-run must not invoke the LLM runner")
@@ -1035,7 +1028,6 @@ state: pending
         (target / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
         (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
 
         rc, out, err = run_cli(
             "build",
@@ -1080,7 +1072,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
@@ -1132,7 +1123,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
@@ -1187,7 +1177,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
@@ -1215,7 +1204,6 @@ state: pending
         )
         (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
-        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
         monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))

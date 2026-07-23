@@ -10,9 +10,9 @@ automatically. A step advances only when the agent returns a structured success
 report and the build directory shows real file changes.
 
 The module owns evidence and state writes. The agent writes application files and
-returns a summary; the build directory is git-initialized on first use and any
-resulting changes are committed after the build run. Tests inject a fake runner
-so no credits or network are used.
+returns a summary. The build performs no git operations of its own; version control
+is the user's responsibility. Tests inject a fake runner so no credits or network
+are used.
 """
 
 from __future__ import annotations
@@ -172,116 +172,6 @@ def _is_dirty(path: Path) -> bool:
         return False
 
 
-def _dirty_paths(path: Path) -> tuple[str, ...]:
-    """Return porcelain status lines for the git repo rooted at ``path``."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(path), "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ()
-    if result.returncode != 0:
-        return ()
-    return tuple(line for line in result.stdout.splitlines() if line.strip())
-
-
-def _ensure_drydock_source_clean() -> str | None:
-    """Return an advisory warning when the Drydock checkout is dirty, else None.
-
-    A dirty implementation checkout is informative to a Drydock developer but is not a
-    production concern: a user may keep unrelated or in-progress files in the tree, and
-    piping the build through ``tee`` dirties the tree mid-run. The build reports the
-    condition and continues rather than blocking.
-    """
-    try:
-        repo_root = get_repo_root()
-    except FileNotFoundError:
-        return None
-    dirty = _dirty_paths(repo_root)
-    if not dirty:
-        return None
-    preview = "\n".join(f"  {line}" for line in dirty[:20])
-    omitted = len(dirty) - 20
-    suffix = f"\n  ... {omitted} more" if omitted > 0 else ""
-    return (
-        "WARNING: uncommitted changes exist in the Drydock repository; continuing.\n"
-        f"{preview}{suffix}"
-    )
-
-
-def _ensure_git_repo(path: Path) -> bool:
-    """Initialize ``path`` as a git repo when needed. Returns True if created."""
-    if (path / ".git").is_dir():
-        return False
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(path), "init"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SpecificationError(f"git init failed for build directory {path}: {exc}") from exc
-    if result.returncode != 0:
-        message = (result.stderr or result.stdout).strip() or "git init failed"
-        raise SpecificationError(f"git init failed for build directory {path}: {message}")
-    return True
-
-
-def _commit_build_dir(
-    path: Path, target: str, today: str, *, failed: bool = False
-) -> tuple[str | None, str | None]:
-    """Commit dirty build-directory changes. Returns ``(commit, message)``.
-
-    A failed build still commits so the generated artifact is preserved for inspection,
-    diagnosis, and the next rebuild; the commit subject carries a ``[FAILED]`` marker.
-    """
-    if not _is_dirty(path):
-        return None, None
-    try:
-        add_result = subprocess.run(
-            ["git", "-C", str(path), "add", "-A"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SpecificationError(f"git add failed for build directory {path}: {exc}") from exc
-    if add_result.returncode != 0:
-        message = (add_result.stderr or add_result.stdout).strip() or "git add failed"
-        raise SpecificationError(f"git add failed for build directory {path}: {message}")
-
-    message = f"drydock build {target} {today}" + (" [FAILED]" if failed else "")
-    try:
-        commit_result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(path),
-                "-c",
-                "user.name=Drydock Build",
-                "-c",
-                "user.email=drydock@local",
-                "commit",
-                "-m",
-                message,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SpecificationError(f"git commit failed for build directory {path}: {exc}") from exc
-    if commit_result.returncode != 0:
-        detail = (commit_result.stderr or commit_result.stdout).strip() or "git commit failed"
-        raise SpecificationError(f"git commit failed for build directory {path}: {detail}")
-
-    return _git_head(path), message
-
-
 @dataclass(frozen=True)
 class BuildStepResult:
     block_id: str
@@ -305,13 +195,8 @@ class BuildResult:
     target: str
     build_dir: Path
     steps: list[BuildStepResult]
-    git_initialized: bool = False
-    git_commit: str | None = None
-    git_commit_message: str | None = None
-    drydock_commit_skipped_after_build: bool = False
     readme_path: Path | None = None
     dry_run: bool = False
-    no_git: bool = False
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -1284,14 +1169,15 @@ def build_target(
     force: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
-    no_git: bool = False,
     dependency_registry_client: RegistryClient | None = None,
 ) -> BuildResult:
-    """Build every currently buildable step, stopping at acceptance review gates."""
+    """Build every currently buildable step, stopping at acceptance review gates.
+
+    The build performs no git operations of its own: it never initializes a repository,
+    commits, or gates on a dirty working tree. Version control of the build directory and
+    the Drydock checkout is the user's responsibility.
+    """
     run = runner if runner is not None else run_prompt
-    source_warning = _ensure_drydock_source_clean()
-    if source_warning:
-        _emit(on_text, source_warning)
 
     manifest_path = target_dir / "MANIFEST.md"
     if not manifest_path.is_file():
@@ -1300,11 +1186,8 @@ def build_target(
         )
 
     resolved_build_dir = build_dir or build_dir_for(target)
-    git_initialized = False
     if not dry_run:
         resolved_build_dir.mkdir(parents=True, exist_ok=True)
-        if not no_git:
-            git_initialized = _ensure_git_repo(resolved_build_dir)
         evidence_dir = target_dir / "evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -1334,12 +1217,12 @@ def build_target(
         rigging_dir=get_rigging_root(),
     )
 
+    # Read-only provenance for the dependency registry: record which stack commit a step
+    # was built against, when the stack happens to be a clean git checkout. A dirty or
+    # non-git stack simply yields no provenance; the build never blocks on it.
     stack_head = _git_head(stack_dir)
     if stack_head is not None and _is_dirty(stack_dir):
-        raise SpecificationError(
-            "Build blocked: uncommitted changes in the stack directory. "
-            "Commit or stash changes before building."
-        )
+        stack_head = None
     plan = parse_build_plan(manifest_path)
     if dry_run:
         _emit(on_text, "DRY RUN: skipping build-block compact refresh")
@@ -1362,7 +1245,6 @@ def build_target(
             _reset_step_for_rebuild(manifest_path, step_id)
 
     steps: list[BuildStepResult] = []
-    runner_started = False
     guard = 0
     while True:
         plan = preview_plan if preview_plan is not None else parse_build_plan(manifest_path)
@@ -1521,7 +1403,6 @@ def build_target(
         # All deterministic build preflight has passed for this executable block.
         # Retire a prior current error only when a new LLM attempt actually starts.
         clear_error_record(target_dir)
-        runner_started = True
         try:
             result = run(
                 prompt_assembly.rendered_text,
@@ -1832,37 +1713,6 @@ def build_target(
             break
 
     build_failed = any(step.status == "failed" for step in steps)
-    try:
-        # Preserve the generated artifact even when the build fails. A failed build otherwise
-        # leaves the code as fragile uncommitted state that the next run's asset staging can
-        # wipe, and leaves the diagnostician and author with nothing to inspect or reproduce.
-        # A distinct commit subject marks the failure. Only a dry run skips the commit.
-        git_commit, git_commit_message = (
-            (None, None)
-            if dry_run or no_git
-            else _commit_build_dir(resolved_build_dir, target, today, failed=build_failed)
-        )
-    except Exception as exc:
-        if runner_started:
-            write_error_record(
-                target_dir,
-                command="build",
-                phase="post-model Git commit",
-                classification="post-model Git failure",
-                detail=str(exc),
-                evidence=target_dir / "evidence",
-                recovery=f"Correct the Git failure, then run: drydock build {target}",
-                state="Error",
-            )
-            from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
-
-            _refresh_chair(target_dir)
-        raise
-    drydock_commit_skipped_after_build = (
-        not no_git
-        and git_commit is None
-        and any(step.status in {"built", "implemented"} and step.written_files for step in steps)
-    )
 
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
@@ -1886,11 +1736,6 @@ def build_target(
         target=target,
         build_dir=resolved_build_dir,
         steps=steps,
-        git_initialized=git_initialized,
-        git_commit=git_commit,
-        git_commit_message=git_commit_message,
-        drydock_commit_skipped_after_build=drydock_commit_skipped_after_build,
         readme_path=readme_path,
         dry_run=dry_run,
-        no_git=no_git,
     )

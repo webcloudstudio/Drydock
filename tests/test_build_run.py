@@ -14,16 +14,6 @@ from drydock.build_run import build_target
 from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError, write_error_record
 
-
-@pytest.fixture(autouse=True)
-def clean_drydock_source(monkeypatch, request):
-    import drydock.build_run as br
-
-    if request.node.name == "test_dirty_drydock_source_blocks_build":
-        return
-    monkeypatch.setattr(br, "_ensure_drydock_source_clean", lambda: None)
-
-
 _TWO_STORIES = """# MANIFEST: Demo
 state: draft
 
@@ -193,11 +183,8 @@ def test_builds_no_ac_steps_in_order_and_closes(tmp_path):
     assert (target_dir / "evidence" / "foundation.md").is_file()
     assert (target_dir / "evidence" / "service.md").is_file()
     assert result.exit_code() == 0
-    assert (build_dir / ".git").is_dir()
-    assert result.git_initialized is True
-    assert result.git_commit is not None
-    assert result.git_commit_message is not None
-    assert result.git_commit_message.startswith("drydock build Demo ")
+    # The build performs no git operations of its own: no repo is created.
+    assert not (build_dir / ".git").exists()
 
 
 def test_build_failure_writes_current_error_and_retry_clears_prior_error(tmp_path):
@@ -766,18 +753,6 @@ def test_force_requires_step(tmp_path):
         build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), force=True)
 
 
-def test_detects_agent_side_commit_when_drydock_has_no_commit(tmp_path, monkeypatch):
-    import drydock.build_run as br
-
-    monkeypatch.setattr(
-        br, "_commit_build_dir", lambda path, target, today, *, failed=False: (None, None)
-    )
-    target_dir, build_dir = _setup(tmp_path)
-    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
-
-    assert result.drydock_commit_skipped_after_build is True
-
-
 def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner()
@@ -806,7 +781,9 @@ def test_allow_tools_enabled_and_runs_in_build_dir(tmp_path):
     assert build_dir.is_dir()
 
 
-def test_existing_git_repo_not_reinitialized(tmp_path):
+def test_build_leaves_existing_git_repo_untouched(tmp_path):
+    """The build never commits, so a pre-existing repo keeps a clean working tree entry
+    only for whatever the build wrote — Drydock adds no commits of its own."""
     target_dir, build_dir = _setup(tmp_path)
     build_dir.mkdir(parents=True)
     subprocess.run(
@@ -815,8 +792,14 @@ def test_existing_git_repo_not_reinitialized(tmp_path):
     runner = make_runner()
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
-    assert result.git_initialized is False
-    assert result.git_commit is not None
+    assert result.exit_code() == 0
+    log = subprocess.run(
+        ["git", "-C", str(build_dir), "log", "--oneline"],
+        capture_output=True,
+        text=True,
+    )
+    # No commits were created by the build.
+    assert log.stdout.strip() == ""
 
 
 def test_step_with_child_ac_auto_verifies_legacy_manifest_ac(tmp_path):
@@ -1040,10 +1023,10 @@ state: pending
     assert result.exit_code() == 1
 
 
-def test_failed_step_commits_artifact_with_failed_marker(tmp_path):
-    # A failed build still commits the generated artifact so it is preserved for inspection,
-    # diagnosis, and the next rebuild rather than left as fragile uncommitted state. The commit
-    # subject carries a [FAILED] marker.
+def test_failed_step_preserves_artifact_on_disk(tmp_path):
+    # A failed build leaves the generated artifact on disk so it is preserved for inspection,
+    # diagnosis, and the next rebuild. The build does not commit it; version control is the
+    # user's responsibility.
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(ok=False, text="", write_files=True)
 
@@ -1051,9 +1034,6 @@ def test_failed_step_commits_artifact_with_failed_marker(tmp_path):
 
     assert result.steps[0].status == "failed"
     assert result.steps[0].written_files == ("foundation.txt",)
-    assert result.git_commit is not None
-    assert result.git_commit_message is not None
-    assert result.git_commit_message.endswith("[FAILED]")
     assert result.exit_code() == 1
     # The artifact survives on disk under the build directory.
     assert (build_dir / "foundation.txt").is_file()
@@ -1098,7 +1078,6 @@ def test_text_without_file_delta_marks_failed(tmp_path):
     assert result.steps[0].error == "no build files written"
     assert _state(target_dir, "foundation") == "closed/failed"
     assert _state(target_dir, "service") == "pending"
-    assert result.git_commit is None
 
 
 def test_unstructured_report_with_files_succeeds(tmp_path):
@@ -1115,7 +1094,6 @@ def test_unstructured_report_with_files_succeeds(tmp_path):
     assert result.steps[0].status == "built"
     assert _state(target_dir, "foundation") == "closed/verified"
     assert _finding(target_dir, "foundation") is None
-    assert result.git_commit is not None
 
 
 def test_result_token_found_mid_line_is_not_a_failure(tmp_path):
@@ -1438,39 +1416,10 @@ state: pending
 
 
 class TestDirtyGuard:
-    def test_dirty_drydock_source_warns_and_continues(self, tmp_path, monkeypatch):
-        """A dirty Drydock checkout is advisory, not a block: the build surfaces the warning
-        and proceeds (the autouse fixture otherwise stubs the guard to silence)."""
+    def test_dirty_stack_dir_proceeds_without_provenance(self, tmp_path, monkeypatch):
+        """A dirty stack no longer blocks the build; it just yields no registry provenance."""
         import drydock.build_run as br
-
-        warning = "WARNING: uncommitted changes exist in the Drydock repository; continuing."
-        monkeypatch.setattr(br, "_ensure_drydock_source_clean", lambda: warning)
-
-        target_dir, build_dir = _setup(tmp_path)
-        log: list[str] = []
-
-        result = build_target(
-            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append
-        )
-
-        assert result.exit_code() == 0
-        assert any(warning in line for line in log)
-
-    def test_no_git_skips_repo_init_and_commit(self, tmp_path, monkeypatch):
-        """--no-git (no_git=True) builds without creating a repo or a commit."""
-        target_dir, build_dir = _setup(tmp_path)
-        result = build_target(
-            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), no_git=True
-        )
-        assert result.exit_code() == 0
-        assert result.no_git is True
-        assert result.git_initialized is False
-        assert result.git_commit is None
-        assert not (build_dir / ".git").exists()
-
-    def test_dirty_stack_dir_blocks_build(self, tmp_path, monkeypatch):
-        import drydock.build_run as br
-        from drydock.errors import SpecificationError
+        from drydock.build_plan import parse_build_plan
 
         monkeypatch.setattr(br, "_git_head", lambda p: "abc123")
         monkeypatch.setattr(br, "_is_dirty", lambda p: True)
@@ -1478,8 +1427,11 @@ class TestDirtyGuard:
         target_dir, build_dir = _setup(tmp_path, manifest=_WITH_STACK)
         (target_dir / "blueprint" / "common.md").write_text("stack content\n", encoding="utf-8")
 
-        with pytest.raises(SpecificationError, match="uncommitted changes"):
-            build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+        result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+        assert result.exit_code() == 0
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+        assert "common.md" not in plan.applied_registry
 
     def test_clean_stack_dir_proceeds(self, tmp_path, monkeypatch):
         import drydock.build_run as br
