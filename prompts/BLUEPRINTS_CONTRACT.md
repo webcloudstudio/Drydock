@@ -160,6 +160,23 @@ such as look-and-feel or subjective workflow acceptance. Do not place determinis
 appears between the intent sentence and Python fence. Every listed ID exists in
 `SEA_TRIALS.md`.
 
+**Programmatic acceptance is the story's definition of done, and a deterministic definition of
+done is never sampled.** Drydock builds each block in a single pass with no iterate loop, so the
+acceptance you author *is* the objective handed to the builder: sample the checks and the builder
+builds to the sample. When an authoritative, externally-authored test suite already defines
+"correct" for what a story builds — an imported conformance suite and its runner (for example a
+specification's example suite plus a `*_tests.py` runner) — the acceptance runs the **complete**
+suite and requires a full pass, never a hand-picked subset. Declare a complete run with
+`Corpus: full` in the check's heading block; this is the deliberate marker that the check gates on
+the whole suite rather than a story-scoped slice.
+
+Place a whole-project deterministic suite on the story that **completes the runnable capability**
+— never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it
+into `SEA_TRIALS.md` with `Sea Trials:` so it is both the completing block's acceptance and a
+project-acceptance criterion. Naming the suite file or asserting it is staged (`Path(...).is_file()`)
+is staging, not testing: a stubbed or absent definition of done for an available suite is a defect,
+not an acceptable check.
+
 `COMPASS.md` uses `## Compass`, `## Constraints`, and `## Guardrails` as its body sections.
 Success criteria belong in `SEA_TRIALS.md`; open questions in spike questionnaires. Do not add
 those sections to `COMPASS.md`.

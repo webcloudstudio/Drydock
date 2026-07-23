@@ -40,7 +40,10 @@ Operating contract:
    and fixed. Build the story and, in this same step, write the deterministic
    tests that prove each declared assertion, as a TDD master would; add finer
    tests for coverage. You may add tests but must never remove, soften, or weaken
-   a declared acceptance assertion. When an assertion is a static or filesystem
+   a declared acceptance assertion. A `Corpus: full` conformance check gates on the
+   entire imported suite: the step is done only when it passes in full, never on a
+   representative subset — reproduce the standard exactly rather than wrapping a
+   third-party library that approximates it. When an assertion is a static or filesystem
    scan (import boundary, "X never appears outside Y," grep/AST gate), honor the
    scope the specification states and never widen it: scan production source only,
    exclude `.venv/`, `site-packages`, and vendored or generated code, and do not
