@@ -880,6 +880,61 @@ state: pending
         assert "[service]" in out
         assert "The backend diverges from the spec." in out
 
+    def test_build_failure_diagnosis_reaches_errors_and_evidence(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from drydock.diagnose import reset_diagnosis_guard
+
+        reset_diagnosis_guard()
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "instructions: |\n  Build it.\nstate: pending\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        def _build(*a, **k):
+            return SimpleNamespace(
+                ok=True,
+                text=(
+                    "RESULT: FAILURE\n"
+                    "FAILURE_SUMMARY: Full conformance requirement not met.\n"
+                    "FAILURE_DETAIL: The backend diverges from the spec.\n"
+                ),
+                stderr="",
+                execution_id="exec-fake",
+            )
+
+        def _diagnose(*a, **k):
+            return SimpleNamespace(
+                ok=True,
+                text="CAUSE: the build wrapped a library instead of writing the parser.\n"
+                "DO: rerun drydock build ExampleTarget",
+                execution_id="exec-diag",
+            )
+
+        monkeypatch.setattr("drydock.build_run.run_prompt", _build)
+        monkeypatch.setattr("drydock.llm.run_prompt", _diagnose)
+        monkeypatch.setattr("drydock.build_run._ensure_drydock_source_clean", lambda: None)
+        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
+
+        rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
+
+        assert rc == 1
+        assert "A MAJOR ERROR HAS OCCURRED" in err
+        diagnosis = "CAUSE: the build wrapped a library instead of writing the parser."
+        assert diagnosis in (target / "ERRORS.md").read_text(encoding="utf-8")
+        evidence = (target / "evidence" / "foundation.md").read_text(encoding="utf-8")
+        assert "## Diagnosis" in evidence
+        assert diagnosis in evidence
+        reset_diagnosis_guard()
+
     def test_build_dry_run_prints_prompt_without_writes(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):
@@ -2035,6 +2090,62 @@ class TestStandoffDiagnosis:
         assert persisted is not None
         assert "DO: rerun drydock build widgets" in persisted.diagnosis
         assert persisted.recovery == "Rerun the block."
+
+    def test_diagnosis_also_appended_to_evidence_file(self, target_dir, capsys):
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import write_error_record
+
+        evidence = target_dir / "evidence" / "block.md"
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text("# Evidence\n\n## Failure\n- summary: broke\n", encoding="utf-8")
+        record = write_error_record(
+            target_dir,
+            command="build",
+            phase="build step",
+            classification="agent-reported failure: conformance not met",
+            detail="The build diverged from the spec.",
+            recovery="Rerun the block.",
+            evidence=evidence,
+        )
+        _standoff_diagnosis(
+            self._args("widgets"), ["build", "widgets"], record=record, runner=self._runner()
+        )
+
+        text = evidence.read_text(encoding="utf-8")
+        assert "## Diagnosis" in text
+        assert "DO: rerun drydock build widgets" in text
+        # Idempotent: a second diagnosis replaces rather than stacks the section.
+        from drydock.diagnose import reset_diagnosis_guard
+
+        reset_diagnosis_guard()
+        _standoff_diagnosis(
+            self._args("widgets"), ["build", "widgets"], record=record, runner=self._runner()
+        )
+        assert evidence.read_text(encoding="utf-8").count("## Diagnosis") == 1
+
+    def test_programmatic_acceptance_failure_is_not_diagnosed(self, target_dir, capsys):
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import write_error_record
+
+        evidence = target_dir / "evidence" / "block.md"
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text("# Evidence\n", encoding="utf-8")
+        record = write_error_record(
+            target_dir,
+            command="build",
+            phase="build step",
+            classification="programmatic acceptance failed: check-1",
+            detail="An acceptance assertion failed.",
+            recovery="Fix the code.",
+            evidence=evidence,
+        )
+        runner = self._runner()
+        _standoff_diagnosis(
+            self._args("widgets"), ["build", "widgets"], record=record, runner=runner
+        )
+
+        assert runner.seen == []
+        assert "## Diagnosis" not in evidence.read_text(encoding="utf-8")
 
     def test_no_diagnose_flag_suppresses_the_call(self, target_dir, capsys):
         from drydock.cli import _standoff_diagnosis

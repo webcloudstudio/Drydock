@@ -163,7 +163,9 @@ def test_assembled_prompt_carries_traceback_and_failing_source():
 
     assert "Traceback" in text
     assert "errors.py" in text
-    assert "def read_error_record" in text
+    # The innermost drydock frame is ``errors_path`` (``None / "ERRORS.md"``); the failing
+    # source region centers there.
+    assert "def errors_path" in text
 
 
 # ── output contract ─────────────────────────────────────────────────────────

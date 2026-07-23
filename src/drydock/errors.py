@@ -120,9 +120,8 @@ def write_error_record(
 DIAGNOSIS_HEADING = "## Diagnosis"
 
 
-def append_diagnosis(target_dir: Path, text: str) -> bool:
-    """Append a standoff diagnosis section to the Target's current error record."""
-    path = errors_path(target_dir)
+def _append_diagnosis_section(path: Path, text: str) -> bool:
+    """Append (or replace) a standoff diagnosis section on an existing markdown file."""
     body = text.strip()
     if not body or not path.is_file():
         return False
@@ -133,6 +132,16 @@ def append_diagnosis(target_dir: Path, text: str) -> bool:
         f"{existing}\n\n{DIAGNOSIS_HEADING}\n\n{body}\n", encoding="utf-8", newline="\n"
     )
     return True
+
+
+def append_diagnosis(target_dir: Path, text: str) -> bool:
+    """Append a standoff diagnosis section to the Target's current error record."""
+    return _append_diagnosis_section(errors_path(target_dir), text)
+
+
+def append_diagnosis_to_evidence(evidence_path: Path, text: str) -> bool:
+    """Append a standoff diagnosis section to a build's evidence file so it is self-contained."""
+    return _append_diagnosis_section(evidence_path, text)
 
 
 def clear_error_record(target_dir: Path) -> bool:

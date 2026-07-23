@@ -1393,6 +1393,14 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"ERRORS.md: {target_dir / 'ERRORS.md'}")
         print(f"Open: drydock run quarterdeck {args.Target}")
         print("=" * 72)
+        # An opaque build failure earns a plain-English diagnosis. The build wrote the error
+        # record; read it back and route it through the same standoff diagnosis that serves
+        # RecordedError, persisting the CAUSE/DO to ERRORS.md and the evidence file.
+        from drydock.errors import read_error_record
+
+        record = read_error_record(target_dir)
+        if record is not None:
+            _standoff_diagnosis(args, None, record=record)
     return result.exit_code()
 
 
@@ -2374,7 +2382,7 @@ def _standoff_diagnosis(
             return
 
         from drydock.config import get_target_directory
-        from drydock.errors import append_diagnosis
+        from drydock.errors import append_diagnosis, append_diagnosis_to_evidence
 
         target = getattr(args, "Target", "") or ""
         target_dir = get_target_directory() / target if target else Path.cwd()
@@ -2403,6 +2411,11 @@ def _standoff_diagnosis(
         print(text, file=sys.stderr)
         print("=" * 72, file=sys.stderr)
         append_diagnosis(target_dir, text)
+        if record is not None and record.evidence:
+            evidence_path = Path(record.evidence)
+            if not evidence_path.is_absolute():
+                evidence_path = target_dir / evidence_path
+            append_diagnosis_to_evidence(evidence_path, text)
     except Exception:  # noqa: BLE001 - diagnosis must never change the command's outcome
         return
 
