@@ -36,6 +36,13 @@ _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", r
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
 _PLACEHOLDER_RE = re.compile(r"<[^<>]+>")
 _QUESTION_RE = re.compile(r"^-\s+(?P<id>q-[a-z0-9-]+):\s*(?P<text>.+?)\s*$", re.I)
+#: Stack/Rigging selection is owned solely by the ``discovery-stack`` questionnaire. A Sea Trials
+#: QUESTIONS entry that asks the Commander to pick Rigging stack components is a misplaced
+#: duplicate and is dropped so stack is never asked in a second questionnaire.
+_STACK_QUESTION_ID_RE = re.compile(r"(?:^|-)stack(?:-|$)", re.I)
+_STACK_QUESTION_TEXT_RE = re.compile(
+    r"\brigging\b|\bstack(?:\s+(?:component|selection|guidance))", re.I
+)
 _FIELD_NAMES = (
     "Type",
     "Required",
@@ -69,6 +76,17 @@ class SeaTrial:
     operator: str = ""
     target: float | None = None
     unit: str = ""
+
+
+def is_stack_selection_question(question_id: str, text: str) -> bool:
+    """Return True when a Sea Trials question is really a stack/Rigging selection.
+
+    Stack selection belongs only to ``discovery-stack``; such a question is never a Sea Trials
+    measurement fact and must not be projected into a second questionnaire.
+    """
+    if _STACK_QUESTION_ID_RE.search(question_id):
+        return True
+    return bool(_STACK_QUESTION_TEXT_RE.search(text))
 
 
 @dataclass(frozen=True)
@@ -291,7 +309,9 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             index += 1
             while index < len(lines) and not lines[index].lstrip().startswith("#"):
                 match = _QUESTION_RE.match(lines[index].strip())
-                if match:
+                if match and not is_stack_selection_question(
+                    match.group("id"), match.group("text")
+                ):
                     questions.append(
                         SeaTrialQuestion(match.group("id").lower(), match.group("text"))
                     )
@@ -378,9 +398,32 @@ def _format_trial_fields(text: str) -> str:
     return "\n".join(formatted)
 
 
+def _drop_stack_questions(text: str) -> str:
+    """Remove misplaced stack/Rigging selection lines from the QUESTIONS block.
+
+    When every question is dropped, the now-empty ``QUESTIONS:`` header is dropped too so the
+    written artifact never carries a bare header.
+    """
+    lines = text.splitlines()
+    kept: list[str] = []
+    for line in lines:
+        match = _QUESTION_RE.match(line.strip())
+        if match and is_stack_selection_question(match.group("id"), match.group("text")):
+            continue
+        kept.append(line)
+    result: list[str] = []
+    for position, line in enumerate(kept):
+        if line.strip() == "QUESTIONS:":
+            following = kept[position + 1 :]
+            if not any(_QUESTION_RE.match(later.strip()) for later in following):
+                continue
+        result.append(line)
+    return "\n".join(result)
+
+
 def normalize_sea_trials_text(text: str) -> str:
     """Return the document with exactly the canonical documentation blocks after the title."""
-    lines = _strip_documentation(text).splitlines()
+    lines = _drop_stack_questions(_strip_documentation(text)).splitlines()
     title = ""
     if lines and lines[0].startswith("# Sea Trials:"):
         title, lines = lines[0], lines[1:]

@@ -9,6 +9,7 @@ import pytest
 from drydock.errors import SpecificationError
 from drydock.sea_trials import (
     EARS_PATTERNS,
+    is_stack_selection_question,
     normalize_sea_trials_text,
     parse_sea_trials_text,
     project_questions,
@@ -46,6 +47,72 @@ QUESTIONS:
     assert trial.baseline == 180
     assert trial.target == 100
     assert document.questions[0].question_id == "q-latency-baseline"
+
+
+@pytest.mark.parametrize(
+    ("question_id", "text"),
+    [
+        ("q-st-001-stack", "Which representative workload defines the baseline?"),
+        ("q-st-001-baseline", "Select the applicable Rigging stack components before planning."),
+        ("q-st-002-baseline", "Choose the stack components that apply."),
+    ],
+)
+def test_stack_selection_questions_are_detected(question_id, text):
+    assert is_stack_selection_question(question_id, text) is True
+
+
+@pytest.mark.parametrize(
+    ("question_id", "text"),
+    [
+        ("q-latency-baseline", "Which representative workload defines the baseline?"),
+        ("q-st-001-target", "What throughput target is required at launch?"),
+    ],
+)
+def test_measurement_questions_are_not_treated_as_stack(question_id, text):
+    assert is_stack_selection_question(question_id, text) is False
+
+
+def test_stack_question_is_dropped_from_parsed_questions():
+    document = parse_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-001: Full conformance
+Type: outcome
+Required: yes
+Criterion: The parser passes the full conformance corpus.
+Verification: measurement
+Command: ["python", "run.py"]
+
+QUESTIONS:
+- q-st-001-baseline: Which corpus edition defines the baseline?
+- q-st-001-stack: Select the applicable Rigging stack components before planning.
+"""
+    )
+
+    ids = [question.question_id for question in document.questions]
+    assert ids == ["q-st-001-baseline"]
+
+
+def test_stack_question_is_stripped_from_normalized_text():
+    normalized = normalize_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-001: Full conformance
+Type: outcome
+Required: yes
+Criterion: The parser passes the full conformance corpus.
+Verification: measurement
+Command: ["python", "run.py"]
+
+QUESTIONS:
+- q-st-001-stack: Select the applicable Rigging stack components before planning.
+"""
+    )
+
+    assert "q-st-001-stack" not in normalized
+    # The bare QUESTIONS: block header is dropped once its only question is removed. The prose
+    # mention inside the canonical reader documentation is not a block header.
+    assert not any(line.strip() == "QUESTIONS:" for line in normalized.splitlines())
 
 
 def test_trial_after_questions_block_is_parsed():

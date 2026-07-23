@@ -674,6 +674,10 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   `QUESTIONS:` entries for missing human-owned facts. Omit `QUESTIONS:` when none remain.
 - Never emit a `discovery-sea-trials.json` block. Sea Trials questions live in the SEA_TRIALS.md
   `QUESTIONS:` block; Drydock projects them into that questionnaire itself.
+- The SEA_TRIALS.md `QUESTIONS:` block holds only human-owned measurement facts (baselines,
+  targets, workloads, business measures). Never place a stack or Rigging selection question there —
+  stack selection is owned solely by `discovery-stack.json` and must appear in no other
+  questionnaire. Drydock drops any stack/Rigging question found in the Sea Trials QUESTIONS block.
 - All questionnaire JSON must be valid JSON.
 - Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources — there are no
   typed spec files at analyze time, so do not inspect or invent them.
