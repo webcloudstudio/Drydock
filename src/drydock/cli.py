@@ -1519,7 +1519,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         print(f"Next: drydock build {target}")
     elif report.failed_ids:
         first = report.failed_ids[0]
-        print(f"Next: rebuild a failed step — drydock build {target} --step {first} --force")
+        print(f"Next: resume a failed step — drydock build {target} --step {first}")
     else:
         print("Next: (no actionable steps — all done or blocked)")
     print()
@@ -1535,7 +1535,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
             if step.buildable:
                 arrow = " <- next"
             elif step.block.state == "closed/failed":
-                arrow = " <- rebuild with --force"
+                arrow = " <- resume (repairs in place)"
             else:
                 arrow = ""
             print(
@@ -1559,7 +1559,10 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     )
     print("Buildable now: " + (", ".join(report.buildable_ids) or "(none)"))
     if report.failed_ids:
-        print("Failed (rebuild with --step <id> --force): " + ", ".join(report.failed_ids))
+        print(
+            "Failed (resume with drydock build, or --step <id>; --force resets instead): "
+            + ", ".join(report.failed_ids)
+        )
     score_state = score_evidence_state(target, target_path)
     detail = f" ({'; '.join(score_state.reasons)})" if score_state.reasons else ""
     print(f"Build score evidence: {score_state.state}{detail}")
@@ -1848,8 +1851,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "build",
         help="Build or inspect build state.",
         description=(
-            "drydock build <Target>          — build next frontier\n"
-            "drydock build <Target> --reset-failed  — reset failed blocks to pending, then build\n"
+            "drydock build <Target>          — build next frontier; failed steps resume in place\n"
+            "drydock build <Target> --step <id>     — build/resume only that step\n"
+            "drydock build <Target> --step <id> --force  — reset that step to pending, then rebuild\n"
+            "drydock build <Target> --reset-failed  — reset all failed blocks to pending, then build\n"
             "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
             "drydock build <Target> --dry-run       — preview next build block without writes\n"
             "drydock build status <Target>   — show build state\n"
@@ -2052,13 +2057,15 @@ def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--force",
         action="store_true",
-        help="With --step, reset the step and child ACs to pending before rebuilding.",
+        help="With --step, reset the step and child ACs to pending before rebuilding, "
+        "instead of resuming its partial work.",
     )
     p.add_argument(
         "--reset-failed",
         dest="reset_failed",
         action="store_true",
-        help="Reset all failed MANIFEST blocks to pending before building.",
+        help="Reset all failed MANIFEST blocks to pending before building, "
+        "instead of resuming them in place.",
     )
     p.add_argument(
         "--normalize-order",

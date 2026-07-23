@@ -326,9 +326,11 @@ class TestState:
         assert "cmp-fail-reason" in out
         assert "assertion returned non-zero" in out
         assert "cmp-fail-action" in out
-        assert "rerun drydock build with --force to rerun this step" in out
-        # A failed frontier blocks the graph: nothing is buildable.
-        assert "blocked by" in out
+        assert "rerun drydock build to continue this step" in out
+        # A failed frontier step is resumable (continue is the default), so its group is
+        # listed as buildable rather than blocking the graph.
+        assert "Buildable now: <strong>feat-foundation</strong>" in out
+        assert "blocked by" not in out
 
     def test_blocked_step_names_its_blocker_and_colors_group(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()

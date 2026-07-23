@@ -829,7 +829,8 @@ state: pending
         assert "FATAL ERROR" in out
         assert "Build step failed: Foundation [foundation]" in out
         assert "LLM execution failed" in out
-        assert "rerun drydock build with --force to rerun this step" in out
+        assert "rerun drydock build to continue this step" in out
+        assert "add --force to reset it" in out
 
     def test_build_multi_story_failure_prints_one_banner_with_detail(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1213,7 +1214,7 @@ state: pending
         assert "Awaiting checks [awaiting-checks]: state=implemented" in err
         assert "Options:" in err
         assert "Review and normalize in QuarterDeck" in err
-        assert "Story Retry: drydock build ExampleTarget --step awaiting-checks --force" in err
+        assert "Story Retry: drydock build ExampleTarget --step awaiting-checks" in err
         assert "drydock build status ExampleTarget" in err
         assert "drydock build verify ExampleTarget awaiting-checks" not in out
 

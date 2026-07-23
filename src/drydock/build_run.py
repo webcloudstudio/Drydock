@@ -78,7 +78,10 @@ from drydock.source_roles import (
     verify_staged_assets,
 )
 
-BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to rerun this step"
+BUILD_FAILURE_FORCE_HINT = (
+    "rerun drydock build to continue this step (repairs in place); "
+    "add --force to reset it and rebuild from scratch"
+)
 
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
@@ -221,6 +224,16 @@ class BuildUnit:
     def is_group(self) -> bool:
         return self.block_type == "feature"
 
+    @property
+    def resume(self) -> bool:
+        """True when a selected step is being continued in place from a prior failure.
+
+        A ``closed/failed`` step keeps its partial work in the build directory; the
+        build resumes it — re-running acceptance live and seeding the first pass with
+        the failure — rather than restarting from a clean prompt.
+        """
+        return any(step.state == "closed/failed" for step in self.steps)
+
 
 def _rel(path: Path, base: Path) -> str:
     try:
@@ -237,12 +250,19 @@ def _child_ac_ids(blocks: tuple[PlanBlock, ...], block_id: str) -> tuple[str, ..
     return tuple(b.block_id for b in blocks if b.block_type == "ac" and b.parent == block_id)
 
 
+# A step is a selection candidate when it is unbuilt (``pending``) or when it failed a
+# prior pass (``closed/failed``). A failed step is resumed in place: continue is the
+# default, and the reset paths (``--reset-failed`` / ``--step --force``) flip a step back
+# to ``pending`` before selection, so a reset step is selected as a fresh build.
+SELECTABLE_STATES = frozenset({"pending", "closed/failed"})
+
+
 def _is_buildable(block: PlanBlock, by_id: dict[str, PlanBlock]) -> bool:
     def verified(block_id: str) -> bool:
         dependency = by_id.get(block_id)
         return dependency is not None and dependency.state == "closed/verified"
 
-    return block.state == "pending" and all(verified(dep) for dep in block.depends)
+    return block.state in SELECTABLE_STATES and all(verified(dep) for dep in block.depends)
 
 
 def _block_label(block: PlanBlock) -> str:
@@ -271,7 +291,7 @@ def _blocked_options(
     return (
         "\nOptions:"
         f"\n  - Review and normalize in QuarterDeck: drydock run quarterdeck {target}"
-        f"\n  - Story Retry: drydock build {target} --step {first} --force"
+        f"\n  - Story Retry: drydock build {target} --step {first}"
         f"\n  - Inspect build state: drydock build status {target}"
     )
 
@@ -346,7 +366,7 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
     if not executable:
         return None
     already_verified = tuple(child for child in executable if child.state == "closed/verified")
-    pending = tuple(child for child in executable if child.state == "pending")
+    pending = tuple(child for child in executable if child.state in SELECTABLE_STATES)
     if not pending:
         return None
     pending = _first_pending_work_run(pending)
@@ -366,7 +386,7 @@ def _blocked_block_message(plan: BuildPlan, feature: PlanBlock, target: str) -> 
     executable = tuple(
         child for child in plan.children(feature.block_id) if child.block_type in {"story", "spike"}
     )
-    pending = tuple(child for child in executable if child.state == "pending")
+    pending = tuple(child for child in executable if child.state in SELECTABLE_STATES)
     pending = _first_pending_work_run(pending)
     blockers = _external_unverified_dependencies(feature, pending, pending, by_id)
     if blockers:
@@ -455,14 +475,14 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None, target: str) -> Bui
             if unit is not None:
                 return unit
             if any(
-                child.block_type in {"story", "spike"} and child.state == "pending"
+                child.block_type in {"story", "spike"} and child.state in SELECTABLE_STATES
                 for child in plan.children(block.block_id)
             ):
                 raise SpecificationError(_blocked_block_message(plan, block, target))
         if (
             block.block_type in {"story", "spike"}
             and _containing_feature(block, by_id) is None
-            and block.state == "pending"
+            and block.state in SELECTABLE_STATES
         ):
             if not _is_buildable(block, by_id):
                 raise SpecificationError(
@@ -1608,11 +1628,50 @@ def build_target(
         changed_files: tuple[str, ...] = ()
         execution_id: str | None = None
         summary = ""
+        result: object | None = None
         feedback_checks: tuple[AcceptanceRunResult, ...] = ()
+        seed_feedback: str | None = None
+        if unit.resume:
+            # A resumed step keeps its prior partial work in the build directory. Re-run its
+            # acceptance live so the first pass is seeded with the real, current failure — the
+            # same feedback repair passes use — rather than a clean prompt that must rediscover
+            # it. If the checks already pass (a step fixed out of band), close green with no
+            # LLM pass.
+            resume_live = run_programmatic_acceptance(
+                checks,
+                build_dir=resolved_build_dir,
+                target_dir=target_dir,
+                blueprint_dir=blueprint_dir,
+            )
+            resume_failed = tuple(check for check in resume_live if not check.passed)
+            if not resume_failed:
+                acceptance = resume_live
+                state, status, error, failure_detail = "closed/verified", "built", None, ""
+                _emit(
+                    on_text,
+                    f"RESUME: acceptance already green for {unit.name} [{unit.block_id}]; "
+                    "no rebuild needed",
+                )
+            else:
+                seed_feedback = _render_repair_feedback(
+                    unit, resume_failed, None, (), story_by_check
+                )
+                _emit(
+                    on_text,
+                    f"RESUME: seeding first pass for {unit.name} [{unit.block_id}] with "
+                    f"{len(resume_failed)} failing check(s)",
+                )
         attempt = 0
         while True:
+            if unit.resume and seed_feedback is None:
+                # Resume found the step already green; skip the build and grade what exists.
+                break
             if attempt == 0:
-                active_assembly = prompt_assembly
+                active_assembly = (
+                    _repair_prompt_assembly(prompt_assembly, seed_feedback)
+                    if seed_feedback is not None
+                    else prompt_assembly
+                )
                 attempt_model = base_model
             else:
                 attempt_model = base_model
@@ -1847,10 +1906,10 @@ def build_target(
                 )
                 else "Error"
             )
-            # A failed block is left ``closed/failed``; a plain ``drydock build`` will not retry it.
-            # Name the exact command that rebuilds this step so recovery is one copy-paste, not a
-            # command that silently does nothing.
-            rebuild_cmd = f"drydock build {target} --step {unit.block_id} --force"
+            # A failed block is left ``closed/failed``; a plain ``drydock build`` resumes it in
+            # place, seeding the first pass with the live failure. Name the exact continue command
+            # so recovery is one copy-paste; ``--force`` resets the step instead of continuing.
+            rebuild_cmd = f"drydock build {target} --step {unit.block_id}"
             write_error_record(
                 target_dir,
                 command="build",

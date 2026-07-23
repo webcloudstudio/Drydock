@@ -75,7 +75,10 @@ PROJECT_ROOT = (
 CONFIG_PATH = BASE_DIR / "console.yaml"
 WORKSPACE_ROOT = PROJECT_ROOT.parent.parent  # $DRYDOCK_WORKSPACE/targets/<Target> → workspace root
 ACTIVE_TARGET_COOKIE = "quarterdeck_target"
-BUILD_FAILURE_FORCE_HINT = "rerun drydock build with --force to rerun this step"
+BUILD_FAILURE_FORCE_HINT = (
+    "rerun drydock build to continue this step (repairs in place); "
+    "add --force to reset it and rebuild from scratch"
+)
 TARGET_BUTTON_PALETTE = (
     ("#0f766e", "#5eead4"),
     ("#b45309", "#fbbf24"),
@@ -996,13 +999,16 @@ def render_compass(item: dict[str, Any]) -> str:
         Blocked (an external dependency story is not yet built). There is no
         idle pending state and no separate review stage.
         """
-        if block_id in buildable:
-            return "ready"
         state = by_id[block_id].state if block_id in by_id else "pending"
-        if state in ("closed/verified", "implemented"):
-            return "built"
+        # A failed step is resumable (part of the buildable frontier), but it keeps its
+        # Failed chip and failure reason so the operator sees why it stopped; resume is the
+        # default rerun. Failed therefore takes precedence over the buildable/ready label.
         if state == "closed/failed":
             return "failed"
+        if block_id in buildable:
+            return "ready"
+        if state in ("closed/verified", "implemented"):
+            return "built"
         return "blocked"
 
     def _blockers(block_id: str) -> list:

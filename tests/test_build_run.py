@@ -15,6 +15,7 @@ from drydock.build_run import (
     _is_repairable,
     _render_repair_feedback,
     _resolve_step_selector,
+    _select_build_unit,
     build_target,
 )
 from drydock.dependency_gate import RegistryPackageInfo
@@ -408,7 +409,7 @@ state: pending
     assert "External [external-foundation]: state=pending" in message
     assert "Options:" in message
     assert "drydock run quarterdeck Demo" in message
-    assert "Story Retry: drydock build Demo --step external-foundation --force" in message
+    assert "Story Retry: drydock build Demo --step external-foundation" in message
     assert len(runner.calls) == 0
 
 
@@ -448,7 +449,7 @@ state: closed/failed
     assert "FATAL ERROR - PROVIDER RATE LIMIT" in message
     assert "You've hit your session limit" in message
     assert "Wait for the provider quota or session limit to reset" in message
-    assert "Story Retry: drydock build Demo --step external-foundation --force" in message
+    assert "Story Retry: drydock build Demo --step external-foundation" in message
 
 
 def test_blocked_build_does_not_auto_compact(tmp_path, monkeypatch):
@@ -964,8 +965,8 @@ def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
 
 
 def test_failure_recovery_names_the_specific_rebuild_step_command(tmp_path):
-    # A failed block is left closed/failed, so a plain rerun will not retry it. The recorded
-    # recovery must name the exact --step --force command that rebuilds this step.
+    # A failed block is left closed/failed and resumes in place. The recorded recovery must
+    # name the exact --step continue command that resumes this step.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "DB SPEC CONTENT\n\n"
@@ -981,7 +982,8 @@ def test_failure_recovery_names_the_specific_rebuild_step_command(tmp_path):
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
     error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
-    assert "drydock build Demo --step foundation --force" in error_text
+    assert "drydock build Demo --step foundation" in error_text
+    assert "--step foundation --force" not in error_text
 
 
 def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
@@ -2033,4 +2035,110 @@ def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_pat
     message = str(exc.value)
     assert "unsatisfiable Programmatic Acceptance" in message
     assert "DATABASE.md [escapes]" in message
+    assert runner.calls == []
+
+
+# ── continue-repair (resume in place) ──────────────────────────────────────────
+
+_FAILED_STORY_WITH_AC = """# MANIFEST: Demo
+state: draft
+
+## story 1: Foundation
+id: foundation
+implements: DATABASE.md
+finding: programmatic acceptance failed: foundation-file
+instructions: |
+  Build the database.
+state: closed/failed
+
+## story 2: Service
+id: service
+implements: SERVICE.md
+depends: foundation
+instructions: |
+  Build the service.
+state: pending
+"""
+
+_FOUNDATION_AC = (
+    "DB SPEC CONTENT\n\n"
+    "## Programmatic Acceptance\n\n"
+    "### foundation-file\n"
+    "Foundation writes its output marker.\n\n"
+    "```python\n"
+    "from pathlib import Path\n"
+    "assert Path('foundation.txt').read_text(encoding='utf-8') == 'built foundation\\n'\n"
+    "```\n"
+)
+
+
+def test_select_build_unit_resumes_failed_step_in_frontier(tmp_path):
+    target_dir, _ = _setup(tmp_path, manifest=_FAILED_STORY_WITH_AC)
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+
+    unit = _select_build_unit(plan, None, "Demo")
+
+    assert unit is not None
+    assert unit.block_id == "foundation"
+    assert unit.resume is True
+
+
+def test_select_build_unit_rejects_failed_step_with_unverified_dependency(tmp_path):
+    manifest = _FAILED_STORY_WITH_AC.replace(
+        "## story 2: Service\nid: service\nimplements: SERVICE.md\ndepends: foundation\n"
+        "instructions: |\n  Build the service.\nstate: pending\n",
+        "## story 2: Service\nid: service\nimplements: SERVICE.md\ndepends: foundation\n"
+        "instructions: |\n  Build the service.\nstate: closed/failed\n",
+    )
+    target_dir, _ = _setup(tmp_path, manifest=manifest)
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+
+    with pytest.raises(SpecificationError, match="not buildable"):
+        _select_build_unit(plan, "service", "Demo")
+
+
+def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FAILED_STORY_WITH_AC)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_FOUNDATION_AC, encoding="utf-8")
+    runner = make_runner()
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+    )
+
+    step = next(s for s in result.steps if s.block_id == "foundation")
+    assert step.status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    # Attempt 0 carried the repair feedback derived from the live acceptance run.
+    assert len(runner.calls) == 1
+    prompt = runner.calls[0]["prompt"]
+    assert "# Repair Feedback" in prompt
+    assert "## Repair pass" in prompt
+    assert "foundation-file" in prompt
+
+
+def test_fresh_pending_step_is_not_seeded(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_FOUNDATION_AC, encoding="utf-8")
+    runner = make_runner()
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation")
+
+    assert "# Repair Feedback" not in runner.calls[0]["prompt"]
+
+
+def test_resume_green_short_circuits_without_llm_pass(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_FAILED_STORY_WITH_AC)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_FOUNDATION_AC, encoding="utf-8")
+    build_dir.mkdir(parents=True, exist_ok=True)
+    (build_dir / "foundation.txt").write_text("built foundation\n", encoding="utf-8")
+    runner = make_runner()
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+    )
+
+    step = next(s for s in result.steps if s.block_id == "foundation")
+    assert step.status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
     assert runner.calls == []

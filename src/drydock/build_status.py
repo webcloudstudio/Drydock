@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from drydock.build import work_kind_of
 from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.build_run import SELECTABLE_STATES
 
 STEP_TYPES = ("story", "spike")
 
@@ -173,7 +174,7 @@ def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]
             executable = tuple(
                 child for child in plan.children(block.block_id) if child.block_type in STEP_TYPES
             )
-            pending = tuple(child for child in executable if child.state == "pending")
+            pending = tuple(child for child in executable if child.state in SELECTABLE_STATES)
             if not pending:
                 continue
             first_kind = work_kind_of(pending[0])
@@ -196,7 +197,7 @@ def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]
 
         if block.block_type not in STEP_TYPES or block.block_id in grouped_children:
             continue
-        if block.state != "pending":
+        if block.state not in SELECTABLE_STATES:
             continue
         if not all(_verified(dep, by_id) for dep in block.depends):
             return (), ()
