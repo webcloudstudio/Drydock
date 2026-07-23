@@ -1071,6 +1071,43 @@ def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
     assert "AssertionError" in detail
 
 
+def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):
+    # We fail stories by AC. Within a feature group built in one pass, only the story whose own
+    # acceptance check failed is closed/failed; a group-mate whose own checks all passed verifies
+    # instead of inheriting the failure. The parent feature still fails until every child verifies.
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### db-ok\n"
+        "Database sanity.\n\n"
+        "```python\n"
+        "assert 1 + 1 == 2\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    (target_dir / "blueprint" / "SERVICE.md").write_text(
+        "SVC SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### service-adds\n"
+        "Service must add two numbers.\n\n"
+        "```python\n"
+        "assert 1 + 1 == 3\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/failed"
+    assert _state(target_dir, "feature-catalog") == "closed/failed"
+    # The verified group-mate carries no borrowed finding; the failed story names its own AC.
+    assert _finding(target_dir, "foundation") is None
+    assert "service-adds" in (_finding(target_dir, "service") or "")
+    assert "service-adds" not in (_finding(target_dir, "foundation") or "")
+
+
 def test_failed_step_marks_failed_and_stops(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     runner = make_runner(ok=False, text="", write_files=False)

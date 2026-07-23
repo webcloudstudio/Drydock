@@ -1972,19 +1972,48 @@ def build_target(
                 ),
                 state=failure_state,
             )
+        # Attribute failure per story: we fail stories by AC. When acceptance ran and the unit
+        # failed on a check, only the story that owns a failed check is ``closed/failed``; a
+        # story whose own checks all passed verifies rather than inheriting a group-mate's
+        # finding. A non-AC failure (execution error, tampered asset, dependency gate, or no
+        # checks at all) is not attributable to one story, so every member fails as before.
+        ac_attributable = status == "failed" and any(not check.passed for check in acceptance)
         for block in unit.steps:
+            own_checks = tuple(
+                check
+                for check in acceptance
+                if (owner := story_by_check.get(check.check_id)) is not None
+                and owner.block_id == block.block_id
+            )
+            own_failed = tuple(check for check in own_checks if not check.passed)
+            if ac_attributable:
+                if own_failed:
+                    block_state: str = "closed/failed"
+                    block_finding: str | None = _failure_finding(
+                        "failed",
+                        "programmatic acceptance failed: "
+                        + ", ".join(check.check_id for check in own_failed),
+                        result,
+                        own_checks,
+                    )
+                else:
+                    block_state = "closed/verified"
+                    block_finding = None
+            else:
+                block_state = state
+                block_finding = finding
             block_fields: dict[str, str | None] = {
-                "state": state,
+                "state": block_state,
                 "evidence": _rel(evidence_path, target_dir),
             }
-            if finding is not None:
-                block_fields["finding"] = finding
+            if block_finding is not None:
+                block_fields["finding"] = block_finding
             elif block.block_type != "spike":
                 # Clear any stale failure reason when a story succeeds; a spike's
                 # ``finding:`` records research output and is never cleared here.
                 block_fields["finding"] = None
             set_block_fields(manifest_path, block.block_id, **block_fields)
-            if status != "failed" and _has_child_acs(plan.blocks, block.block_id):
+            if block_state != "closed/failed" and _has_child_acs(plan.blocks, block.block_id):
                 for child_id in _child_ac_ids(plan.blocks, block.block_id):
                     set_block_fields(manifest_path, child_id, state="closed/verified")
         if unit.is_group and status == "failed":
