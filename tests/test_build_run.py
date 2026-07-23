@@ -1403,6 +1403,31 @@ class TestClassifyFailure:
         assert category == "no build files written"
 
 
+def test_snapshot_ignores_transient_and_generated_paths(tmp_path):
+    """Bytecode caches, tool caches, and .git are not build output and must not register
+    as changed files."""
+    from drydock.build_run import _snapshot_files, _written_files
+
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "commonmark.py").write_text("print('a')\n", encoding="utf-8")
+    before = _snapshot_files(build)
+
+    # Real edit plus a pile of transient churn.
+    (build / "commonmark.py").write_text("print('b')\n", encoding="utf-8")
+    (build / "__pycache__").mkdir()
+    (build / "__pycache__" / "commonmark.cpython-311.pyc").write_bytes(b"\x00bytecode")
+    (build / ".pytest_cache").mkdir()
+    (build / ".pytest_cache" / "CACHEDIR.TAG").write_text("cache\n", encoding="utf-8")
+    (build / ".git").mkdir()
+    (build / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (build / "mod.pyc").write_bytes(b"\x00stray")
+
+    after = _snapshot_files(build)
+    assert set(after) == {"commonmark.py"}
+    assert _written_files(before, after) == ("commonmark.py",)
+
+
 _WITH_STACK = """# MANIFEST: Demo
 state: draft
 

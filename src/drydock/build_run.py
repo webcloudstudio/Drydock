@@ -450,17 +450,47 @@ def _select_build_unit(plan: BuildPlan, step_id: str | None, target: str) -> Bui
     return None
 
 
+# Transient or generated paths that are not build output. They are excluded from the
+# change-detection snapshot so bytecode caches, tool caches, and version-control metadata
+# never register as "files changed" or pollute the build's file delta.
+_SNAPSHOT_IGNORE_DIRS = frozenset({
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".hypothesis",
+    ".tox",
+    ".venv",
+    "node_modules",
+})
+_SNAPSHOT_IGNORE_SUFFIXES = (".pyc", ".pyo")
+
+
+def _is_ignored_snapshot_path(rel: Path) -> bool:
+    """True for transient/generated paths that are not tracked build output."""
+    if any(part in _SNAPSHOT_IGNORE_DIRS for part in rel.parts):
+        return True
+    return rel.suffix in _SNAPSHOT_IGNORE_SUFFIXES
+
+
 def _snapshot_files(root: Path) -> dict[str, FileFingerprint]:
-    """Return a stable fingerprint map for regular files under ``root``."""
+    """Return a stable fingerprint map for regular files under ``root``.
+
+    Transient and generated paths (``__pycache__``, ``*.pyc``, tool caches, ``.git``) are
+    excluded so they never register as build output.
+    """
     snapshots: dict[str, FileFingerprint] = {}
     if not root.is_dir():
         return snapshots
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        rel = str(path.relative_to(root))
+        rel = path.relative_to(root)
+        if _is_ignored_snapshot_path(rel):
+            continue
         data = path.read_bytes()
-        snapshots[rel] = FileFingerprint(size=len(data), digest=sha256(data).hexdigest())
+        snapshots[str(rel)] = FileFingerprint(size=len(data), digest=sha256(data).hexdigest())
     return snapshots
 
 
