@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import textwrap
 import time
@@ -1446,6 +1447,18 @@ def cmd_build_score(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
+_AC_GLYPH = {"PASS": ("✓", "32"), "FAIL": ("✗", "31"), "UNVERIFIED": ("—", "33")}
+
+
+def _ac_mark(status: str) -> str:
+    """Colored glyph plus padded status word. Color is dropped when stdout is not a terminal or
+    ``NO_COLOR`` is set, so captured output stays plain."""
+    glyph, code = _AC_GLYPH.get(status, ("?", "0"))
+    if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
+        glyph = f"\033[{code}m{glyph}\033[0m"
+    return f"{glyph} {status:<10}"
+
+
 def cmd_score_ac(target: str, step: str | None = None) -> int:
     from drydock.config import require_target_dir
     from drydock.score import UNVERIFIED, verify_acs
@@ -1464,18 +1477,30 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     )
     if not report.verdicts:
         print("  No programmatic acceptance assertions in scope.")
-    # List every non-passing AC with its owning Blueprint file, intent, and the failing detail,
-    # so a failed check is legible without opening the evidence.
+    else:
+        print()
+    # One line per AC that ran, with its owning feature/story and Blueprint file. A pass is the
+    # line alone; a non-pass adds its intent and failing detail so it is legible without opening
+    # the evidence.
+    owners = {
+        v.criterion_id: "/".join(part for part in (v.feature, v.story) if part)
+        for v in report.verdicts
+    }
+    id_width = max((len(v.criterion_id) for v in report.verdicts), default=0)
+    owner_width = max((len(owner) for owner in owners.values()), default=0)
     for verdict in report.verdicts:
+        owner = owners[verdict.criterion_id].ljust(owner_width)
+        mark = _ac_mark(verdict.status)
+        print(
+            f"  {mark}  {verdict.criterion_id.ljust(id_width)}  {owner}  {verdict.source}".rstrip()
+        )
         if verdict.status == "PASS":
             continue
-        source = f"  ({verdict.source})" if verdict.source else ""
-        print()
-        print(f"  {verdict.status}  {verdict.criterion_id}{source}")
         if verdict.summary.strip():
             print(f"        intent: {verdict.summary.strip()}")
         for line in (verdict.evidence or "").strip().splitlines() or ["(no detail captured)"]:
             print(f"        {line}")
+        print()
     if report.wrote_soundings:
         print()
         print(f"Soundings: {report.soundings_path}")

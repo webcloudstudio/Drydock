@@ -214,6 +214,32 @@ def test_verify_acs_scopes_to_a_single_story(tmp_path):
     assert report.scope == "alpha"
 
 
+def test_verify_acs_attributes_each_verdict_to_its_story_and_feature(tmp_path):
+    target_dir = _scoped_target(tmp_path)
+
+    report = verify_acs("Demo", target_dir)
+
+    owners = {v.criterion_id: (v.feature, v.story) for v in report.verdicts}
+    assert owners["alpha-proof"] == ("feat-alpha", "alpha")
+    assert owners["beta-proof"] == ("feat-beta", "beta")
+
+
+def test_score_ac_lists_every_verdict_with_owner(tmp_path, capsys, monkeypatch):
+    from drydock import cli
+
+    target_dir = _scoped_target(tmp_path)
+    monkeypatch.setattr("drydock.config.require_target_dir", lambda target: target_dir)
+
+    exit_code = cli.cmd_score_ac("Demo")
+
+    out = capsys.readouterr().out
+    assert exit_code == 1
+    # Every AC is listed, passing ones as a single line with no detail.
+    assert "✓ PASS" in out and "alpha-proof" in out and "feat-alpha/alpha" in out
+    assert "✗ FAIL" in out and "beta-proof" in out and "feat-beta/beta" in out
+    assert "ALPHA.md" in out and "BETA.md" in out
+
+
 def test_verify_acs_unknown_step_lists_valid_ids(tmp_path):
     from drydock.errors import SpecificationError
 

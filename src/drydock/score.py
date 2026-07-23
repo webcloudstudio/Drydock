@@ -74,6 +74,10 @@ class AcVerdict:
     status: str  # PASS | FAIL | UNVERIFIED
     evidence: str
     source: str = ""
+    # Owning plan blocks, resolved from the story that implements ``source``. Empty when the
+    # Blueprint file is not claimed by any story in the Manifest.
+    story: str = ""
+    feature: str = ""
 
 
 @dataclass(frozen=True)
@@ -154,6 +158,22 @@ def _scoped_checks(plan: BuildPlan, blueprint_dir: Path, block) -> tuple:
     return tuple(checks)
 
 
+def _blueprint_owners(plan: BuildPlan) -> dict[str, tuple[str, str]]:
+    """Map each implemented Blueprint file name to its ``(story_id, feature_id)`` owner.
+
+    First claimant wins, matching the dedupe order of ``all_programmatic_acceptance``, so a file
+    implemented by two stories is attributed to the same story the assertion came from.
+    """
+    owners: dict[str, tuple[str, str]] = {}
+    for block in plan.blocks:
+        if block.block_type not in {"story", "spike"}:
+            continue
+        for name in block.fields.get("implements", ()):
+            if isinstance(name, str) and name not in owners:
+                owners[name] = (block.block_id, block.parent or "")
+    return owners
+
+
 def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> AcReport:
     """Verify Blueprint acceptance assertions deterministically.
 
@@ -180,12 +200,16 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
         checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
     )
 
+    owners = _blueprint_owners(plan)
     verdicts: list[AcVerdict] = []
     rows: list[Sounding] = []
     for obs in observations:
         status, evidence = _observation_verdict(obs)
         stamp = verified_at if status != UNVERIFIED else ""
-        verdicts.append(AcVerdict(obs.check_id, obs.intent, status, evidence, obs.source))
+        story, feature = owners.get(obs.source, ("", ""))
+        verdicts.append(
+            AcVerdict(obs.check_id, obs.intent, status, evidence, obs.source, story, feature)
+        )
         rows.append(
             Sounding(
                 criterion_id=obs.check_id,
