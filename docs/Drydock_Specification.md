@@ -450,12 +450,12 @@ Implement the Blueprint using the Manifest
 ### Commands
 
 ```text
-drydock build <Target> [--build-dir <path>]
+drydock build <Target> [--continue] [--repair-attempts <n>] [--escalate-model <model>] [--build-dir <path>]
+drydock build <Target> --step <STEP> [--reset] [--build-dir <path>]
+drydock build <Target> --story <STORY> [--reset] [--build-dir <path>]
+drydock build <Target> --reset [--build-dir <path>]
 drydock build <Target> --dry-run [--show-prompt] [--build-dir <path>]
-drydock build <Target> --reset-failed [--build-dir <path>]
 drydock build <Target> --normalize-order [--build-dir <path>]
-drydock build <Target> --step <STEP> [--build-dir <path>]
-drydock build <Target> --step <STEP> --force
 drydock build status <Target>
 drydock score ac <Target>
 drydock score release <Target>
@@ -504,12 +504,7 @@ Passing programmatic acceptance unlocks the next set of dependent operations.
 
 ### drydock build
 
-Build converts blueprints to code based on the `MANIFEST.md` or dependency graph. 
-
-Individual stories are validated once created using the deterministic acceptance criteria they contain.
-
-The build is done in "blocks" of stories.  This grouping is created by `drydock plan`. The commander can control
-grouping and build order in the Quarterdeck.
+`drydock build` converts Blueprints to code, executing the dependency-ready frontier of `MANIFEST.md` one block of stories at a time. Blocks are grouped by `drydock plan`, and the Commander controls grouping and build order in the QuarterDeck. Each story is validated against the deterministic acceptance criteria it declares, and a block advances only when its criteria pass. A block that fails resumes in place on the next build: its partial work is kept and its failing checks are fed back, so `drydock build` continues where it left off by default.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -551,12 +546,15 @@ are read-only inputs recorded by content digest. A step that modifies one fails 
 restored; `drydock score` reports a modified staged asset as a release blocker.
 
 ```text
-  `--build-dir` overrides the output directory for the current run.
-  `--reset-failed` resets failed Manifest blocks and retries them. 
-  `--normalize-order` normalizes authored Manifest group order before building. 
-  `--step <STEP>` builds one named step 
-  `--force` resets that step and its child acceptance checks before rebuilding it.
-  `--dry-run` previews the next build step without invoking the LLM or writing files. 
+  `--continue` resumes the frontier in place; this is the default.
+  `--step <STEP>` builds one block: a feature group, or a story resolved to its containing block.
+  `--story <STORY>` builds exactly one story, even inside a feature group.
+  `--reset` discards prior work and rebuilds clean; with `--step`/`--story` it resets that block, and with no selector it resets every block and wipes the build directory.
+  `--repair-attempts <n>` sets the number of automatic repair passes after a failed block (default 1).
+  `--escalate-model <model>` uses an alternate model on the final repair attempt.
+  `--normalize-order` normalizes authored Manifest group order before building.
+  `--build-dir <path>` overrides the output directory for the current run.
+  `--dry-run` previews the next build step without invoking the LLM or writing files.
   `--show-prompt` prints the full assembled prompt only when combined with `--dry-run`.
 ```
 
