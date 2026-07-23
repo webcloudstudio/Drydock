@@ -951,6 +951,27 @@ def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
     assert result.exit_code() == 1
 
 
+def test_failure_recovery_names_the_specific_rebuild_step_command(tmp_path):
+    # A failed block is left closed/failed, so a plain rerun will not retry it. The recorded
+    # recovery must name the exact --step --force command that rebuilds this step.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-file\n"
+        "Foundation writes the expected marker.\n\n"
+        "```python\n"
+        "assert False\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert "drydock build Demo --step foundation --force" in error_text
+
+
 def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
     (target_dir / "blueprint" / "SERVICE.md").write_text(

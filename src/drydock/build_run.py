@@ -1700,6 +1700,10 @@ def build_target(
                 )
                 else "Error"
             )
+            # A failed block is left ``closed/failed``; a plain ``drydock build`` will not retry it.
+            # Name the exact command that rebuilds this step so recovery is one copy-paste, not a
+            # command that silently does nothing.
+            rebuild_cmd = f"drydock build {target} --step {unit.block_id} --force"
             write_error_record(
                 target_dir,
                 command="build",
@@ -1709,9 +1713,9 @@ def build_target(
                 execution_id=execution_id,
                 evidence=evidence_path,
                 recovery=(
-                    f"Review the evidence, correct the failure, then run: drydock build {target}"
+                    f"Review the evidence, correct the failure, then run: {rebuild_cmd}"
                     if failure_state == "Failed"
-                    else f"Inspect the execution evidence, correct the execution issue, then run: drydock build {target}"
+                    else f"Inspect the execution evidence, correct the execution issue, then run: {rebuild_cmd}"
                 ),
                 state=failure_state,
             )
