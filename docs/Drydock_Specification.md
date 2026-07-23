@@ -457,7 +457,7 @@ drydock build <Target> --reset [--build-dir <path>]
 drydock build <Target> --dry-run [--show-prompt] [--build-dir <path>]
 drydock build <Target> --normalize-order [--build-dir <path>]
 drydock build status <Target>
-drydock score ac <Target>
+drydock score ac <Target> [--step <id>]
 drydock score release <Target>
 
 drydock document generate <Target> [--model <model>]
@@ -575,7 +575,7 @@ drydock build status <Target>   # print per-block state and current runnable fro
 `drydock score` rates the build and can run in two modes. 
 
 ```text
-drydock score ac <Target>
+drydock score ac <Target> [--step <id>]
 drydock score release <Target>
 ```
 
@@ -585,6 +585,8 @@ The Commander scans checkmarks in the QuarterDeck instead of granting approvals.
 blueprint acceptance criteria to SOUNDINGS.md with a status of `✓ PASS`, `✗ FAIL`, or `— UNVERIFIED` and a timestamp.
 Criteria with vacuous proof — an empty body, a constant assertion, or a self-comparison — is demoted to `UNVERIFIED` rather than trusted.
 `drydock score ac` is deterministic.
+
+`--step <id>` scopes verification to a single feature or story, resolved by id or display name. A scoped run verifies only that block's acceptance criteria, prints each result with its Blueprint source and failing detail, and leaves `SOUNDINGS.md` unchanged.
 
 `drydock score release` is an LLM pass to evaluates the project-level criteria in `SEA_TRIALS.md`. 
 `SEA_TRIALS.md` contains criteria are expressed in EARS notation. The LLM  judges the project and reports the release verdict. 
@@ -609,7 +611,7 @@ is rejected.
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `SOUNDINGS.md` | Target root | Per-criterion verified status, evidence, and timestamp (`score ac`) |
+| `SOUNDINGS.md` | Target root | Per-criterion verified status, evidence, and timestamp (whole-target `score ac`; a `--step` run leaves it unchanged) |
 | `SCORECARD.md` | Target root | Release scoring results, verdicts, and blockers (`score release`) |
 
 **Exit codes**

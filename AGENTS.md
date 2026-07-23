@@ -41,8 +41,12 @@ Drydock/
   tests/             Pytest unit, CLI, and integration tests
   bin/               Source-tree launchers; no business logic
   prompts/           Versioned LLM prompt contracts used by commands
-  docs/              Authoritative specification, Soundings, Sea Trials, and owned documentation
+  docs/              Authoritative specification and documentation
+  logs/              The Drydock Logs, The prompts, and a full Drydock Run History
   dist/              Build artifacts; not committed
+  targets/<PROJECT>  Project Workspace containing run artifacts
+  targets/<PROJECT>/blueprint  Latest project Blueprints
+  targets/<PROJECT>/blueprint/sources  Imported User Sources (for read only)
 ```
 Business logic belongs in importable `src/drydock/` modules. Shell and PowerShell files in `bin/`
 only locate the environment and invoke the package entry point.
