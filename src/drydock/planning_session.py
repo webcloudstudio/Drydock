@@ -1332,8 +1332,12 @@ _CORPUS_INVOCATION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Explicit opt-in that makes a full-corpus story gate deliberate rather than accidental.
-_CORPUS_FULL_RE = re.compile(r"^Corpus:\s*full\s*$", re.MULTILINE | re.IGNORECASE)
+# Explicit opt-in that makes a full-suite story gate deliberate rather than accidental.
+# Mirrors ``acceptance._full_suite``: ``Suite:`` is canonical, ``Corpus:`` is the accepted
+# legacy spelling, and both ``full`` and ``scoped`` declare a deliberate suite-bound run.
+_SUITE_MARKER_RE = re.compile(
+    r"^(?:Suite|Corpus):\s*(?:full|scoped)\s*$", re.MULTILINE | re.IGNORECASE
+)
 
 
 def _invokes_unbounded_corpus(acceptance: str) -> bool:
@@ -1341,7 +1345,7 @@ def _invokes_unbounded_corpus(acceptance: str) -> bool:
 
     Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
     whole suite: it may stage the corpus, or select a slice with ``--pattern`` / ``--number``.
-    The terminal verification story gates on the real corpus by declaring ``Corpus: full`` in
+    The terminal verification story gates on the real suite by declaring ``Suite: full`` in
     the assertion's heading block, which makes the full run deliberate and reviewable.
     """
     if "--pattern" in acceptance or "--number" in acceptance:
@@ -1360,7 +1364,7 @@ def _invokes_unbounded_corpus(acceptance: str) -> bool:
         if not _CORPUS_INVOCATION_RE.search(window):
             continue
         # The declaration sits in the heading block above the fenced code.
-        if _CORPUS_FULL_RE.search("\n".join(lines[: index + 1])):
+        if _SUITE_MARKER_RE.search("\n".join(lines[: index + 1])):
             continue
         return True
     return False

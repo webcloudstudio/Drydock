@@ -2106,3 +2106,31 @@ def test_suite_bound_acceptance_is_accepted_when_declared(tmp_path):
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
     assert "story-status" in result.plan.by_id()
+
+
+def test_suite_bound_acceptance_accepts_canonical_suite_marker(tmp_path):
+    """The current prompt emits the canonical ``Suite: full`` marker; the plan gate must
+    exempt it exactly as the executor's ``acceptance._full_suite`` does, not only the legacy
+    ``Corpus:`` spelling."""
+    _make_target(tmp_path)
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    ).replace(
+        "## Programmatic Acceptance\n\n",
+        "## Programmatic Acceptance\n\n"
+        "### conformance-full\nSuite: full\nThe full conformance suite passes.\n\n"
+        "```python\n"
+        "import subprocess, sys\n"
+        'subprocess.run([sys.executable, "sources/spec_tests.py"], check=True)\n'
+        "```\n\n",
+    )
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert "story-status" in result.plan.by_id()
