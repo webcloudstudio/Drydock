@@ -188,21 +188,26 @@ def _dirty_paths(path: Path) -> tuple[str, ...]:
     return tuple(line for line in result.stdout.splitlines() if line.strip())
 
 
-def _ensure_drydock_source_clean() -> None:
-    """Block build agents when the Drydock implementation checkout is dirty."""
+def _ensure_drydock_source_clean() -> str | None:
+    """Return an advisory warning when the Drydock checkout is dirty, else None.
+
+    A dirty implementation checkout is informative to a Drydock developer but is not a
+    production concern: a user may keep unrelated or in-progress files in the tree, and
+    piping the build through ``tee`` dirties the tree mid-run. The build reports the
+    condition and continues rather than blocking.
+    """
     try:
         repo_root = get_repo_root()
     except FileNotFoundError:
-        return
+        return None
     dirty = _dirty_paths(repo_root)
     if not dirty:
-        return
+        return None
     preview = "\n".join(f"  {line}" for line in dirty[:20])
     omitted = len(dirty) - 20
     suffix = f"\n  ... {omitted} more" if omitted > 0 else ""
-    raise SpecificationError(
-        "Build blocked: uncommitted changes exist in the Drydock repository. "
-        "Commit or stash Drydock changes before running `drydock build`.\n"
+    return (
+        "WARNING: uncommitted changes exist in the Drydock repository; continuing.\n"
         f"{preview}{suffix}"
     )
 
@@ -306,6 +311,7 @@ class BuildResult:
     drydock_commit_skipped_after_build: bool = False
     readme_path: Path | None = None
     dry_run: bool = False
+    no_git: bool = False
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -1278,11 +1284,14 @@ def build_target(
     force: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
+    no_git: bool = False,
     dependency_registry_client: RegistryClient | None = None,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates."""
     run = runner if runner is not None else run_prompt
-    _ensure_drydock_source_clean()
+    source_warning = _ensure_drydock_source_clean()
+    if source_warning:
+        _emit(on_text, source_warning)
 
     manifest_path = target_dir / "MANIFEST.md"
     if not manifest_path.is_file():
@@ -1294,7 +1303,8 @@ def build_target(
     git_initialized = False
     if not dry_run:
         resolved_build_dir.mkdir(parents=True, exist_ok=True)
-        git_initialized = _ensure_git_repo(resolved_build_dir)
+        if not no_git:
+            git_initialized = _ensure_git_repo(resolved_build_dir)
         evidence_dir = target_dir / "evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -1829,7 +1839,7 @@ def build_target(
         # A distinct commit subject marks the failure. Only a dry run skips the commit.
         git_commit, git_commit_message = (
             (None, None)
-            if dry_run
+            if dry_run or no_git
             else _commit_build_dir(resolved_build_dir, target, today, failed=build_failed)
         )
     except Exception as exc:
@@ -1848,8 +1858,10 @@ def build_target(
 
             _refresh_chair(target_dir)
         raise
-    drydock_commit_skipped_after_build = git_commit is None and any(
-        step.status in {"built", "implemented"} and step.written_files for step in steps
+    drydock_commit_skipped_after_build = (
+        not no_git
+        and git_commit is None
+        and any(step.status in {"built", "implemented"} and step.written_files for step in steps)
     )
 
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
@@ -1880,4 +1892,5 @@ def build_target(
         drydock_commit_skipped_after_build=drydock_commit_skipped_after_build,
         readme_path=readme_path,
         dry_run=dry_run,
+        no_git=no_git,
     )

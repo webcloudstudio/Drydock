@@ -1438,17 +1438,35 @@ state: pending
 
 
 class TestDirtyGuard:
-    def test_dirty_drydock_source_blocks_build(self, tmp_path, monkeypatch):
+    def test_dirty_drydock_source_warns_and_continues(self, tmp_path, monkeypatch):
+        """A dirty Drydock checkout is advisory, not a block: the build surfaces the warning
+        and proceeds (the autouse fixture otherwise stubs the guard to silence)."""
         import drydock.build_run as br
-        from drydock.errors import SpecificationError
 
-        monkeypatch.setattr(br, "get_repo_root", lambda: tmp_path / "Drydock")
-        monkeypatch.setattr(br, "_dirty_paths", lambda p: (" M src/drydock/build_run.py",))
+        warning = "WARNING: uncommitted changes exist in the Drydock repository; continuing."
+        monkeypatch.setattr(br, "_ensure_drydock_source_clean", lambda: warning)
 
         target_dir, build_dir = _setup(tmp_path)
+        log: list[str] = []
 
-        with pytest.raises(SpecificationError, match="Drydock repository"):
-            build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+        result = build_target(
+            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append
+        )
+
+        assert result.exit_code() == 0
+        assert any(warning in line for line in log)
+
+    def test_no_git_skips_repo_init_and_commit(self, tmp_path, monkeypatch):
+        """--no-git (no_git=True) builds without creating a repo or a commit."""
+        target_dir, build_dir = _setup(tmp_path)
+        result = build_target(
+            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), no_git=True
+        )
+        assert result.exit_code() == 0
+        assert result.no_git is True
+        assert result.git_initialized is False
+        assert result.git_commit is None
+        assert not (build_dir / ".git").exists()
 
     def test_dirty_stack_dir_blocks_build(self, tmp_path, monkeypatch):
         import drydock.build_run as br
