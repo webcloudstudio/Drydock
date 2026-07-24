@@ -9,6 +9,7 @@ import sys
 import textwrap
 import time
 import traceback
+from contextlib import nullcontext, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from typing import NoReturn
@@ -2560,6 +2561,15 @@ def _standoff_diagnosis(
         return
 
 
+def _command_log_name(args: argparse.Namespace) -> str:
+    parts = [getattr(args, "command", None) or "drydock"]
+    for attribute in ("config_command", "rigging_command", "prompt_command", "run_command"):
+        value = getattr(args, attribute, None)
+        if value:
+            parts.append(value)
+    return "_".join(parts)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     raw_argv = argv if argv is not None else sys.argv[1:]
@@ -2571,44 +2581,57 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Drydock {__version__}  {__copyright__}", file=sys.stderr)
     debug = getattr(args, "debug", False)
 
+    command_logging = None
     try:
         from drydock.config import get_workspace
-        from drydock.logging import setup_run_logger
+        from drydock.logging import setup_command_logging
 
         log_dir = get_workspace() / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        setup_run_logger(log_dir / "run.log", debug=debug)
+        command_logging = setup_command_logging(
+            log_dir,
+            _command_log_name(args),
+            stdout=sys.stdout,
+            debug=debug,
+        )
         logger.info("command: %s", " ".join(sys.argv if argv is None else argv))
     except Exception:
         pass  # log setup failure must not prevent the command from running
 
     exit_code = 0
+    stdout_context = (
+        redirect_stdout(command_logging.stdout) if command_logging is not None else nullcontext()
+    )
     try:
-        exit_code = _dispatch(args, parser)
-    except UsageError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        exit_code = 2
-    except RecordedError as exc:
-        print(_render_recorded_error(exc.record), file=sys.stderr)
-        exit_code = 1
-        _standoff_diagnosis(args, argv, record=exc.record)
-    except DrydockError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        exit_code = 1
-    except SystemExit as exc:
-        exit_code = exc.code if isinstance(exc.code, int) else 1
-    except Exception as exc:
-        if debug:
-            traceback.print_exc()
-        else:
-            print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
-            print("Run with --debug for a full traceback.", file=sys.stderr)
-        exit_code = 1
-        _standoff_diagnosis(args, argv, exc=exc)
+        with stdout_context:
+            try:
+                exit_code = _dispatch(args, parser)
+            except UsageError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                exit_code = 2
+            except RecordedError as exc:
+                print(_render_recorded_error(exc.record), file=sys.stderr)
+                exit_code = 1
+                _standoff_diagnosis(args, argv, record=exc.record)
+            except DrydockError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                exit_code = 1
+            except SystemExit as exc:
+                exit_code = exc.code if isinstance(exc.code, int) else 1
+            except Exception as exc:
+                if debug:
+                    traceback.print_exc()
+                else:
+                    print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
+                    print("Run with --debug for a full traceback.", file=sys.stderr)
+                exit_code = 1
+                _standoff_diagnosis(args, argv, exc=exc)
 
-    try:
-        _log_command_history(args, argv, exit_code)
-    except Exception:
-        pass  # history logging must never change the command's outcome
+            try:
+                _log_command_history(args, argv, exit_code)
+            except Exception:
+                pass  # history logging must never change the command's outcome
+    finally:
+        if command_logging is not None:
+            command_logging.close()
 
     sys.exit(exit_code)

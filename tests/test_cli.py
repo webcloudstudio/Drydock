@@ -163,6 +163,22 @@ class TestHelpAndVersion:
         assert __copyright__ in err
         assert __version__ in err
 
+    def test_status_writes_plain_transcript_and_separate_debug_log(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+
+        rc, out, err = run_cli("status")
+
+        assert rc == 0, err
+        transcripts = list((tmp_workspace / "logs").glob("*_status.log"))
+        debug_logs = list((tmp_workspace / "logs").glob("*_status.debug.log"))
+        assert len(transcripts) == 1
+        assert len(debug_logs) == 1
+        assert transcripts[0].read_text(encoding="utf-8") == out
+        assert "INFO" not in transcripts[0].read_text(encoding="utf-8")
+        assert "command: status" in debug_logs[0].read_text(encoding="utf-8")
+
 
 class TestPromptReview:
     def test_help_lists_review_subcommand(self):

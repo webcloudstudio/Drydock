@@ -66,7 +66,7 @@ class ExecutionArtifacts:
             records_file=logs / "executions.jsonl",
             events_file=logs / "events.jsonl",
             prompt_file=base.with_suffix(".prompt.md"),
-            log_file=base.with_suffix(".log"),
+            log_file=base.with_suffix(".debug.log"),
             raw_file=base.with_suffix(".raw.jsonl"),
             output_file=base.with_suffix(".output.txt"),
             stderr_file=base.with_suffix(".stderr.log"),

@@ -1,55 +1,121 @@
-"""Standard logging configuration for Drydock — run logger and per-execution logger."""
+"""Command transcripts, debug logs, and per-execution logging for Drydock."""
 
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import time
-from logging.handlers import RotatingFileHandler
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
-_RUN_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file
-_RUN_LOG_BACKUP_COUNT = 5  # keep run.log + 5 rotated copies
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def setup_run_logger(log_file: Path, *, debug: bool = False) -> None:
-    """Attach a rotating file handler (and optional stderr handler) to the drydock root logger.
+class StdoutTee:
+    """Copy stdout to a plain-text command transcript without changing terminal behavior."""
 
-    All modules that use ``logging.getLogger(__name__)`` under the ``drydock.*``
-    hierarchy automatically inherit these handlers. ``--debug`` also routes DEBUG
-    lines to stderr so they appear in the terminal alongside normal output.
-    """
-    log_file.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, terminal: TextIO, transcript: TextIO) -> None:
+        self._terminal = terminal
+        self._transcript = transcript
+
+    def write(self, text: str) -> int:
+        written = self._terminal.write(text)
+        self._transcript.write(_ANSI_ESCAPE_RE.sub("", text))
+        return written
+
+    def flush(self) -> None:
+        self._terminal.flush()
+        self._transcript.flush()
+
+    def isatty(self) -> bool:
+        return self._terminal.isatty()
+
+    @property
+    def encoding(self) -> str | None:
+        return self._terminal.encoding
+
+    @property
+    def errors(self) -> str | None:
+        return self._terminal.errors
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._terminal, name)
+
+
+@dataclass
+class CommandLogging:
+    transcript_path: Path
+    debug_path: Path
+    stdout: StdoutTee
+    _transcript: TextIO
+    _handlers: tuple[logging.Handler, ...]
+
+    def close(self) -> None:
+        root = logging.getLogger("drydock")
+        for handler in self._handlers:
+            root.removeHandler(handler)
+            handler.close()
+        self._transcript.close()
+
+
+def _command_slug(command_name: str) -> str:
+    slug = _SLUG_RE.sub("-", command_name.strip()).strip("-._").lower()
+    return slug or "drydock"
+
+
+def setup_command_logging(
+    log_dir: Path,
+    command_name: str,
+    *,
+    stdout: TextIO,
+    debug: bool = False,
+) -> CommandLogging:
+    """Create one plain stdout transcript and one internal debug log for a CLI invocation."""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    base = log_dir / f"{timestamp}_{_command_slug(command_name)}"
+    transcript_path = base.with_suffix(".log")
+    debug_path = base.with_suffix(".debug.log")
+    transcript = transcript_path.open("w", encoding="utf-8", newline="")
 
     root = logging.getLogger("drydock")
     root.setLevel(logging.DEBUG)
 
-    fmt = logging.Formatter(
+    formatter = logging.Formatter(
         "%(asctime)sZ  %(levelname)-7s  %(name)s  %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
-    fmt.converter = time.gmtime
+    formatter.converter = time.gmtime
 
-    fh = RotatingFileHandler(
-        log_file,
-        maxBytes=_RUN_LOG_MAX_BYTES,
-        backupCount=_RUN_LOG_BACKUP_COUNT,
-        encoding="utf-8",
-    )
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-    root.addHandler(fh)
+    file_handler = logging.FileHandler(debug_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
+    handlers: list[logging.Handler] = [file_handler]
 
     if debug:
-        sh = logging.StreamHandler(sys.stderr)
-        sh.setLevel(logging.DEBUG)
-        sh.setFormatter(logging.Formatter("%(levelname)-7s  %(name)s  %(message)s"))
-        root.addHandler(sh)
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.DEBUG)
+        console_handler.setFormatter(logging.Formatter("%(levelname)-7s  %(name)s  %(message)s"))
+        root.addHandler(console_handler)
+        handlers.append(console_handler)
+
+    return CommandLogging(
+        transcript_path=transcript_path,
+        debug_path=debug_path,
+        stdout=StdoutTee(stdout, transcript),
+        _transcript=transcript,
+        _handlers=tuple(handlers),
+    )
 
 
 def create_execution_logger(
     execution_id: str,
-    log_file: Path,
+    debug_file: Path,
     *,
     debug: bool,
 ) -> logging.Logger:
@@ -63,7 +129,7 @@ def create_execution_logger(
     )
     formatter.converter = time.gmtime
 
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler = logging.FileHandler(debug_file, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 

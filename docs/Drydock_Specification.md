@@ -1370,10 +1370,6 @@ updated by `drydock refit` as specification files and application code evolve.
   the command line, timestamp, target, and return code. Pure-report commands are excluded
   - Created and updated: the CLI, on every recorded command
 
-- **`logs/run.log`** — rotating per-command execution log capturing diagnostic output for each run.
-  Drydock keeps the active `run.log` plus five rotated copies, `run.log.1` through `run.log.5`
-  - Created and updated: the CLI run logger, on every command
-
 **Console related documents** — generated per target project; read by the QuarterDeck and updated by
 build and review actions.
 

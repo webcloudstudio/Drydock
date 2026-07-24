@@ -166,6 +166,7 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert result.stats.input_tokens == 10
     assert result.command[-2:] == ("--model", "sonnet")
     assert "plan-create_claude" in result.artifacts.log_file.name
+    assert result.artifacts.log_file.name.endswith(".debug.log")
     assert result.artifacts.prompt_file.read_text() == "Reply READY"
     assert result.artifacts.output_file.read_text() == "READY"
     assert "execution started" in result.artifacts.log_file.read_text()
