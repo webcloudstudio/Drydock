@@ -315,7 +315,7 @@ def _wall_time() -> str:
 
 def _print_run_header(*, llm: str, command_name: str, model: str | None) -> None:
     print(
-        f"[llm] START {command_name} {llm}/{model or '-'}  started={_wall_time()}",
+        f"{_wall_time()}  Calling {llm.upper()}/{model or '-'} ({command_name})...",
         file=sys.stderr,
         flush=True,
     )
@@ -356,7 +356,7 @@ def _performance_summary(
     model = stats.model or requested_model or "-"
     elapsed = _format_ms(stats.elapsed_ms) or "-"
     parts = [
-        f"[llm] DONE {command_name} {llm}/{model}",
+        f"{_wall_time()}  Completed {llm.upper()}/{model} ({command_name})",
         f"rc={returncode}",
         f"elapsed={elapsed}",
     ]
@@ -366,20 +366,19 @@ def _performance_summary(
     if stats.turns is not None:
         parts.append(f"turns={stats.turns}")
     if stats.input_tokens is not None:
-        parts.append(f"in={stats.input_tokens}")
+        parts.append(f"in={stats.input_tokens:,}")
     if stats.cached_input_tokens is not None:
-        parts.append(f"cached={stats.cached_input_tokens}")
+        parts.append(f"cached={stats.cached_input_tokens:,}")
     if stats.cache_creation_input_tokens is not None:
-        parts.append(f"cache_write={stats.cache_creation_input_tokens}")
+        parts.append(f"cache_write={stats.cache_creation_input_tokens:,}")
     if stats.output_tokens is not None:
-        parts.append(f"out={stats.output_tokens}")
+        parts.append(f"out={stats.output_tokens:,}")
         if stats.elapsed_ms and stats.elapsed_ms > 0:
-            parts.append(f"out_tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
+            parts.append(f"tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
     cost = _format_cost(stats.cost_usd)
     if cost is not None:
         parts.append(f"cost={cost}")
     parts.append(f"id={execution_id}")
-    parts.append(f"completed={_wall_time()}")
     return "  ".join(parts)
 
 

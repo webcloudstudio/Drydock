@@ -754,7 +754,7 @@ def test_debug_details_are_not_persisted_or_printed_without_debug(tmp_path, monk
     stderr = capsys.readouterr().err
     assert "parameters=" not in stderr
     assert "parts=" not in stderr
-    assert "[llm]" in stderr
+    assert "Completed CLAUDE" in stderr
     assert "elapsed=" in stderr
 
 
@@ -796,7 +796,7 @@ def test_done_line_falls_back_to_requested_model():
         stats=LlmStats(model=None, elapsed_ms=1000),
         requested_model="gpt-5.6-luna",
     )
-    assert "[llm] DONE plan codex/gpt-5.6-luna" in line
+    assert "Completed CODEX/gpt-5.6-luna (plan)" in line
 
 
 def test_done_line_prefers_reported_model_over_requested():
@@ -810,7 +810,7 @@ def test_done_line_prefers_reported_model_over_requested():
         stats=LlmStats(model="claude-opus-4-8", elapsed_ms=1000),
         requested_model="sonnet",
     )
-    assert "[llm] DONE plan claude/claude-opus-4-8" in line
+    assert "Completed CLAUDE/claude-opus-4-8 (plan)" in line
 
 
 # --- Provider process lifecycle -------------------------------------------------------

@@ -529,7 +529,7 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert "DRY RUN ASSEMBLED FILES" in log
     assert any(line.startswith("  Role") for line in log)
     assert any("implements" in line and "DATABASE.md" in line for line in log)
-    assert any(line == "BUILD BLOCK: Catalog [feature-catalog]" for line in log)
+    assert any("Start BUILD BLOCK: Catalog [feature-catalog]" in line for line in log)
     assert any(line.startswith("DRY RUN PROMPT: assembled") for line in log)
     assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in log
     assert "DRY RUN PROMPT BEGIN" not in log
@@ -588,12 +588,15 @@ def test_build_emits_step_progress_lines(tmp_path):
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
 
-    assert any(line == "BUILD BLOCK: Foundation [foundation]" for line in log)
-    assert any(line == "  Type: story" for line in log)
-    assert any(line == "  Stories Included: 1 run, 0 already verified" for line in log)
-    assert any(re.match(r"  Combined Story Points: \d+", line) for line in log)
-    assert any(re.match(r"  Started: \d{4}-\d{2}-\d{2} ", line) for line in log)
-    assert any(line == f"Workdir: {build_dir}" for line in log)
+    assert any(
+        re.match(
+            r"\d{4}-\d{2}-\d{2} .* Start BUILD BLOCK: Foundation \[foundation\]"
+            r"  \(story, 1 run / 0 verified, \d+ SP\)",
+            line,
+        )
+        for line in log
+    )
+    assert any(line == f"  Workdir: {build_dir}" for line in log)
     assert any(line == "  [run] Foundation (foundation)" for line in log)
     assert any(
         line == "BUILD BLOCK RETURNED: Foundation [foundation]  ok=True  id=exec-1" for line in log
@@ -602,10 +605,14 @@ def test_build_emits_step_progress_lines(tmp_path):
         line == "BUILD BLOCK FILES: Foundation [foundation]  1 changed: foundation.txt"
         for line in log
     )
-    assert any(line == "BUILD BLOCK COMPLETE: Foundation [foundation]" for line in log)
-    assert any(line == "  State: closed/verified" for line in log)
-    assert any(re.match(r"  Completed: \d{4}-\d{2}-\d{2} ", line) for line in log)
-    assert any(line.startswith("  Elapsed: ") for line in log)
+    assert any(
+        re.match(
+            r"\d{4}-\d{2}-\d{2} .* Complete BUILD BLOCK: Foundation \[foundation\]"
+            r"  \(closed/verified, .*\)",
+            line,
+        )
+        for line in log
+    )
     assert any(line == "  Evidence: evidence/foundation.md" for line in log)
 
 
