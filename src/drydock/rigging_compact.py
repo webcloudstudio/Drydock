@@ -196,17 +196,17 @@ def ensure_compact_files(
 
     for item in result.items:
         role = f"{item.role} via {item.prompt_name}.md"
+        # No-op refreshes (already fresh / structurally unchanged) do no work and are
+        # not worth a console line during a build; only report work done or errors.
         if item.status == "compacted":
             detail = f"{item.compact.name} refreshed from {item.source.name}"
-        elif item.status == "skipped-fresh":
-            detail = f"{item.compact.name} already fresh for {item.source.name}"
-        elif item.status == "skipped-unchanged":
-            detail = f"{item.compact.name} unchanged for {item.source.name} (no structural change)"
         elif item.status == "no-surface":
             detail = f"{item.source.name} rejected: {item.error}"
-        else:
+        elif item.status == "failed":
             detail = f"{item.source.name} failed: {item.error}"
-        if on_text is not None:
+        else:
+            detail = None
+        if detail is not None and on_text is not None:
             on_text(f"AUTO-COMPACT: {detail} [{role}] ({reason})")
         if item.status in {"no-surface", "failed"} and item.source.name in _REQUIRED_SOURCES:
             raise SpecificationError(

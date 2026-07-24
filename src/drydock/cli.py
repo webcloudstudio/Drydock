@@ -83,6 +83,39 @@ def _stream_stdout(text: str) -> None:
     _stream_stdout._at_line_start = text.endswith(("\n", "\r"))  # type: ignore[attr-defined]
 
 
+def _stream_build(text: str) -> None:
+    """Render Drydock build progress as one clean status line per message.
+
+    During ``drydock build`` the LLM runs with ``on_text=None``, so every message
+    delivered here is one of Drydock's own status lines, never a model delta.
+    Each line is emitted on its own line and newline-terminated, which keeps
+    stdout at column 0 so the provider's ``[llm]`` lines (written to stderr) never
+    concatenate onto an open build line.
+
+    The one exception is the ``Testing...`` progress token: it is left open so its
+    result (``OK`` / ``FAILED ...``) prints on the same line.
+    """
+    at_line_start = bool(getattr(_stream_build, "_at_line_start", True))
+    if text == "":
+        # Blank separator: close an open line, else emit one blank line.
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        _stream_build._at_line_start = True  # type: ignore[attr-defined]
+        return
+    # Inline result appended to an open progress line (e.g. "Testing...").
+    if not at_line_start and text.startswith(("OK", "FAILED")):
+        sys.stdout.write(" " + text + "\n")
+        sys.stdout.flush()
+        _stream_build._at_line_start = True  # type: ignore[attr-defined]
+        return
+    if not at_line_start:
+        sys.stdout.write("\n")
+    keep_open = text == "Testing..."
+    sys.stdout.write(text if keep_open else text + "\n")
+    sys.stdout.flush()
+    _stream_build._at_line_start = not keep_open  # type: ignore[attr-defined]
+
+
 def _stream_status_only(text: str) -> None:
     """Stream Drydock progress lines and drop model text.
 
@@ -1413,7 +1446,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             model=model,
             llm_provider=llm_provider,
             log_dir=log_dir,
-            on_text=_stream_stdout,
+            on_text=_stream_build,
             on_step=report,
             step_id=getattr(args, "step", None),
             story_id=getattr(args, "story", None),

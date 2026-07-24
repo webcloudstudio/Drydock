@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 
 from drydock import __copyright__, __version__
-from drydock.cli import _print_dimensions, _stream_status_only, _stream_stdout, main
+from drydock.cli import (
+    _print_dimensions,
+    _stream_build,
+    _stream_status_only,
+    _stream_stdout,
+    main,
+)
 
 
 def run_cli(*args: str) -> tuple[int, str, str]:
@@ -50,6 +56,27 @@ class TestHelpAndVersion:
         _stream_stdout("BUILD QUEUE: 1 ready block")
 
         assert capsys.readouterr().out == "partial\nBUILD QUEUE: 1 ready block\n"
+
+    def test_stream_build_terminates_every_line(self, capsys):
+        _stream_build._at_line_start = True  # type: ignore[attr-defined]
+        _stream_build("RESUME: seeding first pass with 1 failing check(s)")
+        _stream_build("REPAIR ATTEMPT 1/1: 1 failing check(s)")
+
+        assert capsys.readouterr().out == (
+            "RESUME: seeding first pass with 1 failing check(s)\n"
+            "REPAIR ATTEMPT 1/1: 1 failing check(s)\n"
+        )
+
+    def test_stream_build_keeps_testing_result_inline(self, capsys):
+        _stream_build._at_line_start = True  # type: ignore[attr-defined]
+        _stream_build("")
+        _stream_build("Testing...")
+        _stream_build("FAILED (2/3): block-conformance")
+        _stream_build("REPAIR ATTEMPT 1/1: 1 failing check(s)")
+
+        assert capsys.readouterr().out == (
+            "\nTesting... FAILED (2/3): block-conformance\nREPAIR ATTEMPT 1/1: 1 failing check(s)\n"
+        )
 
     def test_stream_status_only_drops_model_json_payload(self, capsys):
         """Scoring commands parse the model's JSON; the console must not echo it."""
