@@ -786,10 +786,9 @@ The QuarterDeck is driven by configuration files and markdown from `targets/<Tar
 ```text
 $DRYDOCK_WORKSPACE/                       # explicit config/env or Git top-level — required
 ├── logs/
-│   ├── history.jsonl                     # append-only command-invocation log
-│   └── run.log, run.log.1 … run.log.5    # rotating per-command execution logs
-│   └── Other                             # all commands and llm operations are logged
-│
+│   ├── history.jsonl                     # append-only drydock executions
+│   ├── llm.jsonl                         # append-only llm executions
+│   └── *.log                             # command logs
 └── targets/
     └── <Target>/                         # one self-contained project
         ├── METADATA.md                   # identity: Blueprint name, code_root, status, stack

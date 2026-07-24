@@ -21,7 +21,6 @@ from drydock.config import get_codex_sandbox, get_llm_provider
 from drydock.errors import LlmConfigurationError, LlmError
 from drydock.execution import (
     ExecutionArtifacts,
-    append_event,
     append_execution_record,
     isoformat,
     sha256_bytes,
@@ -793,11 +792,10 @@ def _structured_event(
 
 
 def _emit_event(
-    artifacts: ExecutionArtifacts,
+    _artifacts: ExecutionArtifacts,
     event: dict[str, Any],
     on_event: EventCallback | None,
 ) -> None:
-    append_event(artifacts.events_file, event)
     if on_event is not None:
         on_event(event)
 

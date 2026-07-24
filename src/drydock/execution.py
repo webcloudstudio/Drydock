@@ -37,7 +37,6 @@ def _slug(value: str) -> str:
 class ExecutionArtifacts:
     execution_id: str
     records_file: Path
-    events_file: Path
     prompt_file: Path
     log_file: Path
     raw_file: Path
@@ -63,8 +62,7 @@ class ExecutionArtifacts:
         base = logs / f"{timestamp}_{'_'.join(slug_parts)}"
         return cls(
             execution_id=execution_id,
-            records_file=logs / "executions.jsonl",
-            events_file=logs / "events.jsonl",
+            records_file=logs / "llm.jsonl",
             prompt_file=base.with_suffix(".prompt.md"),
             log_file=base.with_suffix(".debug.log"),
             raw_file=base.with_suffix(".raw.jsonl"),
@@ -80,7 +78,6 @@ class ExecutionArtifacts:
             "output": str(self.output_file),
             "stderr": str(self.stderr_file),
             "execution_records": str(self.records_file),
-            "events": str(self.events_file),
         }
 
 
@@ -89,7 +86,3 @@ def append_execution_record(path: Path, record: dict[str, Any]) -> None:
     encoded = json.dumps(record, sort_keys=True, separators=(",", ":"), default=str)
     with path.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(encoded + "\n")
-
-
-def append_event(path: Path, event: dict[str, Any]) -> None:
-    append_execution_record(path, event)

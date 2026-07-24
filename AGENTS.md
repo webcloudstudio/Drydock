@@ -153,7 +153,7 @@ Commands that call an LLM follow one shape, first established by `drydock riggin
    (source paths, dates, per-item objective, fenced source content). Keep assembly in the module so
    it is unit-testable without a process.
 3. **Execute** through `llm.run_prompt(...)`, which persists reproducible evidence
-   (`logs/executions.jsonl`, per-run prompt/raw/output/stderr files). Pass an `on_text`/`on_item`
+   (`logs/llm.jsonl`, per-run prompt/raw/output/stderr files). Pass an `on_text`/`on_item`
    callback for console progress.
 4. **Write outputs in the module**, not from the model. The model emits text; the module
    post-processes and writes files.

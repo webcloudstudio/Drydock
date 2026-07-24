@@ -34,7 +34,8 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-07-23: Drydock command logging now writes one timestamped plain-text `.log` containing
   stdout for every command, including report commands such as `drydock status`. Internal Python
   logger output is isolated in matching `.debug.log` files; LLM execution logger artifacts use the
-  same debug suffix. The shared rotating `run.log` files are retired.
+  same debug suffix. The shared rotating `run.log` files and redundant `events.jsonl` telemetry are
+  retired; the LLM execution index is named `llm.jsonl`.
 
 - 2026-07-23: `drydock build` treats a build agent's self-declared failure as advisory, not
   authoritative. When the agent still wrote files and the block carries Programmatic Acceptance

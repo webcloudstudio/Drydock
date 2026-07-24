@@ -50,15 +50,7 @@ class FakePopen:
 
 
 def _records(target: Path) -> list[dict]:
-    return [
-        json.loads(line) for line in (target / "logs" / "executions.jsonl").read_text().splitlines()
-    ]
-
-
-def _events(target: Path) -> list[dict]:
-    return [
-        json.loads(line) for line in (target / "logs" / "events.jsonl").read_text().splitlines()
-    ]
+    return [json.loads(line) for line in (target / "logs" / "llm.jsonl").read_text().splitlines()]
 
 
 def test_build_prompt_breakdown_shows_block_and_stories():
@@ -186,14 +178,15 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert record["result"]["raw_sha256"]
     assert record["result"]["output_sha256"]
     assert record["result"]["stats"]["elapsed_ms"] is not None
-    assert [event["event"] for event in _events(tmp_path)] == [
+    assert [event["event"] for event in streamed_events] == [
         "execution.started",
         "provider.event",
         "provider.event",
         "execution.completed",
     ]
-    assert _events(tmp_path)[1]["provider_event_type"] == "stream_event"
-    assert _events(tmp_path)[-1]["elapsed_ms"] is not None
+    assert streamed_events[1]["provider_event_type"] == "stream_event"
+    assert streamed_events[-1]["elapsed_ms"] is not None
+    assert not (tmp_path / "logs" / "events.jsonl").exists()
 
 
 def test_claude_content_block_boundaries_are_forwarded_to_live_output(tmp_path, monkeypatch):
@@ -684,6 +677,7 @@ def test_interrupt_terminates_process_and_writes_failed_record(tmp_path, monkeyp
     })
     process = FakePopen(("claude",), stdout_text=raw + "\n")
     monkeypatch.setattr(subprocess, "Popen", lambda command, **kwargs: process)
+    streamed_events = []
 
     with pytest.raises(KeyboardInterrupt):
         run_prompt(
@@ -691,13 +685,14 @@ def test_interrupt_terminates_process_and_writes_failed_record(tmp_path, monkeyp
             tmp_path,
             llm="claude",
             on_text=lambda text: (_ for _ in ()).throw(KeyboardInterrupt()),
+            on_event=streamed_events.append,
         )
 
     assert process.returncode == -15
     record = _records(tmp_path)[0]
     assert record["status"] == "failed"
     assert record["result"]["returncode"] == 130
-    assert _events(tmp_path)[-1]["event"] == "execution.interrupted"
+    assert streamed_events[-1]["event"] == "execution.interrupted"
 
 
 def test_missing_executable_writes_failed_record_and_prompt(tmp_path, monkeypatch):
