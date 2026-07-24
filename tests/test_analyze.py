@@ -34,6 +34,9 @@ from drydock.quarterdeck_state import (
     _screen_items,
     _story_breakdown,
     _story_items,
+    _with_error_panel,
+    _with_running_panel,
+    commanders_chair_command,
 )
 
 # ---------------------------------------------------------------------------
@@ -1501,9 +1504,7 @@ QUESTIONS:
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         questionnaires.mkdir(parents=True)
         (questionnaires / "discovery-stack.json").write_text(
-            json.dumps(
-                {"questions": [{"id": "stack_components", "answer": "python.md"}]}
-            ),
+            json.dumps({"questions": [{"id": "stack_components", "answer": "python.md"}]}),
             encoding="utf-8",
         )
 
@@ -1541,9 +1542,7 @@ QUESTIONS:
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         questionnaires.mkdir(parents=True)
         (questionnaires / "discovery-stack.json").write_text(
-            json.dumps(
-                {"questions": [{"id": "stack_components", "answer": "python.md"}]}
-            ),
+            json.dumps({"questions": [{"id": "stack_components", "answer": "python.md"}]}),
             encoding="utf-8",
         )
 
@@ -1562,9 +1561,7 @@ QUESTIONS:
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         questionnaires.mkdir(parents=True)
         (questionnaires / "discovery-stack.json").write_text(
-            json.dumps(
-                {"questions": [{"id": "stack_components", "answer": "python.md"}]}
-            ),
+            json.dumps({"questions": [{"id": "stack_components", "answer": "python.md"}]}),
             encoding="utf-8",
         )
 
@@ -1741,6 +1738,63 @@ QUESTIONS:
 
 
 class TestLifecycleState:
+    def test_running_panel_clearly_identifies_command_and_start_time(self):
+        html = (
+            '<div class="header"></div>\n\n'
+            '<nav class="chair-tabs" aria-label="Commanders Chair views"></nav>'
+        )
+
+        rendered = _with_running_panel(
+            html,
+            running_command="drydock analyze MyTarget",
+            started_at="2026-07-23T12:34:56+00:00",
+        )
+
+        assert "RUNNING" in rendered
+        assert "drydock analyze MyTarget" in rendered
+        assert "Started: 2026-07-23T12:34:56+00:00" in rendered
+        assert rendered.index("running-panel") < rendered.index("chair-tabs")
+
+    def test_running_notice_and_existing_error_are_both_visible(self):
+        from types import SimpleNamespace
+
+        html = '<div class="header"></div>\n<nav class="chair-tabs"></nav>'
+        rendered = _with_error_panel(
+            html,
+            SimpleNamespace(
+                state="BIG ERROR",
+                classification="prior failure",
+                diagnosis="diagnosis",
+                command="plan",
+            ),
+        )
+        rendered = _with_running_panel(
+            rendered,
+            running_command="drydock plan MyTarget",
+            started_at="2026-07-23T12:34:56+00:00",
+        )
+
+        assert "big-error-panel" in rendered
+        assert "running-panel" in rendered
+        assert rendered.index("running-panel") < rendered.index("chair-tabs")
+
+    def test_command_context_writes_running_and_terminal_chair_states(self, tmp_path, monkeypatch):
+        calls = []
+
+        def fake_refresh(target_dir, **kwargs):
+            calls.append((target_dir, kwargs))
+
+        monkeypatch.setattr("drydock.quarterdeck_state.refresh_commanders_chair", fake_refresh)
+
+        with pytest.raises(RuntimeError, match="failed"):
+            with commanders_chair_command(tmp_path, "drydock plan MyTarget"):
+                raise RuntimeError("failed")
+
+        assert calls[0][0] == tmp_path
+        assert calls[0][1]["running_command"] == "drydock plan MyTarget"
+        assert calls[0][1]["started_at"].endswith("+00:00")
+        assert calls[1] == (tmp_path, {})
+
     def test_state_advances_to_analyzed_on_first_run(self, tmp_path):
         from drydock.metadata import get_build_state, render_metadata
 
@@ -1773,6 +1827,10 @@ class TestLifecycleState:
         assert "Setup Screen: AWS" in html
         assert '<div class="stat-label">Features</div>' in html
         assert "Story Shape" not in html
+        assert 'data-chair-tab="overview"' in html
+        assert 'data-chair-tab="logs"' in html
+        assert 'data-chair-tab="history"' in html
+        assert "fetch(`/api/chair/${name}`" in html
 
     def test_commanders_chair_rewritten_when_state_does_not_advance(self, tmp_path):
         from drydock.metadata import render_metadata, set_build_state

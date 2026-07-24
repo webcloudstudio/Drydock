@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from html import escape
 from pathlib import Path
 
@@ -54,7 +56,12 @@ _STATE_BADGE: dict[str, tuple[str, str]] = {
 # ---------------------------------------------------------------------------
 
 
-def refresh_commanders_chair(target_dir: Path) -> Path | None:
+def refresh_commanders_chair(
+    target_dir: Path,
+    *,
+    running_command: str | None = None,
+    started_at: str | None = None,
+) -> Path | None:
     """Regenerate commanders_chair.html for ``target_dir``'s current lifecycle phase.
 
     Returns the written path, or ``None`` if the template is missing or any
@@ -84,12 +91,44 @@ def refresh_commanders_chair(target_dir: Path) -> Path | None:
 
         if projection.active_error is not None:
             html = _with_error_panel(html, projection.active_error)
+        if running_command is not None:
+            html = _with_running_panel(
+                html,
+                running_command=running_command,
+                started_at=started_at or datetime.now(UTC).isoformat(timespec="seconds"),
+            )
         chair_path = target_dir / "QuarterDeck" / "commanders_chair.html"
         chair_path.parent.mkdir(parents=True, exist_ok=True)
         chair_path.write_text(html, encoding="utf-8", newline="\n")
         return chair_path
     except Exception:
         return None
+
+
+@contextmanager
+def commanders_chair_command(target_dir: Path, command: str) -> Iterator[None]:
+    """Publish a running notice, then write the terminal Chair state on every exit path."""
+    refresh_commanders_chair(
+        target_dir,
+        running_command=command,
+        started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+    )
+    try:
+        yield
+    finally:
+        refresh_commanders_chair(target_dir)
+
+
+def _with_running_panel(html: str, *, running_command: str, started_at: str) -> str:
+    panel = (
+        '<section class="running-panel" role="status">'
+        '<strong><span class="running-pulse" aria-hidden="true"></span>RUNNING</strong>'
+        f"<span>{escape(running_command)}</span>"
+        f"<span>Started: {escape(started_at)}</span>"
+        "</section>"
+    )
+    marker = '<nav class="chair-tabs"'
+    return html.replace(marker, panel + "\n" + marker, 1)
 
 
 def _with_error_panel(html: str, error) -> str:
@@ -103,8 +142,8 @@ def _with_error_panel(html: str, error) -> str:
         f"<span>Command: {escape(error.command)}. Open <b>BIG ERRORS</b> for recovery.</span>"
         "</section>"
     )
-    marker = '</div>\n\n<section class="question-lead">'
-    return html.replace(marker, "</div>\n" + panel + '\n<section class="question-lead">', 1)
+    marker = '<nav class="chair-tabs"'
+    return html.replace(marker, panel + "\n" + marker, 1)
 
 
 # ---------------------------------------------------------------------------

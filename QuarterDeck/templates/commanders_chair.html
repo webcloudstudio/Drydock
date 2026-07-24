@@ -81,6 +81,80 @@ body {
   font-size: 1rem;
 }
 .big-error-panel strong { color: #fff; font-size: 1.15rem; }
+.running-panel {
+  margin-top: 1rem;
+  background: #172554;
+  border: 2px solid #60a5fa;
+  border-radius: 0.5rem;
+  color: #dbeafe;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-family: "SF Mono", "Cascadia Code", monospace;
+}
+.running-panel strong { color: #fff; letter-spacing: 0.08em; }
+.running-panel span:last-child { margin-left: auto; color: #bfdbfe; }
+.running-pulse {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: #60a5fa;
+  box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7);
+  animation: running-pulse 1.5s infinite;
+}
+@keyframes running-pulse {
+  70% { box-shadow: 0 0 0 0.6rem rgba(96, 165, 250, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+}
+.chair-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin: 1.25rem 0 0;
+  border-bottom: 1px solid #2C4A3B;
+}
+.chair-tab {
+  appearance: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #8FB3A2;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0.7rem 1rem;
+}
+.chair-tab:hover { color: #e2e8f0; }
+.chair-tab.active {
+  border-bottom-color: #60a5fa;
+  color: #f8fafc;
+}
+.chair-pane[hidden] { display: none; }
+.live-pane {
+  min-height: 18rem;
+  padding: 1.5rem 0;
+}
+.live-pane table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.live-pane th,
+.live-pane td {
+  border-bottom: 1px solid #2C4A3B;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.live-pane th { color: #8FB3A2; text-transform: uppercase; letter-spacing: 0.05em; }
+.live-pane code { color: #dbeafe; white-space: normal; overflow-wrap: anywhere; }
+.live-pane ol { padding-left: 2rem; }
+.live-pane li { border-bottom: 1px solid #2C4A3B; padding: 0.65rem 0.5rem; }
+.live-pane .run-ok { color: #86efac; }
+.live-pane .run-failed { color: #fca5a5; }
+.live-pane .run-unknown { color: #fde68a; }
 .stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
@@ -172,6 +246,8 @@ body {
   body { padding: 1.25rem; }
   .header { grid-template-columns: 1fr; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .running-panel { align-items: flex-start; flex-direction: column; }
+  .running-panel span:last-child { margin-left: 0; }
 }
 </style>
 </head>
@@ -187,6 +263,13 @@ body {
   <img src="/logo.png" alt="Drydock" style="height:64px;display:block;">
 </div>
 
+<nav class="chair-tabs" aria-label="Commanders Chair views">
+  <button class="chair-tab active" type="button" data-chair-tab="overview">Overview</button>
+  <button class="chair-tab" type="button" data-chair-tab="logs">Logs</button>
+  <button class="chair-tab" type="button" data-chair-tab="history">Run History</button>
+</nav>
+
+<main id="chair-overview" class="chair-pane">
 <section class="question-lead">
   {{QUESTION_LEAD_HTML}}
   <div class="next-step"><strong>Next Step:</strong> {{NEXT_STEP}}</div>
@@ -218,6 +301,49 @@ body {
     {{SCORECARD_HTML}}
   </section>
 </div>
+</main>
 
+<section id="chair-logs" class="chair-pane live-pane" hidden>
+  <p class="empty">Loading logs…</p>
+</section>
+
+<section id="chair-history" class="chair-pane live-pane" hidden>
+  <p class="empty">Loading run history…</p>
+</section>
+
+<script>
+(() => {
+  const tabs = document.querySelectorAll("[data-chair-tab]");
+  const panes = document.querySelectorAll(".chair-pane");
+
+  async function loadLivePane(name) {
+    if (name === "overview") return;
+    const pane = document.getElementById(`chair-${name}`);
+    pane.innerHTML = '<p class="empty">Loading…</p>';
+    try {
+      const response = await fetch(`/api/chair/${name}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      pane.innerHTML = await response.text();
+    } catch (error) {
+      pane.innerHTML = `<p class="empty">Unable to load ${name}: ${error.message}</p>`;
+    }
+  }
+
+  function activate(name, updateHash = true) {
+    tabs.forEach(tab => {
+      const selected = tab.dataset.chairTab === name;
+      tab.classList.toggle("active", selected);
+      tab.setAttribute("aria-selected", selected ? "true" : "false");
+    });
+    panes.forEach(pane => { pane.hidden = pane.id !== `chair-${name}`; });
+    if (updateHash) history.replaceState(null, "", `#chair-${name}`);
+    loadLivePane(name);
+  }
+
+  tabs.forEach(tab => tab.addEventListener("click", () => activate(tab.dataset.chairTab)));
+  const requested = location.hash.replace("#chair-", "");
+  activate(["overview", "logs", "history"].includes(requested) ? requested : "overview", false);
+})();
+</script>
 </body>
 </html>

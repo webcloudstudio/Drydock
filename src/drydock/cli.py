@@ -515,6 +515,7 @@ def cmd_rigging_add(args: argparse.Namespace) -> int:
 def cmd_analyze(args: argparse.Namespace) -> int:
     from drydock.analyze import analyze
     from drydock.config import get_llm_provider, get_model, get_workspace, require_target_dir
+    from drydock.quarterdeck_state import commanders_chair_command
 
     target_dir = require_target_dir(args.Target)
     model = get_model(getattr(args, "model", None))
@@ -522,9 +523,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     log_dir = get_workspace() / "logs"
     print(f"Analyzing Blueprint: {args.Target}")
     print("Running analysis...", flush=True)
-    result = analyze(
-        args.Target, target_dir, model=model, llm_provider=llm_provider, log_dir=log_dir
-    )
+    with commanders_chair_command(target_dir, f"drydock analyze {args.Target}"):
+        result = analyze(
+            args.Target, target_dir, model=model, llm_provider=llm_provider, log_dir=log_dir
+        )
     print()
     if not result.ok:
         print(f"Error: {result.error}", file=sys.stderr)
@@ -591,8 +593,15 @@ def _print_plan_summary(plan) -> None:
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
-    from drydock.config import get_llm_provider, get_model, get_target_directory, get_workspace
+    from drydock.config import (
+        get_llm_provider,
+        get_model,
+        get_target_directory,
+        get_workspace,
+        require_target_dir,
+    )
     from drydock.planning_session import create_plan
+    from drydock.quarterdeck_state import commanders_chair_command
 
     def _progress(text: str) -> None:
         # Only surface plan's own mode/status notices; suppress the raw streamed
@@ -603,17 +612,20 @@ def cmd_plan(args: argparse.Namespace) -> int:
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
     log_dir = get_workspace() / "logs"
-    result = create_plan(
-        args.Target,
-        args.Target,
-        get_target_directory(),
-        overwrite=getattr(args, "overwrite", False),
-        conform=not getattr(args, "no_conform", False),
-        model=model,
-        llm_provider=llm_provider,
-        log_dir=log_dir,
-        on_text=_progress,
-    )
+    target_directory = get_target_directory()
+    target_dir = require_target_dir(args.Target)
+    with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
+        result = create_plan(
+            args.Target,
+            args.Target,
+            target_directory,
+            overwrite=getattr(args, "overwrite", False),
+            conform=not getattr(args, "no_conform", False),
+            model=model,
+            llm_provider=llm_provider,
+            log_dir=log_dir,
+            on_text=_progress,
+        )
     print()
     mode_label = {
         "reuse-manifest-first": "REUSE (existing Blueprint specs preserved)",
@@ -1350,23 +1362,29 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")
         if getattr(args, "show_prompt", False):
             print("DRY RUN: full prompt output enabled by --show-prompt")
-    result = build_target(
-        args.Target,
-        target_dir,
-        build_dir=build_dir,
-        model=model,
-        llm_provider=llm_provider,
-        log_dir=log_dir,
-        on_text=_stream_stdout,
-        on_step=report,
-        step_id=getattr(args, "step", None),
-        story_id=getattr(args, "story", None),
-        reset=bool(getattr(args, "reset", False)),
-        dry_run=bool(getattr(args, "dry_run", False)),
-        show_prompt=bool(getattr(args, "show_prompt", False)),
-        repair_attempts=repair_attempts,
-        escalate_model=escalate_model,
-    )
+    chair_context = nullcontext()
+    if not getattr(args, "dry_run", False):
+        from drydock.quarterdeck_state import commanders_chair_command
+
+        chair_context = commanders_chair_command(target_dir, f"drydock build {args.Target}")
+    with chair_context:
+        result = build_target(
+            args.Target,
+            target_dir,
+            build_dir=build_dir,
+            model=model,
+            llm_provider=llm_provider,
+            log_dir=log_dir,
+            on_text=_stream_stdout,
+            on_step=report,
+            step_id=getattr(args, "step", None),
+            story_id=getattr(args, "story", None),
+            reset=bool(getattr(args, "reset", False)),
+            dry_run=bool(getattr(args, "dry_run", False)),
+            show_prompt=bool(getattr(args, "show_prompt", False)),
+            repair_attempts=repair_attempts,
+            escalate_model=escalate_model,
+        )
     print()
     print(
         f"BUILD COMMAND COMPLETE: {args.Target}  completed={_wall_time()}  "

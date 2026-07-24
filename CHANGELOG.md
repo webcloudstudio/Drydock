@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-07-23: The Commander's Chair now publishes a prominent `RUNNING` notice with the command
+  and UTC start time while `drydock analyze`, `drydock plan`, or `drydock build` executes, then
+  regenerates its terminal state on every exit path. Its new Logs and Run History tabs are live
+  QuarterDeck views: Python rereads the workspace log inventory and the active Target's filtered,
+  newest-first `logs/history.jsonl` records on every request.
 - 2026-07-23: Build repair loop. When a build block fails a deterministic gate in a repairable way —
   a Programmatic Acceptance miss or a surviving agent-reported failure — `drydock build` feeds the
   failure diagnostics back and re-runs the same block against the persisted partial work, iterating

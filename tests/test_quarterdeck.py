@@ -1067,6 +1067,74 @@ def test_commanders_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
     assert "/switch-target/Beta" not in html
 
 
+def test_commanders_chair_logs_are_read_live_from_workspace(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+    logs = workspace / "logs"
+    logs.mkdir()
+    (logs / "analyze.log").write_text("analysis", encoding="utf-8")
+
+    first = quarterdeck.api_chair_logs(_RequestStub({"quarterdeck_target": "Beta"}))
+    assert "analyze.log" in first
+    assert "read live from the workspace logs directory" in first
+
+    (logs / "build.debug.log").write_text("build", encoding="utf-8")
+    refreshed = quarterdeck.api_chair_logs(_RequestStub({"quarterdeck_target": "Beta"}))
+    assert "analyze.log" in refreshed
+    assert "build.debug.log" in refreshed
+
+
+def test_commanders_chair_history_is_live_filtered_and_newest_first(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+    logs = workspace / "logs"
+    logs.mkdir()
+    history = logs / "history.jsonl"
+    history.write_text(
+        "\n".join([
+            json.dumps({
+                "command": "drydock analyze Beta",
+                "time": "2026-07-20 10:00",
+                "target": "Beta",
+                "return_code": 0,
+            }),
+            json.dumps({
+                "command": "drydock build Alpha",
+                "time": "2026-07-21 10:00",
+                "target": "Alpha",
+                "return_code": 0,
+            }),
+            json.dumps({
+                "command": "drydock plan Beta",
+                "time": "2026-07-22 10:00",
+                "target": "Beta",
+                "return_code": 1,
+            }),
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+
+    first = quarterdeck.api_chair_history(_RequestStub({"quarterdeck_target": "Beta"}))
+    assert "drydock build Alpha" not in first
+    assert first.index("drydock plan Beta") < first.index("drydock analyze Beta")
+    assert "FAILED (1)" in first
+    assert "read live from logs/history.jsonl" in first
+
+    with history.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({
+                "command": "drydock build Beta",
+                "time": "2026-07-23 10:00",
+                "target": "Beta",
+                "return_code": 0,
+            })
+            + "\n"
+        )
+    refreshed = quarterdeck.api_chair_history(_RequestStub({"quarterdeck_target": "Beta"}))
+    assert refreshed.index("drydock build Beta") < refreshed.index("drydock plan Beta")
+
+
 def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
