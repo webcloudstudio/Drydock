@@ -2512,7 +2512,7 @@ def _standoff_diagnosis(
     Advisory only: any failure here is swallowed so the original error and exit code stand.
     """
     try:
-        from drydock.config import get_diagnose_enabled, get_llm_provider, get_model
+        from drydock.config import get_diagnose_enabled, get_llm_provider, get_model, get_workspace
         from drydock.diagnose import diagnose, render_standoff_banner, should_diagnose
 
         if getattr(args, "no_diagnose", False) or not get_diagnose_enabled():
@@ -2542,6 +2542,7 @@ def _standoff_diagnosis(
             exc=exc,
             llm=llm_provider,
             model=model,
+            log_dir=get_workspace() / "logs",
             runner=runner,
         )
         if not text:

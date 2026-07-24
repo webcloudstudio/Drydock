@@ -2130,9 +2130,11 @@ class TestStandoffDiagnosis:
 
         def run(prompt, working_directory, **kwargs):
             run.seen.append(prompt)
+            run.kwargs.append(kwargs)
             return FakeRun(text=text)
 
         run.seen = []  # type: ignore[attr-defined]
+        run.kwargs = []  # type: ignore[attr-defined]
         return run
 
     @pytest.fixture()
@@ -2167,17 +2169,19 @@ class TestStandoffDiagnosis:
             detail="The agent finished but produced nothing.",
             recovery="Rerun the block.",
         )
+        runner = self._runner()
         _standoff_diagnosis(
             self._args("widgets"),
             ["build", "widgets"],
             record=record,
-            runner=self._runner(),
+            runner=runner,
         )
 
         err = capsys.readouterr().err
         assert "A MAJOR ERROR HAS OCCURRED" in err
         assert "claude/sonnet is diagnosing" in err
         assert "CAUSE: the agent wrote no files." in err
+        assert runner.kwargs[0]["log_dir"] == target_dir.parents[1] / "logs"
 
         persisted = read_error_record(target_dir)
         assert persisted is not None
