@@ -137,6 +137,22 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
             current_body = []
             saw_delimiter = True
             continue
+        if open_match:
+            if current_name in blocks:
+                raise DrydockError(
+                    f"{label} failed: LLM output did not satisfy the artifact contract.\n"
+                    f"  Duplicate artifact block: {current_name}\n"
+                    "  No generated artifacts were written."
+                )
+            # Recover when the model omits an END delimiter between otherwise
+            # well-formed artifact blocks. The next opening delimiter cannot be
+            # content under the artifact protocol, so it unambiguously closes
+            # the current block and starts the next one.
+            blocks[current_name] = "".join(current_body).strip()
+            current_name = open_match.group("name").strip()
+            current_body = []
+            saw_delimiter = True
+            continue
         current_body.append(line)
 
     if current_name is not None:

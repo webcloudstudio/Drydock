@@ -832,6 +832,17 @@ Verification: proof""",
         with pytest.raises(ValueError, match="not valid JSON"):
             _parse_output(bad)
 
+    def test_missing_discovery_end_delimiter_before_next_block_is_recovered(self):
+        missing_end = _VALID_LLM_OUTPUT_WITH_SPIKES.replace(
+            "=== END discovery-intent.json ===\n",
+            "",
+            1,
+        )
+
+        _, _, _, _, discoveries, _, _ = _parse_output(missing_end)
+
+        assert discoveries["discovery-intent.json"]["id"] == "discovery-intent"
+
     def test_unknown_quality_when_absent(self):
         no_quality = _VALID_LLM_OUTPUT.replace("Quality: Ready", "")
         _, _, _, _, _, quality, _ = _parse_output(no_quality)

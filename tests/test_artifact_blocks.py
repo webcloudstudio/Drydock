@@ -22,6 +22,14 @@ def test_parse_artifact_blocks_recovers_missing_final_end_delimiter():
     assert blocks == {"A.md": "alpha", "B.md": "beta"}
 
 
+def test_parse_artifact_blocks_recovers_missing_end_delimiter_between_blocks():
+    text = "=== A.md ===\nalpha\n=== B.md ===\nbeta\n=== END B.md ===\n"
+
+    blocks = parse_artifact_blocks(text, label="Test")
+
+    assert blocks == {"A.md": "alpha", "B.md": "beta"}
+
+
 def test_parse_artifact_blocks_recovers_write_transcript():
     text = """\
 <function_calls>
