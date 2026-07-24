@@ -79,8 +79,8 @@ def test_stack_question_is_dropped_from_parsed_questions():
 ## st-001: Full conformance
 Type: outcome
 Required: yes
-Criterion: The parser passes the full conformance test suite.
-Verification: measurement
+Criterion: The parser passes every case in the full conformance test suite.
+Verification: proof
 Command: ["python", "run.py"]
 
 QUESTIONS:
@@ -100,8 +100,8 @@ def test_stack_question_is_stripped_from_normalized_text():
 ## st-001: Full conformance
 Type: outcome
 Required: yes
-Criterion: The parser passes the full conformance test suite.
-Verification: measurement
+Criterion: The parser passes every case in the full conformance test suite.
+Verification: proof
 Command: ["python", "run.py"]
 
 QUESTIONS:
@@ -384,6 +384,44 @@ def test_extract_round_trips_through_parse():
     assert trial.extract == r"^(\d+) passed"
     assert trial.command == ("python3", "sources/spec_tests.py", "--spec", "sources/spec.txt")
     assert trial.target == 652.0
+
+
+def test_complete_suite_is_a_proof_gate_without_a_numeric_target():
+    document = parse_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-conformance: Complete conformance
+Type: outcome
+Required: yes
+Criterion: The converter passes every case in the supplied complete conformance suite.
+Verification: proof
+Command: ["python3", "sources/spec_tests.py", "--spec", "sources/spec.txt"]
+"""
+    )
+
+    trial = document.trials[0]
+    assert trial.verification == "proof"
+    assert trial.command == ("python3", "sources/spec_tests.py", "--spec", "sources/spec.txt")
+    assert trial.target is None
+
+
+def test_complete_suite_measurement_is_rejected():
+    text = """# Sea Trials: Demo
+
+## st-conformance: Complete conformance
+Type: outcome
+Required: yes
+Criterion: The converter passes every case in the supplied complete conformance suite.
+Verification: measurement
+Command: ["python3", "sources/spec_tests.py"]
+Extract: ^(\\d+) passed
+Operator: ==
+Target: 652
+Unit: examples
+"""
+
+    with pytest.raises(SpecificationError, match="complete-suite requirement.*Verification: proof"):
+        parse_sea_trials_text(text)
 
 
 def test_extract_is_optional():

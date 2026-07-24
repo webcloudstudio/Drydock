@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.errors import SpecificationError
 from drydock.proof_integrity import analyze_proof
 
 SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
@@ -19,6 +20,9 @@ HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 TIMEOUT_SECONDS = 60
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
+_EXACT_PASSED_COUNT_ASSERTION_RE = re.compile(
+    r"\bassert\s+['\"]\d+\s+passed['\"]\s+in\s+", re.IGNORECASE
+)
 
 
 def _timeout_output_text(value: bytes | str | None) -> str:
@@ -156,12 +160,18 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
         prefix = section[previous_end : match.start()]
         title = _last_heading(prefix)
         check_id = _slugify(title or f"{path.stem}-{index}")
+        code = match.group("code").strip()
+        if _full_suite(prefix) and _EXACT_PASSED_COUNT_ASSERTION_RE.search(code):
+            raise SpecificationError(
+                f"{path.name} {check_id} is Suite: full and must not assert an exact passed "
+                "count; prove that the supplied complete suite succeeds instead"
+            )
         checks.append(
             ProgrammaticAcceptance(
                 check_id=check_id,
                 source=path.name,
                 intent=_intent(prefix, title),
-                code=match.group("code").strip(),
+                code=code,
                 sea_trials=_sea_trials(prefix),
                 full_suite=_full_suite(prefix),
             )

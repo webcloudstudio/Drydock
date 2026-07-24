@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from drydock.acceptance import (
     SUITE_TIMEOUT_SECONDS,
     TIMEOUT_SECONDS,
@@ -11,6 +13,7 @@ from drydock.acceptance import (
     parse_programmatic_acceptance,
     run_programmatic_acceptance,
 )
+from drydock.errors import SpecificationError
 
 _SPEC = """# FEATURE: Verification
 
@@ -98,6 +101,28 @@ def test_sea_trial_references_still_parse_alongside_the_suite_marker(tmp_path):
 
     assert checks["conformance-full"].sea_trials == ("st-004",)
     assert checks["assets-present"].sea_trials == ("st-003",)
+
+
+def test_full_suite_rejects_exact_passed_count_assertion(tmp_path):
+    path = tmp_path / "FEATURE-Verification.md"
+    path.write_text(
+        """# FEATURE: Verification
+
+## Programmatic Acceptance
+
+### conformance-full
+Suite: full
+Sea Trials: st-004
+
+```python
+assert "652 passed" in result.stdout
+```
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SpecificationError, match="must not assert an exact passed count"):
+        parse_programmatic_acceptance(path)
 
 
 # --- Failure diagnostics ----------------------------------------------------

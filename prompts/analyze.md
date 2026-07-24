@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260722 V16
+version: 20260724 V17
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -45,6 +45,17 @@ you define the stories, use the natural boundaries provided within the input fil
 
 Derive strategic goals and success criteria only where the sources state or directly imply them.
 Do not invent business outcomes, thresholds, or acceptance commitments.
+
+**Project-fact authority.** Prompt context and Commander input are authoritative for the project
+being analyzed. General knowledge may explain a supplied source, but it must not supply, replace,
+or refine a project requirement. In particular, do not infer, recall, estimate, or invent a
+project-specific count, version, limit, threshold, or test total.
+
+**Universal acceptance preservation.** When a source says `all`, `every`, `complete`, `100%`,
+`zero failures`, `zero errors`, or equivalent universal language, preserve that universal form.
+Do not translate it into a numeric cardinality, a `Target:` value, an `Extract:` value, or an exact
+passed-count assertion. A supplied full test suite proves such a requirement by running unfiltered
+and succeeding; it does not require the Commander to specify how well the software should work.
 
 Be sure to understand the architecture and component structure.
 
@@ -361,7 +372,8 @@ executes the runner only to prove it works bounds the run with the runner's `--p
 selector; a feature story runs the slice it owns and declares `Suite: scoped`. A sample proves a
 unit works, never that the project is correct.
 
-State the measured release threshold as a Sea Trial, not as a story assertion.
+State a source-supplied numeric release threshold as a Sea Trial, not as a story assertion. A
+complete-suite requirement is a proof gate, not a measured release threshold.
 
 ### Sequencing and Dependencies
 
@@ -428,9 +440,15 @@ by its build path (`sources/{name}`) and the deliverable by its real entry point
 it the command must print `{"value": <number>, "unit": "<unit>"}`. Prefer `Extract:` over asking the
 project to emit JSON — a wrapper that computes its own score can report anything.
 
-When the sources supply a conformance harness, emit exactly one `measurement` criterion that
-executes it against the full test suite. `Baseline`, `Target`, and `Unit` may defer to `QUESTIONS:` when
-the author owns the threshold; `Command:` and `Extract:` may not.
+When the sources supply a conformance harness and require complete conformance, emit exactly one
+`proof` criterion that executes the unfiltered full suite. Its criterion says that every supplied
+case passes; its `Command:` is the literal full-suite argv. Do not add `Extract:`, `Baseline:`,
+`Operator:`, `Target:`, or `Unit:`. The terminal Blueprint assertion declares `Suite: full` and
+proves the same Sea Trial with the harness exit status and zero failures/errors where reported.
+
+Use `measurement` only when the source or Commander states a genuinely numeric requirement, such
+as latency, throughput, cost, capacity, or an explicit numeric release threshold. Do not ask a
+question for a missing threshold when the source already requires all supplied tests to pass.
 
 {Repeat one section per criterion.}
 

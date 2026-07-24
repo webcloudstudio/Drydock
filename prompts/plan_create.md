@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260722 V15
+version: 20260724 V16
 intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -14,9 +14,11 @@ output: Blueprint specification files, MANIFEST.md
 Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into the implementing
 story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Trials:` line.
 Never invent or rename Sea Trial IDs.
-Do not turn a final project measurement, release threshold, or complete-suite command into a
-story Programmatic Acceptance assertion or child `ac` block. Those remain Sea Trials and run at
+Do not turn a final project measurement or release threshold into a story Programmatic Acceptance
+assertion or child `ac` block. Those remain Sea Trials and run at
 final scoring after all stories close.
+The one terminal `Suite: full` assertion is the exception: it proves a complete-suite Sea Trial by
+running the supplied suite and requiring success, never by asserting a remembered passed count.
 
 `accepts:` is traceability metadata, not a child acceptance command. A story that stages or
 implements the capability exercised by a final Sea Trial still names that trial in `accepts:` even

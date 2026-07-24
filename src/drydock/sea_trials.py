@@ -36,6 +36,11 @@ EARS_SHAPES: dict[str, str] = {
 #: criterion (``If <trigger>, then the <system> shall not/mitigate``) or, when the prohibition is
 #: unconditional, as a negative ``ubiquitous`` criterion (``The <system> shall not/never <X>``).
 _PROHIBITION_RE = re.compile(r"\bshall\s+(?:not|never)\b", re.I)
+_UNIVERSAL_SUITE_RE = re.compile(
+    r"\b(?:all|every|complete|full|zero\s+(?:failures?|errors?))\b|100\s*%",
+    re.I,
+)
+_SUITE_RE = re.compile(r"\b(?:test|conformance|suite|cases?|examples?)\b", re.I)
 
 
 def _is_guardrail_prohibition(pattern: str, criterion: str) -> bool:
@@ -48,6 +53,52 @@ def _is_guardrail_prohibition(pattern: str, criterion: str) -> bool:
     if pattern == "unwanted":
         return True
     return pattern == "ubiquitous" and bool(_PROHIBITION_RE.search(criterion))
+
+
+def _is_universal_suite_criterion(criterion: str, command: tuple[str, ...]) -> bool:
+    """Whether a Sea Trial describes complete supplied-suite conformance.
+
+    Such a requirement is a proof that the unfiltered suite succeeds. It is not a scalar
+    measurement: converting it to a remembered test count makes the generated contract depend on
+    model knowledge rather than the supplied corpus.
+    """
+    return bool(command and _UNIVERSAL_SUITE_RE.search(criterion) and _SUITE_RE.search(criterion))
+
+
+def _validate_universal_suite_contract(
+    *,
+    criterion_id: str,
+    criterion: str,
+    verification: str,
+    command: tuple[str, ...],
+    extract: str,
+    evidence: str,
+    baseline: float | None,
+    operator: str,
+    target: float | None,
+    unit: str,
+) -> None:
+    """Reject a numeric representation of an all-cases/full-suite requirement."""
+    if not _is_universal_suite_criterion(criterion, command):
+        return
+    if verification != "proof":
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} is a complete-suite requirement and must use "
+            "Verification: proof, not measurement"
+        )
+    forbidden = (
+        extract,
+        evidence,
+        "" if baseline is None else str(baseline),
+        operator,
+        "" if target is None else str(target),
+        unit,
+    )
+    if any(forbidden):
+        raise SpecificationError(
+            f"SEA_TRIALS.md {criterion_id} is a complete-suite proof and must not declare "
+            "Extract, Evidence, Baseline, Operator, Target, or Unit"
+        )
 
 
 _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", re.I)
@@ -296,6 +347,27 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             criterion = fields.get("criterion", "").strip()
             if not criterion:
                 raise SpecificationError(f"SEA_TRIALS.md {criterion_id} is missing Criterion")
+            command = _command(fields.get("command", ""), criterion_id)
+            extract = _extract(fields.get("extract", ""), criterion_id)
+            evidence = fields.get("evidence", "")
+            baseline = _number(
+                fields.get("baseline", ""), field="Baseline", criterion_id=criterion_id
+            )
+            operator = fields.get("operator", "")
+            target = _number(fields.get("target", ""), field="Target", criterion_id=criterion_id)
+            unit = fields.get("unit", "")
+            _validate_universal_suite_contract(
+                criterion_id=criterion_id,
+                criterion=criterion,
+                verification=verification,
+                command=command,
+                extract=extract,
+                evidence=evidence,
+                baseline=baseline,
+                operator=operator,
+                target=target,
+                unit=unit,
+            )
             trials.append(
                 SeaTrial(
                     criterion_id=criterion_id,
@@ -310,17 +382,13 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                         criterion=criterion,
                         criterion_id=criterion_id,
                     ),
-                    command=_command(fields.get("command", ""), criterion_id),
-                    extract=_extract(fields.get("extract", ""), criterion_id),
-                    evidence=fields.get("evidence", ""),
-                    baseline=_number(
-                        fields.get("baseline", ""), field="Baseline", criterion_id=criterion_id
-                    ),
-                    operator=fields.get("operator", ""),
-                    target=_number(
-                        fields.get("target", ""), field="Target", criterion_id=criterion_id
-                    ),
-                    unit=fields.get("unit", ""),
+                    command=command,
+                    extract=extract,
+                    evidence=evidence,
+                    baseline=baseline,
+                    operator=operator,
+                    target=target,
+                    unit=unit,
                 )
             )
             continue
