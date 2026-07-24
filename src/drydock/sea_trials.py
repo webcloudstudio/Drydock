@@ -32,6 +32,24 @@ EARS_SHAPES: dict[str, str] = {
     "unwanted": "If <trigger>, then the <system> shall <mitigation>",
 }
 
+#: A guardrail is a *never*. It reads as a prohibition either as a conditional ``unwanted``
+#: criterion (``If <trigger>, then the <system> shall not/mitigate``) or, when the prohibition is
+#: unconditional, as a negative ``ubiquitous`` criterion (``The <system> shall not/never <X>``).
+_PROHIBITION_RE = re.compile(r"\bshall\s+(?:not|never)\b", re.I)
+
+
+def _is_guardrail_prohibition(pattern: str, criterion: str) -> bool:
+    """True when a guardrail's Pattern/Criterion pair states a prohibition.
+
+    ``unwanted`` is the canonical conditional form. An unconditional blanket prohibition has no
+    trigger and is naturally a negative ``ubiquitous`` criterion; accept it when the wording is an
+    explicit ``shall not``/``shall never``. Positive-worded guardrails are steered to ``unwanted``.
+    """
+    if pattern == "unwanted":
+        return True
+    return pattern == "ubiquitous" and bool(_PROHIBITION_RE.search(criterion))
+
+
 _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", re.I)
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
 _PLACEHOLDER_RE = re.compile(r"<[^<>]+>")
@@ -217,10 +235,11 @@ def _pattern(value: str, *, trial_type: str, criterion: str, criterion_id: str) 
         )
     if pattern not in EARS_PATTERNS:
         raise SpecificationError(f"SEA_TRIALS.md {criterion_id} has invalid Pattern: {pattern}")
-    if trial_type == "guardrail" and pattern != "unwanted":
+    if trial_type == "guardrail" and not _is_guardrail_prohibition(pattern, criterion):
         raise SpecificationError(
-            f"SEA_TRIALS.md {criterion_id} is a guardrail and must use Pattern: unwanted "
-            f"({EARS_SHAPES['unwanted']})"
+            f"SEA_TRIALS.md {criterion_id} is a guardrail and must be a prohibition: use "
+            f"Pattern: unwanted ({EARS_SHAPES['unwanted']}) or a negative ubiquitous criterion "
+            "(The <system> shall not/never <action>)"
         )
     if not EARS_PATTERNS[pattern].match(criterion):
         raise SpecificationError(

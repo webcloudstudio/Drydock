@@ -1254,15 +1254,40 @@ Pattern: ubiquitous""",
         assert result.ok is True
         assert result.sea_trials_created is False
         assert result.warnings == (
-            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 is a guardrail and must use "
-            "Pattern: unwanted (If <trigger>, then the <system> shall <mitigation>)",
+            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 is a guardrail and must be a "
+            "prohibition: use Pattern: unwanted (If <trigger>, then the <system> shall "
+            "<mitigation>) or a negative ubiquitous criterion (The <system> shall not/never "
+            "<action>)",
         )
         assert not (target_dir / "SEA_TRIALS.md").exists()
         assert (target_dir / "ANALYSIS.md").exists()
         blockers = (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
         assert "blocker-sea-trials" in blockers
-        assert "must use Pattern: unwanted" in blockers
+        assert "must be a prohibition" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
+
+    def test_negative_ubiquitous_guardrail_creates_sea_trials(self, tmp_path):
+        # A blanket "never" guardrail phrased as a negative ubiquitous criterion validates:
+        # SEA_TRIALS.md is written and no blocker is raised.
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        ok_output = _VALID_LLM_OUTPUT.replace(
+            _SEA_TRIALS_CONTENT,
+            """# Sea Trials: TestProject
+
+## st-001: No side effects
+Type: guardrail
+Required: yes
+Criterion: The filter shall not modify files, persist state, or make network calls.
+Verification: proof
+Pattern: ubiquitous""",
+        )
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=ok_output))
+
+        assert result.ok is True
+        assert result.sea_trials_created is True
+        assert not any("was not created" in w for w in result.warnings)
+        assert (target_dir / "SEA_TRIALS.md").exists()
 
     def test_missing_sea_trials_block_is_a_blocker_without_failing_analyze(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})

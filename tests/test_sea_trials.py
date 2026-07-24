@@ -221,8 +221,10 @@ def test_qualitative_criterion_must_not_declare_a_pattern():
         )
 
 
-def test_guardrail_must_use_the_unwanted_pattern():
-    with pytest.raises(SpecificationError, match="must use Pattern: unwanted"):
+def test_positive_ubiquitous_guardrail_is_rejected():
+    # A guardrail is a prohibition. A positive-worded ubiquitous criterion ("shall omit",
+    # not "shall not/never") is steered to Pattern: unwanted.
+    with pytest.raises(SpecificationError, match="must be a prohibition"):
         parse_sea_trials_text(
             _trial(
                 type="guardrail",
@@ -232,6 +234,38 @@ def test_guardrail_must_use_the_unwanted_pattern():
                 pattern="ubiquitous",
             )
         )
+
+
+def test_negative_ubiquitous_guardrail_is_accepted():
+    # An unconditional blanket prohibition has no trigger; it reads naturally as a negative
+    # ubiquitous criterion ("The <system> shall not/never <X>") and must validate.
+    document = parse_sea_trials_text(
+        _trial(
+            type="guardrail",
+            required="yes",
+            criterion=(
+                "The filter shall not modify files, persist state, or make network calls "
+                "while converting input."
+            ),
+            verification="proof",
+            pattern="ubiquitous",
+        )
+    )
+    assert document.trials[0].trial_type == "guardrail"
+    assert document.trials[0].pattern == "ubiquitous"
+
+
+def test_conditional_unwanted_guardrail_is_accepted():
+    document = parse_sea_trials_text(
+        _trial(
+            type="guardrail",
+            required="yes",
+            criterion="If personal data is logged, then the system shall omit it.",
+            verification="proof",
+            pattern="unwanted",
+        )
+    )
+    assert document.trials[0].pattern == "unwanted"
 
 
 def test_documentation_prose_does_not_overwrite_the_preceding_criterion_fields():

@@ -669,8 +669,11 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
 - Qualitative and outcome criteria never use EARS and leave `Pattern` blank. They are measurement
   contracts settled by `Baseline`, `Operator`, `Target`, and `Unit`.
 - A `guardrail` is an absolute prohibition the project may never do — a *never*, not a target. It
-  always uses `Pattern: unwanted`, and a breach fails delivery regardless of every score. Raise one
-  only where the sources state or clearly imply a prohibition; never invent one to be thorough.
+  is a prohibition written either as `Pattern: unwanted` when it has a trigger
+  (`If <trigger>, then the <system> shall <mitigation>`), or as a negative `Pattern: ubiquitous`
+  when the prohibition is unconditional (`The <system> shall not/never <action>`). A breach fails
+  delivery regardless of every score. Raise one only where the sources state or clearly imply a
+  prohibition; never invent one to be thorough.
 - Prefer `proof` or `measurement` for required technical, behavioral, and guardrail criteria. A
   required assertion resting only on `llm` judgment reduces the project's acceptance coverage score.
 - Never invent outcome baselines, targets, units, or external measurement sources. Emit stable-ID

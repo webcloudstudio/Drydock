@@ -509,6 +509,13 @@ class TestAnalyzeCommand:
         run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         target_dir = tmp_target_root / "Proj"
         (target_dir / "blueprint").mkdir(parents=True)
+        blockers_path = target_dir / "BLOCKERS.md"
+        blockers_path.write_text(
+            "# Blockers\n\n"
+            "## blocker-sea-trials: Define project acceptance criteria\n"
+            "SEA_TRIALS.md was not created because analyze could not derive valid criteria.\n",
+            encoding="utf-8",
+        )
         result = SimpleNamespace(
             ok=True,
             target_dir=target_dir,
@@ -519,6 +526,7 @@ class TestAnalyzeCommand:
             compass_path=None,
             discovery_paths=(),
             commanders_chair_path=None,
+            blockers_path=blockers_path,
             quality="Blocked",
             story_count=0,
             feature_count=0,
@@ -532,12 +540,14 @@ class TestAnalyzeCommand:
         rc, out, err = run_cli("analyze", "Proj")
 
         assert rc == 0
-        assert "SEA_TRIALS.md" not in out
+        assert "SEA_TRIALS.md →" not in out  # the success line is not printed
         assert "Quality: ✗  Blocked" in out
-        assert "Resolve blockers in QuarterDeck:" in out
+        # The blocker is a prominent closing banner naming the blocker and the fix.
+        assert "BLOCKER — FIX TO PROCEED: Proj" in out
+        assert "blocker-sea-trials: Define project acceptance criteria" in out
+        assert "Edit BLOCKERS.md" in out
+        assert "Re-run: drydock analyze Proj" in out
         assert "drydock run quarterdeck Proj" in out
-        assert "Then re-run:" in out
-        assert "drydock analyze Proj" in out
         assert "Warning: SEA_TRIALS.md was not created" in err
 
 

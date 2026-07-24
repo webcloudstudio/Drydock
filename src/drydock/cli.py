@@ -569,10 +569,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print("Review QuarterDeck action items, then run:")
         print(f"  drydock plan {args.Target}")
     else:
-        print("Resolve blockers in QuarterDeck:")
-        print(f"  drydock run quarterdeck {args.Target}")
-        print("Then re-run:")
-        print(f"  drydock analyze {args.Target}")
+        print(_render_analyze_blockers(args.Target, result.blockers_path))
     return 0
 
 
@@ -2517,6 +2514,47 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
     cmd_str = "drydock " + " ".join(tokens)
     target = getattr(args, "Target", "") or ""
     append_command_history(get_workspace(), cmd_str, target=target, return_code=rc)
+
+
+def _render_analyze_blockers(target: str, blockers_path) -> str:
+    """Format analyze's open blockers as one closing banner the Commander must clear.
+
+    Reuses ``analyze._parse_blocker_records`` so each blocker shows its id, title, and the
+    Commander-owned resolution to author, then states the exact re-run command.
+    """
+    from drydock.analyze import _parse_blocker_records
+
+    width = 72
+    border = "=" * width
+    raw = None
+    if blockers_path is not None:
+        try:
+            raw = Path(blockers_path).read_text(encoding="utf-8")
+        except OSError:
+            raw = None
+    records = _parse_blocker_records(raw)
+    count = len(records) or 1
+    plural = "blocker" if count == 1 else "blockers"
+    lines = [border, f"BLOCKER — FIX TO PROCEED: {target}  ({count} {plural})", border]
+    for record in records:
+        lines += ["", f"  {record.blocker_id}: {record.title}"]
+        for line in textwrap.wrap(
+            record.original_text or "",
+            width=width - 4,
+            initial_indent="    ",
+            subsequent_indent="    ",
+        ):
+            lines.append(line)
+    lines += [
+        "",
+        "  Fix to proceed",
+        "    1. Edit BLOCKERS.md and enter each Commander Resolution.",
+        f"    2. Re-run: drydock analyze {target}",
+        "",
+        f"  Or review in QuarterDeck: drydock run quarterdeck {target}",
+        border,
+    ]
+    return "\n".join(lines)
 
 
 def _render_build_failures(target: str, steps, *, hint: str) -> str:
