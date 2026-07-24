@@ -98,6 +98,21 @@ def _wall_time() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
+def _clock() -> str:
+    """Short wall-clock stamp for events inside a build block (the full date lives in the header)."""
+    return datetime.now().astimezone().strftime("%H:%M:%S %Z")
+
+
+_RULE_WIDTH = 72
+
+
+def _block_header(name: str, block_id: str) -> str:
+    """One separator line naming the block: ``──── Name [block-id] ─────…``."""
+    label = f"──── {name} [{block_id}] "
+    fill = max(0, _RULE_WIDTH - len(label))
+    return label + "─" * fill
+
+
 def _elapsed_text(seconds: float) -> str:
     seconds = max(0.0, seconds)
     if seconds < 1:
@@ -1357,7 +1372,7 @@ def _emit_dry_run_file_list(on_text: TextCallback | None, group: StepGroup) -> N
             seen.add(key)
             files.append(step_file)
 
-    _emit(on_text, "DRY RUN ASSEMBLED FILES")
+    _emit(on_text, "dry run assembled files")
     if not files:
         _emit(on_text, "  (none)")
         return
@@ -1426,14 +1441,14 @@ def build_target(
         if dry_run:
             _emit(
                 on_text,
-                f"DRY RUN: would reset all blocks to pending and wipe {resolved_build_dir}",
+                f"dry run: would reset all blocks to pending and wipe {resolved_build_dir}",
             )
         else:
             reset_count = reset_all_states(manifest_path)
             shutil.rmtree(resolved_build_dir, ignore_errors=True)
             _emit(
                 on_text,
-                f"Full reset: {reset_count} block(s) to pending; wiped {resolved_build_dir}",
+                f"full reset: {reset_count} block(s) to pending; wiped {resolved_build_dir}",
             )
 
     if not dry_run:
@@ -1456,9 +1471,9 @@ def build_target(
             blueprint_dir, _source_roles(target_dir), resolved_build_dir
         )
         if staged_assets:
-            _emit(on_text, f"Staged build assets: {len(staged_assets)}")
+            _emit(on_text, f"staged build assets: {len(staged_assets)}")
         for path in restaged:
-            _emit(on_text, f"Restored modified build asset: {path}")
+            _emit(on_text, f"restored modified build asset: {path}")
 
     roots = StepRoots(
         target_dir=target_dir,
@@ -1484,7 +1499,7 @@ def build_target(
                 f"--story {story_id!r} is not a story or spike; use --step for a feature block"
             )
     if dry_run:
-        _emit(on_text, "DRY RUN: skipping build-block compact refresh")
+        _emit(on_text, "dry run: skipping build-block compact refresh")
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
     prompt = load_prompt(PROMPT_NAME)
@@ -1497,7 +1512,7 @@ def build_target(
     scoped_selector = story_id if story_id is not None else step_id
     if reset and scoped_selector is not None:
         if dry_run:
-            _emit(on_text, f"DRY RUN: would reset {scoped_selector} and child ACs to pending")
+            _emit(on_text, f"dry run: would reset {scoped_selector} and child ACs to pending")
             preview_plan = _preview_reset(parse_build_plan(manifest_path), scoped_selector)
         else:
             _reset_step_for_rebuild(manifest_path, scoped_selector)
@@ -1551,17 +1566,23 @@ def build_target(
         if group.story_point_savings:
             story_points_summary += f", saved {group.story_point_savings}"
         _emit(on_text, "")
+        _emit(on_text, _block_header(unit.name, unit.block_id))
         _emit(
             on_text,
-            f"{block_started_at}  Start BUILD BLOCK: {unit.name} [{unit.block_id}]"
-            f"  ({unit.block_type}, {len(unit.steps)} run / "
-            f"{len(unit.already_verified)} verified, {story_points_summary})",
+            f"kind: {unit.block_type} · {len(unit.steps)} run / "
+            f"{len(unit.already_verified)} verified · {story_points_summary}",
         )
-        _emit(on_text, f"  Workdir: {resolved_build_dir}")
-        for verified in unit.already_verified:
-            _emit(on_text, f"  [built] {verified.name} ({verified.block_id})")
-        for assembly in assemblies:
-            _emit(on_text, f"  [run] {assembly.name} ({assembly.block_id})")
+        _emit(on_text, f"workdir: {resolved_build_dir}")
+        _emit(on_text, f"started at {block_started_at}")
+        if unit.already_verified:
+            _emit(
+                on_text,
+                "built: " + ", ".join(f"{v.name} ({v.block_id})" for v in unit.already_verified),
+            )
+        _emit(
+            on_text,
+            "run: " + ", ".join(f"{a.name} ({a.block_id})" for a in assemblies),
+        )
         if unit.is_group:
             prompt_assembly = render_build_group_prompt_assembly(
                 prompt.body,
@@ -1579,27 +1600,26 @@ def build_target(
                 today=today,
             )
         if dry_run:
-            _emit(on_text, "-" * 80)
+            _emit(on_text, "-" * _RULE_WIDTH)
             _emit_dry_run_file_list(on_text, group)
-            _emit(on_text, "-" * 80)
-            _emit(on_text, f"DRY RUN: LLM execution skipped for {unit.name} [{unit.block_id}]")
+            _emit(on_text, "-" * _RULE_WIDTH)
+            _emit(on_text, "dry run: LLM execution skipped")
             _emit(
                 on_text,
                 (
-                    "DRY RUN PROMPT: assembled "
+                    "dry run prompt: assembled "
                     f"{prompt_assembly.total_bytes} B  "
                     f"~{prompt_assembly.total_tokens_estimate} tok  "
                     f"parts={len(prompt_assembly.records())}"
                 ),
             )
             if show_prompt:
-                _emit(on_text, "DRY RUN PROMPT BEGIN")
+                _emit(on_text, "dry run prompt begin")
                 _emit(on_text, prompt_assembly.rendered_text.rstrip())
-                _emit(on_text, "DRY RUN PROMPT END")
+                _emit(on_text, "dry run prompt end")
             else:
-                _emit(on_text, "DRY RUN PROMPT: hidden; use --show-prompt to print it")
-            _emit(on_text, f"BUILD BLOCK DRY-RUN COMPLETE: {unit.name} [{unit.block_id}]")
-            _emit(on_text, "=" * 80)
+                _emit(on_text, "dry run prompt: hidden; use --show-prompt to print it")
+            _emit(on_text, "result: dry-run complete")
             for block, assembly in zip(unit.steps, assemblies):
                 step_result = BuildStepResult(
                     block_id=block.block_id,
@@ -1636,18 +1656,17 @@ def build_target(
                 for check in pre_acceptance
                 if check.passed and not check.integrity_ok
             ]
-            _emit(on_text, "")
             _emit(
                 on_text,
-                "Pre-build Acceptance: "
-                f"{baseline_red} red baseline, {len(weak_checks)} prepassed"
-                + (f", {len(vacuous_checks)} vacuous" if vacuous_checks else ""),
+                "pre-ac: "
+                f"{baseline_red} red baseline · {len(weak_checks)} prepassed"
+                + (f" · {len(vacuous_checks)} vacuous" if vacuous_checks else ""),
             )
             if vacuous_checks:
-                _emit(on_text, "  GREEN (vacuous): " + ", ".join(vacuous_checks))
+                _emit(on_text, "vacuous: " + ", ".join(vacuous_checks))
             remaining_weak = [check for check in weak_checks if check not in vacuous_checks]
             if remaining_weak:
-                _emit(on_text, "  GREEN (prepassed): " + ", ".join(remaining_weak))
+                _emit(on_text, "prepassed: " + ", ".join(remaining_weak))
         # Snapshot once before the first attempt so ``changed_files`` reflects everything
         # the block wrote across all passes, then retire any prior current error.
         before_files = _snapshot_files(resolved_build_dir)
@@ -1687,8 +1706,7 @@ def build_target(
                 state, status, error, failure_detail = "closed/verified", "built", None, ""
                 _emit(
                     on_text,
-                    f"RESUME: acceptance already green for {unit.name} [{unit.block_id}]; "
-                    "no rebuild needed",
+                    "resume: acceptance already green — no rebuild needed",
                 )
             else:
                 seed_feedback = _render_repair_feedback(
@@ -1696,8 +1714,7 @@ def build_target(
                 )
                 _emit(
                     on_text,
-                    f"RESUME: seeding first pass for {unit.name} [{unit.block_id}] with "
-                    f"{len(resume_failed)} failing check(s)",
+                    f"resume: seeding first pass with {len(resume_failed)} failing check(s)",
                 )
         attempt = 0
         while True:
@@ -1717,11 +1734,11 @@ def build_target(
                     attempt_model = escalate_model
                     _emit(
                         on_text,
-                        f"REPAIR ESCALATION: final attempt using {attempt_model}",
+                        f"repair: escalation — final attempt using {attempt_model}",
                     )
                 _emit(
                     on_text,
-                    f"REPAIR ATTEMPT {attempt}/{max_attempt}: "
+                    f"repair: attempt {attempt}/{max_attempt} · "
                     f"{len(feedback_checks) or 'agent-reported'} failing check(s)",
                 )
                 active_assembly = _repair_prompt_assembly(
@@ -1730,6 +1747,7 @@ def build_target(
                         unit, feedback_checks, agent_report, changed_files, story_by_check
                     ),
                 )
+            _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
             try:
                 result = run(
                     active_assembly.rendered_text,
@@ -1747,6 +1765,7 @@ def build_target(
                     log_dir=log_dir,
                     target=target,
                     on_text=None,
+                    announce=False,
                     prompt_assembly=active_assembly,
                 )
             except Exception as exc:
@@ -1772,16 +1791,12 @@ def build_target(
             summary = str(getattr(result, "text", "") or "")
             execution_id = getattr(result, "execution_id", None)
             returncode = getattr(result, "returncode", None)
-            execution_bits = [f"ok={ok}"]
+            execution_bits = ["ok" if ok else "failed"]
             if returncode is not None:
                 execution_bits.append(f"rc={returncode}")
             if execution_id:
-                execution_bits.append(f"id={execution_id}")
-            _emit(
-                on_text,
-                f"BUILD BLOCK RETURNED: {unit.name} [{unit.block_id}]  "
-                + "  ".join(execution_bits),
-            )
+                execution_bits.append(execution_id)
+            _emit(on_text, "returned: " + " · ".join(execution_bits))
             state, status, error, failure_detail = _build_outcome(
                 summary,
                 ok=ok,
@@ -1807,8 +1822,8 @@ def build_target(
                 agent_report = _parse_agent_failure(summary)
                 _emit(
                     on_text,
-                    f"AGENT SELF-REPORTED FAILURE (advisory): {unit.name} [{unit.block_id}]"
-                    "  — deterministic acceptance is authoritative",
+                    "agent self-reported failure (advisory) "
+                    "— deterministic acceptance is authoritative",
                 )
                 state, status, error, failure_detail = "", "", None, ""
             elif status == "failed" and (error or "").startswith(_AGENT_REPORTED_PREFIX):
@@ -1818,13 +1833,9 @@ def build_target(
             if changed_files:
                 preview = ", ".join(changed_files[:5])
                 suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"
-                _emit(
-                    on_text,
-                    f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  "
-                    f"{len(changed_files)} changed: {preview}{suffix}",
-                )
+                _emit(on_text, f"files: {len(changed_files)} changed — {preview}{suffix}")
             else:
-                _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
+                _emit(on_text, "files: 0 changed")
 
             # Restore any staged asset the step rewrote, before acceptance runs. A step that
             # edits its own test kit would otherwise be graded against a test suite of its own
@@ -1839,11 +1850,7 @@ def build_target(
                         "the Blueprint. Staged assets are read-only inputs.\n  "
                         + "\n  ".join(tampered)
                     )
-                    _emit(
-                        on_text,
-                        f"STAGED ASSET MODIFIED: {unit.name} [{unit.block_id}]  "
-                        f"{len(tampered)} restored",
-                    )
+                    _emit(on_text, f"staged asset modified — {len(tampered)} restored")
 
             acceptance = ()
             if status != "failed":
@@ -1864,13 +1871,9 @@ def build_target(
                         error, failure_detail = _dependency_gate_failure(dependency_gate)
                         _emit(
                             on_text,
-                            f"DEPENDENCY GATE FAILED: {unit.name} [{unit.block_id}]  "
-                            f"{len(dependency_gate.issues)} issue(s)",
+                            f"dependency gate failed — {len(dependency_gate.issues)} issue(s)",
                         )
                     else:
-                        if checks:
-                            _emit(on_text, "")
-                            _emit(on_text, "Testing...")
                         acceptance = run_programmatic_acceptance(
                             checks,
                             build_dir=resolved_build_dir,
@@ -1892,11 +1895,11 @@ def build_target(
                         if checks:
                             passed = sum(1 for check in acceptance if check.passed)
                             if not failed_checks:
-                                _emit(on_text, "OK")
+                                _emit(on_text, f"tests: passed ({passed}/{len(checks)})")
                             else:
                                 _emit(
                                     on_text,
-                                    f"FAILED ({passed}/{len(checks)}): "
+                                    f"tests: FAILED ({passed}/{len(checks)}) — "
                                     + ", ".join(check.check_id for check in failed_checks),
                                 )
 
@@ -2061,20 +2064,37 @@ def build_target(
                 set_applied_specs(manifest_path, applied_specs)
 
         block_elapsed = _elapsed_text(time.monotonic() - block_started)
+        graded = acceptance or pre_acceptance
+        if graded:
+            prepassed_ids = {
+                check.check_id for check in pre_acceptance if check.passed and check.integrity_ok
+            }
+            vacuous_ids = {
+                check.check_id
+                for check in pre_acceptance
+                if check.passed and not check.integrity_ok
+            }
+            _emit(on_text, "")
+            _emit(on_text, "Definition of Done")
+            for check in graded:
+                mark = "ok" if check.passed else "X"
+                if check.check_id in prepassed_ids:
+                    note = "  (prepassed)"
+                elif check.check_id in vacuous_ids:
+                    note = "  (vacuous)"
+                else:
+                    note = ""
+                detail = f"  {check.error}" if not check.passed and check.error else ""
+                _emit(on_text, f"[{mark}] {check.check_id}  {check.intent}{note}{detail}")
+        _emit(on_text, "")
         if status == "failed":
             _emit(
                 on_text,
-                f"{_wall_time()}  FAILED BUILD BLOCK: {unit.name} [{unit.block_id}]"
-                f"  ({block_elapsed})",
+                f"result: FAILED — {error or 'build failed'} · {block_elapsed}",
             )
-            _emit(on_text, f"  Error: {error or 'build failed'}")
         else:
-            _emit(
-                on_text,
-                f"{_wall_time()}  Complete BUILD BLOCK: {unit.name} [{unit.block_id}]"
-                f"  ({state}, {block_elapsed})",
-            )
-            _emit(on_text, f"  Evidence: {_rel(evidence_path, target_dir)}")
+            _emit(on_text, f"result: {status} · {state} · {block_elapsed}")
+            _emit(on_text, f"evidence: {_rel(evidence_path, target_dir)}")
         for block, assembly in zip(unit.steps, assemblies):
             step_result = BuildStepResult(
                 block_id=block.block_id,

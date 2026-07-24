@@ -67,15 +67,13 @@ class TestHelpAndVersion:
             "REPAIR ATTEMPT 1/1: 1 failing check(s)\n"
         )
 
-    def test_stream_build_keeps_testing_result_inline(self, capsys):
-        _stream_build._at_line_start = True  # type: ignore[attr-defined]
+    def test_stream_build_emits_blank_separator_and_whole_lines(self, capsys):
         _stream_build("")
-        _stream_build("Testing...")
-        _stream_build("FAILED (2/3): block-conformance")
-        _stream_build("REPAIR ATTEMPT 1/1: 1 failing check(s)")
+        _stream_build("tests: FAILED (2/3) — block-conformance")
+        _stream_build("repair: attempt 1/1 · 1 failing check(s)")
 
         assert capsys.readouterr().out == (
-            "\nTesting... FAILED (2/3): block-conformance\nREPAIR ATTEMPT 1/1: 1 failing check(s)\n"
+            "\ntests: FAILED (2/3) — block-conformance\nrepair: attempt 1/1 · 1 failing check(s)\n"
         )
 
     def test_stream_status_only_drops_model_json_payload(self, capsys):
@@ -185,10 +183,10 @@ class TestHelpAndVersion:
         assert "init" in err
         assert "error: argument <command>: invalid choice: 'configure'" in err
 
-    def test_command_prints_copyright_to_stderr(self, isolated_config):
-        _, _, err = run_cli("config", "show")
-        assert __copyright__ in err
-        assert __version__ in err
+    def test_command_prints_copyright_to_stdout(self, isolated_config):
+        out, err = run_cli("config", "show")[1:]
+        assert __copyright__ in out
+        assert __version__ in out
 
     def test_status_writes_plain_transcript_without_debug_log(
         self, tmp_workspace, isolated_config, monkeypatch
@@ -942,15 +940,13 @@ state: pending
 
         assert rc == 0, err
         assert re.search(
-            r"BUILD COMMAND START: ExampleTarget  started=\d{4}-\d{2}-\d{2} ",
+            r"BUILD ExampleTarget started at \d{4}-\d{2}-\d{2} ",
             out,
         )
-        assert re.search(
-            r"BUILD COMMAND COMPLETE: ExampleTarget  completed=\d{4}-\d{2}-\d{2} "
-            r".*elapsed=\d",
-            out,
-        )
-        assert "[built]" in out
+        assert "BUILD COMPLETE ExampleTarget" in out
+        assert re.search(r"completed at \d{4}-\d{2}-\d{2} ", out)
+        assert re.search(r"elapsed: ", out)
+        assert "result: built" in out
         assert "foundation" in out
         # The build performs no git operations, so it prints no git status lines.
         assert "git" not in out.lower()
@@ -986,9 +982,9 @@ state: pending
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 1
-        assert "[failed]" in out
-        # The failure block closes the run: it comes after the result line, not mid-stream.
-        assert out.index("BUILD FAILED: ExampleTarget") > out.index("RESULT:")
+        assert "result: FAILED" in out
+        # The failure block closes the run: it comes after the completion header, not mid-stream.
+        assert out.index("BUILD FAILED: ExampleTarget") > out.index("BUILD COMPLETE ExampleTarget")
         assert "Foundation [foundation]" in out
         assert "LLM execution failed" in out
         assert "rerun drydock build to continue this step" in out
@@ -1036,8 +1032,8 @@ state: pending
         # Both stories are accounted for, but the failure block renders once per execution.
         assert out.count("BUILD FAILED: ExampleTarget") == 1
         assert "(1 step)" in out
-        assert "[foundation]" in out
-        assert "[service]" in out
+        assert "(foundation)" in out
+        assert "(service)" in out
         assert "The backend diverges from the spec." in out
 
     def test_build_failure_diagnosis_reaches_errors_and_evidence(
@@ -1124,20 +1120,20 @@ state: pending
         )
 
         assert rc == 0, err
-        assert "DRY RUN: no LLM call" in out
-        assert "\nDRY RUN: skipping build-block compact refresh\n" in out
-        assert "\nDRY RUN ASSEMBLED FILES\n" in out
+        assert "mode: DRY RUN — no LLM call" in out
+        assert "\ndry run: skipping build-block compact refresh\n" in out
+        assert "\ndry run assembled files\n" in out
         assert "Role       File" in out
         assert "implements DATABASE.md" in out
-        assert "DRY RUN PROMPT: assembled" in out
-        assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in out
-        assert "DRY RUN PROMPT BEGIN" not in out
-        assert "DRY RUN PROMPT END" not in out
+        assert "dry run prompt: assembled" in out
+        assert "dry run prompt: hidden; use --show-prompt to print it" in out
+        assert "dry run prompt begin" not in out
+        assert "dry run prompt end" not in out
         assert "- BUILD_SCOPE: exactly one MANIFEST.md step" not in out
         assert "DB." not in out
-        assert "[dry-run]" in out
-        assert "DRY RUN RESULT: 0 built, 0 failed" in out
-        assert "refreshDRY RUN" not in out
+        assert "result: dry-run complete" in out
+        assert "dry-run result: 0 built, 0 failed" in out
+        assert "refreshdry run" not in out
         assert "FILES  -" not in out
         assert not build_dir.exists()
         assert not (target / "evidence").exists()
@@ -1176,7 +1172,7 @@ state: pending
         )
 
         assert rc == 0, err
-        assert "LLM: codex/gpt-5.4" in out
+        assert "llm-provider: codex / gpt-5.4" in out
 
     def test_build_dry_run_show_prompt_prints_full_prompt(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1203,9 +1199,9 @@ state: pending
         )
 
         assert rc == 0, err
-        assert "DRY RUN: full prompt output enabled by --show-prompt" in out
-        assert "DRY RUN PROMPT BEGIN" in out
-        assert "DRY RUN PROMPT END" in out
+        assert "mode: full prompt output enabled by --show-prompt" in out
+        assert "dry run prompt begin" in out
+        assert "dry run prompt end" in out
         assert "- BUILD_SCOPE: exactly one MANIFEST.md step" in out
         assert "DB." in out
 
@@ -1249,11 +1245,11 @@ state: pending
         )
 
         assert rc == 0, err
-        assert "Building step: foundation" in out
-        assert "Reset requested: foundation" in out
-        assert "[built]" in out
+        assert "scope: step foundation" in out
+        assert "reset: foundation" in out
+        assert "result: built" in out
         assert "foundation" in out
-        assert "RESULT: 1 built, 0 failed" in out
+        assert "result: 1 built, 0 failed" in out
 
     def test_build_reset_resets_whole_project_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1298,9 +1294,9 @@ state: pending
         )
 
         assert rc == 0, err
-        assert "Reset requested: entire project (all blocks + build directory)" in out
-        assert "Full reset:" in out
-        assert "[built]" in out
+        assert "reset: entire project (all blocks + build directory)" in out
+        assert "full reset:" in out
+        assert "result: built" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert "finding: failed" not in text
         assert "state: closed/failed" not in text
@@ -1377,7 +1373,7 @@ state: pending
             "build", "ExampleTarget", "--continue", "--build-dir", str(tmp_path / "out")
         )
         assert rc == 0, err
-        assert "[built]" in out
+        assert "result: built" in out
 
     def test_build_normalize_order_reorders_manifest_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1427,8 +1423,8 @@ state: pending
         )
 
         assert rc == 0, out + err
-        assert "Normalize order: updated MANIFEST.md" in out
-        assert "Feature Core [feature-core-story]" in out
+        assert "normalize order: updated MANIFEST.md" in out
+        assert "(feature-core-story)" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert text.index("id: feature-core") < text.index("id: screen-setup")
 
@@ -2182,7 +2178,7 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestTarget", "--check")
         assert rc == 1, err
-        assert out.startswith("INCOMPLETE: TestTarget")
+        assert "INCOMPLETE: TestTarget" in out
 
     def test_status_check_exits_0_when_all_blocks_verified(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2197,13 +2193,13 @@ class TestStatus:
         )
         rc, out, err = run_cli("status", "TestTarget", "--check")
         assert rc == 0, err
-        assert out.startswith("COMPLETE: TestTarget")
+        assert "COMPLETE: TestTarget" in out
 
     def test_status_check_flag_before_target(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "--check", "TestTarget")
         assert rc == 1, err
-        assert out.startswith("INCOMPLETE: TestTarget")
+        assert "INCOMPLETE: TestTarget" in out
 
     def test_status_check_unknown_target_exits_2(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2238,7 +2234,7 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestTarget", "--ready")
         assert rc == 0, err
-        assert out == ""
+        assert __copyright__ in out
         assert "READY: TestTarget" in err
 
     def test_status_ready_exits_1_when_complete(

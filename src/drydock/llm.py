@@ -1207,6 +1207,7 @@ def run_prompt(
     target: str = "",
     on_text: TextCallback | None = None,
     on_event: EventCallback | None = None,
+    announce: bool = True,
     prompt_assembly: PromptAssembly | None = None,
 ) -> LlmResult:
     """Run a fully assembled prompt and persist reproducible execution evidence.
@@ -1242,7 +1243,8 @@ def run_prompt(
     job_parameters = dict(parameters or {})
     logger = create_execution_logger(artifacts.execution_id, debug=debug)
     started_at = utc_now()
-    _print_run_header(llm=selected, command_name=command_name, model=model)
+    if announce:
+        _print_run_header(llm=selected, command_name=command_name, model=model)
     logger.info(
         "execution started id=%s command=%s llm=%s cwd=%s prompt_sha256=%s prompt_bytes=%d",
         artifacts.execution_id,

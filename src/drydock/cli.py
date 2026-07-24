@@ -84,36 +84,14 @@ def _stream_stdout(text: str) -> None:
 
 
 def _stream_build(text: str) -> None:
-    """Render Drydock build progress as one clean status line per message.
+    """Render each Drydock build status message as its own newline-terminated stdout line.
 
     During ``drydock build`` the LLM runs with ``on_text=None``, so every message
-    delivered here is one of Drydock's own status lines, never a model delta.
-    Each line is emitted on its own line and newline-terminated, which keeps
-    stdout at column 0 so the provider's ``[llm]`` lines (written to stderr) never
-    concatenate onto an open build line.
-
-    The one exception is the ``Testing...`` progress token: it is left open so its
-    result (``OK`` / ``FAILED ...``) prints on the same line.
+    delivered here is one of Drydock's own status lines, never a model delta. An empty
+    message is a blank separator between chunks.
     """
-    at_line_start = bool(getattr(_stream_build, "_at_line_start", True))
-    if text == "":
-        # Blank separator: close an open line, else emit one blank line.
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        _stream_build._at_line_start = True  # type: ignore[attr-defined]
-        return
-    # Inline result appended to an open progress line (e.g. "Testing...").
-    if not at_line_start and text.startswith(("OK", "FAILED")):
-        sys.stdout.write(" " + text + "\n")
-        sys.stdout.flush()
-        _stream_build._at_line_start = True  # type: ignore[attr-defined]
-        return
-    if not at_line_start:
-        sys.stdout.write("\n")
-    keep_open = text == "Testing..."
-    sys.stdout.write(text if keep_open else text + "\n")
+    sys.stdout.write("\n" if text == "" else text + "\n")
     sys.stdout.flush()
-    _stream_build._at_line_start = not keep_open  # type: ignore[attr-defined]
 
 
 def _stream_status_only(text: str) -> None:
@@ -133,6 +111,9 @@ def _print_dimensions(dimensions: dict[str, int]) -> None:
     for name, value in dimensions.items():
         mark = "" if value >= 60 else "   BELOW GATE"
         print(f"  {name.ljust(width)}  {value:3d}{mark}")
+
+
+_HEAVY_RULE = "═" * 72
 
 
 def _wall_time() -> str:
@@ -1363,67 +1344,41 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
     log_dir = get_workspace() / "logs"
 
-    _marks = {
-        "built": "[built]",
-        "implemented": "[review]",
-        "failed": "[failed]",
-        "dry-run": "[dry-run]",
-    }
-
     # Failures are collected here and rendered once at the end of the run, after the result
     # line, so the last thing on screen is the diagnosis rather than a mid-stream banner the
-    # remaining step output scrolls away.
+    # remaining step output scrolls away. The per-block progress and Definition of Done are
+    # streamed by build_target itself; report only harvests the failures for that closing block.
     failures: list[BuildStepResult] = []
     _fatal_shown: set[str] = set()
 
     def report(step: BuildStepResult) -> None:
-        mark = _marks.get(step.status, f"[{step.status}]")
-        extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
-        print(f"  {mark:>9}  {step.name} [{step.block_id}]  SP {step.story_points}{extra}")
         if step.status == "failed":
             # Stories in one block share a single execution: report it once.
             fatal_key = step.execution_id or f"{step.block_id}:{step.error}"
             if fatal_key not in _fatal_shown:
                 _fatal_shown.add(fatal_key)
                 failures.append(step)
-        if step.evidence_path is not None:
-            print(f"      evidence: {step.evidence_path}")
-        print(f"      files changed: {len(step.written_files)}")
-        for check in step.pre_acceptance:
-            if not check.passed:
-                continue
-            if check.integrity_ok:
-                label = "GREEN (prepassed)"
-                detail = ""
-            else:
-                label = "GREEN (vacuous)"
-                detail = (
-                    "  " + "; ".join(check.integrity_reasons) if check.integrity_reasons else ""
-                )
-            print(f"      [!] {label} {check.check_id}  {check.intent}{detail}")
-        for check in step.acceptance:
-            check_mark = "OK" if check.passed else "X"
-            detail = f"  {check.error}" if check.error else ""
-            print(f"      [{check_mark}] ac {check.check_id}  {check.intent}{detail}")
 
     build_started = time.monotonic()
-    print(f"Building Target: {args.Target}")
-    print(f"BUILD COMMAND START: {args.Target}  started={_wall_time()}")
-    print(
-        f"LLM: {llm_provider}/{model}  repair_attempts={repair_attempts}  "
-        f"escalate={escalate_model or 'off'}"
-    )
+    print(_HEAVY_RULE)
+    print(f"BUILD {args.Target} started at {_wall_time()}")
+    print(_HEAVY_RULE)
+    print(f"llm-provider: {llm_provider} / {model}")
+    attempts_word = "attempt" if repair_attempts == 1 else "attempts"
+    print(f"repair: {repair_attempts} {attempts_word} · escalate {escalate_model or 'off'}")
     if getattr(args, "story", None):
-        print(f"Building story: {args.story}")
+        print(f"scope: story {args.story}")
     elif getattr(args, "step", None):
-        print(f"Building step: {args.step}")
+        print(f"scope: step {args.step}")
+    else:
+        print("scope: entire project")
     if getattr(args, "reset", False):
-        scope = (
+        reset_scope = (
             getattr(args, "story", None)
             or getattr(args, "step", None)
             or "entire project (all blocks + build directory)"
         )
-        print(f"Reset requested: {scope}")
+        print(f"reset: {reset_scope}")
     if getattr(args, "normalize_order", False):
         manifest_path = target_dir / "MANIFEST.md"
         doc = split_manifest(manifest_path)
@@ -1433,17 +1388,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         changed = before != after
         if getattr(args, "dry_run", False):
             print(
-                "Normalize order dry run: would "
+                "normalize order dry run: would "
                 f"{'update' if changed else 'leave unchanged'} MANIFEST.md"
             )
         else:
             if changed:
                 write_manifest(doc)
-            print(f"Normalize order: {'updated' if changed else 'already normalized'} MANIFEST.md")
+            print(f"normalize order: {'updated' if changed else 'already normalized'} MANIFEST.md")
     if getattr(args, "dry_run", False):
-        print("DRY RUN: no LLM call, file writes, evidence, state updates, README, or git commit")
+        print("mode: DRY RUN — no LLM call, writes, evidence, state, README, or git commit")
         if getattr(args, "show_prompt", False):
-            print("DRY RUN: full prompt output enabled by --show-prompt")
+            print("mode: full prompt output enabled by --show-prompt")
     chair_context = nullcontext()
     if not getattr(args, "dry_run", False):
         from drydock.quarterdeck_state import commanders_chair_command
@@ -1468,21 +1423,21 @@ def cmd_build(args: argparse.Namespace) -> int:
             escalate_model=escalate_model,
         )
     print()
-    print(
-        f"BUILD COMMAND COMPLETE: {args.Target}  completed={_wall_time()}  "
-        f"elapsed={_elapsed_text(time.monotonic() - build_started)}"
-    )
-    print()
+    print(_HEAVY_RULE)
+    print(f"BUILD COMPLETE {args.Target}")
+    print(_HEAVY_RULE)
+    label = "dry-run result" if result.dry_run else "result"
+    print(f"{label}: {len(result.built())} built, {len(result.failed())} failed")
+    print(f"completed at {_wall_time()}")
+    print(f"elapsed: {_elapsed_text(time.monotonic() - build_started)}")
     if not result.steps:
-        print("  Nothing buildable — no pending step has all dependencies verified.")
+        print("nothing buildable — no pending step has all dependencies verified")
         reviewable = _reviewable_build_steps(target_dir)
         if reviewable:
-            print("  Legacy implemented steps remain; rebuild or revise them to run acceptance.")
-    print(f"Build directory: {result.build_dir}")
+            print("legacy implemented steps remain; rebuild or revise them to run acceptance")
+    print(f"build dir: {result.build_dir}")
     if result.readme_path:
-        print(f"README: {result.readme_path}")
-    label = "DRY RUN RESULT" if result.dry_run else "RESULT"
-    print(f"{label}: {len(result.built())} built, {len(result.failed())} failed")
+        print(f"readme: {result.readme_path}")
     if result.failed() and not result.dry_run:
         print()
         print(
@@ -2751,7 +2706,6 @@ def main(argv: list[str] | None = None) -> None:
             args.debug = bool(getattr(args, "debug", False) or value)
         elif getattr(args, key, None) is None:
             setattr(args, key, value)
-    print(f"Drydock {__version__}  {__copyright__}", file=sys.stderr)
     debug = getattr(args, "debug", False)
 
     command_logging = None
@@ -2783,6 +2737,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     try:
         with stdout_context:
+            # The masthead is standard for every command and prints on stdout (status, not an
+            # error). Emitting it inside the redirect keeps the transcript an exact copy of stdout.
+            print(f"Drydock {__version__}  {__copyright__}")
             try:
                 exit_code = _dispatch(args, parser)
             except UsageError as exc:

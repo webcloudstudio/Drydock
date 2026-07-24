@@ -526,13 +526,13 @@ def test_dry_run_assembles_prompt_without_runner_or_writes(tmp_path):
     assert not build_dir.exists()
     assert not (target_dir / "evidence").exists()
     assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
-    assert "DRY RUN ASSEMBLED FILES" in log
+    assert "dry run assembled files" in log
     assert any(line.startswith("  Role") for line in log)
     assert any("implements" in line and "DATABASE.md" in line for line in log)
-    assert any("Start BUILD BLOCK: Catalog [feature-catalog]" in line for line in log)
-    assert any(line.startswith("DRY RUN PROMPT: assembled") for line in log)
-    assert "DRY RUN PROMPT: hidden; use --show-prompt to print it" in log
-    assert "DRY RUN PROMPT BEGIN" not in log
+    assert any("──── Catalog [feature-catalog] " in line for line in log)
+    assert any(line.startswith("dry run prompt: assembled") for line in log)
+    assert "dry run prompt: hidden; use --show-prompt to print it" in log
+    assert "dry run prompt begin" not in log
     assert not any("DB SPEC CONTENT" in line for line in log)
     assert result.steps[0].prompt is not None
 
@@ -551,8 +551,8 @@ def test_dry_run_show_prompt_prints_full_prompt(tmp_path):
         show_prompt=True,
     )
 
-    assert "DRY RUN PROMPT BEGIN" in log
-    assert "DRY RUN PROMPT END" in log
+    assert "dry run prompt begin" in log
+    assert "dry run prompt end" in log
     assert any("DB SPEC CONTENT" in line for line in log)
 
 
@@ -577,8 +577,8 @@ def test_scoped_reset_dry_run_previews_reset_without_manifest_write(tmp_path):
     assert [s.block_id for s in result.steps] == ["service"]
     assert result.steps[0].status == "dry-run"
     assert len(runner.calls) == 0
-    assert "DRY RUN: would reset service and child ACs to pending" in log
-    assert any(line == "  [run] Service (service)" for line in log)
+    assert "dry run: would reset service and child ACs to pending" in log
+    assert any(line == "run: Service (service)" for line in log)
     assert (target_dir / "MANIFEST.md").read_text(encoding="utf-8") == original_manifest
 
 
@@ -588,32 +588,14 @@ def test_build_emits_step_progress_lines(tmp_path):
 
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner(), on_text=log.append)
 
-    assert any(
-        re.match(
-            r"\d{4}-\d{2}-\d{2} .* Start BUILD BLOCK: Foundation \[foundation\]"
-            r"  \(story, 1 run / 0 verified, \d+ SP\)",
-            line,
-        )
-        for line in log
-    )
-    assert any(line == f"  Workdir: {build_dir}" for line in log)
-    assert any(line == "  [run] Foundation (foundation)" for line in log)
-    assert any(
-        line == "BUILD BLOCK RETURNED: Foundation [foundation]  ok=True  id=exec-1" for line in log
-    )
-    assert any(
-        line == "BUILD BLOCK FILES: Foundation [foundation]  1 changed: foundation.txt"
-        for line in log
-    )
-    assert any(
-        re.match(
-            r"\d{4}-\d{2}-\d{2} .* Complete BUILD BLOCK: Foundation \[foundation\]"
-            r"  \(closed/verified, .*\)",
-            line,
-        )
-        for line in log
-    )
-    assert any(line == "  Evidence: evidence/foundation.md" for line in log)
+    assert any(line.startswith("──── Foundation [foundation] ") for line in log)
+    assert any(re.match(r"kind: story · 1 run / 0 verified · \d+ SP", line) for line in log)
+    assert any(line == f"workdir: {build_dir}" for line in log)
+    assert any(line == "run: Foundation (foundation)" for line in log)
+    assert any(line == "returned: ok · exec-1" for line in log)
+    assert any(line == "files: 1 changed — foundation.txt" for line in log)
+    assert any(re.match(r"result: built · closed/verified · .+", line) for line in log)
+    assert any(line == "evidence: evidence/foundation.md" for line in log)
 
 
 def test_feature_step_auto_compacts_and_injects_compact_context(tmp_path):
@@ -943,8 +925,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
-    assert "Testing..." in messages
-    assert "OK" in messages
+    assert "tests: passed (1/1)" in messages
     assert not any("Unit Tests" in message for message in messages)
 
 
@@ -1939,7 +1920,7 @@ def test_restaging_repairs_a_substituted_asset_on_the_next_build(tmp_path):
     )
 
     assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE\n" * 500
-    assert any("Restored modified build asset: sources/spec.txt" in m for m in messages)
+    assert any("restored modified build asset: sources/spec.txt" in m for m in messages)
 
 
 _UNSATISFIABLE_SPEC = """# FEATURE: Escapes
