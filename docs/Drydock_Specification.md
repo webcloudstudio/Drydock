@@ -1421,7 +1421,7 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 ## Programmatic Acceptance
 ← Executable Python assertions. Each check has a stable heading, intent text, and a fenced `python` block.
 ← `Sea Trials: st-id, st-id` between the heading and fence binds the proof to project acceptance IDs.
-← `Corpus: full` between the heading and fence declares that the check runs a complete conformance corpus. One terminal verification story carries it; every other check is bounded to its story.
+← `Suite: full` between the heading and fence declares that the check runs the complete test suite. One terminal verification story carries it; every other check is bounded to its story.
 
 ## User Acceptance
 ← Commander-observed checks that cannot be honestly automated.
