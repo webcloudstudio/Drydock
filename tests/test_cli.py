@@ -2117,6 +2117,19 @@ class TestStatus:
         rc, out, err = run_cli("status", "--check")
         assert rc == 2
 
+    def test_status_check_unplanned_target_exits_2_and_aborts_loop(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from drydock.init_specification import init_specification
+
+        target_dir = tmp_target_root / "Unplanned"
+        init_specification("Unplanned", target_dir)
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        rc, out, err = run_cli("status", "Unplanned", "--check")
+        assert rc == 2
+        assert "BLOCKED: Unplanned" in err
+        assert "drydock plan" in err
+
 
 def test_render_recorded_error_shows_diagnostic_and_recovery():
     from drydock.cli import _render_recorded_error

@@ -1184,8 +1184,11 @@ def cmd_status_check(target: str) -> int:
     if not target_dir.is_dir():
         raise UsageError(f"Target not found: {target_dir}")
     check = completion_check(target, target_dir)
-    label = "COMPLETE" if check.complete else "INCOMPLETE"
-    print(f"{label}: {target}  {check.verified}/{check.total} verified  ({check.reason})")
+    stream = sys.stderr if check.blocked else sys.stdout
+    print(
+        f"{check.label}: {target}  {check.verified}/{check.total} verified  ({check.reason})",
+        file=stream,
+    )
     return check.exit_code()
 
 

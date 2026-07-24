@@ -280,12 +280,22 @@ dashboard across all initialized Targets. With a `<Target>` argument it filters 
 showing its validation state, plan progress, and current runnable step.
 
 `drydock status <Target> --check` is the completion gate for pipelines. It reads the Manifest,
-prints one line, and exits `0` when every story and spike is `closed/verified`, `1` when any work
-remains, and `2` when the Target does not exist. A Target that is not started, not planned, or
-still draft is incomplete. The check calls no LLM and writes no files.
+prints one line, and exits with a code a retry loop can act on:
+
+| Exit | Meaning | Loop action |
+|---|---|---|
+| `0` | Complete — every story and spike is `closed/verified` | Stop; the build is done. |
+| `1` | Incomplete but buildable — approved work remains | Run `drydock build` and check again. |
+| `2` | Blocked — no Manifest, an unparsable or draft Manifest, or no executable work; also an unknown Target | Abort; a human must plan, approve, or fix. |
+
+The check calls no LLM and writes no files. Exit `2` reasons print to standard error.
 
 ```bash
-until drydock status <Target> --check; do drydock build <Target>; done
+while :; do
+  drydock status <Target> --check && break        # exit 0: complete
+  [ $? -eq 2 ] && exit 1                           # exit 2: blocked — abort
+  drydock build <Target>                           # exit 1: build and retry
+done
 ```
 
 ### drydock config

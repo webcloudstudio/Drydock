@@ -345,37 +345,64 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
     )
 
 
+# Completion-gate outcomes. ``exit_code`` is the pipeline contract: a retry loop keeps building
+# while the check exits 1 (retryable) and must abort on 2 (blocked), because no amount of building
+# will advance a Target that is not planned, still draft, or otherwise stuck on human action.
+COMPLETE = "complete"  # exit 0 — every executable block is closed/verified
+RETRYABLE = "retryable"  # exit 1 — approved work remains; drydock build can advance it
+BLOCKED = "blocked"  # exit 2 — build cannot help; a human must plan/approve/fix
+
+_OUTCOME_EXIT = {COMPLETE: 0, RETRYABLE: 1, BLOCKED: 2}
+_OUTCOME_LABEL = {COMPLETE: "COMPLETE", RETRYABLE: "INCOMPLETE", BLOCKED: "BLOCKED"}
+
+
 @dataclass(frozen=True)
 class CompletionCheck:
     """Deterministic machine-readable answer to "is this Target technically complete?"."""
 
     target: str
-    complete: bool
+    outcome: str  # COMPLETE | RETRYABLE | BLOCKED
     reason: str
     total: int = 0
     verified: int = 0
     remaining: int = 0
 
+    @property
+    def complete(self) -> bool:
+        return self.outcome == COMPLETE
+
+    @property
+    def blocked(self) -> bool:
+        return self.outcome == BLOCKED
+
+    @property
+    def label(self) -> str:
+        return _OUTCOME_LABEL[self.outcome]
+
     def exit_code(self) -> int:
-        return 0 if self.complete else 1
+        return _OUTCOME_EXIT[self.outcome]
 
 
 def completion_check(target: str, target_dir: Path) -> CompletionCheck:
     """Return the completion gate for *target* from MANIFEST.md alone.
 
-    Complete means every executable block (story or spike) is ``closed/verified``. Every other
-    condition — no plan, draft plan, no executable work, pending, implemented, or failed blocks —
-    is incomplete, so a pipeline can treat "not started" and "part-way" identically.
+    Three outcomes drive a build-retry loop:
+
+    * ``COMPLETE`` (exit 0) — every executable block (story or spike) is ``closed/verified``.
+    * ``RETRYABLE`` (exit 1) — the Manifest is approved and executable work remains (pending,
+      implemented, or failed blocks); ``drydock build`` can advance it, so a loop should retry.
+    * ``BLOCKED`` (exit 2) — no Manifest, an unparsable or draft Manifest, or a Manifest with no
+      executable work. ``drydock build`` cannot help; a loop must abort and a human must act.
     """
     from drydock.build_plan import parse_build_plan
 
     manifest_path = target_dir / "MANIFEST.md"
     if not manifest_path.is_file():
-        return CompletionCheck(target, False, "no MANIFEST.md — Target is not planned")
+        return CompletionCheck(target, BLOCKED, "no MANIFEST.md — run drydock plan")
     try:
         plan = parse_build_plan(manifest_path)
-    except Exception as exc:  # noqa: BLE001 - any parse failure is simply "not complete"
-        return CompletionCheck(target, False, f"MANIFEST.md could not be parsed: {exc}")
+    except Exception as exc:  # noqa: BLE001 - any parse failure is a blocked Manifest
+        return CompletionCheck(target, BLOCKED, f"MANIFEST.md could not be parsed: {exc}")
 
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     total = len(executable)
@@ -384,15 +411,20 @@ def completion_check(target: str, target_dir: Path) -> CompletionCheck:
 
     if plan.state == "draft":
         return CompletionCheck(
-            target, False, "Manifest is draft — not approved", total, verified, len(remaining)
+            target,
+            BLOCKED,
+            "Manifest is draft — approve it in QuarterDeck",
+            total,
+            verified,
+            len(remaining),
         )
     if total == 0:
-        return CompletionCheck(target, False, "Manifest has no executable work")
+        return CompletionCheck(target, BLOCKED, "Manifest has no executable work")
     if remaining:
         counts = Counter(block.state for block in remaining)
         detail = ", ".join(f"{count} {state}" for state, count in sorted(counts.items()))
-        return CompletionCheck(target, False, detail, total, verified, len(remaining))
-    return CompletionCheck(target, True, "all blocks closed/verified", total, verified, 0)
+        return CompletionCheck(target, RETRYABLE, detail, total, verified, len(remaining))
+    return CompletionCheck(target, COMPLETE, "all blocks closed/verified", total, verified, 0)
 
 
 def target_status(target_dir: Path) -> TargetInfo:

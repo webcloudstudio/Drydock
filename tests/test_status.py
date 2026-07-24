@@ -359,29 +359,41 @@ class TestCompletionCheck:
         assert check.exit_code() == 1
         assert (check.total, check.verified, check.remaining) == (2, 0, 2)
 
-    def test_not_started_is_incomplete(self, tmp_target_root):
+    def test_failed_blocks_are_retryable(self, tmp_target_root):
+        tgt = self._target(
+            tmp_target_root, APPROVED_PLAN.replace("state: pending", "state: closed/failed")
+        )
+        check = completion_check("TestTarget", tgt)
+        assert check.exit_code() == 1
+        assert check.blocked is False
+
+    def test_not_started_is_blocked(self, tmp_target_root):
         tgt = self._target(tmp_target_root, None)
         check = completion_check("TestTarget", tgt)
-        assert check.complete is False
-        assert "not planned" in check.reason
+        assert check.blocked is True
+        assert check.exit_code() == 2
+        assert "drydock plan" in check.reason
 
-    def test_draft_plan_is_incomplete(self, tmp_target_root):
+    def test_draft_plan_is_blocked(self, tmp_target_root):
         tgt = self._target(tmp_target_root, DRAFT_PLAN)
         check = completion_check("TestTarget", tgt)
-        assert check.complete is False
+        assert check.blocked is True
+        assert check.exit_code() == 2
         assert "draft" in check.reason
 
-    def test_unparsable_manifest_is_incomplete(self, tmp_target_root):
+    def test_unparsable_manifest_is_blocked(self, tmp_target_root):
         tgt = self._target(tmp_target_root, "not a manifest at all\n")
         check = completion_check("TestTarget", tgt)
-        assert check.complete is False
+        assert check.blocked is True
+        assert check.exit_code() == 2
 
-    def test_manifest_without_executable_work_is_incomplete(self, tmp_target_root):
+    def test_manifest_without_executable_work_is_blocked(self, tmp_target_root):
         tgt = self._target(
             tmp_target_root,
             "# MANIFEST: TestProject\nstate: approved\nupdated: 2026-01-01T00:00:00\n"
             "plan_hash: abc123\n",
         )
         check = completion_check("TestTarget", tgt)
-        assert check.complete is False
+        assert check.blocked is True
+        assert check.exit_code() == 2
         assert "no executable work" in check.reason
