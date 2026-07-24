@@ -2108,6 +2108,14 @@ def _build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
+def _is_machine_readable_query(args: argparse.Namespace) -> bool:
+    """True for ``status --check``/``--ready``: script-facing gates whose stdout is a bare token."""
+    if getattr(args, "command", None) != "status":
+        return False
+    trailing = set(getattr(args, "args", None) or []) & {"--check", "--ready"}
+    return bool(getattr(args, "check", False) or getattr(args, "ready", False) or trailing)
+
+
 def _dispatch_status(args: argparse.Namespace) -> int:
     # REMAINDER swallows flags that follow the Target, so --check/--ready work on either side.
     flags = {"--check", "--ready"}
@@ -2739,7 +2747,10 @@ def main(argv: list[str] | None = None) -> None:
         with stdout_context:
             # The masthead is standard for every command and prints on stdout (status, not an
             # error). Emitting it inside the redirect keeps the transcript an exact copy of stdout.
-            print(f"Drydock {__version__}  {__copyright__}")
+            # The machine-readable status gates (--check/--ready) are consumed by scripts, so they
+            # stay masthead-free: their stdout is a single status token or nothing.
+            if not _is_machine_readable_query(args):
+                print(f"Drydock {__version__}  {__copyright__}")
             try:
                 exit_code = _dispatch(args, parser)
             except UsageError as exc:

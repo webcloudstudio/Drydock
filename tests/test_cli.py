@@ -2178,7 +2178,7 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestTarget", "--check")
         assert rc == 1, err
-        assert "INCOMPLETE: TestTarget" in out
+        assert out.startswith("INCOMPLETE: TestTarget")
 
     def test_status_check_exits_0_when_all_blocks_verified(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2193,13 +2193,13 @@ class TestStatus:
         )
         rc, out, err = run_cli("status", "TestTarget", "--check")
         assert rc == 0, err
-        assert "COMPLETE: TestTarget" in out
+        assert out.startswith("COMPLETE: TestTarget")
 
     def test_status_check_flag_before_target(self, tmp_target_root, isolated_config, monkeypatch):
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "--check", "TestTarget")
         assert rc == 1, err
-        assert "INCOMPLETE: TestTarget" in out
+        assert out.startswith("INCOMPLETE: TestTarget")
 
     def test_status_check_unknown_target_exits_2(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2234,7 +2234,8 @@ class TestStatus:
         self._setup(tmp_target_root, monkeypatch)
         rc, out, err = run_cli("status", "TestTarget", "--ready")
         assert rc == 0, err
-        assert __copyright__ in out
+        assert out == ""
+        assert __copyright__ not in out
         assert "READY: TestTarget" in err
 
     def test_status_ready_exits_1_when_complete(
