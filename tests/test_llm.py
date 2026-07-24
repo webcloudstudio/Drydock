@@ -157,11 +157,9 @@ def test_run_claude_saves_prompt_logs_stats_and_reproducible_job(tmp_path, monke
     assert result.stats.elapsed_ms is not None
     assert result.stats.input_tokens == 10
     assert result.command[-2:] == ("--model", "sonnet")
-    assert "plan-create_claude" in result.artifacts.log_file.name
-    assert result.artifacts.log_file.name.endswith(".debug.log")
     assert result.artifacts.prompt_file.read_text() == "Reply READY"
     assert result.artifacts.output_file.read_text() == "READY"
-    assert "execution started" in result.artifacts.log_file.read_text()
+    assert list(tmp_path.glob("*.debug.log")) == []
     assert streamed_events[0]["event"] == "execution.started"
     assert streamed_events[-1]["event"] == "execution.completed"
 
@@ -726,7 +724,7 @@ def test_provider_defaults_from_configuration(tmp_path, isolated_config, monkeyp
     assert run_prompt("Work", tmp_path).llm == "codex"
 
 
-def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeypatch, capsys):
+def test_debug_details_are_not_persisted_or_printed_without_debug(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         subprocess,
         "Popen",
@@ -737,7 +735,7 @@ def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeyp
         ),
     )
 
-    result = run_prompt(
+    run_prompt(
         "Work",
         tmp_path,
         llm="claude",
@@ -745,14 +743,37 @@ def test_file_log_contains_debug_details_without_debug_console(tmp_path, monkeyp
         debug=False,
     )
 
-    log_text = result.artifacts.log_file.read_text()
-    assert "parameters=" in log_text
-    assert "[prompt]" in log_text
+    assert list(tmp_path.glob("*.debug.log")) == []
     stderr = capsys.readouterr().err
     assert "parameters=" not in stderr
     assert "parts=" not in stderr
     assert "[llm]" in stderr
     assert "elapsed=" in stderr
+
+
+def test_debug_details_print_to_console_without_debug_log(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, **kwargs: FakePopen(
+            command,
+            stdout_text=json.dumps({"type": "result", "result": "OK"}) + "\n",
+            **kwargs,
+        ),
+    )
+
+    run_prompt(
+        "Work",
+        tmp_path,
+        llm="claude",
+        parameters={"ticket": "TICKET-1"},
+        debug=True,
+    )
+
+    stderr = capsys.readouterr().err
+    assert "parameters=" in stderr
+    assert "[prompt]" in stderr
+    assert list(tmp_path.glob("*.debug.log")) == []
 
 
 def test_done_line_falls_back_to_requested_model():

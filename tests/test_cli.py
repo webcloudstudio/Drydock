@@ -163,7 +163,7 @@ class TestHelpAndVersion:
         assert __copyright__ in err
         assert __version__ in err
 
-    def test_status_writes_plain_transcript_and_separate_debug_log(
+    def test_status_writes_plain_transcript_without_debug_log(
         self, tmp_workspace, isolated_config, monkeypatch
     ):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
@@ -174,10 +174,21 @@ class TestHelpAndVersion:
         transcripts = list((tmp_workspace / "logs").glob("*_status.log"))
         debug_logs = list((tmp_workspace / "logs").glob("*_status.debug.log"))
         assert len(transcripts) == 1
-        assert len(debug_logs) == 1
+        assert debug_logs == []
         assert transcripts[0].read_text(encoding="utf-8") == out
         assert "INFO" not in transcripts[0].read_text(encoding="utf-8")
-        assert "command: status" in debug_logs[0].read_text(encoding="utf-8")
+        assert "command: status" not in err
+
+    def test_debug_after_command_prints_diagnostics_without_debug_log(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+
+        rc, _, err = run_cli("status", "--debug")
+
+        assert rc == 0, err
+        assert "INFO     drydock.cli  command: status --debug" in err
+        assert list((tmp_workspace / "logs").glob("*.debug.log")) == []
 
 
 class TestPromptReview:

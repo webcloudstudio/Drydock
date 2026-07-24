@@ -182,21 +182,25 @@ def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _extract_global_llm_overrides(
+def _extract_global_overrides(
     argv: list[str] | None,
-) -> tuple[list[str] | None, dict[str, str | None]]:
-    """Strip invocation-wide LLM override flags from argv so every command accepts them.
+) -> tuple[list[str] | None, dict[str, str | bool | None]]:
+    """Strip invocation-wide flags from argv so every command accepts them.
 
     The remaining argv is parsed by the normal command parser. This allows flags like
-    ``drydock status Target --llm-provider codex --model gpt-5.4`` even for commands that
-    otherwise use ``argparse.REMAINDER`` or do not consume the overrides.
+    ``drydock status Target --debug`` and LLM overrides even for commands that otherwise
+    use ``argparse.REMAINDER`` or do not consume the overrides.
     """
 
     if argv is None:
-        return None, {"model": None, "llm_provider": None}
+        return None, {"model": None, "llm_provider": None, "debug": False}
 
     cleaned: list[str] = []
-    overrides: dict[str, str | None] = {"model": None, "llm_provider": None}
+    overrides: dict[str, str | bool | None] = {
+        "model": None,
+        "llm_provider": None,
+        "debug": False,
+    }
     index = 0
 
     while index < len(argv):
@@ -220,6 +224,10 @@ def _extract_global_llm_overrides(
                 )
             overrides["llm_provider"] = provider
             index += 2
+            continue
+        if token == "--debug":
+            overrides["debug"] = True
+            index += 1
             continue
         cleaned.append(token)
         index += 1
@@ -1698,7 +1706,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         default=False,
-        help="Show full traceback on unexpected errors.",
+        help="Show internal diagnostics and full tracebacks on the console.",
     )
     parser.add_argument(
         "--no-diagnose",
@@ -2617,10 +2625,12 @@ def _command_log_name(args: argparse.Namespace) -> str:
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     raw_argv = argv if argv is not None else sys.argv[1:]
-    normalized_argv, global_overrides = _extract_global_llm_overrides(raw_argv)
+    normalized_argv, global_overrides = _extract_global_overrides(raw_argv)
     args = parser.parse_args(normalized_argv)
     for key, value in global_overrides.items():
-        if getattr(args, key, None) is None:
+        if key == "debug":
+            args.debug = bool(getattr(args, "debug", False) or value)
+        elif getattr(args, key, None) is None:
             setattr(args, key, value)
     print(f"Drydock {__version__}  {__copyright__}", file=sys.stderr)
     debug = getattr(args, "debug", False)

@@ -1078,10 +1078,10 @@ def test_commanders_chair_logs_are_read_live_from_workspace(tmp_path, monkeypatc
     assert "analyze.log" in first
     assert "read live from the workspace logs directory" in first
 
-    (logs / "build.debug.log").write_text("build", encoding="utf-8")
+    (logs / "build.output.txt").write_text("build", encoding="utf-8")
     refreshed = quarterdeck.api_chair_logs(_RequestStub({"quarterdeck_target": "Beta"}))
     assert "analyze.log" in refreshed
-    assert "build.debug.log" in refreshed
+    assert "build.output.txt" in refreshed
 
 
 def test_commanders_chair_history_is_live_filtered_and_newest_first(tmp_path, monkeypatch):

@@ -996,7 +996,7 @@ def run_prompt(
         selected, working_directory, artifacts, model, allow_tools, codex_sandbox=sandbox
     )
     job_parameters = dict(parameters or {})
-    logger = create_execution_logger(artifacts.execution_id, artifacts.log_file, debug=debug)
+    logger = create_execution_logger(artifacts.execution_id, debug=debug)
     started_at = utc_now()
     _print_run_header(llm=selected, command_name=command_name, model=model)
     logger.info(

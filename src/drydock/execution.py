@@ -38,7 +38,6 @@ class ExecutionArtifacts:
     execution_id: str
     records_file: Path
     prompt_file: Path
-    log_file: Path
     raw_file: Path
     output_file: Path
     stderr_file: Path
@@ -64,7 +63,6 @@ class ExecutionArtifacts:
             execution_id=execution_id,
             records_file=logs / "llm.jsonl",
             prompt_file=base.with_suffix(".prompt.md"),
-            log_file=base.with_suffix(".debug.log"),
             raw_file=base.with_suffix(".raw.jsonl"),
             output_file=base.with_suffix(".output.txt"),
             stderr_file=base.with_suffix(".stderr.log"),
@@ -73,7 +71,6 @@ class ExecutionArtifacts:
     def paths(self) -> dict[str, str]:
         return {
             "prompt": str(self.prompt_file),
-            "log": str(self.log_file),
             "raw": str(self.raw_file),
             "output": str(self.output_file),
             "stderr": str(self.stderr_file),

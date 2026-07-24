@@ -1,11 +1,10 @@
-"""Command transcripts, debug logs, and per-execution logging for Drydock."""
+"""Command transcripts and console diagnostics for Drydock."""
 
 from __future__ import annotations
 
 import logging
 import re
 import sys
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,7 +48,6 @@ class StdoutTee:
 @dataclass
 class CommandLogging:
     transcript_path: Path
-    debug_path: Path
     stdout: StdoutTee
     _transcript: TextIO
     _handlers: tuple[logging.Handler, ...]
@@ -74,39 +72,32 @@ def setup_command_logging(
     stdout: TextIO,
     debug: bool = False,
 ) -> CommandLogging:
-    """Create one plain stdout transcript and one internal debug log for a CLI invocation."""
+    """Create one plain stdout transcript and optionally show diagnostics on stderr."""
     log_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     base = log_dir / f"{timestamp}_{_command_slug(command_name)}"
     transcript_path = base.with_suffix(".log")
-    debug_path = base.with_suffix(".debug.log")
     transcript = transcript_path.open("w", encoding="utf-8", newline="")
 
     root = logging.getLogger("drydock")
     root.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter(
-        "%(asctime)sZ  %(levelname)-7s  %(name)s  %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-    )
-    formatter.converter = time.gmtime
-
-    file_handler = logging.FileHandler(debug_path, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    root.addHandler(file_handler)
-    handlers: list[logging.Handler] = [file_handler]
+    # A handler prevents Python's last-resort logger from leaking warnings to
+    # stderr when diagnostics are disabled.
+    null_handler = logging.NullHandler()
+    root.addHandler(null_handler)
+    handlers: list[logging.Handler] = [null_handler]
 
     if debug:
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.DEBUG)
         console_handler.setFormatter(logging.Formatter("%(levelname)-7s  %(name)s  %(message)s"))
+        console_handler._drydock_debug_console = True  # type: ignore[attr-defined]
         root.addHandler(console_handler)
         handlers.append(console_handler)
 
     return CommandLogging(
         transcript_path=transcript_path,
-        debug_path=debug_path,
         stdout=StdoutTee(stdout, transcript),
         _transcript=transcript,
         _handlers=tuple(handlers),
@@ -115,31 +106,24 @@ def setup_command_logging(
 
 def create_execution_logger(
     execution_id: str,
-    debug_file: Path,
     *,
     debug: bool,
 ) -> logging.Logger:
+    """Create an execution logger that writes only to an enabled debug console."""
     logger = logging.getLogger(f"drydock.execution.{execution_id}")
     logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-
-    formatter = logging.Formatter(
-        "%(asctime)sZ %(levelname)s %(name)s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-    )
-    formatter.converter = time.gmtime
-
-    file_handler = logging.FileHandler(debug_file, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-
+    logger.propagate = True
     logger.handlers.clear()
-    logger.addHandler(file_handler)
+    logger.addHandler(logging.NullHandler())
 
-    if debug:
+    root = logging.getLogger("drydock")
+    root_has_debug_console = any(
+        getattr(handler, "_drydock_debug_console", False) for handler in root.handlers
+    )
+    if debug and not root_has_debug_console:
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.DEBUG)
-        console_handler.setFormatter(formatter)
+        console_handler.setFormatter(logging.Formatter("%(levelname)-7s  %(name)s  %(message)s"))
         logger.addHandler(console_handler)
     return logger
 
