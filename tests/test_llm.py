@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import sys
 import time
@@ -40,6 +41,9 @@ class FakePopen:
         self.returncode = returncode
 
     def wait(self, timeout=None):
+        return self.returncode
+
+    def poll(self):
         return self.returncode
 
     def terminate(self):
@@ -572,12 +576,15 @@ def test_codex_isolates_codex_home_and_seeds_auth_only(tmp_path, monkeypatch):
     run_prompt("Work", tmp_path, llm="codex", command_name="build")
 
     isolated_home = captured["isolated_home"]
-    assert isolated_home.name.startswith("drydock-codex-home-")
+    # Persistent and outside /tmp: codex refuses to install its PATH helpers beneath a
+    # temporary directory and then leaks a hung child on every model-refresh retry.
+    assert isolated_home == fake_home / ".drydock" / "codex-home"
     assert captured["env"]["HOME"] == "/original/home"
     assert captured["auth_text"] == '{"token": "subscription"}'
     assert captured["has_agents"] is False
     assert captured["has_config"] is False
-    assert not isolated_home.exists()
+    assert isolated_home.is_dir()
+    assert sorted(p.name for p in isolated_home.iterdir()) == ["auth.json"]
 
 
 def test_codex_isolation_still_creates_clean_home_without_auth(tmp_path, monkeypatch):
@@ -606,9 +613,9 @@ def test_codex_isolation_still_creates_clean_home_without_auth(tmp_path, monkeyp
     run_prompt("Work", tmp_path, llm="codex", command_name="build")
 
     isolated_home = captured["isolated_home"]
-    assert isolated_home.name.startswith("drydock-codex-home-")
+    assert isolated_home == fake_home / ".drydock" / "codex-home"
     assert captured["has_auth"] is False
-    assert not isolated_home.exists()
+    assert isolated_home.is_dir()
 
 
 def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
@@ -804,3 +811,196 @@ def test_done_line_prefers_reported_model_over_requested():
         requested_model="sonnet",
     )
     assert "[llm] DONE plan claude/claude-opus-4-8" in line
+
+
+# --- Provider process lifecycle -------------------------------------------------------
+#
+# A provider agent runs shell commands, and those grandchildren inherit fd 1/2. A
+# survivor holds the pipe's write end open, so pipe EOF cannot be the completion signal:
+# process exit is. These tests pin that, and pin that no descendant outlives the run.
+
+
+def _orphan_command(marker: Path, hold_seconds: int = 30) -> str:
+    """Shell that prints a line, backgrounds a child holding stdout, then exits."""
+    return (
+        f'python3 -c "import os,sys,time;'
+        f"open({str(marker)!r},'w').write(str(os.getpid()));"
+        f"sys.stdout.write('held\\n');sys.stdout.flush();"
+        f'time.sleep({hold_seconds})" & '
+        f'echo \'{{"type":"item.completed","item":{{"type":"agent_message","text":"done"}}}}\'; '
+        f"exit 0"
+    )
+
+
+def _fake_shell_command(monkeypatch, script: str) -> None:
+    monkeypatch.setattr(
+        drydock.llm,
+        "_command",
+        lambda llm, working_directory, artifacts, model, allow_tools=False, codex_sandbox="danger-full-access": (
+            "/bin/bash",
+            "-c",
+            script,
+        ),
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_orphan_holding_stdout_does_not_delay_completion(tmp_path, monkeypatch):
+    """Completion follows process exit, not pipe EOF.
+
+    Before the lifecycle fix this blocked for the full lifetime of the orphan, because
+    ``readline`` only sees EOF once every inheritor of the pipe closes it.
+    """
+    marker = tmp_path / "orphan.pid"
+    _fake_shell_command(monkeypatch, _orphan_command(marker, hold_seconds=30))
+    monkeypatch.setattr(drydock.llm, "_DRAIN_GRACE_SECONDS", 0.3)
+
+    started = time.monotonic()
+    result = run_prompt("ignored", tmp_path, llm="codex")
+    elapsed = time.monotonic() - started
+
+    assert result.ok
+    assert elapsed < 10, f"completion waited on the orphan ({elapsed:.1f}s)"
+    # Output produced before the provider exited is still captured as evidence.
+    assert "held" in result.artifacts.raw_file.read_text()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_surviving_descendants_are_reaped(tmp_path, monkeypatch):
+    marker = tmp_path / "orphan.pid"
+    _fake_shell_command(monkeypatch, _orphan_command(marker, hold_seconds=30))
+    monkeypatch.setattr(drydock.llm, "_DRAIN_GRACE_SECONDS", 0.3)
+
+    run_prompt("ignored", tmp_path, llm="codex")
+
+    orphan_pid = int(marker.read_text())
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(orphan_pid, 0)
+        except OSError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"descendant {orphan_pid} survived the run")
+
+
+def test_command_activity_streams_to_console_but_not_result_text(tmp_path, monkeypatch):
+    """Shell activity is console-only.
+
+    ``LlmResult.text`` is what ``build_run`` parses for the agent's reported result, so
+    command lines must never contaminate it.
+    """
+    events = [
+        {
+            "type": "item.started",
+            "item": {"type": "command_execution", "command": "/bin/bash -lc 'pytest -q'"},
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "command": "/bin/bash -lc 'pytest -q'",
+                "exit_code": 0,
+            },
+        },
+        {"type": "item.completed", "item": {"type": "agent_message", "text": "RESULT: SUCCESS"}},
+    ]
+    raw = "\n".join(json.dumps(event) for event in events) + "\n"
+
+    def fake_popen(command, **kwargs):
+        Path(command[command.index("--output-last-message") + 1]).write_text("RESULT: SUCCESS")
+        return FakePopen(command, stdout_text=raw, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    streamed: list[str] = []
+
+    result = run_prompt("ignored", tmp_path, llm="codex", on_text=streamed.append)
+
+    console = "".join(streamed)
+    assert "$ /bin/bash -lc 'pytest -q'" in console
+    assert "-> exit 0" in console
+    assert "pytest -q" not in result.text
+    assert "exit 0" not in result.text
+    assert result.text.strip() == "RESULT: SUCCESS"
+
+
+def test_long_command_is_truncated_in_activity_line():
+    from drydock.llm import _activity_from_event
+
+    line = _activity_from_event(
+        "codex",
+        {"type": "item.started", "item": {"type": "command_execution", "command": "x" * 500}},
+    )
+    assert line is not None
+    assert len(line) < 200
+    assert line.endswith("…")
+
+
+def test_claude_events_produce_no_activity_lines():
+    from drydock.llm import _activity_from_event
+
+    assert _activity_from_event("claude", {"type": "item.started", "item": {"type": "x"}}) is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_heartbeat_reports_liveness_while_provider_is_silent(tmp_path, monkeypatch):
+    """A build has no timeout, so a quiet run must still look alive."""
+    script = (
+        'sleep 1; echo \'{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\''
+    )
+    _fake_shell_command(monkeypatch, script)
+    monkeypatch.setattr(drydock.llm, "_HEARTBEAT_SECONDS", 0.2)
+    streamed: list[str] = []
+
+    result = run_prompt("ignored", tmp_path, llm="codex", on_text=streamed.append)
+
+    assert result.ok
+    heartbeats = [line for line in streamed if "[running]" in line]
+    assert heartbeats, f"no heartbeat emitted: {streamed}"
+    assert "elapsed" in heartbeats[0]
+
+
+def test_duration_formats_minutes_and_seconds():
+    from drydock.llm import _duration
+
+    assert _duration(9.7) == "9s"
+    assert _duration(59) == "59s"
+    assert _duration(60) == "1m00s"
+    assert _duration(605) == "10m05s"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_provider_runs_in_its_own_process_group(tmp_path, monkeypatch):
+    """Signalling the provider's group must never be able to reach Drydock."""
+    captured: dict[str, object] = {}
+    real_popen = subprocess.Popen
+
+    def fake_popen(command, **kwargs):
+        captured["kwargs"] = kwargs
+        return real_popen(command, **kwargs)
+
+    _fake_shell_command(monkeypatch, 'echo \'{"type":"x"}\'')
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    run_prompt("ignored", tmp_path, llm="codex")
+
+    assert captured["kwargs"]["start_new_session"] is True
+
+
+def test_process_group_helper_refuses_to_signal_drydocks_own_group():
+    """Signalling Drydock's own group would kill Drydock."""
+    from drydock.llm import _capture_process_group
+
+    class SameGroup:
+        pid = os.getpid()
+
+    assert _capture_process_group(SameGroup()) is None
+
+
+def test_process_group_helper_tolerates_test_double():
+    from drydock.llm import _capture_process_group, _reap_process_group
+
+    double = FakePopen(("codex",), stdout_text="")
+    assert _capture_process_group(double) is None
+    _reap_process_group(None)  # must not raise

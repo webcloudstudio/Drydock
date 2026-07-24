@@ -6,9 +6,9 @@ import json
 import os
 import queue
 import shutil
+import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -29,6 +29,20 @@ from drydock.execution import (
 )
 from drydock.logging import close_execution_logger, create_execution_logger
 from drydock.prompt_assembly import PromptAssembly
+
+# A provider agent runs shell commands, and those grandchildren inherit the provider's
+# stdout/stderr pipes.  A grandchild that outlives the provider holds the write end open,
+# so pipe EOF is not a trustworthy completion signal: process exit is.  Once the provider
+# has exited and the pipes have been quiet this long, Drydock stops reading and reaps the
+# process group rather than waiting on a descendant it never asked for.
+_DRAIN_GRACE_SECONDS = 2.0
+
+# Builds run without a timeout and legitimately take many minutes, so a silent console is
+# indistinguishable from a wedged run.  Emit a liveness notice after this much quiet.
+_HEARTBEAT_SECONDS = 60.0
+
+# Provider shell commands can be long; keep the console line readable.
+_ACTIVITY_COMMAND_LIMIT = 160
 
 
 @dataclass(frozen=True)
@@ -176,25 +190,31 @@ def _preflight_codex_sandbox(sandbox: str) -> None:
         )
 
 
-def _isolate_codex_env(process_env: dict[str, str]) -> Path:
-    """Point the ``codex`` subprocess at a dedicated temporary CODEX_HOME.
+def _isolate_codex_env(process_env: dict[str, str]) -> None:
+    """Point the ``codex`` subprocess at a dedicated CODEX_HOME.
 
-    The subprocess reads a clean runtime directory instead of the user's real
-    ``$CODEX_HOME`` / ``~/.codex``, so it inherits none of the user's config,
-    rules, hooks, AGENTS, memories, history, or session state. Only ``auth.json``
-    is copied in when present so subscription/API login continues to work.
+    The subprocess reads a clean ``~/.drydock/codex-home`` instead of the user's real
+    ``$CODEX_HOME`` / ``~/.codex``, so it inherits none of the user's config, rules,
+    hooks, AGENTS, memories, history, or session state. Only ``auth.json`` is copied in
+    when present so subscription/API login continues to work.
 
-    Mutates ``process_env`` in place and returns the temporary directory so the
-    caller can remove it after the subprocess exits.
+    The directory is deliberately persistent rather than a temporary one. ``codex``
+    refuses to install its PATH helper binaries beneath a temporary directory, and then
+    retries a model refresh every few minutes, leaking a hung child process on every
+    attempt. Those children consume CPU and hold the provider's stdout pipe open. A
+    Drydock-owned directory outside ``/tmp`` avoids that failure mode without weakening
+    isolation: ``--ignore-user-config``, ``--ignore-rules``, and ``--ephemeral`` already
+    suppress ambient configuration, and nothing but Drydock writes here.
+
+    Mutates ``process_env`` in place.
     """
     source_home = Path(process_env.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
-    build_home = Path(tempfile.mkdtemp(prefix="drydock-codex-home-"))
-    build_home.chmod(0o700)
+    build_home = (Path.home() / ".drydock" / "codex-home").expanduser()
+    build_home.mkdir(parents=True, exist_ok=True, mode=0o700)
     source_auth = source_home / "auth.json"
     if source_auth.is_file():
         shutil.copy2(source_auth, build_home / "auth.json")
     process_env["CODEX_HOME"] = str(build_home)
-    return build_home
 
 
 def _events(raw: str) -> list[dict[str, Any]]:
@@ -229,6 +249,47 @@ def _text_from_event(llm: str, event: Mapping[str, Any]) -> str | None:
     if event_type in {"agent_message", "message"}:
         return str(event.get("text") or event.get("message") or "")
     return None
+
+
+def _activity_from_event(llm: str, event: Mapping[str, Any]) -> str | None:
+    """Render provider tool activity as a console-only progress line.
+
+    Deliberately separate from ``_text_from_event``: that function also feeds
+    ``_stream_text``, which builds ``LlmResult.text``, and ``build_run`` parses that text
+    for the agent's reported result. Shell command lines must never enter it.
+
+    Returns ``None`` for events that are not tool activity. The two-space indent matches
+    the CLI's status-line prefixes so whole lines are newline-terminated on the console.
+    """
+    if llm != "codex":
+        return None
+    item = event.get("item")
+    if not isinstance(item, Mapping) or item.get("type") != "command_execution":
+        return None
+    event_type = event.get("type")
+    if event_type == "item.started":
+        command = " ".join(str(item.get("command") or "").split())
+        if not command:
+            return None
+        if len(command) > _ACTIVITY_COMMAND_LIMIT:
+            command = command[: _ACTIVITY_COMMAND_LIMIT - 1] + "…"
+        return f"  $ {command}"
+    if event_type == "item.completed":
+        exit_code = item.get("exit_code")
+        return f"  -> exit {exit_code if exit_code is not None else 'unknown'}"
+    return None
+
+
+def _heartbeat_line(elapsed: float, idle: float) -> str:
+    """Console notice proving a long, quiet provider run is still alive."""
+    return f"  [running] {_duration(elapsed)} elapsed, no provider output for {_duration(idle)}"
+
+
+def _duration(seconds: float) -> str:
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s"
+    return f"{total // 60}m{total % 60:02d}s"
 
 
 def _stream_text(llm: str, events: list[dict[str, Any]]) -> str:
@@ -813,13 +874,113 @@ def _read_stream(
         messages.put((name, None))
 
 
-def _terminate(process: subprocess.Popen[str]) -> None:
-    process.terminate()
+def _new_session_kwargs() -> dict[str, Any]:
+    """Spawn the provider as its own session/process-group leader.
+
+    This makes every descendant addressable as one group, and makes that group disjoint
+    from Drydock's own, so signalling it can never reach Drydock. It also means the
+    terminal no longer delivers SIGINT to the provider on Ctrl-C; ``_interrupt_group``
+    forwards it deliberately instead.
+    """
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _capture_process_group(process: subprocess.Popen[str]) -> int | None:
+    """Record the provider's process-group id at spawn time.
+
+    This must be captured while the provider is alive and held for the rest of the run:
+    once ``wait()`` reaps the provider its pid is gone, so ``getpgid`` would fail and the
+    surviving descendants -- the whole reason the group exists -- could never be signalled.
+
+    Returns ``None`` when the group cannot be signalled: the test double (no ``pid``),
+    platforms without process groups, or a group shared with Drydock itself, where
+    signalling would kill Drydock.
+    """
+    if not hasattr(os, "killpg") or not hasattr(os, "getpgid"):
+        return None
+    try:
+        pgid = os.getpgid(process.pid)
+        if pgid == os.getpgid(0):
+            return None
+    except (AttributeError, TypeError, OSError):
+        return None
+    return pgid
+
+
+def _signal_group(pgid: int | None, sig: int) -> bool:
+    if pgid is None:
+        return False
+    try:
+        os.killpg(pgid, sig)
+    except OSError:
+        return False
+    return True
+
+
+def _group_is_empty(pgid: int | None) -> bool:
+    if pgid is None:
+        return True
+    try:
+        os.killpg(pgid, 0)
+    except OSError:
+        return True
+    return False
+
+
+def _reap_process_group(pgid: int | None, logger=None) -> None:
+    """Kill descendants that outlived the provider.
+
+    Shell commands the provider ran inherit its stdout/stderr pipes; a survivor holds
+    them open and keeps burning CPU. Escalate SIGTERM then SIGKILL across the whole
+    group. Signalling the group also releases the pipes, letting the reader threads
+    reach EOF and exit on their own.
+    """
+    if pgid is None:
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        if _group_is_empty(pgid):
+            return
+        if not _signal_group(pgid, sig):
+            return
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if _group_is_empty(pgid):
+                return
+            time.sleep(0.05)
+        if logger is not None:
+            logger.warning("provider process group survived %s; escalating", sig.name)
+
+
+def _terminate(process: subprocess.Popen[str], pgid: int | None = None) -> None:
+    """Stop the provider and every process it spawned."""
+    if not _signal_group(pgid, signal.SIGTERM):
+        process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        process.kill()
+        if not _signal_group(pgid, signal.SIGKILL):
+            process.kill()
         process.wait()
+    _reap_process_group(pgid)
+
+
+def _interrupt_group(process: subprocess.Popen[str], pgid: int | None) -> None:
+    """Forward Ctrl-C to the provider, then stop it outright.
+
+    ``_new_session_kwargs`` detaches the provider from the terminal's foreground group,
+    so SIGINT no longer reaches it automatically. Send it explicitly and give the
+    provider a moment to shut down cleanly before escalating.
+    """
+    if _signal_group(pgid, signal.SIGINT):
+        try:
+            process.wait(timeout=2)
+            _reap_process_group(pgid)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+    _terminate(process, pgid)
 
 
 def _run_streaming_process(
@@ -844,7 +1005,10 @@ def _run_streaming_process(
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
+        **_new_session_kwargs(),
     )
+    # Capture the group while the provider is alive; after ``wait()`` its pid is gone.
+    pgid = _capture_process_group(process)
     assert process.stdin is not None
     assert process.stdout is not None
     assert process.stderr is not None
@@ -868,6 +1032,11 @@ def _run_streaming_process(
     open_streams = 2
     started = time.monotonic()
     timed_out = False
+    # Completion is driven by process exit, not pipe EOF.  ``quiet_since`` marks when the
+    # pipes went silent after the provider exited; ``last_activity`` drives the heartbeat.
+    quiet_since: float | None = None
+    last_activity = started
+    last_heartbeat = started
     try:
         with (
             artifacts.raw_file.open("w", encoding="utf-8", newline="\n") as raw_stream,
@@ -881,11 +1050,30 @@ def _run_streaming_process(
                 ):
                     timed_out = True
                     logger.error("execution timeout after %ss", timeout_seconds)
-                    _terminate(process)
+                    _terminate(process, pgid)
                 try:
                     source, line = messages.get(timeout=0.1)
                 except queue.Empty:
+                    now = time.monotonic()
+                    if process.poll() is not None:
+                        # The provider is gone.  Anything still holding the pipes open is
+                        # a descendant that outlived it, so stop waiting on EOF.
+                        if quiet_since is None:
+                            quiet_since = now
+                        elif now - quiet_since >= _DRAIN_GRACE_SECONDS:
+                            logger.warning(
+                                "provider exited but %s pipe(s) are still held by "
+                                "surviving descendants; abandoning them",
+                                open_streams,
+                            )
+                            break
+                    elif on_text is not None and now - last_heartbeat >= _HEARTBEAT_SECONDS:
+                        last_heartbeat = now
+                        on_text(_heartbeat_line(now - started, now - last_activity))
                     continue
+                quiet_since = None
+                last_activity = time.monotonic()
+                last_heartbeat = last_activity
                 if line is None:
                     open_streams -= 1
                     continue
@@ -936,16 +1124,27 @@ def _run_streaming_process(
                 text = _text_from_event(llm, provider_event)
                 if text and on_text is not None:
                     on_text(text)
+                if on_text is not None:
+                    activity = _activity_from_event(llm, provider_event)
+                    if activity:
+                        on_text(activity)
     except KeyboardInterrupt:
         logger.warning("execution interrupted")
-        _terminate(process)
+        _interrupt_group(process, pgid)
         raise
 
-    if timed_out:
-        for thread in threads:
-            thread.join(timeout=1)
-        return 124, "".join(stdout_parts), "".join(stderr_parts), True
-    return process.wait(), "".join(stdout_parts), "".join(stderr_parts), False
+    # Wait for the provider itself before reaping. A provider that closed its pipes but is
+    # still working must not be killed; only descendants that outlive it are fair game.
+    # ``_terminate`` has already reaped on the timeout path.
+    returncode = 124 if timed_out else process.wait()
+    if not timed_out:
+        _reap_process_group(pgid, logger)
+
+    # Reaping releases any pipe a survivor held, so the reader threads can now finish.
+    for thread in threads:
+        thread.join(timeout=1)
+
+    return returncode, "".join(stdout_parts), "".join(stderr_parts), timed_out
 
 
 def run_prompt(
@@ -1039,11 +1238,10 @@ def run_prompt(
     process_env.pop("ANTHROPIC_API_KEY", None)
     process_env.pop("OPENAI_API_KEY", None)
     process_env.pop("OPENAI_BASE_URL", None)
-    cleanup_dir: Path | None = None
     if selected == "claude":
         _isolate_claude_env(process_env)
     elif selected == "codex":
-        cleanup_dir = _isolate_codex_env(process_env)
+        _isolate_codex_env(process_env)
 
     try:
         returncode, raw_output, stderr, timed_out = _run_streaming_process(
@@ -1213,6 +1411,4 @@ def run_prompt(
         )
         raise
     finally:
-        if cleanup_dir is not None:
-            shutil.rmtree(cleanup_dir, ignore_errors=True)
         close_execution_logger(logger)
