@@ -167,6 +167,7 @@ class TestHelpAndVersion:
         self, tmp_workspace, isolated_config, monkeypatch
     ):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
 
         rc, out, err = run_cli("status")
 
@@ -183,6 +184,7 @@ class TestHelpAndVersion:
         self, tmp_workspace, isolated_config, monkeypatch
     ):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
 
         rc, _, err = run_cli("status", "--debug")
 
@@ -197,6 +199,7 @@ class TestHelpAndVersion:
         from drydock.logging import setup_command_logging
 
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
         outer = setup_command_logging(tmp_workspace / "logs", "build", stdout=sys.stdout)
         monkeypatch.setenv("DRYDOCK_PARENT_TRANSCRIPT", str(outer.transcript_path))
         try:
@@ -213,12 +216,23 @@ class TestHelpAndVersion:
         self, tmp_workspace, isolated_config, monkeypatch
     ):
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        monkeypatch.setenv("DRYDOCK_TEST_COMMAND_LOGGING", "1")
 
         rc, _, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
 
         assert rc == 0, err
         history = (tmp_workspace / "logs" / "history.jsonl").read_text(encoding="utf-8")
         assert '"command": "drydock config set drydock_workspace' in history
+
+    def test_pytest_fixture_command_does_not_write_workspace_logs(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+
+        rc, _, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
+
+        assert rc == 0, err
+        assert not (tmp_workspace / "logs").exists()
 
 
 class TestPromptReview:

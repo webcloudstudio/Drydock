@@ -906,6 +906,7 @@ def test_step_with_child_ac_auto_verifies_legacy_manifest_ac(tmp_path):
 
 def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
+    messages: list[str] = []
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "DB SPEC CONTENT\n\n"
         "## Programmatic Acceptance\n\n"
@@ -924,6 +925,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
         build_dir=build_dir,
         runner=make_runner(text=_success_report(changed=("notes.txt",))),
         step_id="foundation",
+        on_text=messages.append,
     )
 
     assert result.steps[0].status == "built"
@@ -934,6 +936,9 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
+    assert "Testing..." in messages
+    assert "OK" in messages
+    assert not any("Unit Tests" in message for message in messages)
 
 
 def test_blueprint_programmatic_prepass_is_informational(tmp_path):

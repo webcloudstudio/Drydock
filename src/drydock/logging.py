@@ -14,6 +14,19 @@ from typing import TextIO
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _PARENT_TRANSCRIPT_ENV = "DRYDOCK_PARENT_TRANSCRIPT"
+_TEST_LOGGING_OPT_IN_ENV = "DRYDOCK_TEST_COMMAND_LOGGING"
+
+
+def command_logging_enabled() -> bool:
+    """Whether this process should record user-visible command activity.
+
+    Pytest drives the CLI repeatedly to configure isolated fixtures. Those calls are
+    test implementation detail and must not pollute the developer's workspace logs.
+    Logging contract tests can opt in explicitly.
+    """
+    return not os.environ.get("PYTEST_CURRENT_TEST") or bool(
+        os.environ.get(_TEST_LOGGING_OPT_IN_ENV)
+    )
 
 
 class StdoutTee:

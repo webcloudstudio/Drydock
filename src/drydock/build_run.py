@@ -1879,7 +1879,7 @@ def build_target(
                     else:
                         if checks:
                             _emit(on_text, "")
-                            _emit(on_text, f"Starting Unit Tests: {len(checks)} check(s)")
+                            _emit(on_text, "Testing...")
                         acceptance = run_programmatic_acceptance(
                             checks,
                             build_dir=resolved_build_dir,
@@ -1900,11 +1900,12 @@ def build_target(
                             failure_detail = ""
                         if checks:
                             passed = sum(1 for check in acceptance if check.passed)
-                            _emit(on_text, f"  {passed}/{len(checks)} Unit Tests passed")
-                            if failed_checks:
+                            if not failed_checks:
+                                _emit(on_text, "OK")
+                            else:
                                 _emit(
                                     on_text,
-                                    "  FAILED: "
+                                    f"FAILED ({passed}/{len(checks)}): "
                                     + ", ".join(check.check_id for check in failed_checks),
                                 )
 

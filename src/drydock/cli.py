@@ -2500,6 +2500,10 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 # Everything else (including failures) is logged with its return code.
 def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: int) -> None:
     """Append one history line for any non-report command. Must never raise to the caller."""
+    from drydock.logging import command_logging_enabled
+
+    if not command_logging_enabled():
+        return
     if os.environ.get("DRYDOCK_PARENT_TRANSCRIPT"):
         return  # implementation command invoked beneath a recorded top-level command
     command = getattr(args, "command", None)
@@ -2710,19 +2714,20 @@ def main(argv: list[str] | None = None) -> None:
     inherited_transcript = os.environ.get("DRYDOCK_PARENT_TRANSCRIPT")
     try:
         from drydock.config import get_workspace
-        from drydock.logging import setup_command_logging
+        from drydock.logging import command_logging_enabled, setup_command_logging
 
-        log_dir = get_workspace() / "logs"
-        command_logging = setup_command_logging(
-            log_dir,
-            _command_log_name(args),
-            stdout=sys.stdout,
-            debug=debug,
-        )
-        if not inherited_transcript:
-            # The LLM runner and any commands it starts inherit this process environment.
-            # One user command therefore has one transcript and history entry.
-            os.environ["DRYDOCK_PARENT_TRANSCRIPT"] = str(command_logging.transcript_path)
+        if command_logging_enabled():
+            log_dir = get_workspace() / "logs"
+            command_logging = setup_command_logging(
+                log_dir,
+                _command_log_name(args),
+                stdout=sys.stdout,
+                debug=debug,
+            )
+            if not inherited_transcript:
+                # The LLM runner and any commands it starts inherit this process environment.
+                # One user command therefore has one transcript and history entry.
+                os.environ["DRYDOCK_PARENT_TRANSCRIPT"] = str(command_logging.transcript_path)
         logger.info("command: %s", " ".join(sys.argv if argv is None else argv))
     except Exception:
         pass  # log setup failure must not prevent the command from running
