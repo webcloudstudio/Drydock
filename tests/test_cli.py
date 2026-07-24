@@ -740,6 +740,27 @@ class TestLlmOverrideFlags:
         assert exc_info.value.code == 0
         assert seen == {"model": "gpt-5.6-luna", "llm_provider": "codex"}
 
+    def test_build_rejects_provider_model_mismatch_up_front(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nupdated: 2026-06-11T12:00:00\nplan_hash: abc123\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli(
+            "build", "ExampleTarget", "--llm-provider", "codex", "--model", "opus"
+        )
+
+        assert rc == 2
+        assert "Model/provider mismatch" in err
+        assert "--llm-provider claude" in err
+        # The failure is up front: no build banner should have printed.
+        assert "BUILD COMMAND START" not in out
+
     def test_plan_passes_cli_overrides(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace
 

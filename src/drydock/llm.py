@@ -80,6 +80,51 @@ TextCallback = Callable[[str], None]
 EventCallback = Callable[[Mapping[str, Any]], None]
 
 
+SUPPORTED_PROVIDERS = ("claude", "codex")
+
+# Substrings that unambiguously identify which provider a model name belongs to.
+# Used only to catch a clear cross-provider mismatch (e.g. codex + opus) up front;
+# an unrecognized model name is left alone because Drydock does not enumerate every
+# valid model a provider CLI accepts.
+_MODEL_FAMILY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("claude", ("claude", "opus", "sonnet", "haiku")),
+    ("codex", ("gpt-", "gpt5", "codex", "luna", "o3-", "o4-")),
+)
+
+
+def _model_provider_family(model: str) -> str | None:
+    """Return the provider a model name clearly belongs to, or ``None`` if unknown."""
+    lowered = model.lower().strip()
+    for provider, markers in _MODEL_FAMILY_MARKERS:
+        if any(marker in lowered for marker in markers):
+            return provider
+    return None
+
+
+def provider_model_conflict(llm: str | None, model: str | None) -> str | None:
+    """Describe an invalid provider or a provider/model mismatch, else ``None``.
+
+    Returns a human-readable problem statement suitable for a usage error. The
+    caller decides how to surface it (exit code, stream). Validation is
+    conservative: only a model whose name clearly names the *other* provider is
+    rejected, so custom or future model names pass through.
+    """
+    provider = (llm or "").lower().strip()
+    if provider not in SUPPORTED_PROVIDERS:
+        return f"Invalid LLM provider: {llm!r}\n  Valid providers: {', '.join(SUPPORTED_PROVIDERS)}"
+    if not model:
+        return None
+    family = _model_provider_family(model)
+    if family is not None and family != provider:
+        return (
+            f"Model/provider mismatch: model {model!r} is a {family} model, "
+            f"but the selected provider is {provider!r}.\n"
+            f"  Choose a {provider} model, or select the {family} provider "
+            f"with --llm-provider {family}."
+        )
+    return None
+
+
 def _command(
     llm: str,
     working_directory: Path,
@@ -1171,8 +1216,9 @@ def run_prompt(
     deterministic-write contract.
     """
     selected = (llm or get_llm_provider()).lower()
-    if selected not in {"claude", "codex"}:
-        raise LlmConfigurationError(f"Unsupported LLM: {selected!r}")
+    conflict = provider_model_conflict(selected, model)
+    if conflict is not None:
+        raise LlmConfigurationError(conflict)
 
     working_directory = working_directory.expanduser().resolve()
     if not working_directory.is_dir():

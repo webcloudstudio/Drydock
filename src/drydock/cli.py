@@ -1345,7 +1345,18 @@ def cmd_build(args: argparse.Namespace) -> int:
         raise UsageError("--continue and --reset are mutually exclusive.")
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
+    from drydock.llm import provider_model_conflict
+
+    # Fail before staging assets or calling the agent when the resolved provider and
+    # model disagree (e.g. codex + opus), so the misconfiguration is obvious up front.
+    conflict = provider_model_conflict(llm_provider, model)
+    if conflict is not None:
+        raise UsageError(conflict)
     escalate_model = get_escalate_model(getattr(args, "escalate_model", None))
+    if escalate_model:
+        escalate_conflict = provider_model_conflict(llm_provider, escalate_model)
+        if escalate_conflict is not None:
+            raise UsageError(f"escalate model: {escalate_conflict}")
     repair_attempts = int(getattr(args, "repair_attempts", 1) or 0)
     if repair_attempts < 0:
         raise UsageError("--repair-attempts must be zero or greater.")

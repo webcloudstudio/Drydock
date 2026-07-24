@@ -813,6 +813,40 @@ def test_done_line_prefers_reported_model_over_requested():
     assert "Completed CLAUDE/claude-opus-4-8 (plan)" in line
 
 
+def test_provider_model_conflict_flags_cross_provider_model():
+    from drydock.llm import provider_model_conflict
+
+    problem = provider_model_conflict("codex", "opus")
+    assert problem is not None
+    assert "opus" in problem and "codex" in problem
+    assert "--llm-provider claude" in problem
+
+
+def test_provider_model_conflict_flags_claude_with_gpt_model():
+    from drydock.llm import provider_model_conflict
+
+    problem = provider_model_conflict("claude", "gpt-5.6-luna")
+    assert problem is not None
+    assert "--llm-provider codex" in problem
+
+
+def test_provider_model_conflict_rejects_unknown_provider():
+    from drydock.llm import provider_model_conflict
+
+    assert "Valid providers" in (provider_model_conflict("gpt", "opus") or "")
+
+
+def test_provider_model_conflict_allows_matching_and_unknown_models():
+    from drydock.llm import provider_model_conflict
+
+    assert provider_model_conflict("codex", "gpt-5.6-luna") is None
+    assert provider_model_conflict("claude", "opus") is None
+    assert provider_model_conflict("claude", "claude-opus-4-8") is None
+    # A model name that names neither provider cannot be judged; allow it through.
+    assert provider_model_conflict("codex", "some-custom-model") is None
+    assert provider_model_conflict("codex", None) is None
+
+
 # --- Provider process lifecycle -------------------------------------------------------
 #
 # A provider agent runs shell commands, and those grandchildren inherit fd 1/2. A
