@@ -1275,6 +1275,10 @@ def cmd_build(args: argparse.Namespace) -> int:
         "dry-run": "[dry-run]",
     }
 
+    # Failures are collected here and rendered once at the end of the run, after the result
+    # line, so the last thing on screen is the diagnosis rather than a mid-stream banner the
+    # remaining step output scrolls away.
+    failures: list[BuildStepResult] = []
     _fatal_shown: set[str] = set()
 
     def report(step: BuildStepResult) -> None:
@@ -1282,23 +1286,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         extra = f"  {step.error}" if step.error else f"  {step.execution_id or ''}"
         print(f"  {mark:>9}  {step.name} [{step.block_id}]  SP {step.story_points}{extra}")
         if step.status == "failed":
-            # Stories in one block share a single execution: render the banner once.
+            # Stories in one block share a single execution: report it once.
             fatal_key = step.execution_id or f"{step.block_id}:{step.error}"
             if fatal_key not in _fatal_shown:
                 _fatal_shown.add(fatal_key)
-                border = "*" * 78
-                print(border)
-                print("* FATAL ERROR")
-                print(f"*   Build step failed: {step.name} [{step.block_id}]")
-                print(f"*   Details: {step.error or 'build failed'}")
-                for line in (step.failure_detail or "").strip().splitlines():
-                    print(f"*     {line}")
-                if step.execution_id:
-                    print(f"*   execution_id: {step.execution_id}")
-                if step.evidence_path is not None:
-                    print(f"*   evidence: {step.evidence_path}")
-                print(f"*   {BUILD_FAILURE_HINT}")
-                print(border)
+                failures.append(step)
         if step.evidence_path is not None:
             print(f"      evidence: {step.evidence_path}")
         print(f"      files changed: {len(step.written_files)}")
@@ -1391,18 +1383,22 @@ def cmd_build(args: argparse.Namespace) -> int:
     label = "DRY RUN RESULT" if result.dry_run else "RESULT"
     print(f"{label}: {len(result.built())} built, {len(result.failed())} failed")
     if result.failed() and not result.dry_run:
-        print("=" * 72)
-        print("POST-LLM FAILURE: see current recovery record")
-        print(f"ERRORS.md: {target_dir / 'ERRORS.md'}")
-        print(f"Open: drydock run quarterdeck {args.Target}")
-        print("=" * 72)
+        print()
+        print(
+            _render_build_failures(
+                args.Target, failures or result.failed(), hint=BUILD_FAILURE_HINT
+            )
+        )
         # An opaque build failure earns a plain-English diagnosis. The build wrote the error
-        # record; read it back and route it through the same standoff diagnosis that serves
-        # RecordedError, persisting the CAUSE/DO to ERRORS.md and the evidence file.
+        # record; print the record itself — not its filename — then route it through the same
+        # standoff diagnosis that serves RecordedError, persisting the CAUSE/DO to ERRORS.md
+        # and the evidence file.
         from drydock.errors import read_error_record
 
         record = read_error_record(target_dir)
         if record is not None:
+            print()
+            print(_render_recorded_error(record))
             _standoff_diagnosis(args, None, record=record)
     return result.exit_code()
 
@@ -2439,7 +2435,35 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
     append_command_history(get_workspace(), cmd_str, target=target, return_code=rc)
 
 
-def _render_recorded_error(record, *, errors_file: str, quarterdeck_hint: str) -> str:
+def _render_build_failures(target: str, steps, *, hint: str) -> str:
+    """Format every failed build step as one closing block.
+
+    The build prints this after the result line so the failure is the last thing on screen. It
+    carries the cause, the nested acceptance detail, and the identifiers needed to reproduce.
+    """
+    width = 72
+    border = "=" * width
+    plural = "step" if len(steps) == 1 else "steps"
+    lines = [border, f"BUILD FAILED: {target}  ({len(steps)} {plural})", border]
+    for step in steps:
+        lines += [
+            "",
+            f"  {step.name} [{step.block_id}]",
+            f"    cause: {step.error or 'build failed'}",
+        ]
+        for line in (step.failure_detail or "").strip().splitlines():
+            lines.append(f"    {line}")
+        if step.execution_id:
+            lines.append(f"    execution: {step.execution_id}")
+        if step.evidence_path is not None:
+            lines.append(f"    evidence: {step.evidence_path}")
+    lines += ["", "  Next"]
+    lines += textwrap.wrap(hint, width=width - 4, initial_indent="    ", subsequent_indent="    ")
+    lines.append(border)
+    return "\n".join(lines)
+
+
+def _render_recorded_error(record) -> str:
     """Format a post-LLM failure for the terminal: the diagnostic itself, not just a filename."""
     width = 72
     border = "=" * width
@@ -2471,14 +2495,7 @@ def _render_recorded_error(record, *, errors_file: str, quarterdeck_hint: str) -
     if record.recovery.strip():
         lines += ["", indent + "Recovery"]
         lines += _block(record.recovery.strip(), pad=indent + "  ")
-    lines += [
-        "",
-        f"{indent}ERRORS.md",
-        f"{indent}  {errors_file}",
-        f"{indent}Review",
-        f"{indent}  {quarterdeck_hint}",
-        border,
-    ]
+    lines += ["", border]
     return "\n".join(lines)
 
 
@@ -2571,17 +2588,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 2
     except RecordedError as exc:
-        from drydock.config import get_target_directory
-
-        target = getattr(args, "Target", "<Target>")
-        print(
-            _render_recorded_error(
-                exc.record,
-                errors_file=str(get_target_directory() / target / "ERRORS.md"),
-                quarterdeck_hint=f"drydock run quarterdeck {target}",
-            ),
-            file=sys.stderr,
-        )
+        print(_render_recorded_error(exc.record), file=sys.stderr)
         exit_code = 1
         _standoff_diagnosis(args, argv, record=exc.record)
     except DrydockError as exc:

@@ -858,8 +858,9 @@ state: pending
 
         assert rc == 1
         assert "[failed]" in out
-        assert "FATAL ERROR" in out
-        assert "Build step failed: Foundation [foundation]" in out
+        # The failure block closes the run: it comes after the result line, not mid-stream.
+        assert out.index("BUILD FAILED: ExampleTarget") > out.index("RESULT:")
+        assert "Foundation [foundation]" in out
         assert "LLM execution failed" in out
         assert "rerun drydock build to continue this step" in out
         assert "add --reset to discard its work" in out
@@ -903,8 +904,9 @@ state: pending
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 1
-        # Both stories are accounted for, but the FATAL banner renders once per execution.
-        assert out.count("FATAL ERROR") == 1
+        # Both stories are accounted for, but the failure block renders once per execution.
+        assert out.count("BUILD FAILED: ExampleTarget") == 1
+        assert "(1 step)" in out
         assert "[foundation]" in out
         assert "[service]" in out
         assert "The backend diverges from the spec." in out
@@ -2063,11 +2065,7 @@ def test_render_recorded_error_shows_diagnostic_and_recovery():
         detail=detail,
         recovery="Correct the plan input, then run: drydock plan commonmark",
     )
-    out = _render_recorded_error(
-        record,
-        errors_file="/ws/targets/commonmark/ERRORS.md",
-        quarterdeck_hint="drydock run quarterdeck commonmark",
-    )
+    out = _render_recorded_error(record)
 
     # The diagnostic itself is on screen, not just the filename.
     assert "Plan integrity check failed" in out
@@ -2075,8 +2073,9 @@ def test_render_recorded_error_shows_diagnostic_and_recovery():
     assert "POST-LLM FAILURE  ·  plan  ·  plan output validation failed" in out
     assert "Recovery" in out
     assert "Correct the plan input, then run: drydock plan commonmark" in out
-    assert "/ws/targets/commonmark/ERRORS.md" in out
-    assert "drydock run quarterdeck commonmark" in out
+    # The record's own path and a QuarterDeck pointer are noise: errors are not approved there.
+    assert "ERRORS.md" not in out
+    assert "quarterdeck" not in out
     # The long diagnostic is wrapped: its start and end land on different lines.
     lines = out.splitlines()
     start = next(i for i, line in enumerate(lines) if "Plan integrity check failed" in line)
@@ -2098,9 +2097,7 @@ def test_render_recorded_error_omits_recovery_when_empty():
         detail="Something went wrong.",
         recovery="",
     )
-    out = _render_recorded_error(
-        record, errors_file="/ws/ERRORS.md", quarterdeck_hint="drydock run quarterdeck X"
-    )
+    out = _render_recorded_error(record)
     assert "Recovery" not in out
     assert "Something went wrong." in out
 
