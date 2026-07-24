@@ -255,7 +255,7 @@ drydock config show
 drydock config set <key> <value>
 
 drydock init <Target> [--display-name <name>] [--description <desc>]
-drydock status [<Target>]
+drydock status [<Target>] [--check]
 drydock validate <Target> [--verbose]
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 

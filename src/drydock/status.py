@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -342,6 +343,56 @@ def _analyze_target(target_dir: Path, workspace: Path) -> TargetInfo:
         compact_recs=compact_recs,
         active_error=active_error,
     )
+
+
+@dataclass(frozen=True)
+class CompletionCheck:
+    """Deterministic machine-readable answer to "is this Target technically complete?"."""
+
+    target: str
+    complete: bool
+    reason: str
+    total: int = 0
+    verified: int = 0
+    remaining: int = 0
+
+    def exit_code(self) -> int:
+        return 0 if self.complete else 1
+
+
+def completion_check(target: str, target_dir: Path) -> CompletionCheck:
+    """Return the completion gate for *target* from MANIFEST.md alone.
+
+    Complete means every executable block (story or spike) is ``closed/verified``. Every other
+    condition — no plan, draft plan, no executable work, pending, implemented, or failed blocks —
+    is incomplete, so a pipeline can treat "not started" and "part-way" identically.
+    """
+    from drydock.build_plan import parse_build_plan
+
+    manifest_path = target_dir / "MANIFEST.md"
+    if not manifest_path.is_file():
+        return CompletionCheck(target, False, "no MANIFEST.md — Target is not planned")
+    try:
+        plan = parse_build_plan(manifest_path)
+    except Exception as exc:  # noqa: BLE001 - any parse failure is simply "not complete"
+        return CompletionCheck(target, False, f"MANIFEST.md could not be parsed: {exc}")
+
+    executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
+    total = len(executable)
+    remaining = [block for block in executable if block.state != "closed/verified"]
+    verified = total - len(remaining)
+
+    if plan.state == "draft":
+        return CompletionCheck(
+            target, False, "Manifest is draft — not approved", total, verified, len(remaining)
+        )
+    if total == 0:
+        return CompletionCheck(target, False, "Manifest has no executable work")
+    if remaining:
+        counts = Counter(block.state for block in remaining)
+        detail = ", ".join(f"{count} {state}" for state, count in sorted(counts.items()))
+        return CompletionCheck(target, False, detail, total, verified, len(remaining))
+    return CompletionCheck(target, True, "all blocks closed/verified", total, verified, 0)
 
 
 def target_status(target_dir: Path) -> TargetInfo:

@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 
 from drydock.errors import write_error_record
-from drydock.status import StatusResult, status_blueprint, status_blueprint_target, status_current
+from drydock.status import (
+    StatusResult,
+    completion_check,
+    status_blueprint,
+    status_blueprint_target,
+    status_current,
+)
 
 ANALYSIS_READY = """\
 Quality: Ready
@@ -313,3 +319,69 @@ class TestStatusCurrent:
         assert result.blueprint == "TestProject"
         assert result.target == "TestTarget"
         assert result.last_command == "plan"
+
+
+VERIFIED_PLAN = """\
+# MANIFEST: TestProject
+state: approved
+updated: 2026-01-01T00:00:00
+plan_hash: abc123
+
+## story 1: Core feature
+id: core-feature
+state: closed/verified
+
+## story 2: Extra feature
+id: extra-feature
+state: closed/verified
+"""
+
+
+class TestCompletionCheck:
+    def _target(self, tmp_target_root, manifest: str | None):
+        tgt = tmp_target_root / "TestTarget"
+        tgt.mkdir()
+        if manifest is not None:
+            (tgt / "MANIFEST.md").write_text(manifest, encoding="utf-8")
+        return tgt
+
+    def test_all_verified_is_complete(self, tmp_target_root):
+        tgt = self._target(tmp_target_root, VERIFIED_PLAN)
+        check = completion_check("TestTarget", tgt)
+        assert check.complete is True
+        assert check.exit_code() == 0
+        assert (check.total, check.verified, check.remaining) == (2, 2, 0)
+
+    def test_pending_work_is_incomplete(self, tmp_target_root):
+        tgt = self._target(tmp_target_root, APPROVED_PLAN)
+        check = completion_check("TestTarget", tgt)
+        assert check.complete is False
+        assert check.exit_code() == 1
+        assert (check.total, check.verified, check.remaining) == (2, 0, 2)
+
+    def test_not_started_is_incomplete(self, tmp_target_root):
+        tgt = self._target(tmp_target_root, None)
+        check = completion_check("TestTarget", tgt)
+        assert check.complete is False
+        assert "not planned" in check.reason
+
+    def test_draft_plan_is_incomplete(self, tmp_target_root):
+        tgt = self._target(tmp_target_root, DRAFT_PLAN)
+        check = completion_check("TestTarget", tgt)
+        assert check.complete is False
+        assert "draft" in check.reason
+
+    def test_unparsable_manifest_is_incomplete(self, tmp_target_root):
+        tgt = self._target(tmp_target_root, "not a manifest at all\n")
+        check = completion_check("TestTarget", tgt)
+        assert check.complete is False
+
+    def test_manifest_without_executable_work_is_incomplete(self, tmp_target_root):
+        tgt = self._target(
+            tmp_target_root,
+            "# MANIFEST: TestProject\nstate: approved\nupdated: 2026-01-01T00:00:00\n"
+            "plan_hash: abc123\n",
+        )
+        check = completion_check("TestTarget", tgt)
+        assert check.complete is False
+        assert "no executable work" in check.reason

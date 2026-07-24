@@ -269,7 +269,7 @@ drydock --version
 drydock config show
 drydock config set <key> <value>
 drydock init <Target> [--display-name <name>] [--description <desc>]
-drydock status [<Target>]
+drydock status [<Target>] [--check]
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
 
@@ -278,6 +278,15 @@ drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 `drydock status` is the primary orientation command. With no arguments it shows the workspace
 dashboard across all initialized Targets. With a `<Target>` argument it filters to that Target,
 showing its validation state, plan progress, and current runnable step.
+
+`drydock status <Target> --check` is the completion gate for pipelines. It reads the Manifest,
+prints one line, and exits `0` when every story and spike is `closed/verified`, `1` when any work
+remains, and `2` when the Target does not exist. A Target that is not started, not planned, or
+still draft is incomplete. The check calls no LLM and writes no files.
+
+```bash
+until drydock status <Target> --check; do drydock build <Target>; done
+```
 
 ### drydock config
 

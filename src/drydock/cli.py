@@ -1167,6 +1167,20 @@ def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
     return 0
 
 
+def cmd_status_check(target: str) -> int:
+    """Print one line and exit 0 when *target* is technically complete, 1 when it is not."""
+    from drydock.config import get_target_directory
+    from drydock.status import completion_check
+
+    target_dir = get_target_directory() / target
+    if not target_dir.is_dir():
+        raise UsageError(f"Target not found: {target_dir}")
+    check = completion_check(target, target_dir)
+    label = "COMPLETE" if check.complete else "INCOMPLETE"
+    print(f"{label}: {target}  {check.verified}/{check.total} verified  ({check.reason})")
+    return check.exit_code()
+
+
 def cmd_status_blueprint(blueprint: str) -> int:
     from drydock.config import get_target_directory, record_activity
     from drydock.status import status_blueprint
@@ -1744,12 +1758,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "status",
         help="Show project status and orientation.",
         description=(
-            "drydock status           — compact dashboard of all targets\n"
-            "drydock status <Target>  — validation summary and plan state"
+            "drydock status                   — compact dashboard of all targets\n"
+            "drydock status <Target>          — validation summary and plan state\n"
+            "drydock status <Target> --check  — completion gate for pipelines"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_llm_override_flags(p_status)
+    p_status.add_argument(
+        "--check",
+        action="store_true",
+        help="Print one line and exit 0 when the Target is complete, 1 when work remains.",
+    )
     p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Target>]")
 
     # ── validate ─────────────────────────────────────────────────────────────
@@ -2060,13 +2080,19 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _dispatch_status(args: argparse.Namespace) -> int:
-    tokens = args.args
+    # REMAINDER swallows flags that follow the Target, so --check is honored from either side.
+    tokens = [token for token in args.args if token != "--check"]
+    check = getattr(args, "check", False) or len(tokens) != len(args.args)
+    if check:
+        if len(tokens) != 1:
+            raise UsageError("Usage: drydock status <Target> --check")
+        return cmd_status_check(tokens[0])
     if len(tokens) == 0:
         return cmd_status_current()
     elif len(tokens) == 1:
         return cmd_status_blueprint_target(tokens[0], tokens[0])
     else:
-        raise UsageError("Usage: drydock status [<Target>]")
+        raise UsageError("Usage: drydock status [<Target>] [--check]")
 
 
 def _dispatch_document(args: argparse.Namespace) -> int:

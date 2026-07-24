@@ -2063,6 +2063,49 @@ class TestStatus:
         rc, out, err = run_cli("status", "A", "B", "C")
         assert rc == 2
 
+    def test_status_check_exits_1_while_work_remains(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "TestTarget", "--check")
+        assert rc == 1, err
+        assert out.startswith("INCOMPLETE: TestTarget")
+
+    def test_status_check_exits_0_when_all_blocks_verified(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        manifest = tmp_target_root / "TestTarget" / "MANIFEST.md"
+        manifest.write_text(
+            APPROVED_PLAN_STATUS.replace("state: pending", "state: closed/verified").replace(
+                "state: implemented", "state: closed/verified"
+            ),
+            encoding="utf-8",
+        )
+        rc, out, err = run_cli("status", "TestTarget", "--check")
+        assert rc == 0, err
+        assert out.startswith("COMPLETE: TestTarget")
+
+    def test_status_check_flag_before_target(self, tmp_target_root, isolated_config, monkeypatch):
+        self._setup(tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "--check", "TestTarget")
+        assert rc == 1, err
+        assert out.startswith("INCOMPLETE: TestTarget")
+
+    def test_status_check_unknown_target_exits_2(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "NoSuchTarget", "--check")
+        assert rc == 2
+
+    def test_status_check_without_target_exits_2(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "--check")
+        assert rc == 2
+
 
 def test_render_recorded_error_shows_diagnostic_and_recovery():
     from drydock.cli import _render_recorded_error
