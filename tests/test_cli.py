@@ -190,6 +190,36 @@ class TestHelpAndVersion:
         assert "INFO     drydock.cli  command: status --debug" in err
         assert list((tmp_workspace / "logs").glob("*.debug.log")) == []
 
+    def test_nested_command_appends_to_parent_transcript_and_skips_history(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        """Commands run by build tooling are implementation detail, not user commands."""
+        from drydock.logging import setup_command_logging
+
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+        outer = setup_command_logging(tmp_workspace / "logs", "build", stdout=sys.stdout)
+        monkeypatch.setenv("DRYDOCK_PARENT_TRANSCRIPT", str(outer.transcript_path))
+        try:
+            rc, out, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
+        finally:
+            outer.close()
+
+        assert rc == 0, err
+        assert list((tmp_workspace / "logs").glob("*.log")) == [outer.transcript_path]
+        assert outer.transcript_path.read_text(encoding="utf-8") == out
+        assert not (tmp_workspace / "logs" / "history.jsonl").exists()
+
+    def test_top_level_command_retains_its_history_record(
+        self, tmp_workspace, isolated_config, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_workspace))
+
+        rc, _, err = run_cli("config", "set", "drydock_workspace", str(tmp_workspace))
+
+        assert rc == 0, err
+        history = (tmp_workspace / "logs" / "history.jsonl").read_text(encoding="utf-8")
+        assert '"command": "drydock config set drydock_workspace' in history
+
 
 class TestPromptReview:
     def test_help_lists_review_subcommand(self):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from typing import TextIO
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_PARENT_TRANSCRIPT_ENV = "DRYDOCK_PARENT_TRANSCRIPT"
 
 
 class StdoutTee:
@@ -72,12 +74,31 @@ def setup_command_logging(
     stdout: TextIO,
     debug: bool = False,
 ) -> CommandLogging:
-    """Create one plain stdout transcript and optionally show diagnostics on stderr."""
+    """Create or join a plain stdout command transcript.
+
+    A Drydock command may cause an LLM to invoke more ``drydock`` commands.  Those
+    child processes inherit the parent transcript path and append their output to it
+    instead of creating a misleading sibling transcript for each implementation step.
+    """
     log_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    base = log_dir / f"{timestamp}_{_command_slug(command_name)}"
-    transcript_path = base.with_suffix(".log")
-    transcript = transcript_path.open("w", encoding="utf-8", newline="")
+    inherited = os.environ.get(_PARENT_TRANSCRIPT_ENV)
+    transcript_path: Path
+    if inherited:
+        candidate = Path(inherited)
+        try:
+            candidate.resolve().relative_to(log_dir.resolve())
+        except (OSError, ValueError):
+            candidate = Path()
+        if candidate.is_file():
+            transcript_path = candidate
+            transcript = transcript_path.open("a", encoding="utf-8", newline="")
+        else:
+            inherited = None
+    if not inherited:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        base = log_dir / f"{timestamp}_{_command_slug(command_name)}"
+        transcript_path = base.with_suffix(".log")
+        transcript = transcript_path.open("w", encoding="utf-8", newline="")
 
     root = logging.getLogger("drydock")
     root.setLevel(logging.DEBUG)

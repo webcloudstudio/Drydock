@@ -2500,6 +2500,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 # Everything else (including failures) is logged with its return code.
 def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: int) -> None:
     """Append one history line for any non-report command. Must never raise to the caller."""
+    if os.environ.get("DRYDOCK_PARENT_TRANSCRIPT"):
+        return  # implementation command invoked beneath a recorded top-level command
     command = getattr(args, "command", None)
     if command is None:
         return  # bare `drydock` / help text
@@ -2705,6 +2707,7 @@ def main(argv: list[str] | None = None) -> None:
     debug = getattr(args, "debug", False)
 
     command_logging = None
+    inherited_transcript = os.environ.get("DRYDOCK_PARENT_TRANSCRIPT")
     try:
         from drydock.config import get_workspace
         from drydock.logging import setup_command_logging
@@ -2716,6 +2719,10 @@ def main(argv: list[str] | None = None) -> None:
             stdout=sys.stdout,
             debug=debug,
         )
+        if not inherited_transcript:
+            # The LLM runner and any commands it starts inherit this process environment.
+            # One user command therefore has one transcript and history entry.
+            os.environ["DRYDOCK_PARENT_TRANSCRIPT"] = str(command_logging.transcript_path)
         logger.info("command: %s", " ".join(sys.argv if argv is None else argv))
     except Exception:
         pass  # log setup failure must not prevent the command from running
@@ -2749,6 +2756,10 @@ def main(argv: list[str] | None = None) -> None:
                 exit_code = 1
                 _standoff_diagnosis(args, argv, exc=exc)
 
+            if not inherited_transcript:
+                # Child processes need the inherited transcript only while the top-level
+                # command runs. Clear it before recording that top-level command itself.
+                os.environ.pop("DRYDOCK_PARENT_TRANSCRIPT", None)
             try:
                 _log_command_history(args, argv, exit_code)
             except Exception:
@@ -2756,5 +2767,7 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         if command_logging is not None:
             command_logging.close()
+        if not inherited_transcript:
+            os.environ.pop("DRYDOCK_PARENT_TRANSCRIPT", None)
 
     sys.exit(exit_code)
