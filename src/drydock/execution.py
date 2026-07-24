@@ -28,9 +28,24 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
-def _slug(value: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip()).strip("-")
-    return cleaned or "prompt"
+def log_component(value: str) -> str:
+    """Normalize one filename component (target, command, provider).
+
+    Lowercases, collapses runs of unsupported characters to ``-``, and returns an
+    empty string when nothing remains so callers can omit absent parts.
+    """
+    return re.sub(r"[^a-z0-9._-]+", "-", value.strip().lower()).strip("-._")
+
+
+def log_basename(timestamp: str, *components: str) -> str:
+    """Build the shared log basename ``<timestamp>[_<component>...]``.
+
+    Empty components are dropped so a run with no target or no provider simply omits
+    that part. Every Drydock log file — command transcripts and LLM evidence alike —
+    derives its name from this one function.
+    """
+    parts = [c for c in (log_component(value) for value in components) if c]
+    return "_".join([timestamp, *parts])
 
 
 @dataclass(frozen=True)
@@ -57,8 +72,7 @@ class ExecutionArtifacts:
         now = utc_now()
         timestamp = now.strftime("%Y%m%dT%H%M%S%fZ")
         execution_id = f"{timestamp}-{uuid.uuid4().hex[:8]}"
-        slug_parts = [p for p in (_slug(target), _slug(command_name), _slug(llm)) if p]
-        base = logs / f"{timestamp}_{'_'.join(slug_parts)}"
+        base = logs / log_basename(timestamp, target, command_name, llm)
         return cls(
             execution_id=execution_id,
             records_file=logs / "llm.jsonl",

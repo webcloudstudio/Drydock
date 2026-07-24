@@ -2694,7 +2694,7 @@ def _command_log_name(args: argparse.Namespace) -> str:
         value = getattr(args, attribute, None)
         if value:
             parts.append(value)
-    return "_".join(parts)
+    return " ".join(parts)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -2722,6 +2722,7 @@ def main(argv: list[str] | None = None) -> None:
                 log_dir,
                 _command_log_name(args),
                 stdout=sys.stdout,
+                target=getattr(args, "Target", "") or "",
                 debug=debug,
             )
             if not inherited_transcript:

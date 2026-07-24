@@ -11,8 +11,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
+from drydock.execution import log_basename
+
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _PARENT_TRANSCRIPT_ENV = "DRYDOCK_PARENT_TRANSCRIPT"
 _TEST_LOGGING_OPT_IN_ENV = "DRYDOCK_TEST_COMMAND_LOGGING"
 
@@ -75,16 +76,12 @@ class CommandLogging:
         self._transcript.close()
 
 
-def _command_slug(command_name: str) -> str:
-    slug = _SLUG_RE.sub("-", command_name.strip()).strip("-._").lower()
-    return slug or "drydock"
-
-
 def setup_command_logging(
     log_dir: Path,
     command_name: str,
     *,
     stdout: TextIO,
+    target: str = "",
     debug: bool = False,
 ) -> CommandLogging:
     """Create or join a plain stdout command transcript.
@@ -109,7 +106,7 @@ def setup_command_logging(
             inherited = None
     if not inherited:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        base = log_dir / f"{timestamp}_{_command_slug(command_name)}"
+        base = log_dir / log_basename(timestamp, target, command_name)
         transcript_path = base.with_suffix(".log")
         transcript = transcript_path.open("w", encoding="utf-8", newline="")
 
