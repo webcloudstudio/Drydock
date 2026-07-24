@@ -269,7 +269,7 @@ drydock --version
 drydock config show
 drydock config set <key> <value>
 drydock init <Target> [--display-name <name>] [--description <desc>]
-drydock status [<Target>] [--check]
+drydock status [<Target>] [--check | --ready]
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 ```
 
@@ -279,23 +279,23 @@ drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 dashboard across all initialized Targets. With a `<Target>` argument it filters to that Target,
 showing its validation state, plan progress, and current runnable step.
 
-`drydock status <Target> --check` is the completion gate for pipelines. It reads the Manifest,
-prints one line, and exits with a code a retry loop can act on:
+`drydock status <Target> --check` and `drydock status <Target> --ready` are deterministic
+pipeline gates read from the Manifest alone. Neither calls an LLM or writes files.
 
-| Exit | Meaning | Loop action |
-|---|---|---|
-| `0` | Complete — every story and spike is `closed/verified` | Stop; the build is done. |
-| `1` | Incomplete but buildable — approved work remains | Run `drydock build` and check again. |
-| `2` | Blocked — no Manifest, an unparsable or draft Manifest, or no executable work; also an unknown Target | Abort; a human must plan, approve, or fix. |
+`--check` reports completion:
 
-The check calls no LLM and writes no files. Exit `2` reasons print to standard error.
+| Exit | Meaning |
+|---|---|
+| `0` | Complete — every story and spike is `closed/verified`. |
+| `1` | Incomplete but buildable — approved work remains. |
+| `2` | Blocked — no Manifest, an unparsable or draft Manifest, no executable work, or an unknown Target. |
+
+`--ready` is the build-loop guard. It exits `0` while a build can advance the Target and non-zero
+once it cannot, so complete and blocked Targets both stop the loop:
 
 ```bash
-while :; do
-  drydock status <Target> --check && break        # exit 0: complete
-  [ $? -eq 2 ] && exit 1                           # exit 2: blocked — abort
-  drydock build <Target>                           # exit 1: build and retry
-done
+while drydock status <Target> --ready; do drydock build <Target>; done
+drydock status <Target> --check   # 0 complete, 2 blocked
 ```
 
 ### drydock config

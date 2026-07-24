@@ -2130,6 +2130,47 @@ class TestStatus:
         assert "BLOCKED: Unplanned" in err
         assert "drydock plan" in err
 
+    def test_status_ready_exits_0_while_buildable(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "TestTarget", "--ready")
+        assert rc == 0, err
+        assert out == ""
+        assert "READY: TestTarget" in err
+
+    def test_status_ready_exits_1_when_complete(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        manifest = tmp_target_root / "TestTarget" / "MANIFEST.md"
+        manifest.write_text(
+            APPROVED_PLAN_STATUS.replace("state: pending", "state: closed/verified").replace(
+                "state: implemented", "state: closed/verified"
+            ),
+            encoding="utf-8",
+        )
+        rc, out, err = run_cli("status", "TestTarget", "--ready")
+        assert rc == 1, err
+        assert "NOT READY: TestTarget" in err
+
+    def test_status_ready_exits_1_when_blocked(self, tmp_target_root, isolated_config, monkeypatch):
+        from drydock.init_specification import init_specification
+
+        target_dir = tmp_target_root / "Unplanned"
+        init_specification("Unplanned", target_dir)
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+        rc, out, err = run_cli("status", "Unplanned", "--ready")
+        assert rc == 1
+        assert "NOT READY: Unplanned" in err
+
+    def test_status_check_and_ready_mutually_exclusive(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        rc, out, err = run_cli("status", "TestTarget", "--check", "--ready")
+        assert rc == 2
+
 
 def test_render_recorded_error_shows_diagnostic_and_recovery():
     from drydock.cli import _render_recorded_error

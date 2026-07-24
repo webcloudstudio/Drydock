@@ -1175,21 +1175,37 @@ def cmd_status_blueprint_target(blueprint: str, target: str) -> int:
     return 0
 
 
-def cmd_status_check(target: str) -> int:
-    """Print one line and exit 0 when *target* is technically complete, 1 when it is not."""
+def _resolve_check_target(target: str):
     from drydock.config import get_target_directory
     from drydock.status import completion_check
 
     target_dir = get_target_directory() / target
     if not target_dir.is_dir():
         raise UsageError(f"Target not found: {target_dir}")
-    check = completion_check(target, target_dir)
+    return completion_check(target, target_dir)
+
+
+def cmd_status_check(target: str) -> int:
+    """Print one line and exit 0 complete, 1 buildable work remains, 2 blocked."""
+    check = _resolve_check_target(target)
     stream = sys.stderr if check.blocked else sys.stdout
     print(
         f"{check.label}: {target}  {check.verified}/{check.total} verified  ({check.reason})",
         file=stream,
     )
     return check.exit_code()
+
+
+def cmd_status_ready(target: str) -> int:
+    """Loop guard: exit 0 while a build can advance *target*, non-zero once it cannot.
+
+    Designed for ``while drydock status <Target> --ready; do drydock build <Target>; done``.
+    Returns 0 only when buildable work remains; complete and blocked Targets both stop the loop.
+    """
+    check = _resolve_check_target(target)
+    ready = check.exit_code() == 1
+    print(f"{'READY' if ready else 'NOT READY'}: {target}  ({check.reason})", file=sys.stderr)
+    return 0 if ready else 1
 
 
 def cmd_status_blueprint(blueprint: str) -> int:
@@ -1771,7 +1787,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock status                   — compact dashboard of all targets\n"
             "drydock status <Target>          — validation summary and plan state\n"
-            "drydock status <Target> --check  — completion gate for pipelines"
+            "drydock status <Target> --check  — completion gate: exit 0/1/2\n"
+            "drydock status <Target> --ready  — build-loop guard: exit 0 while buildable"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1779,7 +1796,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_status.add_argument(
         "--check",
         action="store_true",
-        help="Print one line and exit 0 when the Target is complete, 1 when work remains.",
+        help="Exit 0 complete, 1 buildable work remains, 2 blocked (needs a human).",
+    )
+    p_status.add_argument(
+        "--ready",
+        action="store_true",
+        help="Exit 0 while a build can advance the Target; use as a while-loop guard.",
     )
     p_status.add_argument("args", nargs=argparse.REMAINDER, metavar="[<Target>]")
 
@@ -2091,19 +2113,25 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _dispatch_status(args: argparse.Namespace) -> int:
-    # REMAINDER swallows flags that follow the Target, so --check is honored from either side.
-    tokens = [token for token in args.args if token != "--check"]
-    check = getattr(args, "check", False) or len(tokens) != len(args.args)
-    if check:
+    # REMAINDER swallows flags that follow the Target, so --check/--ready work on either side.
+    flags = {"--check", "--ready"}
+    tokens = [token for token in args.args if token not in flags]
+    trailing = set(args.args) & flags
+    check = getattr(args, "check", False) or "--check" in trailing
+    ready = getattr(args, "ready", False) or "--ready" in trailing
+    if check and ready:
+        raise UsageError("drydock status: --check and --ready are mutually exclusive.")
+    if check or ready:
+        gate = "--ready" if ready else "--check"
         if len(tokens) != 1:
-            raise UsageError("Usage: drydock status <Target> --check")
-        return cmd_status_check(tokens[0])
+            raise UsageError(f"Usage: drydock status <Target> {gate}")
+        return cmd_status_ready(tokens[0]) if ready else cmd_status_check(tokens[0])
     if len(tokens) == 0:
         return cmd_status_current()
     elif len(tokens) == 1:
         return cmd_status_blueprint_target(tokens[0], tokens[0])
     else:
-        raise UsageError("Usage: drydock status [<Target>] [--check]")
+        raise UsageError("Usage: drydock status [<Target>] [--check | --ready]")
 
 
 def _dispatch_document(args: argparse.Namespace) -> int:
