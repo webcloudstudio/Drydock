@@ -1379,6 +1379,22 @@ def _invokes_unbounded_test_suite(acceptance: str) -> bool:
 _MIN_ASSERTIONS_PER_STORY = 2
 
 
+def _drives_external_suite(acceptance: str) -> bool:
+    """True when a fenced acceptance check executes an imported program or test suite.
+
+    A single check that shells out to the staged conformance harness — running
+    ``spec_tests.py`` (or any suite) through subprocess/pytest — performs comprehensive,
+    non-trivial verification in one block: it is the strongest test-driven acceptance a
+    story can carry, not the weakest. Such a story is exempt from the several-fenced-checks
+    minimum, which exists to stop a lone trivial in-process assert from standing in for real
+    coverage. In-process assertions (a test client, direct function calls) do not match and
+    stay subject to the minimum. Only fenced ``python`` code is inspected, so the word
+    "python" in prose never trips the exemption.
+    """
+    code = "\n".join(match.group("code") for match in PYTHON_FENCE_RE.finditer(acceptance))
+    return bool(_TEST_SUITE_INVOCATION_RE.search(code))
+
+
 def _spec_is_conformant(text: str) -> bool:
     """True when a typed spec needs no conform pass.
 
@@ -1571,6 +1587,7 @@ def _integrity_check(
         # `- None.` explains the absence.
         surface = False
         justified = False
+        drives_suite = False
         assertions = 0
         for name in targets:
             text = spec_text(name) if name else None
@@ -1581,6 +1598,9 @@ def _integrity_check(
             count, none_reason = _acceptance_status(text)
             assertions += count
             justified = justified or none_reason
+            section = _extract_terminal_section(text, "Programmatic Acceptance") or ""
+            if _drives_external_suite(section):
+                drives_suite = True
             # Test-driven route coverage. A SCREEN's assertions must literally
             # call every route it provides or consumes — hard gate. A FEATURE
             # may exercise its routes through typed helpers, so an unnamed
@@ -1600,11 +1620,17 @@ def _integrity_check(
                         f"route(s) {detail}; exercise each provided route, naming its "
                         "literal path"
                     )
-        if surface and not justified and assertions < _MIN_ASSERTIONS_PER_STORY:
+        if (
+            surface
+            and not justified
+            and not drives_suite
+            and assertions < _MIN_ASSERTIONS_PER_STORY
+        ):
             fatal.append(
                 f"{block.block_id}: {assertions} Programmatic Acceptance assertion(s) across "
                 "its implemented spec(s), which declare a programmatic surface; author several "
-                "concrete Python assertions (test-driven acceptance) or justify `- None.` inline"
+                "concrete Python assertions (test-driven acceptance), drive the imported test "
+                "suite, or justify `- None.` inline"
             )
         for name in targets:
             text = spec_text(name) if name else None

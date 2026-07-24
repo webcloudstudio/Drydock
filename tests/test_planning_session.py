@@ -1541,6 +1541,40 @@ def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
     assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
 
 
+def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
+    # A conformance test suite supplied to the Blueprint is verified by one check that
+    # shells out to the staged harness — the strongest test-driven acceptance a story can
+    # carry. That single fenced check must clear the several-assertions minimum instead of
+    # tripping it; requiring a second fabricated assertion is the bug this guards against.
+    _make_target(tmp_path)
+    suite_check = (
+        "### harness-smoke\n"
+        "The staged conformance harness runs one selected example.\n\n"
+        "```python\n"
+        "import subprocess\n"
+        "result = subprocess.run(\n"
+        '    ["python3", "sources/spec_tests.py", "--number", "1"],\n'
+        "    capture_output=True,\n"
+        "    text=True,\n"
+        ")\n"
+        "assert result.returncode == 0\n"
+        "```"
+    )
+    spec = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, suite_check)
+    arch = spec.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = spec.format(ftype="FEATURE", name="Status", ac="Status command exits successfully.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert "story-status" in result.plan.by_id()
+    assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+
+
 def test_fenced_python_acceptance_counts_toward_surface_gate(tmp_path):
     # Regression: the plan gate must count canonical ``### check-id`` + fenced
     # ``python`` blocks — the format the build engine executes and the model
