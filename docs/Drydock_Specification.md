@@ -282,16 +282,13 @@ showing its validation state, plan progress, and current runnable step.
 `drydock status <Target> --check` and `drydock status <Target> --ready` are deterministic
 pipeline gates read from the Manifest alone. Neither calls an LLM or writes files.
 
-`--check` reports completion:
+| State | `--check` | `--ready` |
+|---|---|---|
+| Complete — every story and spike is `closed/verified` | `0` | `1` |
+| Buildable — approved work remains | `1` | `0` |
+| Blocked — no/unparsable/draft Manifest, no executable work, or unknown Target | `2` | `1` |
 
-| Exit | Meaning |
-|---|---|
-| `0` | Complete — every story and spike is `closed/verified`. |
-| `1` | Incomplete but buildable — approved work remains. |
-| `2` | Blocked — no Manifest, an unparsable or draft Manifest, no executable work, or an unknown Target. |
-
-`--ready` is the build-loop guard. It exits `0` while a build can advance the Target and non-zero
-once it cannot, so complete and blocked Targets both stop the loop:
+`--check` reports the terminal state; `--ready` is the build-loop guard:
 
 ```bash
 while drydock status <Target> --ready; do drydock build <Target>; done

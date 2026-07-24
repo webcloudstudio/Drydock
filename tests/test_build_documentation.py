@@ -338,7 +338,7 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock plan <Target>",
         "drydock build <Target>",
         "drydock build <Target> --dry-run",
-        "drydock build <Target> --reset-failed",
+        "drydock build <Target> --reset",
         "drydock build <Target> --normalize-order",
         "drydock build status <Target>",
         "drydock score ac <Target>",
