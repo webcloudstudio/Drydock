@@ -360,7 +360,6 @@ served through `/raw/{item_id}`.
 | `GET` | `/api/items` | Flat item list |
 | `GET` | `/api/nav` | Rendered sidebar HTML (re-fetched after saves) |
 | `GET` | `/api/document/{item_id}` | Rendered HTML + type for an item |
-| `GET` | `/api/chair/logs` | Live workspace log-file inventory for the Commander's Chair |
 | `GET` | `/api/chair/history` | Live active-Target report from `logs/history.jsonl` |
 | `POST` | `/api/document/{item_id}/source` | Write raw source back (`editable_markdown` only) |
 | `POST` | `/api/compass/{item_id}/move` | Constrained reorder/regroup of a Build Compass step or group |

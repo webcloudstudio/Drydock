@@ -1067,21 +1067,22 @@ def test_commanders_chair_uses_single_navigation_surface(tmp_path, monkeypatch):
     assert "/switch-target/Beta" not in html
 
 
-def test_commanders_chair_logs_are_read_live_from_workspace(tmp_path, monkeypatch):
+def test_commanders_chair_template_has_no_logs_tab():
+    template = (
+        Path(__file__).parents[1] / "QuarterDeck" / "templates" / "commanders_chair.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'data-chair-tab="logs"' not in template
+    assert 'id="chair-logs"' not in template
+    assert 'data-chair-tab="history"' in template
+
+
+def test_commanders_chair_history_phase_uses_only_real_subcommands():
     quarterdeck = _load_quarterdeck()
-    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
-    logs = workspace / "logs"
-    logs.mkdir()
-    (logs / "analyze.log").write_text("analysis", encoding="utf-8")
 
-    first = quarterdeck.api_chair_logs(_RequestStub({"quarterdeck_target": "Beta"}))
-    assert "analyze.log" in first
-    assert "read live from the workspace logs directory" in first
-
-    (logs / "build.output.txt").write_text("build", encoding="utf-8")
-    refreshed = quarterdeck.api_chair_logs(_RequestStub({"quarterdeck_target": "Beta"}))
-    assert "analyze.log" in refreshed
-    assert "build.output.txt" in refreshed
+    assert quarterdeck._history_phase("drydock build Beta") == "build"
+    assert quarterdeck._history_phase("drydock build status Beta") == "build status"
+    assert quarterdeck._history_phase("drydock --debug score release Beta") == "score release"
 
 
 def test_commanders_chair_history_is_live_filtered_and_newest_first(tmp_path, monkeypatch):
@@ -1117,8 +1118,14 @@ def test_commanders_chair_history_is_live_filtered_and_newest_first(tmp_path, mo
 
     first = quarterdeck.api_chair_history(_RequestStub({"quarterdeck_target": "Beta"}))
     assert "drydock build Alpha" not in first
-    assert first.index("drydock plan Beta") < first.index("drydock analyze Beta")
-    assert "FAILED (1)" in first
+    assert first.index("run-phase'>plan</span>") < first.index("run-phase'>analyze</span>")
+    assert "Failed · 1" in first
+    assert "run-history-table" in first
+    assert "Date / Time" in first
+    assert "run-status-success" in first
+    assert "run-status-failed" in first
+    assert "run-phase'>plan</span>" in first
+    assert "run-command-tool'>drydock</span> plan Beta" in first
     assert "read live from logs/history.jsonl" in first
 
     with history.open("a", encoding="utf-8") as handle:
@@ -1132,7 +1139,7 @@ def test_commanders_chair_history_is_live_filtered_and_newest_first(tmp_path, mo
             + "\n"
         )
     refreshed = quarterdeck.api_chair_history(_RequestStub({"quarterdeck_target": "Beta"}))
-    assert refreshed.index("drydock build Beta") < refreshed.index("drydock plan Beta")
+    assert refreshed.index("run-phase'>build</span>") < refreshed.index("run-phase'>plan</span>")
 
 
 def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatch):

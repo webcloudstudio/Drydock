@@ -38,11 +38,12 @@ import html
 import json
 import os
 import re
+import shlex
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import UTC, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -801,43 +802,6 @@ def render_document_item(item: dict[str, Any]) -> str:
     return helper + "<p class='subtle'>No files found for this document.</p>"
 
 
-def render_chair_logs() -> str:
-    """Render the current workspace log inventory, rereading the filesystem on every call."""
-    logs_root = _current_workspace_root() / "logs"
-    if not logs_root.is_dir():
-        return "<p class='empty'>No log directory found.</p>"
-
-    records: list[tuple[float, str, str, int]] = []
-    for path in logs_root.rglob("*"):
-        if not path.is_file() or path.name.startswith("."):
-            continue
-        try:
-            stat = path.stat()
-            relative = path.relative_to(logs_root).as_posix()
-            modified = datetime.fromtimestamp(stat.st_mtime, UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-            records.append((stat.st_mtime, relative, modified, stat.st_size))
-        except OSError:
-            continue
-    records.sort(key=lambda row: (row[0], row[1]), reverse=True)
-    if not records:
-        return "<p class='empty'>No logs found.</p>"
-
-    rows = "".join(
-        "<tr>"
-        f"<td><code>{html.escape(relative)}</code></td>"
-        f"<td>{html.escape(modified)}</td>"
-        f"<td>{size:,} B</td>"
-        "</tr>"
-        for _mtime, relative, modified, size in records
-    )
-    return (
-        f"<p class='subtle'>{len(records)} log file(s), newest first. "
-        "This list is read live from the workspace logs directory.</p>"
-        "<table><thead><tr><th>Log</th><th>Modified</th><th>Size</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
-    )
-
-
 def render_chair_history() -> str:
     """Render this target's command history, rereading history.jsonl on every call."""
     history_path = _current_workspace_root() / "logs" / "history.jsonl"
@@ -865,28 +829,77 @@ def render_chair_history() -> str:
     if not records:
         return f"<p class='empty'>No run history found for {html.escape(target)}.</p>"
 
-    items: list[str] = []
+    rows: list[str] = []
     for _index, record in records:
         return_code = record.get("return_code")
         if return_code == 0:
-            status_class, status = "run-ok", "SUCCESS"
+            status_class, status = "run-status-success", "Success"
         elif isinstance(return_code, int):
-            status_class, status = "run-failed", f"FAILED ({return_code})"
+            status_class, status = "run-status-failed", f"Failed · {return_code}"
         else:
-            status_class, status = "run-unknown", "RECORDED"
-        items.append(
-            "<li>"
-            f"<span class='{status_class}'>{status}</span> "
-            f"<code>{html.escape(str(record.get('command', '')))}</code>"
-            f"<br><span class='subtle'>{html.escape(str(record.get('time', '')))}</span>"
-            "</li>"
+            status_class, status = "run-status-recorded", "Recorded"
+        command = str(record.get("command", ""))
+        phase = _history_phase(command)
+        rows.append(
+            "<tr>"
+            f"<td class='run-time'>{html.escape(str(record.get('time', '')))}</td>"
+            f"<td><span class='run-status {status_class}'>{html.escape(status)}</span></td>"
+            f"<td><span class='run-phase'>{html.escape(phase)}</span></td>"
+            f"<td>{_render_history_command(command)}</td>"
+            "</tr>"
         )
     invalid_note = f" {invalid} invalid record(s) skipped." if invalid else ""
     return (
-        f"<p class='subtle'>{len(records)} run(s) for {html.escape(target)}, newest first."
+        f"<p class='run-history-summary'>{len(records)} run(s) for {html.escape(target)}, newest first."
         f"{invalid_note} This report is read live from logs/history.jsonl.</p>"
-        f"<ol reversed>{''.join(items)}</ol>"
+        "<div class='run-history-scroll'><table class='run-history-table'>"
+        "<thead><tr><th>Date / Time</th><th>Status</th><th>Phase</th>"
+        "<th>Full Command</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
     )
+
+
+_PHASE_SUBCOMMANDS = {
+    "build": {"score", "status"},
+    "config": {"set", "show"},
+    "document": {"assemble", "generate"},
+    "rigging": {"compact", "update", "verify"},
+    "run": {"quarterdeck"},
+    "score": {"ac", "release"},
+}
+_GLOBAL_FLAGS_WITH_VALUE = {"--llm-provider", "--model"}
+
+
+def _history_phase(command: str) -> str:
+    """Return the action portion of a recorded Drydock command for the Chair."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+    if tokens and tokens[0] == "drydock":
+        tokens = tokens[1:]
+    while tokens and tokens[0].startswith("-"):
+        flag = tokens.pop(0)
+        if flag in _GLOBAL_FLAGS_WITH_VALUE and tokens:
+            tokens.pop(0)
+    if not tokens:
+        return "drydock"
+    phase = tokens[0]
+    if len(tokens) > 1 and tokens[1] in _PHASE_SUBCOMMANDS.get(phase, set()):
+        phase = f"{phase} {tokens[1]}"
+    return phase
+
+
+def _render_history_command(command: str) -> str:
+    """Render the complete command with its Drydock executable visually distinguished."""
+    escaped = html.escape(command)
+    if command.startswith("drydock") and (len(command) == 7 or command[7].isspace()):
+        suffix = html.escape(command[7:])
+        return (
+            "<code class='run-command'><span class='run-command-tool'>drydock</span>"
+            f"{suffix}</code>"
+        )
+    return f"<code class='run-command'>{escaped}</code>"
 
 
 # ── Compass (MANIFEST.md step order/grouping + live prompt-stack cost) ────────────
@@ -2169,12 +2182,6 @@ def api_document(item_id: str, request: Request = None) -> dict[str, Any]:
     with _request_context(request):
         item = find_item(item_id)
         return {"item": item, "type": item.get("type"), "html": render_item(item)}
-
-
-@app.get("/api/chair/logs", response_class=HTMLResponse)
-def api_chair_logs(request: Request = None) -> str:
-    with _request_context(request):
-        return render_chair_logs()
 
 
 @app.get("/api/chair/history", response_class=HTMLResponse)

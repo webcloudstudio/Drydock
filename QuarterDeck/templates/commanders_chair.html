@@ -150,11 +150,43 @@ body {
 }
 .live-pane th { color: #8FB3A2; text-transform: uppercase; letter-spacing: 0.05em; }
 .live-pane code { color: #dbeafe; white-space: normal; overflow-wrap: anywhere; }
-.live-pane ol { padding-left: 2rem; }
-.live-pane li { border-bottom: 1px solid #2C4A3B; padding: 0.65rem 0.5rem; }
-.live-pane .run-ok { color: #86efac; }
-.live-pane .run-failed { color: #fca5a5; }
-.live-pane .run-unknown { color: #fde68a; }
+.run-history-summary { color: #8FB3A2; margin-bottom: 1rem; }
+.run-history-scroll { overflow-x: auto; border: 1px solid #2C4A3B; border-radius: 0.6rem; }
+.run-history-table { min-width: 760px; background: #142820; }
+.run-history-table th { background: #1B2E25; font-size: 0.72rem; }
+.run-history-table tbody tr { transition: background 120ms ease; }
+.run-history-table tbody tr:hover { background: #1B352A; }
+.run-history-table td { padding: 0.8rem 0.9rem; }
+.run-time { color: #C9D8CF; font-family: "SF Mono", "Cascadia Code", monospace; white-space: nowrap; }
+.run-status,
+.run-phase {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.run-status-success { background: #14532d; color: #bbf7d0; border: 1px solid #22c55e; }
+.run-status-failed { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+.run-status-recorded { background: #78350f; color: #fef3c7; border: 1px solid #fbbf24; }
+.run-phase { background: #172554; color: #bfdbfe; border: 1px solid #3b82f6; }
+.run-command {
+  display: inline-block;
+  padding: 0.38rem 0.55rem;
+  border: 1px solid #315443;
+  border-radius: 0.35rem;
+  background: #0F1D17;
+  color: #C9D8CF;
+  font-family: "SF Mono", "Cascadia Code", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.run-command-tool { color: #5eead4; font-weight: 750; }
 .stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
@@ -265,7 +297,6 @@ body {
 
 <nav class="chair-tabs" aria-label="Commanders Chair views">
   <button class="chair-tab active" type="button" data-chair-tab="overview">Overview</button>
-  <button class="chair-tab" type="button" data-chair-tab="logs">Logs</button>
   <button class="chair-tab" type="button" data-chair-tab="history">Run History</button>
 </nav>
 
@@ -303,10 +334,6 @@ body {
 </div>
 </main>
 
-<section id="chair-logs" class="chair-pane live-pane" hidden>
-  <p class="empty">Loading logs…</p>
-</section>
-
 <section id="chair-history" class="chair-pane live-pane" hidden>
   <p class="empty">Loading run history…</p>
 </section>
@@ -342,7 +369,7 @@ body {
 
   tabs.forEach(tab => tab.addEventListener("click", () => activate(tab.dataset.chairTab)));
   const requested = location.hash.replace("#chair-", "");
-  activate(["overview", "logs", "history"].includes(requested) ? requested : "overview", false);
+  activate(["overview", "history"].includes(requested) ? requested : "overview", false);
 })();
 </script>
 </body>

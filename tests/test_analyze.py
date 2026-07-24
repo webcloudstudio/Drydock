@@ -1864,7 +1864,7 @@ class TestLifecycleState:
         assert '<div class="stat-label">Features</div>' in html
         assert "Story Shape" not in html
         assert 'data-chair-tab="overview"' in html
-        assert 'data-chair-tab="logs"' in html
+        assert 'data-chair-tab="logs"' not in html
         assert 'data-chair-tab="history"' in html
         assert "fetch(`/api/chair/${name}`" in html
 
