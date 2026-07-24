@@ -139,7 +139,7 @@ def validate_specification(
     Run all validation rules against a Target's Blueprint.
 
     Root identity files (METADATA.md, README.md, COMPASS.md) live at ``target_dir``;
-    the Typed Specification corpus lives at ``target_dir/blueprint``.
+    the Typed Specifications live at ``target_dir/blueprint``.
 
     Args:
         spec_name: Name of the Blueprint.

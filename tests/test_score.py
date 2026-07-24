@@ -376,7 +376,7 @@ _STAGED_ANALYSIS = """# ANALYSIS
 
 | Path | Role | Plan disposition | Build disposition |
 |---|---|---|---|
-| sources/spec.txt | normative specification and conformance corpus | context | stage |
+| sources/spec.txt | normative specification and conformance test suite | context | stage |
 """
 
 
@@ -384,7 +384,7 @@ def _with_staged_kit(tmp_path, *, build_content: str) -> Path:
     target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF, committed=False)
     sources = target_dir / "blueprint" / "sources"
     sources.mkdir(parents=True)
-    (sources / "spec.txt").write_text("CORPUS\n" * 200, encoding="utf-8")
+    (sources / "spec.txt").write_text("EXAMPLE\n" * 200, encoding="utf-8")
     (target_dir / "ANALYSIS.md").write_text(_STAGED_ANALYSIS, encoding="utf-8")
     (build_dir / "sources").mkdir(parents=True, exist_ok=True)
     (build_dir / "sources" / "spec.txt").write_text(build_content, encoding="utf-8")
@@ -394,7 +394,7 @@ def _with_staged_kit(tmp_path, *, build_content: str) -> Path:
 
 
 def test_release_score_blocks_when_a_staged_asset_was_substituted(tmp_path):
-    """The 117-byte-corpus regression: a build that graded itself against a kit it authored
+    """The 117-byte-suite regression: a build that graded itself against a kit it authored
     must not be scorable."""
     target_dir = _with_staged_kit(tmp_path, build_content="# 2 examples\n")
 
@@ -409,7 +409,7 @@ def test_release_score_blocks_when_a_staged_asset_was_substituted(tmp_path):
 
 
 def test_release_score_accepts_an_intact_staged_kit(tmp_path):
-    target_dir = _with_staged_kit(tmp_path, build_content="CORPUS\n" * 200)
+    target_dir = _with_staged_kit(tmp_path, build_content="EXAMPLE\n" * 200)
 
     result = score_release("Demo", target_dir, runner=_runner())
 

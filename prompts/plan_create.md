@@ -373,8 +373,8 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   when appropriate.
 - For context files classified in `ANALYSIS.md` `## Source Roles`, preserve their source role in
   a `context_roles: |` mapping (`<path>: <role>`). Key it by the promoted Blueprint name, never a
-  `sources/...` path — write `spec.txt: normative specification and conformance corpus`, not
-  `sources/spec.txt: ...`. A corpus or harness is `context`, never `implements`.
+  `sources/...` path — write `spec.txt: normative specification and conformance test suite`, not
+  `sources/spec.txt: ...`. A test suite or harness is `context`, never `implements`.
 - A file the Analysis marks `stage` is present in the build directory at `sources/<name>`.
   Reference it by that build-relative path in `Programmatic Acceptance` and in `ac` `check:`
   commands. Never reference a `blueprint/` path or an absolute path, and never author, rewrite,
@@ -404,7 +404,12 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - When the Analysis states a terminal verification story, that one story gates on the complete
   suite: its `Programmatic Acceptance` assertion declares `Suite: full` on its own line in the
   heading block, above the fenced code, and it `depends` on every implementation story. Without
-  that declaration a full-suite run is rejected.
+  that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
+- A harness staging or integration story — one that runs the imported runner only to prove it is
+  staged and executes, not to gate correctness — must bound its invocation with the runner's
+  `--pattern`/`--number` selector (a single-example smoke). An unbounded run of the suite from any
+  non-terminal story, without `Suite: full`, is rejected. Assert the harness's presence and a
+  bounded run; leave the complete pass to the terminal `Suite: full` story and `SEA_TRIALS.md`.
 - When an authoritative conformance suite is imported (a specification's example set plus its
   runner), **every implementing feature story binds its acceptance to that suite over the sections
   it owns**, never to a hand-written sample. The assertion invokes the imported runner limited to

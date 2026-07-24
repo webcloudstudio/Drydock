@@ -304,7 +304,7 @@ relevant story's typed specification. "None." if the Gap Checklist surfaced no s
 
 ## Relationship Model
 
-Infer cross-file delivery relationships from the imported corpus. Supporting implementation,
+Infer cross-file delivery relationships from the imported source material. Supporting implementation,
 helper, fixture, and test files are evidence for the capability they enable, not independent
 stories. Use concise cited paths such as `sources/tests/test_parser.py`.
 
@@ -315,19 +315,19 @@ stories. Use concise cited paths such as `sources/tests/test_parser.py`.
 ## Source Roles
 
 Classify every imported file cited above. `author intent` is routed to COMPASS and is not a
-standalone build-context file. Test corpora and harnesses are context/staged assets, never
+standalone build-context file. Test suites and harnesses are context/staged assets, never
 implements files.
 
 | Path | Role | Plan disposition | Build disposition |
 |---|---|---|---|
-| {sources/path} | {author intent | normative specification and conformance corpus | conformance harness | test helper | reference implementation | source reference | asset} | {compass | context | exclude} | {stage | prompt-only | none} |
+| {sources/path} | {author intent | normative specification and conformance test suite | conformance harness | test helper | reference implementation | source reference | asset} | {compass | context | exclude} | {stage | prompt-only | none} |
 
 Build disposition governs what exists on disk when the build agent runs and when acceptance
 executes:
 
 - `stage` places the file in the build directory at `sources/{path relative to sources/}`. Every
   assertion, `ac` check, and Sea Trial `Command:` references it by that build-relative path.
-  A corpus or harness the project must execute is always `stage` — a file present only in the
+  A test suite or harness the project must execute is always `stage` — a file present only in the
   prompt can be read but not run. **Everything a staged file needs at run time is also `stage`**:
   a harness's imported modules, its normalizer, and its fixtures. Read each staged file's imports
   and open() calls and stage what they name; a harness missing one dependency cannot run at all.
@@ -353,10 +353,13 @@ contract.
 State focused story tests separately from final Sea Trial verification. Programmatic acceptance is
 finite and story-scoped by default.
 
-When the imported sources include a conformance harness and its corpus, one terminal verification
-story gates on the complete corpus. That story depends on every implementation story, and its
-acceptance assertion declares `Corpus: full` in its heading block so the full run is deliberate.
-Every other story stays bounded — a sample proves a unit works, never that the project is correct.
+When the imported sources include a conformance harness and its test suite, exactly one terminal
+verification story gates on the complete suite. That story depends on every implementation story,
+and its acceptance assertion declares `Suite: full` in its heading block so the full run is
+deliberate. Every other story stays bounded and must never run the whole suite: a story that
+executes the runner only to prove it works bounds the run with the runner's `--pattern`/`--number`
+selector; a feature story runs the slice it owns and declares `Suite: scoped`. A sample proves a
+unit works, never that the project is correct.
 
 State the measured release threshold as a Sea Trial, not as a story assertion.
 
@@ -426,7 +429,7 @@ it the command must print `{"value": <number>, "unit": "<unit>"}`. Prefer `Extra
 project to emit JSON — a wrapper that computes its own score can report anything.
 
 When the sources supply a conformance harness, emit exactly one `measurement` criterion that
-executes it against the full corpus. `Baseline`, `Target`, and `Unit` may defer to `QUESTIONS:` when
+executes it against the full test suite. `Baseline`, `Target`, and `Unit` may defer to `QUESTIONS:` when
 the author owns the threshold; `Command:` and `Extract:` may not.
 
 {Repeat one section per criterion.}

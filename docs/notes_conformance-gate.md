@@ -14,9 +14,9 @@
   732875e). Opaque build failures routed through the LLM standoff diagnosis into ERRORS.md and
   the evidence file (commit 464da26). Generation guidance in the Blueprint authoring contract and
   build prompt: acceptance is the complete definition of done, never sampled; a full deterministic
-  suite belongs on the completing block (`Corpus: full`) and mirrored into Sea Trials; stub/absent
+  suite belongs on the completing block (`Suite: full`) and mirrored into Sea Trials; stub/absent
   is a defect (commit 05149c9).
-- **Pending:** a deterministic Plan-time gate that rejects a *dishonest* `Corpus: full` (declares
+- **Pending:** a deterministic Plan-time gate that rejects a *dishonest* `Suite: full` (declares
   full but samples via `--pattern`/`--number`/slice) and a *missing* gate when an authoritative
   suite is imported. Deferred because reliable "suite is present" detection and per-check honesty
   scoping risk false positives; generation guidance carries the intent for now.
@@ -85,7 +85,7 @@ through.
 ### The planning integrity gate inverts
 `2026-07-23` · `spec:approved` · `impl:unimplemented`
 
-Today `planning_session._invokes_unbounded_corpus` makes "a story's acceptance runs the full
+Today `planning_session._invokes_unbounded_test_suite` makes "a story's acceptance runs the full
 deterministic suite" a **fatal** Plan error and tells the author to defer it to Sea Trials.
 Under these decisions that inverts: a complete deterministic suite as a story/block AC is
 **required**, not a violation. What the gate rejects instead is the **sampled, stubbed, or
@@ -97,11 +97,11 @@ missing** definition of done when a complete authoritative suite is available.
 - A build block failure names the failing story and its failing AC (Block → Story → AC) with the
   concrete assertion.
 - Running the complete deterministic suite as a story/block AC does not raise the "unbounded
-  corpus" Plan error.
+  test suite" Plan error.
 
 ## Guardrails
 - Terminology: speak in "acceptance criteria" / "test suite" / "definition of done," not
-  "corpus" (the CommonMark project's own name for `spec.txt`). The internal `corpus.py` sense
+  "corpus" (the CommonMark project's own name for `spec.txt`). The internal `source_material.py` sense
   (imported source files) is a different, unrelated meaning.
 - Sea Trials remain the LLM-judged project-acceptance layer; do not overload them with the
   programmatic suite mechanics — mirror the criterion, keep the concepts distinct.

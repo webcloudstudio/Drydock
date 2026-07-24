@@ -79,12 +79,12 @@ def test_stack_question_is_dropped_from_parsed_questions():
 ## st-001: Full conformance
 Type: outcome
 Required: yes
-Criterion: The parser passes the full conformance corpus.
+Criterion: The parser passes the full conformance test suite.
 Verification: measurement
 Command: ["python", "run.py"]
 
 QUESTIONS:
-- q-st-001-baseline: Which corpus edition defines the baseline?
+- q-st-001-baseline: Which test-suite edition defines the baseline?
 - q-st-001-stack: Select the applicable Rigging stack components before planning.
 """
     )
@@ -100,7 +100,7 @@ def test_stack_question_is_stripped_from_normalized_text():
 ## st-001: Full conformance
 Type: outcome
 Required: yes
-Criterion: The parser passes the full conformance corpus.
+Criterion: The parser passes the full conformance test suite.
 Verification: measurement
 Command: ["python", "run.py"]
 

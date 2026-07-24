@@ -144,7 +144,7 @@ state: approved
 ## story 1: Core
 id: core
 implements: ARCHITECTURE.md
-context: corpus.txt
+context: examples.txt
 instructions: |
   Build it.
 state: pending
@@ -157,15 +157,15 @@ check: true
 state: pending
 """
         roots = _roots(tmp_path)
-        (roots.blueprint_dir / "corpus.txt").write_text("z" * 4000, encoding="utf-8")
+        (roots.blueprint_dir / "examples.txt").write_text("z" * 4000, encoding="utf-8")
         path = tmp_path / "MANIFEST.md"
         path.write_text(manifest, encoding="utf-8")
         plan = parse_build_plan(path)
 
         step = assemble_step(plan.by_id()["core"], roots)
-        corpus = next(f for f in step.files if f.name == "corpus.txt")
-        assert corpus.byte_count == 4000
-        assert corpus.story_points == 0
+        example = next(f for f in step.files if f.name == "examples.txt")
+        assert example.byte_count == 4000
+        assert example.story_points == 0
 
     def test_total_story_points_sum_of_parts(self, tmp_path):
         plan = _plan(tmp_path)
@@ -689,7 +689,7 @@ id: verify
 implements: FEATURE-Verification.md
 context: spec.txt, normalize.py
 context_roles: |
-  sources/spec.txt: normative specification and conformance corpus
+  sources/spec.txt: normative specification and conformance test suite
   normalize.py: test helper
 state: pending
 
@@ -713,7 +713,7 @@ class TestContextRoles:
         for d in (blueprint, rigging / "stack"):
             d.mkdir(parents=True, exist_ok=True)
         (blueprint / "FEATURE-Verification.md").write_text("spec", encoding="utf-8")
-        (blueprint / "spec.txt").write_text("CORPUS", encoding="utf-8")
+        (blueprint / "spec.txt").write_text("EXAMPLE", encoding="utf-8")
         (blueprint / "normalize.py").write_text("helper", encoding="utf-8")
         return StepRoots(
             target_dir=target,
@@ -730,7 +730,7 @@ class TestContextRoles:
 
     def test_sources_prefixed_key_resolves(self, tmp_path):
         files = {f.name: f for f in self._step(tmp_path).files}
-        assert files["spec.txt"].prompt_role == "normative specification and conformance corpus"
+        assert files["spec.txt"].prompt_role == "normative specification and conformance test suite"
 
     def test_bare_key_resolves(self, tmp_path):
         files = {f.name: f for f in self._step(tmp_path).files}
@@ -745,5 +745,5 @@ class TestContextRoles:
             today="2026-07-22",
         )
         text = assembly.text if hasattr(assembly, "text") else str(assembly)
-        assert 'role="normative specification and conformance corpus"' in text
+        assert 'role="normative specification and conformance test suite"' in text
         assert 'role="test helper"' in text

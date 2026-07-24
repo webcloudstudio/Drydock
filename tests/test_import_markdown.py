@@ -113,7 +113,7 @@ class TestImportMarkdownInitialization:
         assert result.initialized is True
         # Root identity anchor for lifecycle state.
         assert (target_dir / "METADATA.md").is_file()
-        # No typed-spec corpus seeded into blueprint/; COMPASS.md is an analyze output.
+        # No typed-spec set seeded into blueprint/; COMPASS.md is an analyze output.
         assert not (result.blueprint_dir / "ARCHITECTURE.md").exists()
         assert not (result.blueprint_dir / "DATABASE.md").exists()
         assert not (target_dir / "COMPASS.md").exists()

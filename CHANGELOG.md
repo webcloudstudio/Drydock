@@ -77,11 +77,17 @@ command surface and Typed Specification contract are unstable and may change bet
   assertions and then graded themselves against them. Staged assets are digest-checked: a step
   that rewrites one fails and the asset is restored, and `drydock score` reports substitution as a
   release blocker without altering the artifact under judgment.
-- 2026-07-22: a deterministic conformance corpus can now gate delivery. `SEA_TRIALS.md`
+- 2026-07-24: "corpus" is retired throughout. The imported source body is now **source material**
+  (`drydock.source_material`, `SourceMaterialFile`, `discover_source_material`) and the conformance
+  concept is the **test suite**. The legacy `Corpus:` acceptance marker is removed; a full-suite
+  gate declares `Suite: full`. The Plan integrity gate now rejects any non-terminal story that runs
+  the whole test suite without `Suite: full`, and the Blueprint prompts direct a harness staging
+  story to bound its run with the runner's `--pattern`/`--number` selector.
+- 2026-07-22: a deterministic conformance test suite can now gate delivery. `SEA_TRIALS.md`
   measurement criteria accept `Extract:`, a regex capturing the measured value from a harness's
   own stdout, so a harness that reports in human-readable text and exits non-zero on failures is
   measurable without a project-authored wrapper. A single terminal verification story may gate on
-  a complete corpus by declaring `Corpus: full` in its Programmatic Acceptance heading block;
+  the complete suite by declaring `Suite: full` in its Programmatic Acceptance heading block;
   story acceptance remains bounded by default. A Sea Trial `Command:` containing an unresolved
   `<placeholder>` is now rejected rather than silently never running.
 

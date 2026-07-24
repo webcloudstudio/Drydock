@@ -83,13 +83,13 @@ class TestInitSpecification:
         init_specification("NewSpec", target_dir)
         assert (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
 
-    def test_root_identity_only_skips_corpus_and_compass(self, tmp_target_root):
+    def test_root_identity_only_skips_specs_and_compass(self, tmp_target_root):
         target_dir = tmp_target_root / "NewSpec"
         init_specification("NewSpec", target_dir, root_identity_only=True)
         # Persistent root identity files are written.
         assert (target_dir / "METADATA.md").exists()
         assert (target_dir / "README.md").exists()
-        # COMPASS.md (analyze output) and the typed-spec corpus are not.
+        # COMPASS.md (analyze output) and the typed-spec set are not.
         assert not (target_dir / "COMPASS.md").exists()
         assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
         assert list((target_dir / "blueprint").glob("*.md")) == []

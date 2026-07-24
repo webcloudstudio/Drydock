@@ -169,8 +169,7 @@ specification's example suite plus a `*_tests.py` runner) — the acceptance run
 requires a full pass over the story's scope, never a hand-picked subset. A feature story binds to
 the sections it owns and declares `Suite: scoped`; a terminal verification story gates on the whole
 suite and declares `Suite: full`. The marker sits on its own line in the check's heading block and
-tells the runner the check gates on a conformance suite rather than a story-scoped sample. (The
-legacy spelling `Corpus:` is still accepted.)
+tells the runner the check gates on the whole test suite rather than a story-scoped sample.
 
 Place a whole-project deterministic suite on the story that **completes the runnable capability**
 — never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it

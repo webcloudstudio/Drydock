@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from drydock.corpus import discover_corpus, inventory_markdown
 from drydock.errors import SpecificationError
 from drydock.planning_session import _source_evidence_bundle
+from drydock.source_material import discover_source_material, inventory_markdown
 
 
-def test_discover_corpus_accounts_for_heterogeneous_imports(tmp_path: Path) -> None:
+def test_discover_source_material_accounts_for_heterogeneous_imports(tmp_path: Path) -> None:
     blueprint = tmp_path / "blueprint"
     sources = blueprint / "sources"
     sources.mkdir(parents=True)
@@ -16,18 +16,18 @@ def test_discover_corpus_accounts_for_heterogeneous_imports(tmp_path: Path) -> N
     (sources / "asset.bin").write_bytes(b"\0binary")
     (sources / "bundle.js").write_text("x" * 2_100, encoding="utf-8")
 
-    corpus = discover_corpus(blueprint)
+    source_material = discover_source_material(blueprint)
 
-    assert [(entry.relative_path, entry.disposition) for entry in corpus] == [
+    assert [(entry.relative_path, entry.disposition) for entry in source_material] == [
         ("sources/asset.bin", "skipped"),
         ("sources/bundle.js", "summarized"),
         ("sources/parser.py", "analyzed"),
         ("sources/request.md", "analyzed"),
     ]
     assert "| `sources/asset.bin` | binary | skipped | binary content |" in inventory_markdown(
-        corpus
+        source_material
     )
-    assert corpus[2].fence == "python"
+    assert source_material[2].fence == "python"
 
 
 def test_plan_evidence_bundle_selects_only_analyze_citations(tmp_path: Path) -> None:

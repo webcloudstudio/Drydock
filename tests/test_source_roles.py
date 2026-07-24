@@ -16,22 +16,22 @@ def test_promotes_assets_and_routes_author_intent_to_compass(tmp_path):
     blueprint = tmp_path / "blueprint"
     sources = blueprint / "sources"
     sources.mkdir(parents=True)
-    (sources / "spec.txt").write_text("corpus", encoding="utf-8")
+    (sources / "spec.txt").write_text("example", encoding="utf-8")
     (sources / "ED_INSTRUCTIONS.md").write_text("# Author Intent\n\nBuild it.\n", encoding="utf-8")
     roles = parse_source_roles(
         """## Source Roles
 
 | Path | Role | Plan disposition | Build disposition |
 |---|---|---|---|
-| sources/spec.txt | normative conformance corpus | context | stage |
+| sources/spec.txt | normative conformance test suite | context | stage |
 | sources/ED_INSTRUCTIONS.md | author intent | compass | none |
 """
     )
 
     promote_imported_sources(blueprint, roles, tmp_path)
 
-    assert (blueprint / "spec.txt").read_text(encoding="utf-8") == "corpus"
-    assert (sources / "spec.txt").read_text(encoding="utf-8") == "corpus"
+    assert (blueprint / "spec.txt").read_text(encoding="utf-8") == "example"
+    assert (sources / "spec.txt").read_text(encoding="utf-8") == "example"
     assert not (blueprint / "ED_INSTRUCTIONS.md").exists()
     assert "Build it." in (tmp_path / "COMPASS.md").read_text(encoding="utf-8")
 
@@ -44,7 +44,7 @@ _ROLES_TABLE = """## Source Roles
 
 | Path | Role | Plan disposition | Build disposition |
 |---|---|---|---|
-| sources/spec.txt | conformance corpus | context | stage |
+| sources/spec.txt | conformance test suite | context | stage |
 | sources/kit/harness.py | conformance harness | context | stage |
 | sources/NOTES.md | author intent | compass | stage |
 | sources/cmark.py | reference implementation | context | none |
@@ -56,7 +56,7 @@ def _kit(tmp_path):
     blueprint = tmp_path / "blueprint"
     sources = blueprint / "sources"
     (sources / "kit").mkdir(parents=True)
-    (sources / "spec.txt").write_text("CORPUS" * 100, encoding="utf-8")
+    (sources / "spec.txt").write_text("EXAMPLE" * 100, encoding="utf-8")
     (sources / "kit" / "harness.py").write_text("print('harness')\n", encoding="utf-8")
     (sources / "NOTES.md").write_text("# Notes\n", encoding="utf-8")
     (sources / "cmark.py").write_text("reference\n", encoding="utf-8")
@@ -73,8 +73,8 @@ def test_stages_only_files_marked_stage(tmp_path):
 
     assert [a.relative_path for a in staged] == ["sources/kit/harness.py", "sources/spec.txt"]
     assert replaced == ()
-    # The corpus is staged byte-identical to the import, nested paths preserved.
-    assert (build / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS" * 100
+    # The test suite is staged byte-identical to the import, nested paths preserved.
+    assert (build / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE" * 100
     assert (build / "sources" / "kit" / "harness.py").is_file()
     # `none` and `prompt-only` stage nothing; `.md` is prompt material even when marked stage.
     assert not (build / "sources" / "cmark.py").exists()
@@ -101,7 +101,7 @@ def test_staging_is_idempotent(tmp_path):
 
 def test_staging_overwrites_and_reports_a_substituted_asset(tmp_path):
     """The failure this contract exists to prevent: a build agent writing its own miniature
-    corpus over the imported one."""
+    test suite over the imported one."""
     blueprint, build = _kit(tmp_path)
     roles = parse_source_roles(_ROLES_TABLE)
     stage_build_assets(blueprint, roles, build)
@@ -110,7 +110,7 @@ def test_staging_overwrites_and_reports_a_substituted_asset(tmp_path):
     staged, replaced = stage_build_assets(blueprint, roles, build)
 
     assert replaced == ("sources/spec.txt",)
-    assert (build / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS" * 100
+    assert (build / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE" * 100
     assert staged
 
 
@@ -147,7 +147,7 @@ def test_verify_detects_and_restores_a_tampered_asset(tmp_path):
     tampered = verify_staged_assets(staged, build)
 
     assert tampered == ("sources/spec.txt",)
-    assert (build / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS" * 100
+    assert (build / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE" * 100
 
 
 def test_verify_reports_a_deleted_asset(tmp_path):

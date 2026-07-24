@@ -1836,7 +1836,7 @@ def build_target(
                 _emit(on_text, f"BUILD BLOCK FILES: {unit.name} [{unit.block_id}]  0 changed")
 
             # Restore any staged asset the step rewrote, before acceptance runs. A step that
-            # edits its own test kit would otherwise be graded against a corpus of its own
+            # edits its own test kit would otherwise be graded against a test suite of its own
             # making. The snapshot above already recorded the write, so evidence survives it.
             if staged_assets and status != "failed":
                 tampered = verify_staged_assets(staged_assets, resolved_build_dir)

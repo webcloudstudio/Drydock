@@ -117,7 +117,7 @@ def _intent(prefix: str, title: str | None) -> str:
         line = raw.strip()
         if not line or line.startswith("###"):
             continue
-        if re.match(r"(Sea Trials|Suite|Corpus):", line, re.I):
+        if re.match(r"(Sea Trials|Suite):", line, re.I):
             continue
         lines.append(line)
     if lines:
@@ -126,17 +126,14 @@ def _intent(prefix: str, title: str | None) -> str:
 
 
 def _full_suite(prefix: str) -> bool:
-    """Whether the assertion runs a conformance suite rather than a bounded story check.
+    """Whether the assertion runs the whole test suite rather than a bounded story check.
 
-    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
-    whole suite. A suite-bound check declares ``Suite: full`` (a terminal verification story
+    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke the
+    whole test suite. A suite-bound check declares ``Suite: full`` (a terminal verification story
     gating on the entire suite) or ``Suite: scoped`` (a feature story gating on the sections it
-    owns); both get the suite execution budget. ``Corpus:`` is accepted as the legacy spelling of
-    ``Suite:``.
+    owns); both get the suite execution budget.
     """
-    return bool(
-        re.search(r"^(?:Suite|Corpus):\s*(?:full|scoped)\s*$", prefix, re.MULTILINE | re.IGNORECASE)
-    )
+    return bool(re.search(r"^Suite:\s*(?:full|scoped)\s*$", prefix, re.MULTILINE | re.IGNORECASE))
 
 
 def _sea_trials(prefix: str) -> tuple[str, ...]:

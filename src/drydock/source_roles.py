@@ -163,7 +163,7 @@ def stage_build_assets(
     """Place every asset the Analysis marks ``stage`` into ``<build_dir>/sources/``.
 
     An imported test kit is only useful to the build agent if it exists on disk: acceptance
-    checks run with the build directory as their working directory, and a corpus inlined into
+    checks run with the build directory as their working directory, and a test suite inlined into
     the prompt can be read but not executed. Copies come from ``blueprint/sources/`` — the
     immutable import — so the recorded digest is the digest of what the author imported.
 
@@ -190,7 +190,7 @@ def verify_staged_assets(
     """Return the staged assets that no longer match their import, restoring them by default.
 
     A build agent that rewrites or truncates its own test kit would otherwise grade itself
-    against a corpus of its own making. Scoring passes ``restore=False``: at that point the
+    against a test suite of its own making. Scoring passes ``restore=False``: at that point the
     artifact under judgment is fixed, so tampering is reported rather than silently repaired.
     """
     tampered: list[str] = []

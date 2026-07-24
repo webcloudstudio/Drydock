@@ -1274,8 +1274,8 @@ state: pending
 
 _AGENT_FAILURE_REPORT = (
     "RESULT: FAILURE\n"
-    "FAILURE_SUMMARY: full corpus is not 100% conformant\n"
-    "FAILURE_DETAIL: some corpus cases hang; 100% conformance is not achieved.\n"
+    "FAILURE_SUMMARY: full test suite is not 100% conformant\n"
+    "FAILURE_DETAIL: some test-suite cases hang; 100% conformance is not achieved.\n"
 )
 
 
@@ -1312,7 +1312,7 @@ def test_agent_reported_failure_is_advisory_when_acceptance_passes(tmp_path):
     assert _finding(target_dir, "foundation") is None
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
     assert "## Agent self-report (advisory)" in evidence
-    assert "full corpus is not 100% conformant" in evidence
+    assert "full test suite is not 100% conformant" in evidence
     assert "PASS: foundation-marker" in evidence
 
 
@@ -1832,7 +1832,7 @@ _ANALYSIS_ROLES = """# ANALYSIS
 
 | Path | Role | Plan disposition | Build disposition |
 |---|---|---|---|
-| sources/spec.txt | normative specification and conformance corpus | context | stage |
+| sources/spec.txt | normative specification and conformance test suite | context | stage |
 | sources/harness.py | conformance harness | context | stage |
 | sources/NOTES.md | author intent | compass | stage |
 | sources/cmark.py | reference implementation | context | none |
@@ -1843,7 +1843,7 @@ def _with_kit(tmp_path, *, manifest=_CONTEXT_STORY, analysis=_ANALYSIS_ROLES):
     target_dir, build_dir = _setup(tmp_path, manifest=manifest)
     sources = target_dir / "blueprint" / "sources"
     sources.mkdir(parents=True)
-    (sources / "spec.txt").write_text("CORPUS\n" * 500, encoding="utf-8")
+    (sources / "spec.txt").write_text("EXAMPLE\n" * 500, encoding="utf-8")
     (sources / "harness.py").write_text("print('harness')\n", encoding="utf-8")
     (sources / "NOTES.md").write_text("# Notes\n", encoding="utf-8")
     (sources / "cmark.py").write_text("reference\n", encoding="utf-8")
@@ -1854,14 +1854,14 @@ def _with_kit(tmp_path, *, manifest=_CONTEXT_STORY, analysis=_ANALYSIS_ROLES):
 
 def test_stages_declared_build_assets_without_leaking_blueprint_paths(tmp_path):
     """A test kit declared `stage` must exist on disk in the build directory: acceptance runs
-    with the build directory as cwd, and a corpus inlined into the prompt cannot be executed.
+    with the build directory as cwd, and a test suite inlined into the prompt cannot be executed.
     Drydock's own layout must not follow it into the deliverable."""
     target_dir, build_dir = _with_kit(tmp_path)
 
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
     assert result.exit_code() == 0
-    assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS\n" * 500
+    assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE\n" * 500
     assert (build_dir / "sources" / "harness.py").is_file()
     # `none` stages nothing, and `.md` stays prompt material even when marked stage.
     assert not (build_dir / "sources" / "cmark.py").exists()
@@ -1890,7 +1890,7 @@ def test_dry_run_stages_nothing(tmp_path):
 
 
 def test_step_that_rewrites_a_staged_asset_fails_and_the_asset_is_restored(tmp_path):
-    """The regression this contract exists for: an agent writing its own miniature corpus over
+    """The regression this contract exists for: an agent writing its own miniature test suite over
     the imported one, then grading itself against it."""
     target_dir, build_dir = _with_kit(tmp_path)
 
@@ -1909,7 +1909,7 @@ def test_step_that_rewrites_a_staged_asset_fails_and_the_asset_is_restored(tmp_p
     assert step.status == "failed"
     assert "staged build asset modified" in (step.error or "")
     assert "sources/spec.txt" in (step.error or "")
-    assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS\n" * 500
+    assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE\n" * 500
 
 
 def test_restaging_repairs_a_substituted_asset_on_the_next_build(tmp_path):
@@ -1926,7 +1926,7 @@ def test_restaging_repairs_a_substituted_asset_on_the_next_build(tmp_path):
         on_text=messages.append,
     )
 
-    assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "CORPUS\n" * 500
+    assert (build_dir / "sources" / "spec.txt").read_text(encoding="utf-8") == "EXAMPLE\n" * 500
     assert any("Restored modified build asset: sources/spec.txt" in m for m in messages)
 
 

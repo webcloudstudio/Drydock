@@ -33,7 +33,6 @@ from drydock.build_plan import (
     parse_build_plan,
     set_applied_specs,
 )
-from drydock.corpus import CorpusFile, discover_corpus
 from drydock.errors import RecordedError, SpecificationError, clear_error_record, write_error_record
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
@@ -53,6 +52,7 @@ from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 from drydock.sea_trials import parse_sea_trials_text
+from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
 from drydock.standard_artifacts import ensure_standard_artifacts, render_console
 
@@ -534,7 +534,7 @@ def _collect_sources(
 ) -> list[Path]:
     return [
         entry.path
-        for entry in discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
+        for entry in discover_source_material(blueprint_dir, excluded_filenames=excluded_filenames)
         if entry.text is not None
     ]
 
@@ -544,12 +544,12 @@ def _source_evidence_bundle(
     analysis_text: str,
     *,
     excluded_filenames: frozenset[str],
-) -> list[CorpusFile] | None:
-    """Return Analyze-cited prompt evidence; ``None`` preserves legacy full-corpus plans."""
+) -> list[SourceMaterialFile] | None:
+    """Return Analyze-cited prompt evidence; ``None`` preserves legacy full-source-material plans."""
     if not _PLANNING_INSTRUCTIONS_RE.search(analysis_text):
         return None
-    corpus = discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
-    if not corpus:
+    source_material = discover_source_material(blueprint_dir, excluded_filenames=excluded_filenames)
+    if not source_material:
         return []
     cited = set(_SOURCE_CITATION_RE.findall(analysis_text))
     if not cited:
@@ -557,11 +557,11 @@ def _source_evidence_bundle(
             "ANALYSIS.md Planning Instructions contain no `sources/...` evidence citations. "
             "Re-run analyze or add cited source evidence before planning."
         )
-    by_path = {entry.relative_path: entry for entry in corpus}
+    by_path = {entry.relative_path: entry for entry in source_material}
     missing = sorted(cited - set(by_path))
     if missing:
         raise SpecificationError(
-            "ANALYSIS.md cites source path(s) not present in the imported corpus: "
+            "ANALYSIS.md cites source path(s) not present in the imported source material: "
             + ", ".join(missing)
         )
     unusable = sorted(path for path in cited if by_path[path].text is None)
@@ -570,7 +570,11 @@ def _source_evidence_bundle(
             "ANALYSIS.md cites source path(s) that cannot be injected as readable evidence: "
             + ", ".join(unusable)
         )
-    return [entry for entry in corpus if entry.relative_path in cited and entry.text is not None]
+    return [
+        entry
+        for entry in source_material
+        if entry.relative_path in cited and entry.text is not None
+    ]
 
 
 def _collect_changes(
@@ -1020,7 +1024,7 @@ def _assemble_prompt_assembly(
     input_tokens: tuple[str, ...] | None = None,
     excluded_filenames: frozenset[str] = frozenset(),
     typed_spec_paths: list[Path] | None = None,
-    source_evidence: list[CorpusFile] | None = None,
+    source_evidence: list[SourceMaterialFile] | None = None,
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -1140,10 +1144,10 @@ def _assemble_prompt_assembly(
             )
         ]
         if source_evidence is not None:
-            corpus = source_evidence
+            source_material = source_evidence
         elif typed_spec_paths is not None:
-            corpus = [
-                CorpusFile(
+            source_material = [
+                SourceMaterialFile(
                     path_obj,
                     path_obj.relative_to(blueprint_dir).as_posix(),
                     "markdown",
@@ -1155,12 +1159,14 @@ def _assemble_prompt_assembly(
                 for path_obj in typed_spec_paths
             ]
         else:
-            corpus = [
+            source_material = [
                 entry
-                for entry in discover_corpus(blueprint_dir, excluded_filenames=excluded_filenames)
+                for entry in discover_source_material(
+                    blueprint_dir, excluded_filenames=excluded_filenames
+                )
                 if entry.text is not None
             ]
-        for entry in corpus:
+        for entry in source_material:
             path_obj = entry.path
             label = entry.relative_path
             parts_list.extend(
@@ -1324,27 +1330,25 @@ def _acceptance_status(text: str) -> tuple[int, bool]:
 
 
 # Markers that indicate an acceptance check executes a script rather than merely
-# referring to it. Naming the corpus file — asserting it is staged, or importing a
+# referring to it. Naming the test-suite file — asserting it is staged, or importing a
 # helper beside it — is not execution.
-_CORPUS_INVOCATION_RE = re.compile(
+_TEST_SUITE_INVOCATION_RE = re.compile(
     r"subprocess|sys\.executable|os\.system|check_output|check_call|Popen|runpy"
     r"|\bpython[\d.]*\b|\bpytest\b",
     re.IGNORECASE,
 )
 
 # Explicit opt-in that makes a full-suite story gate deliberate rather than accidental.
-# Mirrors ``acceptance._full_suite``: ``Suite:`` is canonical, ``Corpus:`` is the accepted
-# legacy spelling, and both ``full`` and ``scoped`` declare a deliberate suite-bound run.
-_SUITE_MARKER_RE = re.compile(
-    r"^(?:Suite|Corpus):\s*(?:full|scoped)\s*$", re.MULTILINE | re.IGNORECASE
-)
+# Mirrors ``acceptance._full_suite``: ``Suite:`` declares a deliberate suite-bound run, and
+# both ``full`` and ``scoped`` are accepted.
+_SUITE_MARKER_RE = re.compile(r"^Suite:\s*(?:full|scoped)\s*$", re.MULTILINE | re.IGNORECASE)
 
 
-def _invokes_unbounded_corpus(acceptance: str) -> bool:
-    """Report whether the acceptance section runs a conformance corpus it never declared.
+def _invokes_unbounded_test_suite(acceptance: str) -> bool:
+    """Report whether the acceptance section runs the whole test suite it never declared.
 
-    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke a
-    whole suite: it may stage the corpus, or select a slice with ``--pattern`` / ``--number``.
+    Story acceptance is bounded by default so an ordinary check cannot accidentally invoke the
+    whole test suite: it may stage the suite, or select a slice with ``--pattern`` / ``--number``.
     The terminal verification story gates on the real suite by declaring ``Suite: full`` in
     the assertion's heading block, which makes the full run deliberate and reviewable.
     """
@@ -1361,7 +1365,7 @@ def _invokes_unbounded_corpus(acceptance: str) -> bool:
             for line in lines[max(0, index - 3) : index + 4]
             if not line.lstrip().startswith("```")
         )
-        if not _CORPUS_INVOCATION_RE.search(window):
+        if not _TEST_SUITE_INVOCATION_RE.search(window):
             continue
         # The declaration sits in the heading block above the fenced code.
         if _SUITE_MARKER_RE.search("\n".join(lines[: index + 1])):
@@ -1604,15 +1608,17 @@ def _integrity_check(
             )
         for name in targets:
             text = spec_text(name) if name else None
-            # Scope to the acceptance section. A spec may name the corpus in prose
+            # Scope to the acceptance section. A spec may name the test suite in prose
             # (a Test Strategy bullet) without any story check ever executing it.
             acceptance = (
                 _extract_terminal_section(text, "Programmatic Acceptance") if text else None
             )
-            if acceptance and _invokes_unbounded_corpus(acceptance):
+            if acceptance and _invokes_unbounded_test_suite(acceptance):
                 fatal.append(
-                    f"{block.block_id}: Programmatic Acceptance invokes an unbounded "
-                    "conformance corpus; keep it in SEA_TRIALS.md final measurement"
+                    f"{block.block_id}: Programmatic Acceptance runs the whole test suite "
+                    "without declaring Suite: full; a non-terminal story must bound its run "
+                    "with the runner's --pattern/--number selector, or gate the full run on "
+                    "the terminal Suite: full story and SEA_TRIALS.md final measurement"
                 )
 
     sea_path = blueprint_dir.parent / "SEA_TRIALS.md"

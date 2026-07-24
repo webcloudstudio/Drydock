@@ -87,11 +87,11 @@ def init_specification(
     Create or update a Blueprint within a Target from packaged templates.
 
     Root-level identity files (METADATA.md, README.md, COMPASS.md) are written to
-    ``target_dir``; the Typed Specification corpus is written to
+    ``target_dir``; the Typed Specifications are written to
     ``target_dir/blueprint``.
 
     When ``root_identity_only`` is set, only the persistent root identity files
-    (METADATA.md, README.md) are written; the Typed Specification corpus and the
+    (METADATA.md, README.md) are written; the Typed Specifications and the
     COMPASS.md seed are skipped. Import workflows use this so a freshly imported
     Target holds only ``blueprint/sources/`` plus root identity files — typed spec
     files are ``plan create`` outputs and COMPASS.md is an ``analyze`` output.

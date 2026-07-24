@@ -26,7 +26,7 @@ assert Path("sources/spec.txt").is_file()
 ```
 
 ### conformance-full
-Corpus: full
+Suite: full
 Sea Trials: st-004
 Every normative example converts correctly.
 
@@ -64,7 +64,7 @@ def _checks(tmp_path: Path):
 def test_suite_markers_are_parsed(tmp_path):
     checks = _checks(tmp_path)
 
-    # Suite: full/scoped both mark a conformance-suite check; Corpus: is the accepted legacy spelling.
+    # Suite: full/scoped both mark a whole-test-suite check.
     assert checks["suite-full"].full_suite is True
     assert checks["suite-scoped"].full_suite is True
     assert checks["conformance-full"].full_suite is True
@@ -86,14 +86,14 @@ def test_marker_lines_do_not_leak_into_the_stated_intent(tmp_path):
     checks = _checks(tmp_path)
 
     assert checks["conformance-full"].intent == "Every normative example converts correctly."
-    assert "Corpus:" not in checks["conformance-full"].intent
+    assert "Suite:" not in checks["conformance-full"].intent
     assert "Sea Trials:" not in checks["conformance-full"].intent
     assert checks["suite-full"].intent == "Every normative example converts correctly."
     assert "Suite:" not in checks["suite-full"].intent
     assert "Suite:" not in checks["suite-scoped"].intent
 
 
-def test_sea_trial_references_still_parse_alongside_the_corpus_marker(tmp_path):
+def test_sea_trial_references_still_parse_alongside_the_suite_marker(tmp_path):
     checks = _checks(tmp_path)
 
     assert checks["conformance-full"].sea_trials == ("st-004",)

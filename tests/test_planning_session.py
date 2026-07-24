@@ -981,20 +981,20 @@ def test_promoted_source_context_keeps_stripped_blueprint_path(tmp_path):
         "\n## Source Roles\n\n"
         "| path | role | plan | build |\n"
         "|---|---|---|---|\n"
-        "| sources/corpus.json | corpus | promote | stage |\n"
+        "| sources/examples.json | dataset | promote | stage |\n"
     )
     target_dir = _make_target(tmp_path, analysis=analysis)
-    (target_dir / "blueprint" / "sources" / "corpus.json").write_text("[]\n", encoding="utf-8")
+    (target_dir / "blueprint" / "sources" / "examples.json").write_text("[]\n", encoding="utf-8")
     manifest = _manifest().replace(
         "scope: both\nstate: pending",
-        "scope: both\ncontext: sources/corpus.json\nstate: pending",
+        "scope: both\ncontext: sources/examples.json\nstate: pending",
     )
 
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
 
     text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
-    assert "context: corpus.json" in text
-    assert (target_dir / "blueprint" / "corpus.json").is_file()
+    assert "context: examples.json" in text
+    assert (target_dir / "blueprint" / "examples.json").is_file()
 
 
 def test_replan_preserves_spike_finding(tmp_path):
@@ -1247,13 +1247,13 @@ def test_integrity_unknown_dependency_is_fatal(tmp_path):
     )
 
 
-def test_corpus_named_in_prose_outside_acceptance_is_not_fatal(tmp_path):
-    """A spec may name the conformance corpus in prose. Only a Programmatic Acceptance
+def test_suite_named_in_prose_outside_acceptance_is_not_fatal(tmp_path):
+    """A spec may name the conformance test suite in prose. Only a Programmatic Acceptance
     check that actually runs it unbounded violates the gate."""
     _make_target(tmp_path)
     prose = (
         "## Test Strategy\n\n"
-        "- The imported `spec_tests.py` corpus is staged for final measurement and "
+        "- The imported `spec_tests.py` test suite is staged for final measurement and "
         "limited story-scoped checks, not for per-story full-suite execution.\n\n"
     )
     header = "## Programmatic Acceptance"
@@ -1264,11 +1264,11 @@ def test_corpus_named_in_prose_outside_acceptance_is_not_fatal(tmp_path):
     assert "story-status" in result.plan.by_id()
 
 
-def test_corpus_staged_but_not_run_inside_acceptance_is_not_fatal(tmp_path):
-    """Asserting the corpus file is staged is not running it. Only execution counts."""
+def test_suite_staged_but_not_run_inside_acceptance_is_not_fatal(tmp_path):
+    """Asserting the test-suite file is staged is not running it. Only execution counts."""
     _make_target(tmp_path)
     staged = (
-        "### check-corpus-staged\nThe supplied verification assets are present.\n\n"
+        "### check-suite-staged\nThe supplied verification assets are present.\n\n"
         "```python\n"
         "from pathlib import Path\n"
         "import importlib.util\n\n"
@@ -1286,12 +1286,12 @@ def test_corpus_staged_but_not_run_inside_acceptance_is_not_fatal(tmp_path):
     assert "story-status" in result.plan.by_id()
 
 
-def test_corpus_staged_directly_below_python_fence_is_not_fatal(tmp_path):
+def test_suite_staged_directly_below_python_fence_is_not_fatal(tmp_path):
     """The fence language tag is not an invocation: a python fence opened directly above a
-    staged-file assertion must not read as running the corpus."""
+    staged-file assertion must not read as running the test suite."""
     _make_target(tmp_path)
     staged = (
-        "### check-corpus-staged\nThe supplied verification assets are present.\n\n"
+        "### check-suite-staged\nThe supplied verification assets are present.\n\n"
         "```python\n"
         "from pathlib import Path\n\n"
         'assert Path("sources/spec_tests.py").is_file()\n'
@@ -1307,14 +1307,14 @@ def test_corpus_staged_directly_below_python_fence_is_not_fatal(tmp_path):
     assert "story-status" in result.plan.by_id()
 
 
-def test_unbounded_corpus_inside_acceptance_is_fatal(tmp_path):
+def test_unbounded_test_suite_inside_acceptance_is_fatal(tmp_path):
     target_dir = _make_target(tmp_path)
     feature = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."
     ).replace(
         "## Programmatic Acceptance\n\n",
         "## Programmatic Acceptance\n\n"
-        "### check-0\nThe full conformance corpus passes.\n\n"
+        "### check-0\nThe full conformance test suite passes.\n\n"
         "```python\n"
         "import subprocess, sys\n"
         'subprocess.run([sys.executable, "tests/spec_tests.py"], check=True)\n'
@@ -1333,7 +1333,7 @@ def test_unbounded_corpus_inside_acceptance_is_fatal(tmp_path):
         excinfo,
         target_dir,
         classification="plan output validation failed",
-        detail="unbounded conformance corpus",
+        detail="runs the whole test suite",
     )
 
 
@@ -2080,17 +2080,16 @@ def test_assemble_prompt_omits_change_ticket_section_when_no_changes(tmp_path):
     assert "ignore me" not in result
 
 
-def test_suite_bound_acceptance_is_accepted_when_declared(tmp_path):
-    """The terminal verification story gates on the real suite by declaring it (here via the
-    legacy ``Corpus:`` spelling, which stays accepted). The default stays fatal so an ordinary
-    check cannot invoke a whole suite by accident."""
-    _make_target(tmp_path)
+def test_legacy_corpus_marker_no_longer_exempts_a_full_suite_run(tmp_path):
+    """``Corpus:`` is retired: only ``Suite: full`` declares a deliberate full run. A check
+    marked with the legacy spelling that runs the suite unbounded is rejected like any other."""
+    target_dir = _make_target(tmp_path)
     feature = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."
     ).replace(
         "## Programmatic Acceptance\n\n",
         "## Programmatic Acceptance\n\n"
-        "### conformance-full\nCorpus: full\nThe full conformance corpus passes.\n\n"
+        "### conformance-full\nCorpus: full\nThe full conformance test suite passes.\n\n"
         "```python\n"
         "import subprocess, sys\n"
         'subprocess.run([sys.executable, "sources/spec_tests.py"], check=True)\n'
@@ -2103,15 +2102,19 @@ def test_suite_bound_acceptance_is_accepted_when_declared(tmp_path):
         f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
     )
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
-
-    assert "story-status" in result.plan.by_id()
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="runs the whole test suite",
+    )
 
 
 def test_suite_bound_acceptance_accepts_canonical_suite_marker(tmp_path):
     """The current prompt emits the canonical ``Suite: full`` marker; the plan gate must
-    exempt it exactly as the executor's ``acceptance._full_suite`` does, not only the legacy
-    ``Corpus:`` spelling."""
+    exempt it exactly as the executor's ``acceptance._full_suite`` does."""
     _make_target(tmp_path)
     feature = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."

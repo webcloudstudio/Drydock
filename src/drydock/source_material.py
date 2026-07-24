@@ -1,8 +1,8 @@
-"""Immutable imported-source corpus discovery and prompt rendering.
+"""Immutable imported source-material discovery and prompt rendering.
 
-The corpus is deliberately read-only.  It records every regular file beneath
-``blueprint/sources`` so Analyze can account for heterogeneous imports without
-asking an author to rename, classify, or normalize them first.
+The source material is deliberately read-only.  It records every regular file
+beneath ``blueprint/sources`` so Analyze can account for heterogeneous imports
+without asking an author to rename, classify, or normalize them first.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ _FENCES = {
 
 
 @dataclass(frozen=True)
-class CorpusFile:
+class SourceMaterialFile:
     path: Path
     relative_path: str
     kind: str
@@ -55,14 +55,14 @@ class CorpusFile:
         )
 
 
-def discover_corpus(
+def discover_source_material(
     blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
-) -> list[CorpusFile]:
+) -> list[SourceMaterialFile]:
     """Discover all non-excluded regular imported files in stable path order."""
     sources = blueprint_dir / "sources"
     if not sources.is_dir():
         return []
-    result: list[CorpusFile] = []
+    result: list[SourceMaterialFile] = []
     for path in sorted(
         (item for item in sources.rglob("*") if item.is_file()), key=lambda item: item.as_posix()
     ):
@@ -77,31 +77,35 @@ def discover_corpus(
             raw = path.read_bytes()
         except OSError as exc:
             result.append(
-                CorpusFile(path, relative, "unreadable", "skipped", str(exc), fence=fence)
+                SourceMaterialFile(path, relative, "unreadable", "skipped", str(exc), fence=fence)
             )
             continue
         if b"\0" in raw:
             result.append(
-                CorpusFile(path, relative, "binary", "skipped", "binary content", fence=fence)
+                SourceMaterialFile(
+                    path, relative, "binary", "skipped", "binary content", fence=fence
+                )
             )
             continue
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             result.append(
-                CorpusFile(path, relative, "binary", "skipped", "non-UTF-8 content", fence=fence)
+                SourceMaterialFile(
+                    path, relative, "binary", "skipped", "non-UTF-8 content", fence=fence
+                )
             )
             continue
         compact = text.replace("\n", "")
         if len(text) > 2_000 and len(compact) / max(len(text), 1) > 0.98:
             result.append(
-                CorpusFile(
+                SourceMaterialFile(
                     path, relative, kind, "summarized", "likely generated or minified", fence=fence
                 )
             )
         elif len(text) > _MAX_FILE_CHARS:
             result.append(
-                CorpusFile(
+                SourceMaterialFile(
                     path,
                     relative,
                     kind,
@@ -113,12 +117,12 @@ def discover_corpus(
             )
         else:
             result.append(
-                CorpusFile(path, relative, kind, "analyzed", "readable UTF-8", text, fence)
+                SourceMaterialFile(path, relative, kind, "analyzed", "readable UTF-8", text, fence)
             )
     return result
 
 
-def inventory_markdown(corpus: list[CorpusFile]) -> str:
+def inventory_markdown(source_material: list[SourceMaterialFile]) -> str:
     """Render deterministic coverage evidence for ANALYSIS.md."""
     lines = [
         "## Source Inventory",
@@ -128,8 +132,8 @@ def inventory_markdown(corpus: list[CorpusFile]) -> str:
     ]
     lines.extend(
         f"| `{entry.relative_path}` | {entry.kind} | {entry.disposition} | {entry.reason} |"
-        for entry in corpus
+        for entry in source_material
     )
-    if not corpus:
+    if not source_material:
         lines.append("| _None_ | _None_ | skipped | No imported source files found. |")
     return "\n".join(lines)

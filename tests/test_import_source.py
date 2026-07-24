@@ -148,7 +148,7 @@ class TestImportSource:
 
         assert len(result.imported) >= 3  # app.py, requirements.txt, utils/helpers.py
 
-    def test_root_identity_seeded_no_blueprint_corpus(self, tmp_path):
+    def test_root_identity_seeded_no_blueprint_specs(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()

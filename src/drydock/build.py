@@ -60,7 +60,7 @@ def _file_story_points(name: str, byte_count: int) -> int:
     """Story points count authored markdown only.
 
     Story points measure authored specification and documentation work, so a stacked
-    non-markdown asset — an imported conformance corpus, a source fixture, a test suite —
+    non-markdown asset — an imported test suite, a source fixture, a reference implementation —
     contributes zero even though it is still assembled into the prompt and staged into the
     build. The measure is cosmetic; no build gate keys on it.
     """
