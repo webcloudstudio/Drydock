@@ -1523,3 +1523,41 @@ def test_target_scoped_responses_are_never_browser_cached():
 
     # The logo is target-independent and stays cacheable.
     assert "cache-control" not in asyncio.run(call("/logo.png"))
+
+
+def test_document_iframe_url_is_target_qualified(tmp_path, monkeypatch):
+    """Two Targets must never share a raw-document URL.
+
+    The Commanders Chair is embedded as an iframe. When both Targets point at
+    ``/raw/commanders_chair?variant=html`` a browser cache can satisfy one
+    Target's iframe from the other Target's cached response.
+    """
+    quarterdeck = _load_quarterdeck()
+    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+    item = {
+        "id": "commanders_chair",
+        "label": "Commanders Chair",
+        "type": "document",
+        "path_html": "commanders_chair.html",
+    }
+
+    urls = {}
+    for name in ("Alpha", "Beta"):
+        chair = workspace / "targets" / name / "QuarterDeck" / "commanders_chair.html"
+        chair.write_text(f"<p>{name}</p>", encoding="utf-8")
+        with quarterdeck._request_context(_RequestStub({"quarterdeck_target": name})):
+            urls[name] = quarterdeck.render_document_item(item)
+
+    assert "target=Alpha" in urls["Alpha"]
+    assert "target=Beta" in urls["Beta"]
+    assert urls["Alpha"] != urls["Beta"]
+
+
+def test_explicit_target_query_parameter_overrides_the_cookie(tmp_path, monkeypatch):
+    """A subresource carrying ?target= resolves against that Target, not the cookie."""
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    request = _RequestStub({"quarterdeck_target": "Alpha"}, {"target": "Beta"})
+    with quarterdeck._request_context(request):
+        assert quarterdeck._current_active_target() == "Beta"

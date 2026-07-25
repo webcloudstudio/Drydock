@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import markdown
 import yaml
@@ -441,7 +442,12 @@ def _discover_switchable_targets(workspace_root: Path) -> tuple[ConsoleTarget, .
 def _resolve_request_context(request: Request | None = None) -> ConsoleContext:
     switchable_targets = _discover_switchable_targets(WORKSPACE_ROOT)
     target_map = {target.target: target for target in switchable_targets}
-    selected_target = request.cookies.get(ACTIVE_TARGET_COOKIE) if request else None
+    # An explicit ``?target=`` wins over the cookie: iframe and asset URLs carry it
+    # so a subresource can never resolve against a different Target than the page
+    # that embedded it.
+    selected_target = request.query_params.get("target") if request else None
+    if not selected_target:
+        selected_target = request.cookies.get(ACTIVE_TARGET_COOKIE) if request else None
     selected = target_map.get(selected_target or "")
     if selected is None and PROJECT_ROOT.parent.name == "targets":
         selected = target_map.get(PROJECT_ROOT.name)
@@ -778,6 +784,21 @@ def render_link_item(item: dict[str, Any]) -> str:
     )
 
 
+def _raw_url(item_id: str, variant: str, path: Path) -> str:
+    """Build a raw-document URL that is unique per Target and per file revision.
+
+    ``/raw/<item>`` is otherwise identical for every Target, so a browser cache
+    keyed on URL alone can serve one Target's document inside another Target's
+    page. The Target name and the file's mtime make the cache key exact.
+    """
+    try:
+        revision = int(path.stat().st_mtime)
+    except OSError:
+        revision = 0
+    target = _current_active_target()
+    return f"/raw/{item_id}?variant={variant}&target={quote(target, safe='')}&v={revision}"
+
+
 def render_document_item(item: dict[str, Any]) -> str:
     """Render a document using priority: html > pdf > md (single format, no tabs)."""
     label = item.get("label", "Document")
@@ -786,8 +807,7 @@ def render_document_item(item: dict[str, Any]) -> str:
 
     if item.get("path_html"):
         try:
-            resolve_path(item["path_html"])
-            url = f"/raw/{iid}?variant=html"
+            url = _raw_url(iid, "html", resolve_path(item["path_html"]))
             # HTML documents own the full pane; do not add QuarterDeck title/help chrome above them.
             return f"<iframe class='doc-frame' src='{url}' title='{html.escape(label)}'></iframe>"
         except HTTPException:
@@ -795,8 +815,7 @@ def render_document_item(item: dict[str, Any]) -> str:
 
     if item.get("path_pdf"):
         try:
-            resolve_path(item["path_pdf"])
-            url = f"/raw/{iid}?variant=pdf"
+            url = _raw_url(iid, "pdf", resolve_path(item["path_pdf"]))
             return (
                 helper
                 + f"<p><a href='{url}' target='_blank' rel='noopener' class='pdf-open-btn'>Open PDF ↗</a></p>"
