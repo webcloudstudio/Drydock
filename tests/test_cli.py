@@ -197,8 +197,9 @@ class TestHelpAndVersion:
         rc, out, err = run_cli("status")
 
         assert rc == 0, err
-        transcripts = list((tmp_workspace / "logs").glob("*_status.log"))
-        debug_logs = list((tmp_workspace / "logs").glob("*_status.debug.log"))
+        # Transcripts are named <stamp>_[<target>_]<command>_<llm>.log.
+        transcripts = list((tmp_workspace / "logs").glob("*_status_*.log"))
+        debug_logs = list((tmp_workspace / "logs").glob("*_status_*.debug.log"))
         assert len(transcripts) == 1
         assert debug_logs == []
         assert transcripts[0].read_text(encoding="utf-8") == out

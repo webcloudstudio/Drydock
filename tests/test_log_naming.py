@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from drydock.cli import _log_target
+from drydock.cli import _log_llm, _log_target
 from drydock.execution import ExecutionArtifacts, log_basename, log_component, log_timestamp
 from drydock.logging import setup_command_logging
 
@@ -50,22 +50,23 @@ def test_log_basename_omits_empty_parts():
     )
 
 
-def test_transcript_and_evidence_share_one_prefix(tmp_path):
-    """The command transcript and its LLM evidence resolve to the same target/command stem."""
+def test_transcript_and_evidence_share_one_stem(tmp_path):
+    """A transcript and its LLM evidence carry the identical target/command/provider stem."""
     logs = tmp_path / "logs"
 
-    logging = setup_command_logging(logs, "analyze", stdout=sys.stdout, target="commonmark_2")
+    logging = setup_command_logging(
+        logs, "analyze", stdout=sys.stdout, target="commonmark_2", llm="codex"
+    )
+    logging.stdout.write("analyzing\n")
     logging.close()
 
     artifacts = ExecutionArtifacts.create(
         tmp_path, "analyze", "codex", log_dir=logs, target="commonmark_2"
     )
 
-    transcript = logging.transcript_path.name
-    assert transcript.endswith("_commonmark_2_analyze.log")
-    # Evidence adds only the provider qualifier to the same target/command stem.
-    assert artifacts.prompt_file.name.endswith("_commonmark_2_analyze_codex.prompt.md")
-    assert "_commonmark_2_analyze" in transcript
+    stem = "_commonmark_2_analyze_codex"
+    assert logging.transcript_path.name.endswith(f"{stem}.log")
+    assert artifacts.prompt_file.name.endswith(f"{stem}.prompt.md")
 
 
 def test_evidence_names_keep_the_full_stamp_before_the_extension(tmp_path):
@@ -87,16 +88,21 @@ def test_evidence_names_keep_the_full_stamp_before_the_extension(tmp_path):
 
 def test_transcript_name_keeps_the_full_stamp(tmp_path):
     logging = setup_command_logging(
-        tmp_path / "logs", "build", stdout=sys.stdout, target="commonmark_2"
+        tmp_path / "logs", "build", stdout=sys.stdout, target="commonmark_2", llm="claude"
     )
     logging.close()
     name = logging.transcript_path.name
     assert TIMESTAMP_RE.match(name.split("_", 1)[0])
-    assert name.endswith("_commonmark_2_build.log")
+    assert name.endswith("_commonmark_2_build_claude.log")
 
 
-def test_transcript_omits_absent_target(tmp_path):
+def test_transcript_omits_absent_components(tmp_path):
+    """A command with no Target still names the provider; an unresolved provider is dropped."""
     logs = tmp_path / "logs"
+    logging = setup_command_logging(logs, "config show", stdout=sys.stdout, llm="codex")
+    logging.close()
+    assert logging.transcript_path.name.endswith("_config-show_codex.log")
+
     logging = setup_command_logging(logs, "config show", stdout=sys.stdout)
     logging.close()
     assert logging.transcript_path.name.endswith("_config-show.log")
@@ -149,7 +155,12 @@ def test_stderr_evidence_with_content_is_kept(tmp_path):
         ({"args": ["status", "commonmark_2"]}, "commonmark_2"),  # drydock build status <Target>
         ({"args": ["ac", "commonmark_2"]}, "commonmark_2"),  # drydock score ac <Target>
         ({"args": ["commonmark_2", "--check"]}, "commonmark_2"),
-        ({"args": ["--check", "commonmark_2"]}, ""),  # a flag's value is indistinguishable
+        ({"args": ["--check", "commonmark_2"]}, "commonmark_2"),  # switch before the Target
+        ({"args": ["--step", "feature-parser", "commonmark_2"]}, "commonmark_2"),
+        ({"args": ["--step=feature-parser", "commonmark_2"]}, "commonmark_2"),
+        ({"args": ["commonmark_2", "--step", "feature-parser"]}, "commonmark_2"),
+        ({"args": ["generate", "commonmark_2", "--theme", "sail"]}, "commonmark_2"),
+        ({"args": ["--unknown-flag", "commonmark_2"]}, ""),  # its value is indistinguishable
         ({"args": []}, ""),  # drydock status — all targets
     ],
 )
@@ -157,3 +168,28 @@ def test_log_target_resolves_remainder_commands(namespace, expected):
     import argparse
 
     assert _log_target(argparse.Namespace(**namespace)) == expected
+
+
+@pytest.mark.parametrize(
+    ("namespace", "expected"),
+    [
+        ({"llm_provider": "codex"}, "codex"),  # declared override flag
+        ({"args": ["commonmark_2", "--llm-provider", "codex"]}, "codex"),
+        ({"args": ["release", "commonmark_2", "--llm-provider=codex"]}, "codex"),
+        ({"llm_provider": "nonsense"}, ""),  # unresolvable, never fatal
+    ],
+)
+def test_log_llm_resolves_the_provider_in_force(namespace, expected):
+    import argparse
+
+    assert _log_llm(argparse.Namespace(**namespace)) == expected
+
+
+def test_log_llm_falls_back_to_the_configured_provider(monkeypatch):
+    """With no override, the filename records whatever the configuration resolves to."""
+    import argparse
+
+    monkeypatch.setenv("LLM_PROVIDER", "codex")
+    assert _log_llm(argparse.Namespace(llm_provider=None, args=[])) == "codex"
+    monkeypatch.setenv("LLM_PROVIDER", "claude")
+    assert _log_llm(argparse.Namespace(llm_provider=None, args=[])) == "claude"

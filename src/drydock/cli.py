@@ -2701,27 +2701,97 @@ def _standoff_diagnosis(
 
 
 # Leading positional sub-verbs of the REMAINDER commands; they precede the Target token.
-_LOG_TARGET_SUBVERBS = frozenset({"status", "score", "ac", "release", "continue"})
+_LOG_TARGET_SUBVERBS = frozenset({
+    "status",
+    "score",
+    "ac",
+    "release",
+    "generate",
+    "assemble",
+    "readme",
+})
+
+# Options accepted inside a REMAINDER command's operands. A value-taking option hides the
+# next token, so both must be stepped over to reach the Target; a switch hides only itself.
+_LOG_VALUE_OPTIONS = frozenset({
+    "--build-dir",
+    "--escalate-model",
+    "--llm-provider",
+    "--model",
+    "--repair-attempts",
+    "--step",
+    "--story",
+    "--theme",
+})
+_LOG_SWITCH_OPTIONS = frozenset({
+    "--check",
+    "--continue",
+    "--dry-run",
+    "--normalize-order",
+    "--normalize_order",
+    "--ready",
+    "--reset",
+    "--show-prompt",
+})
 
 
 def _log_target(args: argparse.Namespace) -> str:
     """Resolve the Target for a log filename before the command parses its own arguments.
 
-    ``build``, ``status``, and ``score`` collect their operands with ``argparse.REMAINDER``,
-    so they expose no ``Target`` attribute here and their transcripts would otherwise be
-    named without a target. Scanning stops at the first flag: a Target that follows a
-    value-taking flag cannot be told from that flag's value, and omitting the component is
-    better than naming the transcript after the wrong thing.
+    ``build``, ``status``, ``score``, and ``document`` collect their operands with
+    ``argparse.REMAINDER``, so they expose no ``Target`` attribute here and their transcripts
+    would otherwise be named without a target. Options are stepped over in either order, so
+    ``build --step x <Target>`` and ``build <Target> --step x`` both resolve. Scanning stops at
+    an unrecognized option, whose value cannot be distinguished from a Target: omitting the
+    component is better than naming the transcript after the wrong thing.
     """
     declared = getattr(args, "Target", None)
     if declared:
         return str(declared)
-    for token in getattr(args, "args", None) or []:
+    tokens = list(getattr(args, "args", None) or [])
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
         if token.startswith("-"):
-            break
+            option = token.split("=", 1)[0]
+            if "=" in token or option in _LOG_SWITCH_OPTIONS:
+                index += 1
+                continue
+            if option in _LOG_VALUE_OPTIONS:
+                index += 2
+                continue
+            return ""
         if token not in _LOG_TARGET_SUBVERBS:
             return token
+        index += 1
     return ""
+
+
+def _log_llm(args: argparse.Namespace) -> str:
+    """Resolve the LLM provider this invocation would use, for the log filename.
+
+    Every command records the provider in force — the ``--llm-provider`` override when given,
+    otherwise the configured default — so one Target's logs group by provider and a transcript
+    names the same provider as the evidence files beneath it. For a deterministic command this
+    is the configured provider, not evidence that a model ran.
+    """
+    override = getattr(args, "llm_provider", None)
+    if not override:
+        # ``score`` declares no override flag of its own; the operand list still carries one.
+        tokens = list(getattr(args, "args", None) or [])
+        for index, token in enumerate(tokens):
+            if token.startswith("--llm-provider="):
+                override = token.split("=", 1)[1]
+                break
+            if token == "--llm-provider" and index + 1 < len(tokens):
+                override = tokens[index + 1]
+                break
+    try:
+        from drydock.config import get_llm_provider
+
+        return get_llm_provider(override)
+    except Exception:  # noqa: BLE001 - an unnamable provider must not cost us the transcript
+        return ""
 
 
 def _command_log_name(args: argparse.Namespace) -> str:
@@ -2758,6 +2828,7 @@ def main(argv: list[str] | None = None) -> None:
                 _command_log_name(args),
                 stdout=sys.stdout,
                 target=_log_target(args),
+                llm=_log_llm(args),
                 debug=debug,
             )
             if not inherited_transcript:

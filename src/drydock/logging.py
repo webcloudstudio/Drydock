@@ -99,6 +99,7 @@ def setup_command_logging(
     *,
     stdout: TextIO,
     target: str = "",
+    llm: str = "",
     debug: bool = False,
 ) -> CommandLogging:
     """Create or join a plain stdout command transcript.
@@ -106,6 +107,9 @@ def setup_command_logging(
     A Drydock command may cause an LLM to invoke more ``drydock`` commands.  Those
     child processes inherit the parent transcript path and append their output to it
     instead of creating a misleading sibling transcript for each implementation step.
+
+    The transcript is named ``<stamp>_<target>_<command>_<llm>.log``, the same shape as the
+    LLM evidence files it accompanies, so one command's artifacts sort together.
     """
     log_dir.mkdir(parents=True, exist_ok=True)
     inherited = os.environ.get(_PARENT_TRANSCRIPT_ENV)
@@ -125,7 +129,7 @@ def setup_command_logging(
     if not inherited:
         # Composed explicitly rather than with ``with_suffix``: the timestamp contains dots,
         # which ``with_suffix`` would mistake for an extension.
-        stem = log_basename(log_timestamp(datetime.now(UTC)), target, command_name)
+        stem = log_basename(log_timestamp(datetime.now(UTC)), target, command_name, llm)
         transcript_path = log_dir / f"{stem}.log"
         transcript = transcript_path.open("w", encoding="utf-8", newline="")
         owns_transcript = True
