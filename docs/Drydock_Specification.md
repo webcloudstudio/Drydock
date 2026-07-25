@@ -410,6 +410,23 @@ The most important guard is `BLOCKERS.md`. If `BLOCKERS.md` exists, the Commande
 | `Questions` | Planning may proceed, but open questions remain |
 | `Ready` | No blockers remain |
 
+### Specification Decomposition Methodology
+
+This structure populates `Provides`, `Consumes`, and `Depends On`.
+
+Decomposing to features and stories is done by type of project - For example a web applications decomposes by routes
+with one story to build function creating the route and a second story that built the screen that uses the route (screens can have multiple routes).
+
+Other applications can use different decomposition methods.
+
+| System shape | Interface points named in `Provides` / `Consumes` |
+|---|---|
+| Web application | HTTP routes — `GET /catalog` |
+| CLI tool | Commands and sub-verbs — `drydock plan` |
+| Library or package | Public API symbols — `Database.items.get` |
+| Data pipeline | Datasets, tables, and files produced and consumed |
+| Event-driven system | Topics, queues, and event types |
+
 ### Agile Story Refinement with drydock run quarterdeck
 
 > **Definition — QuarterDeck**
@@ -1186,43 +1203,6 @@ stores the navigation order and default theme.
 
 4. `drydock document assemble readme <Target>` regenerates `README.md` for the built project when needed outside the normal build hook.
 
-### Spec Kit Import Contract
-
-```text
-drydock import <Target> <SpecKitProject> --format speckit
-```
-
-The translator reads `.specify/memory/constitution.md` and each Spec Kit feature directory, then
-creates a normal Drydock Blueprint. The resulting Drydock files become authoritative after
-product-owner review.
-
-| Spec Kit input | Drydock destination |
-|---|---|
-| `.specify/memory/constitution.md` | Project-specific intent, constraints, and success criteria in `COMPASS.md`; reusable engineering rules remain governed by Drydock |
-| `specs/<feature>/spec.md` | One `FEATURE-{Name}.md`; clearly identified UI behavior also contributes to `SCREEN-*.md` |
-| `spec.md` user stories and acceptance scenarios | Feature behavior and acceptance criteria in the owning `FEATURE-*.md` |
-| `spec.md` success criteria and assumptions | `COMPASS.md` when project-wide; otherwise the owning `FEATURE-*.md` |
-| `plan.md` technical context and structure | `ARCHITECTURE.md`, `METADATA.md`, and `DATABASE.md` where applicable |
-| `research.md` accepted decisions | The owning `FEATURE-*.md`, `ARCHITECTURE.md`, or `DATABASE.md` |
-| `research.md` unresolved decisions | `## Open Questions` in the owning Drydock file |
-| `data-model.md` | `DATABASE.md` |
-| `contracts/` | Routes and interfaces in `FEATURE-*.md` and `ARCHITECTURE.md` |
-| `quickstart.md` | Useful operating instructions in `README.md` or `AGENTS.md`; otherwise ignored |
-| `tasks.md` | Generated `tasks.md` compatibility view plus QuarterDeck task state projected from `MANIFEST.md` |
-
-Translation performs these steps:
-
-1. Discover the Spec Kit constitution and feature directories.
-2. Scaffold the standard Drydock Blueprint.
-3. Classify project-wide intent, feature behavior, screens, architecture, persistence, and interfaces.
-4. Merge each statement into its owning Drydock file.
-5. Preserve unresolved or conflicting statements as open questions.
-6. Generate relationship headers and validate the proposed Blueprint.
-7. Write a conversion report listing mapped, duplicated, ambiguous, and ignored content.
-
-The conversion report is review evidence, not a permanent Specification file. The translator must
-not silently discard ambiguous or conflicting source content.
-
 ## Drydock Security
 
 This section explains drydock security.  
@@ -1281,120 +1261,6 @@ Drydock isolates Codex's configuration and identity — not its command executio
 
 Execution sandbox. The codex provider executes model-generated commands in the invoking shell. codex_sandbox selects the OS sandbox policy: danger-full-access (default, no OS confinement), workspace-write, or read-only. Non-default modes require the platform sandbox helper (codex-linux-sandbox on Linux) and fail fast when it is absent. Drydock does not require an external encapsulation layer; hardened deployments confine execution by running Drydock inside a container that exposes only the workspace and target directories.
 
-## Blueprints - Typed Specification Contract
-
-### Blueprint File Inventory
-
-**Project records** — identity and introduction; not part of the Typed Specification Contract and
-not authored as specification files.
-
-- **`METADATA.md`** — Project identity, relationships, status, and stack
-  - Created: `drydock import` conversion
-  - Updated: Product owner; platform metadata operations
-
-- **`README.md`** — Short human introduction to the Blueprint
-  - Created: `drydock import` conversion; Manual; other
-  - Updated: Product owner
-
-**Human-authored** — product guidance explicitly owned by the product owner.
-
-- **`COMPASS.md`** — Project guidance: constraints, guardrails, and definition of done. Lives at the Target
-  root (not inside `blueprint/`). Injected into every LLM run as ambient project context.
-  Created by `drydock analyze` (generated from spec if absent) or by
-  `drydock import --format compass` (user-supplied guidance, normalized at import).
-  - Auto Generate: `drydock analyze` (auto-generated)
-  - Created: `drydock import --format compass` (user-supplied, normalized at import)
-  - Updated: Product owner
-
-- **`sources/`** — Preserved unconformed Markdown supplied to `drydock import`
-  - Created and updated: `drydock import <Target> <Source> --format markdown`
-  - Used as read-only planning context; never treated as conformed Typed Specification files
-
-- **`ANALYZE_COMPASS.md`** — Persistent standing directive for `drydock analyze`: durable
-  Commander guidance re-injected on every run. Lives at the Target root.
-  - Created: `drydock analyze` (empty template on first run)
-  - Updated: Product owner
-  - Never overwritten or deleted by `drydock analyze`
-
-- **`PLAN_COMPASS.md`** — Persistent standing directive for `drydock plan`: durable
-  Commander guidance re-injected on every run. Lives at the Target root.
-  - Created: `drydock plan` (empty template on first run)
-  - Updated: Product owner
-  - Never overwritten or deleted by `drydock plan`
-
-**Core Application Specification Files** — created and maintained by Drydock commands;
-updated by `drydock refit` as specification files and application code evolve.
-
-- **`ARCHITECTURE.md`** — Modules, routes, boundaries, interfaces, and technical decisions
-  - Created: `drydock import` conversion
-  - Updated: `drydock refit` (architecture-scoped)
-
-- **`DATABASE.md`** — Persistence stores, schemas, migrations, and typed access classes
-  - Created: `drydock import` conversion
-  - Updated: `drydock refit` (data-scoped)
-
-- **`FEATURE-{Name}.md`** — Feature purpose, status, behavior, reads, writes, routes, criteria, and guardrails
-  - Created: `drydock import` conversion; accepted change reconciliation
-  - Updated: `drydock refit` (feature-scoped)
-
-- **`SCREEN-{Name}.md`** — Screen route, layout, interactions, and criteria
-  - Created: `drydock import` conversion; accepted change reconciliation
-  - Updated: `drydock refit` (screen-scoped)
-
-- **`UI-GENERAL.md`** — Shared UI behavior and visual rules
-  - Created: `drydock import` conversion when the project has a UI
-  - Updated: `drydock refit` (UI-scoped)
-
-- **`changes/TICKET-NNN-{Name}.md`** — Post-baseline change, defect, or spike request
-  - Created: Product owner or change intake workflow
-  - Updated: Clarification, planning, build execution, evidence, review, and reconciliation
-  - Processing: Additional specification files are detected by `drydock plan`, placed in
-    `MANIFEST.md` for ordering, and processed by `drydock build`. Required context is added
-    automatically.
-
-**Process Created Artifacts** — generated by Drydock commands; not authored directly.
-
-- **`<Target>/METADATA.md`** — Project identity (Blueprint name, `code_root`, status, stack) and
-  lifecycle state (`drydock build state:` field; forward-only ladder: `init → analyzed → planned → building → built`)
-  - Created: `drydock init <Target>`; enriched by `drydock import`
-  - Updated: product owner; Drydock Target operations; each command on state advance
-
-- **`<Target>/MANIFEST.md`** — The single generated executable build plan
-  - Created: `drydock plan <Target>`
-  - Updated: plan regeneration, planning merges, build execution, and review decisions
-
-- **`<Target>/ANALYSIS.md`** — Planning Session analysis: quality signal, story list, blockers, open questions
-  - Created and updated: `drydock analyze <Target>`
-
-- **`<Target>/QuarterDeck/questionnaires/spike-*.json`** — Planning Session questionnaires; four
-  fixed spikes (intent, stack, gaps-ac, guardrails) plus variable spikes for genuine unknowns
-  - Created and updated: `drydock analyze <Target>`
-  - Answered through: QuarterDeck Planning Session
-
-- **`<Target>/QuarterDeck/commanders_chair.html`** — Template-filled orientation dashboard; quality
-  signal, story count, stack, and next recommended step
-  - Created: `drydock analyze <Target>` on first run; updated when lifecycle state advances
-
-- **`SCORECARD.md`** — Acceptance and release scoring results, approval blockers, and ranked improvements
-  - Created and updated: `drydock score`
-
-- **`evidence/build-score.json`** — Code-bound scoring evidence with input hashes, Git identity, deterministic observations, proof results, and LLM execution identity
-  - Created and updated: `drydock score`
-
-- **`logs/history.jsonl`** — append-only command-invocation log; one JSON record per command with
-  the command line, timestamp, target, and return code. Pure-report commands are excluded
-  - Created and updated: the CLI, on every recorded command
-
-**Console related documents** — generated per target project; read by the QuarterDeck and updated by
-build and review actions.
-
-- **`<Target>/evidence/*`** — Reviewable build evidence named by the producing build object
-  - Created and updated: `drydock build`
-
-- **`<Target>/QuarterDeck/console.yaml`** — console index; defines project identity, the
-  default view, the sidebar section taxonomy, and all renderable navigation items
-  - Created and updated: `drydock init`
-
 ### Specification File Format
 
 Every authored Specification file except `METADATA.md` and `README.md` opens with a typed heading
@@ -1435,23 +1301,7 @@ terminal sections. `drydock plan` computes `Depends On`, `Provides`, and the SCR
 
 A SCREEN file referencing a route not listed in any FEATURE `Provides` field is an error.
 
-### Specification Decomposition Methodology
-
-Decomposing to features is done by project type - For example a web applications decomposes by routes
-with UI screens having one file for the Page and another for the web route.
-This structure populates `Provides`, `Consumes`, and `Depends On`.
-
-Other applications can use different decomposition methods.
-
-| System shape | Interface points named in `Provides` / `Consumes` |
-|---|---|
-| Web application | HTTP routes — `GET /catalog` |
-| CLI tool | Commands and sub-verbs — `drydock plan` |
-| Library or package | Public API symbols — `Database.items.get` |
-| Data pipeline | Datasets, tables, and files produced and consumed |
-| Event-driven system | Topics, queues, and event types |
-
-### Database Encapsulation
+## Database Encapsulation
 
 **DATABASE.md enforces data access encapsulation.**
 
