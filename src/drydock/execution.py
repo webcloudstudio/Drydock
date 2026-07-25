@@ -20,6 +20,17 @@ def isoformat(value: datetime) -> str:
     return value.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def log_timestamp(value: datetime) -> str:
+    """Format one UTC instant as the shared log filename timestamp.
+
+    ``20260725.004228.288Z`` — date, time, and milliseconds separated so the stamp is
+    readable at a glance while still sorting lexically in directory listings. Every log
+    filename and every ``execution_id`` derives from this one function, so a transcript,
+    its evidence files, and its ``llm.jsonl`` record all share the same stamp.
+    """
+    return f"{value:%Y%m%d.%H%M%S}.{value.microsecond // 1000:03d}Z"
+
+
 def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
@@ -69,27 +80,43 @@ class ExecutionArtifacts:
     ) -> ExecutionArtifacts:
         logs = log_dir if log_dir is not None else working_directory / "logs"
         logs.mkdir(parents=True, exist_ok=True)
-        now = utc_now()
-        timestamp = now.strftime("%Y%m%dT%H%M%S%fZ")
+        timestamp = log_timestamp(utc_now())
         execution_id = f"{timestamp}-{uuid.uuid4().hex[:8]}"
-        base = logs / log_basename(timestamp, target, command_name, llm)
+        # The stamp contains dots, so names are composed explicitly; ``with_suffix`` would
+        # treat the millisecond field as the extension and overwrite the rest of the stem.
+        stem = log_basename(timestamp, target, command_name, llm)
         return cls(
             execution_id=execution_id,
             records_file=logs / "llm.jsonl",
-            prompt_file=base.with_suffix(".prompt.md"),
-            raw_file=base.with_suffix(".raw.jsonl"),
-            output_file=base.with_suffix(".output.txt"),
-            stderr_file=base.with_suffix(".stderr.log"),
+            prompt_file=logs / f"{stem}.prompt.md",
+            raw_file=logs / f"{stem}.raw.jsonl",
+            output_file=logs / f"{stem}.output.txt",
+            stderr_file=logs / f"{stem}.stderr.log",
         )
 
+    def prune_empty(self) -> None:
+        """Discard the stderr transcript when the provider wrote nothing to it.
+
+        A silent stderr is the healthy case, and an empty file is noise that reads as a
+        missing artifact. ``paths()`` omits it once removed, so no record points at a
+        file that is not there.
+        """
+        try:
+            if self.stderr_file.is_file() and self.stderr_file.stat().st_size == 0:
+                self.stderr_file.unlink()
+        except OSError:
+            pass  # evidence pruning must never fail an execution
+
     def paths(self) -> dict[str, str]:
-        return {
+        paths = {
             "prompt": str(self.prompt_file),
             "raw": str(self.raw_file),
             "output": str(self.output_file),
-            "stderr": str(self.stderr_file),
             "execution_records": str(self.records_file),
         }
+        if self.stderr_file.exists():
+            paths["stderr"] = str(self.stderr_file)
+        return paths
 
 
 def append_execution_record(path: Path, record: dict[str, Any]) -> None:

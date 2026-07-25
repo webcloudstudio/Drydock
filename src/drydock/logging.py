@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from drydock.execution import log_basename
+from drydock.execution import log_basename, log_timestamp
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _PARENT_TRANSCRIPT_ENV = "DRYDOCK_PARENT_TRANSCRIPT"
@@ -67,6 +67,7 @@ class CommandLogging:
     stdout: StdoutTee
     _transcript: TextIO
     _handlers: tuple[logging.Handler, ...]
+    _owns_transcript: bool = True
 
     def close(self) -> None:
         root = logging.getLogger("drydock")
@@ -74,6 +75,22 @@ class CommandLogging:
             root.removeHandler(handler)
             handler.close()
         self._transcript.close()
+        self._prune_if_empty()
+
+    def _prune_if_empty(self) -> None:
+        """Discard a transcript that recorded nothing.
+
+        The machine-readable status gates (``--check``/``--ready``) speak only through their
+        exit code, so their transcript closes at zero bytes. A file with no content is noise.
+        A transcript inherited from a parent command is never removed here — the parent owns it.
+        """
+        if not self._owns_transcript:
+            return
+        try:
+            if self.transcript_path.is_file() and self.transcript_path.stat().st_size == 0:
+                self.transcript_path.unlink()
+        except OSError:
+            pass  # transcript pruning must never change the command's outcome
 
 
 def setup_command_logging(
@@ -93,6 +110,7 @@ def setup_command_logging(
     log_dir.mkdir(parents=True, exist_ok=True)
     inherited = os.environ.get(_PARENT_TRANSCRIPT_ENV)
     transcript_path: Path
+    owns_transcript = False
     if inherited:
         candidate = Path(inherited)
         try:
@@ -105,10 +123,12 @@ def setup_command_logging(
         else:
             inherited = None
     if not inherited:
-        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        base = log_dir / log_basename(timestamp, target, command_name)
-        transcript_path = base.with_suffix(".log")
+        # Composed explicitly rather than with ``with_suffix``: the timestamp contains dots,
+        # which ``with_suffix`` would mistake for an extension.
+        stem = log_basename(log_timestamp(datetime.now(UTC)), target, command_name)
+        transcript_path = log_dir / f"{stem}.log"
         transcript = transcript_path.open("w", encoding="utf-8", newline="")
+        owns_transcript = True
 
     root = logging.getLogger("drydock")
     root.setLevel(logging.DEBUG)
@@ -132,6 +152,7 @@ def setup_command_logging(
         stdout=StdoutTee(stdout, transcript),
         _transcript=transcript,
         _handlers=tuple(handlers),
+        _owns_transcript=owns_transcript,
     )
 
 

@@ -2531,8 +2531,7 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
 
     tokens = argv if argv is not None else sys.argv[1:]
     cmd_str = "drydock " + " ".join(tokens)
-    target = getattr(args, "Target", "") or ""
-    append_command_history(get_workspace(), cmd_str, target=target, return_code=rc)
+    append_command_history(get_workspace(), cmd_str, target=_log_target(args), return_code=rc)
 
 
 def _render_analyze_blockers(target: str, blockers_path) -> str:
@@ -2701,6 +2700,30 @@ def _standoff_diagnosis(
         return
 
 
+# Leading positional sub-verbs of the REMAINDER commands; they precede the Target token.
+_LOG_TARGET_SUBVERBS = frozenset({"status", "score", "ac", "release", "continue"})
+
+
+def _log_target(args: argparse.Namespace) -> str:
+    """Resolve the Target for a log filename before the command parses its own arguments.
+
+    ``build``, ``status``, and ``score`` collect their operands with ``argparse.REMAINDER``,
+    so they expose no ``Target`` attribute here and their transcripts would otherwise be
+    named without a target. Scanning stops at the first flag: a Target that follows a
+    value-taking flag cannot be told from that flag's value, and omitting the component is
+    better than naming the transcript after the wrong thing.
+    """
+    declared = getattr(args, "Target", None)
+    if declared:
+        return str(declared)
+    for token in getattr(args, "args", None) or []:
+        if token.startswith("-"):
+            break
+        if token not in _LOG_TARGET_SUBVERBS:
+            return token
+    return ""
+
+
 def _command_log_name(args: argparse.Namespace) -> str:
     parts = [getattr(args, "command", None) or "drydock"]
     for attribute in ("config_command", "rigging_command", "prompt_command", "run_command"):
@@ -2734,7 +2757,7 @@ def main(argv: list[str] | None = None) -> None:
                 log_dir,
                 _command_log_name(args),
                 stdout=sys.stdout,
-                target=getattr(args, "Target", "") or "",
+                target=_log_target(args),
                 debug=debug,
             )
             if not inherited_transcript:

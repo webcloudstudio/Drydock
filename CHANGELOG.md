@@ -36,6 +36,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-24: Log filenames use a readable UTC stamp, `20260725.004228.288Z`, replacing
+  `20260725T004228288279Z`; `execution_id` shares it. Command transcripts for `drydock build`,
+  `drydock status`, and `drydock score` now carry the Target, as their evidence files already did,
+  and those commands record the Target in `logs/history.jsonl`. Drydock no longer leaves empty log
+  files: a transcript that captured no output and an unused LLM `.stderr.log` are both discarded on
+  close, and `llm.jsonl` omits the `stderr` artifact path when there is no such file.
 - 2026-07-23: Drydock no longer creates command or LLM execution `.debug.log` files. The global
   `--debug` option, accepted before or after the command, prints internal Python and LLM execution
   diagnostics to the console for the current invocation. Normal command transcripts and

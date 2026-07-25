@@ -1303,6 +1303,8 @@ def run_prompt(
             on_text=on_text,
             on_event=on_event,
         )
+        # Prune before the record is built so ``artifacts.paths()`` reflects what survives.
+        artifacts.prune_empty()
         text, stats = _parse_result(selected, raw_output, artifacts)
         provider_error = _provider_error(selected, raw_output)
         if selected == "claude":
