@@ -1215,7 +1215,13 @@ def cmd_status_ready(target: str) -> int:
     """
     check = _resolve_check_target(target)
     ready = check.exit_code() == 1
-    print(f"{'READY' if ready else 'NOT READY'}: {target}  ({check.reason})", file=sys.stderr)
+    if ready:
+        headline = "READY TO BUILD"
+    elif check.complete:
+        headline = "BUILD COMPLETE"
+    else:
+        headline = "NOT READY"
+    print(f"{headline}: {target}  ({check.reason})", file=sys.stderr)
     return 0 if ready else 1
 
 

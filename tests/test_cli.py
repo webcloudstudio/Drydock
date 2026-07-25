@@ -2236,7 +2236,7 @@ class TestStatus:
         assert rc == 0, err
         assert out == ""
         assert __copyright__ not in out
-        assert "READY: TestTarget" in err
+        assert "READY TO BUILD: TestTarget" in err
 
     def test_status_ready_exits_1_when_complete(
         self, tmp_target_root, isolated_config, monkeypatch
@@ -2251,7 +2251,7 @@ class TestStatus:
         )
         rc, out, err = run_cli("status", "TestTarget", "--ready")
         assert rc == 1, err
-        assert "NOT READY: TestTarget" in err
+        assert "BUILD COMPLETE: TestTarget" in err
 
     def test_status_ready_exits_1_when_blocked(self, tmp_target_root, isolated_config, monkeypatch):
         from drydock.init_specification import init_specification
