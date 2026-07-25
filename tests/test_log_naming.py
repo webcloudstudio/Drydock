@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from drydock.cli import _log_llm, _log_target
+from drydock.cli import _invocation_uses_llm, _log_llm, _log_target
 from drydock.execution import ExecutionArtifacts, log_basename, log_component, log_timestamp
 from drydock.logging import setup_command_logging
 
@@ -173,13 +173,49 @@ def test_log_target_resolves_remainder_commands(namespace, expected):
 @pytest.mark.parametrize(
     ("namespace", "expected"),
     [
-        ({"llm_provider": "codex"}, "codex"),  # declared override flag
-        ({"args": ["commonmark_2", "--llm-provider", "codex"]}, "codex"),
-        ({"args": ["release", "commonmark_2", "--llm-provider=codex"]}, "codex"),
-        ({"llm_provider": "nonsense"}, ""),  # unresolvable, never fatal
+        ({"command": "analyze"}, True),
+        ({"command": "plan"}, True),
+        ({"command": "refit"}, True),
+        ({"command": "survey"}, True),
+        ({"command": "import"}, True),
+        ({"command": "status", "args": ["commonmark_2"]}, False),
+        ({"command": "validate"}, False),
+        ({"command": "publish"}, False),
+        ({"command": "config", "config_command": "show"}, False),
+        ({"command": "build", "args": ["commonmark_2"]}, True),
+        ({"command": "build", "args": ["status", "commonmark_2"]}, False),
+        ({"command": "build", "args": ["score", "commonmark_2"]}, True),
+        ({"command": "score", "args": ["release", "commonmark_2"]}, True),
+        ({"command": "score", "args": ["ac", "commonmark_2"]}, False),
+        ({"command": "document", "args": ["commonmark_2"]}, True),
+        ({"command": "document", "args": ["generate", "commonmark_2"]}, True),
+        ({"command": "document", "args": ["assemble", "commonmark_2"]}, False),
+        ({"command": "rigging", "rigging_command": "compact"}, True),
+        ({"command": "rigging", "rigging_command": "verify"}, False),
+        ({"command": "rigging", "rigging_command": "update"}, False),
+        ({"command": "prompt", "prompt_command": "review"}, True),
+        ({"command": "run", "run_command": "quarterdeck"}, True),
     ],
 )
-def test_log_llm_resolves_the_provider_in_force(namespace, expected):
+def test_invocation_uses_llm_matches_the_commands_that_call_a_model(namespace, expected):
+    import argparse
+
+    assert _invocation_uses_llm(argparse.Namespace(**namespace)) is expected
+
+
+@pytest.mark.parametrize(
+    ("namespace", "expected"),
+    [
+        ({"command": "analyze", "llm_provider": "codex"}, "codex"),  # declared override flag
+        ({"command": "build", "args": ["commonmark_2", "--llm-provider", "codex"]}, "codex"),
+        ({"command": "score", "args": ["release", "c2", "--llm-provider=codex"]}, "codex"),
+        ({"command": "analyze", "llm_provider": "nonsense"}, ""),  # unresolvable, never fatal
+        ({"command": "status", "llm_provider": "codex"}, ""),  # no model runs, so none is named
+        ({"command": "score", "args": ["ac", "commonmark_2"]}, ""),
+        ({"command": "build", "args": ["status", "commonmark_2"]}, ""),
+    ],
+)
+def test_log_llm_names_a_provider_only_when_one_runs(namespace, expected):
     import argparse
 
     assert _log_llm(argparse.Namespace(**namespace)) == expected
@@ -189,7 +225,8 @@ def test_log_llm_falls_back_to_the_configured_provider(monkeypatch):
     """With no override, the filename records whatever the configuration resolves to."""
     import argparse
 
+    args = argparse.Namespace(command="analyze", llm_provider=None, args=[])
     monkeypatch.setenv("LLM_PROVIDER", "codex")
-    assert _log_llm(argparse.Namespace(llm_provider=None, args=[])) == "codex"
+    assert _log_llm(args) == "codex"
     monkeypatch.setenv("LLM_PROVIDER", "claude")
-    assert _log_llm(argparse.Namespace(llm_provider=None, args=[])) == "claude"
+    assert _log_llm(args) == "claude"

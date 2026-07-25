@@ -2663,8 +2663,13 @@ def _standoff_diagnosis(
         from drydock.config import get_target_directory
         from drydock.errors import append_diagnosis, append_diagnosis_to_evidence
 
-        target = getattr(args, "Target", "") or ""
+        # The Target is on the command line even when the command collects it with REMAINDER,
+        # so a standoff diagnosis is written against that Target's workspace. The working
+        # directory is a fallback for a command that names no Target at all.
+        target = _log_target(args)
         target_dir = get_target_directory() / target if target else Path.cwd()
+        if not target_dir.is_dir():
+            target_dir = Path.cwd()
         tokens = argv if argv is not None else sys.argv[1:]
         command = "drydock " + " ".join(tokens)
         llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
@@ -2767,14 +2772,53 @@ def _log_target(args: argparse.Namespace) -> str:
     return ""
 
 
-def _log_llm(args: argparse.Namespace) -> str:
-    """Resolve the LLM provider this invocation would use, for the log filename.
+# Commands that always reach a model.
+_LLM_COMMANDS = frozenset({"analyze", "plan", "refit", "survey", "import"})
 
-    Every command records the provider in force — the ``--llm-provider`` override when given,
-    otherwise the configured default — so one Target's logs group by provider and a transcript
-    names the same provider as the evidence files beneath it. For a deterministic command this
-    is the configured provider, not evidence that a model ran.
+# Commands whose sub-verb decides. ``build status`` reports state, ``build`` and ``build score``
+# call a model; ``score ac`` verifies acceptance deterministically, ``score release`` judges with
+# a model; ``document assemble`` renders what is already written, ``document generate`` writes it.
+_LLM_SUB_COMMANDS = {"rigging": "compact", "prompt": "review", "run": "quarterdeck"}
+_DETERMINISTIC_OPERANDS = {"build": {"status"}, "document": {"assemble"}}
+_LLM_OPERANDS = {"score": {"release"}}
+
+
+def _invocation_uses_llm(args: argparse.Namespace) -> bool:
+    """Whether this invocation reaches a model, deciding if its log names a provider.
+
+    ``drydock run quarterdeck`` counts: the QuarterDeck itself calls no model, but the commands
+    it starts append to its transcript, so that transcript holds provider-bound work.
     """
+    command = getattr(args, "command", None) or ""
+    if command in _LLM_COMMANDS:
+        return True
+    if command in _LLM_SUB_COMMANDS:
+        for attribute in ("rigging_command", "prompt_command", "run_command"):
+            value = getattr(args, attribute, None)
+            if value:
+                return value == _LLM_SUB_COMMANDS[command]
+        return False
+    operand = next(
+        (token for token in (getattr(args, "args", None) or []) if not token.startswith("-")),
+        "",
+    )
+    if command in _DETERMINISTIC_OPERANDS:
+        return operand not in _DETERMINISTIC_OPERANDS[command]
+    if command in _LLM_OPERANDS:
+        return operand in _LLM_OPERANDS[command]
+    return False
+
+
+def _log_llm(args: argparse.Namespace) -> str:
+    """Resolve the LLM provider this invocation will use, for the log filename.
+
+    An LLM-assisted command records the provider in force — the ``--llm-provider`` override when
+    given, otherwise the configured default — so its transcript names the same provider as the
+    evidence files beneath it. A deterministic command names none: no model runs, so claiming one
+    in the filename would be false.
+    """
+    if not _invocation_uses_llm(args):
+        return ""
     override = getattr(args, "llm_provider", None)
     if not override:
         # ``score`` declares no override flag of its own; the operand list still carries one.

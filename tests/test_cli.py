@@ -197,9 +197,10 @@ class TestHelpAndVersion:
         rc, out, err = run_cli("status")
 
         assert rc == 0, err
-        # Transcripts are named <stamp>_[<target>_]<command>_<llm>.log.
-        transcripts = list((tmp_workspace / "logs").glob("*_status_*.log"))
-        debug_logs = list((tmp_workspace / "logs").glob("*_status_*.debug.log"))
+        # Transcripts are named <stamp>_[<target>_]<command>[_<llm>].log; status names no
+        # provider because it calls no model.
+        transcripts = list((tmp_workspace / "logs").glob("*_status.log"))
+        debug_logs = list((tmp_workspace / "logs").glob("*_status.debug.log"))
         assert len(transcripts) == 1
         assert debug_logs == []
         assert transcripts[0].read_text(encoding="utf-8") == out
@@ -2411,6 +2412,41 @@ class TestStandoffDiagnosis:
         assert persisted is not None
         assert "DO: rerun drydock build widgets" in persisted.diagnosis
         assert persisted.recovery == "Rerun the block."
+
+    def test_remainder_command_diagnoses_against_its_target_directory(self, target_dir, capsys):
+        """``drydock build`` carries its Target in the operand list, not a ``Target`` attribute.
+
+        The diagnosis must still run against that Target's workspace rather than falling back
+        to the working directory, which holds none of the Target's evidence.
+        """
+        import argparse
+
+        from drydock.cli import _standoff_diagnosis
+        from drydock.errors import read_error_record, write_error_record
+
+        record = write_error_record(
+            target_dir,
+            command="build",
+            phase="LLM execution",
+            classification="no build files written",
+            detail="The agent finished but produced nothing.",
+            recovery="Rerun the block.",
+        )
+        args = argparse.Namespace(
+            command="build",
+            args=["widgets", "--reset"],
+            no_diagnose=False,
+            llm_provider="claude",
+            model="sonnet",
+        )
+        runner = self._runner()
+        _standoff_diagnosis(args, ["build", "widgets", "--reset"], record=record, runner=runner)
+
+        assert runner.kwargs, "the diagnosis never ran"
+        assert runner.kwargs[0]["log_dir"] == target_dir.parents[1] / "logs"
+        persisted = read_error_record(target_dir)
+        assert persisted is not None
+        assert "DO: rerun drydock build widgets" in persisted.diagnosis
 
     def test_diagnosis_also_appended_to_evidence_file(self, target_dir, capsys):
         from drydock.cli import _standoff_diagnosis

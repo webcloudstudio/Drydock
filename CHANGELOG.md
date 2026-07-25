@@ -36,15 +36,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
-- 2026-07-24: Every log file is named `<stamp>_<Target>_<command>_<provider>.<extension>`. The
+- 2026-07-24: Every log file is named `<stamp>_<Target>_<command>[_<provider>].<extension>`. The
   stamp is a readable UTC instant, `20260725.004228.288Z`, replacing `20260725T004228288279Z`, and
-  `execution_id` shares it. Command transcripts now carry the Target and the provider in force —
-  the `--llm-provider` override when given, otherwise the configured default — so a transcript and
-  the LLM evidence beneath it share one stem. `drydock build`, `drydock status`, `drydock score`,
-  and `drydock document` resolve their Target from their operand list, which also fills the Target
-  field they previously left blank in `logs/history.jsonl`. Drydock no longer leaves empty log
-  files: a transcript that captured no output and an unused LLM `.stderr.log` are both discarded on
-  close, and `llm.jsonl` omits the `stderr` artifact path when there is no such file.
+  `execution_id` shares it. An LLM-assisted command's transcript names the provider in force — the
+  `--llm-provider` override when given, otherwise the configured default — so the transcript and
+  the evidence files beneath it share one stem; a deterministic command such as `drydock status`,
+  `drydock validate`, `drydock build status`, or `drydock score ac` names no provider, because none
+  runs. `drydock build`, `drydock status`, `drydock score`, and `drydock document` resolve their
+  Target from their operand list, which also fills the Target field they previously left blank in
+  `logs/history.jsonl` and directs a standoff diagnosis at that Target's workspace instead of the
+  working directory. Drydock no longer leaves empty log files: a transcript that captured no output
+  and an unused LLM `.stderr.log` are both discarded on close, and `llm.jsonl` omits the `stderr`
+  artifact path when there is no such file.
 - 2026-07-23: Drydock no longer creates command or LLM execution `.debug.log` files. The global
   `--debug` option, accepted before or after the command, prints internal Python and LLM execution
   diagnostics to the console for the current invocation. Normal command transcripts and
