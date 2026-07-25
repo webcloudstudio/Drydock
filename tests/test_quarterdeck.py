@@ -7,6 +7,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -1492,3 +1493,33 @@ state: pending
     assert "cmp-badge-dup" not in first
     # second step repeats every file — duplicate badges appear
     assert "cmp-badge-dup" in second
+
+
+def test_target_scoped_responses_are_never_browser_cached():
+    """A cached iframe response must not survive a target switch.
+
+    ``/raw/<item>`` is the same URL for every Target; only the cookie differs.
+    Heuristic caching of that response is what lets one Target's Commanders
+    Chair — including its BIG ERRORS banner — appear under another Target.
+    """
+    import asyncio
+
+    from fastapi.responses import HTMLResponse
+
+    quarterdeck = _load_quarterdeck()
+
+    async def call(path: str) -> dict[str, str]:
+        request = SimpleNamespace(url=SimpleNamespace(path=path))
+
+        async def call_next(_request):
+            return HTMLResponse("<p>ok</p>")
+
+        response = await quarterdeck._no_store_target_scoped_responses(request, call_next)
+        return dict(response.headers)
+
+    headers = asyncio.run(call("/raw/commanders_chair"))
+    assert headers["cache-control"] == "no-store, must-revalidate"
+    assert headers["vary"] == "Cookie"
+
+    # The logo is target-independent and stays cacheable.
+    assert "cache-control" not in asyncio.run(call("/logo.png"))

@@ -394,6 +394,20 @@ def _expand_sources(
 CONFIG, CONFIG_ERROR = load_config()
 app = FastAPI(title=CONFIG.get("console", {}).get("name", "Project Console"))
 
+# Every content URL (``/``, ``/api/...``, ``/raw/<item>``) is target-agnostic: the
+# active Target comes from a cookie, not the path. Without an explicit directive a
+# browser may reuse a cached response after a target switch — showing one Target's
+# Commanders Chair, and its BIG ERRORS banner, under another Target's name.
+_NO_STORE_HEADERS = {"Cache-Control": "no-store, must-revalidate", "Vary": "Cookie"}
+
+
+@app.middleware("http")
+async def _no_store_target_scoped_responses(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path != "/logo.png":
+        response.headers.update(_NO_STORE_HEADERS)
+    return response
+
 
 def _target_palette(index: int) -> tuple[str, str]:
     return TARGET_BUTTON_PALETTE[index % len(TARGET_BUTTON_PALETTE)]
