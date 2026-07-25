@@ -802,6 +802,183 @@ def render_document_item(item: dict[str, Any]) -> str:
     return helper + "<p class='subtle'>No files found for this document.</p>"
 
 
+def _format_tokens(value: int) -> str:
+    """Return a compact token count: 51.5M, 249.8K, or the exact number below 1,000."""
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}K"
+    return f"{value:,}"
+
+
+def _format_duration(seconds: float) -> str:
+    """Return a duration as ``1h 23m``, ``5m 22s``, or ``48s``."""
+    total = int(round(seconds))
+    if total >= 3600:
+        return f"{total // 3600}h {(total % 3600) // 60}m"
+    if total >= 60:
+        return f"{total // 60}m {total % 60}s"
+    return f"{total}s"
+
+
+def _llm_run_status(run: Any) -> tuple[str, str]:
+    if run.succeeded:
+        return "run-status-success", "Success"
+    if run.timed_out:
+        return "run-status-failed", "Timed out"
+    if run.returncode == 130:
+        return "run-status-recorded", "Interrupted"
+    if isinstance(run.returncode, int):
+        return "run-status-failed", f"Failed · {run.returncode}"
+    return "run-status-recorded", "Recorded"
+
+
+def _llm_stat_card(value: str, label: str) -> str:
+    return (
+        "<div class='stat'>"
+        f"<div class='stat-value'>{html.escape(value)}</div>"
+        f"<div class='stat-label'>{html.escape(label)}</div>"
+        "</div>"
+    )
+
+
+def _llm_group_table(caption: str, groups: Any, key_header: str) -> str:
+    if not groups:
+        return ""
+    rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(group.key or '—')}</td>"
+        f"<td class='num'>{group.runs}</td>"
+        f"<td class='num'>{group.total_input_tokens:,}</td>"
+        f"<td class='num'>{group.fresh_input_tokens:,}</td>"
+        f"<td class='num'>{group.output_tokens:,}</td>"
+        f"<td class='num'>{group.tool_calls:,}</td>"
+        f"<td class='num'>{html.escape(_format_duration(group.seconds))}</td>"
+        f"<td class='num'>{group.failures or ''}</td>"
+        "</tr>"
+        for group in groups
+    )
+    return (
+        f"<h3 class='llm-heading'>{html.escape(caption)}</h3>"
+        "<div class='run-history-scroll'><table class='run-history-table llm-table'>"
+        f"<thead><tr><th>{html.escape(key_header)}</th><th class='num'>Runs</th>"
+        "<th class='num'>Input</th><th class='num'>Fresh</th><th class='num'>Output</th>"
+        "<th class='num'>Steps</th><th class='num'>Time</th><th class='num'>Failed</th>"
+        f"</tr></thead><tbody>{rows}</tbody></table></div>"
+    )
+
+
+_LLM_ESTIMATE_NOTE = (
+    "<div class='llm-note'><strong>Reading these numbers.</strong> "
+    "<em>Est. prompt</em> is Drydock's own count of the Markdown it assembled and sent "
+    "(<code>bytes / 4</code>) — it covers the assembled prompt text only. <em>Input</em> is what "
+    "the provider metered, which additionally includes the provider system prompt, tool "
+    "definitions, and every file the agent read back during its own loop, re-sent on each turn "
+    "of the agentic loop. Agentic commands such as <code>build</code> therefore meter far more "
+    "input than the prompt estimate; the two are not comparable totals. "
+    "<em>Cached</em> is the cache-read share of input, normalized across providers "
+    "(Codex reports input inclusive of cache reads, Claude reports it exclusive). "
+    "<em>Steps</em> counts completed tool calls and shell executions in the agent loop.</div>"
+)
+
+
+def render_chair_llm_usage() -> str:
+    """Render this target's LLM usage report, rereading llm.jsonl on every call."""
+    from drydock.llm_usage import usage_report
+
+    logs_dir = _current_workspace_root() / "logs"
+    target = _current_active_target()
+    if not (logs_dir / "llm.jsonl").is_file():
+        return "<p class='empty'>No LLM execution evidence found.</p>"
+
+    report = usage_report(logs_dir, target)
+    if not report.runs:
+        return (
+            f"<p class='empty'>No LLM executions recorded for {html.escape(target)}.</p>"
+            f"{_LLM_ESTIMATE_NOTE}"
+        )
+
+    cards = "".join([
+        _llm_stat_card(str(report.run_count), "Executions"),
+        _llm_stat_card(_format_tokens(report.total_tokens), "Total tokens"),
+        _llm_stat_card(_format_tokens(report.fresh_input_tokens), "Fresh input"),
+        _llm_stat_card(_format_tokens(report.output_tokens), "Output"),
+        _llm_stat_card(f"{report.cache_hit_rate * 100:.1f}%", "Cache hit rate"),
+        _llm_stat_card(_format_duration(report.seconds), "Model time"),
+        _llm_stat_card(f"{report.tool_calls:,}", "Agent steps"),
+        _llm_stat_card(str(len(report.failures)), "Failed runs"),
+    ])
+
+    rows: list[str] = []
+    for run in report.runs:
+        status_class, status = _llm_run_status(run)
+        provider = " · ".join(part for part in (run.provider, run.model) if part) or "—"
+        detail = run.detail if run.detail != run.command else ""
+        detail_html = f"<div class='llm-detail'>{html.escape(detail)}</div>" if detail else ""
+        rows.append(
+            "<tr>"
+            f"<td class='run-time'>{html.escape(run.started_at[:19].replace('T', ' '))}</td>"
+            f"<td><span class='run-phase'>{html.escape(run.command or '—')}</span>"
+            f"{detail_html}</td>"
+            f"<td class='llm-provider'>{html.escape(provider)}</td>"
+            f"<td><span class='run-status {status_class}'>{html.escape(status)}</span></td>"
+            f"<td class='num'>{run.total_input_tokens:,}</td>"
+            f"<td class='num llm-muted'>{run.cached_input_tokens:,}</td>"
+            f"<td class='num'>{run.fresh_input_tokens:,}</td>"
+            f"<td class='num'>{run.output_tokens:,}</td>"
+            f"<td class='num llm-muted'>{run.prompt_tokens_estimate:,}</td>"
+            f"<td class='num'>{run.activity.tool_calls or ''}</td>"
+            f"<td class='num'>{run.activity.file_changes or ''}</td>"
+            f"<td class='num'>{html.escape(_format_duration(run.seconds))}</td>"
+            "</tr>"
+        )
+
+    failures = ""
+    if report.failures:
+        items_html = "".join(
+            "<li>"
+            f"<code>{html.escape(run.command)}</code> "
+            f"{html.escape(run.started_at[:19].replace('T', ' '))} "
+            f"({html.escape(' · '.join(part for part in (run.provider, run.model) if part))}) — "
+            f"{html.escape(run.error or _llm_run_status(run)[1])}"
+            "</li>"
+            for run in report.failures
+        )
+        failures = (
+            f"<h3 class='llm-heading'>Failures</h3><ul class='llm-failures'>{items_html}</ul>"
+        )
+
+    rate_limit = ""
+    peak = report.peak_rate_limit_utilization
+    if peak is not None:
+        rate_limit = (
+            f"<p class='llm-rate-limit'>Peak provider rate-limit utilization observed: "
+            f"{peak * 100:.0f}%.</p>"
+        )
+
+    invalid_note = (
+        f" {report.invalid_records} invalid record(s) skipped." if report.invalid_records else ""
+    )
+    return (
+        f"<p class='run-history-summary'>{report.run_count} LLM execution(s) for "
+        f"{html.escape(target)}, newest first.{invalid_note} This report is read live from "
+        "logs/llm.jsonl.</p>"
+        f"<div class='stats llm-stats'>{cards}</div>"
+        f"{_LLM_ESTIMATE_NOTE}"
+        f"{rate_limit}"
+        "<h3 class='llm-heading'>Executions</h3>"
+        "<div class='run-history-scroll'><table class='run-history-table llm-table'>"
+        "<thead><tr><th>Started (UTC)</th><th>Command</th><th>Provider · Model</th><th>Status</th>"
+        "<th class='num'>Input</th><th class='num'>Cached</th><th class='num'>Fresh</th>"
+        "<th class='num'>Output</th><th class='num'>Est. prompt</th><th class='num'>Steps</th>"
+        "<th class='num'>Files</th><th class='num'>Time</th>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+        f"{_llm_group_table('By command', report.by_command, 'Command')}"
+        f"{_llm_group_table('By provider', report.by_provider, 'Provider · Model')}"
+        f"{failures}"
+    )
+
+
 def render_chair_history() -> str:
     """Render this target's command history, rereading history.jsonl on every call."""
     history_path = _current_workspace_root() / "logs" / "history.jsonl"
@@ -2188,6 +2365,12 @@ def api_document(item_id: str, request: Request = None) -> dict[str, Any]:
 def api_chair_history(request: Request = None) -> str:
     with _request_context(request):
         return render_chair_history()
+
+
+@app.get("/api/chair/llm", response_class=HTMLResponse)
+def api_chair_llm(request: Request = None) -> str:
+    with _request_context(request):
+        return render_chair_llm_usage()
 
 
 @app.get("/api/ticket/{item_id}/{ticket_id}")

@@ -1142,6 +1142,128 @@ def test_commanders_chair_history_is_live_filtered_and_newest_first(tmp_path, mo
     assert refreshed.index("run-phase'>build</span>") < refreshed.index("run-phase'>plan</span>")
 
 
+def test_commanders_chair_template_exposes_the_llm_usage_tab():
+    template = (
+        Path(__file__).parents[1] / "QuarterDeck" / "templates" / "commanders_chair.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'data-chair-tab="llm">LLM Usage</button>' in template
+    assert 'id="chair-llm"' in template
+    assert '["overview", "history", "llm"]' in template
+
+
+def test_commanders_chair_llm_usage_is_live_target_scoped_and_normalized(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    workspace = _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+    logs = workspace / "logs"
+    logs.mkdir()
+    raw = logs / "beta.raw.jsonl"
+    raw.write_text(
+        json.dumps({"type": "item.completed", "item": {"type": "command_execution"}}) + "\n",
+        encoding="utf-8",
+    )
+    records = logs / "llm.jsonl"
+
+    def record(target, command, llm, model, started, stats, artifacts=None, returncode=0):
+        return json.dumps({
+            "execution_id": f"{target}-{command}",
+            "status": "succeeded" if returncode == 0 else "failed",
+            "started_at": started,
+            "completed_at": started,
+            "job": {
+                "command_name": command,
+                "llm": llm,
+                "model": model,
+                "target": target,
+                "parameters": {},
+            },
+            "prompt": {"bytes": 4000, "total_tokens_estimate": 1000},
+            "artifacts": artifacts or {},
+            "result": {
+                "returncode": returncode,
+                "stats": stats,
+                "error": None,
+                "timed_out": False,
+            },
+        })
+
+    records.write_text(
+        "\n".join([
+            record(
+                "Alpha",
+                "build",
+                "codex",
+                "gpt-5.6-luna",
+                "2026-07-24T10:00:00.000Z",
+                {"input_tokens": 999_999, "cached_input_tokens": 0, "output_tokens": 1},
+            ),
+            record(
+                "Beta",
+                "analyze",
+                "codex",
+                "gpt-5.6-luna",
+                "2026-07-24T11:00:00.000Z",
+                {
+                    "input_tokens": 1000,
+                    "cached_input_tokens": 900,
+                    "output_tokens": 50,
+                    "elapsed_ms": 12_000,
+                },
+                artifacts={"raw": str(raw)},
+            ),
+            record(
+                "Beta",
+                "build",
+                "claude",
+                "opus",
+                "2026-07-24T12:00:00.000Z",
+                {"input_tokens": 4, "cached_input_tokens": 900, "output_tokens": 10},
+                returncode=1,
+            ),
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = quarterdeck.api_chair_llm(_RequestStub({"quarterdeck_target": "Beta"}))
+
+    assert "2 LLM execution(s) for Beta" in rendered
+    assert "read live from logs/llm.jsonl" in rendered
+    assert "999,999" not in rendered  # Alpha's run belongs to another Target
+    assert rendered.index("run-phase'>build</span>") < rendered.index("run-phase'>analyze</span>")
+    assert "claude · opus" in rendered
+    assert "run-status-failed" in rendered
+    assert ">904<" in rendered  # Claude cache reads are added to its reported input
+    assert ">100<" in rendered  # Codex fresh input is reported input minus cache reads
+    assert "Est. prompt" in rendered
+    assert "assembled prompt text only" in rendered
+
+    with records.open("a", encoding="utf-8") as handle:
+        handle.write(
+            record(
+                "Beta",
+                "plan",
+                "codex",
+                "gpt-5.6-luna",
+                "2026-07-24T13:00:00.000Z",
+                {"input_tokens": 10, "cached_input_tokens": 0, "output_tokens": 5},
+            )
+            + "\n"
+        )
+    refreshed = quarterdeck.api_chair_llm(_RequestStub({"quarterdeck_target": "Beta"}))
+    assert "3 LLM execution(s) for Beta" in refreshed
+    assert refreshed.index("run-phase'>plan</span>") < refreshed.index("run-phase'>build</span>")
+
+
+def test_commanders_chair_llm_usage_reports_an_absent_log(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
+
+    rendered = quarterdeck.api_chair_llm(_RequestStub({"quarterdeck_target": "Beta"}))
+
+    assert "No LLM execution evidence found." in rendered
+
+
 def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     _configure_quarterdeck_workspace(quarterdeck, monkeypatch, tmp_path)
