@@ -1723,6 +1723,96 @@ def _add_stub(
     return p
 
 
+def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the operand arguments accepted by ``drydock build <Target>``.
+
+    ``build`` retains its REMAINDER dispatcher so that its state subcommands and
+    build operands can be selected at runtime.  Keep this declaration shared by
+    the dispatcher parser and the parent command's help text: otherwise an
+    accepted build option can silently disappear from ``drydock build --help``.
+    """
+    parser.add_argument("Target", metavar="<Target>")
+    parser.add_argument(
+        "--build-dir",
+        dest="build_dir",
+        default=None,
+        metavar="<path>",
+        help="Directory where built code is written (overrides METADATA.md and config).",
+    )
+    parser.add_argument(
+        "--step",
+        dest="step",
+        default=None,
+        metavar="<id|name>",
+        help="Build only the named MANIFEST block (a feature group, or a story/spike "
+        "resolved to its containing block).",
+    )
+    parser.add_argument(
+        "--story",
+        dest="story",
+        default=None,
+        metavar="<id|name>",
+        help="Build exactly one story/spike, even inside a feature group. "
+        "Mutually exclusive with --step.",
+    )
+    parser.add_argument(
+        "--continue",
+        dest="continue_",
+        action="store_true",
+        help="Resume in place (the default): explicit alias for the default build behavior.",
+    )
+    parser.add_argument(
+        "--reset",
+        dest="reset",
+        action="store_true",
+        help="Discard prior work and rebuild clean. With --step/--story resets that block; "
+        "with no selector resets every block and wipes the build directory.",
+    )
+    parser.add_argument(
+        "--normalize-order",
+        "--normalize_order",
+        dest="normalize_order",
+        action="store_true",
+        help="Normalize MANIFEST group order before building.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="Preview the next build block without invoking the LLM or writing files.",
+    )
+    parser.add_argument(
+        "--show-prompt",
+        dest="show_prompt",
+        action="store_true",
+        help="With --dry-run, print the full assembled prompt including file contents.",
+    )
+    parser.add_argument(
+        "--repair-attempts",
+        dest="repair_attempts",
+        type=int,
+        default=1,
+        metavar="<n>",
+        help="Repair passes after a failed block (0 disables; default 1).",
+    )
+    parser.add_argument(
+        "--escalate-model",
+        dest="escalate_model",
+        default=None,
+        metavar="<model>",
+        help="Model used on the final repair attempt "
+        "(default: DRYDOCK_BUILD_ESCALATE_MODEL env or off).",
+    )
+    _add_llm_override_flags(parser)
+
+
+def _build_help_details() -> str:
+    """Return the build operand help rendered from its actual parser."""
+    parser = DrydockArgumentParser(prog="drydock build", add_help=False)
+    _add_build_arguments(parser)
+    return parser.format_help().partition("\n\n")[2].rstrip()
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = DrydockArgumentParser(
         prog="drydock",
@@ -1830,7 +1920,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock document <Target>                    — full pipeline\n"
             "drydock document generate <Target>           — AI pass only\n"
             "drydock document assemble <Target>           — assembly only\n"
-            "drydock document assemble readme <Target>    — regenerate README.md"
+            "drydock document assemble readme <Target>    — regenerate README.md\n\n"
+            "Options for document <Target> and document assemble <Target>:\n"
+            "  --theme <theme>          Documentation theme override.\n"
+            "Options for document <Target> and document generate <Target>:\n"
+            "  --model <model>          Override the LLM model.\n"
+            "  --llm-provider <provider>  Override the LLM provider (claude or codex)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1986,8 +2081,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"
             "drydock build <Target> --dry-run       — preview next build block without writes\n"
             "drydock build status <Target>   — show build state\n"
+            "drydock build verify <Target> [<step-id>] — list or verify legacy implemented steps\n"
             "drydock build score <Target>    — generate SCORECARD.md"
         ),
+        epilog="Build operands:\n" + _build_help_details(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_llm_override_flags(p_build)
@@ -2001,7 +2098,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
             "                                            or scoped to one feature/story), update Soundings\n"
-            "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md"
+            "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n\n"
+            "--step <id> is accepted only with score ac."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2185,95 +2283,8 @@ def _dispatch_document(args: argparse.Namespace) -> int:
 
 def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
     """Parse Target and optional flags for ``drydock build <Target>``."""
-    import argparse as _ap
-
-    p = _ap.ArgumentParser(prog="drydock build", add_help=False)
-    p.add_argument("Target", metavar="<Target>")
-    p.add_argument(
-        "--build-dir",
-        dest="build_dir",
-        default=None,
-        metavar="<path>",
-        help="Directory where built code is written (overrides METADATA.md and config).",
-    )
-    p.add_argument(
-        "--step",
-        dest="step",
-        default=None,
-        metavar="<id|name>",
-        help="Build only the named MANIFEST block (a feature group, or a story/spike "
-        "resolved to its containing block).",
-    )
-    p.add_argument(
-        "--story",
-        dest="story",
-        default=None,
-        metavar="<id|name>",
-        help="Build exactly one story/spike, even inside a feature group. "
-        "Mutually exclusive with --step.",
-    )
-    p.add_argument(
-        "--continue",
-        dest="continue_",
-        action="store_true",
-        help="Resume in place (the default): explicit alias for the default build behavior.",
-    )
-    p.add_argument(
-        "--reset",
-        dest="reset",
-        action="store_true",
-        help="Discard prior work and rebuild clean. With --step/--story resets that block; "
-        "with no selector resets every block and wipes the build directory.",
-    )
-    p.add_argument(
-        "--normalize-order",
-        "--normalize_order",
-        dest="normalize_order",
-        action="store_true",
-        help="Normalize MANIFEST group order before building.",
-    )
-    p.add_argument(
-        "--dry-run",
-        dest="dry_run",
-        action="store_true",
-        help="Preview the next build block without invoking the LLM or writing files.",
-    )
-    p.add_argument(
-        "--show-prompt",
-        dest="show_prompt",
-        action="store_true",
-        help="With --dry-run, print the full assembled prompt including file contents.",
-    )
-    p.add_argument(
-        "--repair-attempts",
-        dest="repair_attempts",
-        type=int,
-        default=1,
-        metavar="<n>",
-        help="Repair passes after a failed block (0 disables; default 1).",
-    )
-    p.add_argument(
-        "--escalate-model",
-        dest="escalate_model",
-        default=None,
-        metavar="<model>",
-        help="Model used on the final repair attempt "
-        "(default: DRYDOCK_BUILD_ESCALATE_MODEL env or off).",
-    )
-    p.add_argument(
-        "--model",
-        default=None,
-        metavar="<model>",
-        help="Override LLM model (default: DRYDOCK_MODEL env or sonnet).",
-    )
-    p.add_argument(
-        "--llm-provider",
-        dest="llm_provider",
-        default=None,
-        choices=["claude", "codex"],
-        metavar="<provider>",
-        help="Override LLM provider (default: LLM_PROVIDER env or claude).",
-    )
+    p = DrydockArgumentParser(prog="drydock build", add_help=False)
+    _add_build_arguments(p)
     parsed, _ = p.parse_known_args(tokens)
     return parsed
 

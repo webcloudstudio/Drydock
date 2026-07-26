@@ -569,13 +569,26 @@ class TestAnalyzeCommand:
     def test_build_help_lists_reset_normalize_and_dry_run_flags(self):
         rc, out, _ = run_cli("build", "--help")
         assert rc == 0
+        assert "--build-dir" in out
         assert "--reset" in out
         assert "--story" in out
         assert "--continue" in out
         assert "--normalize-order" in out
         assert "--dry-run" in out
+        assert "--show-prompt" in out
+        assert "--repair-attempts" in out
+        assert "--escalate-model" in out
         assert "--reset-failed" not in out
         assert "--force" not in out
+
+    def test_document_and_score_help_list_dispatcher_only_options(self):
+        rc, document_help, _ = run_cli("document", "--help")
+        assert rc == 0
+        assert "--theme" in document_help
+
+        rc, score_help, _ = run_cli("score", "--help")
+        assert rc == 0
+        assert "--step <id>" in score_help
 
     def test_analyze_passes_cli_provider_override(
         self, tmp_target_root, isolated_config, monkeypatch
