@@ -1037,6 +1037,9 @@ state: pending
         assert "(foundation)" in out
         assert "(service)" in out
         assert "The backend diverges from the spec." in out
+        assert "Story recovery (dependency order)" in out
+        assert "drydock build ExampleTarget --story foundation --repair-attempts 2" in out
+        assert "drydock build ExampleTarget --story service --repair-attempts 2" in out
 
     def test_build_failure_diagnosis_reaches_errors_and_evidence(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

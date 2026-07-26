@@ -1446,10 +1446,19 @@ def cmd_build(args: argparse.Namespace) -> int:
     if result.readme_path:
         print(f"readme: {result.readme_path}")
     if result.failed() and not result.dry_run:
+        story_recovery = _failed_story_recovery_commands(
+            target_dir,
+            args.Target,
+            failed_steps=failures or result.failed(),
+            repair_attempts=max(2, repair_attempts),
+        )
         print()
         print(
             _render_build_failures(
-                args.Target, failures or result.failed(), hint=BUILD_FAILURE_HINT
+                args.Target,
+                failures or result.failed(),
+                hint=BUILD_FAILURE_HINT,
+                story_recovery=story_recovery,
             )
         )
         # An opaque build failure earns a plain-English diagnosis. The build wrote the error
@@ -2569,7 +2578,71 @@ def _render_analyze_blockers(target: str, blockers_path) -> str:
     return "\n".join(lines)
 
 
-def _render_build_failures(target: str, steps, *, hint: str) -> str:
+def _failed_story_recovery_commands(
+    target_dir: Path,
+    target: str,
+    *,
+    failed_steps,
+    repair_attempts: int,
+) -> tuple[str, ...]:
+    """Return ordered story-resume commands for a failed multi-story feature.
+
+    A feature build can fail because several child stories fail their own acceptance
+    criteria.  Resuming each failed story narrows the next agent context.  The
+    Manifest is the authority for both the failed child state and dependency order.
+    A lone failed story keeps the existing feature-level recovery hint; a command
+    for it would be redundant.
+    """
+    failed_feature_ids = {
+        step.block_id for step in failed_steps if getattr(step, "block_type", "") == "feature"
+    }
+    if not failed_feature_ids:
+        return ()
+
+    from drydock.build_plan import parse_build_plan
+
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    candidates = [
+        block
+        for block in plan.blocks
+        if (
+            block.block_type == "story"
+            and block.parent in failed_feature_ids
+            and block.state == "closed/failed"
+        )
+    ]
+    if len(candidates) < 2:
+        return ()
+
+    by_id = {block.block_id: block for block in candidates}
+    ordered: list = []
+    remaining = list(candidates)
+    while remaining:
+        ready = next(
+            (
+                block
+                for block in remaining
+                if all(
+                    dep not in by_id or dep in {item.block_id for item in ordered}
+                    for dep in block.depends
+                )
+            ),
+            None,
+        )
+        # Preserve Manifest order if a malformed cyclic internal dependency exists.
+        selected = ready or remaining[0]
+        ordered.append(selected)
+        remaining.remove(selected)
+
+    return tuple(
+        f"drydock build {target} --story {block.block_id} --repair-attempts {repair_attempts}"
+        for block in ordered
+    )
+
+
+def _render_build_failures(
+    target: str, steps, *, hint: str, story_recovery: tuple[str, ...] = ()
+) -> str:
     """Format every failed build step as one closing block.
 
     The build prints this after the result line so the failure is the last thing on screen. It
@@ -2593,6 +2666,11 @@ def _render_build_failures(target: str, steps, *, hint: str) -> str:
             lines.append(f"    evidence: {step.evidence_path}")
     lines += ["", "  Next"]
     lines += textwrap.wrap(hint, width=width - 4, initial_indent="    ", subsequent_indent="    ")
+    if story_recovery:
+        lines += ["", "  Story recovery (dependency order)"]
+        lines += [
+            f"    {index}. {command}" for index, command in enumerate(story_recovery, start=1)
+        ]
     lines.append(border)
     return "\n".join(lines)
 
