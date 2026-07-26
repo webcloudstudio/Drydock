@@ -1247,6 +1247,132 @@ def test_integrity_unknown_dependency_is_fatal(tmp_path):
     )
 
 
+# Grouping integrity. A story whose `parent:` names a feature the model never emitted
+# is orphaned from every group: the Manifest silently loses its grouping and the
+# QuarterDeck shows one ungrouped block. Regression for the commonmark plan that
+# emitted `parent: parser-capability` with no such feature block.
+
+
+def test_integrity_unknown_parent_is_fatal(tmp_path):
+    target_dir = _make_target(tmp_path)
+    manifest = _manifest().replace("parent: feature-status", "parent: parser-capability")
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="parent names unknown id 'parser-capability'",
+    )
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "FEATURE-Status.md").exists()
+    assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
+
+
+def test_integrity_story_parented_to_non_feature_is_fatal(tmp_path):
+    target_dir = _make_target(tmp_path)
+    # Parent the story to its own acceptance check: a real id, the wrong block type.
+    manifest = _manifest().replace(
+        "parent: feature-status\nsummary: Build the status command.",
+        "parent: ac-status-exits\nsummary: Build the status command.",
+    )
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="must be parented to a feature",
+    )
+
+
+# Decomposition coverage. `_STORY_CAP` rejects an over-decomposed plan; these gates
+# reject the opposite failure, where analyzed stories are silently collapsed away.
+
+_ANALYSIS_WITH_IDS = _ANALYSIS.replace(
+    "| arch | Architecture | ARCHITECTURE.md |\n| status | Status command | FEATURE-Status.md |",
+    "| ARCH-001 | Architecture | ARCHITECTURE.md |\n"
+    "| STATUS-001 | Status command | FEATURE-Status.md |",
+)
+
+
+def test_uncovered_analyzed_story_is_fatal(tmp_path):
+    target_dir = _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    manifest = _manifest().replace(
+        "implements: FEATURE-Status.md", "implements: FEATURE-Status.md\ncovers: STATUS-001"
+    )
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="analyzed stories are not delivered by any Manifest story: ARCH-001",
+    )
+
+
+def test_covered_analyzed_stories_pass_without_warning(tmp_path):
+    _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    manifest = _manifest().replace(
+        "implements: FEATURE-Status.md",
+        "implements: FEATURE-Status.md\ncovers: ARCH-001, STATUS-001",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    # One story covering two analyzed stories is the declared collapse: it writes,
+    # and the collapse is surfaced as a warning rather than hidden.
+    assert any("covers 2 analyzed stories" in w for w in result.warnings)
+    assert (tmp_path / "Example" / "MANIFEST.md").exists()
+
+
+def test_analyzed_story_claimed_twice_warns(tmp_path):
+    # Two stories owning one analyzed story destroys failure attribution. The plan
+    # still writes — the work graph is sound — but the shared ownership is surfaced.
+    _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    manifest = _manifest().replace(
+        "implements: FEATURE-Status.md",
+        "implements: FEATURE-Status.md\ncovers: ARCH-001, STATUS-001",
+    ) + (
+        "\n## story 2: Also status\n"
+        "id: story-status-two\n"
+        "parent: feature-status\n"
+        "summary: Duplicate owner.\n"
+        "implements: ARCHITECTURE.md\n"
+        "covers: STATUS-001\n"
+        "state: pending\n"
+        "\n## ac 2: Also exits\n"
+        "id: ac-status-two\n"
+        "parent: story-status-two\n"
+        "kind: assertion\n"
+        "state: pending\n"
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert any(
+        "analyzed story STATUS-001 is claimed by 2 Manifest stories" in w for w in result.warnings
+    )
+
+
+def test_coverage_gate_inactive_without_analysis_story_list(tmp_path):
+    _make_target(tmp_path, analysis="# Blueprint Analysis: Example\n\nQuality: Questions\n")
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert not any("analyzed stories" in w for w in result.warnings)
+    assert (tmp_path / "Example" / "MANIFEST.md").exists()
+
+
+def test_analysis_story_ids_reads_story_list_rows():
+    from drydock.quarterdeck_state import analysis_story_ids
+
+    assert analysis_story_ids(_ANALYSIS_WITH_IDS) == ("ARCH-001", "STATUS-001")
+    # No Story List, or none with IDs, leaves the coverage gate inactive.
+    assert analysis_story_ids("") == ()
+    assert analysis_story_ids("## Story List\n\nProject type: `cli`\n") == ()
+
+
 def test_suite_named_in_prose_outside_acceptance_is_not_fatal(tmp_path):
     """A spec may name the conformance test suite in prose. Only a Programmatic Acceptance
     check that actually runs it unbounded violates the gate."""

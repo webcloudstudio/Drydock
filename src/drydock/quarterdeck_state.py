@@ -542,6 +542,24 @@ def _story_list_body(analysis_text: str) -> str:
     return body
 
 
+def analysis_story_ids(analysis_text: str) -> tuple[str, ...]:
+    """Story IDs declared by ``ANALYSIS.md ## Story List``, in document order.
+
+    The planning integrity check reads these to prove the Manifest covers every
+    analyzed story. Table header cells are not IDs. Returns an empty tuple when
+    the analysis carries no Story List, which leaves the coverage gate inactive.
+    """
+    body = _story_list_body(analysis_text)
+    if not body:
+        return ()
+    seen: dict[str, None] = {}
+    for row in _STORY_ROW_RE.finditer(body):
+        story_id = row.group(1)
+        if story_id != "ID":
+            seen.setdefault(story_id, None)
+    return tuple(seen)
+
+
 def _feature_items(analysis_text: str) -> list[str]:
     return [name for name, _count in _story_breakdown(analysis_text)]
 

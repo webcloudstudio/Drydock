@@ -113,6 +113,39 @@ state: pending
     assert plan.by_id()["second"].depends == ("first", "third")
 
 
+def test_parse_build_plan_reads_covers_as_a_list(tmp_path: Path):
+    # `covers:` traces a story back to the ANALYSIS.md Story IDs it delivers; the
+    # planning coverage gate reads it as a list, alongside parent/depends.
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: draft
+
+## feature 1: Parser
+id: feat-parser
+state: pending
+
+## story 1: Blocks
+id: blocks
+parent: feat-parser
+covers: PARSER-001, PARSER-002
+state: pending
+
+## ac 1: Blocks parse
+id: blocks-parse
+parent: blocks
+state: pending
+""",
+    )
+
+    plan = parse_build_plan(path)
+    story = plan.by_id()["blocks"]
+
+    assert story.fields["covers"] == ("PARSER-001", "PARSER-002")
+    assert story.parent == "feat-parser"
+    assert story.depends == ()
+
+
 def test_ac_cross_story_depends_are_dropped(tmp_path: Path):
     # Self-only-depends hard guard: an ac may depend on its own parent story only;
     # a cross-story edge is dropped on read so it never drags forward dependencies.

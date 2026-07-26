@@ -1,8 +1,8 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260724 V16
-intent: Act as an Agile Development Team: consume the reviewed analysis artifacts, decompose the product into Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
+version: 20260726 V17
+intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
 inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -118,6 +118,30 @@ the required output block contract described below.
 
 ---
 
+## Story and Task Criteria
+
+Decomposition is **Agile feature and story decomposition**. Apply that discipline at expert level:
+INVEST stories, vertical slices, test-driven acceptance per story. The rules below are the criteria,
+not a substitute for that judgement.
+
+- A **story** delivers one observable behavior or capability slice. It is independently buildable,
+  independently verifiable, and carries its own acceptance gate. The story is the unit Drydock
+  gates, builds, and attributes failure to.
+- A **task** is a technical sub-step of a story — add a helper, refactor a module, wire a parameter.
+  A task is never a `story` block and never becomes a Blueprint file. Instructions inside a story
+  may describe its tasks.
+- Prefer **more, smaller stories** over fewer large ones. Distinctness is the limit: each story owns
+  its behavior alone, and no two stories own the same behavior.
+- Story size in Drydock is the token and context size of the build step. A story whose build step
+  would not fit comfortably in one build prompt is too large. Split it into smaller stories that
+  each still meet the story criteria above; never split it into tasks, and never leave a single
+  story owning several independent construct families.
+- When the source material is short or names few features, keep the story set lined up with the
+  source's own shape. Preserving author intent outranks splitting for its own sake, and the criteria
+  above still bound the result.
+
+---
+
 ## Decomposition Method
 
 Execute in order. Do not skip a step.
@@ -128,7 +152,9 @@ Execute in order. Do not skip a step.
 
 **2. Confirm the decomposition shape.**
 - *Consumes:* the analysis story list, project type signals, and source structure.
-- *Emits:* the smallest correct set of authored Blueprint files.
+- *Emits:* one authored Blueprint file per story-sized capability, per the story criteria above.
+  Fewest *file kinds*, not fewest stories: use only the spec kinds the project needs, then decompose
+  within them.
 
 Default decomposition rules:
 
@@ -152,10 +178,22 @@ needed and they should not bloat the parent spec.
 Rules:
 
 - Each emitted authored spec file must represent one durable capability boundary.
-- Multiple analysis stories may collapse into one authored file if they describe one coherent
-  boundary.
+- The `## Story Realization Map` in `ANALYSIS.md` is the default partition. A row that names a
+  distinct capability scope stays its own story, and therefore its own authored spec file.
+- Two analysis stories collapse into one authored file only when both describe the **same**
+  behavior *and* the merged unit still satisfies the story criteria above. Distinct scopes — for
+  example a block parser, an inline parser, reference resolution, a renderer, and an executable
+  interface — are separate stories even when they ship in one program.
 - One analysis story may expand into several authored spec files when the boundary naturally
-  separates into screen, feature, architecture, or persistence contracts.
+  separates into screen, feature, architecture, or persistence contracts, or when the single story
+  is too large to build in one step.
+- Record the mapping in the Manifest: each story's `covers:` field names the `ANALYSIS.md` Story IDs
+  it delivers. Every Story ID in the analysis is covered by **exactly one** story. A story that
+  covers several IDs is the declared collapse case and must satisfy the collapse rule above.
+- A plan-introduced story with no analyzed counterpart — an architecture boundary, a scaffold, a
+  test-harness story — omits `covers:` entirely. Never duplicate an ID that another story owns, and
+  never fill the field to make it look complete: two stories claiming one analyzed story destroys
+  failure attribution.
 - Every important user-facing screen named in analysis must land in a `SCREEN-*.md`.
 - Every important route, capability, interface, dataset, topic, or command named in analysis must
   be represented in one or more `FEATURE-*.md` files, with `ARCHITECTURE.md` and `DATABASE.md`
@@ -184,6 +222,8 @@ Rules:
   carry **several** executable assertions — generally one per distinct observable behavior, route,
   invariant, or error mode described in that spec. A single assertion for a multi-behavior spec is
   insufficient.
+- Every split story owns its own assertions in the spec it implements. Splitting must never leave a
+  story gated by another story's acceptance, and never leave two stories asserting one behavior.
 - Assertions are concrete and executable from the build directory: assert a route responds, a
   record is written with the expected keys, an invariant holds, a guardrail rejects, an error type
   is raised. Cover the ordinary "the thing exists and responds" checks explicitly (for a route,
@@ -240,10 +280,16 @@ Manifest rules:
   emitted (or existing) spec file in `implements:`, and every authored Blueprint spec file is
   implemented by exactly one story. Never bundle multiple spec files into one story; context
   economy comes from `feature` grouping, not from bundling.
+- Because that mapping is one-to-one, **decomposition happens at the spec-file level**. Splitting a
+  story means emitting an additional `FEATURE-*.md` (or `SCREEN-*.md`) file for the split scope, one
+  story per file. A spec file that grows to cover several distinct behaviors has under-decomposed
+  the plan; split the file, not the story's `implements:` list.
 - Use `context:` only for genuine read-only support files.
 - Open questions that do not block authored spec creation become `spike` blocks.
 - Group coherent capabilities under `feature` parents; keep unrelated capabilities in separate
   features. Prefer a feature parent when multiple stories belong to one durable workflow.
+- A `parent:` value names a `feature` block emitted in this same Manifest. Never reference a feature
+  id that is not emitted: the story is then orphaned from every group and the plan is rejected.
 - Order blocks foundational-first. The first work establishes initial conditions before product
   capability work: package or runtime scaffold, test harness, architecture boundary, configuration,
   and persistence foundation. For a web application, build the application factory and health check
@@ -417,9 +463,11 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   it owns**, never to a hand-written sample. The assertion invokes the imported runner limited to
   the feature's sections (the runner's section/pattern selector) and asserts a full pass of that
   slice; it declares `Suite: scoped` on its own line so the check receives the suite timeout.
-  Partition the suite's sections so each is owned by exactly one feature; the union of the feature
-  slices plus the terminal `Suite: full` story reproduces the whole suite. A feature whose behavior
-  is defined by an external specification is never accepted by a curated sample of cases.
+  Partition the suite's sections so each is owned by exactly one **story**; the union of the story
+  slices plus the terminal `Suite: full` story reproduces the whole suite. One story owning every
+  section of the suite is an under-decomposed plan: the section partition and the story partition are
+  the same partition. A feature whose behavior is defined by an external specification is never
+  accepted by a curated sample of cases.
 - Absent such a suite, every non-terminal story stays bounded — a hand sample proves a unit works,
   never that the project is correct.
 - Feature-level `ac` blocks are optional group gates for orchestration checks that cannot be

@@ -85,6 +85,13 @@ _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
 # Hard cap on story count; plan create refuses to emit an over-decomposed plan.
 _STORY_CAP = 100
+# Legal `parent:` block types per block type. A story or spike groups under a
+# feature; an ac gates a story, a spike, or a feature group.
+_PARENT_BLOCK_TYPES = {
+    "story": frozenset({"feature"}),
+    "spike": frozenset({"feature"}),
+    "ac": frozenset({"story", "spike", "feature"}),
+}
 
 _FEEDBACK_FILENAME = "PLAN_COMPASS.md"
 _REUSE_PROMPT_NAME = "plan_reuse"
@@ -1557,6 +1564,24 @@ def _integrity_check(
     if _has_cycle(edges):
         fatal.append("dependency graph contains a cycle")
 
+    # Grouping integrity. An unresolvable `parent:` orphans the block from every
+    # feature group, so the work graph silently loses its grouping; a parent of the
+    # wrong block type breaks the frontier and closure rules that read the hierarchy.
+    by_id = plan.by_id()
+    for block in plan.blocks:
+        if not block.parent:
+            continue
+        parent = by_id.get(block.parent)
+        if parent is None:
+            fatal.append(f"{block.block_id}: parent names unknown id {block.parent!r}")
+            continue
+        allowed = _PARENT_BLOCK_TYPES.get(block.block_type)
+        if allowed is not None and parent.block_type not in allowed:
+            fatal.append(
+                f"{block.block_id}: parent {block.parent!r} is a {parent.block_type}; "
+                f"a {block.block_type} must be parented to a {' or '.join(sorted(allowed))}"
+            )
+
     def spec_text(name: str) -> str | None:
         if name in emitted_files:
             return emitted_files[name]
@@ -1685,6 +1710,51 @@ def _integrity_check(
     # Reject an over-decomposed plan.
     if story_count > _STORY_CAP:
         fatal.append(f"story count {story_count} exceeds the ~{_STORY_CAP}-story cap")
+
+    # Reject an under-decomposed plan: every analyzed story is delivered by some
+    # story, and a story that swallows several analyzed stories declares it. The
+    # gate is inactive when the analysis carries no Story List — the Spec Kit and
+    # reuse paths plan without one.
+    from drydock.quarterdeck_state import analysis_story_ids
+
+    analysis_path = blueprint_dir.parent / "ANALYSIS.md"
+    analysis_text = analysis_path.read_text(encoding="utf-8") if analysis_path.is_file() else ""
+    analyzed_ids = analysis_story_ids(analysis_text)
+    if analyzed_ids:
+        covered_stories: set[str] = set()
+        owners: dict[str, list[str]] = {}
+        for block in plan.blocks:
+            if block.block_type != "story":
+                continue
+            raw_covers = block.fields.get("covers", ())
+            refs = tuple(raw_covers) if isinstance(raw_covers, tuple) else (raw_covers,)
+            refs = tuple(ref for ref in refs if ref)
+            covered_stories.update(refs)
+            for ref in refs:
+                owners.setdefault(ref, []).append(block.block_id)
+            if len(refs) > 1:
+                warnings.append(
+                    f"{block.block_id}: covers {len(refs)} analyzed stories "
+                    f"({', '.join(refs)}); confirm they are one behavior, or decompose the story"
+                )
+        # Shared ownership blurs failure attribution: an analyzed story is delivered by
+        # one Manifest story. A plan-introduced foundation story simply omits `covers:`
+        # rather than duplicating an ID that another story already owns.
+        for story_id in analyzed_ids:
+            claimants = owners.get(story_id, ())
+            if len(claimants) > 1:
+                warnings.append(
+                    f"analyzed story {story_id} is claimed by {len(claimants)} Manifest stories "
+                    f"({', '.join(claimants)}); exactly one story owns it"
+                )
+        uncovered = [story_id for story_id in analyzed_ids if story_id not in covered_stories]
+        if uncovered:
+            fatal.append(
+                "analyzed stories are not delivered by any Manifest story: "
+                + ", ".join(uncovered)
+                + " — name each analyzed Story ID in the covers: field of the story "
+                "that delivers it"
+            )
 
     # Initial runnable frontier — a soft warning. At least one executable block must
     # start with an empty `depends:` or the build has nothing it can run first.

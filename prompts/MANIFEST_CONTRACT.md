@@ -79,6 +79,7 @@ id:           foundation
 parent:       feature-catalog
 summary:      One-line description.
 implements:   FEATURE-CATALOG.md
+covers:       CATALOG-001
 accepts:      st-001, st-002
 context:      ARCHITECTURE.md, DATABASE.md
 stack:        common.md, python.md, sqlite.md
@@ -97,9 +98,10 @@ scope:        blueprint | target | both
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | Yes | Stable unique slug within the Manifest |
-| `parent` | No | Parent feature id for hierarchy and QuarterDeck display |
+| `parent` | No | Parent feature id for hierarchy and QuarterDeck display — must name a `feature` block present in this Manifest |
 | `summary` | Yes | One-line description |
 | `implements` | Yes | The single Blueprint spec file this story builds — exactly one file; stories and Blueprint files are one-to-one |
+| `covers` | No | `ANALYSIS.md` Story IDs this story delivers. Every analyzed Story ID is covered by exactly one story; a story covering several IDs is a declared collapse of the analyzed decomposition. Omit for a plan-introduced story with no analyzed counterpart |
 | `context` | No | Read-only support context files. Never list `COMPASS.md`, `PLAN_COMPASS.md`, or `ANALYZE_COMPASS.md`: the Compass is injected into every step automatically and is never compacted |
 | `stack` | No | Rigging stack files to inject |
 | `rules` | No | Rigging rules files to inject |
