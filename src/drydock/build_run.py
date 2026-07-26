@@ -209,6 +209,10 @@ class BuildStepResult:
     written_files: tuple[str, ...] = ()
     pre_acceptance: tuple[AcceptanceObservation, ...] = ()
     acceptance: tuple[AcceptanceRunResult, ...] = ()
+    owned_pre_acceptance: tuple[AcceptanceObservation, ...] = ()
+    owned_acceptance: tuple[AcceptanceRunResult, ...] = ()
+    agent_summary: str = ""
+    agent_blockers: str = ""
     prompt: str | None = None
 
 
@@ -745,6 +749,11 @@ _REUSABLE_COMPACT_RE = re.compile(
     r"(?P<body>.*?)\s*</reusable-compact>",
     re.IGNORECASE | re.DOTALL,
 )
+_BUILD_REPORT_SECTION_RE = re.compile(
+    r"^\s*(?P<name>SUMMARY|BLOCKERS):\s*\n?(?P<body>.*?)"
+    r"(?=^\s*(?:RESULT|FILES CHANGED|SUMMARY|BLOCKERS|FAILURE_SUMMARY|FAILURE_DETAIL):|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
 
 # Category prefix for a build agent's own declared failure. Such a self-report is advisory:
 # when the agent still wrote files, the deterministic acceptance gate is the authority.
@@ -758,6 +767,15 @@ def _parse_agent_failure(summary: str) -> tuple[str, str]:
     agent_summary = summary_match.group(1).strip() if summary_match else ""
     agent_detail = detail_match.group(1).strip() if detail_match else ""
     return agent_summary, agent_detail
+
+
+def _parse_build_report(summary: str) -> tuple[str, str]:
+    """Return the build agent's human summary and blockers for terminal reporting."""
+    sections = {
+        match.group("name").upper(): " ".join(match.group("body").strip().split())
+        for match in _BUILD_REPORT_SECTION_RE.finditer(summary)
+    }
+    return sections.get("SUMMARY", ""), sections.get("BLOCKERS", "")
 
 
 def _persist_reusable_compacts(
@@ -2251,7 +2269,19 @@ def build_target(
         else:
             _emit(on_text, f"result: {status} · {state} · {block_elapsed}")
             _emit(on_text, f"evidence: {_rel(evidence_path, target_dir)}")
+        agent_summary, agent_blockers = _parse_build_report(summary)
         for block, assembly in zip(unit.steps, assemblies):
+            owned_check_ids = {
+                check_id
+                for check_id, owner in story_by_check.items()
+                if owner.block_id == block.block_id
+            }
+            owned_pre_acceptance = tuple(
+                check for check in pre_acceptance if check.check_id in owned_check_ids
+            )
+            owned_acceptance = tuple(
+                check for check in acceptance if check.check_id in owned_check_ids
+            )
             step_result = BuildStepResult(
                 block_id=block.block_id,
                 name=block.name,
@@ -2266,6 +2296,10 @@ def build_target(
                 written_files=changed_files,
                 pre_acceptance=pre_acceptance,
                 acceptance=acceptance,
+                owned_pre_acceptance=owned_pre_acceptance,
+                owned_acceptance=owned_acceptance,
+                agent_summary=agent_summary,
+                agent_blockers=agent_blockers,
             )
             steps.append(step_result)
             if on_step is not None:

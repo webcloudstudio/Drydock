@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 import textwrap
 import time
@@ -2640,6 +2641,68 @@ def _failed_story_recovery_commands(
     )
 
 
+_SUITE_TALLY_RE = re.compile(r"(?P<passed>\d+)\s+passed,\s+(?P<failed>\d+)\s+failed", re.I)
+
+
+def _suite_tally(check) -> tuple[int, int] | None:
+    """Extract a conformance-suite pass/fail tally from one acceptance result."""
+    matches = list(_SUITE_TALLY_RE.finditer(f"{check.stdout}\n{check.stderr}"))
+    if not matches:
+        return None
+    match = matches[-1]
+    return int(match.group("passed")), int(match.group("failed"))
+
+
+def _failure_check_lines(check) -> list[str]:
+    """Render the concise assertion and output tail needed to continue a failed story."""
+    lines = [f"      AC {check.check_id} — {check.intent or check.check_id}"]
+    if check.error:
+        lines.append(f"        {check.error}")
+    for label, stream in (("stdout", check.stdout), ("stderr", check.stderr)):
+        tail = [line.rstrip() for line in stream.splitlines() if line.strip()][-4:]
+        if not tail:
+            continue
+        lines.append(f"        {label}:")
+        lines.extend(f"          {line}" for line in tail)
+    return lines
+
+
+def _failure_progress_lines(step) -> list[str]:
+    """Show measured acceptance movement, including suite-level tallies when available."""
+    checks = step.owned_acceptance or step.acceptance
+    if not checks:
+        return []
+    baseline = {
+        check.check_id: check for check in (step.owned_pre_acceptance or step.pre_acceptance)
+    }
+    final_passed = sum(1 for check in checks if check.passed)
+    baseline_passed = sum(
+        1
+        for check in checks
+        if (prior := baseline.get(check.check_id)) is not None and prior.passed
+    )
+    lines = [f"    acceptance: {final_passed}/{len(checks)} passing"]
+    if baseline:
+        movement = "improved" if final_passed > baseline_passed else "unchanged"
+        lines[-1] += f" · baseline {baseline_passed}/{len(checks)} · {movement}"
+    for check in checks:
+        tally = _suite_tally(check)
+        if tally is None:
+            continue
+        prior = baseline.get(check.check_id)
+        previous_tally = _suite_tally(prior) if prior is not None else None
+        detail = f"    {check.check_id}: {tally[0]} passed, {tally[1]} failed"
+        if previous_tally is not None:
+            pass_delta = tally[0] - previous_tally[0]
+            fail_delta = tally[1] - previous_tally[1]
+            if pass_delta or fail_delta:
+                detail += f" · change +{pass_delta} passed, {fail_delta:+d} failed"
+            else:
+                detail += " · unchanged from baseline"
+        lines.append(detail)
+    return lines
+
+
 def _render_build_failures(
     target: str, steps, *, hint: str, story_recovery: tuple[str, ...] = ()
 ) -> str:
@@ -2652,14 +2715,47 @@ def _render_build_failures(
     border = "=" * width
     plural = "step" if len(steps) == 1 else "steps"
     lines = [border, f"BUILD FAILED: {target}  ({len(steps)} {plural})", border]
+    seen: set[str] = set()
     for step in steps:
+        if step.block_id in seen:
+            continue
+        seen.add(step.block_id)
         lines += [
             "",
-            f"  {step.name} [{step.block_id}]",
+            f"  Story {step.name} [{step.block_id}]",
             f"    cause: {step.error or 'build failed'}",
         ]
-        for line in (step.failure_detail or "").strip().splitlines():
-            lines.append(f"    {line}")
+        if step.agent_summary:
+            lines += [
+                "    agent summary:",
+                *textwrap.wrap(
+                    step.agent_summary,
+                    width=width - 6,
+                    initial_indent="      ",
+                    subsequent_indent="      ",
+                ),
+            ]
+        lines.extend(_failure_progress_lines(step))
+        failed_checks = tuple(
+            check for check in (step.owned_acceptance or step.acceptance) if not check.passed
+        )
+        if failed_checks:
+            lines.append("    remaining acceptance:")
+            for check in failed_checks:
+                lines.extend(_failure_check_lines(check))
+        if step.agent_blockers:
+            lines += [
+                "    agent blockers:",
+                *textwrap.wrap(
+                    step.agent_blockers,
+                    width=width - 6,
+                    initial_indent="      ",
+                    subsequent_indent="      ",
+                ),
+            ]
+        if not failed_checks:
+            for line in (step.failure_detail or "").strip().splitlines():
+                lines.append(f"    {line}")
         if step.execution_id:
             lines.append(f"    execution: {step.execution_id}")
         if step.evidence_path is not None:

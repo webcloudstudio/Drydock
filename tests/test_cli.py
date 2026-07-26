@@ -9,8 +9,11 @@ from pathlib import Path
 import pytest
 
 from drydock import __copyright__, __version__
+from drydock.acceptance import AcceptanceObservation, AcceptanceRunResult
+from drydock.build_run import BuildStepResult
 from drydock.cli import (
     _print_dimensions,
+    _render_build_failures,
     _stream_build,
     _stream_status_only,
     _stream_stdout,
@@ -33,6 +36,49 @@ def run_cli(*args: str) -> tuple[int, str, str]:
         else:
             rc = 0
     return rc, out.getvalue(), err.getvalue()
+
+
+def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
+    baseline = AcceptanceObservation(
+        check_id="inline-suite",
+        source="FEATURE-Inlines.md",
+        intent="Inline conformance passes.",
+        passed=False,
+        return_code=1,
+        stdout="200 passed, 135 failed\n",
+        stderr="",
+    )
+    final = AcceptanceRunResult(
+        check_id="inline-suite",
+        source="FEATURE-Inlines.md",
+        intent="Inline conformance passes.",
+        passed=False,
+        return_code=1,
+        stdout="271 passed, 64 failed\n",
+        stderr="assert result.returncode == 0\nAssertionError\n",
+    )
+    step = BuildStepResult(
+        block_id="inlines",
+        name="Inline Parsing",
+        block_type="story",
+        status="failed",
+        state="closed/failed",
+        story_points=1,
+        error="programmatic acceptance failed: inline-suite",
+        failure_detail="Inline suite remains red.",
+        owned_pre_acceptance=(baseline,),
+        owned_acceptance=(final,),
+        agent_summary="Fixed parsing and rendering behavior.",
+        agent_blockers="Nested emphasis remains nonconformant.",
+    )
+
+    rendered = _render_build_failures("commonmark", [step], hint="continue", story_recovery=())
+
+    assert "Story Inline Parsing [inlines]" in rendered
+    assert "Fixed parsing and rendering behavior." in rendered
+    assert "inline-suite: 271 passed, 64 failed · change +71 passed, -71 failed" in rendered
+    assert "remaining acceptance:" in rendered
+    assert "Nested emphasis remains nonconformant." in rendered
 
 
 class TestHelpAndVersion:
