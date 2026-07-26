@@ -266,3 +266,61 @@ def _alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+# --- Malformed checks -------------------------------------------------------
+#
+# A check that dies inside its own snippet is not a red baseline. No implementation turns it
+# green, so a repair pass on it is spend with no possible return. Attribution is by traceback
+# frame: the same exception raised inside the code under test is a genuine red.
+
+
+def test_a_name_from_a_sibling_check_is_named_as_a_malformed_check(tmp_path):
+    result = _run_one("assert result.returncode == 0", tmp_path)
+    assert not result.passed
+    assert result.error is not None
+    assert result.error.startswith(acceptance.MALFORMED_FAILURE_PREFIX)
+    assert "NameError" in result.error
+    assert "its own process" in result.error
+
+
+def test_a_name_error_inside_the_code_under_test_stays_a_genuine_red(tmp_path):
+    (tmp_path / "built_module.py").write_text(
+        "def render():\n    return missing_helper()\n", encoding="utf-8"
+    )
+    result = _run_one("from built_module import render\nassert render() == 'x'", tmp_path)
+    assert not result.passed
+    assert "NameError" in result.stderr
+    # The failure surfaced in the built code's frame, which is exactly what the build fixes.
+    assert result.error is None
+
+
+def test_a_missing_project_module_stays_the_expected_red_baseline(tmp_path):
+    result = _run_one("from app import create_app\nassert create_app()", tmp_path)
+    assert not result.passed
+    assert result.error is None
+
+
+def test_a_typo_in_an_import_is_left_to_the_build(tmp_path):
+    """An import failure is indistinguishable from the expected pre-build red baseline.
+
+    ``import subprocesss`` is a defect, but the traceback is identical in shape to
+    ``from app import create_app`` before ``app`` exists. Classifying it would block builds
+    that should proceed, so the runtime gate stays silent and static analysis owns what it can
+    prove.
+    """
+    result = _run_one("import subprocesss\nassert subprocesss.run(['true'])", tmp_path)
+    assert not result.passed
+    assert result.error is None
+
+
+def test_an_ordinary_assertion_failure_carries_no_malformed_verdict(tmp_path):
+    result = _run_one("value = 1\nassert value == 2", tmp_path)
+    assert not result.passed
+    assert result.error is None
+
+
+def test_a_passing_check_carries_no_verdict(tmp_path):
+    result = _run_one("assert 1 == 1", tmp_path)
+    assert result.passed
+    assert result.error is None

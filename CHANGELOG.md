@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-07-26: A Programmatic Acceptance check that fails inside its own snippet is now rejected
+  rather than built against. Every check runs as its own script in its own process, so a check
+  reading a name a sibling check bound raises `NameError` on every run and no implementation can
+  turn it green. `drydock validate` and `drydock build` reject an unparseable snippet, and a
+  snippet reading an unbound name, before any LLM pass is spent; at runtime such a failure is
+  classified `malformed check` rather than reported as a missed assertion. `drydock validate`
+  additionally warns when a check captures a test runner's output and never prints it, which
+  reduces a failure to a bare assertion with no tally and no failing cases. A failing check now
+  prints both of its output streams to the console, and a failed Definition of Done line is
+  marked `[!!]` so it cannot be misread as a ticked checkbox.
+
 - 2026-07-25: Programmatic Acceptance runs under a bounded address space in its own process
   group, configured by `drydock config set sandbox_mem_limit <MB>` (default 4096; `0` lifts the
   bound, and JVM or Go toolchains generally need it raised). Built code that allocates

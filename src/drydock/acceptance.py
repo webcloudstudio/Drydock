@@ -27,7 +27,22 @@ SUITE_TIMEOUT_SECONDS = 900
 # an expectation. Consumers use these to gate a repair pass on the resource fact.
 MEMORY_FAILURE_PREFIX = "exhausted memory"
 TIMEOUT_FAILURE_PREFIX = "timed out"
+# A check that died inside its own snippet rather than inside the code under test. No
+# implementation can turn it green, so a repair pass on it is wasted.
+MALFORMED_FAILURE_PREFIX = "malformed check"
 _MEMORY_SIGNATURES = ("MemoryError", "Cannot allocate memory", "std::bad_alloc", "Killed")
+# Exceptions that, when raised by the snippet's own frame, mean the snippet is defective:
+# it reads a name it never bound or does not parse. Neither is a statement about the code
+# under test.
+_MALFORMED_EXCEPTIONS = frozenset({
+    "NameError",
+    "UnboundLocalError",
+    "SyntaxError",
+    "IndentationError",
+    "TabError",
+})
+_TRACEBACK_FILE_RE = re.compile(r'^\s*File "([^"]+)", line ', re.MULTILINE)
+_EXCEPTION_LINE_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception))\b:?(.*)$")
 _EXACT_PASSED_COUNT_ASSERTION_RE = re.compile(
     r"\bassert\s+['\"]\d+\s+passed['\"]\s+in\s+", re.IGNORECASE
 )
@@ -94,6 +109,46 @@ def _resource_failure(return_code: int, stderr: str, limit_mb: int) -> str | Non
             f"{MEMORY_FAILURE_PREFIX}: the built code exceeded {bound} and was stopped by the "
             f"kernel. This is unbounded allocation or a non-terminating loop in the code under "
             f"test, not a missed expectation."
+        )
+    return None
+
+
+def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str | None:
+    """Classify a non-zero exit as a defective snippet, or ``None`` when it is not.
+
+    Attribution is by traceback frame, not by exception type alone. ``NameError`` raised
+    inside the code under test is a genuine red the build must drive green; the same
+    exception raised in the check's own frame means the check reads a name nothing binds —
+    most often a name a sibling check defined, which is not in scope because every check runs
+    as its own script in its own process.
+    """
+    if return_code == 0:
+        return None
+    lines = [line for line in stderr.splitlines() if line.strip()]
+    if not lines:
+        return None
+    match = _EXCEPTION_LINE_RE.match(lines[-1].strip())
+    if match is None:
+        return None
+    exception = match.group(1).rsplit(".", 1)[-1]
+    detail = match.group(2).strip()
+
+    frames = _TRACEBACK_FILE_RE.findall(stderr)
+    if not frames or Path(frames[-1]).name != script_name:
+        # The failure surfaced inside the code under test. That is the build's job to fix.
+        return None
+
+    # ``ImportError`` is deliberately absent. A missing module is the *expected* red baseline
+    # before the code under test is written, and nothing in the traceback distinguishes that
+    # from a typo'd import. Classifying it would block builds that should proceed, so it is
+    # left to the build.
+    if exception in _MALFORMED_EXCEPTIONS:
+        return (
+            f"{MALFORMED_FAILURE_PREFIX}: the assertion itself raised {exception}"
+            f"{f' ({detail})' if detail else ''} in its own frame, before reaching the code "
+            f"under test. No implementation can satisfy it. Each check runs as its own "
+            f"script in its own process, so a name bound by another check is not in scope. "
+            f"Repair the assertion in the Blueprint specification."
         )
     return None
 
@@ -352,6 +407,10 @@ def run_programmatic_acceptance(
                 )
                 continue
             return_code = process.returncode
+            scrubbed = _scrub_script_path(stderr, script)
+            verdict = _resource_failure(return_code, stderr, limit_mb) or _malformed_failure(
+                return_code, scrubbed, script.name
+            )
         results.append(
             AcceptanceRunResult(
                 check_id=check.check_id,
@@ -360,8 +419,8 @@ def run_programmatic_acceptance(
                 passed=return_code == 0,
                 return_code=return_code,
                 stdout=stdout,
-                stderr=_scrub_script_path(stderr, script),
-                error=_resource_failure(return_code, stderr, limit_mb),
+                stderr=scrubbed,
+                error=verdict,
             )
         )
     return tuple(results)

@@ -134,6 +134,21 @@ in a normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"
 backslash is genuinely intended. Drydock rejects this defect at `drydock validate` and blocks the
 build before the step runs.
 
+**Every check is standalone.** Drydock writes each fenced block to its own script and runs it in
+its own process from the build directory. Checks in the same file share no imports, no variables,
+and no execution order. A snippet that reads a name another snippet bound raises `NameError` on
+every run and can never pass. Each snippet imports what it uses and binds every name it reads.
+Drydock rejects an unparseable snippet, and a snippet reading an unbound name, at
+`drydock validate` and blocks the build before the step runs.
+
+**A check that shells out prints what it captured before it asserts.** `capture_output=True`
+routes the runner's tally and its failing cases into a variable; asserting on the exit code alone
+then discards them, and the failure reports the assertion with no evidence of what went wrong.
+Print the captured `stdout` and `stderr` first, so the console, the evidence file, and the repair
+pass all carry the runner's own account of the failure. A count in that output that exceeds the
+expected total — `365` cases run where the specification defines `362` — is itself a defect a
+reader can only catch when the output is visible.
+
 ````markdown
 ## Programmatic Acceptance
 
@@ -149,6 +164,25 @@ client = create_app().test_client()
 response = client.get("/health")
 assert response.status_code == 200
 assert response.get_json()["status"] == "ok"
+```
+
+### suite-conformance
+The implementation passes the conformance sections this story owns.
+
+Suite: scoped
+
+```python
+import subprocess
+import sys
+
+result = subprocess.run(
+    ["python3", "tests/run_suite.py", "--sections", "headings,lists"],
+    capture_output=True, text=True,
+)
+print(result.stdout)
+print(result.stderr, file=sys.stderr)
+assert result.returncode == 0
+assert "0 failed" in result.stdout
 ```
 ````
 

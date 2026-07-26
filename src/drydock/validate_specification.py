@@ -352,7 +352,11 @@ def validate_specification(
     # cycle trying to make correct code satisfy a check no implementation can pass.
     section = "Acceptance snippets"
     from drydock.acceptance import parse_programmatic_acceptance
-    from drydock.proof_integrity import analyze_literals
+    from drydock.proof_integrity import (
+        analyze_literals,
+        analyze_structure,
+        analyze_swallowed_output,
+    )
 
     snippet_defects = 0
     for md_file in sorted(spec_dir.glob("*.md")):
@@ -362,8 +366,17 @@ def validate_specification(
             for defect in analyze_literals(check.code):
                 f(section, f"{md_file.name} [{check.check_id}]: {defect.message}")
                 snippet_defects += 1
+            # A snippet that cannot parse, or reads a name it never binds, fails in its own
+            # frame on every run. It is unsatisfiable for the same reason a mis-authored
+            # literal is, so it fails validation rather than warning.
+            for structural in analyze_structure(check.code):
+                f(section, f"{md_file.name} [{check.check_id}]: {structural.message}")
+                snippet_defects += 1
+            # Swallowed diagnostics do not make a check wrong, only undiagnosable. Warn.
+            for swallowed in analyze_swallowed_output(check.code):
+                w(section, f"{md_file.name} [{check.check_id}]: {swallowed.message}")
     if snippet_defects == 0:
-        p(section, "No unsatisfiable literals in Programmatic Acceptance snippets")
+        p(section, "Programmatic Acceptance snippets are parseable and satisfiable")
 
     # --- Typed spec file headers ---
     section = "Typed headings"

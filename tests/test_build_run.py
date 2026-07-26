@@ -2021,6 +2021,70 @@ def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     assert "attempt 2 (repair 2)" in evidence
 
 
+# A console that carries only check ids tells an operator that something failed, not what the
+# check was doing. The runner's own output is what makes a defect obvious on sight — a tally
+# whose total exceeds the specified case count, say — so it belongs on screen, not only in the
+# evidence file.
+
+
+_ECHOING_SUITE_SPEC = """# FEATURE: Suite
+
+## Programmatic Acceptance
+
+### suite-conformance
+The scoped conformance suite passes.
+
+```python
+import sys
+
+print("365 passed, 3 failed, 0 errored")
+print("runner: sections=blocks", file=sys.stderr)
+raise SystemExit(1)
+```
+"""
+
+
+def test_console_shows_what_a_failed_check_was_doing(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_ECHOING_SUITE_SPEC, encoding="utf-8")
+    messages: list[str] = []
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        on_text=messages.append,
+        repair_attempts=0,
+    )
+
+    console = "\n".join(messages)
+    assert "tests: FAILED" in console
+    assert "suite-conformance: The scoped conformance suite passes." in console
+    # Both streams reach the screen: the tally that makes the defect legible, and the
+    # runner's own note about what it was invoked against.
+    assert "365 passed, 3 failed, 0 errored" in console
+    assert "runner: sections=blocks" in console
+
+
+def test_a_failed_definition_of_done_line_cannot_read_as_ticked(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_ECHOING_SUITE_SPEC, encoding="utf-8")
+    messages: list[str] = []
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        on_text=messages.append,
+        repair_attempts=0,
+    )
+
+    assert any(m.startswith("[!!] suite-conformance") for m in messages)
+    assert not any(m.startswith("[X]") for m in messages)
+
+
 def test_repair_attempts_zero_is_single_pass(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -2167,6 +2231,76 @@ def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_pat
     message = str(exc.value)
     assert "unsatisfiable Programmatic Acceptance" in message
     assert "DATABASE.md [escapes]" in message
+    assert runner.calls == []
+
+
+# Every check runs as its own script in its own process. A snippet that reads a name a sibling
+# check bound raises NameError on every run, so it can never go green — the same category of
+# waste as a mis-authored expectation, and it must be caught before an LLM pass is spent.
+
+_CARRIED_NAME_SPEC = """# FEATURE: Blocks
+
+## Programmatic Acceptance
+
+### block-conformance
+The suite passes.
+
+```python
+import subprocess
+
+result = subprocess.run(["true"], capture_output=True, text=True)
+print(result.stdout)
+assert result.returncode == 0
+```
+
+### block-priority
+Blocks resolve before inlines.
+
+```python
+assert result.returncode == 0
+```
+"""
+
+
+def test_a_check_reading_a_sibling_checks_name_blocks_the_build(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_CARRIED_NAME_SPEC, encoding="utf-8")
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    message = str(exc.value)
+    assert "DATABASE.md [block-priority]" in message
+    assert "'result' is read but never defined" in message
+    assert "its own process" in message
+    # The sibling check that *does* define its own names is not implicated.
+    assert "[block-conformance]" not in message
+    assert runner.calls == []
+
+
+_UNPARSEABLE_SPEC = """# FEATURE: Blocks
+
+## Programmatic Acceptance
+
+### broken
+The snippet does not parse.
+
+```python
+assert convert("a") ==
+```
+"""
+
+
+def test_an_unparseable_check_blocks_the_build(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNPARSEABLE_SPEC, encoding="utf-8")
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert "not valid Python" in str(exc.value)
     assert runner.calls == []
 
 

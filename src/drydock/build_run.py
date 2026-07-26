@@ -28,6 +28,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from drydock.acceptance import (
+    MALFORMED_FAILURE_PREFIX,
     MEMORY_FAILURE_PREFIX,
     TIMEOUT_FAILURE_PREFIX,
     AcceptanceObservation,
@@ -71,7 +72,7 @@ from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
-from drydock.proof_integrity import analyze_literals
+from drydock.proof_integrity import analyze_literals, analyze_structure
 from drydock.rigging_compact import ensure_compact_files
 from drydock.source_roles import (
     SourceRole,
@@ -674,11 +675,18 @@ def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...])
     A mis-authored expectation is not a red baseline the build can drive green: no correct
     implementation satisfies it, so the step would spend a full LLM cycle and fail. Fail here
     instead, naming the Blueprint file to repair.
+
+    Two families qualify. A mis-authored *expectation* (a raw literal carrying what the author
+    meant as a control character) asserts against something no conforming implementation
+    produces. A mis-authored *snippet* (unparseable, or reading a name it never binds) dies in
+    its own frame before the code under test runs at all.
     """
     lines: list[str] = []
     for check in checks:
         for defect in analyze_literals(check.code):
             lines.append(f"  - {check.source} [{check.check_id}]: {defect.message}")
+        for structural in analyze_structure(check.code):
+            lines.append(f"  - {check.source} [{check.check_id}]: {structural.message}")
     if not lines:
         return
     raise SpecificationError(
@@ -837,6 +845,11 @@ def _resource_verdict(result: AcceptanceRunResult) -> bool:
     return error.startswith((MEMORY_FAILURE_PREFIX, TIMEOUT_FAILURE_PREFIX))
 
 
+def _malformed_verdict(result: AcceptanceRunResult | AcceptanceObservation) -> bool:
+    """True when a check failed inside its own snippet rather than in the code under test."""
+    return (result.error or "").startswith(MALFORMED_FAILURE_PREFIX)
+
+
 def _assertion_summary(result: AcceptanceRunResult) -> str:
     """The concrete reason a programmatic check failed, in one line.
 
@@ -992,6 +1005,27 @@ def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
     source = result.stdout if result.stdout.strip() else result.stderr
     lines = [line.rstrip() for line in source.splitlines() if line.strip()]
     return lines[-max_lines:]
+
+
+def _console_failure_lines(result: AcceptanceRunResult, max_lines: int = 5) -> list[str]:
+    """Lines that show an operator what a failed check was doing when it failed.
+
+    Both streams matter and they carry different halves of the story: a runner prints its
+    ``N passed, M failed`` tally to stdout while the assertion that tripped lands on stderr.
+    A reader who sees only the assertion cannot tell a two-case shortfall from a runner
+    invoked against the wrong case count; seeing the tally next to it makes that obvious at a
+    glance. Each stream is tailed separately so one long stream cannot crowd out the other.
+    """
+    lines: list[str] = []
+    for label, stream in (("stdout", result.stdout), ("stderr", result.stderr)):
+        tail = [line.rstrip() for line in stream.splitlines() if line.strip()][-max_lines:]
+        if not tail:
+            continue
+        lines.append(f"{label}:")
+        lines.extend(f"  {line}" for line in tail)
+    if not lines and result.error:
+        lines.append(result.error)
+    return lines
 
 
 def _render_repair_feedback(
@@ -1679,6 +1713,19 @@ def build_target(
             target_dir=target_dir,
             blueprint_dir=blueprint_dir,
         )
+        # A baseline observation that died inside its own snippet is not a red baseline. Static
+        # analysis catches most of these above; this catches the rest — a mis-typed attribute,
+        # a stdlib import that does not exist — before the step spends an LLM pass on a check
+        # no implementation can turn green.
+        malformed = tuple(check for check in pre_acceptance if _malformed_verdict(check))
+        if malformed:
+            raise SpecificationError(
+                "Build blocked: Programmatic Acceptance assertion fails in its own frame.\n"
+                + "\n".join(
+                    f"  - {check.source} [{check.check_id}]: {check.error}" for check in malformed
+                )
+                + "\nRepair the assertion in the Blueprint specification, then rerun the build."
+            )
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
             weak_checks = [check.check_id for check in pre_acceptance if check.passed]
@@ -1941,6 +1988,14 @@ def build_target(
                                     f"tests: FAILED ({passed}/{len(checks)}) — "
                                     + ", ".join(check.check_id for check in failed_checks),
                                 )
+                                # Show what each check was doing when it failed. Without this
+                                # the console carries only check ids, and the tally or failing
+                                # cases that make the defect obvious to a reader stay buried in
+                                # the evidence file.
+                                for check in failed_checks:
+                                    _emit(on_text, f"  {check.check_id}: {check.intent}")
+                                    for line in _console_failure_lines(check):
+                                        _emit(on_text, f"    {line}")
                                 # The verdict fed to the repair pass stays about the defect —
                                 # an LLM told "raise the limit" would do exactly that. The
                                 # operator's escape hatch belongs on the console instead.
@@ -2133,7 +2188,9 @@ def build_target(
             _emit(on_text, "")
             _emit(on_text, "Definition of Done")
             for check in graded:
-                mark = "ok" if check.passed else "X"
+                # "X" reads as a ticked checkbox under Markdown convention — exactly wrong
+                # directly above "result: FAILED". "!" cannot be misread as done.
+                mark = "ok" if check.passed else "!!"
                 if check.check_id in prepassed_ids:
                     note = "  (prepassed)"
                 elif check.check_id in vacuous_ids:

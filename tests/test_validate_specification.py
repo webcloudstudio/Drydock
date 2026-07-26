@@ -247,3 +247,83 @@ assert convert({literal}) == "<p>*a*</p>\\n"
             f.section == "Acceptance snippets" and f.severity == Severity.PASS
             for f in result.findings
         )
+
+
+class TestSnippetStructure:
+    """Each check runs as its own script in its own process; snippets share no state."""
+
+    _SPEC = """# Feature: Blocks
+
+| Field       | Value |
+|-------------|-------|
+| Version     | 20260726 V1 |
+| Description | Blocks parse before inlines. |
+| Provides    | block parsing |
+| Phase       | 1 |
+
+## Programmatic Acceptance
+
+### block-priority
+Blocks resolve before inlines.
+
+```python
+{code}
+```
+
+## User Acceptance
+
+- None.
+
+## Guardrails
+
+- None.
+
+## Open Questions
+
+- None.
+"""
+
+    def _validate(self, target_dir: Path, code: str):
+        (target_dir / "blueprint" / "FEATURE-BLOCKS.md").write_text(
+            self._SPEC.format(code=code), encoding="utf-8"
+        )
+        return validate_specification("TestProject", target_dir)
+
+    def test_name_carried_from_a_sibling_check_fails_validation(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        result = self._validate(target_dir, "assert result.returncode == 0")
+        messages = [f.message for f in result.failures()]
+        assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
+        assert any("never defined" in m for m in messages), messages
+
+    def test_unparseable_snippet_fails_validation(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        result = self._validate(target_dir, "assert convert(")
+        assert any("not valid Python" in f.message for f in result.failures())
+
+    def test_self_contained_snippet_passes(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        code = (
+            "import subprocess\n"
+            "result = subprocess.run(['true'], capture_output=True, text=True)\n"
+            "print(result.stdout)\n"
+            "assert result.returncode == 0"
+        )
+        result = self._validate(target_dir, code)
+        assert "Acceptance snippets" not in [f.section for f in result.failures()]
+
+    def test_swallowed_runner_output_warns_without_failing(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        code = (
+            "import subprocess\n"
+            "result = subprocess.run(['suite'], capture_output=True, text=True)\n"
+            "assert result.returncode == 0"
+        )
+        result = self._validate(target_dir, code)
+        assert "Acceptance snippets" not in [f.section for f in result.failures()]
+        warnings = [
+            f.message
+            for f in result.findings
+            if f.section == "Acceptance snippets" and f.severity == Severity.WARN
+        ]
+        assert any("never prints it" in m for m in warnings), warnings

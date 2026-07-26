@@ -14,6 +14,7 @@ execution remains the real gate, and a broken proof fails there.
 from __future__ import annotations
 
 import ast
+import builtins
 import re
 from dataclasses import dataclass
 
@@ -209,3 +210,227 @@ def analyze_literals(code: str) -> tuple[LiteralDefect, ...]:
         seen.add(key)
         defects.append(LiteralDefect(literal=segment, sequence=match.group(0)))
     return tuple(defects)
+
+
+# --- Structural defects ----------------------------------------------------------------
+#
+# Each Programmatic Acceptance snippet executes as its own script in its own process; sibling
+# checks in the same specification share no state. A snippet that reads a name another snippet
+# bound therefore dies with ``NameError`` on every run, before the code under test is even
+# reached. That is not a red baseline the build can drive green — no implementation satisfies
+# it — so the build must reject it rather than spend an LLM cycle on it.
+
+_ALWAYS_DEFINED = frozenset({
+    "__file__",
+    "__name__",
+    "__doc__",
+    "__builtins__",
+    "__spec__",
+    "__package__",
+    "__loader__",
+})
+# Names these calls can introduce that static analysis cannot see. Their presence makes the
+# undefined-name analysis unsound, so the snippet is left to the runtime gate instead.
+_DYNAMIC_BINDERS = frozenset({"exec", "eval", "globals", "locals", "vars"})
+
+
+@dataclass(frozen=True)
+class StructuralDefect:
+    """One defect that makes a proof fail for a reason unrelated to the code under test."""
+
+    kind: str
+    detail: str
+
+    @property
+    def message(self) -> str:
+        if self.kind == "syntax-error":
+            return (
+                f"the snippet is not valid Python ({self.detail}) — it fails to parse before "
+                f"the code under test runs. Repair the snippet."
+            )
+        return (
+            f"name '{self.detail}' is read but never defined in this snippet — it raises "
+            f"NameError on every run and no implementation can satisfy it. Each check runs as "
+            f"its own script in its own process, so a name bound by another check in the same "
+            f"file is not in scope here. Define it in this snippet."
+        )
+
+
+class _BindingCollector(ast.NodeVisitor):
+    """Collect every name a snippet binds, flattening all scopes.
+
+    Scopes are deliberately flattened: a name bound anywhere in the snippet counts as defined
+    everywhere. That under-reports (a genuine scope error is missed) but never over-reports,
+    which is the right bias for a gate that blocks a build.
+    """
+
+    def __init__(self) -> None:
+        self.bound: set[str] = set()
+        self.dynamic = False
+
+    def _bind_target(self, node: ast.AST) -> None:
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name):
+                self.bound.add(child.id)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.bound.add(node.id)
+        elif node.id in _DYNAMIC_BINDERS:
+            self.dynamic = True
+        self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self.bound.add(alias.asname or alias.name.split(".")[0])
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name == "*":
+                # A star import can supply anything; the analysis cannot stay sound.
+                self.dynamic = True
+                continue
+            self.bound.add(alias.asname or alias.name)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> None:
+        name = getattr(node, "name", None)
+        if name:
+            self.bound.add(name)
+        args = node.args
+        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+            self.bound.add(arg.arg)
+        for optional in (args.vararg, args.kwarg):
+            if optional is not None:
+                self.bound.add(optional.arg)
+        self.generic_visit(node)
+
+    visit_FunctionDef = _visit_function
+    visit_AsyncFunctionDef = _visit_function
+    visit_Lambda = _visit_function
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.bound.add(node.name)
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name:
+            self.bound.add(node.name)
+        self.generic_visit(node)
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.bound.update(node.names)
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
+        self.bound.update(node.names)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name:
+            self.bound.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name:
+            self.bound.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest:
+            self.bound.add(node.rest)
+        self.generic_visit(node)
+
+    def visit_withitem(self, node: ast.withitem) -> None:
+        if node.optional_vars is not None:
+            self._bind_target(node.optional_vars)
+        self.generic_visit(node)
+
+
+def analyze_structure(code: str) -> tuple[StructuralDefect, ...]:
+    """Report defects that make a proof fail before it can exercise the code under test."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        detail = exc.msg or "invalid syntax"
+        if exc.lineno:
+            detail = f"{detail} at line {exc.lineno}"
+        return (StructuralDefect(kind="syntax-error", detail=detail),)
+
+    collector = _BindingCollector()
+    collector.visit(tree)
+    if collector.dynamic:
+        return ()
+
+    known = collector.bound | _ALWAYS_DEFINED | set(dir(builtins))
+    undefined: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Name) or not isinstance(node.ctx, ast.Load):
+            continue
+        if node.id in known or node.id in undefined:
+            continue
+        undefined.append(node.id)
+    return tuple(StructuralDefect(kind="undefined-name", detail=name) for name in undefined)
+
+
+# --- Swallowed diagnostics -------------------------------------------------------------
+#
+# A check that shells out to a test runner and captures its output, then asserts on the exit
+# code without echoing what it captured, destroys the only evidence that explains the failure.
+# The traceback then carries the assertion and nothing else: no tally, no failing case names.
+# The check still gates correctly, but neither the operator nor the repair pass can see why it
+# failed. Flag it so the author prints the captured streams before asserting.
+
+_CAPTURING_CALLS = frozenset({"run", "check_output", "Popen", "communicate", "getoutput"})
+_ECHO_CALLS = frozenset({"print", "write", "writelines"})
+
+
+@dataclass(frozen=True)
+class SwallowedOutputDefect:
+    """A proof that captures a subprocess's output and never echoes it."""
+
+    call: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"captures subprocess output ({self.call}) but never prints it, so a failure "
+            f"reports only the assertion — not the runner's tally or its failing cases. Print "
+            f"the captured stdout and stderr before asserting."
+        )
+
+
+def _captures_output(node: ast.Call) -> bool:
+    if _call_name(node) not in _CAPTURING_CALLS:
+        return False
+    for keyword in node.keywords:
+        if keyword.arg == "capture_output" and isinstance(keyword.value, ast.Constant):
+            if keyword.value.value is True:
+                return True
+        if keyword.arg in {"stdout", "stderr"}:
+            return True
+    return _call_name(node) == "check_output"
+
+
+def analyze_swallowed_output(code: str) -> tuple[SwallowedOutputDefect, ...]:
+    """Report proofs that capture a subprocess's output and discard it on failure."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+
+    capturing = [
+        node for node in ast.walk(tree) if isinstance(node, ast.Call) and _captures_output(node)
+    ]
+    if not capturing:
+        return ()
+    echoes = any(
+        isinstance(node, ast.Call) and _call_name(node) in _ECHO_CALLS for node in ast.walk(tree)
+    )
+    if echoes:
+        return ()
+    first = capturing[0]
+    func = first.func
+    label = (
+        f"{func.value.id}.{func.attr}"
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+        else _call_name(first)
+    )
+    return (SwallowedOutputDefect(call=label),)

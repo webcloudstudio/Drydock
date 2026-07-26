@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from drydock.proof_integrity import analyze_literals, analyze_proof
+from drydock.proof_integrity import (
+    analyze_literals,
+    analyze_proof,
+    analyze_structure,
+    analyze_swallowed_output,
+)
 
 
 def test_real_assertion_is_ok():
@@ -122,3 +127,123 @@ def test_unparseable_code_reports_nothing():
 def test_repeated_defect_is_reported_once():
     code = 'assert f(r"a\\n")\nassert g(r"a\\n")'
     assert len(analyze_literals(code)) == 1
+
+
+# --- Structural defects -----------------------------------------------------
+#
+# Each check runs as its own script in its own process. A snippet that reads a name a sibling
+# check bound dies with NameError on every run, so it is unsatisfiable by construction — the
+# same category as a mis-authored literal, and it must be caught before the build spends a pass.
+
+
+def test_name_carried_over_from_a_sibling_check_is_flagged():
+    defects = analyze_structure("assert result.returncode == 0")
+    assert len(defects) == 1
+    assert defects[0].kind == "undefined-name"
+    assert defects[0].detail == "result"
+    assert "its own process" in defects[0].message
+
+
+def test_self_contained_snippet_is_clean():
+    code = (
+        "import subprocess\n"
+        "result = subprocess.run(['true'], capture_output=True)\n"
+        "print(result.stdout)\n"
+        "assert result.returncode == 0\n"
+    )
+    assert analyze_structure(code) == ()
+
+
+def test_builtins_are_not_reported_as_undefined():
+    assert analyze_structure("assert len(open('f').read()) > 0") == ()
+
+
+def test_imported_name_is_bound():
+    assert analyze_structure("from app import create_app\nassert create_app()") == ()
+
+
+def test_aliased_import_is_bound():
+    assert analyze_structure("import subprocess as sp\nassert sp.run(['true'])") == ()
+
+
+def test_comprehension_and_loop_targets_are_bound():
+    code = "rows = [1, 2]\nassert [n for n in rows]\nfor row in rows:\n    assert row\n"
+    assert analyze_structure(code) == ()
+
+
+def test_with_and_except_targets_are_bound():
+    code = (
+        "try:\n"
+        "    with open('f') as handle:\n"
+        "        assert handle.read()\n"
+        "except OSError as exc:\n"
+        "    raise AssertionError(str(exc))\n"
+    )
+    assert analyze_structure(code) == ()
+
+
+def test_function_arguments_are_bound():
+    code = "def render(markdown):\n    return markdown\n\nassert render('a') == 'a'\n"
+    assert analyze_structure(code) == ()
+
+
+def test_star_import_suppresses_the_analysis():
+    # A star import can supply anything, so the analysis cannot stay sound. Defer to runtime.
+    assert analyze_structure("from app import *\nassert create_app()") == ()
+
+
+def test_dynamic_binding_suppresses_the_analysis():
+    assert analyze_structure("exec('x = 1')\nassert x == 1") == ()
+
+
+def test_unparseable_snippet_is_flagged_as_a_syntax_error():
+    defects = analyze_structure("assert result.returncode ==\n")
+    assert len(defects) == 1
+    assert defects[0].kind == "syntax-error"
+    assert "not valid Python" in defects[0].message
+
+
+def test_each_undefined_name_is_reported_once():
+    defects = analyze_structure("assert result.a == 0\nassert result.b == 0")
+    assert len(defects) == 1
+
+
+# --- Swallowed diagnostics --------------------------------------------------
+#
+# Capturing a runner's output and asserting only on the exit code destroys the tally and the
+# failing cases — the only evidence that explains the failure to an operator or a repair pass.
+
+
+def test_captured_output_that_is_never_printed_is_flagged():
+    code = (
+        "import subprocess\n"
+        "result = subprocess.run(['suite'], capture_output=True, text=True)\n"
+        "assert result.returncode == 0\n"
+    )
+    defects = analyze_swallowed_output(code)
+    assert len(defects) == 1
+    assert defects[0].call == "subprocess.run"
+    assert "never prints it" in defects[0].message
+
+
+def test_captured_output_that_is_printed_is_clean():
+    code = (
+        "import subprocess\n"
+        "result = subprocess.run(['suite'], capture_output=True, text=True)\n"
+        "print(result.stdout)\n"
+        "assert result.returncode == 0\n"
+    )
+    assert analyze_swallowed_output(code) == ()
+
+
+def test_uncaptured_subprocess_is_clean():
+    # Without capture the runner's output already reaches the check's own streams.
+    code = "import subprocess\nassert subprocess.run(['suite']).returncode == 0\n"
+    assert analyze_swallowed_output(code) == ()
+
+
+def test_in_process_check_is_not_flagged():
+    code = (
+        "from app import create_app\nassert create_app().test_client().get('/').status_code == 200"
+    )
+    assert analyze_swallowed_output(code) == ()
