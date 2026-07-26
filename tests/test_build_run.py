@@ -9,9 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from drydock.acceptance import AcceptanceRunResult
+from drydock.acceptance import MEMORY_FAILURE_PREFIX, AcceptanceRunResult
 from drydock.build_plan import parse_build_plan
 from drydock.build_run import (
+    _assertion_summary,
     _is_repairable,
     _render_repair_feedback,
     _resolve_step_selector,
@@ -2109,6 +2110,48 @@ def test_repair_feedback_names_failing_checks_and_caps_size():
     assert "AssertionError" in text
     assert "211 passed, 75 failed" in text
     assert "foundation.txt" in text
+    assert "Resource exhaustion" not in text
+
+
+# A repair pass that reads only "the check failed" tunes output to match an expectation. When
+# the code under test was killed for exhausting memory or time, no expectation is reachable
+# until the unbounded loop or allocation is fixed, so the resource fact must lead the feedback.
+
+
+def _exhausted_check() -> AcceptanceRunResult:
+    return AcceptanceRunResult(
+        check_id="block-parser-suite",
+        source="FEATURE-Blocks.md",
+        intent="The block parser passes its suite.",
+        passed=False,
+        return_code=1,
+        stdout="",
+        stderr='  File "block-parser-suite.py", line 3\nMemoryError',
+        error=(
+            f"{MEMORY_FAILURE_PREFIX}: the built code exceeded 4096 MB and was stopped by the "
+            "kernel. This is unbounded allocation or a non-terminating loop in the code under "
+            "test, not a missed expectation."
+        ),
+    )
+
+
+def test_resource_verdict_outranks_the_traceback_line():
+    assert _assertion_summary(_exhausted_check()).startswith(MEMORY_FAILURE_PREFIX)
+
+
+def test_repair_feedback_leads_with_the_resource_fact():
+    class _Unit:
+        name = "Block Parsing"
+        block_id = "block-parsing"
+
+    text = _render_repair_feedback(_Unit(), (_exhausted_check(),), None, (), {})
+    assert "Resource exhaustion — fix this first" in text
+    assert text.index("Resource exhaustion") < text.index("### Still failing")
+    assert "unbounded loop or allocation" in text
+
+
+def test_a_resource_kill_still_loops_the_repair_pass():
+    assert _is_repairable("programmatic acceptance failed (resource exhaustion): x") is True
 
 
 def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_path):

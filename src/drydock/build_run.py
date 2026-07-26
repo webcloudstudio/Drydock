@@ -28,6 +28,8 @@ from hashlib import sha256
 from pathlib import Path
 
 from drydock.acceptance import (
+    MEMORY_FAILURE_PREFIX,
+    TIMEOUT_FAILURE_PREFIX,
     AcceptanceObservation,
     AcceptanceRunResult,
     ProgrammaticAcceptance,
@@ -829,13 +831,25 @@ def _classify_failure(
     return None
 
 
+def _resource_verdict(result: AcceptanceRunResult) -> bool:
+    """True when a check failed by exhausting memory or time, not by missing an expectation."""
+    error = result.error or ""
+    return error.startswith((MEMORY_FAILURE_PREFIX, TIMEOUT_FAILURE_PREFIX))
+
+
 def _assertion_summary(result: AcceptanceRunResult) -> str:
     """The concrete reason a programmatic check failed, in one line.
 
     A file-backed run's stderr carries the source line and the exception, so the failing
     assertion is recoverable: ``assert a + b == c`` → ``AssertionError``. Falls back to the
     check's own error (e.g. a timeout) when no traceback is present.
+
+    A resource verdict outranks the traceback. When the built code exhausted memory or ran
+    past its budget, the bare ``MemoryError`` at the top of the stack names the symptom; the
+    verdict names the defect, and that is what a repair pass has to act on.
     """
+    if _resource_verdict(result):
+        return str(result.error)
     lines = [line.rstrip() for line in (result.stderr or "").splitlines() if line.strip()]
     assertion = next(
         (line.strip() for line in reversed(lines) if line.strip().startswith("assert ")), ""
@@ -1004,6 +1018,23 @@ def _render_repair_feedback(
         "that already passes green.",
         "",
     ]
+    exhausted = tuple(result for result in failed_checks if _resource_verdict(result))
+    if exhausted:
+        # State the resource fact before the check list. A pass that reads only "the check
+        # failed" tunes behavior; the defect is that the code never terminates or never
+        # stops allocating, and no expectation can be satisfied until that is fixed.
+        lines.extend([
+            "### Resource exhaustion — fix this first",
+            "",
+            "The following checks did not fail an expectation. The code under test was",
+            "stopped by the harness for exhausting memory or time, which means it does not",
+            "terminate on some input. Find the unbounded loop or allocation and fix it;",
+            "tuning output to match an expectation will not clear this.",
+            "",
+        ])
+        for result in exhausted:
+            lines.append(f"- {result.check_id}: {result.error}")
+        lines.append("")
     if failed_checks:
         lines.append("### Still failing")
         for result in failed_checks:
@@ -1883,7 +1914,15 @@ def build_target(
                         failed_checks = tuple(check for check in acceptance if not check.passed)
                         if failed_checks:
                             state, status = "closed/failed", "failed"
-                            error = "programmatic acceptance failed: " + ", ".join(
+                            # Keep the repairable prefix — a resource kill is still driven
+                            # green by another informed pass — but name the category so the
+                            # manifest finding does not read as an ordinary missed assertion.
+                            category = (
+                                " (resource exhaustion)"
+                                if any(_resource_verdict(check) for check in failed_checks)
+                                else ""
+                            )
+                            error = f"programmatic acceptance failed{category}: " + ", ".join(
                                 check.check_id for check in failed_checks
                             )
                             failure_detail = _render_ac_failure_chain(
@@ -1902,6 +1941,13 @@ def build_target(
                                     f"tests: FAILED ({passed}/{len(checks)}) — "
                                     + ", ".join(check.check_id for check in failed_checks),
                                 )
+                                for check in failed_checks:
+                                    if _resource_verdict(check):
+                                        _emit(
+                                            on_text,
+                                            f"  {check.check_id}: code under test exhausted "
+                                            "its resource budget — stopped by the harness",
+                                        )
 
             attempt_records.append(
                 AttemptRecord(

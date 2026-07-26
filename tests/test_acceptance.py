@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 import pytest
 
+from drydock import acceptance
 from drydock.acceptance import (
+    MEMORY_FAILURE_PREFIX,
+    MEMORY_LIMIT_ENV,
+    MEMORY_LIMIT_MB,
     SUITE_TIMEOUT_SECONDS,
+    TIMEOUT_FAILURE_PREFIX,
     TIMEOUT_SECONDS,
     ProgrammaticAcceptance,
+    memory_limit_mb,
     parse_programmatic_acceptance,
     run_programmatic_acceptance,
 )
@@ -169,3 +177,93 @@ def test_build_directory_stays_importable(tmp_path):
 def test_the_snippet_is_not_left_in_the_build_directory(tmp_path):
     _run_one("assert True", tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+# A build agent's code runs unsupervised. An unbounded allocation in it drove a 16 GB host
+# into swap for the whole timeout window; the bound must stop that in seconds, and the
+# verdict must say the code exhausted a resource rather than missed an expectation.
+
+
+def test_memory_limit_defaults_and_reads_the_environment(monkeypatch):
+    monkeypatch.delenv(MEMORY_LIMIT_ENV, raising=False)
+    assert memory_limit_mb() == MEMORY_LIMIT_MB
+    monkeypatch.setenv(MEMORY_LIMIT_ENV, "512")
+    assert memory_limit_mb() == 512
+    monkeypatch.setenv(MEMORY_LIMIT_ENV, "0")
+    assert memory_limit_mb() == 0
+    monkeypatch.setenv(MEMORY_LIMIT_ENV, "not-a-number")
+    assert memory_limit_mb() == MEMORY_LIMIT_MB
+
+
+@pytest.mark.skipif(os.name != "posix", reason="RLIMIT_AS is POSIX-only")
+def test_runaway_allocation_is_bounded_and_named_as_resource_exhaustion(tmp_path, monkeypatch):
+    monkeypatch.setenv(MEMORY_LIMIT_ENV, "256")
+    result = _run_one("blob = bytearray(1024 * 1024 * 1024)\nassert blob", tmp_path)
+    assert not result.passed
+    assert result.error is not None
+    assert result.error.startswith(MEMORY_FAILURE_PREFIX)
+    assert "256 MB" in result.error
+
+
+@pytest.mark.skipif(os.name != "posix", reason="RLIMIT_AS is POSIX-only")
+def test_the_bound_reaches_a_grandchild_process(tmp_path, monkeypatch):
+    """The runaway is the built code the check invokes, not the check itself."""
+    monkeypatch.setenv(MEMORY_LIMIT_ENV, "256")
+    (tmp_path / "runaway.py").write_text("bytearray(1024 * 1024 * 1024)\n", encoding="utf-8")
+    result = _run_one(
+        "import subprocess, sys\n"
+        "done = subprocess.run([sys.executable, 'runaway.py'], capture_output=True, text=True)\n"
+        "assert done.returncode == 0, done.stderr",
+        tmp_path,
+    )
+    assert not result.passed
+    assert "MemoryError" in result.stderr
+
+
+def test_an_ordinary_assertion_failure_carries_no_resource_verdict(tmp_path):
+    result = _run_one("assert 1 == 2", tmp_path)
+    assert not result.passed
+    assert result.error is None
+
+
+def test_a_hung_check_is_reported_as_a_non_terminating_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(acceptance, "TIMEOUT_SECONDS", 2)
+    result = _run_one("while True:\n    pass", tmp_path)
+    assert not result.passed
+    assert result.error is not None and result.error.startswith(TIMEOUT_FAILURE_PREFIX)
+    assert "did not terminate" in result.error
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only")
+def test_the_timeout_reaps_a_grandchild_instead_of_orphaning_it(tmp_path, monkeypatch):
+    """Killing only the direct child leaves the runaway that the timeout was meant to stop."""
+    monkeypatch.setattr(acceptance, "TIMEOUT_SECONDS", 2)
+    marker = tmp_path / "grandchild.pid"
+    (tmp_path / "sleeper.py").write_text(
+        "import os, pathlib, time\n"
+        f"pathlib.Path({str(marker)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(120)\n",
+        encoding="utf-8",
+    )
+    result = _run_one(
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, 'sleeper.py'])\n"
+        "time.sleep(120)\n",
+        tmp_path,
+    )
+    assert not result.passed
+    grandchild = int(marker.read_text())
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and _alive(grandchild):
+        time.sleep(0.1)
+    assert not _alive(grandchild), f"pid {grandchild} survived the timeout"
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True

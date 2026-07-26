@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +22,17 @@ HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 TIMEOUT_SECONDS = 60
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
+# Address-space ceiling inherited by the check and every process it spawns. Built code that
+# runs away allocating is bounded by the kernel in seconds instead of driving the host into
+# swap for the whole timeout window. Raise it with ``DRYDOCK_ACCEPTANCE_MEMORY_MB`` when a
+# check legitimately needs more; set the variable to ``0`` to disable the bound entirely.
+MEMORY_LIMIT_MB = 4096
+MEMORY_LIMIT_ENV = "DRYDOCK_ACCEPTANCE_MEMORY_MB"
+# Category prefixes for a check that failed by exhausting a resource rather than by missing
+# an expectation. Consumers use these to gate a repair pass on the resource fact.
+MEMORY_FAILURE_PREFIX = "exhausted memory"
+TIMEOUT_FAILURE_PREFIX = "timed out"
+_MEMORY_SIGNATURES = ("MemoryError", "Cannot allocate memory", "std::bad_alloc", "Killed")
 _EXACT_PASSED_COUNT_ASSERTION_RE = re.compile(
     r"\bassert\s+['\"]\d+\s+passed['\"]\s+in\s+", re.IGNORECASE
 )
@@ -31,6 +44,75 @@ def _timeout_output_text(value: bytes | str | None) -> str:
     if isinstance(value, bytes):
         return value.decode(errors="replace")
     return value
+
+
+def memory_limit_mb() -> int:
+    """The configured address-space ceiling in MB; ``0`` disables the bound."""
+    raw = os.environ.get(MEMORY_LIMIT_ENV, "").strip()
+    if not raw:
+        return MEMORY_LIMIT_MB
+    try:
+        value = int(raw)
+    except ValueError:
+        return MEMORY_LIMIT_MB
+    return max(0, value)
+
+
+def _child_limits(limit_mb: int) -> Callable[[], None] | None:
+    """A ``preexec_fn`` capping the child's address space, or ``None`` when unavailable.
+
+    ``RLIMIT_AS`` is inherited across ``fork``/``exec``, so the bound also covers every
+    process the check spawns — the runner, the built program under it, and so on. That is
+    the point: the runaway is never the acceptance snippet itself, it is the built code the
+    snippet invokes.
+    """
+    if limit_mb <= 0 or os.name != "posix":
+        return None
+    try:
+        import resource
+    except ImportError:  # pragma: no cover - non-POSIX
+        return None
+
+    ceiling = limit_mb * 1024 * 1024
+
+    def apply() -> None:
+        resource.setrlimit(resource.RLIMIT_AS, (ceiling, ceiling))
+        # A multi-GB core dump from a bounded runaway helps nobody and costs the disk.
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    return apply
+
+
+def _kill_process_group(process: subprocess.Popen[str]) -> None:
+    """Kill the check's whole process group, not just the process Drydock started.
+
+    A check that shells out leaves grandchildren. Killing only the direct child orphans
+    them, and a runaway grandchild then survives the timeout that was meant to stop it.
+    """
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, AttributeError, OSError):
+        process.kill()
+
+
+def _resource_failure(return_code: int, stderr: str, limit_mb: int) -> str | None:
+    """Classify a non-zero exit as resource exhaustion, or ``None`` when it is not.
+
+    Distinguishes "the built code cannot run within its budget" from "the built code ran
+    and missed an expectation". Only the former should tell a repair pass to fix an
+    unbounded loop or allocation rather than adjust behavior.
+    """
+    if return_code == 0:
+        return None
+    oom_signalled = return_code == -signal.SIGKILL
+    if oom_signalled or any(sig in stderr for sig in _MEMORY_SIGNATURES):
+        bound = f"{limit_mb} MB" if limit_mb > 0 else "the available memory"
+        return (
+            f"{MEMORY_FAILURE_PREFIX}: the built code exceeded {bound} and was stopped by the "
+            f"kernel. This is unbounded allocation or a non-terminating loop in the code under "
+            f"test, not a missed expectation."
+        )
+    return None
 
 
 def _scrub_script_path(text: str, script: Path) -> str:
@@ -241,6 +323,8 @@ def run_programmatic_acceptance(
         "DRYDOCK_BLUEPRINT_DIR": str(blueprint_dir),
         "PYTHONPATH": pythonpath,
     }
+    limit_mb = memory_limit_mb()
+    preexec = _child_limits(limit_mb)
     for check in checks:
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
         # ``File "<string>", line N`` with no source text, so a failing assertion names
@@ -249,16 +333,23 @@ def run_programmatic_acceptance(
         with tempfile.TemporaryDirectory(prefix="drydock-acceptance-") as tmp:
             script = Path(tmp) / f"{check.check_id or 'acceptance'}.py"
             script.write_text(check.code + "\n", encoding="utf-8")
+            # Own session so the timeout can reap the whole tree, and a bounded address
+            # space so a runaway is stopped by the kernel long before the timeout.
+            process = subprocess.Popen(
+                [sys.executable, str(script)],
+                cwd=build_dir,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=os.name == "posix",
+                preexec_fn=preexec,
+            )
             try:
-                completed = subprocess.run(
-                    [sys.executable, str(script)],
-                    cwd=build_dir,
-                    env=env,
-                    capture_output=True,
-                    text=True,
-                    timeout=check.timeout_seconds,
-                )
-            except subprocess.TimeoutExpired as exc:
+                stdout, stderr = process.communicate(timeout=check.timeout_seconds)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(process)
+                stdout, stderr = process.communicate()
                 results.append(
                     AcceptanceRunResult(
                         check_id=check.check_id,
@@ -266,21 +357,28 @@ def run_programmatic_acceptance(
                         intent=check.intent,
                         passed=False,
                         return_code=None,
-                        stdout=_timeout_output_text(exc.stdout),
-                        stderr=_timeout_output_text(exc.stderr),
-                        error=f"timed out after {check.timeout_seconds}s",
+                        stdout=_timeout_output_text(stdout),
+                        stderr=_scrub_script_path(_timeout_output_text(stderr), script),
+                        error=(
+                            f"{TIMEOUT_FAILURE_PREFIX} after {check.timeout_seconds}s: the built "
+                            f"code did not terminate within its budget. This is a "
+                            f"non-terminating loop or unbounded work in the code under test, "
+                            f"not a missed expectation."
+                        ),
                     )
                 )
                 continue
+            return_code = process.returncode
         results.append(
             AcceptanceRunResult(
                 check_id=check.check_id,
                 source=check.source,
                 intent=check.intent,
-                passed=completed.returncode == 0,
-                return_code=completed.returncode,
-                stdout=completed.stdout,
-                stderr=_scrub_script_path(completed.stderr, script),
+                passed=return_code == 0,
+                return_code=return_code,
+                stdout=stdout,
+                stderr=_scrub_script_path(stderr, script),
+                error=_resource_failure(return_code, stderr, limit_mb),
             )
         )
     return tuple(results)
