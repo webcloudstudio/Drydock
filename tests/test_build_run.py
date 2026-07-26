@@ -453,7 +453,7 @@ state: closed/failed
     assert "Story Retry: drydock build Demo --step external-foundation" in message
 
 
-def test_blocked_build_does_not_auto_compact(tmp_path, monkeypatch):
+def test_blocked_build_does_not_call_an_agent(tmp_path):
     manifest = """# MANIFEST: Demo
 state: draft
 
@@ -481,18 +481,12 @@ state: pending
 """
     target_dir, build_dir = _setup(tmp_path, manifest=manifest)
     (target_dir / "blueprint" / "FEATURE-A.md").write_text("FEATURE A\n", encoding="utf-8")
-    compact_calls: list[object] = []
-
-    def fail_if_called(*args, **kwargs):
-        compact_calls.append((args, kwargs))
-        raise AssertionError("blocked build should not auto-compact")
-
-    monkeypatch.setattr("drydock.build_run.ensure_compact_files", fail_if_called)
+    runner = make_runner()
 
     with pytest.raises(SpecificationError, match="unverified external dependencies"):
-        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
-    assert compact_calls == []
+    assert runner.calls == []
 
 
 def test_build_suppresses_raw_model_stream(tmp_path):
@@ -599,7 +593,7 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(line == "evidence: evidence/foundation.md" for line in log)
 
 
-def test_feature_step_auto_compacts_and_injects_compact_context(tmp_path):
+def test_feature_step_with_no_future_consumer_does_not_request_compaction(tmp_path):
     manifest = """# MANIFEST: Demo
 state: draft
 
@@ -620,14 +614,14 @@ state: pending
     runner = make_runner()
     build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
 
-    assert any("AUTO-COMPACT:" in line and "ARCHITECTURE_compact.md" in line for line in log)
-    assert any("AUTO-COMPACT:" in line and "DATABASE_compact.md" in line for line in log)
+    assert not any("AUTO-COMPACT:" in line for line in log)
     prompt = runner.calls[0]["prompt"]
-    assert 'filename="ARCHITECTURE_compact.md"' in prompt
-    assert 'filename="DATABASE_compact.md"' in prompt
+    assert 'filename="ARCHITECTURE.md"' in prompt
+    assert 'filename="DATABASE.md"' in prompt
+    assert "## Reusable compacts" not in prompt
 
 
-def test_build_auto_compacts_only_current_block_sources(tmp_path, monkeypatch):
+def test_build_requests_and_persists_reusable_compact_from_same_response(tmp_path):
     manifest = """# MANIFEST: Demo
 state: draft
 
@@ -642,7 +636,7 @@ state: pending
 ## story 2: Service
 id: service
 implements: SERVICE.md
-context: FEATURE-B.md
+context: FEATURE-A.md, FEATURE-B.md
 instructions: |
   Build the service.
 state: pending
@@ -651,20 +645,26 @@ state: pending
     blueprint = target_dir / "blueprint"
     (blueprint / "FEATURE-A.md").write_text("FEATURE A\n", encoding="utf-8")
     (blueprint / "FEATURE-B.md").write_text("FEATURE B\n", encoding="utf-8")
-    compact_sources: list[tuple[str, ...]] = []
+    runner = make_runner(
+        text=_success_report(changed=("foundation.txt",))
+        + '\n<reusable-compact filename="FEATURE-A.md">\n'
+        + "# Feature A contract\n\n- Keep the public behavior.\n"
+        + "</reusable-compact>\n",
+    )
 
-    def record_compacts(blueprint_dir, *, sources, **kwargs):
-        compact_sources.append(tuple(source.name for source in sources))
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+    )
 
-    monkeypatch.setattr("drydock.build_run.ensure_compact_files", record_compacts)
-    runner = make_runner(ok=False, text="", write_files=False)
-
-    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
-
-    assert result.steps[0].status == "failed"
-    assert compact_sources == [("DATABASE.md", "FEATURE-A.md")]
-    assert "FEATURE-B.md" not in compact_sources[0]
+    assert result.steps[0].status == "built"
     assert len(runner.calls) == 1
+    assert "Sources eligible for reusable compaction:\n- FEATURE-A.md" in runner.calls[0]["prompt"]
+    compact = blueprint / "FEATURE-A_compact.md"
+    assert compact.is_file()
+    assert "by drydock build agent" in compact.read_text(encoding="utf-8")
+    assert "FEATURE-A_compact.md" in (target_dir / "evidence" / "foundation.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_successful_build_updates_target_lifecycle_metadata(tmp_path):
@@ -1734,9 +1734,9 @@ state: pending
 
         plan = parse_build_plan(target_dir / "MANIFEST.md")
         assert "DATABASE.md" in plan.applied_specs
-        # Context always prefers the compact derivative; the applied record names
-        # the file that actually entered the prompt.
-        assert "ARCHITECTURE_compact.md" in plan.applied_specs
+        # A compact without matching provenance is stale and falls through to the
+        # authoritative source; the applied record names the file in the prompt.
+        assert "ARCHITECTURE.md" in plan.applied_specs
         assert "README.md" not in plan.applied_specs
 
     def test_changed_previously_applied_spec_blocks_before_runner(self, tmp_path):

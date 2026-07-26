@@ -46,7 +46,7 @@ from drydock.build import (
     make_step_group,
     render_build_group_prompt_assembly,
     render_build_prompt_assembly,
-    required_auto_compact_sources,
+    reusable_build_compact_sources,
     work_kind_of,
 )
 from drydock.build_plan import (
@@ -73,7 +73,6 @@ from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_literals, analyze_structure
-from drydock.rigging_compact import ensure_compact_files
 from drydock.source_roles import (
     SourceRole,
     StagedAsset,
@@ -741,6 +740,11 @@ _FAILURE_SUMMARY_RE = re.compile(r"^\s*FAILURE_SUMMARY:\s*(.+)$", re.IGNORECASE 
 _FAILURE_DETAIL_RE = re.compile(
     r"^\s*FAILURE_DETAIL:\s*(.+)", re.IGNORECASE | re.MULTILINE | re.DOTALL
 )
+_REUSABLE_COMPACT_RE = re.compile(
+    r'<reusable-compact\s+filename="(?P<filename>[^"]+)">\s*'
+    r"(?P<body>.*?)\s*</reusable-compact>",
+    re.IGNORECASE | re.DOTALL,
+)
 
 # Category prefix for a build agent's own declared failure. Such a self-report is advisory:
 # when the agent still wrote files, the deterministic acceptance gate is the authority.
@@ -754,6 +758,39 @@ def _parse_agent_failure(summary: str) -> tuple[str, str]:
     agent_summary = summary_match.group(1).strip() if summary_match else ""
     agent_detail = detail_match.group(1).strip() if detail_match else ""
     return agent_summary, agent_detail
+
+
+def _persist_reusable_compacts(
+    summary: str,
+    sources: tuple[Path, ...],
+    *,
+    blueprint_dir: Path,
+    today: str,
+) -> tuple[str, ...]:
+    """Persist valid same-response compacts requested for later build blocks.
+
+    Compact payloads are advisory: malformed, unexpected, duplicate, and no-surface
+    payloads are ignored so they can never alter the build outcome.
+    """
+    allowed = {source.name: source for source in sources}
+    written: list[str] = []
+    seen: set[str] = set()
+    for match in _REUSABLE_COMPACT_RE.finditer(summary):
+        filename = match.group("filename").strip()
+        body = match.group("body").strip()
+        source = allowed.get(filename)
+        if source is None or filename in seen or not body or body.startswith("COMPACT_ERROR:"):
+            continue
+        seen.add(filename)
+        digest = sha256(source.read_bytes()).hexdigest()
+        provenance = (
+            f"<!-- Compacted from {source.relative_to(blueprint_dir).as_posix()} sha256={digest} "
+            f"on {today} by drydock build agent -->"
+        )
+        compact = source.with_name(f"{source.stem}_compact.md")
+        compact.write_text(f"{provenance}\n\n{body}\n", encoding="utf-8", newline="\n")
+        written.append(compact.name)
+    return tuple(written)
 
 
 def _result_provider_error(result: object) -> str | None:
@@ -1240,6 +1277,7 @@ def _write_group_evidence(
     failure_detail: str = "",
     agent_report: tuple[str, str] | None = None,
     attempts: tuple[AttemptRecord, ...] = (),
+    reusable_compacts: tuple[str, ...] = (),
 ) -> None:
     lines = [
         f"# Evidence: {unit.name} ({unit.block_id})",
@@ -1254,6 +1292,10 @@ def _write_group_evidence(
     ]
     lines.extend(f"- {step.name} ({step.block_id}) [{step.block_type}]" for step in group.steps)
     lines.append("")
+    if reusable_compacts:
+        lines.append("## Reusable compacts")
+        lines.extend(f"- {name}" for name in reusable_compacts)
+        lines.append("")
     if unit.already_verified:
         lines.append("## Stories already verified")
         lines.extend(f"- {block.name} ({block.block_id})" for block in unit.already_verified)
@@ -1568,7 +1610,7 @@ def build_target(
                 f"--story {story_id!r} is not a story or spike; use --step for a feature block"
             )
     if dry_run:
-        _emit(on_text, "dry run: skipping build-block compact refresh")
+        _emit(on_text, "dry run: no reusable compacts are written")
     _ensure_applied_specs_current(manifest_path, blueprint_dir)
 
     prompt = load_prompt(PROMPT_NAME)
@@ -1597,24 +1639,7 @@ def build_target(
         if guard > len(plan.blocks) + 1:  # defensive; state always advances per step
             break
 
-        if not dry_run:
-            compact_sources: list[Path] = []
-            seen_compact_sources: set[Path] = set()
-            for block in unit.steps:
-                for source in required_auto_compact_sources(block, blueprint_dir):
-                    if source not in seen_compact_sources:
-                        seen_compact_sources.add(source)
-                        compact_sources.append(source)
-            ensure_compact_files(
-                blueprint_dir,
-                sources=compact_sources,
-                reason=f"build block {unit.block_id} context refresh",
-                log_dir=log_dir,
-                target=target,
-                on_text=on_text,
-                model=model,
-                llm_provider=llm_provider,
-            )
+        reusable_compact_sources = reusable_build_compact_sources(plan, unit.steps, blueprint_dir)
 
         block_started = time.monotonic()
         block_started_at = _wall_time()
@@ -1659,6 +1684,7 @@ def build_target(
                 target=target,
                 build_dir=resolved_build_dir,
                 today=today,
+                reusable_compacts=reusable_compact_sources,
             )
         else:
             prompt_assembly = render_build_prompt_assembly(
@@ -1667,6 +1693,7 @@ def build_target(
                 target=target,
                 build_dir=resolved_build_dir,
                 today=today,
+                reusable_compacts=reusable_compact_sources,
             )
         if dry_run:
             _emit(on_text, "-" * _RULE_WIDTH)
@@ -2034,6 +2061,17 @@ def build_target(
                 continue
             break
 
+        written_reusable_compacts: tuple[str, ...] = ()
+        if status != "failed" and reusable_compact_sources:
+            written_reusable_compacts = _persist_reusable_compacts(
+                summary,
+                reusable_compact_sources,
+                blueprint_dir=blueprint_dir,
+                today=today,
+            )
+            if written_reusable_compacts:
+                _emit(on_text, "reusable compacts: " + ", ".join(written_reusable_compacts))
+
         evidence_path = evidence_dir / f"{unit.block_id}.md"
         _write_group_evidence(
             evidence_path,
@@ -2050,6 +2088,7 @@ def build_target(
             failure_detail=failure_detail,
             agent_report=agent_report,
             attempts=tuple(attempt_records),
+            reusable_compacts=written_reusable_compacts,
         )
         finding = _failure_finding(status, error, result, acceptance)
         if status == "failed":

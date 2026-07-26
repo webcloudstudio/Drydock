@@ -936,7 +936,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
@@ -979,7 +978,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
@@ -1026,7 +1024,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
@@ -1082,7 +1079,6 @@ state: pending
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _build)
         monkeypatch.setattr("drydock.llm.run_prompt", _diagnose)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
@@ -1126,7 +1122,7 @@ state: pending
 
         assert rc == 0, err
         assert "mode: DRY RUN — no LLM call" in out
-        assert "\ndry run: skipping build-block compact refresh\n" in out
+        assert "\ndry run: no reusable compacts are written\n" in out
         assert "\ndry run assembled files\n" in out
         assert "Role       File" in out
         assert "implements DATABASE.md" in out
@@ -1237,7 +1233,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
             "build",
@@ -1288,7 +1283,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
             "build",
@@ -1372,7 +1366,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
             "build", "ExampleTarget", "--continue", "--build-dir", str(tmp_path / "out")
@@ -1417,7 +1410,6 @@ state: pending
             )
 
         monkeypatch.setattr("drydock.build_run.run_prompt", _run)
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli(
             "build",
@@ -1444,7 +1436,6 @@ state: pending
         )
         (target / "MANIFEST.md").write_text(manifest, encoding="utf-8")
         monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
-        monkeypatch.setattr("drydock.build_run.ensure_compact_files", lambda *a, **k: None)
 
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 

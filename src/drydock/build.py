@@ -32,6 +32,7 @@ import re
 import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
+from hashlib import sha256
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
@@ -205,6 +206,29 @@ def _compact_sibling(name: str) -> str:
     return name
 
 
+_COMPACT_PROVENANCE_SHA_RE = re.compile(r"^<!-- Compacted from .+ sha256=([0-9a-f]{64}) ")
+
+
+def compact_path_for(source: Path) -> Path:
+    """Return the persisted compact-derivative path for a Blueprint source."""
+    return source.with_name(f"{source.stem}_compact.md")
+
+
+def has_fresh_compact(source: Path) -> bool:
+    """True when ``source`` has a compact sibling made from its current content."""
+    compact = compact_path_for(source)
+    if not source.is_file() or not compact.is_file():
+        return False
+    try:
+        first_line = compact.read_text(encoding="utf-8").splitlines()[0]
+        match = _COMPACT_PROVENANCE_SHA_RE.match(first_line)
+        if match is None:
+            return False
+        return match.group(1) == sha256(source.read_bytes()).hexdigest()
+    except OSError:
+        return False
+
+
 def _canonical_spec_name(name: str) -> str:
     """Map a compact-derivative name back to its source name; identity otherwise."""
     for suffix in ("_compact.skip.md", "_compact.md"):
@@ -373,7 +397,50 @@ def required_plan_auto_compact_sources(
     return tuple(required)
 
 
-def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> StepFile:
+def reusable_build_compact_sources(
+    plan: BuildPlan,
+    current_steps: tuple[PlanBlock, ...],
+    blueprint_dir: Path,
+) -> tuple[Path, ...]:
+    """Return current Blueprint inputs that a later Manifest block consumes as context.
+
+    A build agent may create these compacts in its existing response.  The current build
+    unit never counts as a later consumer, including sibling stories grouped under a feature.
+    """
+    if not current_steps:
+        return ()
+    current_ids = {block.block_id for block in current_steps}
+    indexes = [index for index, block in enumerate(plan.blocks) if block.block_id in current_ids]
+    if not indexes:
+        return ()
+    current_sources: list[Path] = []
+    for block in current_steps:
+        names = [*_implements(block), *normalize_context_names(block, blueprint_dir)]
+        for name in names:
+            canonical = _canonical_spec_name(name)
+            source = blueprint_dir / canonical
+            if source.is_file() and source not in current_sources:
+                current_sources.append(source)
+    later_context = {
+        _canonical_spec_name(name)
+        for block in plan.blocks[max(indexes) + 1 :]
+        if block.block_type in STEP_TYPES
+        for name in normalize_context_names(block, blueprint_dir)
+    }
+    return tuple(
+        source
+        for source in current_sources
+        if source.name in later_context and not has_fresh_compact(source)
+    )
+
+
+def _measure_compact(
+    canonical: str,
+    role: str,
+    roots: tuple[Path, ...],
+    *,
+    require_fresh_blueprint_compact: bool = False,
+) -> StepFile:
     """Resolve a file, preferring the ``*_compact.md`` sibling when it exists on disk.
 
     Falls through to the full file when no compact sibling is found. Compass files are
@@ -385,6 +452,13 @@ def _measure_compact(canonical: str, role: str, roots: tuple[Path, ...]) -> Step
     if compact != canonical:
         for root in roots:
             candidate = root / compact
+            source = root / canonical
+            if (
+                require_fresh_blueprint_compact
+                and source.is_file()
+                and not has_fresh_compact(source)
+            ):
+                continue
             byte_count = _file_size(candidate)
             if byte_count is None:
                 continue
@@ -477,7 +551,12 @@ def assemble_step(
                     names.append(name)
         for name in names:
             if role == "context":
-                measured = _measure_compact(name, role, roots.roots_for(role))
+                measured = _measure_compact(
+                    name,
+                    role,
+                    roots.roots_for(role),
+                    require_fresh_blueprint_compact=True,
+                )
                 files.append(
                     replace(measured, prompt_role=_context_roles(block).get(name, "context"))
                 )
@@ -571,6 +650,7 @@ def render_build_prompt_assembly(
     target: str,
     build_dir: Path,
     today: str,
+    reusable_compacts: tuple[Path, ...] = (),
 ) -> PromptAssembly:
     """Compose the full executable build prompt for one step.
 
@@ -672,9 +752,37 @@ def render_build_prompt_assembly(
                 kind="instructions",
             )
         )
+    _append_reusable_compact_request(parts, reusable_compacts)
     parts.append(section_heading_part("# Agent Task"))
     parts.append(part("Prompt body", body.rstrip() + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(parts))
+
+
+def _append_reusable_compact_request(parts: list, sources: tuple[Path, ...]) -> None:
+    """Add optional same-response compact work for sources consumed by later blocks."""
+    if not sources:
+        return
+    lines = [
+        "## Reusable compacts",
+        "",
+        "The Blueprint sources below are consumed as context by later Manifest blocks.",
+        "In this same response, extract their consumer-facing contract surface. Preserve",
+        "interfaces, schemas, constraints, configuration, and cross-file obligations; drop",
+        "implementation narrative and repetition. Do not write these files yourself.",
+        "",
+        "Before the required RESULT block, emit one optional payload per source exactly as:",
+        '<reusable-compact filename="SOURCE.md">',
+        "compact content",
+        "</reusable-compact>",
+        "",
+        "Emit no payload when a source has no useful technical surface. These payloads are",
+        "advisory and do not change the required build result or file-change report.",
+        "",
+        "Sources eligible for reusable compaction:",
+        *[f"- {source.name}" for source in sources],
+        "",
+    ]
+    parts.append(lines_part("Reusable compact request", lines, kind="section"))
 
 
 @dataclass(frozen=True)
@@ -819,6 +927,7 @@ def render_build_group_prompt_assembly(
     target: str,
     build_dir: Path,
     today: str,
+    reusable_compacts: tuple[Path, ...] = (),
 ) -> PromptAssembly:
     """Compose the executable build prompt for one feature/group block."""
     block_label = group.feature_id or "ungrouped"
@@ -931,6 +1040,7 @@ def render_build_group_prompt_assembly(
     if len(instruction_lines) > 1:
         instruction_lines.append("")
         parts.append(lines_part("Build instructions", instruction_lines, kind="instructions"))
+    _append_reusable_compact_request(parts, reusable_compacts)
     parts.append(section_heading_part("# Agent Task"))
     parts.append(part("Prompt body", body.rstrip() + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(parts))

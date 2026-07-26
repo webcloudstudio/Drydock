@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 
 from drydock.build import (
@@ -226,9 +227,15 @@ state: pending
         roots = _roots(tmp_path)
         (roots.blueprint_dir / "FEATURE-Status.md").write_text("feature\n", encoding="utf-8")
         (roots.blueprint_dir / "ARCHITECTURE_compact.md").write_text(
-            "arch-compact\n", encoding="utf-8"
+            f"<!-- Compacted from ARCHITECTURE.md sha256={sha256(('a' * 400).encode()).hexdigest()} "
+            "on 2026-07-26 by test -->\n\narch-compact\n",
+            encoding="utf-8",
         )
-        (roots.blueprint_dir / "DATABASE_compact.md").write_text("db-compact\n", encoding="utf-8")
+        (roots.blueprint_dir / "DATABASE_compact.md").write_text(
+            f"<!-- Compacted from DATABASE.md sha256={sha256(('b' * 800).encode()).hexdigest()} "
+            "on 2026-07-26 by test -->\n\ndb-compact\n",
+            encoding="utf-8",
+        )
 
         step = assemble_step(plan.by_id()["feature"], roots)
         context_names = {f.name for f in step.files if f.role == "context"}
@@ -501,8 +508,13 @@ class TestContextCompactSubstitution:
         (target / "COMPASS.md").write_text("compass" * 10, encoding="utf-8")
         (target / "README.md").write_text("readme" * 10, encoding="utf-8")
         (blueprint / "FEATURE-A.md").write_text("feature-a" * 100, encoding="utf-8")
-        (blueprint / "FEATURE-B.md").write_text("feature-b" * 100, encoding="utf-8")
-        (blueprint / "FEATURE-B_compact.md").write_text("b-compact" * 10, encoding="utf-8")
+        source_text = "feature-b" * 100
+        (blueprint / "FEATURE-B.md").write_text(source_text, encoding="utf-8")
+        (blueprint / "FEATURE-B_compact.md").write_text(
+            f"<!-- Compacted from FEATURE-B.md sha256={sha256(source_text.encode()).hexdigest()} "
+            "on 2026-07-26 by test -->\n\n" + "b-compact" * 10,
+            encoding="utf-8",
+        )
         (blueprint / "FEATURE-C.md").write_text("feature-c" * 100, encoding="utf-8")
         # no FEATURE-C_compact.md — context falls through to the full file
         return StepRoots(
@@ -525,6 +537,19 @@ class TestContextCompactSubstitution:
         c_file = next(f for f in step.files if f.role == "context" and "FEATURE-C" in f.name)
         assert c_file.name == "FEATURE-C.md"
         assert c_file.compact_substituted is False
+
+    def test_context_falls_through_to_full_file_when_sibling_is_stale(self, tmp_path):
+        roots = self._roots(tmp_path)
+        (roots.blueprint_dir / "FEATURE-B_compact.md").write_text(
+            "<!-- Compacted from FEATURE-B.md sha256=" + "0" * 64 + " on stale -->\n\nold",
+            encoding="utf-8",
+        )
+
+        step = assemble_step(self._plan(tmp_path).by_id()["s1"], roots)
+
+        b_file = next(f for f in step.files if f.role == "context" and "FEATURE-B" in f.name)
+        assert b_file.name == "FEATURE-B.md"
+        assert b_file.compact_substituted is False
 
     def test_context_entry_dropped_when_source_is_in_implements(self, tmp_path):
         # s2 implements FEATURE-B.md; both FEATURE-B.md and FEATURE-B_compact.md
