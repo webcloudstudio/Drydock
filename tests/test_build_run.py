@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from drydock.acceptance import MEMORY_FAILURE_PREFIX, AcceptanceRunResult
-from drydock.build_plan import parse_build_plan
+from drydock.build_plan import parse_build_plan, stale_applied_specs
 from drydock.build_run import (
     _assertion_summary,
     _is_repairable,
@@ -1754,6 +1754,25 @@ state: pending
             build_target("Demo", target_dir, build_dir=build_dir, runner=second_runner)
 
         assert len(second_runner.calls) == 0
+
+    def test_full_reset_clears_applied_specs_and_rebuilds(self, tmp_path):
+        target_dir, build_dir = _setup(tmp_path)
+        build_target(
+            "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+        )
+        (target_dir / "blueprint" / "DATABASE.md").write_text(
+            "DB SPEC CONTENT CHANGED\n", encoding="utf-8"
+        )
+
+        runner = make_runner()
+        result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner, reset=True)
+
+        assert result.exit_code() == 0
+        assert len(runner.calls) > 0
+        # Stale records were cleared by the reset and re-stamped against the current
+        # Blueprint, so an immediate follow-up build is not blocked.
+        plan = parse_build_plan(target_dir / "MANIFEST.md")
+        assert stale_applied_specs(plan, target_dir / "blueprint") == ()
 
     def test_deleted_previously_applied_spec_blocks_before_runner(self, tmp_path):
         from drydock.errors import SpecificationError

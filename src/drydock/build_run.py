@@ -1511,6 +1511,10 @@ def build_target(
         else:
             reset_count = reset_all_states(manifest_path)
             shutil.rmtree(resolved_build_dir, ignore_errors=True)
+            # Applied-spec provenance describes work that no longer exists: every block is
+            # pending and the build directory is gone. Keeping the stamps would block the
+            # rebuild on Blueprint drift against code that was just discarded.
+            set_applied_specs(manifest_path, {})
             _emit(
                 on_text,
                 f"full reset: {reset_count} block(s) to pending; wiped {resolved_build_dir}",
