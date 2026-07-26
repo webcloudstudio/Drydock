@@ -2014,6 +2014,53 @@ def test_repair_loop_fixes_failed_acceptance_on_second_pass(tmp_path):
     assert "attempt 1 (repair 1)" in evidence
 
 
+def test_repair_loop_continues_while_deterministic_score_improves(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+### first-marker
+The first marker is correct.
+
+```python
+from pathlib import Path
+assert Path('first.txt').read_text(encoding='utf-8') == 'ok\\n'
+```
+
+### second-marker
+The second marker is correct.
+
+```python
+from pathlib import Path
+assert Path('second.txt').read_text(encoding='utf-8') == 'ok\\n'
+```
+""",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "first.txt").write_text("ok\n" if attempt >= 1 else "bad\n", encoding="utf-8")
+        (work / "second.txt").write_text("ok\n" if attempt >= 2 else "bad\n", encoding="utf-8")
+        calls.append(attempt)
+        return FakeResult(text=_success_report(changed=("first.txt", "second.txt")))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].status == "built"
+    assert calls == [0, 1, 2]
+
+
 def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -2031,13 +2078,16 @@ def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     assert result.steps[0].status == "failed"
     assert result.steps[0].error == "programmatic acceptance failed: foundation-file"
     assert _state(target_dir, "foundation") == "closed/failed"
-    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    # The first repair has the same 0/1 deterministic acceptance score, so the
+    # loop stops without spending its remaining repair budget.
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
     from drydock.errors import read_error_record
 
     record = read_error_record(target_dir)
     assert record is not None
     evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
-    assert "attempt 2 (repair 2)" in evidence
+    assert "attempt 1 (repair 1)" in evidence
+    assert "stopped: deterministic acceptance score did not improve" in evidence
 
 
 # A console that carries only check ids tells an operator that something failed, not what the
@@ -2142,7 +2192,7 @@ def test_terminal_failure_is_not_repaired(tmp_path):
     assert len(runner.calls) == 1
 
 
-def test_repair_escalates_model_on_final_attempt_only(tmp_path):
+def test_repair_stall_stops_before_final_model_escalation(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     runner = make_attempt_runner(fix_at=None)
@@ -2159,7 +2209,7 @@ def test_repair_escalates_model_on_final_attempt_only(tmp_path):
     )
 
     models = [c["model"] for c in runner.calls]
-    assert models == ["sonnet", "sonnet", "opus"]
+    assert models == ["sonnet", "sonnet"]
 
 
 def test_is_repairable_only_for_acceptance_and_agent_reports():

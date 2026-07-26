@@ -1030,6 +1030,7 @@ class AttemptRecord:
     passed_checks: int
     total_checks: int
     status: str
+    stop_reason: str | None = None
 
 
 _REPAIR_FEEDBACK_CAP = 4000
@@ -1389,6 +1390,7 @@ def _write_group_evidence(
             lines.append(
                 f"- attempt {record.index} ({label}): {record.status}; {checks_note}"
                 f"{model_note}; execution {record.execution_id or '-'}"
+                + (f"; stopped: {record.stop_reason}" if record.stop_reason else "")
             )
         lines.append("")
     if agent_report is not None and (agent_report[0] or agent_report[1]):
@@ -1538,7 +1540,7 @@ def build_target(
     reset: bool = False,
     dry_run: bool = False,
     show_prompt: bool = False,
-    repair_attempts: int = 1,
+    repair_attempts: int = 3,
     escalate_model: str | None = None,
     dependency_registry_client: RegistryClient | None = None,
 ) -> BuildResult:
@@ -1803,9 +1805,9 @@ def build_target(
         max_attempt = max(0, repair_attempts)
         attempt_records: list[AttemptRecord] = []
         # Loop invariant: each attempt runs one full LLM pass and grades it. A failed pass
-        # whose classification is repairable, with budget remaining, feeds its own failure
-        # diagnostics back and re-runs against the persisted partial work. Any other outcome
-        # (green, or a terminal failure) ends the loop.
+        # whose classification is repairable, whose deterministic acceptance score improved,
+        # and whose budget remains feeds its diagnostics back and re-runs against the persisted
+        # partial work. Any other outcome (green, stalled, or a terminal failure) ends the loop.
         state = status = error = failure_detail = ""
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         agent_report: tuple[str, str] | None = None
@@ -2063,18 +2065,37 @@ def build_target(
                                             "(0 disables; JVM/Go stacks reserve more)",
                                         )
 
+            previous_passed = attempt_records[-1].passed_checks if attempt_records else None
+            passed_checks = sum(1 for check in acceptance if check.passed)
+            stalled = (
+                status == "failed"
+                and _is_repairable(error)
+                and bool(acceptance)
+                and previous_passed is not None
+                and passed_checks <= previous_passed
+            )
+            stop_reason = None
+            if stalled:
+                stop_reason = "deterministic acceptance score did not improve"
+                _emit(on_text, "repair: stopped — deterministic acceptance score did not improve")
             attempt_records.append(
                 AttemptRecord(
                     index=attempt,
                     execution_id=execution_id,
                     model=attempt_model,
-                    passed_checks=sum(1 for check in acceptance if check.passed),
+                    passed_checks=passed_checks,
                     total_checks=len(checks),
                     status=status or "built",
+                    stop_reason=stop_reason,
                 )
             )
             feedback_checks = tuple(check for check in acceptance if not check.passed)
-            if status == "failed" and _is_repairable(error) and attempt < max_attempt:
+            if (
+                status == "failed"
+                and _is_repairable(error)
+                and not stalled
+                and attempt < max_attempt
+            ):
                 attempt += 1
                 continue
             break

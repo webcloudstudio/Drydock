@@ -1346,7 +1346,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         escalate_conflict = provider_model_conflict(llm_provider, escalate_model)
         if escalate_conflict is not None:
             raise UsageError(f"escalate model: {escalate_conflict}")
-    repair_attempts = int(getattr(args, "repair_attempts", 1) or 0)
+    repair_attempts = int(getattr(args, "repair_attempts", 3) or 0)
     if repair_attempts < 0:
         raise UsageError("--repair-attempts must be zero or greater.")
     build_dir = Path(args.build_dir).expanduser().resolve() if args.build_dir else None
@@ -1791,9 +1791,9 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
         "--repair-attempts",
         dest="repair_attempts",
         type=int,
-        default=1,
+        default=3,
         metavar="<n>",
-        help="Repair passes after a failed block (0 disables; default 1).",
+        help="Repair passes after a failed block (0 disables; default 3).",
     )
     parser.add_argument(
         "--escalate-model",

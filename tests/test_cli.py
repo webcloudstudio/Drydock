@@ -577,6 +577,7 @@ class TestAnalyzeCommand:
         assert "--dry-run" in out
         assert "--show-prompt" in out
         assert "--repair-attempts" in out
+        assert "default 3" in out
         assert "--escalate-model" in out
         assert "--reset-failed" not in out
         assert "--force" not in out
