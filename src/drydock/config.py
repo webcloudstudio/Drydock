@@ -22,6 +22,7 @@ _KEY_MAP = {
     "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
     "quarterdeck_port": "QUARTERDECK_PORT",
     "diagnose": "DRYDOCK_DIAGNOSE",
+    "sandbox_mem_limit": "DRYDOCK_SANDBOX_MEM_LIMIT",
 }
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -30,6 +31,10 @@ _FALSE_VALUES = {"0", "false", "no", "off"}
 DEFAULT_MODEL = "sonnet"
 DEFAULT_PROMPT_WARN_TOKENS = 50_000
 DEFAULT_QUARTERDECK_PORT = 8080
+# Address-space ceiling, in MB, for a build's acceptance run and everything it spawns. A JVM,
+# a Go toolchain, or a sanitizer build reserves far more virtual address space than it uses;
+# raise this or set it to 0 to lift the bound entirely.
+DEFAULT_SANDBOX_MEM_LIMIT_MB = 4096
 
 
 def _config_path() -> Path:
@@ -245,6 +250,34 @@ def get_diagnose_enabled() -> bool:
     return (value or "").strip().lower() not in _FALSE_VALUES
 
 
+def settable_config_keys() -> tuple[str, ...]:
+    """Every key ``config set`` accepts, in declaration order."""
+    return tuple(_KEY_MAP)
+
+
+def get_sandbox_mem_limit_mb() -> int:
+    """Address-space ceiling in MB for an acceptance run; ``0`` lifts the bound.
+
+    The limit is inherited by every process the acceptance check spawns, so it bounds the
+    built code under test, not just the check. ``RLIMIT_AS`` caps *virtual* address space:
+    a JVM or Go runtime reserves far more than it uses, so those stacks may need it raised.
+    """
+    value, _source = _get("DRYDOCK_SANDBOX_MEM_LIMIT", str(DEFAULT_SANDBOX_MEM_LIMIT_MB))
+    try:
+        limit = int(value or DEFAULT_SANDBOX_MEM_LIMIT_MB)
+    except ValueError:
+        raise ConfigurationError(
+            f"Invalid sandbox_mem_limit: {value!r}\n"
+            "  Expected megabytes as a non-negative integer (0 disables the bound)."
+        ) from None
+    if limit < 0:
+        raise ConfigurationError(
+            f"Invalid sandbox_mem_limit: {value!r}\n"
+            "  Expected megabytes as a non-negative integer (0 disables the bound)."
+        )
+    return limit
+
+
 def config_show() -> list[tuple[str, str, str]]:
     rows = []
     ws_value, ws_source = _get("DRYDOCK_WORKSPACE")
@@ -269,6 +302,11 @@ def config_show() -> list[tuple[str, str, str]]:
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
         ("diagnose", "DRYDOCK_DIAGNOSE", "true"),
+        (
+            "sandbox_mem_limit",
+            "DRYDOCK_SANDBOX_MEM_LIMIT",
+            str(DEFAULT_SANDBOX_MEM_LIMIT_MB),
+        ),
     ):
         value, source = _get(key_upper, default)
         rows.append((display_key, value or "(not set)", source))
@@ -345,6 +383,14 @@ def config_set(key: str, value: str) -> Path:
                 f"Invalid diagnose: {value!r}\n"
                 f"  Valid values: {', '.join(sorted(_TRUE_VALUES | _FALSE_VALUES))}"
             )
+    elif upper == "DRYDOCK_SANDBOX_MEM_LIMIT":
+        stripped = value.strip()
+        if not stripped.isdigit():
+            raise ConfigurationError(
+                f"Invalid sandbox_mem_limit: {value!r}\n"
+                "  Expected megabytes as a non-negative integer (0 disables the bound)."
+            )
+        stored_value = stripped
     elif upper == "QUARTERDECK_PORT":
         try:
             port = int(value)

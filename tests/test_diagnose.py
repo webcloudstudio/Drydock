@@ -82,6 +82,14 @@ def test_classifications_with_their_own_remediation_are_blocked(tmp_path, prefix
     assert should_diagnose(record=record) is False
 
 
+def test_a_resource_exhaustion_kill_spends_no_diagnostic_call(tmp_path):
+    """The cause is already known, so triaging it would buy nothing and cost an LLM run."""
+    record = make_record(
+        tmp_path, classification="programmatic acceptance failed (resource exhaustion): suite"
+    )
+    assert should_diagnose(record=record) is False
+
+
 def test_authentication_failure_is_blocked(tmp_path):
     record = make_record(tmp_path, detail="OAuth session expired and could not be refreshed.")
     assert should_diagnose(record=record) is False

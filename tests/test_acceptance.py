@@ -11,17 +11,15 @@ import pytest
 from drydock import acceptance
 from drydock.acceptance import (
     MEMORY_FAILURE_PREFIX,
-    MEMORY_LIMIT_ENV,
-    MEMORY_LIMIT_MB,
     SUITE_TIMEOUT_SECONDS,
     TIMEOUT_FAILURE_PREFIX,
     TIMEOUT_SECONDS,
     ProgrammaticAcceptance,
-    memory_limit_mb,
     parse_programmatic_acceptance,
     run_programmatic_acceptance,
 )
-from drydock.errors import SpecificationError
+from drydock.config import DEFAULT_SANDBOX_MEM_LIMIT_MB, get_sandbox_mem_limit_mb
+from drydock.errors import ConfigurationError, SpecificationError
 
 _SPEC = """# FEATURE: Verification
 
@@ -184,20 +182,21 @@ def test_the_snippet_is_not_left_in_the_build_directory(tmp_path):
 # verdict must say the code exhausted a resource rather than missed an expectation.
 
 
-def test_memory_limit_defaults_and_reads_the_environment(monkeypatch):
-    monkeypatch.delenv(MEMORY_LIMIT_ENV, raising=False)
-    assert memory_limit_mb() == MEMORY_LIMIT_MB
-    monkeypatch.setenv(MEMORY_LIMIT_ENV, "512")
-    assert memory_limit_mb() == 512
-    monkeypatch.setenv(MEMORY_LIMIT_ENV, "0")
-    assert memory_limit_mb() == 0
-    monkeypatch.setenv(MEMORY_LIMIT_ENV, "not-a-number")
-    assert memory_limit_mb() == MEMORY_LIMIT_MB
+def test_memory_limit_defaults_and_reads_the_configuration(monkeypatch):
+    monkeypatch.delenv("DRYDOCK_SANDBOX_MEM_LIMIT", raising=False)
+    assert get_sandbox_mem_limit_mb() == DEFAULT_SANDBOX_MEM_LIMIT_MB
+    monkeypatch.setenv("DRYDOCK_SANDBOX_MEM_LIMIT", "512")
+    assert get_sandbox_mem_limit_mb() == 512
+    monkeypatch.setenv("DRYDOCK_SANDBOX_MEM_LIMIT", "0")
+    assert get_sandbox_mem_limit_mb() == 0
+    monkeypatch.setenv("DRYDOCK_SANDBOX_MEM_LIMIT", "not-a-number")
+    with pytest.raises(ConfigurationError):
+        get_sandbox_mem_limit_mb()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="RLIMIT_AS is POSIX-only")
 def test_runaway_allocation_is_bounded_and_named_as_resource_exhaustion(tmp_path, monkeypatch):
-    monkeypatch.setenv(MEMORY_LIMIT_ENV, "256")
+    monkeypatch.setenv("DRYDOCK_SANDBOX_MEM_LIMIT", "256")
     result = _run_one("blob = bytearray(1024 * 1024 * 1024)\nassert blob", tmp_path)
     assert not result.passed
     assert result.error is not None
@@ -208,7 +207,7 @@ def test_runaway_allocation_is_bounded_and_named_as_resource_exhaustion(tmp_path
 @pytest.mark.skipif(os.name != "posix", reason="RLIMIT_AS is POSIX-only")
 def test_the_bound_reaches_a_grandchild_process(tmp_path, monkeypatch):
     """The runaway is the built code the check invokes, not the check itself."""
-    monkeypatch.setenv(MEMORY_LIMIT_ENV, "256")
+    monkeypatch.setenv("DRYDOCK_SANDBOX_MEM_LIMIT", "256")
     (tmp_path / "runaway.py").write_text("bytearray(1024 * 1024 * 1024)\n", encoding="utf-8")
     result = _run_one(
         "import subprocess, sys\n"

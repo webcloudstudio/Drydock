@@ -9,6 +9,7 @@ import pytest
 import drydock.config as config
 from drydock.config import (
     DEFAULT_MODEL,
+    DEFAULT_SANDBOX_MEM_LIMIT_MB,
     blueprint_dir_for,
     build_dir_for,
     config_set,
@@ -20,8 +21,10 @@ from drydock.config import (
     get_model,
     get_prompt_warn_tokens,
     get_quarterdeck_port,
+    get_sandbox_mem_limit_mb,
     get_target_directory,
     get_workspace,
+    settable_config_keys,
 )
 from drydock.errors import ConfigurationError
 
@@ -79,6 +82,44 @@ class TestConfigSet:
         with pytest.raises(ConfigurationError, match="Valid values"):
             config_set("codex_sandbox", "docker")
 
+    def test_sandbox_mem_limit_defaults(self, isolated_config):
+        assert get_sandbox_mem_limit_mb() == DEFAULT_SANDBOX_MEM_LIMIT_MB
+
+    def test_set_sandbox_mem_limit(self, isolated_config):
+        # A JVM or Go toolchain reserves far more virtual address space than it uses.
+        config_set("sandbox_mem_limit", "16384")
+        assert get_sandbox_mem_limit_mb() == 16384
+
+    def test_zero_sandbox_mem_limit_lifts_the_bound(self, isolated_config):
+        config_set("sandbox_mem_limit", "0")
+        assert get_sandbox_mem_limit_mb() == 0
+
+    def test_set_invalid_sandbox_mem_limit_raises(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="non-negative integer"):
+            config_set("sandbox_mem_limit", "2GB")
+
+    def test_sandbox_mem_limit_is_shown(self, isolated_config):
+        assert any(row[0] == "sandbox_mem_limit" for row in config_show())
+
+    def test_every_settable_key_is_offered_by_the_cli(self, isolated_config):
+        """The CLI's choices list was hand-maintained and had silently dropped four keys."""
+        import argparse
+
+        from drydock.cli import _build_parser
+
+        def find_key_choices(parser):
+            for action in parser._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    for sub in action.choices.values():
+                        found = find_key_choices(sub)
+                        if found is not None:
+                            return found
+                elif action.dest == "key" and action.choices:
+                    return set(action.choices)
+            return None
+
+        assert find_key_choices(_build_parser()) == set(settable_config_keys())
+
     def test_set_prompt_warn_tokens(self, isolated_config):
         config_set("prompt_warn_tokens", "75000")
         assert get_prompt_warn_tokens() == 75000
@@ -93,9 +134,11 @@ class TestConfigSet:
 
 
 class TestConfigShow:
-    def test_show_returns_nine_rows(self, isolated_config):
+    def test_show_covers_every_settable_key(self, isolated_config):
+        # Derived, not a hardcoded count: a fixed number breaks on every added key and
+        # says nothing about which key is missing.
         rows = config_show()
-        assert len(rows) == 9
+        assert {row[0] for row in rows} == set(settable_config_keys())
         assert "drydock_build_escalate_model" in {row[0] for row in rows}
 
     def test_show_includes_codex_sandbox(self, isolated_config):

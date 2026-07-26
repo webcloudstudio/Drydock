@@ -58,7 +58,7 @@ from drydock.build_plan import (
     set_applied_specs,
     stale_applied_specs,
 )
-from drydock.config import blueprint_dir_for, build_dir_for
+from drydock.config import blueprint_dir_for, build_dir_for, get_sandbox_mem_limit_mb
 from drydock.dependency_gate import (
     DependencyGateResult,
     RegistryClient,
@@ -1941,12 +1941,22 @@ def build_target(
                                     f"tests: FAILED ({passed}/{len(checks)}) — "
                                     + ", ".join(check.check_id for check in failed_checks),
                                 )
+                                # The verdict fed to the repair pass stays about the defect —
+                                # an LLM told "raise the limit" would do exactly that. The
+                                # operator's escape hatch belongs on the console instead.
                                 for check in failed_checks:
                                     if _resource_verdict(check):
                                         _emit(
                                             on_text,
                                             f"  {check.check_id}: code under test exhausted "
                                             "its resource budget — stopped by the harness",
+                                        )
+                                        _emit(
+                                            on_text,
+                                            "  bound: "
+                                            f"{get_sandbox_mem_limit_mb()} MB · raise with "
+                                            "'drydock config set sandbox_mem_limit <MB>' "
+                                            "(0 disables; JVM/Go stacks reserve more)",
                                         )
 
             attempt_records.append(

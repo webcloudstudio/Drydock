@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from drydock import __copyright__, __version__
+from drydock.config import settable_config_keys
 from drydock.errors import DrydockError, RecordedError, UsageError
 from drydock.stubs import not_implemented
 
@@ -1748,17 +1749,10 @@ def _build_parser() -> argparse.ArgumentParser:
     cfg_sub = p_config.add_subparsers(dest="config_command", metavar="<subcommand>")
     cfg_sub.add_parser("show", help="Display current configuration values and sources.")
     p_set = cfg_sub.add_parser("set", help="Set a configuration value.")
-    p_set.add_argument(
-        "key",
-        choices=[
-            "drydock_build_directory",
-            "drydock_workspace",
-            "drydock_model",
-            "llm_provider",
-            "prompt_warn_tokens",
-            "quarterdeck_port",
-        ],
-    )
+    # Derived from the config module's key map, never restated here: a hand-maintained copy
+    # silently drops keys, and a key absent from this list is unsettable however correctly
+    # ``config_set`` and ``config show`` handle it.
+    p_set.add_argument("key", choices=list(settable_config_keys()))
     p_set.add_argument("value", metavar="<value>")
 
     # ── init ─────────────────────────────────────────────────────────────────

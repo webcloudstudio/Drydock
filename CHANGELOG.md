@@ -10,8 +10,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-07-25: Programmatic Acceptance runs under a bounded address space (4096 MB, overridable
-  with `DRYDOCK_ACCEPTANCE_MEMORY_MB`) in its own process group. Built code that allocates
+- 2026-07-25: Programmatic Acceptance runs under a bounded address space in its own process
+  group, configured by `drydock config set sandbox_mem_limit <MB>` (default 4096; `0` lifts the
+  bound, and JVM or Go toolchains generally need it raised). Built code that allocates
   without bound or never terminates is stopped by the kernel in seconds instead of driving the
   host into swap for the whole timeout window, and the timeout now reaps the check's whole
   process tree rather than orphaning a runaway grandchild. A resource kill is reported as

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
+from drydock.config import get_sandbox_mem_limit_mb
 from drydock.errors import SpecificationError
 from drydock.proof_integrity import analyze_proof
 
@@ -22,12 +23,6 @@ HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 TIMEOUT_SECONDS = 60
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
-# Address-space ceiling inherited by the check and every process it spawns. Built code that
-# runs away allocating is bounded by the kernel in seconds instead of driving the host into
-# swap for the whole timeout window. Raise it with ``DRYDOCK_ACCEPTANCE_MEMORY_MB`` when a
-# check legitimately needs more; set the variable to ``0`` to disable the bound entirely.
-MEMORY_LIMIT_MB = 4096
-MEMORY_LIMIT_ENV = "DRYDOCK_ACCEPTANCE_MEMORY_MB"
 # Category prefixes for a check that failed by exhausting a resource rather than by missing
 # an expectation. Consumers use these to gate a repair pass on the resource fact.
 MEMORY_FAILURE_PREFIX = "exhausted memory"
@@ -44,18 +39,6 @@ def _timeout_output_text(value: bytes | str | None) -> str:
     if isinstance(value, bytes):
         return value.decode(errors="replace")
     return value
-
-
-def memory_limit_mb() -> int:
-    """The configured address-space ceiling in MB; ``0`` disables the bound."""
-    raw = os.environ.get(MEMORY_LIMIT_ENV, "").strip()
-    if not raw:
-        return MEMORY_LIMIT_MB
-    try:
-        value = int(raw)
-    except ValueError:
-        return MEMORY_LIMIT_MB
-    return max(0, value)
 
 
 def _child_limits(limit_mb: int) -> Callable[[], None] | None:
@@ -323,7 +306,7 @@ def run_programmatic_acceptance(
         "DRYDOCK_BLUEPRINT_DIR": str(blueprint_dir),
         "PYTHONPATH": pythonpath,
     }
-    limit_mb = memory_limit_mb()
+    limit_mb = get_sandbox_mem_limit_mb()
     preexec = _child_limits(limit_mb)
     for check in checks:
         # Run from a real file, never ``python -c``: a ``-c`` traceback reports
