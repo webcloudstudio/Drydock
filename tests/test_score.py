@@ -280,6 +280,30 @@ def test_release_score_fails_on_failing_proof(tmp_path):
     assert any("st-proof" in blocker for blocker in result.blockers)
 
 
+def test_release_score_blocks_on_non_ears_criterion_wording(tmp_path):
+    # The release gate is the one hard EARS gate: earlier stages tolerate the wording so a
+    # copy-editing slip never halts the pipeline, but the project cannot be declared delivered
+    # against a criterion that does not read as a requirement.
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    sea = target_dir / "SEA_TRIALS.md"
+    sea.write_text(
+        sea.read_text(encoding="utf-8").replace(
+            "Criterion: The built artifact shall contain its marker.",
+            "Criterion: Every built artifact shall contain its marker.",
+        ),
+        encoding="utf-8",
+    )
+
+    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+
+    assert not result.complete
+    assert result.exit_code() == 1
+    wording = [blocker for blocker in result.blockers if "st-proof" in blocker]
+    assert wording, result.blockers
+    assert "The <system> shall <response>" in wording[0]
+    assert '"Every built artifact shall contain its marker."' in wording[0]
+
+
 def test_release_score_blocks_on_dirty_worktree(tmp_path):
     target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
     (build_dir / "marker.txt").write_text("changed\n", encoding="utf-8")

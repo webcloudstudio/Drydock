@@ -9,6 +9,7 @@ import pytest
 from drydock.errors import SpecificationError
 from drydock.sea_trials import (
     EARS_PATTERNS,
+    format_wording_failures,
     is_stack_selection_question,
     normalize_sea_trials_text,
     parse_sea_trials_text,
@@ -183,15 +184,86 @@ def test_every_ears_pattern_is_covered_by_a_test():
     assert set(EARS_PATTERNS) == {"ubiquitous", "event", "state", "option", "unwanted"}
 
 
-def test_criterion_not_matching_its_declared_pattern_is_rejected():
-    with pytest.raises(SpecificationError, match="does not match the event EARS pattern"):
+def test_each_ears_pattern_is_accepted_without_a_wording_diagnostic():
+    document = parse_sea_trials_text(
+        _trial(
+            type="technical",
+            required="yes",
+            criterion="The system shall record every order.",
+            verification="proof",
+            pattern="ubiquitous",
+        )
+    )
+
+    assert document.wording == ()
+
+
+def test_criterion_not_matching_its_declared_pattern_is_a_wording_diagnostic():
+    # Wording is not structure. The document stays usable so a copy-editing slip cannot halt the
+    # pipeline; analyze repairs it and `score release` gates on it.
+    document = parse_sea_trials_text(
+        _trial(
+            type="behavioral",
+            required="yes",
+            criterion="Orders get recorded eventually.",
+            verification="proof",
+            pattern="event",
+        )
+    )
+
+    assert len(document.trials) == 1
+    assert document.trials[0].criterion == "Orders get recorded eventually."
+    assert len(document.wording) == 1
+    diagnostic = document.wording[0]
+    assert diagnostic.criterion_id == "st-001"
+    assert diagnostic.pattern == "event"
+    assert diagnostic.expected == "When <trigger>, the <system> shall <response>"
+    assert diagnostic.criterion == "Orders get recorded eventually."
+
+
+def test_format_wording_failures_names_the_criterion_and_the_expected_shape():
+    document = parse_sea_trials_text(
+        _trial(
+            type="technical",
+            required="yes",
+            criterion="Every supplied conformance example shall pass.",
+            verification="proof",
+            pattern="ubiquitous",
+        )
+    )
+
+    text = format_wording_failures(document)
+
+    assert "st-001" in text
+    assert "The <system> shall <response>" in text
+    assert '"Every supplied conformance example shall pass."' in text
+    assert "SEA_TRIALS.md" in text
+
+
+def test_format_wording_failures_is_empty_for_a_clean_document():
+    document = parse_sea_trials_text(
+        _trial(
+            type="technical",
+            required="yes",
+            criterion="The system shall record every order.",
+            verification="proof",
+            pattern="ubiquitous",
+        )
+    )
+
+    assert format_wording_failures(document) == ""
+
+
+def test_invalid_pattern_name_is_still_rejected():
+    # The Pattern *name* is structural: it decides whether the trial is an assertion at all.
+    with pytest.raises(SpecificationError, match="invalid Pattern"):
         parse_sea_trials_text(
             _trial(
-                type="behavioral",
+                type="technical",
                 required="yes",
-                criterion="Orders get recorded eventually.",
+                criterion="The system shall record orders.",
                 verification="proof",
-                pattern="event",
+                pattern="whenever",
             )
         )
 
@@ -221,19 +293,22 @@ def test_qualitative_criterion_must_not_declare_a_pattern():
         )
 
 
-def test_positive_ubiquitous_guardrail_is_rejected():
+def test_positive_ubiquitous_guardrail_is_a_wording_diagnostic():
     # A guardrail is a prohibition. A positive-worded ubiquitous criterion ("shall omit",
-    # not "shall not/never") is steered to Pattern: unwanted.
-    with pytest.raises(SpecificationError, match="must be a prohibition"):
-        parse_sea_trials_text(
-            _trial(
-                type="guardrail",
-                required="yes",
-                criterion="The system shall omit personal data.",
-                verification="evidence",
-                pattern="ubiquitous",
-            )
+    # not "shall not/never") is steered to Pattern: unwanted — as wording, not structure.
+    document = parse_sea_trials_text(
+        _trial(
+            type="guardrail",
+            required="yes",
+            criterion="The system shall omit personal data.",
+            verification="evidence",
+            pattern="ubiquitous",
         )
+    )
+
+    assert len(document.wording) == 1
+    assert "must state a prohibition" in document.wording[0].message
+    assert document.wording[0].expected == "If <trigger>, then the <system> shall <mitigation>"
 
 
 def test_negative_ubiquitous_guardrail_is_accepted():

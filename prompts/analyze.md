@@ -674,7 +674,7 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   same criterion on reruns. Technical and behavioral criteria normally use Blueprint proof;
   outcomes use measurement; subjective criteria use evidence-bound LLM judgment.
 - Technical, behavioral, and guardrail criteria are written in EARS and declare the `Pattern`
-  their `Criterion` matches. Drydock rejects the analysis when the wording does not match:
+  their `Criterion` matches:
 
   | Pattern | Required shape |
   |---|---|
@@ -683,6 +683,15 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   | `state` | `While <state>, the <system> shall <response>` |
   | `option` | `Where <feature>, the <system> shall <response>` |
   | `unwanted` | `If <trigger>, then the <system> shall <mitigation>` |
+
+  Drydock checks the shape literally. The `Criterion` string begins with its pattern's leading
+  keyword (`The`, `When`, `While`, `Where`, `If`), and the system under test is the grammatical
+  subject of `shall`. Stating the requirement from the test's point of view fails the check:
+
+  | | |
+  |---|---|
+  | Rejected | `Every supplied CommonMark conformance example shall pass.` |
+  | Accepted | `The parser shall pass every supplied CommonMark conformance example.` |
 
 - Qualitative and outcome criteria never use EARS and leave `Pattern` blank. They are measurement
   contracts settled by `Baseline`, `Operator`, `Target`, and `Unit`.

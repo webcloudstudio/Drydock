@@ -1235,7 +1235,82 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.sea_trials_path == target_dir / "SEA_TRIALS.md"
 
-    def test_malformed_sea_trials_is_a_blocker_without_failing_analyze(self, tmp_path):
+    def test_ears_wording_slip_is_repaired_by_a_second_pass(self, tmp_path):
+        # Observed on the commonmark target: a criterion stating the requirement from the test's
+        # point of view. One bounded re-ask corrects the wording; nothing is blocked.
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        bad_wording = _VALID_LLM_OUTPUT.replace(
+            _SEA_TRIALS_CONTENT,
+            """# Sea Trials: TestProject
+
+## st-001: Complete conformance
+Type: technical
+Required: yes
+Criterion: Every supplied conformance example shall pass.
+Verification: llm
+Pattern: ubiquitous""",
+        )
+        repaired = """=== SEA_TRIALS.md ===
+# Sea Trials: TestProject
+
+## st-001: Complete conformance
+Type: technical
+Required: yes
+Criterion: The parser shall pass every supplied conformance example.
+Verification: llm
+Pattern: ubiquitous
+=== END SEA_TRIALS.md ==="""
+        calls: list[str] = []
+
+        def runner(prompt_text, *args, **kwargs):
+            calls.append(prompt_text)
+            return FakeRun(text=repaired if len(calls) > 1 else bad_wording)
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert result.ok is True
+        assert len(calls) == 2
+        assert result.sea_trials_created is True
+        assert result.warnings == ()
+        sea_trials = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+        assert "The parser shall pass every supplied conformance example." in sea_trials
+        assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_unrepaired_ears_wording_warns_but_never_blocks(self, tmp_path):
+        # The repair pass returns the same bad wording. The criteria are still usable, so the
+        # document is written and the defect is carried as a warning for `score release`.
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        bad_wording = _VALID_LLM_OUTPUT.replace(
+            _SEA_TRIALS_CONTENT,
+            """# Sea Trials: TestProject
+
+## st-001: Operational
+Type: guardrail
+Required: yes
+Criterion: The system shall be operational.
+Verification: llm
+Pattern: ubiquitous""",
+        )
+        calls: list[str] = []
+
+        def runner(prompt_text, *args, **kwargs):
+            calls.append(prompt_text)
+            return FakeRun(text=bad_wording)
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert result.ok is True
+        assert len(calls) == 2
+        assert result.sea_trials_created is True
+        assert len(result.warnings) == 1
+        assert "must state a prohibition" in result.warnings[0]
+        sea_trials = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+        assert "The system shall be operational." in sea_trials
+        assert not (target_dir / "BLOCKERS.md").exists()
+
+    def test_structurally_invalid_sea_trials_is_a_blocker_without_failing_analyze(self, tmp_path):
+        # An unknown Pattern name makes the contract unusable; that is a genuine Commander gate
+        # and is not re-asked.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         broken = _VALID_LLM_OUTPUT.replace(
             _SEA_TRIALS_CONTENT,
@@ -1244,27 +1319,44 @@ class TestAnalyze:
 ## st-001: Operational
 Type: guardrail
 Required: yes
-Criterion: The system is operational.
+Criterion: The system shall never lose an order.
 Verification: llm
-Pattern: ubiquitous""",
+Pattern: whenever""",
         )
+        calls: list[str] = []
 
-        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=broken))
+        def runner(prompt_text, *args, **kwargs):
+            calls.append(prompt_text)
+            return FakeRun(text=broken)
+
+        result = analyze("MyTarget", target_dir, runner=runner)
 
         assert result.ok is True
+        assert len(calls) == 1
         assert result.sea_trials_created is False
         assert result.warnings == (
-            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 is a guardrail and must be a "
-            "prohibition: use Pattern: unwanted (If <trigger>, then the <system> shall "
-            "<mitigation>) or a negative ubiquitous criterion (The <system> shall not/never "
-            "<action>)",
+            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 has invalid Pattern: whenever",
         )
         assert not (target_dir / "SEA_TRIALS.md").exists()
         assert (target_dir / "ANALYSIS.md").exists()
         blockers = (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
         assert "blocker-sea-trials" in blockers
-        assert "must be a prohibition" in blockers
+        assert "invalid Pattern" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
+
+    def test_clean_analysis_makes_exactly_one_llm_call(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        calls: list[str] = []
+
+        def runner(prompt_text, *args, **kwargs):
+            calls.append(prompt_text)
+            return FakeRun()
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert result.ok is True
+        assert len(calls) == 1
+        assert result.warnings == ()
 
     def test_negative_ubiquitous_guardrail_creates_sea_trials(self, tmp_path):
         # A blanket "never" guardrail phrased as a negative ubiquitous criterion validates:

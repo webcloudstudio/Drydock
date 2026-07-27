@@ -165,10 +165,26 @@ class SeaTrialQuestion:
 
 
 @dataclass(frozen=True)
+class WordingDiagnostic:
+    """One criterion whose prose does not match the EARS pattern it declares.
+
+    Reported rather than raised: the document is still machine-usable, so readers proceed while
+    ``analyze`` repairs the wording and ``score release`` refuses to pass it.
+    """
+
+    criterion_id: str
+    pattern: str
+    criterion: str
+    expected: str
+    message: str
+
+
+@dataclass(frozen=True)
 class SeaTrialsDocument:
     project: str
     trials: tuple[SeaTrial, ...]
     questions: tuple[SeaTrialQuestion, ...]
+    wording: tuple[WordingDiagnostic, ...] = ()
 
 
 #: Canonical reader documentation embedded in ``SEA_TRIALS.md``. Drydock owns this text and
@@ -269,8 +285,13 @@ def _extract(value: str, criterion_id: str) -> str:
     return pattern
 
 
-def _pattern(value: str, *, trial_type: str, criterion: str, criterion_id: str) -> str:
-    """Validate the EARS Pattern against the trial type and the criterion wording."""
+def _pattern(value: str, *, trial_type: str, criterion_id: str) -> str:
+    """Validate the EARS Pattern *name* against the trial type.
+
+    The name is structural: it decides whether the trial is an assertion at all, so a bad name
+    makes the document unusable and raises. The criterion's *wording* is checked separately by
+    :func:`_wording_diagnostic`, which reports rather than raises.
+    """
     pattern = value.strip().lower()
     if trial_type not in ASSERTION_TYPES:
         if pattern:
@@ -286,18 +307,63 @@ def _pattern(value: str, *, trial_type: str, criterion: str, criterion_id: str) 
         )
     if pattern not in EARS_PATTERNS:
         raise SpecificationError(f"SEA_TRIALS.md {criterion_id} has invalid Pattern: {pattern}")
+    return pattern
+
+
+def _wording_diagnostic(
+    *, pattern: str, trial_type: str, criterion: str, criterion_id: str
+) -> WordingDiagnostic | None:
+    """Report an EARS wording violation, or None when the criterion reads correctly.
+
+    Nothing in Drydock computes on the EARS shape; it is writing discipline that keeps a criterion
+    unambiguous to a human reader and to the judge model. A violation is therefore a diagnostic:
+    ``analyze`` repairs it and ``score release`` gates on it, but no reader is blocked by it.
+    """
+    if not pattern:
+        return None
     if trial_type == "guardrail" and not _is_guardrail_prohibition(pattern, criterion):
-        raise SpecificationError(
-            f"SEA_TRIALS.md {criterion_id} is a guardrail and must be a prohibition: use "
-            f"Pattern: unwanted ({EARS_SHAPES['unwanted']}) or a negative ubiquitous criterion "
-            "(The <system> shall not/never <action>)"
+        return WordingDiagnostic(
+            criterion_id=criterion_id,
+            pattern=pattern,
+            criterion=criterion,
+            expected=EARS_SHAPES["unwanted"],
+            message=(
+                f"{criterion_id} is a guardrail and must state a prohibition: use "
+                f"Pattern: unwanted ({EARS_SHAPES['unwanted']}) or a negative ubiquitous "
+                "criterion (The <system> shall not/never <action>)"
+            ),
         )
     if not EARS_PATTERNS[pattern].match(criterion):
-        raise SpecificationError(
-            f"SEA_TRIALS.md {criterion_id} Criterion does not match the {pattern} EARS pattern; "
-            f"expected: {EARS_SHAPES[pattern]}"
+        return WordingDiagnostic(
+            criterion_id=criterion_id,
+            pattern=pattern,
+            criterion=criterion,
+            expected=EARS_SHAPES[pattern],
+            message=(
+                f"{criterion_id} declares Pattern: {pattern} but its Criterion is not in that shape"
+            ),
         )
-    return pattern
+    return None
+
+
+def format_wording_failures(document: SeaTrialsDocument) -> str:
+    """Operator-facing text for every EARS wording violation in a parsed document.
+
+    Shared by the ``analyze`` warning and the ``score release`` completion blocker so the wording
+    a Commander reads is identical wherever the violation surfaces.
+    """
+    lines: list[str] = []
+    for item in document.wording:
+        lines.append(f"SEA_TRIALS.md {item.message}.")
+        lines.append(f"  expected: {item.expected}")
+        lines.append(f'  found:    "{item.criterion}"')
+        lines.append(
+            "  Rewrite the sentence so the system is the grammatical subject and it begins with "
+            "the pattern's leading keyword."
+        )
+    if lines:
+        lines.append("  Edit SEA_TRIALS.md directly, or re-run drydock analyze.")
+    return "\n".join(lines)
 
 
 def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
@@ -307,6 +373,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
     lines = text.splitlines()
     trials: list[SeaTrial] = []
     questions: list[SeaTrialQuestion] = []
+    wording: list[WordingDiagnostic] = []
     seen: set[str] = set()
     index = 0
     while index < len(lines):
@@ -368,6 +435,19 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                 target=target,
                 unit=unit,
             )
+            pattern = _pattern(
+                fields.get("pattern", ""),
+                trial_type=trial_type,
+                criterion_id=criterion_id,
+            )
+            diagnostic = _wording_diagnostic(
+                pattern=pattern,
+                trial_type=trial_type,
+                criterion=criterion,
+                criterion_id=criterion_id,
+            )
+            if diagnostic is not None:
+                wording.append(diagnostic)
             trials.append(
                 SeaTrial(
                     criterion_id=criterion_id,
@@ -376,12 +456,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                     required=required_raw == "yes",
                     criterion=criterion,
                     verification=verification,
-                    pattern=_pattern(
-                        fields.get("pattern", ""),
-                        trial_type=trial_type,
-                        criterion=criterion,
-                        criterion_id=criterion_id,
-                    ),
+                    pattern=pattern,
                     command=command,
                     extract=extract,
                     evidence=evidence,
@@ -425,7 +500,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             )
     if not trials:
         raise SpecificationError("SEA_TRIALS.md contains no project acceptance criteria")
-    return SeaTrialsDocument(project, tuple(trials), tuple(questions))
+    return SeaTrialsDocument(project, tuple(trials), tuple(questions), tuple(wording))
 
 
 def _strip_documentation(text: str) -> str:
