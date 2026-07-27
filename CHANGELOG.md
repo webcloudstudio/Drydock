@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-07-27: `drydock plan` now reports the exact location and a JSON-escaped, 100-character
+  preview when a model emits text outside otherwise complete artifact blocks. A batch with no
+  structural or plan-integrity defect may use the already-enabled standoff-diagnosis call as a
+  narrow semantic waiver: exact approval discards only trivial transition text and resumes the
+  original transaction; rejection, malformed judgment, disabled diagnosis, artifact-like text, or
+  more than 100 outside characters remains fail-closed and writes no Blueprint or Manifest
+  artifacts. The waiver and original plan retain separate execution evidence.
+
 - 2026-07-26: Reasoning effort is controllable across the command surface. `--effort
   <low|medium|high|xhigh|max>` is an invocation-wide override accepted by every command, and
   `drydock config set drydock_effort <level>` sets the standing default. Precedence is the flag,

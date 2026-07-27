@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260726 V17
+version: 20260727 V18
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -494,6 +494,15 @@ commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output o
 block is a protocol violation and will cause the run to fail. Start your response with the first
 `=== ... ===` block.
 
+The response is processed by a deterministic parser. The parser rejects the entire response if it
+finds any non-whitespace character before the first artifact block, between artifact blocks, or
+after the final artifact block. A rejected response writes no Blueprint files and no
+`MANIFEST.md`.
+
+Do not emit transition or completion text such as `Now the Manifest.`, `Next file:`,
+`Here is the completed Blueprint.`, or `Done.` After `=== END <name> ===`, emit only whitespace
+followed immediately by the next `=== <name> ===` delimiter, or end the response.
+
 ### Success Mode
 
 Use Success Mode only when you can produce a complete, internally consistent Blueprint and
@@ -605,5 +614,12 @@ Required action:
   `implementation details here`; unresolved items belong in `## Open Questions`.
 - Do not emit empty authored files.
 - Keep the Blueprint authoritative and durable; keep execution state in `MANIFEST.md`.
+
+Before responding, verify:
+
+1. The first non-whitespace text is an opening delimiter.
+2. Every opening delimiter has exactly one matching END delimiter.
+3. `MANIFEST.md` is the final block.
+4. No non-whitespace text exists outside the blocks.
 
 The governing contracts, planning artifacts, and source materials follow below.

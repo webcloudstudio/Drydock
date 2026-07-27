@@ -64,6 +64,9 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "Never emit `MANIFEST.md` in Error Mode or Blocked Mode" in prompt
     assert "Every `implements:` filename in `MANIFEST.md` must exactly match" in prompt
     assert "Never emit `AGENTS.md`." in prompt
+    assert "The response is processed by a deterministic parser." in prompt
+    assert "Now the Manifest." in prompt
+    assert "No non-whitespace text exists outside the blocks." in prompt
 
 
 def test_plan_prompt_separates_final_sea_trial_traceability_from_story_execution():
@@ -319,10 +322,16 @@ def _assert_recorded_error(
 
 @pytest.fixture(autouse=True)
 def fake_compactor(monkeypatch):
+    from drydock.diagnose import reset_diagnosis_guard
+
+    reset_diagnosis_guard()
+
     def fake(prompt, working_directory, **kwargs):
         return FakeRun(text="# Compact\n\nBody\n", execution_id="compact-fake")
 
     monkeypatch.setattr("drydock.rigging_compact.run_prompt", fake)
+    yield
+    reset_diagnosis_guard()
 
 
 def _fake(text: str):
@@ -1886,18 +1895,21 @@ def test_missing_required_block_explains_required_response_contract(tmp_path):
     )
 
 
-def test_leading_preamble_is_stripped_and_recovered(tmp_path):
-    # A benign narration sentence before the first delimiter (common in reuse mode)
-    # is discarded rather than failing an otherwise-complete plan.
+def test_leading_preamble_is_reported_without_diagnostic_recovery(tmp_path):
     target_dir = _make_target(tmp_path)
     out = "Blueprint already contains all required specs, so I'm emitting MANIFEST.md.\n\n"
     out += _llm_output()
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
-    assert (target_dir / "MANIFEST.md").exists()
-    assert (target_dir / "blueprint" / "FEATURE-Status.md").exists()
-    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail='before ARCHITECTURE.md: "Blueprint already contains',
+    )
+    assert not (target_dir / "MANIFEST.md").exists()
 
 
 def test_preamble_containing_delimiter_fragment_still_refuses(tmp_path):
@@ -1912,7 +1924,7 @@ def test_preamble_containing_delimiter_fragment_still_refuses(tmp_path):
         excinfo,
         target_dir,
         classification="model artifact contract failed",
-        detail="complete plan artifact",
+        detail='before ARCHITECTURE.md: "Note: I use === delimiters below.',
     )
 
     assert not (target_dir / "MANIFEST.md").exists()
@@ -1946,21 +1958,175 @@ def test_repair_missing_leading_delimiter_refuses_ordinary_preamble():
     assert _repair_missing_leading_delimiter("Here is the plan.\n" + _llm_output()) is None
 
 
-def test_transition_text_between_blocks_is_ignored(tmp_path):
+def test_transition_text_between_blocks_is_reported_without_recovery(tmp_path):
     target_dir = _make_target(tmp_path)
     output = _llm_output().replace(
-        "=== SCREEN-SETUP-SUMMARY.md ===\n",
-        "Continuing with the remaining files next.\n=== SCREEN-SETUP-SUMMARY.md ===\n",
+        "=== MANIFEST.md ===\n",
+        "Continuing with the remaining files next.\n=== MANIFEST.md ===\n",
         1,
     )
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(output))
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(output))
 
-    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="Continuing with the remaining files next.",
+    )
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def _artifact_waiver_runner(plan_output: str, decision_output: str):
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append((prompt, kwargs))
+        if kwargs["command_name"] == "plan":
+            return FakeRun(text=plan_output, execution_id="plan-exec")
+        assert kwargs["command_name"] == "diagnose"
+        return FakeRun(text=decision_output, execution_id="waiver-exec")
+
+    runner.calls = calls
+    return runner
+
+
+def test_trivial_outside_text_is_written_only_after_diagnostic_approval(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output().replace(
+        "=== MANIFEST.md ===\n",
+        "Now the Manifest.\n\n=== MANIFEST.md ===\n",
+        1,
+    )
+    runner = _artifact_waiver_runner(
+        output,
+        "DECISION: APPROVE_TRIVIAL_OUTSIDE_TEXT\n"
+        "REASON: This is only a transition sentence between complete artifacts.\n",
+    )
+    progress = []
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+        on_text=progress.append,
+    )
+
     assert (target_dir / "MANIFEST.md").exists()
+    assert result.waiver_execution_id == "waiver-exec"
+    assert any("diagnostic approval removed 17 outside character(s)" in w for w in result.warnings)
+    assert any(
+        'between FEATURE-Status.md and MANIFEST.md: "Now the Manifest."' in w
+        for w in result.warnings
+    )
+    assert any("requesting diagnostic approval" in line for line in progress)
+    assert len(runner.calls) == 2
+    waiver_prompt, waiver_kwargs = runner.calls[1]
+    assert 'TEXT_JSON: "Now the Manifest."' in waiver_prompt
+    assert "STRUCTURE_VALID: true" in waiver_prompt
+    assert "PLAN_VALID: true" in waiver_prompt
+    assert waiver_kwargs["parameters"]["decision"] == "artifact-waiver"
 
 
-def test_transition_text_between_write_calls_is_ignored(tmp_path):
+def test_rejected_outside_text_writes_no_artifacts_and_spends_one_diagnostic(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output().replace(
+        "=== MANIFEST.md ===\n",
+        "The Manifest omits two unresolved stories.\n=== MANIFEST.md ===\n",
+        1,
+    )
+    runner = _artifact_waiver_runner(
+        output,
+        "DECISION: REJECT_OUTSIDE_TEXT\nREASON: The text reports a material omission.\n",
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            runner=runner,
+            allow_diagnostic_recovery=True,
+        )
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="Waiver rejected: The text reports a material omission.",
+    )
+    assert len(runner.calls) == 2
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_outside_text_over_100_characters_is_not_submitted_for_waiver(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output().replace(
+        "=== MANIFEST.md ===\n",
+        ("x" * 101) + "\n=== MANIFEST.md ===\n",
+        1,
+    )
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        return FakeRun(text=output, execution_id="plan-exec")
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            runner=runner,
+            allow_diagnostic_recovery=True,
+        )
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="… (1 more characters)",
+    )
+    assert len(calls) == 1
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_invalid_candidate_plan_never_reaches_artifact_waiver(tmp_path):
+    target_dir = _make_target(tmp_path)
+    output = _llm_output(_manifest(implements="GHOST.md")).replace(
+        "=== MANIFEST.md ===\n",
+        "Now the Manifest.\n=== MANIFEST.md ===\n",
+        1,
+    )
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs)
+        return FakeRun(text=output, execution_id="plan-exec")
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            runner=runner,
+            allow_diagnostic_recovery=True,
+        )
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="implements missing spec file",
+    )
+    assert len(calls) == 1
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_transition_text_between_write_calls_is_rejected(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     output = _llm_output()
@@ -1976,10 +2142,16 @@ def test_transition_text_between_write_calls_is_ignored(tmp_path):
         if index == 0:
             calls.append("Continuing with the remaining files next.")
 
-    result = create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake("\n".join(calls)))
 
-    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
-    assert (target_dir / "MANIFEST.md").exists()
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="model artifact contract failed",
+        detail="Text appeared outside simulated Write artifacts.",
+    )
+    assert not (target_dir / "MANIFEST.md").exists()
 
 
 def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
@@ -1997,7 +2169,7 @@ def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
         excinfo,
         target_dir,
         classification="model artifact contract failed",
-        detail="complete plan artifact",
+        detail="Duplicate artifact block: ARCHITECTURE.md",
     )
 
     assert not (target_dir / "MANIFEST.md").exists()

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import tempfile
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -69,10 +70,6 @@ _WRITE_CALL_RE = re.compile(
     re.DOTALL,
 )
 _FUNCTION_WRAPPER_RE = re.compile(r"</?function_calls>\s*")
-_IGNORABLE_OUTSIDE_LINE_RE = re.compile(
-    r"^(?:Continuing|Next|Proceeding|Writing|Now writing)\b.*$",
-    re.IGNORECASE,
-)
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _PLANNING_INSTRUCTIONS_RE = re.compile(r"^## Planning Instructions\s*$", re.MULTILINE)
 _SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.-])(sources/[A-Za-z0-9_./-]+)")
@@ -85,6 +82,9 @@ _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
 # Hard cap on story count; plan create refuses to emit an over-decomposed plan.
 _STORY_CAP = 100
+_OUTSIDE_TEXT_LIMIT = 100
+_OUTSIDE_SPAN_LIMIT = 3
+_OUTSIDE_FORBIDDEN_MARKERS = ("===", "<invoke", "<function_calls", "```", "~~~")
 # Legal `parent:` block types per block type. A story or spike groups under a
 # feature; an ac gates a story, a spike, or a feature group.
 _PARENT_BLOCK_TYPES = {
@@ -153,6 +153,7 @@ class PlanCreateResult:
     authored_files: tuple[Path, ...] = ()
     warnings: tuple[str, ...] = ()
     execution_id: str | None = None
+    waiver_execution_id: str | None = None
     plan_mode: str = ""
     conformed_files: tuple[Path, ...] = ()
 
@@ -166,6 +167,57 @@ class ExistingSpec:
     header_fields: dict[str, str]
     body: str
     reusable: bool
+
+
+@dataclass(frozen=True)
+class OutsideTextSpan:
+    """One non-whitespace span before, between, or after complete artifact blocks."""
+
+    text: str
+    previous_artifact: str | None
+    next_artifact: str | None
+
+    @property
+    def normalized(self) -> str:
+        return self.text.strip()
+
+    @property
+    def location(self) -> str:
+        if self.previous_artifact is None:
+            return f"before {self.next_artifact or 'the first artifact'}"
+        if self.next_artifact is None:
+            return f"after {self.previous_artifact}"
+        return f"between {self.previous_artifact} and {self.next_artifact}"
+
+
+class OutsideArtifactTextError(SpecificationError):
+    """A structurally complete artifact batch contains text outside its blocks."""
+
+    def __init__(
+        self,
+        *,
+        blocks: dict[str, str],
+        spans: tuple[OutsideTextSpan, ...],
+        result: CompletedRun,
+    ):
+        self.blocks = blocks
+        self.spans = spans
+        details = []
+        for span in spans:
+            preview = json.dumps(
+                span.normalized[:_OUTSIDE_TEXT_LIMIT],
+                ensure_ascii=False,
+            )
+            remaining = len(span.normalized) - _OUTSIDE_TEXT_LIMIT
+            suffix = f" … ({remaining} more characters)" if remaining > 0 else ""
+            details.append(f"  {span.location}: {preview}{suffix}")
+        message = (
+            "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+            "  Non-whitespace text appeared outside delimited artifact blocks.\n"
+            + "\n".join(details)
+            + "\n  No Blueprint or Manifest artifacts were written."
+        )
+        super().__init__(_with_execution_evidence(message, result))
 
 
 # ── Parsing ──────────────────────────────────────────────────────────────────────
@@ -206,25 +258,6 @@ def _repair_missing_leading_delimiter(text: str) -> str | None:
     return repaired
 
 
-def _strip_leading_preamble(text: str) -> str:
-    """Discard benign narration emitted before the first artifact delimiter.
-
-    The model occasionally prefixes the artifact stream with a sentence explaining
-    what it is about to emit (common in reuse mode, e.g. "Blueprint already contains
-    all required specs, so I'm emitting only MANIFEST.md."). When a valid opening
-    delimiter follows and nothing before it looks like a delimiter, drop the preamble
-    rather than failing an otherwise-complete plan. A ``===`` anywhere in the leading
-    text is left intact so the strict parser still rejects malformed or partial blocks.
-    """
-    first_open = _OPEN_BLOCK_LINE_RE.search(text)
-    if first_open is None:
-        return text
-    leading = text[: first_open.start()]
-    if not leading.strip() or "===" in leading:
-        return text
-    return text[first_open.start() :]
-
-
 def _execution_output_path(result: CompletedRun) -> str | None:
     artifacts = getattr(result, "artifacts", None)
     output_file = getattr(artifacts, "output_file", None)
@@ -262,9 +295,10 @@ def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
     repaired = _repair_missing_leading_delimiter(text)
     if repaired is not None:
         text = repaired
-    text = _strip_leading_preamble(text)
-    blocks = _parse_strict_blocks_by_line(text, result)
+    blocks, spans = _parse_strict_blocks_by_line(text, result)
     _reject_unpaired_end_delimiters(text, blocks, result)
+    if spans:
+        raise OutsideArtifactTextError(blocks=blocks, spans=spans, result=result)
     return blocks
 
 
@@ -295,11 +329,15 @@ def _reject_unpaired_end_delimiters(
             )
 
 
-def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, str]:
+def _parse_strict_blocks_by_line(
+    text: str, result: CompletedRun
+) -> tuple[dict[str, str], tuple[OutsideTextSpan, ...]]:
     blocks: dict[str, str] = {}
     current_name: str | None = None
     current_body: list[str] = []
     outside: list[str] = []
+    outside_spans: list[OutsideTextSpan] = []
+    previous_name: str | None = None
     saw_delimiter = False
 
     for line in text.splitlines(keepends=True):
@@ -307,13 +345,13 @@ def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, s
         end_match = _END_BLOCK_LINE_RE.match(line.strip())
         if current_name is None:
             if open_match:
-                if _has_substantive_outside_text("".join(outside), after_artifacts=saw_delimiter):
-                    raise SpecificationError(
-                        _with_execution_evidence(
-                            "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                            "  Text appeared outside delimited artifact blocks.\n"
-                            "  No Blueprint or Manifest artifacts were written.",
-                            result,
+                outside_text = "".join(outside)
+                if outside_text.strip():
+                    outside_spans.append(
+                        OutsideTextSpan(
+                            text=outside_text,
+                            previous_artifact=previous_name,
+                            next_artifact=open_match.group("name").strip(),
                         )
                     )
                 current_name = open_match.group("name").strip()
@@ -334,6 +372,7 @@ def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, s
                     )
                 )
             blocks[current_name] = "".join(current_body).strip()
+            previous_name = current_name
             current_name = None
             current_body = []
             saw_delimiter = True
@@ -351,18 +390,19 @@ def _parse_strict_blocks_by_line(text: str, result: CompletedRun) -> dict[str, s
                 )
             )
         blocks[current_name] = "".join(current_body).strip()
+        previous_name = current_name
         saw_delimiter = True
 
-    if _has_substantive_outside_text("".join(outside), after_artifacts=saw_delimiter):
-        raise SpecificationError(
-            _with_execution_evidence(
-                "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                "  Text appeared outside delimited artifact blocks.\n"
-                "  No Blueprint or Manifest artifacts were written.",
-                result,
+    outside_text = "".join(outside)
+    if outside_text.strip():
+        outside_spans.append(
+            OutsideTextSpan(
+                text=outside_text,
+                previous_artifact=previous_name,
+                next_artifact=None,
             )
         )
-    return blocks if saw_delimiter else {}
+    return (blocks if saw_delimiter else {}), tuple(outside_spans)
 
 
 def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -> dict[str, str]:
@@ -409,18 +449,65 @@ def _outside_text_in_write_transcript(text: str, *, after_artifacts: bool) -> bo
 
 
 def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
-    if not text.strip():
+    del after_artifacts
+    return bool(text.strip())
+
+
+def _artifact_delimiters_are_complete(text: str, blocks: dict[str, str]) -> bool:
+    """Whether every parsed artifact appears in exactly one paired delimiter set."""
+    opens = Counter(
+        name
+        for match in _OPEN_BLOCK_LINE_RE.finditer(text)
+        if not (name := match.group("name").strip()).startswith("END ")
+    )
+    ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(text))
+    expected = Counter({name: 1 for name in blocks})
+    return bool(expected) and opens == ends == expected
+
+
+def _outside_text_is_waiver_eligible(
+    spans: tuple[OutsideTextSpan, ...],
+    *,
+    text: str,
+    blocks: dict[str, str],
+) -> bool:
+    """Whether bounded outside text may be submitted for semantic waiver."""
+    if not spans or len(spans) > _OUTSIDE_SPAN_LIMIT:
         return False
-    if not after_artifacts:
-        return True
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if _IGNORABLE_OUTSIDE_LINE_RE.match(stripped):
-            continue
-        return True
-    return False
+    if not _artifact_delimiters_are_complete(text, blocks):
+        return False
+    if tuple(blocks)[-1] != "MANIFEST.md":
+        return False
+    normalized = [span.normalized for span in spans]
+    if sum(len(text) for text in normalized) > _OUTSIDE_TEXT_LIMIT:
+        return False
+    lowered = "\n".join(normalized).lower()
+    return not any(marker.lower() in lowered for marker in _OUTSIDE_FORBIDDEN_MARKERS)
+
+
+def _outside_text_waiver_evidence(
+    spans: tuple[OutsideTextSpan, ...],
+    *,
+    artifact_count: int,
+) -> str:
+    """Render bounded, quoted evidence for the waiver judge."""
+    total = sum(len(span.normalized) for span in spans)
+    lines = [
+        "FAILURE_CLASS: outside-artifact-text",
+        "STRUCTURE_VALID: true",
+        "PLAN_VALID: true",
+        f"ARTIFACT_COUNT: {artifact_count}",
+        f"OUTSIDE_TEXT_TOTAL_CHARACTERS: {total}",
+        f"OUTSIDE_TEXT_SPANS: {len(spans)}",
+    ]
+    for index, span in enumerate(spans, start=1):
+        lines += [
+            "",
+            f"SPAN {index}:",
+            f"  LOCATION: {span.location}",
+            f"  TEXT_JSON: {json.dumps(span.normalized, ensure_ascii=False)}",
+        ]
+    return "\n".join(lines)
 
 
 def _read_if(path: Path) -> str | None:
@@ -1981,6 +2068,133 @@ def _normalize_manifest_contexts(plan_path: Path, blueprint_dir: Path) -> tuple[
     return tuple(warnings)
 
 
+def _record_plan_error(
+    target_dir: Path,
+    *,
+    classification: str,
+    detail: str,
+    execution_id: str | None,
+    log_dir: Path | None,
+    recovery: str,
+) -> RecordedError:
+    """Persist one post-output plan failure and refresh its QuarterDeck projection."""
+    record = write_error_record(
+        target_dir,
+        command="plan",
+        phase="post-output validation",
+        classification=classification,
+        detail=detail,
+        execution_id=execution_id,
+        evidence=log_dir,
+        recovery=recovery,
+    )
+    from drydock.quarterdeck_state import refresh_commanders_chair
+
+    refresh_commanders_chair(target_dir)
+    return RecordedError(record)
+
+
+def _approve_outside_text_candidate(
+    exc: OutsideArtifactTextError,
+    *,
+    blueprint_dir: Path,
+    target_dir: Path,
+    target: str,
+    result: CompletedRun,
+    execution_id: str | None,
+    allow_diagnostic_recovery: bool,
+    llm_provider: str | None,
+    model: str | None,
+    log_dir: Path | None,
+    runner: RunnerFn,
+    on_text: TextCallback | None,
+) -> tuple[BuildPlan, tuple[str, ...], str, str]:
+    """Validate an outside-text candidate, then spend the shared diagnostic call on semantics."""
+    if not _outside_text_is_waiver_eligible(
+        exc.spans,
+        text=result.text,
+        blocks=exc.blocks,
+    ):
+        raise _record_plan_error(
+            target_dir,
+            classification="model artifact contract failed",
+            detail=str(exc),
+            execution_id=execution_id,
+            log_dir=log_dir,
+            recovery=(
+                "Remove the reported outside text or correct the model artifact, then run: "
+                f"drydock plan {target}"
+            ),
+        ) from exc
+
+    try:
+        validated_plan, validated_warnings = _validate_plan_output(
+            exc.blocks, blueprint_dir, result
+        )
+    except Exception as validation_exc:
+        raise _record_plan_error(
+            target_dir,
+            classification="plan output validation failed",
+            detail=str(validation_exc),
+            execution_id=execution_id,
+            log_dir=log_dir,
+            recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
+        ) from validation_exc
+
+    decision = None
+    if allow_diagnostic_recovery:
+        if on_text is not None:
+            on_text(
+                "[plan] complete plan contains bounded text outside artifact blocks; "
+                "requesting diagnostic approval\n"
+            )
+        from drydock.diagnose import request_artifact_waiver
+
+        decision = request_artifact_waiver(
+            target_dir,
+            command=f"drydock plan {target}",
+            target=target,
+            evidence=_outside_text_waiver_evidence(
+                exc.spans,
+                artifact_count=len(exc.blocks),
+            ),
+            llm=llm_provider,
+            model=model,
+            log_dir=log_dir,
+            runner=runner,
+        )
+    if decision is None or not decision.approved:
+        decision_detail = (
+            f"\n  Waiver rejected: {decision.reason}"
+            if decision is not None
+            else "\n  No diagnostic waiver approval was available."
+        )
+        raise _record_plan_error(
+            target_dir,
+            classification="model artifact contract failed",
+            detail=str(exc) + decision_detail,
+            execution_id=execution_id,
+            log_dir=log_dir,
+            recovery=(
+                "Remove the reported outside text or correct the model artifact, then run: "
+                f"drydock plan {target}"
+            ),
+        ) from exc
+
+    removed_count = sum(len(span.normalized) for span in exc.spans)
+    removed_preview = "; ".join(
+        f"{span.location}: {json.dumps(span.normalized, ensure_ascii=False)}" for span in exc.spans
+    )
+    warning = (
+        "recovered complete artifact batch after diagnostic approval removed "
+        f"{removed_count} outside character(s) ({removed_preview}); decision execution "
+        f"{decision.execution_id}: {decision.reason}"
+    )
+    if on_text is not None:
+        on_text(f"[plan] {warning}\n")
+    return validated_plan, validated_warnings, decision.execution_id, warning
+
+
 # ── Entry point ─────────────────────────────────────────────────────────────────────
 
 
@@ -1996,6 +2210,7 @@ def create_plan(
     model: str | None = None,
     llm_provider: str | None = None,
     log_dir: Path | None = None,
+    allow_diagnostic_recovery: bool = False,
 ) -> PlanCreateResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
@@ -2211,43 +2426,91 @@ def create_plan(
         refresh_commanders_chair(target_dir)
         raise RecordedError(record)
 
+    validated_plan: BuildPlan | None = None
+    validated_warnings: tuple[str, ...] = ()
+    waiver_execution_id: str | None = None
+    waiver_warning: str | None = None
     try:
         blocks = _parse_strict_blocks(result.text, result)
-    except SpecificationError:
-        recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
-        if not recovered:
+    except OutsideArtifactTextError as exc:
+        try:
+            recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
+        except SpecificationError as write_exc:
+            raise _record_plan_error(
+                target_dir,
+                classification="model artifact contract failed",
+                detail=str(write_exc),
+                execution_id=exec_id,
+                log_dir=log_dir,
+                recovery=(
+                    "Inspect the execution evidence, correct the plan artifact, then run: "
+                    f"drydock plan {target}"
+                ),
+            ) from write_exc
+        if recovered:
+            blocks = recovered
+        else:
+            blocks = exc.blocks
+            (
+                validated_plan,
+                validated_warnings,
+                waiver_execution_id,
+                waiver_warning,
+            ) = _approve_outside_text_candidate(
+                exc,
+                blueprint_dir=blueprint_dir,
+                target_dir=target_dir,
+                target=target,
+                result=result,
+                execution_id=exec_id,
+                allow_diagnostic_recovery=allow_diagnostic_recovery,
+                llm_provider=llm_provider,
+                model=model,
+                log_dir=log_dir,
+                runner=run,
+                on_text=on_text,
+            )
+    except SpecificationError as exc:
+        reported_exc = exc
+        try:
+            recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)
+        except SpecificationError as write_exc:
+            reported_exc = write_exc
+            recovered = {}
+        if recovered:
+            blocks = recovered
+        else:
+            raise _record_plan_error(
+                target_dir,
+                classification="model artifact contract failed",
+                detail=str(reported_exc),
+                execution_id=exec_id,
+                log_dir=log_dir,
+                recovery=(
+                    "Inspect the execution evidence, correct the plan input if needed, then run: "
+                    f"drydock plan {target}"
+                ),
+            ) from reported_exc
+    if validated_plan is None:
+        try:
+            plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
+        except Exception as exc:
             record = write_error_record(
                 target_dir,
                 command="plan",
                 phase="post-output validation",
-                classification="model artifact contract failed",
-                detail="The model output did not contain a complete plan artifact.",
+                classification="plan output validation failed",
+                detail=str(exc),
                 execution_id=exec_id,
                 evidence=log_dir,
-                recovery=f"Inspect the execution evidence, correct the plan input if needed, then run: drydock plan {target}",
+                recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
             )
             from drydock.quarterdeck_state import refresh_commanders_chair
 
             refresh_commanders_chair(target_dir)
-            raise RecordedError(record)
-        blocks = recovered
-    try:
-        plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
-    except Exception as exc:
-        record = write_error_record(
-            target_dir,
-            command="plan",
-            phase="post-output validation",
-            classification="plan output validation failed",
-            detail=str(exc),
-            execution_id=exec_id,
-            evidence=log_dir,
-            recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
-        )
-        from drydock.quarterdeck_state import refresh_commanders_chair
-
-        refresh_commanders_chair(target_dir)
-        raise RecordedError(record) from exc
+            raise RecordedError(record) from exc
+    else:
+        plan, warnings = validated_plan, validated_warnings
 
     # Applied (built) Blueprint files are protected: the LLM's regenerated version is
     # discarded so delivered code keeps the spec it was built against. A clean file also
@@ -2302,8 +2565,14 @@ def create_plan(
         quarterdeck_dir=quarterdeck,
         changed=changed,
         authored_files=tuple(sorted({*authored, *normalized_existing, *conformed_specs})),
-        warnings=tuple([*conform_warnings, *warnings, *context_warnings]),
+        warnings=tuple([
+            *([waiver_warning] if waiver_warning else []),
+            *conform_warnings,
+            *warnings,
+            *context_warnings,
+        ]),
         execution_id=exec_id,
+        waiver_execution_id=waiver_execution_id,
         plan_mode=plan_mode,
         conformed_files=tuple(conformed_specs),
     )

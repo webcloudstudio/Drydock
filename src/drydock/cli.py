@@ -634,6 +634,7 @@ def _print_plan_summary(plan) -> None:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     from drydock.config import (
+        get_diagnose_enabled,
         get_llm_provider,
         get_model,
         get_target_directory,
@@ -665,6 +666,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
             llm_provider=llm_provider,
             log_dir=log_dir,
             on_text=_progress,
+            allow_diagnostic_recovery=(
+                get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
+            ),
         )
     print()
     mode_label = {

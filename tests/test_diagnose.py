@@ -8,11 +8,13 @@ import pytest
 
 from drydock import diagnose as diagnose_module
 from drydock.diagnose import (
+    ARTIFACT_WAIVER_PROMPT_NAME,
     BLOCKED_PREFIXES,
     assemble_prompt,
     clamp_diagnosis,
     diagnose,
     render_standoff_banner,
+    request_artifact_waiver,
     reset_diagnosis_guard,
     should_diagnose,
 )
@@ -267,3 +269,55 @@ def test_diagnose_defaults_to_run_prompt_without_a_runner(tmp_path, monkeypatch)
     assert diagnose(tmp_path, command="drydock build w", record=make_record(tmp_path))
     assert calls and calls[0]["command_name"] == "diagnose"
     assert diagnose_module.PROMPT_NAME == "diagnose"
+
+
+def test_artifact_waiver_accepts_only_exact_approval_and_consumes_diagnostic_call(tmp_path):
+    runner = fake_runner(
+        FakeRun(
+            text=(
+                "DECISION: APPROVE_TRIVIAL_OUTSIDE_TEXT\n"
+                "REASON: This is only a transition sentence.\n"
+            ),
+            execution_id="waiver-exec",
+        )
+    )
+
+    decision = request_artifact_waiver(
+        tmp_path,
+        command="drydock plan widgets",
+        target="widgets",
+        evidence='TEXT_JSON: "Now the Manifest."',
+        runner=runner,
+    )
+
+    assert decision is not None
+    assert decision.approved is True
+    assert decision.reason == "This is only a transition sentence."
+    assert decision.execution_id == "waiver-exec"
+    assert runner.seen_kwargs[0]["command_name"] == "diagnose"
+    assert runner.seen_kwargs[0]["parameters"]["decision"] == "artifact-waiver"
+    assert should_diagnose(record=make_record(tmp_path)) is False
+    assert ARTIFACT_WAIVER_PROMPT_NAME == "plan_artifact_waiver"
+
+
+def test_artifact_waiver_malformed_decision_fails_closed(tmp_path):
+    runner = fake_runner(
+        FakeRun(
+            text=(
+                "DECISION: APPROVE_TRIVIAL_OUTSIDE_TEXT\n"
+                "REASON: The transition looks harmless.\n"
+                "DO: Continue.\n"
+            )
+        )
+    )
+
+    decision = request_artifact_waiver(
+        tmp_path,
+        command="drydock plan widgets",
+        target="widgets",
+        evidence='TEXT_JSON: "Now the Manifest."',
+        runner=runner,
+    )
+
+    assert decision is None
+    assert should_diagnose(record=make_record(tmp_path)) is False
