@@ -41,6 +41,12 @@ PROMPT_NAME = "score_drydock"
 # reaches for the strongest model rather than the configured build default. ``--model`` overrides.
 HIGHEST_MODEL = "fable"
 
+# The highest model is a Claude model, so the provider is pinned with it. Deferring to the
+# configured provider would hard-fail as a provider/model mismatch on a codex-configured
+# workspace. ``--llm-provider`` overrides, and a caller selecting codex must also select a
+# codex model.
+HIGHEST_MODEL_PROVIDER = "claude"
+
 PLANNING_DIRNAME = "drydock_planning"
 
 
@@ -569,8 +575,10 @@ def score_drydock(
 ) -> ScoreDrydockResult:
     """Run the adversarial self-assessment and write the ranked plan.
 
-    ``model`` is an explicit override only. With no override the prompt's declared model wins, so
-    the assessment always reaches for the strongest model rather than the configured build default.
+    ``model`` and ``llm_provider`` are explicit overrides only. With no override the prompt's
+    declared model wins over the configured build default, and the provider is pinned to the one
+    that serves it — otherwise a codex-configured workspace fails the run as a provider/model
+    mismatch before the assessment starts.
     """
     root = repo_root or get_repo_root()
     prompt = load_prompt(PROMPT_NAME)
@@ -580,7 +588,7 @@ def score_drydock(
     result = run(
         assembly.rendered_text,
         root,
-        llm=llm_provider,
+        llm=llm_provider or HIGHEST_MODEL_PROVIDER,
         model=model or prompt.model or HIGHEST_MODEL,
         command_name="score drydock",
         parameters={"subject": "drydock"},

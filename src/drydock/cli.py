@@ -1611,10 +1611,11 @@ def cmd_score_drydock(model: str | None = None, llm_provider: str | None = None)
     """Adversarially assess Drydock itself and write a ranked feature plan.
 
     Unlike the other LLM-assisted commands this one does not fall back to the configured build
-    model: the assessment is a single deep reasoning pass, so the prompt's declared highest model
-    stands unless ``--model`` overrides it.
+    model or provider: the assessment is a single deep reasoning pass, so the prompt's declared
+    highest model stands, and the provider that serves it is pinned with it. ``--model`` and
+    ``--llm-provider`` override.
     """
-    from drydock.config import get_llm_provider, get_workspace
+    from drydock.config import get_workspace
     from drydock.paths import get_repo_root
     from drydock.score_drydock import score_drydock
 
@@ -1622,7 +1623,7 @@ def cmd_score_drydock(model: str | None = None, llm_provider: str | None = None)
     print("Adversarial self-assessment: drydock")
     result = score_drydock(
         model=model,
-        llm_provider=get_llm_provider(llm_provider),
+        llm_provider=llm_provider,
         log_dir=get_workspace() / "logs",
         repo_root=repo_root,
         on_text=_stream_status_only,
@@ -2420,36 +2421,21 @@ def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
     return positional[0], step
 
 
-def _parse_score_drydock_args(rest: list[str]) -> tuple[str | None, str | None]:
-    """Parse ``[--model <model>] [--llm-provider <provider>]`` for ``drydock score drydock``.
-
-    The sub-verb takes no Target: the subject is the Drydock source checkout itself.
-    """
-    usage = "Usage: drydock score drydock [--model <model>] [--llm-provider <provider>]"
-    values: dict[str, str] = {}
-    index = 0
-    while index < len(rest):
-        token = rest[index]
-        option, separator, inline = token.partition("=")
-        if option not in {"--model", "--llm-provider"}:
-            raise UsageError(usage)
-        if separator:
-            values[option] = inline
-            index += 1
-            continue
-        if index + 1 >= len(rest):
-            raise UsageError(usage)
-        values[option] = rest[index + 1]
-        index += 2
-    return values.get("--model"), values.get("--llm-provider")
-
-
 def _dispatch_score(args: argparse.Namespace) -> int:
     tokens = args.args
     first = tokens[0] if tokens else ""
     if first == "drydock":
-        model, llm_provider = _parse_score_drydock_args(tokens[1:])
-        return cmd_score_drydock(model=model, llm_provider=llm_provider)
+        # ``--model`` / ``--llm-provider`` are stripped from argv as invocation-wide overrides
+        # before this command's operands are parsed, so they arrive on the namespace, never in
+        # ``tokens``. Anything left here is a Target, which this sub-verb does not take.
+        if len(tokens) != 1:
+            raise UsageError(
+                "Usage: drydock score drydock [--model <model>] [--llm-provider <provider>]"
+            )
+        return cmd_score_drydock(
+            model=getattr(args, "model", None),
+            llm_provider=getattr(args, "llm_provider", None),
+        )
     if first == "ac":
         target, step = _parse_score_ac_args(tokens[1:])
         rc = cmd_score_ac(target, step=step)

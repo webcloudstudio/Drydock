@@ -12,6 +12,7 @@ import pytest
 from drydock.errors import DrydockError, SpecificationError
 from drydock.score_drydock import (
     HIGHEST_MODEL,
+    HIGHEST_MODEL_PROVIDER,
     Feature,
     assemble_prompt,
     collect_prompt_files,
@@ -301,6 +302,31 @@ def test_score_drydock_honors_an_explicit_model_override(tmp_path: Path) -> None
     assert runner.calls[0]["model"] == "opus"
 
 
+def test_score_drydock_pins_the_provider_that_serves_the_highest_model(tmp_path: Path) -> None:
+    """The default model is a Claude model, so a codex-configured workspace must not be consulted:
+    deferring to it would fail the run as a provider/model mismatch."""
+    from drydock.llm import provider_model_conflict
+
+    runner = RecordingRunner(reply=_payload())
+    score_drydock(runner=runner, repo_root=_throwaway_repo(tmp_path), log_dir=tmp_path)
+    call = runner.calls[0]
+    assert call["llm"] == HIGHEST_MODEL_PROVIDER == "claude"
+    assert provider_model_conflict(call["llm"], call["model"]) is None
+
+
+def test_score_drydock_honors_an_explicit_provider_override(tmp_path: Path) -> None:
+    runner = RecordingRunner(reply=_payload())
+    score_drydock(
+        runner=runner,
+        repo_root=_throwaway_repo(tmp_path),
+        log_dir=tmp_path,
+        model="gpt-5",
+        llm_provider="codex",
+    )
+    assert runner.calls[0]["llm"] == "codex"
+    assert runner.calls[0]["model"] == "gpt-5"
+
+
 def test_score_drydock_writes_the_plan_under_docs(tmp_path: Path) -> None:
     repo = _throwaway_repo(tmp_path)
     runner = RecordingRunner(reply=_payload(), stats=FakeStats(model="fable"))
@@ -331,27 +357,7 @@ def test_score_drydock_does_not_grant_the_agent_tools(tmp_path: Path) -> None:
 # ── CLI contract ──────────────────────────────────────────────────────────────
 
 
-def test_cli_parses_score_drydock_options() -> None:
-    from drydock.cli import _parse_score_drydock_args
-
-    assert _parse_score_drydock_args([]) == (None, None)
-    assert _parse_score_drydock_args(["--model", "fable"]) == ("fable", None)
-    assert _parse_score_drydock_args(["--model=opus", "--llm-provider", "claude"]) == (
-        "opus",
-        "claude",
-    )
-
-
-def test_cli_rejects_a_target_after_score_drydock() -> None:
-    from drydock.cli import UsageError, _parse_score_drydock_args
-
-    with pytest.raises(UsageError):
-        _parse_score_drydock_args(["SomeTarget"])
-    with pytest.raises(UsageError):
-        _parse_score_drydock_args(["--model"])
-
-
-def test_cli_dispatches_score_drydock(monkeypatch) -> None:
+def test_cli_dispatches_score_drydock_with_no_overrides(monkeypatch) -> None:
     import argparse
 
     from drydock import cli
@@ -363,9 +369,60 @@ def test_cli_dispatches_score_drydock(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr(cli, "cmd_score_drydock", fake)
-    args = argparse.Namespace(args=["drydock", "--model", "fable"])
+    args = argparse.Namespace(args=["drydock"], model=None, llm_provider=None)
     assert cli._dispatch_score(args) == 0
-    assert seen == {"model": "fable", "llm_provider": None}
+    assert seen == {"model": None, "llm_provider": None}
+
+
+def test_cli_passes_invocation_wide_overrides_to_score_drydock(monkeypatch) -> None:
+    """``--model`` / ``--llm-provider`` are stripped from argv before the score operands are
+    parsed, so they must be read off the namespace or they are silently lost."""
+    import argparse
+
+    from drydock import cli
+
+    seen: dict = {}
+
+    def fake(model=None, llm_provider=None):
+        seen.update({"model": model, "llm_provider": llm_provider})
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_score_drydock", fake)
+    args = argparse.Namespace(args=["drydock"], model="opus", llm_provider="claude")
+    assert cli._dispatch_score(args) == 0
+    assert seen == {"model": "opus", "llm_provider": "claude"}
+
+
+def test_cli_rejects_a_target_after_score_drydock() -> None:
+    import argparse
+
+    from drydock.cli import UsageError, _dispatch_score
+
+    with pytest.raises(UsageError):
+        _dispatch_score(argparse.Namespace(args=["drydock", "SomeTarget"], model=None))
+
+
+def test_cli_score_drydock_ignores_the_configured_codex_provider(monkeypatch) -> None:
+    """The reported failure: a codex-configured workspace made the default fable run a hard
+    provider/model mismatch. The command must not consult the configured provider at all."""
+    import argparse
+
+    from drydock import cli
+    from drydock.llm import provider_model_conflict
+    from drydock.score_drydock import HIGHEST_MODEL, HIGHEST_MODEL_PROVIDER
+
+    monkeypatch.setenv("LLM_PROVIDER", "codex")
+    seen: dict = {}
+
+    def fake(model=None, llm_provider=None):
+        seen.update({"model": model, "llm_provider": llm_provider})
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_score_drydock", fake)
+    cli._dispatch_score(argparse.Namespace(args=["drydock"], model=None, llm_provider=None))
+    resolved_provider = seen["llm_provider"] or HIGHEST_MODEL_PROVIDER
+    resolved_model = seen["model"] or HIGHEST_MODEL
+    assert provider_model_conflict(resolved_provider, resolved_model) is None
 
 
 def test_cli_score_help_lists_the_drydock_subverb(capsys) -> None:
