@@ -1705,13 +1705,13 @@ class TestImport:
         rc, out, err = run_cli("import", "Tgt", str(source), "--format", "markdown")
 
         assert rc == 0, err
-        assert f" - Source: {source}" in out
-        assert f" - Target: {tmp_target_root / 'Tgt' / 'blueprint' / 'sources'}/" in out
-        assert "  req.md" in out
+        assert f"Source: {source}" in out
+        assert f"Target: {tmp_target_root / 'Tgt' / 'blueprint' / 'sources'}/" in out
+        assert "\nreq.md" in out
         assert "IMPORTED" not in out
         assert "Blueprint:" not in out
         assert "SAVED AS" not in out
-        assert "Next step: drydock analyze Tgt" in out
+        assert "Next step" not in out
 
     def test_import_markdown_auto_detects_markdown_file(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1762,8 +1762,8 @@ class TestImport:
 
         assert rc == 0, err
         assert (tmp_target_root / "Tgt" / "blueprint" / "sources" / "app.py").is_file()
-        assert " - Target:" in out
-        assert "  app.py" in out
+        assert "Target:" in out
+        assert "\napp.py" in out
 
     def test_import_auto_rejects_source_directory(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1793,8 +1793,8 @@ class TestImport:
         sources = tmp_target_root / "Tgt" / "blueprint" / "sources"
         assert (sources / "memory" / "constitution.md").is_file()
         assert not (sources / ".specify").exists()
-        assert " - Target:" in out
-        assert "  memory/constitution.md" in out
+        assert "Target:" in out
+        assert "\nmemory/constitution.md" in out
 
     def test_import_speckit_auto_detects_speckit_directory(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

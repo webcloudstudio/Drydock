@@ -139,20 +139,6 @@ def _elapsed_text(seconds: float) -> str:
     return " ".join(parts)
 
 
-# Post-command "Next step:" hints, centralized in one place because the workflow is still
-# evolving. Keyed by command; value is a template formatted with the resolved target.
-_NEXT_STEP_HINTS: dict[str, str] = {
-    "import": "drydock analyze {target}",
-}
-
-
-def _print_next_step(command: str, target: str) -> None:
-    hint = _NEXT_STEP_HINTS.get(command)
-    if hint:
-        print()
-        print(f"Next step: {hint.format(target=target)}")
-
-
 def _print_findings(result, verbose: bool) -> None:
     from drydock.validate_specification import Severity
 
@@ -813,17 +799,16 @@ def cmd_import(args: argparse.Namespace) -> int:
     def print_import_result(
         source_path: Path, imported: tuple[Path, ...] | list[Path], destination: Path
     ) -> None:
-        print(f" - Source: {source_path}")
-        print(f" - Target: {destination}/")
+        print(f"Source: {source_path}")
+        print(f"Target: {destination}/")
         for path in imported:
-            print(f"  {Path(path).relative_to(destination)}")
+            print(Path(path).relative_to(destination))
 
     if fmt == "markdown":
         from drydock.import_markdown import import_markdown
 
         result = import_markdown(args.Target, args.Target, source, td)
         print_import_result(result.source, result.imported, result.blueprint_dir / "sources")
-        _print_next_step("import", args.Target)
         return 0
 
     if fmt == "source":
@@ -833,7 +818,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         print_import_result(
             source_result.source, source_result.imported, source_result.blueprint_dir / "sources"
         )
-        _print_next_step("import", args.Target)
         return 0
 
     if fmt == "speckit":
@@ -843,7 +827,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         print_import_result(
             speckit_result.source, speckit_result.imported, speckit_result.blueprint_dir / "sources"
         )
-        _print_next_step("import", args.Target)
         return 0
 
     if fmt in {"compass", "intent"}:
@@ -860,7 +843,6 @@ def cmd_import(args: argparse.Namespace) -> int:
             log_dir=get_workspace() / "logs",
         )
         print_import_result(result.source, result.imported, result.blueprint_dir)
-        _print_next_step("import", args.Target)
         return 0
 
     raise UsageError(f"Unknown format: {fmt!r}")
