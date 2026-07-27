@@ -1043,13 +1043,15 @@ def test_process_group_helper_tolerates_test_double():
 # ── reasoning effort ──────────────────────────────────────────────────────────
 
 
-def _effort_command(llm: str, effort: str | None, tmp_path: Path) -> tuple[str, ...]:
+def _effort_command(
+    llm: str, effort: str | None, tmp_path: Path, model: str = "sonnet"
+) -> tuple[str, ...]:
     from types import SimpleNamespace
 
     from drydock.llm import _command
 
     artifacts = SimpleNamespace(output_file=tmp_path / "out.txt")
-    return _command(llm, tmp_path, artifacts, "sonnet", effort=effort)
+    return _command(llm, tmp_path, artifacts, model, effort=effort)
 
 
 def test_claude_command_omits_effort_by_default(tmp_path):
@@ -1069,16 +1071,25 @@ def test_codex_command_maps_effort_to_its_config_key(tmp_path):
     assert command[-1] == "-"
 
 
-def test_codex_clamps_effort_levels_it_does_not_have(tmp_path):
-    """The two top claude levels have no codex equivalent, so they clamp to its maximum rather
-    than silently dropping to the default."""
+def test_codex_serves_xhigh_only_on_the_model_family_that_has_it(tmp_path):
+    """xhigh is a codex-max capability; every other model clamps to high rather than
+    failing the run on an effort its model does not accept."""
     for level in ("xhigh", "max"):
-        command = _effort_command("codex", level, tmp_path)
+        command = _effort_command("codex", level, tmp_path, model="gpt-5.1-codex-max")
+        assert command[command.index("-c") + 1] == "model_reasoning_effort=xhigh"
+        command = _effort_command("codex", level, tmp_path, model="gpt-5.1-codex")
         assert command[command.index("-c") + 1] == "model_reasoning_effort=high"
 
 
+def test_codex_clamps_top_levels_when_no_model_is_named(tmp_path):
+    """With no --model the served model is unknown, so the safe level is the universal one."""
+    command = _effort_command("codex", "max", tmp_path, model=None)
+    assert command[command.index("-c") + 1] == "model_reasoning_effort=high"
+
+
 def test_normalize_effort_accepts_every_documented_level():
-    from drydock.llm import EFFORT_LEVELS, normalize_effort
+    from drydock.config import EFFORT_LEVELS
+    from drydock.llm import normalize_effort
 
     assert normalize_effort(None) is None
     assert normalize_effort("  MAX ") == "max"
@@ -1089,5 +1100,50 @@ def test_normalize_effort_accepts_every_documented_level():
 def test_normalize_effort_rejects_an_unknown_level():
     from drydock.llm import LlmConfigurationError, normalize_effort
 
-    with pytest.raises(LlmConfigurationError):
+    with pytest.raises(LlmConfigurationError) as excinfo:
         normalize_effort("ludicrous")
+    message = str(excinfo.value)
+    assert "ludicrous" in message
+    for level in ("low", "medium", "high", "xhigh", "max"):
+        assert level in message
+
+
+def test_effort_falls_back_to_the_configured_level(monkeypatch, tmp_path):
+    """A command that names no effort still honors drydock_effort."""
+    from drydock import llm as llm_module
+
+    monkeypatch.setenv("DRYDOCK_EFFORT", "xhigh")
+    captured: dict = {}
+
+    def fake_command(*args, **kwargs):
+        captured.update(kwargs)
+        return ("true",)
+
+    monkeypatch.setattr(llm_module, "_command", fake_command)
+    llm_module.run_prompt(
+        "hello", tmp_path, llm="claude", model="sonnet", log_dir=tmp_path, announce=False
+    )
+    assert captured["effort"] == "xhigh"
+
+
+def test_an_explicit_effort_beats_the_configured_level(monkeypatch, tmp_path):
+    from drydock import llm as llm_module
+
+    monkeypatch.setenv("DRYDOCK_EFFORT", "xhigh")
+    captured: dict = {}
+
+    def fake_command(*args, **kwargs):
+        captured.update(kwargs)
+        return ("true",)
+
+    monkeypatch.setattr(llm_module, "_command", fake_command)
+    llm_module.run_prompt(
+        "hello",
+        tmp_path,
+        llm="claude",
+        model="sonnet",
+        effort="low",
+        log_dir=tmp_path,
+        announce=False,
+    )
+    assert captured["effort"] == "low"

@@ -17,8 +17,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from drydock.config import get_codex_sandbox, get_llm_provider
-from drydock.errors import LlmConfigurationError, LlmError
+from drydock.config import get_codex_sandbox, get_effort, get_llm_provider
+from drydock.config import normalize_effort as config_normalize_effort
+from drydock.errors import ConfigurationError, LlmConfigurationError, LlmError
 from drydock.execution import (
     ExecutionArtifacts,
     append_execution_record,
@@ -125,31 +126,38 @@ def provider_model_conflict(llm: str | None, model: str | None) -> str | None:
     return None
 
 
-# Reasoning effort, in the vocabulary the claude CLI accepts. Higher levels buy deeper
-# deliberation at the cost of latency and spend, so effort is opt-in per command.
-EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
+# The effort ladder is Drydock's, defined once in config; each provider maps onto it below.
+# Higher levels buy deeper deliberation at the cost of latency and spend, so effort is opt-in.
 
-# codex has no --effort flag and a shorter ladder, so the top two claude levels clamp to its
-# maximum. The mapping is lossy in one direction only: a codex run is never given less effort
-# than was asked for.
+# codex takes no --effort flag: the level rides in as a config override. Its ladder tops out
+# at xhigh, and xhigh is served only by the codex-max model family; every other model clamps
+# to high. The mapping is lossy in one direction only — a codex run is never given less
+# effort than the next level down from what was asked for.
 _CODEX_EFFORT: dict[str, str] = {
     "low": "low",
     "medium": "medium",
     "high": "high",
-    "xhigh": "high",
-    "max": "high",
+    "xhigh": "xhigh",
+    "max": "xhigh",
 }
+_CODEX_XHIGH_MODELS = ("-codex-max",)
 
 
 def normalize_effort(effort: str | None) -> str | None:
     """Validate a requested effort level, or ``None`` when the provider default stands."""
-    if effort is None:
-        return None
-    level = effort.strip().lower()
-    if level not in EFFORT_LEVELS:
-        raise LlmConfigurationError(
-            f"Invalid effort level: {effort!r}\n  Valid values: {', '.join(EFFORT_LEVELS)}"
-        )
+    try:
+        return config_normalize_effort(effort)
+    except ConfigurationError as exc:
+        raise LlmConfigurationError(str(exc)) from None
+
+
+def codex_effort(effort: str, model: str | None) -> str:
+    """Map a Drydock effort level onto what this codex model actually serves."""
+    level = _CODEX_EFFORT[effort]
+    if level == "xhigh" and not any(
+        family in (model or "").lower() for family in _CODEX_XHIGH_MODELS
+    ):
+        return "high"
     return level
 
 
@@ -210,7 +218,7 @@ def _command(
         if model:
             command.extend(("--model", model))
         if effort:
-            command.extend(("-c", f"model_reasoning_effort={_CODEX_EFFORT[effort]}"))
+            command.extend(("-c", f"model_reasoning_effort={codex_effort(effort, model)}"))
         command.append("-")
         return tuple(command)
     raise LlmConfigurationError(f"Unsupported LLM: {llm!r}")
@@ -1252,14 +1260,15 @@ def run_prompt(
     ``drydock build``); it is off by default so text-only commands keep their
     deterministic-write contract.
 
-    ``effort`` selects the provider's reasoning depth. It is off by default, so a command
-    that does not ask for it keeps the provider's own default behavior.
+    ``effort`` selects the provider's reasoning depth. An explicit level wins; otherwise the
+    configured ``drydock_effort`` applies, and with neither set the provider's own default
+    stands. The level is mapped to what the selected provider and model actually serve.
     """
     selected = (llm or get_llm_provider()).lower()
     conflict = provider_model_conflict(selected, model)
     if conflict is not None:
         raise LlmConfigurationError(conflict)
-    effort = normalize_effort(effort)
+    effort = normalize_effort(effort) if effort else get_effort()
 
     working_directory = working_directory.expanduser().resolve()
     if not working_directory.is_dir():

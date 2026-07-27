@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-07-26: Reasoning effort is controllable across the command surface. `--effort
+  <low|medium|high|xhigh|max>` is an invocation-wide override accepted by every command, and
+  `drydock config set drydock_effort <level>` sets the standing default. Precedence is the flag,
+  then a prompt's declared `effort:`, then the configured level, then the provider's own default.
+  The level maps onto what the selected provider and model actually serve: claude takes the ladder
+  as-is, codex receives it as `model_reasoning_effort`, with `xhigh` reserved for the codex-max
+  model family and clamped to `high` elsewhere. Every rejection names the offending value and lists
+  the valid levels.
+
 - 2026-07-26: `drydock score drydock` runs an adversarial self-assessment of Drydock itself. It
   takes no Target: the subject is the Drydock source checkout. Intent is derived from
   `docs/Drydock_Specification.md`, and the methodology is attacked against Agile story

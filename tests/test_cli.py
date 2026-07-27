@@ -253,6 +253,42 @@ class TestHelpAndVersion:
         assert "INFO" not in transcripts[0].read_text(encoding="utf-8")
         assert "command: status" not in err
 
+    def test_effort_is_an_invocation_wide_override(self):
+        """``--effort`` is stripped from argv wherever it appears and published as the
+        configured level, so every LLM-assisted command resolves the same depth."""
+        from drydock.cli import _extract_global_overrides
+
+        cleaned, overrides = _extract_global_overrides(["analyze", "MyTarget", "--effort", "xhigh"])
+        assert cleaned == ["analyze", "MyTarget"]
+        assert overrides["effort"] == "xhigh"
+
+        cleaned, overrides = _extract_global_overrides(["build", "--effort=MAX", "MyTarget"])
+        assert cleaned == ["build", "MyTarget"]
+        assert overrides["effort"] == "max"
+
+    def test_unknown_effort_level_names_the_valid_choices(self):
+        from drydock.cli import UsageError, _extract_global_overrides
+
+        with pytest.raises(UsageError) as excinfo:
+            _extract_global_overrides(["analyze", "MyTarget", "--effort", "ludicrous"])
+        message = str(excinfo.value)
+        assert "ludicrous" in message
+        for level in ("low", "medium", "high", "xhigh", "max"):
+            assert level in message
+
+        with pytest.raises(UsageError, match="expected one argument"):
+            _extract_global_overrides(["analyze", "MyTarget", "--effort"])
+
+    def test_effort_flag_becomes_the_configured_effort(self, isolated_config, monkeypatch):
+        """The flag reaches every capability through the configured value rather than
+        through each command signature."""
+        # setenv registers the key with monkeypatch so teardown removes what the CLI writes.
+        monkeypatch.setenv("DRYDOCK_EFFORT", "")
+        from drydock.config import get_effort
+
+        run_cli("config", "show", "--effort", "high")
+        assert get_effort() == "high"
+
     def test_debug_after_command_prints_diagnostics_without_debug_log(
         self, tmp_workspace, isolated_config, monkeypatch
     ):

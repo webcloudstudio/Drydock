@@ -304,7 +304,7 @@ def test_score_drydock_honors_an_explicit_model_override(tmp_path: Path) -> None
 
 def test_score_drydock_uses_the_prompts_declared_effort(tmp_path: Path) -> None:
     """The assessment is one deep reasoning pass, so the prompt declares its own effort."""
-    from drydock.llm import EFFORT_LEVELS
+    from drydock.config import EFFORT_LEVELS
     from drydock.prompts import load_prompt
 
     declared = load_prompt("score_drydock").effort
@@ -423,26 +423,17 @@ def test_cli_rejects_a_target_after_score_drydock() -> None:
         _dispatch_score(argparse.Namespace(args=["drydock", "SomeTarget"], model=None))
 
 
-def test_cli_parses_the_effort_operand() -> None:
-    from drydock.cli import _parse_score_drydock_effort
+def test_cli_rejects_operands_score_drydock_does_not_take() -> None:
+    from drydock.cli import UsageError, _reject_score_drydock_operands
 
-    assert _parse_score_drydock_effort([]) is None
-    assert _parse_score_drydock_effort(["--effort", "max"]) == "max"
-    assert _parse_score_drydock_effort(["--effort=xhigh"]) == "xhigh"
-
-
-def test_cli_rejects_an_unknown_effort_level() -> None:
-    from drydock.cli import UsageError, _parse_score_drydock_effort
-
+    assert _reject_score_drydock_operands([]) is None
     with pytest.raises(UsageError):
-        _parse_score_drydock_effort(["--effort", "ludicrous"])
-    with pytest.raises(UsageError):
-        _parse_score_drydock_effort(["--effort"])
+        _reject_score_drydock_operands(["SomeTarget"])
 
 
-def test_cli_dispatches_the_effort_operand(monkeypatch) -> None:
-    """``--effort`` is not an invocation-wide override, so it survives into the score operands
-    and must be read from there rather than from the namespace."""
+def test_cli_dispatches_the_invocation_wide_effort(monkeypatch) -> None:
+    """``--effort`` is stripped from argv as an invocation-wide override, so the score
+    dispatcher reads it from the namespace, not from its own operands."""
     import argparse
 
     from drydock import cli
@@ -454,7 +445,7 @@ def test_cli_dispatches_the_effort_operand(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr(cli, "cmd_score_drydock", fake)
-    args = argparse.Namespace(args=["drydock", "--effort", "high"], model=None, llm_provider=None)
+    args = argparse.Namespace(args=["drydock"], model=None, llm_provider=None, effort="high")
     assert cli._dispatch_score(args) == 0
     assert seen == {"model": None, "llm_provider": None, "effort": "high"}
 

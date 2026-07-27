@@ -187,7 +187,7 @@ def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
         "--model",
         default=None,
         metavar="<model>",
-        help="Override LLM model (default: command prompt model or DRYDOCK_MODEL env/config).",
+        help="Override LLM model (default: the command's declared model or DRYDOCK_MODEL env/config).",
     )
     parser.add_argument(
         "--llm-provider",
@@ -195,6 +195,19 @@ def _add_llm_override_flags(parser: argparse.ArgumentParser) -> None:
         choices=["claude", "codex"],
         metavar="<provider>",
         help="Override LLM provider (default: LLM_PROVIDER env or claude).",
+    )
+    from drydock.config import EFFORT_LEVELS
+
+    parser.add_argument(
+        "--effort",
+        default=None,
+        choices=list(EFFORT_LEVELS),
+        metavar="<level>",
+        help=(
+            "Override reasoning effort ("
+            + "|".join(EFFORT_LEVELS)
+            + "; default: the command's declared effort or DRYDOCK_EFFORT env/config)."
+        ),
     )
 
 
@@ -209,12 +222,15 @@ def _extract_global_overrides(
     """
 
     if argv is None:
-        return None, {"model": None, "llm_provider": None, "debug": False}
+        return None, {"model": None, "llm_provider": None, "effort": None, "debug": False}
+
+    from drydock.config import EFFORT_LEVELS
 
     cleaned: list[str] = []
     overrides: dict[str, str | bool | None] = {
         "model": None,
         "llm_provider": None,
+        "effort": None,
         "debug": False,
     }
     index = 0
@@ -224,6 +240,23 @@ def _extract_global_overrides(
         if token == "--":
             cleaned.extend(argv[index:])
             break
+        option, separator, inline = token.partition("=")
+        if option == "--effort":
+            if separator:
+                level, consumed = inline, 1
+            elif index + 1 < len(argv):
+                level, consumed = argv[index + 1], 2
+            else:
+                raise UsageError("argument --effort: expected one argument")
+            if level.strip().lower() not in EFFORT_LEVELS:
+                raise UsageError(
+                    f"argument --effort: invalid choice: {level!r}\n"
+                    f"  Valid values: {', '.join(EFFORT_LEVELS)} (lowest to highest)\n"
+                    "  Omit it to keep the provider's own default."
+                )
+            overrides["effort"] = level.strip().lower()
+            index += consumed
+            continue
         if token == "--model":
             if index + 1 >= len(argv):
                 raise UsageError("argument --model: expected one argument")
@@ -1880,6 +1913,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Do not call the LLM to diagnose an opaque failure.",
     )
+    # Invocation-wide: stripped from argv before this parser runs, and declared here so the
+    # top-level help documents what every command accepts.
+    _add_llm_override_flags(parser)
 
     sub = parser.add_subparsers(
         dest="command",
@@ -1969,6 +2005,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  --theme <theme>          Documentation theme override.\n"
             "Options for document <Target> and document generate <Target>:\n"
             "  --model <model>          Override the LLM model.\n"
+            "  --effort <level>         Override reasoning effort (low|medium|high|xhigh|max).\n"
             "  --llm-provider <provider>  Override the LLM provider (claude or codex)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2147,7 +2184,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score drydock [--effort <level>] — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n\n"
             "--step <id> is accepted only with score ac.\n"
-            "--effort <low|medium|high|xhigh|max> is accepted only with score drydock."
+            "--effort <low|medium|high|xhigh|max> applies to any LLM-assisted command."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2392,7 +2429,7 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         build_args = _parse_build_args(tokens)
         # Invocation-wide --model/--llm-provider are stripped from argv before the
         # build sub-parser runs, so carry them across unless a token set them here.
-        for key in ("model", "llm_provider"):
+        for key in ("model", "llm_provider", "effort"):
             if getattr(build_args, key, None) is None:
                 setattr(build_args, key, getattr(args, key, None))
         rc = cmd_build(build_args)
@@ -2427,54 +2464,32 @@ def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
     return positional[0], step
 
 
-def _parse_score_drydock_effort(rest: list[str]) -> str | None:
-    """Parse the optional ``--effort <level>`` operand of ``drydock score drydock``.
+def _reject_score_drydock_operands(rest: list[str]) -> None:
+    """``drydock score drydock`` takes no operands; the LLM overrides are invocation-wide."""
+    if not rest:
+        return
+    from drydock.config import EFFORT_LEVELS
 
-    The sub-verb takes no Target, so any other leftover token is a usage error.
-    """
-    from drydock.llm import EFFORT_LEVELS
-
-    usage = (
+    raise UsageError(
         "Usage: drydock score drydock [--effort <"
         + "|".join(EFFORT_LEVELS)
         + ">] [--model <model>] [--llm-provider <provider>]"
     )
-    effort: str | None = None
-    index = 0
-    while index < len(rest):
-        option, separator, inline = rest[index].partition("=")
-        if option != "--effort":
-            raise UsageError(usage)
-        if separator:
-            effort = inline
-            index += 1
-            continue
-        if index + 1 >= len(rest):
-            raise UsageError(usage)
-        effort = rest[index + 1]
-        index += 2
-    if effort is not None and effort.strip().lower() not in EFFORT_LEVELS:
-        raise UsageError(
-            f"argument --effort: invalid choice: {effort!r} "
-            f"(choose from {', '.join(repr(level) for level in EFFORT_LEVELS)})"
-        )
-    return effort
 
 
 def _dispatch_score(args: argparse.Namespace) -> int:
     tokens = args.args
     first = tokens[0] if tokens else ""
     if first == "drydock":
-        # ``--model`` / ``--llm-provider`` are stripped from argv as invocation-wide overrides
-        # before this command's operands are parsed, so they arrive on the namespace, never in
-        # ``tokens``. ``--effort`` is not invocation-wide — only commands that pass it to the
-        # runner honor it — so it is parsed here. Anything else left is a Target, which this
+        # ``--model`` / ``--effort`` / ``--llm-provider`` are stripped from argv as
+        # invocation-wide overrides before this command's operands are parsed, so they arrive
+        # on the namespace, never in ``tokens``. Anything left is a Target, which this
         # sub-verb does not take.
-        effort = _parse_score_drydock_effort(tokens[1:])
+        _reject_score_drydock_operands(tokens[1:])
         return cmd_score_drydock(
             model=getattr(args, "model", None),
             llm_provider=getattr(args, "llm_provider", None),
-            effort=effort,
+            effort=getattr(args, "effort", None),
         )
     if first == "ac":
         target, step = _parse_score_ac_args(tokens[1:])
@@ -2995,6 +3010,7 @@ _LOG_TARGET_SUBVERBS = frozenset({
 # next token, so both must be stepped over to reach the Target; a switch hides only itself.
 _LOG_VALUE_OPTIONS = frozenset({
     "--build-dir",
+    "--effort",
     "--escalate-model",
     "--llm-provider",
     "--model",
@@ -3125,13 +3141,24 @@ def _command_log_name(args: argparse.Namespace) -> str:
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     raw_argv = argv if argv is not None else sys.argv[1:]
-    normalized_argv, global_overrides = _extract_global_overrides(raw_argv)
+    try:
+        normalized_argv, global_overrides = _extract_global_overrides(raw_argv)
+    except UsageError as exc:
+        # Invocation-wide flags are read before the parser and before logging exists, so
+        # their rejections need the same clean usage report the parsed commands get.
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
     args = parser.parse_args(normalized_argv)
     for key, value in global_overrides.items():
         if key == "debug":
             args.debug = bool(getattr(args, "debug", False) or value)
         elif getattr(args, key, None) is None:
             setattr(args, key, value)
+    if getattr(args, "effort", None):
+        # ``--effort`` is invocation-wide: publish it as the configured effort so every
+        # LLM-assisted command, and any Drydock subprocess it starts, resolves the same
+        # level without threading the flag through each capability signature.
+        os.environ["DRYDOCK_EFFORT"] = args.effort
     debug = getattr(args, "debug", False)
 
     command_logging = None

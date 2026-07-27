@@ -254,6 +254,12 @@ read-only package resource at `drydock/resources/docs/Drydock_Specification.md`.
 
 ## Command Surface
 
+Every command accepts the invocation-wide overrides `--model <model>`,
+`--effort <low|medium|high|xhigh|max>`, and `--llm-provider <claude|codex>`. `--effort` selects
+reasoning depth for the LLM-assisted commands; the level maps onto what the selected provider and
+model serve. Precedence is `--effort`, then the prompt's declared effort, then `drydock_effort`,
+then the provider's own default.
+
 ```text
 drydock --help
 drydock --version
@@ -274,7 +280,7 @@ drydock build <Target> [--step <step-id>] [--force] [--build-dir <path>] [--rese
 drydock build status <Target>
 drydock score ac <Target>
 drydock score release <Target>
-drydock score drydock [--effort <low|medium|high|xhigh|max>] [--model <model>] [--llm-provider <claude|codex>]
+drydock score drydock [--model <model>] [--llm-provider <claude|codex>]
 
 drydock rigging compact [<Target>] [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
 drydock rigging update <Target> [--dry-run]
@@ -295,6 +301,7 @@ Configuration keys:
 | `drydock_workspace` | `DRYDOCK_WORKSPACE` | Workspace containing `targets/` and Drydock logs |
 | `drydock_build_directory` | `DRYDOCK_BUILD_DIRECTORY` | Root where generated applications are written |
 | `drydock_model` | `DRYDOCK_MODEL` | Default model for LLM-assisted commands |
+| `drydock_effort` | `DRYDOCK_EFFORT` | Default reasoning effort: `low`, `medium`, `high`, `xhigh`, `max`; unset keeps the provider default |
 | `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
 | `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` | Prompt-size warning threshold in tokens |
 | `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |

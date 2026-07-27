@@ -16,6 +16,7 @@ _KEY_MAP = {
     "drydock_build_directory": "DRYDOCK_BUILD_DIRECTORY",
     "drydock_workspace": "DRYDOCK_WORKSPACE",
     "drydock_model": "DRYDOCK_MODEL",
+    "drydock_effort": "DRYDOCK_EFFORT",
     "drydock_build_escalate_model": "DRYDOCK_BUILD_ESCALATE_MODEL",
     "llm_provider": "LLM_PROVIDER",
     "codex_sandbox": "DRYDOCK_CODEX_SANDBOX",
@@ -29,6 +30,13 @@ _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
 
 DEFAULT_MODEL = "sonnet"
+
+# Reasoning effort, lowest to highest, in Drydock's own vocabulary. Providers map onto this
+# ladder; a level a provider cannot serve clamps down to the nearest one it can, never up.
+# Unset is the shipped default: each provider keeps its own effort default until a prompt,
+# the configuration, or ``--effort`` asks for something else.
+EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
+
 DEFAULT_PROMPT_WARN_TOKENS = 50_000
 DEFAULT_QUARTERDECK_PORT = 8080
 # Address-space ceiling, in MB, for a build's acceptance run and everything it spawns. A JVM,
@@ -156,6 +164,45 @@ def get_model(cli_override: str | None = None) -> str:
         return cli_override.strip()
     value, _source = _get("DRYDOCK_MODEL", DEFAULT_MODEL)
     return (value or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+
+
+def invalid_effort_message(label: str, value: str) -> str:
+    """The one message every effort rejection uses, so the vocabulary is always shown."""
+    return (
+        f"Invalid {label}: {value!r}\n"
+        f"  Valid values: {', '.join(EFFORT_LEVELS)} (lowest to highest)\n"
+        "  Omit it to keep the provider's own default."
+    )
+
+
+def normalize_effort(value: str | None, label: str = "effort") -> str | None:
+    """Validate one effort level, or ``None`` when the provider default stands.
+
+    ``label`` names the setting in the error message so the same check serves the
+    ``--effort`` flag, ``drydock_effort``, and prompt frontmatter alike.
+    """
+    if value is None:
+        return None
+    level = value.strip().lower()
+    if not level:
+        return None
+    if level not in EFFORT_LEVELS:
+        raise ConfigurationError(invalid_effort_message(label, value))
+    return level
+
+
+def get_effort(cli_override: str | None = None) -> str | None:
+    """Resolve the reasoning effort for this invocation.
+
+    Resolution order: cli_override → DRYDOCK_EFFORT (env or config file) → unset. Unset
+    returns ``None``: no effort is requested and the provider's default stands. A prompt's
+    frontmatter ``effort:`` is more specific than this configured floor and is applied by
+    the command that loads the prompt.
+    """
+    if cli_override is not None:
+        return normalize_effort(cli_override)
+    value, _source = _get("DRYDOCK_EFFORT")
+    return normalize_effort(value, "drydock_effort")
 
 
 def get_escalate_model(cli_override: str | None = None) -> str | None:
@@ -296,6 +343,7 @@ def config_show() -> list[tuple[str, str, str]]:
     rows.append(("drydock_workspace", ws_value, ws_source))
     for display_key, key_upper, default in (
         ("drydock_model", "DRYDOCK_MODEL", DEFAULT_MODEL),
+        ("drydock_effort", "DRYDOCK_EFFORT", "(provider default)"),
         ("drydock_build_escalate_model", "DRYDOCK_BUILD_ESCALATE_MODEL", "(not set)"),
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
@@ -309,7 +357,9 @@ def config_show() -> list[tuple[str, str, str]]:
         ),
     ):
         value, source = _get(key_upper, default)
-        rows.append((display_key, value or "(not set)", source))
+        # A cleared key holds an empty value; report what actually governs, not "(not set)".
+        empty_label = "(provider default)" if key_upper == "DRYDOCK_EFFORT" else "(not set)"
+        rows.append((display_key, value or empty_label, source))
     return rows
 
 
@@ -354,6 +404,9 @@ def config_set(key: str, value: str) -> Path:
         stored_value = value.strip()
         if not stored_value:
             raise ConfigurationError("drydock_model must not be empty.")
+    elif upper == "DRYDOCK_EFFORT":
+        # Empty clears the setting: no effort is requested and the provider default stands.
+        stored_value = normalize_effort(value, "drydock_effort") or ""
     elif upper == "DRYDOCK_BUILD_ESCALATE_MODEL":
         # Empty clears the setting: no escalation. A non-empty value is a model name.
         stored_value = value.strip()

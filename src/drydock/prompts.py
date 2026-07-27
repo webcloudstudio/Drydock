@@ -45,8 +45,14 @@ class Prompt:
 
     @property
     def effort(self) -> str | None:
-        """Declared reasoning effort, or ``None`` to keep the provider default."""
-        return self.meta.get("effort") or None
+        """Declared reasoning effort, or ``None`` to keep the provider default.
+
+        A prompt is a versioned contract, so an unknown level is a defect in the prompt
+        and is reported against the file that declares it.
+        """
+        from drydock.config import normalize_effort
+
+        return normalize_effort(self.meta.get("effort"), f"effort in {self.path.name}")
 
     @property
     def input_tokens(self) -> tuple[str, ...]:

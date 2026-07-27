@@ -13,8 +13,9 @@ prompts here; deferred commands have no prompts yet.
 - **Required blocks:** every prompt frontmatter block includes `name`, `description`, `version`,
   and `intent`.
 - **Optional blocks:** frontmatter may also include `command`, `model`, `effort`, `inputs`, and
-  `output`. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`; when absent the provider's
-  own default reasoning depth stands.
+  `output`. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`; when absent the configured
+  `drydock_effort` applies, and with neither set the provider's own default reasoning depth stands.
+  The invocation-wide `--effort` flag overrides both.
   Frontmatter is loaded and validated by `drydock.prompts.load_prompt`.
 
 | Command | Prompt file | Status |

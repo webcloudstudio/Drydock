@@ -71,6 +71,29 @@ class TestConfigSet:
         with pytest.raises(ConfigurationError, match="Valid values"):
             config_set("llm_provider", "other")
 
+    def test_effort_is_unset_by_default(self, isolated_config):
+        """Unset means the provider's own default reasoning depth stands."""
+        from drydock.config import get_effort
+
+        assert get_effort() is None
+
+    def test_set_effort(self, isolated_config):
+        from drydock.config import get_effort
+
+        config_set("drydock_effort", "XHigh")
+        assert get_effort() == "xhigh"
+
+    def test_clearing_effort_restores_the_provider_default(self, isolated_config):
+        from drydock.config import get_effort
+
+        config_set("drydock_effort", "high")
+        config_set("drydock_effort", "")
+        assert get_effort() is None
+
+    def test_set_invalid_effort_names_the_valid_levels(self, isolated_config):
+        with pytest.raises(ConfigurationError, match="low, medium, high, xhigh, max"):
+            config_set("drydock_effort", "ludicrous")
+
     def test_codex_sandbox_defaults_to_danger_full_access(self, isolated_config):
         assert get_codex_sandbox() == "danger-full-access"
 
