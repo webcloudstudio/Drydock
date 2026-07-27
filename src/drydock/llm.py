@@ -87,7 +87,7 @@ SUPPORTED_PROVIDERS = ("claude", "codex")
 # an unrecognized model name is left alone because Drydock does not enumerate every
 # valid model a provider CLI accepts.
 _MODEL_FAMILY_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("claude", ("claude", "opus", "sonnet", "haiku")),
+    ("claude", ("claude", "opus", "sonnet", "haiku", "fable")),
     ("codex", ("gpt-", "gpt5", "codex", "luna", "o3-", "o4-")),
 )
 

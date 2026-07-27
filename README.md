@@ -242,6 +242,12 @@ command surface and Typed Specification contracts remain unstable during the `0.
 and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes
 `SCORECARD.md`.
 
+`drydock score drydock` takes no Target. It runs an adversarial self-assessment of Drydock itself —
+the specification, every prompt contract, and the command process — against Agile decomposition,
+Test Driven Development, context economy, and governance, and writes ranked feature files with
+Agile stories and TDD acceptance criteria to `docs/drydock_planning/`. It requires a source
+checkout, recommends rather than changes anything, and defaults to the highest available model.
+
 The installed wheel includes Drydock's canonical product specification as a
 read-only package resource at `drydock/resources/docs/Drydock_Specification.md`.
 
@@ -267,6 +273,7 @@ drydock build <Target> [--step <step-id>] [--force] [--build-dir <path>] [--rese
 drydock build status <Target>
 drydock score ac <Target>
 drydock score release <Target>
+drydock score drydock [--model <model>] [--llm-provider <claude|codex>]
 
 drydock rigging compact [<Target>] [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
 drydock rigging update <Target> [--dry-run]

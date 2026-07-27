@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-07-26: `drydock score drydock` runs an adversarial self-assessment of Drydock itself. It
+  takes no Target: the subject is the Drydock source checkout. Intent is derived from
+  `docs/Drydock_Specification.md`, and the methodology is attacked against Agile story
+  decomposition, Test Driven Development acceptance, context economy, and governance, including
+  coverage gaps for project types Drydock has not been exercised on. The command changes no code —
+  it writes ranked feature files, each decomposed into Agile stories with TDD acceptance criteria
+  and an implementation plan, to `docs/drydock_planning/`, with an `INDEX.md` ranking every feature
+  by impact and complexity. The assessment defaults to the highest available model rather than the
+  configured build model, and a previous plan is archived rather than overwritten.
+
 - 2026-07-26: A Programmatic Acceptance check that fails inside its own snippet is now rejected
   rather than built against. Every check runs as its own script in its own process, so a check
   reading a name a sibling check bound raises `NameError` on every run and no implementation can

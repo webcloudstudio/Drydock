@@ -1607,6 +1607,44 @@ def cmd_score_release(target: str) -> int:
     return result.exit_code()
 
 
+def cmd_score_drydock(model: str | None = None, llm_provider: str | None = None) -> int:
+    """Adversarially assess Drydock itself and write a ranked feature plan.
+
+    Unlike the other LLM-assisted commands this one does not fall back to the configured build
+    model: the assessment is a single deep reasoning pass, so the prompt's declared highest model
+    stands unless ``--model`` overrides it.
+    """
+    from drydock.config import get_llm_provider, get_workspace
+    from drydock.paths import get_repo_root
+    from drydock.score_drydock import score_drydock
+
+    repo_root = get_repo_root()
+    print("Adversarial self-assessment: drydock")
+    result = score_drydock(
+        model=model,
+        llm_provider=get_llm_provider(llm_provider),
+        log_dir=get_workspace() / "logs",
+        repo_root=repo_root,
+        on_text=_stream_status_only,
+    )
+    print()
+    print(f"Assessment model: {result.review_model}")
+    print(f"Features: {len(result.assessment.features)}")
+    print(f"Project-type gaps: {len(result.assessment.project_type_gaps)}")
+    print()
+    for rank, feature in enumerate(result.assessment.features, start=1):
+        print(
+            f"  {rank:>2}. [{feature.feature_id}] impact {feature.impact:>2}/10  "
+            f"complexity {feature.complexity:>2}/10  {feature.title}"
+        )
+    print()
+    print(f"Index: {result.index_path}")
+    print(f"Features: {result.planning_dir}")
+    if result.archive_path:
+        print(f"Archived previous plan: {result.archive_path}")
+    return result.exit_code()
+
+
 _BUILD_STATE_MARK = {
     "closed/verified": "[done]",
     "implemented": "[review]",
@@ -2091,19 +2129,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── score ─────────────────────────────────────────────────────────────────
-    # Handles: score ac <Target> (deterministic), score release <Target> (LLM-assisted).
+    # Handles: score ac <Target> (deterministic), score release <Target> (LLM-assisted),
+    # score drydock (LLM-assisted self-assessment of Drydock itself; no Target).
     p_score = sub.add_parser(
         "score",
         help="Verify acceptance criteria (deterministic) and judge the release gate (LLM).",
         description=(
             "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
             "                                            or scoped to one feature/story), update Soundings\n"
-            "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n\n"
+            "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
+            "drydock score drydock [--model <model>]  — adversarial self-assessment of Drydock; writes\n"
+            "                                            ranked feature files to docs/drydock_planning/\n\n"
             "--step <id> is accepted only with score ac."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_score.add_argument("args", nargs=argparse.REMAINDER, metavar="<ac|release> <Target>")
+    p_score.add_argument(
+        "args", nargs=argparse.REMAINDER, metavar="<ac|release|drydock> [<Target>]"
+    )
 
     # ── refit ─────────────────────────────────────────────────────────────────
     p_iter = sub.add_parser(
@@ -2377,9 +2420,36 @@ def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
     return positional[0], step
 
 
+def _parse_score_drydock_args(rest: list[str]) -> tuple[str | None, str | None]:
+    """Parse ``[--model <model>] [--llm-provider <provider>]`` for ``drydock score drydock``.
+
+    The sub-verb takes no Target: the subject is the Drydock source checkout itself.
+    """
+    usage = "Usage: drydock score drydock [--model <model>] [--llm-provider <provider>]"
+    values: dict[str, str] = {}
+    index = 0
+    while index < len(rest):
+        token = rest[index]
+        option, separator, inline = token.partition("=")
+        if option not in {"--model", "--llm-provider"}:
+            raise UsageError(usage)
+        if separator:
+            values[option] = inline
+            index += 1
+            continue
+        if index + 1 >= len(rest):
+            raise UsageError(usage)
+        values[option] = rest[index + 1]
+        index += 2
+    return values.get("--model"), values.get("--llm-provider")
+
+
 def _dispatch_score(args: argparse.Namespace) -> int:
     tokens = args.args
     first = tokens[0] if tokens else ""
+    if first == "drydock":
+        model, llm_provider = _parse_score_drydock_args(tokens[1:])
+        return cmd_score_drydock(model=model, llm_provider=llm_provider)
     if first == "ac":
         target, step = _parse_score_ac_args(tokens[1:])
         rc = cmd_score_ac(target, step=step)
@@ -2393,7 +2463,7 @@ def _dispatch_score(args: argparse.Namespace) -> int:
 
         record_activity("score release", tokens[1], tokens[1])
         return rc
-    raise UsageError("Usage: drydock score <ac|release> <Target>")
+    raise UsageError("Usage: drydock score <ac|release> <Target> | drydock score drydock")
 
 
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -2959,7 +3029,7 @@ _LLM_COMMANDS = frozenset({"analyze", "plan", "refit", "survey", "import"})
 # a model; ``document assemble`` renders what is already written, ``document generate`` writes it.
 _LLM_SUB_COMMANDS = {"rigging": "compact", "prompt": "review", "run": "quarterdeck"}
 _DETERMINISTIC_OPERANDS = {"build": {"status"}, "document": {"assemble"}}
-_LLM_OPERANDS = {"score": {"release"}}
+_LLM_OPERANDS = {"score": {"release", "drydock"}}
 
 
 def _invocation_uses_llm(args: argparse.Namespace) -> bool:
