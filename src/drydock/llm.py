@@ -125,6 +125,34 @@ def provider_model_conflict(llm: str | None, model: str | None) -> str | None:
     return None
 
 
+# Reasoning effort, in the vocabulary the claude CLI accepts. Higher levels buy deeper
+# deliberation at the cost of latency and spend, so effort is opt-in per command.
+EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
+
+# codex has no --effort flag and a shorter ladder, so the top two claude levels clamp to its
+# maximum. The mapping is lossy in one direction only: a codex run is never given less effort
+# than was asked for.
+_CODEX_EFFORT: dict[str, str] = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "high",
+    "max": "high",
+}
+
+
+def normalize_effort(effort: str | None) -> str | None:
+    """Validate a requested effort level, or ``None`` when the provider default stands."""
+    if effort is None:
+        return None
+    level = effort.strip().lower()
+    if level not in EFFORT_LEVELS:
+        raise LlmConfigurationError(
+            f"Invalid effort level: {effort!r}\n  Valid values: {', '.join(EFFORT_LEVELS)}"
+        )
+    return level
+
+
 def _command(
     llm: str,
     working_directory: Path,
@@ -132,6 +160,7 @@ def _command(
     model: str | None,
     allow_tools: bool = False,
     codex_sandbox: str = "danger-full-access",
+    effort: str | None = None,
 ) -> tuple[str, ...]:
     if llm == "claude":
         command = [
@@ -160,6 +189,8 @@ def _command(
             command.extend(("--tools", "", "--strict-mcp-config"))
         if model:
             command.extend(("--model", model))
+        if effort:
+            command.extend(("--effort", effort))
         return tuple(command)
     if llm == "codex":
         command = [
@@ -178,6 +209,8 @@ def _command(
         ]
         if model:
             command.extend(("--model", model))
+        if effort:
+            command.extend(("-c", f"model_reasoning_effort={_CODEX_EFFORT[effort]}"))
         command.append("-")
         return tuple(command)
     raise LlmConfigurationError(f"Unsupported LLM: {llm!r}")
@@ -1199,6 +1232,7 @@ def run_prompt(
     *,
     llm: str | None = None,
     model: str | None = None,
+    effort: str | None = None,
     codex_sandbox: str | None = None,
     command_name: str = "prompt",
     parameters: Mapping[str, Any] | None = None,
@@ -1217,11 +1251,15 @@ def run_prompt(
     ``allow_tools`` lets the provider edit files in ``working_directory`` (used by
     ``drydock build``); it is off by default so text-only commands keep their
     deterministic-write contract.
+
+    ``effort`` selects the provider's reasoning depth. It is off by default, so a command
+    that does not ask for it keeps the provider's own default behavior.
     """
     selected = (llm or get_llm_provider()).lower()
     conflict = provider_model_conflict(selected, model)
     if conflict is not None:
         raise LlmConfigurationError(conflict)
+    effort = normalize_effort(effort)
 
     working_directory = working_directory.expanduser().resolve()
     if not working_directory.is_dir():
@@ -1240,7 +1278,13 @@ def run_prompt(
     prompt_bytes = prompt.encode("utf-8")
     artifacts.prompt_file.write_bytes(prompt_bytes)
     command = _command(
-        selected, working_directory, artifacts, model, allow_tools, codex_sandbox=sandbox
+        selected,
+        working_directory,
+        artifacts,
+        model,
+        allow_tools,
+        codex_sandbox=sandbox,
+        effort=effort,
     )
     job_parameters = dict(parameters or {})
     logger = create_execution_logger(artifacts.execution_id, debug=debug)

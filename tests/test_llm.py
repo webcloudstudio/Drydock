@@ -629,7 +629,7 @@ def test_live_callback_occurs_before_process_completes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False, codex_sandbox="danger-full-access": (
+        lambda llm, working_directory, artifacts, model, allow_tools=False, **kwargs: (
             sys.executable,
             "-u",
             "-c",
@@ -658,7 +658,7 @@ def test_timeout_terminates_process_and_writes_failed_record(tmp_path, monkeypat
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False, codex_sandbox="danger-full-access": (
+        lambda llm, working_directory, artifacts, model, allow_tools=False, **kwargs: (
             sys.executable,
             "-u",
             "-c",
@@ -870,7 +870,7 @@ def _fake_shell_command(monkeypatch, script: str) -> None:
     monkeypatch.setattr(
         drydock.llm,
         "_command",
-        lambda llm, working_directory, artifacts, model, allow_tools=False, codex_sandbox="danger-full-access": (
+        lambda llm, working_directory, artifacts, model, allow_tools=False, **kwargs: (
             "/bin/bash",
             "-c",
             script,
@@ -1038,3 +1038,56 @@ def test_process_group_helper_tolerates_test_double():
     double = FakePopen(("codex",), stdout_text="")
     assert _capture_process_group(double) is None
     _reap_process_group(None)  # must not raise
+
+
+# ── reasoning effort ──────────────────────────────────────────────────────────
+
+
+def _effort_command(llm: str, effort: str | None, tmp_path: Path) -> tuple[str, ...]:
+    from types import SimpleNamespace
+
+    from drydock.llm import _command
+
+    artifacts = SimpleNamespace(output_file=tmp_path / "out.txt")
+    return _command(llm, tmp_path, artifacts, "sonnet", effort=effort)
+
+
+def test_claude_command_omits_effort_by_default(tmp_path):
+    """Effort is opt-in: a command that does not ask for it keeps the provider default."""
+    assert "--effort" not in _effort_command("claude", None, tmp_path)
+
+
+def test_claude_command_passes_effort_through(tmp_path):
+    command = _effort_command("claude", "max", tmp_path)
+    assert command[command.index("--effort") + 1] == "max"
+
+
+def test_codex_command_maps_effort_to_its_config_key(tmp_path):
+    """codex has no --effort flag; the level rides in as a config override."""
+    command = _effort_command("codex", "high", tmp_path)
+    assert command[command.index("-c") + 1] == "model_reasoning_effort=high"
+    assert command[-1] == "-"
+
+
+def test_codex_clamps_effort_levels_it_does_not_have(tmp_path):
+    """The two top claude levels have no codex equivalent, so they clamp to its maximum rather
+    than silently dropping to the default."""
+    for level in ("xhigh", "max"):
+        command = _effort_command("codex", level, tmp_path)
+        assert command[command.index("-c") + 1] == "model_reasoning_effort=high"
+
+
+def test_normalize_effort_accepts_every_documented_level():
+    from drydock.llm import EFFORT_LEVELS, normalize_effort
+
+    assert normalize_effort(None) is None
+    assert normalize_effort("  MAX ") == "max"
+    for level in EFFORT_LEVELS:
+        assert normalize_effort(level) == level
+
+
+def test_normalize_effort_rejects_an_unknown_level():
+    from drydock.llm import LlmConfigurationError, normalize_effort
+
+    with pytest.raises(LlmConfigurationError):
+        normalize_effort("ludicrous")

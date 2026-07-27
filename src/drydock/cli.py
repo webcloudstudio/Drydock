@@ -1607,13 +1607,17 @@ def cmd_score_release(target: str) -> int:
     return result.exit_code()
 
 
-def cmd_score_drydock(model: str | None = None, llm_provider: str | None = None) -> int:
+def cmd_score_drydock(
+    model: str | None = None,
+    llm_provider: str | None = None,
+    effort: str | None = None,
+) -> int:
     """Adversarially assess Drydock itself and write a ranked feature plan.
 
     Unlike the other LLM-assisted commands this one does not fall back to the configured build
     model or provider: the assessment is a single deep reasoning pass, so the prompt's declared
-    highest model stands, and the provider that serves it is pinned with it. ``--model`` and
-    ``--llm-provider`` override.
+    highest model and effort stand, and the provider that serves the model is pinned with it.
+    ``--model``, ``--effort``, and ``--llm-provider`` override.
     """
     from drydock.config import get_workspace
     from drydock.paths import get_repo_root
@@ -1623,6 +1627,7 @@ def cmd_score_drydock(model: str | None = None, llm_provider: str | None = None)
     print("Adversarial self-assessment: drydock")
     result = score_drydock(
         model=model,
+        effort=effort,
         llm_provider=llm_provider,
         log_dir=get_workspace() / "logs",
         repo_root=repo_root,
@@ -2139,9 +2144,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
             "                                            or scoped to one feature/story), update Soundings\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
-            "drydock score drydock [--model <model>]  — adversarial self-assessment of Drydock; writes\n"
+            "drydock score drydock [--effort <level>] — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n\n"
-            "--step <id> is accepted only with score ac."
+            "--step <id> is accepted only with score ac.\n"
+            "--effort <low|medium|high|xhigh|max> is accepted only with score drydock."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2421,20 +2427,54 @@ def _parse_score_ac_args(rest: list[str]) -> tuple[str, str | None]:
     return positional[0], step
 
 
+def _parse_score_drydock_effort(rest: list[str]) -> str | None:
+    """Parse the optional ``--effort <level>`` operand of ``drydock score drydock``.
+
+    The sub-verb takes no Target, so any other leftover token is a usage error.
+    """
+    from drydock.llm import EFFORT_LEVELS
+
+    usage = (
+        "Usage: drydock score drydock [--effort <"
+        + "|".join(EFFORT_LEVELS)
+        + ">] [--model <model>] [--llm-provider <provider>]"
+    )
+    effort: str | None = None
+    index = 0
+    while index < len(rest):
+        option, separator, inline = rest[index].partition("=")
+        if option != "--effort":
+            raise UsageError(usage)
+        if separator:
+            effort = inline
+            index += 1
+            continue
+        if index + 1 >= len(rest):
+            raise UsageError(usage)
+        effort = rest[index + 1]
+        index += 2
+    if effort is not None and effort.strip().lower() not in EFFORT_LEVELS:
+        raise UsageError(
+            f"argument --effort: invalid choice: {effort!r} "
+            f"(choose from {', '.join(repr(level) for level in EFFORT_LEVELS)})"
+        )
+    return effort
+
+
 def _dispatch_score(args: argparse.Namespace) -> int:
     tokens = args.args
     first = tokens[0] if tokens else ""
     if first == "drydock":
         # ``--model`` / ``--llm-provider`` are stripped from argv as invocation-wide overrides
         # before this command's operands are parsed, so they arrive on the namespace, never in
-        # ``tokens``. Anything left here is a Target, which this sub-verb does not take.
-        if len(tokens) != 1:
-            raise UsageError(
-                "Usage: drydock score drydock [--model <model>] [--llm-provider <provider>]"
-            )
+        # ``tokens``. ``--effort`` is not invocation-wide — only commands that pass it to the
+        # runner honor it — so it is parsed here. Anything else left is a Target, which this
+        # sub-verb does not take.
+        effort = _parse_score_drydock_effort(tokens[1:])
         return cmd_score_drydock(
             model=getattr(args, "model", None),
             llm_provider=getattr(args, "llm_provider", None),
+            effort=effort,
         )
     if first == "ac":
         target, step = _parse_score_ac_args(tokens[1:])

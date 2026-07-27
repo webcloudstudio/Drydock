@@ -302,6 +302,27 @@ def test_score_drydock_honors_an_explicit_model_override(tmp_path: Path) -> None
     assert runner.calls[0]["model"] == "opus"
 
 
+def test_score_drydock_uses_the_prompts_declared_effort(tmp_path: Path) -> None:
+    """The assessment is one deep reasoning pass, so the prompt declares its own effort."""
+    from drydock.llm import EFFORT_LEVELS
+    from drydock.prompts import load_prompt
+
+    declared = load_prompt("score_drydock").effort
+    assert declared in EFFORT_LEVELS
+
+    runner = RecordingRunner(reply=_payload())
+    score_drydock(runner=runner, repo_root=_throwaway_repo(tmp_path), log_dir=tmp_path)
+    assert runner.calls[0]["effort"] == declared
+
+
+def test_score_drydock_honors_an_explicit_effort_override(tmp_path: Path) -> None:
+    runner = RecordingRunner(reply=_payload())
+    score_drydock(
+        runner=runner, repo_root=_throwaway_repo(tmp_path), log_dir=tmp_path, effort="low"
+    )
+    assert runner.calls[0]["effort"] == "low"
+
+
 def test_score_drydock_pins_the_provider_that_serves_the_highest_model(tmp_path: Path) -> None:
     """The default model is a Claude model, so a codex-configured workspace must not be consulted:
     deferring to it would fail the run as a provider/model mismatch."""
@@ -364,7 +385,7 @@ def test_cli_dispatches_score_drydock_with_no_overrides(monkeypatch) -> None:
 
     seen: dict = {}
 
-    def fake(model=None, llm_provider=None):
+    def fake(model=None, llm_provider=None, effort=None):
         seen.update({"model": model, "llm_provider": llm_provider})
         return 0
 
@@ -383,7 +404,7 @@ def test_cli_passes_invocation_wide_overrides_to_score_drydock(monkeypatch) -> N
 
     seen: dict = {}
 
-    def fake(model=None, llm_provider=None):
+    def fake(model=None, llm_provider=None, effort=None):
         seen.update({"model": model, "llm_provider": llm_provider})
         return 0
 
@@ -402,6 +423,42 @@ def test_cli_rejects_a_target_after_score_drydock() -> None:
         _dispatch_score(argparse.Namespace(args=["drydock", "SomeTarget"], model=None))
 
 
+def test_cli_parses_the_effort_operand() -> None:
+    from drydock.cli import _parse_score_drydock_effort
+
+    assert _parse_score_drydock_effort([]) is None
+    assert _parse_score_drydock_effort(["--effort", "max"]) == "max"
+    assert _parse_score_drydock_effort(["--effort=xhigh"]) == "xhigh"
+
+
+def test_cli_rejects_an_unknown_effort_level() -> None:
+    from drydock.cli import UsageError, _parse_score_drydock_effort
+
+    with pytest.raises(UsageError):
+        _parse_score_drydock_effort(["--effort", "ludicrous"])
+    with pytest.raises(UsageError):
+        _parse_score_drydock_effort(["--effort"])
+
+
+def test_cli_dispatches_the_effort_operand(monkeypatch) -> None:
+    """``--effort`` is not an invocation-wide override, so it survives into the score operands
+    and must be read from there rather than from the namespace."""
+    import argparse
+
+    from drydock import cli
+
+    seen: dict = {}
+
+    def fake(model=None, llm_provider=None, effort=None):
+        seen.update({"model": model, "llm_provider": llm_provider, "effort": effort})
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_score_drydock", fake)
+    args = argparse.Namespace(args=["drydock", "--effort", "high"], model=None, llm_provider=None)
+    assert cli._dispatch_score(args) == 0
+    assert seen == {"model": None, "llm_provider": None, "effort": "high"}
+
+
 def test_cli_score_drydock_ignores_the_configured_codex_provider(monkeypatch) -> None:
     """The reported failure: a codex-configured workspace made the default fable run a hard
     provider/model mismatch. The command must not consult the configured provider at all."""
@@ -414,7 +471,7 @@ def test_cli_score_drydock_ignores_the_configured_codex_provider(monkeypatch) ->
     monkeypatch.setenv("LLM_PROVIDER", "codex")
     seen: dict = {}
 
-    def fake(model=None, llm_provider=None):
+    def fake(model=None, llm_provider=None, effort=None):
         seen.update({"model": model, "llm_provider": llm_provider})
         return 0
 

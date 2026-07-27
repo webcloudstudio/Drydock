@@ -5,7 +5,7 @@ Every Drydock prompt is a Markdown file under ``prompts/`` named
 block carrying the prompt contract metadata.
 
 Required frontmatter fields: ``name``, ``description``, ``version``, ``intent``.
-Optional fields commonly used: ``command``, ``model``, ``inputs``, ``output``.
+Optional fields commonly used: ``command``, ``model``, ``effort``, ``inputs``, ``output``.
 
 ``inputs`` is an ordered, comma-delimited list of logical input tokens — the
 agent's declared injection (stack) order, COMPASS.md first. Single files are
@@ -42,6 +42,11 @@ class Prompt:
     @property
     def model(self) -> str | None:
         return self.meta.get("model")
+
+    @property
+    def effort(self) -> str | None:
+        """Declared reasoning effort, or ``None`` to keep the provider default."""
+        return self.meta.get("effort") or None
 
     @property
     def input_tokens(self) -> tuple[str, ...]:

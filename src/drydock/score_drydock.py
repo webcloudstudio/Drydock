@@ -568,6 +568,7 @@ def score_drydock(
     *,
     runner: RunnerFn | None = None,
     model: str | None = None,
+    effort: str | None = None,
     llm_provider: str | None = None,
     log_dir: Path | None = None,
     repo_root: Path | None = None,
@@ -575,10 +576,10 @@ def score_drydock(
 ) -> ScoreDrydockResult:
     """Run the adversarial self-assessment and write the ranked plan.
 
-    ``model`` and ``llm_provider`` are explicit overrides only. With no override the prompt's
-    declared model wins over the configured build default, and the provider is pinned to the one
-    that serves it — otherwise a codex-configured workspace fails the run as a provider/model
-    mismatch before the assessment starts.
+    ``model``, ``effort``, and ``llm_provider`` are explicit overrides only. With no override the
+    prompt's declared model and effort win over the configured build default, and the provider is
+    pinned to the one that serves the model — otherwise a codex-configured workspace fails the run
+    as a provider/model mismatch before the assessment starts.
     """
     root = repo_root or get_repo_root()
     prompt = load_prompt(PROMPT_NAME)
@@ -590,6 +591,7 @@ def score_drydock(
         root,
         llm=llm_provider or HIGHEST_MODEL_PROVIDER,
         model=model or prompt.model or HIGHEST_MODEL,
+        effort=effort or prompt.effort,
         command_name="score drydock",
         parameters={"subject": "drydock"},
         log_dir=log_dir,

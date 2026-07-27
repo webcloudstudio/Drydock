@@ -12,7 +12,9 @@ prompts here; deferred commands have no prompts yet.
 - **YAML frontmatter:** every prompt file begins with a leading `---` YAML frontmatter block.
 - **Required blocks:** every prompt frontmatter block includes `name`, `description`, `version`,
   and `intent`.
-- **Optional blocks:** frontmatter may also include `command`, `model`, `inputs`, and `output`.
+- **Optional blocks:** frontmatter may also include `command`, `model`, `effort`, `inputs`, and
+  `output`. `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`; when absent the provider's
+  own default reasoning depth stands.
   Frontmatter is loaded and validated by `drydock.prompts.load_prompt`.
 
 | Command | Prompt file | Status |

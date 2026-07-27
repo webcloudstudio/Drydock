@@ -5,6 +5,7 @@ version: 20260726 V1
 intent: Attack Drydock's own delivery process from the specification's declared intent and return ranked, implementable feature proposals expressed as Agile stories with TDD acceptance criteria.
 command: drydock score drydock
 model: fable
+effort: max
 output: JSON planning payload rendered by Drydock into docs/drydock_planning/
 ---
 
