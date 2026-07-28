@@ -339,7 +339,8 @@ def _parse_strict_blocks_by_line(
     previous_name: str | None = None
     saw_delimiter = False
 
-    for line in text.splitlines(keepends=True):
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
         open_match = _OPEN_BLOCK_LINE_RE.match(line.strip())
         end_match = _END_BLOCK_LINE_RE.match(line.strip())
         if current_name is None:
@@ -376,6 +377,27 @@ def _parse_strict_blocks_by_line(
             current_body = []
             saw_delimiter = True
             continue
+        if end_match and _is_transposed_artifact_boundary(
+            lines,
+            index=index,
+            current_name=current_name,
+            next_name=end_match.group("name").strip(),
+        ):
+            if current_name in blocks:
+                raise SpecificationError(
+                    _with_execution_evidence(
+                        "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                        f"  Duplicate artifact block: {current_name}\n"
+                        "  No Blueprint or Manifest artifacts were written.",
+                        result,
+                    )
+                )
+            blocks[current_name] = "".join(current_body).strip()
+            previous_name = current_name
+            current_name = end_match.group("name").strip()
+            current_body = []
+            saw_delimiter = True
+            continue
         current_body.append(line)
 
     if current_name is not None:
@@ -402,6 +424,31 @@ def _parse_strict_blocks_by_line(
             )
         )
     return (blocks if saw_delimiter else {}), tuple(outside_spans)
+
+
+def _is_transposed_artifact_boundary(
+    lines: list[str],
+    *,
+    index: int,
+    current_name: str,
+    next_name: str,
+) -> bool:
+    """Recognize ``END next`` used in place of ``END current`` + ``open next``.
+
+    Recover only when the candidate next artifact has a later matching END delimiter and no
+    opening delimiter before it. That sequence makes the transposed boundary unambiguous. Other
+    mismatched delimiters remain body text and are rejected by the pairing check.
+    """
+    if next_name == current_name:
+        return False
+    for later_line in lines[index + 1 :]:
+        open_match = _OPEN_BLOCK_LINE_RE.match(later_line.strip())
+        if open_match and open_match.group("name").strip() == next_name:
+            return False
+        end_match = _END_BLOCK_LINE_RE.match(later_line.strip())
+        if end_match and end_match.group("name").strip() == next_name:
+            return True
+    return False
 
 
 def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -> dict[str, str]:

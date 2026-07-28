@@ -1,0 +1,98 @@
+++ export PROJECT=Marina
+++ PROJECT=Marina
+++ export PROJECT_DIR=/mnt/c/Users/barlo/projects
+++ PROJECT_DIR=/mnt/c/Users/barlo/projects
+++ export SOURCE=/mnt/c/Users/barlo/projects/Specifications/Marina
+++ SOURCE=/mnt/c/Users/barlo/projects/Specifications/Marina
+++ export 'OPTS=--llm-provider codex --model gpt-5.6-luna'
+++ OPTS='--llm-provider codex --model gpt-5.6-luna'
+++ rm -rf targets/Marina
+++ read
+++ drydock init Marina --llm-provider codex --model gpt-5.6-luna
+Drydock 0.1.4  Copyright (c) 2026 Web Cloud Studio. All rights reserved.
+Target: /mnt/c/Users/barlo/projects/drydock/targets/Marina
+  CREATED  blueprint/sources/.gitkeep
+  CREATED  blueprint/changes/.gitkeep
+  CREATED  evidence/.gitkeep
+  CREATED  logs/.gitkeep
+  CREATED  QuarterDeck/data/.gitkeep
+  CREATED  METADATA.md
+  CREATED  QuarterDeck/console.yaml
+
+Next steps:
+  1. Import source material:  drydock import Marina <source> --format markdown
+  2. Analyze the spec:        drydock analyze Marina
+  3. Create a plan:           drydock plan Marina
+  4. Review the build tree:   drydock run quarterdeck Marina
+++ read
+++ drydock status Marina --llm-provider codex --model gpt-5.6-luna
+Drydock 0.1.4  Copyright (c) 2026 Web Cloud Studio. All rights reserved.
+Drydock status — Marina / Marina
+
+  Target          /mnt/c/Users/barlo/projects/drydock/targets/Marina
+  Phase           Set Up
+  State           Target initialized — no source material imported yet
+  Metadata        init
+  Sources         0 imported · 0 authored blueprint files
+  Blueprint       ✗  1 errors · 0 warnings
+    ✗  METADATA fields: short_description not set in METADATA.md
+       → Set `short_description:` in Marina/METADATA.md to one line describing the project, or run `drydock analyze Marina` to have one proposed from the sources.
+  Plan            not created
+  Next step       drydock import Marina <source> --format markdown
+++ read
+++ drydock import Marina3 /mnt/c/Users/barlo/projects/Specifications/Marina/INTENT.md --format compass --force
+2026-07-27 15:49:55 EDT  Calling CLAUDE/sonnet (import_compass)...
+2026-07-27 15:50:19 EDT  Completed CLAUDE/claude-sonnet-5 (import_compass)  rc=0  elapsed=23.7s  provider=21.2s  turns=1  in=2  cached=3,289  cache_write=3,929  out=685  tps=28.9  cost=$0.0370  id=20260727.194955.301Z-4874f022
+error: import compass output failed: LLM output did not satisfy the artifact contract.
+  Text appeared outside delimited artifact blocks.
+  No generated artifacts were written.
+Drydock 0.1.4  Copyright (c) 2026 Web Cloud Studio. All rights reserved.
+++ drydock import Marina /mnt/c/Users/barlo/projects/Specifications/Marina --format markdown --llm-provider codex --model gpt-5.6-luna
+Drydock 0.1.4  Copyright (c) 2026 Web Cloud Studio. All rights reserved.
+Source: /mnt/c/Users/barlo/projects/Specifications/Marina
+Target: /mnt/c/Users/barlo/projects/drydock/targets/Marina/blueprint/sources/
+ARCHITECTURE.md
+DATABASE.md
+FEATURE-ACCESS-CONTROL.md
+FEATURE-ASYNCQUEUE.md
+FEATURE-BATCH-RUNNER.md
+FEATURE-CAPABILITY-DISCOVERY.md
+FEATURE-CATALOG-PUBLISH.md
+FEATURE-CATALOG-READ.md
+FEATURE-CLI-GATEWAY.md
+FEATURE-HEALTHCHECK.md
+FEATURE-INFRA.md
+FEATURE-MARINA-LIB.md
+FEATURE-PROJECT-OPS.md
+FEATURE-PROJECT-ORGANIZATION.md
+FEATURE-PROJECT-REGISTRATION.md
+FEATURE-REPORT-INGEST.md
+FEATURE-S3-SHARE.md
+FEATURE-SCANNER.md
+FEATURE-SERVICE-CATALOG.md
+FEATURE-VOICE-CAPTURE.md
+FEATURE-WORKFLOW-SERVICE.md
+FUNCTIONALITY.md
+INTENT.md
+METADATA.md
+README.md
+SCREEN-MONITORING-MONITORING.md
+SCREEN-MONITORING-PROCESSES.md
+SCREEN-MONITORING-SCHEDULER.md
+SCREEN-PROJECTS-CAPABILITIES.md
+SCREEN-PROJECTS-CONFIGURATION.md
+SCREEN-PROJECTS-DASHBOARD.md
+SCREEN-PROJECTS-DETAIL.md
+SCREEN-PROJECTS-MAINTENANCE.md
+SCREEN-PROJECTS-VALIDATION.md
+SCREEN-PROJECTS-WORKFLOW.md
+SCREEN-SETUP-AWS.md
+SCREEN-SETUP-GITHUB.md
+SCREEN-SETUP-PROJECTS.md
+SCREEN-SETUP-REPOSITORIES.md
+SCREEN-SETUP-SCAN.md
+SCREEN-SETUP-SETTINGS.md
+SCREEN-SETUP-SUMMARY.md
+SCREEN-SETUP-TERRAFORM.md
+UI-GENERAL.md
+++ read

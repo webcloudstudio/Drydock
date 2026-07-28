@@ -391,6 +391,42 @@ def test_strict_blocks_end_names_match_block_keys():
     assert end_names == set(blocks)
 
 
+def test_strict_blocks_recover_transposed_artifact_boundary():
+    output = (
+        "=== FEATURE-Autolinks.md ===\n"
+        "# FEATURE: Autolinks\n"
+        "=== END FEATURE-Raw-HTML-Inline.md ===\n"
+        "# FEATURE: Raw HTML Inline\n"
+        "=== END FEATURE-Raw-HTML-Inline.md ===\n"
+        "=== MANIFEST.md ===\n"
+        "# MANIFEST\n"
+        "=== END MANIFEST.md ===\n"
+    )
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert blocks == {
+        "FEATURE-Autolinks.md": "# FEATURE: Autolinks",
+        "FEATURE-Raw-HTML-Inline.md": "# FEATURE: Raw HTML Inline",
+        "MANIFEST.md": "# MANIFEST",
+    }
+
+
+def test_strict_blocks_reject_ambiguous_mismatched_end_delimiter():
+    output = (
+        "=== FEATURE-Autolinks.md ===\n"
+        "# FEATURE: Autolinks\n"
+        "=== END FEATURE-Raw-HTML-Inline.md ===\n"
+        "# FEATURE: Raw HTML Inline\n"
+        "=== FEATURE-Raw-HTML-Inline.md ===\n"
+        "# FEATURE: Raw HTML Inline, second attempt\n"
+        "=== END FEATURE-Raw-HTML-Inline.md ===\n"
+    )
+
+    with pytest.raises(SpecificationError, match="Delimiter pairing mismatch"):
+        _parse_strict_blocks(output, FakeRun(text=output))
+
+
 def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:
     target_dir = tmp_path / "Example"
     sources = target_dir / "blueprint" / "sources"
