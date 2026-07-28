@@ -1029,11 +1029,18 @@ class AttemptRecord:
     model: str | None
     passed_checks: int
     total_checks: int
+    passed_cases: int | None
+    total_cases: int | None
     status: str
     stop_reason: str | None = None
 
 
 _REPAIR_FEEDBACK_CAP = 4000
+_CASE_TALLY_RE = re.compile(
+    r"(?m)(?P<passed>\d+)\s+passed,\s+"
+    r"(?P<failed>\d+)\s+failed"
+    r"(?:,\s+(?P<errored>\d+)\s+errored)?"
+)
 
 
 def _is_repairable(error: str | None) -> bool:
@@ -1061,6 +1068,46 @@ def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
     source = result.stdout if result.stdout.strip() else result.stderr
     lines = [line.rstrip() for line in source.splitlines() if line.strip()]
     return lines[-max_lines:]
+
+
+def _case_tally(result: AcceptanceRunResult) -> tuple[int, int] | None:
+    """Return the last ``passed/total`` subcase tally printed by an acceptance check."""
+    matches = tuple(_CASE_TALLY_RE.finditer(f"{result.stdout}\n{result.stderr}"))
+    if not matches:
+        return None
+    match = matches[-1]
+    passed = int(match.group("passed"))
+    failed = int(match.group("failed"))
+    errored = int(match.group("errored") or 0)
+    return passed, passed + failed + errored
+
+
+def _acceptance_case_totals(
+    acceptance: tuple[AcceptanceRunResult, ...],
+) -> tuple[int | None, int | None]:
+    """Aggregate quantitative subcase tallies without inventing cases for scalar ACs."""
+    tallies = [tally for result in acceptance if (tally := _case_tally(result)) is not None]
+    if not tallies:
+        return None, None
+    return sum(tally[0] for tally in tallies), sum(tally[1] for tally in tallies)
+
+
+def _attempt_acceptance_summary(
+    attempt: int,
+    acceptance: tuple[AcceptanceRunResult, ...],
+) -> str:
+    """Render one concise, operator-facing acceptance summary for an LLM attempt."""
+    passed = sum(1 for result in acceptance if result.passed)
+    failed = tuple(result for result in acceptance if not result.passed)
+    line = f"acceptance: attempt {attempt} · {passed}/{len(acceptance)} AC passed"
+    if not failed:
+        return line
+    details: list[str] = []
+    for result in failed:
+        tally = _case_tally(result)
+        cases = f" ({tally[0]}/{tally[1]} cases)" if tally is not None else ""
+        details.append(f"{result.check_id}{cases}")
+    return line + " · failed: " + ", ".join(details)
 
 
 def _console_failure_lines(result: AcceptanceRunResult, max_lines: int = 5) -> list[str]:
@@ -1106,6 +1153,13 @@ def _render_repair_feedback(
         "BUILD_DIRECTORY to make the checks below pass. Do not restart from scratch, do",
         "not weaken or remove any declared acceptance assertion, and keep every check",
         "that already passes green.",
+        "",
+        "The diagnostic excerpts below are truncated. Before editing, rerun each failing",
+        "acceptance assertion from its authoritative specification and inspect the complete",
+        "failure output. For a conformance suite, use its section or example filters to",
+        "diagnose coherent root-cause clusters, then rerun the full declared scope. Fix the",
+        "general parser or renderer behavior; do not add example-specific exceptions. Keep",
+        "working through failing examples while the deterministic tally is improving.",
         "",
     ]
     exhausted = tuple(result for result in failed_checks if _resource_verdict(result))
@@ -1386,10 +1440,15 @@ def _write_group_evidence(
                 if record.total_checks
                 else "no checks"
             )
+            cases_note = (
+                f"; {record.passed_cases}/{record.total_cases} cases"
+                if record.passed_cases is not None and record.total_cases is not None
+                else ""
+            )
             model_note = f" model={record.model}" if record.model else ""
             lines.append(
                 f"- attempt {record.index} ({label}): {record.status}; {checks_note}"
-                f"{model_note}; execution {record.execution_id or '-'}"
+                f"{cases_note}{model_note}; execution {record.execution_id or '-'}"
                 + (f"; stopped: {record.stop_reason}" if record.stop_reason else "")
             )
         lines.append("")
@@ -2032,15 +2091,11 @@ def build_target(
                             state, status, error = "closed/verified", "built", None
                             failure_detail = ""
                         if checks:
-                            passed = sum(1 for check in acceptance if check.passed)
-                            if not failed_checks:
-                                _emit(on_text, f"tests: passed ({passed}/{len(checks)})")
-                            else:
-                                _emit(
-                                    on_text,
-                                    f"tests: FAILED ({passed}/{len(checks)}) — "
-                                    + ", ".join(check.check_id for check in failed_checks),
-                                )
+                            _emit(
+                                on_text,
+                                _attempt_acceptance_summary(attempt, acceptance),
+                            )
+                            if failed_checks:
                                 # Show what each check was doing when it failed. Without this
                                 # the console carries only check ids, and the tally or failing
                                 # cases that make the defect obvious to a reader stay buried in
@@ -2069,12 +2124,21 @@ def build_target(
 
             previous_passed = attempt_records[-1].passed_checks if attempt_records else None
             passed_checks = sum(1 for check in acceptance if check.passed)
+            passed_cases, total_cases = _acceptance_case_totals(acceptance)
+            previous_cases = attempt_records[-1].passed_cases if attempt_records else None
+            quantitative_progress = (
+                passed_checks == previous_passed
+                and passed_cases is not None
+                and previous_cases is not None
+                and passed_cases > previous_cases
+            )
             stalled = (
                 status == "failed"
                 and _is_repairable(error)
                 and bool(acceptance)
                 and previous_passed is not None
                 and passed_checks <= previous_passed
+                and not quantitative_progress
             )
             stop_reason = None
             if stalled:
@@ -2087,6 +2151,8 @@ def build_target(
                     model=attempt_model,
                     passed_checks=passed_checks,
                     total_checks=len(checks),
+                    passed_cases=passed_cases,
+                    total_cases=total_cases,
                     status=status or "built",
                     stop_reason=stop_reason,
                 )

@@ -115,11 +115,15 @@ class TestHelpAndVersion:
 
     def test_stream_build_emits_blank_separator_and_whole_lines(self, capsys):
         _stream_build("")
-        _stream_build("tests: FAILED (2/3) — block-conformance")
+        _stream_build(
+            "acceptance: attempt 1 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
+        )
         _stream_build("repair: attempt 1/1 · 1 failing check(s)")
 
         assert capsys.readouterr().out == (
-            "\ntests: FAILED (2/3) — block-conformance\nrepair: attempt 1/1 · 1 failing check(s)\n"
+            "\nacceptance: attempt 1 · 2/3 AC passed · "
+            "failed: block-conformance (240/260 cases)\n"
+            "repair: attempt 1/1 · 1 failing check(s)\n"
         )
 
     def test_stream_status_only_drops_model_json_payload(self, capsys):

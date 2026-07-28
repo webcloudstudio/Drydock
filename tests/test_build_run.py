@@ -926,7 +926,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
-    assert "tests: passed (1/1)" in messages
+    assert "acceptance: attempt 0 · 1/1 AC passed" in messages
     assert not any("Unit Tests" in message for message in messages)
 
 
@@ -2061,6 +2061,51 @@ assert Path('second.txt').read_text(encoding='utf-8') == 'ok\\n'
     assert calls == [0, 1, 2]
 
 
+def test_repair_loop_counts_conformance_subcase_progress_while_ac_stays_red(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+### conformance
+Every conformance example passes.
+
+```python
+from pathlib import Path
+score = int(Path("score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {4 - score} failed, 0 errored")
+assert score == 4
+```
+""",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+    messages: list[str] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "score.txt").write_text(f"{attempt + 1}\n", encoding="utf-8")
+        calls.append(attempt)
+        return FakeResult(text=_success_report(changed=("score.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=messages.append,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].status == "built"
+    assert calls == [0, 1, 2, 3]
+    assert "acceptance: attempt 0 · 0/1 AC passed · failed: conformance (1/4 cases)" in messages
+    assert "acceptance: attempt 2 · 0/1 AC passed · failed: conformance (3/4 cases)" in messages
+    assert "acceptance: attempt 3 · 1/1 AC passed" in messages
+
+
 def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -2128,7 +2173,8 @@ def test_console_shows_what_a_failed_check_was_doing(tmp_path):
     )
 
     console = "\n".join(messages)
-    assert "tests: FAILED" in console
+    assert "acceptance: attempt 0 · 0/1 AC passed" in console
+    assert "suite-conformance (365/368 cases)" in console
     assert "suite-conformance: The scoped conformance suite passes." in console
     # Both streams reach the screen: the tally that makes the defect legible, and the
     # runner's own note about what it was invoked against.
@@ -2244,6 +2290,8 @@ def test_repair_feedback_names_failing_checks_and_caps_size():
     assert "211 passed, 75 failed" in text
     assert "foundation.txt" in text
     assert "Resource exhaustion" not in text
+    assert "diagnostic excerpts below are truncated" in text
+    assert "diagnose coherent root-cause clusters" in text
 
 
 # A repair pass that reads only "the check failed" tunes output to match an expectation. When

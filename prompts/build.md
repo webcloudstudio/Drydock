@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260722 V2
+version: 20260728 V3
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 model: opus
@@ -48,6 +48,10 @@ Operating contract:
    scope the specification states and never widen it: scan production source only,
    exclude `.venv/`, `site-packages`, and vendored or generated code, and do not
    flag test doubles or fixtures that use the guarded dependency.
+   Run every declared acceptance assertion before returning. For a conformance suite,
+   use its section or example filters to diagnose coherent root-cause clusters, but
+   rerun the full declared scope before reporting the result. Treat failing examples as
+   a work queue for fixing general behavior; never add example-specific exceptions.
 6. Treat `User Acceptance` entries as review evidence requirements. Implement
    the supporting behavior, but do not claim to have performed human judgment.
 7. The `implements` section is authoritative and intentionally stacked late in
