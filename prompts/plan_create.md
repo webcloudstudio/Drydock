@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260727 V19
+version: 20260728 V20
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -18,7 +18,8 @@ Do not turn a final project measurement or release threshold into a story Progra
 assertion or child `ac` block. Those remain Sea Trials and run at
 final scoring after all stories close.
 The one terminal `Suite: full` assertion is the exception: it proves a complete-suite Sea Trial by
-running the supplied suite and requiring success, never by asserting a remembered passed count.
+running the supplied suite and requiring success. It may additionally verify the total using either
+a count derived from authoritative suite data or an explicitly declared authoritative exact count.
 
 `accepts:` is traceability metadata, not a child acceptance command. A story that stages or
 implements the capability exercised by a final Sea Trial still names that trial in `accepts:` even
@@ -452,7 +453,9 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - When the Analysis states a terminal verification story, that one story gates on the complete
   suite: its `Programmatic Acceptance` assertion declares `Suite: full` on its own line in the
   heading block, above the fenced code, and it `depends` on every implementation story. Without
-  that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
+  that declaration a full-suite run is rejected. The assertion requires runner success and may
+  additionally compare the result with a total derived from the authoritative suite data or an
+  explicitly declared authoritative exact count. **Only the terminal story runs the whole suite.**
 - A harness staging or integration story — one that runs the imported runner only to prove it is
   staged and executes, not to gate correctness — must bound its invocation with the runner's
   `--pattern`/`--number` selector (a single-example smoke). An unbounded run of the suite from any

@@ -1130,15 +1130,22 @@ def _attempt_acceptance_summary(
     """Render one concise, operator-facing acceptance summary for an LLM attempt."""
     passed = sum(1 for result in acceptance if result.passed)
     failed = tuple(result for result in acceptance if not result.passed)
-    line = f"acceptance: attempt {attempt} · {passed}/{len(acceptance)} AC passed"
+    line = f"acceptance: call {attempt + 1} · {passed}/{len(acceptance)} AC passed"
     if not failed:
         return line
+    return line + " · failed: " + _acceptance_failure_details(failed)
+
+
+def _acceptance_failure_details(
+    failed: tuple[AcceptanceRunResult, ...],
+) -> str:
+    """Render failed AC ids with quantitative case tallies when available."""
     details: list[str] = []
     for result in failed:
         tally = _case_tally(result)
         cases = f" ({tally[0]}/{tally[1]} cases)" if tally is not None else ""
         details.append(f"{result.check_id}{cases}")
-    return line + " · failed: " + ", ".join(details)
+    return ", ".join(details)
 
 
 def _console_failure_lines(result: AcceptanceRunResult, max_lines: int = 5) -> list[str]:
@@ -1939,6 +1946,7 @@ def build_target(
                 seed_feedback = _render_repair_feedback(
                     unit, resume_failed, None, (), story_by_check
                 )
+                feedback_checks = resume_failed
                 _emit(
                     on_text,
                     f"resume: seeding first pass with {len(resume_failed)} failing check(s)",
@@ -1974,6 +1982,36 @@ def build_target(
                         unit, feedback_checks, agent_report, changed_files, story_by_check
                     ),
                 )
+            if attempt == 0:
+                call_kind = "resumed repair" if unit.resume else "initial build"
+            else:
+                call_kind = f"automatic repair {attempt} of {max_attempt}"
+            _emit(on_text, f"LLM BUILD: {unit.name} [{unit.block_id}]")
+            _emit(
+                on_text,
+                "  stories: "
+                + ", ".join(f"{block.name} [{block.block_id}]" for block in unit.steps),
+            )
+            if unit.already_verified:
+                _emit(
+                    on_text,
+                    "  regression gates: "
+                    + ", ".join(
+                        f"{block.name} [{block.block_id}]" for block in unit.already_verified
+                    ),
+                )
+            _emit(
+                on_text,
+                f"  call: {attempt + 1} of up to {max_attempt + 1} · {call_kind} · "
+                f"{llm_provider}/{attempt_model or '-'}",
+            )
+            if feedback_checks:
+                _emit(
+                    on_text,
+                    "  failing: " + _acceptance_failure_details(feedback_checks),
+                )
+            elif agent_report is not None:
+                _emit(on_text, "  failing: agent-reported failure")
             _emit(on_text, f"{_clock()}  calling {llm_provider}/{attempt_model or '-'} …")
             try:
                 result = run(

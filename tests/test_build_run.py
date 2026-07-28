@@ -587,6 +587,9 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert any(re.match(r"kind: story · 1 run / 0 verified · \d+ SP", line) for line in log)
     assert any(line == f"workdir: {build_dir}" for line in log)
     assert any(line == "run: Foundation (foundation)" for line in log)
+    assert "LLM BUILD: Foundation [foundation]" in log
+    assert "  stories: Foundation [foundation]" in log
+    assert any(line.startswith("  call: 1 of up to 4 · initial build · ") for line in log)
     assert any(line == "returned: ok · exec-1" for line in log)
     assert any(line == "files: 1 changed — foundation.txt" for line in log)
     assert any(re.match(r"result: built · closed/verified · .+", line) for line in log)
@@ -926,7 +929,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "RED: foundation-file" in evidence
     assert "## Post-build programmatic acceptance" in evidence
     assert "PASS: foundation-file" in evidence
-    assert "acceptance: attempt 0 · 1/1 AC passed" in messages
+    assert "acceptance: call 1 · 1/1 AC passed" in messages
     assert not any("Unit Tests" in message for message in messages)
 
 
@@ -2101,9 +2104,9 @@ assert score == 4
 
     assert result.steps[0].status == "built"
     assert calls == [0, 1, 2, 3]
-    assert "acceptance: attempt 0 · 0/1 AC passed · failed: conformance (1/4 cases)" in messages
-    assert "acceptance: attempt 2 · 0/1 AC passed · failed: conformance (3/4 cases)" in messages
-    assert "acceptance: attempt 3 · 1/1 AC passed" in messages
+    assert "acceptance: call 1 · 0/1 AC passed · failed: conformance (1/4 cases)" in messages
+    assert "acceptance: call 3 · 0/1 AC passed · failed: conformance (3/4 cases)" in messages
+    assert "acceptance: call 4 · 1/1 AC passed" in messages
 
 
 def test_repair_loop_stops_when_one_conformance_ac_regresses(tmp_path):
@@ -2227,7 +2230,7 @@ def test_console_shows_what_a_failed_check_was_doing(tmp_path):
     )
 
     console = "\n".join(messages)
-    assert "acceptance: attempt 0 · 0/1 AC passed" in console
+    assert "acceptance: call 1 · 0/1 AC passed" in console
     assert "suite-conformance (365/368 cases)" in console
     assert "suite-conformance: The scoped conformance suite passes." in console
     # Both streams reach the screen: the tally that makes the defect legible, and the
@@ -2538,9 +2541,15 @@ def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_FAILED_STORY_WITH_AC)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_FOUNDATION_AC, encoding="utf-8")
     runner = make_runner()
+    messages: list[str] = []
 
     result = build_target(
-        "Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation"
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=messages.append,
+        step_id="foundation",
     )
 
     step = next(s for s in result.steps if s.block_id == "foundation")
@@ -2552,6 +2561,9 @@ def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
     assert "# Repair Feedback" in prompt
     assert "## Repair pass" in prompt
     assert "foundation-file" in prompt
+    assert "LLM BUILD: Foundation [foundation]" in messages
+    assert any(line.startswith("  call: 1 of up to 4 · resumed repair · ") for line in messages)
+    assert "  failing: foundation-file" in messages
 
 
 def test_fresh_pending_step_is_not_seeded(tmp_path):

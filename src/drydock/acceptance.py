@@ -14,7 +14,6 @@ from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.config import get_sandbox_mem_limit_mb
-from drydock.errors import SpecificationError
 from drydock.proof_integrity import analyze_proof
 
 SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
@@ -43,9 +42,6 @@ _MALFORMED_EXCEPTIONS = frozenset({
 })
 _TRACEBACK_FILE_RE = re.compile(r'^\s*File "([^"]+)", line ', re.MULTILINE)
 _EXCEPTION_LINE_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception))\b:?(.*)$")
-_EXACT_PASSED_COUNT_ASSERTION_RE = re.compile(
-    r"\bassert\s+['\"]\d+\s+passed['\"]\s+in\s+", re.IGNORECASE
-)
 
 
 def _timeout_output_text(value: bytes | str | None) -> str:
@@ -281,11 +277,6 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
         title = _last_heading(prefix)
         check_id = _slugify(title or f"{path.stem}-{index}")
         code = match.group("code").strip()
-        if _full_suite(prefix) and _EXACT_PASSED_COUNT_ASSERTION_RE.search(code):
-            raise SpecificationError(
-                f"{path.name} {check_id} is Suite: full and must not assert an exact passed "
-                "count; prove that the supplied complete suite succeeds instead"
-            )
         checks.append(
             ProgrammaticAcceptance(
                 check_id=check_id,

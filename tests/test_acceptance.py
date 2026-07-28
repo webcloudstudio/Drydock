@@ -19,7 +19,7 @@ from drydock.acceptance import (
     run_programmatic_acceptance,
 )
 from drydock.config import DEFAULT_SANDBOX_MEM_LIMIT_MB, get_sandbox_mem_limit_mb
-from drydock.errors import ConfigurationError, SpecificationError
+from drydock.errors import ConfigurationError
 
 _SPEC = """# FEATURE: Verification
 
@@ -109,26 +109,31 @@ def test_sea_trial_references_still_parse_alongside_the_suite_marker(tmp_path):
     assert checks["assets-present"].sea_trials == ("st-003",)
 
 
-def test_full_suite_rejects_exact_passed_count_assertion(tmp_path):
+@pytest.mark.parametrize("scope", ["full", "scoped"])
+def test_suite_accepts_authoritative_exact_passed_count(tmp_path, scope):
     path = tmp_path / "FEATURE-Verification.md"
     path.write_text(
-        """# FEATURE: Verification
+        f"""# FEATURE: Verification
 
 ## Programmatic Acceptance
 
 ### conformance-full
-Suite: full
+Suite: {scope}
 Sea Trials: st-004
 
 ```python
+assert result.returncode == 0
 assert "652 passed" in result.stdout
 ```
 """,
         encoding="utf-8",
     )
 
-    with pytest.raises(SpecificationError, match="must not assert an exact passed count"):
-        parse_programmatic_acceptance(path)
+    checks = parse_programmatic_acceptance(path)
+
+    assert len(checks) == 1
+    assert checks[0].full_suite is True
+    assert '"652 passed"' in checks[0].code
 
 
 # --- Failure diagnostics ----------------------------------------------------

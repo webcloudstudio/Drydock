@@ -98,8 +98,13 @@ def _stream_build(text: str) -> None:
 
 
 def _stream_build_summary(text: str) -> None:
-    """Show per-attempt acceptance in normal build output without enabling debug chatter."""
-    if text.startswith("acceptance:"):
+    """Show concise LLM scope and acceptance in normal output without debug chatter."""
+    if text.startswith("LLM BUILD:"):
+        _stream_build("")
+        _stream_build(text)
+    elif text.startswith(("  stories:", "  regression gates:", "  call:", "  failing:")):
+        _stream_build(text)
+    elif text.startswith("acceptance:"):
         _stream_build(text)
 
 

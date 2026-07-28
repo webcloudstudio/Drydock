@@ -117,25 +117,35 @@ class TestHelpAndVersion:
     def test_stream_build_emits_blank_separator_and_whole_lines(self, capsys):
         _stream_build("")
         _stream_build(
-            "acceptance: attempt 1 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
+            "acceptance: call 2 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
         )
         _stream_build("repair: attempt 1/1 · 1 failing check(s)")
 
         assert capsys.readouterr().out == (
-            "\nacceptance: attempt 1 · 2/3 AC passed · "
+            "\nacceptance: call 2 · 2/3 AC passed · "
             "failed: block-conformance (240/260 cases)\n"
             "repair: attempt 1/1 · 1 failing check(s)\n"
         )
 
-    def test_stream_build_summary_shows_acceptance_only(self, capsys):
+    def test_stream_build_summary_shows_llm_scope_and_acceptance_only(self, capsys):
         _stream_build_summary("returned: ok · exec-1")
+        _stream_build_summary("LLM BUILD: Markdown Parsing [feature-parsing]")
         _stream_build_summary(
-            "acceptance: attempt 1 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
+            "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]"
+        )
+        _stream_build_summary("  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt")
+        _stream_build_summary("  failing: block-conformance (240/260 cases)")
+        _stream_build_summary(
+            "acceptance: call 2 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
         )
         _stream_build_summary("files: 1 changed — parser.py")
 
         assert (
-            capsys.readouterr().out == "acceptance: attempt 1 · 2/3 AC passed · "
+            capsys.readouterr().out == "\nLLM BUILD: Markdown Parsing [feature-parsing]\n"
+            "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]\n"
+            "  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt\n"
+            "  failing: block-conformance (240/260 cases)\n"
+            "acceptance: call 2 · 2/3 AC passed · "
             "failed: block-conformance (240/260 cases)\n"
         )
 

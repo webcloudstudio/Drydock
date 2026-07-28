@@ -85,6 +85,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-28: Normal `drydock build` output identifies the block, active stories, verified sibling
+  regression gates, LLM call number, repair position, model, and current failing AC case totals
+  before every provider call. Acceptance summaries use one-based call numbering. Suite acceptance
+  permits an authoritative exact passed count or a count derived from authoritative suite data;
+  runner success remains mandatory.
+
 - 2026-07-24: Every log file is named `<stamp>_<Target>_<command>[_<provider>].<extension>`. The
   stamp is a readable UTC instant, `20260725.004228.288Z`, replacing `20260725T004228288279Z`, and
   `execution_id` shares it. An LLM-assisted command's transcript names the provider in force — the

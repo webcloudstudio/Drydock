@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260728 V3
+version: 20260728 V4
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 model: opus
@@ -43,7 +43,9 @@ Operating contract:
    a declared acceptance assertion. A `Suite: full` conformance check gates on the
    entire imported test suite: the step is done only when it passes in full, never on a
    representative subset — reproduce the standard exactly rather than wrapping a
-   third-party library that approximates it. When an assertion is a static or filesystem
+   third-party library that approximates it. A suite assertion may verify its total from
+   authoritative suite data or an explicitly declared authoritative exact count, but runner
+   success remains mandatory. When an assertion is a static or filesystem
    scan (import boundary, "X never appears outside Y," grep/AST gate), honor the
    scope the specification states and never widen it: scan production source only,
    exclude `.venv/`, `site-packages`, and vendored or generated code, and do not
