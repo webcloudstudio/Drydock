@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import re
-import tempfile
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -526,16 +525,16 @@ def _load_prior_plan_state(
 ) -> tuple[dict[str, AppliedSpecRecord], dict[str, tuple[str, str | None]]]:
     """Parse an existing MANIFEST.md and extract preservation state.
 
-    Returns (applied_specs, {block_id → (state, finding)}).  Returns empty dicts
-    when the manifest does not exist or cannot be parsed.  ``finding`` is non-None
+    Returns (applied_specs, {block_id → (state, finding)}). Returns empty dicts
+    only when the manifest does not exist. Invalid existing Manifests abort before
+    planning mutates any Target artifact. ``finding`` is non-None
     only for spike blocks that carry a non-empty finding text.
     """
     if not plan_path.is_file():
         return {}, {}
-    try:
-        prior = parse_build_plan(plan_path)
-    except Exception:
-        return {}, {}
+    from drydock.manifest import DrydockManifest
+
+    prior = DrydockManifest.load(plan_path)
     block_states: dict[str, tuple[str, str | None]] = {}
     for block in prior.blocks:
         finding: str | None = None
@@ -1688,13 +1687,8 @@ def _integrity_check(
         for name in targets:
             if name and name not in available_specs and not (blueprint_dir / name).is_file():
                 fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
-        # Every story must carry at least one acceptance gate — hard emission gate.
-        has_ac = any(b.block_type == "ac" and b.parent == block.block_id for b in plan.blocks)
-        if not has_ac:
-            fatal.append(f"{block.block_id}: story has no acceptance check")
-
-        # Test-driven-acceptance coverage — a hard emission gate, like the child-ac
-        # gate above. A story whose implemented specs declare a programmatic surface
+        # Test-driven acceptance is Blueprint-first. A story whose implemented
+        # specs declare a programmatic surface
         # must carry several concrete Python assertions unless an inline-justified
         # `- None.` explains the absence.
         surface = False
@@ -1859,10 +1853,9 @@ def _integrity_check(
 
 def _parse_plan_text(text: str) -> BuildPlan:
     """Parse Manifest text before target files are mutated."""
-    with tempfile.TemporaryDirectory(prefix="drydock-plan-") as tmp:
-        path = Path(tmp) / "MANIFEST.md"
-        _write_text(path, text)
-        return parse_build_plan(path)
+    from drydock.manifest import DrydockManifest
+
+    return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
 def _validate_plan_output(
@@ -2068,6 +2061,83 @@ def _normalize_manifest_contexts(plan_path: Path, blueprint_dir: Path) -> tuple[
     return tuple(warnings)
 
 
+def _prepare_manifest_in_memory(
+    plan: BuildPlan,
+    *,
+    blueprint_dir: Path,
+    emitted_files: dict[str, str],
+    compass_sources: frozenset[str],
+    prior_applied_specs: dict[str, AppliedSpecRecord],
+    prior_block_states: dict[str, tuple[str, str | None]],
+) -> tuple[str, ...]:
+    """Merge prior state and normalize context before any target artifact write."""
+    from drydock.build import is_feature_step, is_screen_step, normalize_context_names
+    from drydock.build_plan import _format_applied_specs
+
+    warnings: list[str] = []
+    available = set(emitted_files)
+    available.update(path.name for path in blueprint_dir.glob("*.md") if path.is_file())
+
+    if prior_applied_specs:
+        plan.set_metadata(applied_specs=_format_applied_specs(prior_applied_specs))
+
+    for block in plan.blocks:
+        updates: dict[str, str | tuple[str, ...] | None] = {}
+        if block.block_type in {"story", "spike"}:
+            normalized: list[str] = []
+            for name in normalize_context_names(block, blueprint_dir):
+                if name.startswith("sources/"):
+                    promoted = name.removeprefix("sources/")
+                    source_exists = (blueprint_dir / name).is_file()
+                    if promoted in compass_sources or (
+                        promoted not in available and not source_exists
+                    ):
+                        warnings.append(
+                            f"{block.block_id}: dropped context {name!r} — not present in "
+                            "blueprint/ (source routed to the Compass or never promoted); "
+                            "the Manifest may reference only files that exist in the Blueprint"
+                        )
+                        continue
+                    name = promoted
+                normalized.append(name)
+            if is_feature_step(block) or is_screen_step(block):
+                for managed in ("ARCHITECTURE.md", "DATABASE.md"):
+                    compact = managed.replace(".md", "_compact.md")
+                    if managed in available and compact not in normalized:
+                        normalized.append(compact)
+            current = block.fields.get("context", ())
+            current_tuple = current if isinstance(current, tuple) else ()
+            if tuple(normalized) != current_tuple:
+                updates["context"] = tuple(normalized) if normalized else None
+
+        prior_state, prior_finding = prior_block_states.get(block.block_id, ("pending", None))
+        if prior_state != "pending":
+            implementations = block.fields.get("implements", ())
+            names = implementations if isinstance(implementations, tuple) else (implementations,)
+            dirty = False
+            for name in (str(item) for item in names if item):
+                record = prior_applied_specs.get(name)
+                if record is None:
+                    continue
+                if name in emitted_files and name not in prior_applied_specs:
+                    digest = _sha256(emitted_files[name].encode("utf-8")).hexdigest()
+                else:
+                    path = blueprint_dir / name
+                    digest = _file_sha256(path) if path.is_file() else ""
+                if digest != record.sha256:
+                    dirty = True
+                    break
+            if not dirty:
+                updates["state"] = prior_state
+        if block.block_type == "spike" and prior_finding:
+            updates["finding"] = prior_finding
+        if updates:
+            plan.set_fields(block.block_id, **updates)
+
+    plan.validate()
+    return tuple(warnings)
+
+
 def _record_plan_error(
     target_dir: Path,
     *,
@@ -2226,6 +2296,7 @@ def create_plan(
         raise SpecificationError(
             f"ANALYSIS.md not found: {analysis_path}\n  Run: drydock analyze {target}"
         )
+    source_roles = parse_source_roles(analysis_text)
 
     blockers_path = target_dir / "BLOCKERS.md"
     if blockers_path.is_file():
@@ -2500,7 +2571,7 @@ def create_plan(
                 command="plan",
                 phase="post-output validation",
                 classification="plan output validation failed",
-                detail=str(exc),
+                detail=f"{exc}\n  No files were changed.",
                 execution_id=exec_id,
                 evidence=log_dir,
                 recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
@@ -2519,6 +2590,22 @@ def create_plan(
     # that block to `pending` so the story rebuilds against the edit.
     _protected: frozenset[str] = frozenset(prior_applied_specs)
 
+    emitted_blueprints = {
+        name: content for name, content in blocks.items() if name not in _RESERVED_BLOCKS
+    }
+    context_warnings = _prepare_manifest_in_memory(
+        plan,
+        blueprint_dir=blueprint_dir,
+        emitted_files=emitted_blueprints,
+        compass_sources=frozenset(
+            path for path, role in source_roles.items() if role.plan_disposition == "compass"
+        ),
+        prior_applied_specs=prior_applied_specs,
+        prior_block_states=prior_block_states,
+    )
+    plan.path = plan_path
+    blocks["MANIFEST.md"] = plan.render()
+
     # 1. Author the typed Blueprint spec files (everything that is not a reserved block).
     authored: list[Path] = []
     for name, content in blocks.items():
@@ -2533,17 +2620,12 @@ def create_plan(
 
     # Imported sources remain immutable provenance.  Planning projects build-facing assets
     # into Blueprint paths and routes author intent into the persistent Compass.
-    promote_imported_sources(blueprint_dir, parse_source_roles(analysis_text), target_dir)
+    promote_imported_sources(blueprint_dir, source_roles, target_dir)
 
-    # 2. The executable plan. Write the LLM output, then merge prior block states and
-    #    restore applied_specs so that closed/verified work and the graph database survive
-    #    a replan. Dirty blocks (implements: sha256 changed) are left at pending.
-    _write_text(plan_path, blocks["MANIFEST.md"])
-    _merge_prior_state(plan_path, blueprint_dir, prior_applied_specs, prior_block_states)
-    context_warnings = _normalize_manifest_contexts(plan_path, blueprint_dir)
+    # 2. Persist the already merged, normalized, fully validated executable graph once.
+    plan.save(plan_path)
 
-    # 4. Re-read the written Manifest so result paths reflect the target artifact.
-    plan = parse_build_plan(plan_path)
+    # 4. The in-memory graph now reflects the target path and persisted artifact.
 
     # SOUNDINGS.md is not written here. `drydock score ac` reads the Blueprint, runs the
     # assertions, and emits the board with its verdicts.

@@ -1,7 +1,7 @@
 ---
 name: plan_reuse
 description: Manifest-first planning for an already-populated Blueprint — preserve conformant specs, emit MANIFEST.md, and author only truly missing required spec files.
-version: 20260720 V4
+version: 20260727 V5
 intent: Act as an Agile Development Team reviewing an existing Drydock Blueprint. Reuse the current typed spec files as authoritative where they already define the product correctly. Emit MANIFEST.md and only those Blueprint files that are truly missing and required to make the Blueprint buildable.
 command: drydock plan create
 model: sonnet
@@ -67,9 +67,12 @@ Do not create speculative new files.
   either an existing file injected below or a file you emit in this response.
 - Stories and Blueprint spec files are one-to-one: each story's `implements:` names exactly one
   spec file, and every important existing Blueprint file is implemented by exactly one story.
-- Every story has at least one child `ac` block (a smoke build gate such as the project test
-  suite); durable behavioral acceptance stays in the spec's `Programmatic Acceptance`. A story
-  without a child `ac` block is rejected.
+- Routine acceptance stays in each spec's `Programmatic Acceptance`; do not create one Manifest
+  `ac` block per story. Emit `ac` only for an exceptional orchestration gate or a deliberately
+  modeled Sea Trial graph gate, using explicit `id`, `parent`, `summary`, `kind`, `state`, and
+  applicable `check` fields.
+- Read Sea Trial commands for stable-ID traceability only. Do not execute or copy those commands
+  into ordinary story acceptance during planning.
 - Group related stories under coherent `feature` parents.
 - Emit an acyclic, runnable, foundation-first plan.
 - All blocks start `state: pending`.

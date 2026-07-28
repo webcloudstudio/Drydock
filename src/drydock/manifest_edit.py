@@ -21,8 +21,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from drydock.build import BAND_FOUNDATION, BAND_NAMES, band_for, work_kind_for
-from drydock.build_plan import _HEADER_RE, _split_depends
+from drydock.build_plan import _HEADER_RE
 from drydock.errors import SpecificationError
+from drydock.manifest import DrydockManifest
 
 _FIELD_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$")
 _STEP_TYPES = ("story", "spike")
@@ -60,43 +61,8 @@ def _scan_field(lines: list[str], key: str) -> str | None:
 
 
 def split_manifest(path: Path) -> ManifestDoc:
-    """Split a MANIFEST.md into its header preamble and ordered raw blocks."""
-    if not path.is_file():
-        raise SpecificationError(f"MANIFEST.md not found: {path}")
-    lines = path.read_text(encoding="utf-8").splitlines()
-
-    first = next((i for i, line in enumerate(lines) if _HEADER_RE.match(line)), len(lines))
-    preamble = lines[:first]
-
-    blocks: list[RawBlock] = []
-    index = first
-    while index < len(lines):
-        header = _HEADER_RE.match(lines[index])
-        if not header:
-            index += 1
-            continue
-        start = index
-        index += 1
-        while index < len(lines) and not _HEADER_RE.match(lines[index]):
-            index += 1
-        body = lines[start:index]
-        while body and not body[-1].strip():
-            body.pop()
-        block_id = (_scan_field(body, "id") or "").strip()
-        if not block_id:
-            raise SpecificationError(f"Block missing id near: {body[0]!r}")
-        parent = (_scan_field(body, "parent") or "").strip() or None
-        depends_raw = _scan_field(body, "depends") or ""
-        blocks.append(
-            RawBlock(
-                block_id=block_id,
-                block_type=header.group(1),
-                parent=parent,
-                depends=_split_depends(depends_raw),
-                lines=body,
-            )
-        )
-    return blocks_doc(path, preamble, blocks)
+    """Compatibility delegate to the typed, lossless Manifest graph loader."""
+    return DrydockManifest.load(path, compatibility=True)  # type: ignore[return-value]
 
 
 def blocks_doc(path: Path, preamble: list[str], blocks: list[RawBlock]) -> ManifestDoc:
@@ -889,6 +855,8 @@ def _roll_up_feature_states(doc: ManifestDoc) -> None:
 
 def render_manifest(doc: ManifestDoc) -> str:
     """Render the document back to MANIFEST.md text with one blank between blocks."""
+    if isinstance(doc, DrydockManifest):
+        return doc.render()
     parts: list[str] = []
     preamble = list(doc.preamble)
     while preamble and not preamble[-1].strip():
@@ -905,6 +873,13 @@ def render_manifest(doc: ManifestDoc) -> str:
 
 def write_manifest(doc: ManifestDoc) -> None:
     """Atomically write the document back to its path."""
+    if isinstance(doc, DrydockManifest):
+        # Legacy edit helpers still mutate source lines directly. Reparse the
+        # rendered candidate so the same typed validation runs before the one
+        # atomic write.
+        candidate = DrydockManifest.parse(doc.render(), source=doc.path, compatibility=True)
+        candidate.save()
+        return
     text = render_manifest(doc)
     doc.path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(

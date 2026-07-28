@@ -1439,6 +1439,8 @@ def test_render_refit_never_built_target_is_clear(tmp_path, monkeypatch):
 
 
 def test_render_step_files_badges_compact_and_duplicate(tmp_path):
+    from hashlib import sha256
+
     from drydock.build import StepRoots, assemble_step, group_duplicate_flags
     from drydock.build_plan import parse_build_plan
 
@@ -1452,8 +1454,13 @@ def test_render_step_files_badges_compact_and_duplicate(tmp_path):
         d.mkdir(parents=True, exist_ok=True)
     (target / "COMPASS.md").write_text("compass" * 10, encoding="utf-8")
     (blueprint / "FEATURE-A.md").write_text("feature-a" * 100, encoding="utf-8")
-    (blueprint / "FEATURE-B.md").write_text("feature-b" * 100, encoding="utf-8")
-    (blueprint / "FEATURE-B_compact.md").write_text("b-compact" * 10, encoding="utf-8")
+    feature_b = ("feature-b" * 100).encode()
+    (blueprint / "FEATURE-B.md").write_bytes(feature_b)
+    (blueprint / "FEATURE-B_compact.md").write_text(
+        f"<!-- Compacted from FEATURE-B.md sha256={sha256(feature_b).hexdigest()} "
+        "on 2026-07-27 by test -->\n" + ("b-compact" * 10),
+        encoding="utf-8",
+    )
     roots = StepRoots(
         target_dir=target, blueprint_dir=blueprint, stack_dir=stack, rigging_dir=rigging
     )

@@ -10,6 +10,7 @@ import sys
 import textwrap
 import time
 import traceback
+from collections import Counter
 from contextlib import nullcontext, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -647,7 +648,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     def _progress(text: str) -> None:
         # Only surface plan's own mode/status notices; suppress the raw streamed
         # LLM response text, which for a full-rewrite plan can be very large.
-        if text.startswith("[plan]"):
+        if getattr(args, "debug", False) and text.startswith("[plan]"):
             print(text, end="")
 
     model = get_model(getattr(args, "model", None))
@@ -655,6 +656,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     log_dir = get_workspace() / "logs"
     target_directory = get_target_directory()
     target_dir = require_target_dir(args.Target)
+    plan_started = time.monotonic()
     with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
         result = create_plan(
             args.Target,
@@ -677,6 +679,20 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "speckit-translate": "SPEC-KIT (imported Spec Kit sources translated)",
     }.get(result.plan_mode, result.plan_mode or "unknown")
     print(f"Mode: {mode_label}")
+    print(f"Provider: {llm_provider} / {model}")
+    counts = Counter(block.block_type for block in result.plan.blocks)
+    print(
+        "Graph: "
+        f"{counts['feature']} features, {counts['story']} stories, "
+        f"{counts['spike']} spikes, {counts['ac']} acceptance gates"
+    )
+    print(f"Warnings: {len(result.warnings)}")
+    print(f"Outcome: {'updated' if getattr(result, 'changed', True) else 'unchanged'}")
+    print(f"Execution: {getattr(result, 'execution_id', None) or '-'}")
+    print(f"Elapsed: {_elapsed_text(time.monotonic() - plan_started)}")
+    print(f"Review: {result.quarterdeck_dir}")
+    if not getattr(args, "debug", False):
+        return 0
     if result.conformed_files:
         print(
             f"Conformed {len(result.conformed_files)} imported spec(s) into Drydock format "
@@ -847,6 +863,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             log_dir=get_workspace() / "logs",
         )
         print_import_result(result.source, result.imported, result.blueprint_dir)
+        print("normalized")
         return 0
 
     raise UsageError(f"Unknown format: {fmt!r}")
@@ -1377,8 +1394,17 @@ def cmd_build(args: argparse.Namespace) -> int:
     # streamed by build_target itself; report only harvests the failures for that closing block.
     failures: list[BuildStepResult] = []
     _fatal_shown: set[str] = set()
+    _reported_units: set[str] = set()
+    _build_unit_ids: dict[str, str] = {}
+    debug = bool(getattr(args, "debug", False))
 
     def report(step: BuildStepResult) -> None:
+        unit_key = step.execution_id or step.block_id
+        if unit_key not in _reported_units:
+            _reported_units.add(unit_key)
+            reference = f" · execution {step.execution_id}" if step.execution_id else ""
+            unit_id = _build_unit_ids.get(step.block_id, step.block_id)
+            print(f"{step.status}: {unit_id} — {step.state}{reference}")
         if step.status == "failed":
             # Stories in one block share a single execution: report it once.
             fatal_key = step.execution_id or f"{step.block_id}:{step.error}"
@@ -1387,18 +1413,32 @@ def cmd_build(args: argparse.Namespace) -> int:
                 failures.append(step)
 
     build_started = time.monotonic()
-    print(_HEAVY_RULE)
-    print(f"BUILD {args.Target} started at {_wall_time()}")
-    print(_HEAVY_RULE)
-    print(f"llm-provider: {llm_provider} / {model}")
-    attempts_word = "attempt" if repair_attempts == 1 else "attempts"
-    print(f"repair: {repair_attempts} {attempts_word} · escalate {escalate_model or 'off'}")
+    print(f"Build: {args.Target}")
+    if debug:
+        print(f"Started: {_wall_time()}")
+        print(f"Provider: {llm_provider} / {model}")
+        attempts_word = "attempt" if repair_attempts == 1 else "attempts"
+        print(f"Repair: {repair_attempts} {attempts_word} · escalate {escalate_model or 'off'}")
     if getattr(args, "story", None):
         print(f"scope: story {args.story}")
     elif getattr(args, "step", None):
         print(f"scope: step {args.step}")
     else:
         print("scope: entire project")
+    from drydock.build_plan import parse_build_plan
+
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    frontier = plan.buildable_steps()
+    if not getattr(args, "story", None) and not getattr(args, "step", None):
+        by_id = {block.block_id: block for block in plan.blocks}
+        _build_unit_ids.update({
+            block.block_id: block.parent
+            for block in plan.blocks
+            if block.parent
+            and block.parent in by_id
+            and by_id[block.parent].block_type == "feature"
+        })
+    print("frontier: " + (", ".join(block.block_id for block in frontier) or "empty"))
     if getattr(args, "reset", False):
         reset_scope = (
             getattr(args, "story", None)
@@ -1439,7 +1479,11 @@ def cmd_build(args: argparse.Namespace) -> int:
             model=model,
             llm_provider=llm_provider,
             log_dir=log_dir,
-            on_text=_stream_build,
+            on_text=(
+                _stream_build
+                if debug or bool(getattr(args, "dry_run", False))
+                else (lambda _text: None)
+            ),
             on_step=report,
             step_id=getattr(args, "step", None),
             story_id=getattr(args, "story", None),
@@ -1450,26 +1494,27 @@ def cmd_build(args: argparse.Namespace) -> int:
             escalate_model=escalate_model,
         )
     print()
-    print(_HEAVY_RULE)
-    print(f"BUILD COMPLETE {args.Target}")
-    print(_HEAVY_RULE)
     label = "dry-run result" if result.dry_run else "result"
-    print(f"{label}: {len(result.built())} built, {len(result.failed())} failed")
-    print(f"completed at {_wall_time()}")
+    print(
+        f"{label}: {len(result.built())} built, {len(result.failed())} failed, "
+        f"{len(result.steps) - len(result.built()) - len(result.failed())} unchanged"
+    )
     print(f"elapsed: {_elapsed_text(time.monotonic() - build_started)}")
     if not result.steps:
         print("nothing buildable — no pending step has all dependencies verified")
         reviewable = _reviewable_build_steps(target_dir)
         if reviewable:
             print("legacy implemented steps remain; rebuild or revise them to run acceptance")
-    print(f"build dir: {result.build_dir}")
-    if result.readme_path:
-        print(f"readme: {result.readme_path}")
+    if debug:
+        print(f"completed at {_wall_time()}")
+        print(f"build dir: {result.build_dir}")
+        if result.readme_path:
+            print(f"readme: {result.readme_path}")
     if result.failed() and not result.dry_run:
         story_recovery = _failed_story_recovery_commands(
             target_dir,
             args.Target,
-            failed_steps=failures or result.failed(),
+            failed_steps=result.failed(),
             repair_attempts=max(2, repair_attempts),
         )
         print()
@@ -1891,7 +1936,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         default=False,
-        help="Show internal diagnostics and full tracebacks on the console.",
+        help=(
+            "Show detailed command output, DEBUG log messages, LLM execution "
+            "diagnostics, and full tracebacks."
+        ),
     )
     parser.add_argument(
         "--no-diagnose",
@@ -2702,15 +2750,21 @@ def _failed_story_recovery_commands(
     A lone failed story keeps the existing feature-level recovery hint; a command
     for it would be redundant.
     """
-    failed_feature_ids = {
-        step.block_id for step in failed_steps if getattr(step, "block_type", "") == "feature"
-    }
-    if not failed_feature_ids:
-        return ()
-
     from drydock.build_plan import parse_build_plan
 
     plan = parse_build_plan(target_dir / "MANIFEST.md")
+    blocks_by_id = {block.block_id: block for block in plan.blocks}
+    failed_feature_ids = {
+        step.block_id for step in failed_steps if getattr(step, "block_type", "") == "feature"
+    }
+    failed_feature_ids.update(
+        block.parent
+        for step in failed_steps
+        if (block := blocks_by_id.get(step.block_id)) is not None and block.parent
+    )
+    if not failed_feature_ids:
+        return ()
+
     candidates = [
         block
         for block in plan.blocks
@@ -3146,6 +3200,10 @@ def main(argv: list[str] | None = None) -> None:
         # level without threading the flag through each capability signature.
         os.environ["DRYDOCK_EFFORT"] = args.effort
     debug = getattr(args, "debug", False)
+    if debug:
+        os.environ["DRYDOCK_DEBUG"] = "1"
+    else:
+        os.environ.pop("DRYDOCK_DEBUG", None)
 
     command_logging = None
     inherited_transcript = os.environ.get("DRYDOCK_PARENT_TRANSCRIPT")
@@ -3191,9 +3249,19 @@ def main(argv: list[str] | None = None) -> None:
             except RecordedError as exc:
                 print(_render_recorded_error(exc.record), file=sys.stderr)
                 exit_code = 1
-                _standoff_diagnosis(args, argv, record=exc.record)
+                deterministic_validation = (
+                    exc.record.phase == "post-output validation"
+                    or "validation failed" in exc.record.classification.lower()
+                )
+                if not deterministic_validation:
+                    _standoff_diagnosis(args, argv, record=exc.record)
             except DrydockError as exc:
                 print(f"error: {exc}", file=sys.stderr)
+                if debug:
+                    from drydock.manifest import ManifestError
+
+                    if isinstance(exc, ManifestError):
+                        traceback.print_exc()
                 exit_code = 1
             except SystemExit as exc:
                 exit_code = exc.code if isinstance(exc.code, int) else 1
@@ -3219,5 +3287,6 @@ def main(argv: list[str] | None = None) -> None:
             command_logging.close()
         if not inherited_transcript:
             os.environ.pop("DRYDOCK_PARENT_TRANSCRIPT", None)
+        os.environ.pop("DRYDOCK_DEBUG", None)
 
     sys.exit(exit_code)

@@ -922,3 +922,26 @@ def set_plan_state(path: Path, state: str, *, feedback: str = "", decision: str 
         temp_path = Path(handle.name)
     temp_path.replace(path)
     return parse_build_plan(path)
+
+
+# ``DrydockManifest`` is now the authoritative parser and graph representation.
+# These names remain as temporary compatibility exports for existing consumers.
+from drydock.manifest import (  # noqa: E402, F401
+    AcceptanceNode,
+    DrydockManifest,
+    FeatureNode,
+    ManifestDefect,
+    ManifestError,
+    ManifestMetadata,
+    ManifestNode,
+    SpikeNode,
+    StoryNode,
+)
+
+BuildPlan = DrydockManifest  # noqa: F811
+PlanBlock = ManifestNode  # noqa: F811
+
+
+def parse_build_plan(path: Path) -> DrydockManifest:  # noqa: F811
+    """Compatibility wrapper for the typed Manifest graph loader."""
+    return DrydockManifest.load(path, compatibility=True)

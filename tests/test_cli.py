@@ -143,6 +143,16 @@ class TestHelpAndVersion:
         assert __copyright__ in out
         assert "Blueprint-driven" in out
 
+    def test_help_documents_global_debug_contract_without_verbose(self):
+        rc, out, err = run_cli("--help")
+
+        assert rc == 0, err
+        assert (
+            "Show detailed command output, DEBUG log messages, LLM execution "
+            "diagnostics, and full tracebacks."
+        ) in " ".join(out.split())
+        assert "--verbose" not in out
+
     def test_help_shows_all_top_commands(self):
         rc, out, _ = run_cli("--help")
         for cmd in (
@@ -1036,14 +1046,11 @@ state: pending
         rc, out, err = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 0, err
-        assert re.search(
-            r"BUILD ExampleTarget started at \d{4}-\d{2}-\d{2} ",
-            out,
-        )
-        assert "BUILD COMPLETE ExampleTarget" in out
-        assert re.search(r"completed at \d{4}-\d{2}-\d{2} ", out)
+        assert "Build: ExampleTarget" in out
+        assert "scope: entire project" in out
+        assert "frontier: foundation" in out
         assert re.search(r"elapsed: ", out)
-        assert "result: built" in out
+        assert "built: foundation — closed/verified · execution exec-fake" in out
         assert "foundation" in out
         # The build performs no git operations, so it prints no git status lines.
         assert "git" not in out.lower()
@@ -1078,9 +1085,10 @@ state: pending
         rc, out, _ = run_cli("build", "ExampleTarget", "--build-dir", str(tmp_path / "out"))
 
         assert rc == 1
-        assert "result: FAILED" in out
-        # The failure block closes the run: it comes after the completion header, not mid-stream.
-        assert out.index("BUILD FAILED: ExampleTarget") > out.index("BUILD COMPLETE ExampleTarget")
+        assert "failed: foundation — closed/failed · execution exec-fake" in out
+        assert "result: 0 built, 1 failed" in out
+        # The actionable failure block closes the run after the concise summary.
+        assert out.index("BUILD FAILED: ExampleTarget") > out.index("result: 0 built, 1 failed")
         assert "Foundation [foundation]" in out
         assert "LLM execution failed" in out
         assert "rerun drydock build to continue this step" in out
@@ -1127,12 +1135,11 @@ state: pending
         # Both stories are accounted for, but the failure block renders once per execution.
         assert out.count("BUILD FAILED: ExampleTarget") == 1
         assert "(1 step)" in out
-        assert "(foundation)" in out
-        assert "(service)" in out
+        assert "failed: feature-catalog — closed/failed · execution exec-fake" in out
         assert "The backend diverges from the spec." in out
         assert "Story recovery (dependency order)" in out
-        assert "drydock build ExampleTarget --story foundation --repair-attempts 2" in out
-        assert "drydock build ExampleTarget --story service --repair-attempts 2" in out
+        assert "drydock build ExampleTarget --story foundation --repair-attempts 3" in out
+        assert "drydock build ExampleTarget --story service --repair-attempts 3" in out
 
     def test_build_failure_diagnosis_reaches_errors_and_evidence(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1269,7 +1276,8 @@ state: pending
         )
 
         assert rc == 0, err
-        assert "llm-provider: codex / gpt-5.4" in out
+        assert "frontier: foundation" in out
+        assert "dry-run result: 0 built, 0 failed, 1 unchanged" in out
 
     def test_build_dry_run_show_prompt_prints_full_prompt(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1343,7 +1351,7 @@ state: pending
         assert rc == 0, err
         assert "scope: step foundation" in out
         assert "reset: foundation" in out
-        assert "result: built" in out
+        assert "built: foundation — closed/verified · execution exec-fake" in out
         assert "foundation" in out
         assert "result: 1 built, 0 failed" in out
 
@@ -1390,8 +1398,7 @@ state: pending
 
         assert rc == 0, err
         assert "reset: entire project (all blocks + build directory)" in out
-        assert "full reset:" in out
-        assert "result: built" in out
+        assert "built: core — closed/verified · execution exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert "finding: failed" not in text
         assert "state: closed/failed" not in text
@@ -1467,7 +1474,7 @@ state: pending
             "build", "ExampleTarget", "--continue", "--build-dir", str(tmp_path / "out")
         )
         assert rc == 0, err
-        assert "result: built" in out
+        assert "built: foundation — closed/verified · execution exec-fake" in out
 
     def test_build_normalize_order_reorders_manifest_then_builds_frontier(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1517,7 +1524,7 @@ state: pending
 
         assert rc == 0, out + err
         assert "normalize order: updated MANIFEST.md" in out
-        assert "(feature-core-story)" in out
+        assert "built: feature-core — closed/verified · execution exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert text.index("id: feature-core") < text.index("id: screen-setup")
 
@@ -1585,7 +1592,7 @@ class TestPlanningSession:
             return SimpleNamespace(ok=True, text=payload, execution_id="exec-fake")
 
         monkeypatch.setattr("drydock.planning_session.run_prompt", _run)
-        monkeypatch.setattr("drydock.planning_session.ensure_compact_files", lambda *a, **k: None)
+        monkeypatch.setattr("drydock.planning_session._has_stack_selection", lambda *_: True)
 
     def test_markdown_import_plan_create_and_approve(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
@@ -1614,8 +1621,11 @@ class TestPlanningSession:
         rc, out, err = run_cli("plan", "ExampleTarget")
         assert rc == 0, err
         assert "Plan state:" not in out
-        assert "Authored 2 Blueprint spec file(s)" in out
-        assert "review the manifest build tree in the Planning Session" in out
+        assert "Graph: 1 features, 1 stories, 0 spikes, 1 acceptance gates" in out
+        assert "Warnings: 0" in out
+        assert "Outcome: updated" in out
+        assert "Execution: exec-fake" in out
+        assert "Review:" in out
         assert "=== ARCHITECTURE.md ===" not in out
         assert "Status command exits successfully." not in out
         assert not (bp.parent / "BUILD_COMPASS.md").exists()
@@ -1666,7 +1676,7 @@ class TestPlanningSession:
         assert rc == 1
         assert "Plan generation failed" in err
         assert "implements missing spec file 'GHOST.md'" in err
-        assert "No Blueprint or Manifest artifacts were written" in err
+        assert "No files were changed" in err
         assert not (target / "MANIFEST.md").exists()
         assert not (target / "QuarterDeck" / "tickets.json").exists()
 

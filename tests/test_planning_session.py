@@ -1057,6 +1057,33 @@ def test_load_prior_plan_state_returns_empty_when_no_manifest(tmp_path):
     assert states == {}
 
 
+def test_invalid_existing_manifest_aborts_before_any_target_mutation(tmp_path):
+    target_dir = _make_target(tmp_path)
+    manifest_path = target_dir / "MANIFEST.md"
+    manifest_path.write_text(
+        "# MANIFEST: Example\n\n## story 1: Broken\nstate: pending\n",
+        encoding="utf-8",
+    )
+    before = {
+        path.relative_to(target_dir): path.read_bytes()
+        for path in target_dir.rglob("*")
+        if path.is_file()
+    }
+
+    def runner(*_args, **_kwargs):
+        raise AssertionError("invalid deterministic input must not invoke the LLM")
+
+    with pytest.raises(SpecificationError, match="missing required `id`"):
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    after = {
+        path.relative_to(target_dir): path.read_bytes()
+        for path in target_dir.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
 def test_spec_is_dirty_false_when_no_applied_record(tmp_path):
     assert not _spec_is_dirty("FEATURE.md", tmp_path, {})
 
@@ -1595,7 +1622,7 @@ def test_integrity_accepts_whitespace_separated_dependencies(tmp_path):
 id: story-follow-up
 parent: feature-status
 summary: Extend the status command.
-implements: FEATURE-Status.md
+implements: ARCHITECTURE.md
 scope: both
 depends: story-status story-spike
 state: pending
@@ -1618,18 +1645,13 @@ state: pending
     assert result.plan.by_id()["story-follow-up"].depends == ("story-status", "story-spike")
 
 
-def test_story_without_acceptance_is_fatal(tmp_path):
-    target_dir = _make_target(tmp_path)
-    # Drop the ac block — a story with no acceptance gate must not be emitted.
+def test_story_without_manifest_acceptance_uses_blueprint_acceptance(tmp_path):
+    _make_target(tmp_path)
+    # Routine story acceptance stays in Blueprint Programmatic Acceptance.
     manifest = _manifest().split("## ac 1:")[0].rstrip() + "\n"
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="no acceptance check",
-    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    assert not [block for block in result.plan.blocks if block.block_type == "ac"]
 
 
 def test_missing_programmatic_acceptance_is_fatal(tmp_path):
@@ -1828,17 +1850,21 @@ def test_feature_route_not_named_in_acceptance_warns(tmp_path):
     assert any("does not name route" in w and "POST /catalog" in w for w in result.warnings)
 
 
-def test_empty_initial_frontier_warns(tmp_path):
-    _make_target(tmp_path)
-    # The only empty-depends block is the (non-executable) feature; the sole story
-    # gates on it, so no story or spike can run first. Acyclic, but no frontier.
+def test_dependency_on_feature_is_fatal(tmp_path):
+    target_dir = _make_target(tmp_path)
+    # Dependency edges name executable story/spike nodes, never feature groups.
     manifest = _manifest().replace(
         "implements: FEATURE-Status.md\nscope: both\nstate: pending",
         "implements: FEATURE-Status.md\nscope: both\ndepends: feature-status\nstate: pending",
     )
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
-
-    assert any("initial runnable frontier is empty" in w for w in result.warnings)
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="illegal dependency target",
+    )
 
 
 def test_forward_dependency_order_warns(tmp_path):
@@ -1853,7 +1879,7 @@ def test_forward_dependency_order_warns(tmp_path):
         "id: story-later\n"
         "parent: feature-status\n"
         "summary: Emitted after the block that depends on it.\n"
-        "implements: FEATURE-Status.md\n"
+        "implements: ARCHITECTURE.md\n"
         "scope: both\n"
         "state: pending\n"
         "\n## ac 2: Later exits\n"

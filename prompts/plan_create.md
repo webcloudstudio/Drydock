@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260727 V18
+version: 20260727 V19
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -438,17 +438,17 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 - Spikes precede dependent stories and appear in those stories' `depends:`.
 
 **Acceptance check blocks**
-- Acceptance is mandatory at both levels, and a story missing either is rejected:
-  - every story has at least one child `ac` block gating its build, and
-  - the spec it implements carries concrete `Programmatic Acceptance` assertions (or an
-    inline-justified `- None.` when the item genuinely has no programmatic surface).
+- Routine story acceptance lives only in the implemented spec's concrete `Programmatic
+  Acceptance` assertions (or an inline-justified `- None.` when the item genuinely has no
+  programmatic surface). Do not create one Manifest `ac` block per story.
+- Manifest `ac` blocks are exceptional orchestration gates: deliberately selected Sea Trial graph
+  gates or cross-story/release gates whose lifecycle must be represented in the work graph.
+- Every emitted `ac` uses explicit `id`, `parent`, `summary`, `kind`, `state`, and, for `smoke`,
+  `check` fields. Never emit compact AC syntax.
 - Durable behavioral acceptance lives in the implemented spec's `Programmatic Acceptance`: a
   SCREEN spec's assertions call every route the screen provides and consumes; a FEATURE spec's
   assertions exercise every route, interface, read, and write it provides.
-- The child `ac` block is the build gate: a smoke check that runs the project test suite, or a
-  sharper story-scoped command when one exists. It is bounded to the implementing story and does
-  not restate a final release measurement. Do not duplicate individual `Programmatic Acceptance`
-  assertions as `ac` blocks.
+- Do not copy Sea Trial commands into ordinary story acceptance or execute them while planning.
 - When the Analysis states a terminal verification story, that one story gates on the complete
   suite: its `Programmatic Acceptance` assertion declares `Suite: full` on its own line in the
   heading block, above the fenced code, and it `depends` on every implementation story. Without
@@ -592,8 +592,8 @@ Required action:
   authored spec file that already exists in the input Blueprint.
 - Stories and Blueprint spec files are one-to-one: each story's `implements:` names exactly one
   spec file, and every authored spec file is implemented by exactly one story.
-- Every story has at least one child `ac` block, and its implemented spec carries concrete
-  `Programmatic Acceptance` assertions or an inline-justified `- None.`.
+- Every story's implemented spec carries concrete `Programmatic Acceptance` assertions or an
+  inline-justified `- None.`. Routine stories do not require Manifest `ac` blocks.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
   header table and end with `## Programmatic Acceptance`, `## User Acceptance`, `## Guardrails`,

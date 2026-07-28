@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, block types, field semantics, lifecycle states, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20260714 V10
+version: 20260727 V11
 ---
 
 ## Overview
@@ -68,10 +68,9 @@ story: a `feature` block builds as one combined prompt with the shared stack ded
 stories, so atomic stories cost no extra context while preserving per-file build state,
 incremental rebuild via `applied_specs`, failure attribution, and evidence.
 
-Acceptance is mandatory at both levels: every story is gated by at least one child `ac` block,
-and the Blueprint file it implements carries concrete `Programmatic Acceptance` assertions (or an
-inline-justified `- None.` when the item has no programmatic surface). A plan that emits a story
-missing either gate is rejected.
+Routine acceptance lives in the Blueprint file's concrete `Programmatic Acceptance` assertions
+(or an inline-justified `- None.` when the item has no programmatic surface). Manifest `ac` blocks
+are limited to exceptional orchestration gates and deliberately modeled Sea Trial graph gates.
 
 ```markdown
 ## story N: {Name}
@@ -152,7 +151,8 @@ evidence: <Target>/evidence/<id>.md
 
 ### Acceptance Check (ac)
 
-An `ac` block checks that something works. A failed AC blocks plan progress.
+An `ac` block represents an exceptional orchestration or Sea Trial graph gate. A failed AC blocks
+plan progress. Routine story assertions remain in Blueprint `Programmatic Acceptance`.
 
 ```markdown
 ## ac N: {Name}
@@ -177,8 +177,8 @@ evidence: <Target>/evidence/<id>.md
 | `state` | Yes | Current block state |
 | `evidence` | No | Path to evidence file |
 
-A compact single-line form is also accepted and is equivalent to the field body
-above:
+A compact single-line form is accepted only as legacy input and is equivalent to the field body
+above. Planning always emits explicit fields:
 
 ```markdown
 ## ac N: {Summary} (smoke|assertion: {check})

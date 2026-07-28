@@ -1264,6 +1264,12 @@ def run_prompt(
     configured ``drydock_effort`` applies, and with neither set the provider's own default
     stands. The level is mapped to what the selected provider and model actually serve.
     """
+    debug = debug or os.environ.get("DRYDOCK_DEBUG", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     selected = (llm or get_llm_provider()).lower()
     conflict = provider_model_conflict(selected, model)
     if conflict is not None:

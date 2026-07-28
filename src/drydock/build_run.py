@@ -67,7 +67,7 @@ from drydock.dependency_gate import (
 )
 from drydock.errors import SpecificationError, clear_error_record, write_error_record
 from drydock.llm import render_rate_limit_error_block, run_prompt
-from drydock.manifest_edit import reset_all_states, set_block_fields
+from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
@@ -1444,11 +1444,13 @@ def _reset_step_for_rebuild(manifest_path: Path, step_id: str) -> None:
         reset_ids = [step_id]
     else:
         raise SpecificationError(f"{step_id!r} is not a build step or feature block")
+    updates: dict[str, dict[str, str | None]] = {}
     for reset_id in reset_ids:
-        set_block_fields(manifest_path, reset_id, state="pending", finding=None)
+        updates[reset_id] = {"state": "pending", "finding": None}
         for child in plan.children(reset_id):
             if child.block_type == "ac":
-                set_block_fields(manifest_path, child.block_id, state="pending")
+                updates[child.block_id] = {"state": "pending"}
+    batch_set_block_fields(manifest_path, updates)
 
 
 def _preview_reset(plan: BuildPlan, step_id: str) -> BuildPlan:
@@ -2166,6 +2168,7 @@ def build_target(
         # finding. A non-AC failure (execution error, tampered asset, dependency gate, or no
         # checks at all) is not attributable to one story, so every member fails as before.
         ac_attributable = status == "failed" and any(not check.passed for check in acceptance)
+        manifest_updates: dict[str, dict[str, str | None]] = {}
         for block in unit.steps:
             own_checks = tuple(
                 check
@@ -2200,10 +2203,10 @@ def build_target(
                 # Clear any stale failure reason when a story succeeds; a spike's
                 # ``finding:`` records research output and is never cleared here.
                 block_fields["finding"] = None
-            set_block_fields(manifest_path, block.block_id, **block_fields)
+            manifest_updates[block.block_id] = block_fields
             if block_state != "closed/failed" and _has_child_acs(plan.blocks, block.block_id):
                 for child_id in _child_ac_ids(plan.blocks, block.block_id):
-                    set_block_fields(manifest_path, child_id, state="closed/verified")
+                    manifest_updates[child_id] = {"state": "closed/verified"}
         if unit.is_group and status == "failed":
             feature_fields: dict[str, str | None] = {
                 "state": "closed/failed",
@@ -2211,22 +2214,22 @@ def build_target(
             }
             if finding is not None:
                 feature_fields["finding"] = finding
-            set_block_fields(manifest_path, unit.block_id, **feature_fields)
+            manifest_updates[unit.block_id] = feature_fields
         if unit.is_group and status != "failed":
-            refreshed = parse_build_plan(manifest_path)
-            children = refreshed.children(unit.block_id)
+            children = plan.children(unit.block_id)
             executable_children = tuple(
                 child for child in children if child.block_type in {"story", "spike"}
             )
             if executable_children and all(
-                child.state == "closed/verified" for child in executable_children
+                manifest_updates.get(child.block_id, {}).get("state", child.state)
+                == "closed/verified"
+                for child in executable_children
             ):
-                set_block_fields(
-                    manifest_path,
-                    unit.block_id,
-                    state="closed/verified",
-                    evidence=_rel(evidence_path, target_dir),
-                )
+                manifest_updates[unit.block_id] = {
+                    "state": "closed/verified",
+                    "evidence": _rel(evidence_path, target_dir),
+                }
+        batch_set_block_fields(manifest_path, manifest_updates)
         if status != "failed" and stack_head is not None:
             updated_registry = dict(plan.applied_registry)
             changed = False

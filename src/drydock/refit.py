@@ -236,35 +236,35 @@ def _patch_manifest(manifest_path: Path, new_rows: str) -> None:
     if not manifest_path.is_file() or not new_rows.strip():
         return
 
-    try:
-        from drydock.build_plan import parse_build_plan
+    from drydock.manifest import DrydockManifest
 
-        plan = parse_build_plan(manifest_path)
-        existing_states: dict[str, str] = {b.block_id: b.state for b in plan.blocks}
-    except Exception:
-        existing_states = {}
-
-    manifest_text = manifest_path.read_text(encoding="utf-8")
+    graph = DrydockManifest.load(manifest_path, compatibility=True)
     new_blocks = _split_manifest_blocks(new_rows)
-
+    replacement_ids: list[str] = []
     for block_text in new_blocks:
         id_match = _BLOCK_ID_RE.search(block_text)
         if not id_match:
             continue
-        block_id = id_match.group(1)
+        replacement_ids.append(id_match.group(1))
+    if not replacement_ids:
+        return
 
-        if existing_states.get(block_id) == "closed/verified":
-            continue
+    # Parse one complete candidate graph so row references are resolved together.
+    retained = [
+        "\n".join(node.lines) for node in graph.blocks if node.block_id not in set(replacement_ids)
+    ]
+    candidate_text = "\n".join(graph.preamble).rstrip()
+    candidate_text += "\n\n" + "\n\n".join([*retained, *new_blocks]) + "\n"
+    proposed = DrydockManifest.parse(candidate_text, source=manifest_path, compatibility=True)
 
-        boundaries = _find_block_boundaries(manifest_text, block_id)
-        normalized = block_text.rstrip("\n") + "\n"
-        if boundaries is not None:
-            start, end = boundaries
-            manifest_text = manifest_text[:start] + normalized + manifest_text[end:]
+    proposed_by_id = proposed.by_id()
+    for block_id in replacement_ids:
+        node = proposed_by_id[block_id]
+        if block_id in graph.by_id():
+            graph.replace(block_id, node, preserve_verified=True)
         else:
-            manifest_text = manifest_text.rstrip("\n") + "\n\n" + normalized
-
-    manifest_path.write_text(manifest_text, encoding="utf-8", newline="\n")
+            graph.add(node)
+    graph.save()
 
 
 def _reconcile_drift(
