@@ -295,6 +295,50 @@ state: pending
         assert 'filename="ARCHITECTURE.md"' in prompt.rendered_text
         assert 'filename="ARCHITECTURE_compact.md"' not in prompt.rendered_text
 
+    def test_group_prompt_separates_verified_sibling_regression_specifications(self, tmp_path):
+        manifest = """# MANIFEST: Demo
+
+## feature 1: Parsing
+id: parsing
+state: closed/failed
+
+## story 2: Blocks
+id: blocks
+parent: parsing
+implements: FEATURE-Blocks.md
+state: closed/failed
+
+## story 3: Rendering
+id: rendering
+parent: parsing
+implements: FEATURE-Rendering.md
+state: closed/verified
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "FEATURE-Blocks.md").write_text("blocks", encoding="utf-8")
+        (roots.blueprint_dir / "FEATURE-Rendering.md").write_text(
+            "rendering",
+            encoding="utf-8",
+        )
+        plan = parse_build_plan(path)
+        active = (assemble_step(plan.by_id()["blocks"], roots),)
+        regression = (assemble_step(plan.by_id()["rendering"], roots),)
+
+        prompt = render_build_group_prompt_assembly(
+            "Build.",
+            make_step_group(feature_id="parsing", name="Parsing", steps=active),
+            target="Demo",
+            build_dir=tmp_path / "build",
+            today="2026-07-28",
+            regression_steps=regression,
+        )
+
+        assert "## REGRESSION GATES - Verified Sibling Specifications" in prompt.rendered_text
+        assert 'filename="FEATURE-Rendering.md" role="regression"' in prompt.rendered_text
+        assert "- Rendering (rendering)" not in prompt.rendered_text.split("## REGRESSION GATES")[0]
+
     def test_only_story_and_spike_are_steps(self, tmp_path):
         plan = _plan(tmp_path)
         steps = assemble_steps(plan, _roots(tmp_path))

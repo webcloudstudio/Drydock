@@ -1354,7 +1354,12 @@ def cmd_status_current() -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    from drydock.build_run import BUILD_FAILURE_HINT, BuildStepResult, build_target
+    from drydock.build_run import (
+        BUILD_FAILURE_HINT,
+        BuildStepResult,
+        _select_build_unit,
+        build_target,
+    )
     from drydock.config import (
         get_escalate_model,
         get_llm_provider,
@@ -1435,6 +1440,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     plan = parse_build_plan(target_dir / "MANIFEST.md")
     frontier = plan.buildable_steps()
+    frontier_text = ", ".join(block.block_id for block in frontier) or "empty"
     if not getattr(args, "story", None) and not getattr(args, "step", None):
         by_id = {block.block_id: block for block in plan.blocks}
         _build_unit_ids.update({
@@ -1444,7 +1450,14 @@ def cmd_build(args: argparse.Namespace) -> int:
             and block.parent in by_id
             and by_id[block.parent].block_type == "feature"
         })
-    print("frontier: " + (", ".join(block.block_id for block in frontier) or "empty"))
+        if not getattr(args, "reset", False):
+            try:
+                selected = _select_build_unit(plan, None, args.Target)
+            except DrydockError:
+                selected = None
+            if selected is not None and selected.resume:
+                frontier_text = f"resume {selected.block_id}"
+    print("frontier: " + frontier_text)
     if getattr(args, "reset", False):
         reset_scope = (
             getattr(args, "story", None)

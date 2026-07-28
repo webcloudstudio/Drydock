@@ -1073,6 +1073,32 @@ state: pending
         assert "git" not in out.lower()
         assert (target / "evidence" / "foundation.md").is_file()
 
+    def test_build_reports_failed_block_as_resume_frontier(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        target = tmp_target_root / "ExampleTarget"
+        (target / "blueprint").mkdir(parents=True)
+        (target / "MANIFEST.md").write_text(
+            "# MANIFEST: ExampleTarget\nstate: draft\n\n"
+            "## story 1: Foundation\nid: foundation\nimplements: DATABASE.md\n"
+            "state: closed/failed\n",
+            encoding="utf-8",
+        )
+        (target / "blueprint" / "DATABASE.md").write_text("DB.\n", encoding="utf-8")
+        monkeypatch.setenv("DRYDOCK_WORKSPACE", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli(
+            "build",
+            "ExampleTarget",
+            "--dry-run",
+            "--build-dir",
+            str(tmp_path / "out"),
+        )
+
+        assert rc == 0, err
+        assert "frontier: resume foundation" in out
+        assert "frontier: empty" not in out
+
     def test_build_failure_prints_force_hint(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

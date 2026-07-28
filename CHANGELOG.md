@@ -67,10 +67,12 @@ command surface and Typed Specification contract are unstable and may change bet
   failure diagnostics back and re-runs the same block against the persisted partial work, iterating
   it toward green rather than restarting. Terminal failures (token or context limit, missing
   sandbox, provider error, dependency-legitimacy block, staged-asset tamper, no files written) never
-  loop. The `--repair-attempts <n>` flag sets the budget (default `1`, `0` disables). Model
-  escalation is opt-in and applies only to the final attempt, via `--escalate-model` or the
-  `drydock_build_escalate_model` configuration key (unset by default). Evidence records each pass
-  under `## Repair attempts`.
+  loop. The `--repair-attempts <n>` flag sets the budget (default `3`, `0` disables). Repair
+  continues only when passing ACs grow without regression or stable ACs show non-regressing
+  per-criterion case progress. Feature repair grades verified sibling ACs as regression gates and
+  reopens a sibling whose behavior regresses. Normal console output and evidence report each
+  attempt's AC and case totals. Model escalation is opt-in and applies only to the final attempt,
+  via `--escalate-model` or the `drydock_build_escalate_model` configuration key (unset by default).
 - 2026-07-22: Standoff diagnosis. When a command fails in a way its author cannot interpret — a
   post-LLM failure such as `no build files written`, or an unclassified exception — Drydock stops,
   states that a major error has occurred, and has the selected provider and model diagnose it. The

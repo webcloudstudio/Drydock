@@ -915,6 +915,7 @@ def render_build_group_prompt_assembly(
     build_dir: Path,
     today: str,
     reusable_compacts: tuple[Path, ...] = (),
+    regression_steps: tuple[StepAssembly, ...] = (),
 ) -> PromptAssembly:
     """Compose the executable build prompt for one feature/group block."""
     block_label = group.feature_id or "ungrouped"
@@ -1012,6 +1013,46 @@ def render_build_group_prompt_assembly(
                     ),
                     kind="file",
                     role=step_file.role,
+                    path=source,
+                )
+            )
+    if regression_steps:
+        parts.append(section_heading_part("## REGRESSION GATES - Verified Sibling Specifications"))
+        parts.append(
+            lines_part(
+                "Verified sibling regression guidance",
+                [
+                    "These sibling stories are already verified and are not implementation scope.",
+                    "Their Programmatic Acceptance criteria run after this build as regression gates.",
+                    "Preserve their specified behavior while repairing the active stories.",
+                    "",
+                ],
+                kind="section",
+            )
+        )
+        regression_files = tuple(
+            step_file
+            for step_file in _group_render_files(regression_steps, "implements")
+            if not step_file.missing and step_file.source is not None
+        )
+        for step_file in regression_files:
+            source = step_file.source
+            assert source is not None
+            try:
+                content = source.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            parts.append(
+                part(
+                    step_file.name,
+                    (
+                        f'<pblock filename="{step_file.name}" role="regression"'
+                        + f' path="{source}"'
+                        + f">\n{_fence_for(content)}\n{content.rstrip()}\n{_fence_for(content)}\n"
+                        "</pblock>\n\n"
+                    ),
+                    kind="file",
+                    role="regression",
                     path=source,
                 )
             )

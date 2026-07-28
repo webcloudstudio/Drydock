@@ -1029,8 +1029,10 @@ class AttemptRecord:
     model: str | None
     passed_checks: int
     total_checks: int
+    passed_check_ids: tuple[str, ...]
     passed_cases: int | None
     total_cases: int | None
+    case_tallies: tuple[tuple[str, int, int], ...]
     status: str
     stop_reason: str | None = None
 
@@ -1090,6 +1092,35 @@ def _acceptance_case_totals(
     if not tallies:
         return None, None
     return sum(tally[0] for tally in tallies), sum(tally[1] for tally in tallies)
+
+
+def _acceptance_case_tallies(
+    acceptance: tuple[AcceptanceRunResult, ...],
+) -> tuple[tuple[str, int, int], ...]:
+    """Return stable per-AC ``(check_id, passed, total)`` quantitative progress."""
+    return tuple(
+        (result.check_id, tally[0], tally[1])
+        for result in acceptance
+        if (tally := _case_tally(result)) is not None
+    )
+
+
+def _quantitative_acceptance_progress(
+    previous: tuple[tuple[str, int, int], ...],
+    current: tuple[tuple[str, int, int], ...],
+) -> bool:
+    """True only when every comparable AC is non-regressing and at least one improves."""
+    previous_by_id = {check_id: (passed, total) for check_id, passed, total in previous}
+    current_by_id = {check_id: (passed, total) for check_id, passed, total in current}
+    if not previous_by_id or current_by_id.keys() != previous_by_id.keys():
+        return False
+    improved = False
+    for check_id, (previous_passed, previous_total) in previous_by_id.items():
+        current_passed, current_total = current_by_id[check_id]
+        if current_total != previous_total or current_passed < previous_passed:
+            return False
+        improved = improved or current_passed > previous_passed
+    return improved
 
 
 def _attempt_acceptance_summary(
@@ -1732,6 +1763,10 @@ def build_target(
         assemblies = tuple(
             assemble_step(block, roots, compact_stack=compact_stack) for block in unit.steps
         )
+        regression_assemblies = tuple(
+            assemble_step(block, roots, compact_stack=compact_stack)
+            for block in unit.already_verified
+        )
         group = make_step_group(
             feature_id=unit.block_id if unit.is_group else None,
             name=unit.name,
@@ -1766,6 +1801,7 @@ def build_target(
                 build_dir=resolved_build_dir,
                 today=today,
                 reusable_compacts=reusable_compact_sources,
+                regression_steps=regression_assemblies,
             )
         else:
             prompt_assembly = render_build_prompt_assembly(
@@ -1813,7 +1849,8 @@ def build_target(
             break
         story_by_check: dict[str, PlanBlock] = {}
         gathered_checks: list[ProgrammaticAcceptance] = []
-        for block in unit.steps:
+        graded_blocks = (*unit.steps, *unit.already_verified)
+        for block in graded_blocks:
             for check in programmatic_acceptance_for_step(block, blueprint_dir):
                 gathered_checks.append(check)
                 story_by_check[check.check_id] = block
@@ -2122,22 +2159,32 @@ def build_target(
                                             "(0 disables; JVM/Go stacks reserve more)",
                                         )
 
-            previous_passed = attempt_records[-1].passed_checks if attempt_records else None
-            passed_checks = sum(1 for check in acceptance if check.passed)
+            previous_record = attempt_records[-1] if attempt_records else None
+            passed_check_ids = tuple(check.check_id for check in acceptance if check.passed)
+            passed_checks = len(passed_check_ids)
             passed_cases, total_cases = _acceptance_case_totals(acceptance)
-            previous_cases = attempt_records[-1].passed_cases if attempt_records else None
+            case_tallies = _acceptance_case_tallies(acceptance)
+            previous_passed_ids = (
+                frozenset(previous_record.passed_check_ids) if previous_record is not None else None
+            )
+            current_passed_ids = frozenset(passed_check_ids)
+            ac_progress = (
+                previous_passed_ids is not None and current_passed_ids > previous_passed_ids
+            )
             quantitative_progress = (
-                passed_checks == previous_passed
-                and passed_cases is not None
-                and previous_cases is not None
-                and passed_cases > previous_cases
+                previous_record is not None
+                and current_passed_ids == previous_passed_ids
+                and _quantitative_acceptance_progress(
+                    previous_record.case_tallies,
+                    case_tallies,
+                )
             )
             stalled = (
                 status == "failed"
                 and _is_repairable(error)
                 and bool(acceptance)
-                and previous_passed is not None
-                and passed_checks <= previous_passed
+                and previous_record is not None
+                and not ac_progress
                 and not quantitative_progress
             )
             stop_reason = None
@@ -2151,8 +2198,10 @@ def build_target(
                     model=attempt_model,
                     passed_checks=passed_checks,
                     total_checks=len(checks),
+                    passed_check_ids=passed_check_ids,
                     passed_cases=passed_cases,
                     total_cases=total_cases,
+                    case_tallies=case_tallies,
                     status=status or "built",
                     stop_reason=stop_reason,
                 )
@@ -2273,6 +2322,28 @@ def build_target(
             if block_state != "closed/failed" and _has_child_acs(plan.blocks, block.block_id):
                 for child_id in _child_ac_ids(plan.blocks, block.block_id):
                     manifest_updates[child_id] = {"state": "closed/verified"}
+        if ac_attributable:
+            for block in unit.already_verified:
+                own_checks = tuple(
+                    check
+                    for check in acceptance
+                    if (owner := story_by_check.get(check.check_id)) is not None
+                    and owner.block_id == block.block_id
+                )
+                own_failed = tuple(check for check in own_checks if not check.passed)
+                if not own_failed:
+                    continue
+                manifest_updates[block.block_id] = {
+                    "state": "closed/failed",
+                    "evidence": _rel(evidence_path, target_dir),
+                    "finding": _failure_finding(
+                        "failed",
+                        "programmatic acceptance failed: "
+                        + ", ".join(check.check_id for check in own_failed),
+                        result,
+                        own_checks,
+                    ),
+                }
         if unit.is_group and status == "failed":
             feature_fields: dict[str, str | None] = {
                 "state": "closed/failed",

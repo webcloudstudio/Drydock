@@ -2106,6 +2106,60 @@ assert score == 4
     assert "acceptance: attempt 3 · 1/1 AC passed" in messages
 
 
+def test_repair_loop_stops_when_one_conformance_ac_regresses(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+### first-conformance
+The first conformance group passes.
+
+```python
+from pathlib import Path
+score = int(Path("first-score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {4 - score} failed, 0 errored")
+assert score == 4
+```
+
+### second-conformance
+The second conformance group passes.
+
+```python
+from pathlib import Path
+score = int(Path("second-score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {4 - score} failed, 0 errored")
+assert score == 4
+```
+""",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        first, second = ((1, 3), (3, 2))[min(attempt, 1)]
+        (work / "first-score.txt").write_text(f"{first}\n", encoding="utf-8")
+        (work / "second-score.txt").write_text(f"{second}\n", encoding="utf-8")
+        calls.append(attempt)
+        return FakeResult(text=_success_report(changed=("first-score.txt", "second-score.txt")))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert result.steps[0].status == "failed"
+    assert calls == [0, 1]
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "stopped: deterministic acceptance score did not improve" in evidence
+
+
 def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -2525,3 +2579,78 @@ def test_resume_green_short_circuits_without_llm_pass(tmp_path):
     assert step.status == "built"
     assert _state(target_dir, "foundation") == "closed/verified"
     assert runner.calls == []
+
+
+def test_feature_repair_reopens_verified_sibling_on_regression(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: draft
+
+## feature 1: Parsing
+id: parsing
+state: closed/failed
+
+## story 2: Active Parser
+id: active-parser
+parent: parsing
+implements: FEATURE-Active.md
+state: closed/failed
+
+## story 3: Verified Renderer
+id: verified-renderer
+parent: parsing
+implements: FEATURE-Verified.md
+state: closed/verified
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    (target_dir / "blueprint" / "FEATURE-Active.md").write_text(
+        """## Programmatic Acceptance
+
+### active-output
+The active parser behavior works.
+
+```python
+from pathlib import Path
+assert Path("active.txt").read_text(encoding="utf-8") == "ok\\n"
+```
+""",
+        encoding="utf-8",
+    )
+    (target_dir / "blueprint" / "FEATURE-Verified.md").write_text(
+        """## Programmatic Acceptance
+
+### verified-output
+The verified renderer behavior remains stable.
+
+```python
+from pathlib import Path
+assert Path("shared.txt").read_text(encoding="utf-8") == "preserved\\n"
+```
+""",
+        encoding="utf-8",
+    )
+    build_dir.mkdir(parents=True)
+    (build_dir / "active.txt").write_text("bad\n", encoding="utf-8")
+    (build_dir / "shared.txt").write_text("preserved\n", encoding="utf-8")
+    prompts: list[str] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        prompts.append(prompt)
+        work = Path(working_directory)
+        (work / "active.txt").write_text("ok\n", encoding="utf-8")
+        (work / "shared.txt").write_text("regressed\n", encoding="utf-8")
+        return FakeResult(text=_success_report(changed=("active.txt", "shared.txt")))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        repair_attempts=0,
+    )
+
+    assert result.steps[0].status == "failed"
+    assert _state(target_dir, "active-parser") == "closed/verified"
+    assert _state(target_dir, "verified-renderer") == "closed/failed"
+    assert _state(target_dir, "parsing") == "closed/failed"
+    assert "verified-output" in (_finding(target_dir, "verified-renderer") or "")
+    assert 'filename="FEATURE-Verified.md" role="regression"' in prompts[0]
