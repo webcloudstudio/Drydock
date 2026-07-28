@@ -15,6 +15,7 @@ from drydock.cli import (
     _print_dimensions,
     _render_build_failures,
     _stream_build,
+    _stream_build_summary,
     _stream_status_only,
     _stream_stdout,
     main,
@@ -124,6 +125,18 @@ class TestHelpAndVersion:
             "\nacceptance: attempt 1 · 2/3 AC passed · "
             "failed: block-conformance (240/260 cases)\n"
             "repair: attempt 1/1 · 1 failing check(s)\n"
+        )
+
+    def test_stream_build_summary_shows_acceptance_only(self, capsys):
+        _stream_build_summary("returned: ok · exec-1")
+        _stream_build_summary(
+            "acceptance: attempt 1 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
+        )
+        _stream_build_summary("files: 1 changed — parser.py")
+
+        assert (
+            capsys.readouterr().out == "acceptance: attempt 1 · 2/3 AC passed · "
+            "failed: block-conformance (240/260 cases)\n"
         )
 
     def test_stream_status_only_drops_model_json_payload(self, capsys):

@@ -97,6 +97,12 @@ def _stream_build(text: str) -> None:
     sys.stdout.flush()
 
 
+def _stream_build_summary(text: str) -> None:
+    """Show per-attempt acceptance in normal build output without enabling debug chatter."""
+    if text.startswith("acceptance:"):
+        _stream_build(text)
+
+
 def _stream_status_only(text: str) -> None:
     """Stream Drydock progress lines and drop model text.
 
@@ -1482,7 +1488,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             on_text=(
                 _stream_build
                 if debug or bool(getattr(args, "dry_run", False))
-                else (lambda _text: None)
+                else _stream_build_summary
             ),
             on_step=report,
             step_id=getattr(args, "step", None),
