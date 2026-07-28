@@ -119,6 +119,24 @@ class TestRender:
         total = int(re.search(r"Used SP ([\d,]+)", out).group(1).replace(",", ""))
         assert total > 1100
 
+    def test_step_cost_includes_non_markdown_tokens(self, tmp_path, monkeypatch):
+        import re
+
+        quarterdeck = _load_quarterdeck()
+        manifest = _MANIFEST.replace("missing-ctx.md", "examples.txt")
+        target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+
+        missing_out = quarterdeck.render_compass(_ITEM)
+        missing_total = int(re.search(r"Used SP ([\d,]+)", missing_out).group(1).replace(",", ""))
+
+        (target / "blueprint" / "examples.txt").write_bytes(b"x" * 4000)
+        present_out = quarterdeck.render_compass(_ITEM)
+        present_total = int(re.search(r"Used SP ([\d,]+)", present_out).group(1).replace(",", ""))
+
+        assert present_total == missing_total + 1000
+        assert "examples.txt" in present_out
+        assert "<span class='cmp-fsp'>SP 1,000</span>" in present_out
+
     def test_missing_context_file_flagged(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         _setup(quarterdeck, tmp_path, monkeypatch)

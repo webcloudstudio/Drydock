@@ -129,16 +129,7 @@ class TestAssembleStep:
         bad = next(f for f in step.files if f.name == "missing-context.md")
         assert bad.byte_count == 0 and bad.story_points == 0
 
-    def test_non_markdown_context_contributes_zero_story_points(self, tmp_path):
-        """Story points count authored markdown only; a staged non-markdown asset is present
-        in the assembly (non-zero bytes) but contributes zero story points."""
-        from drydock.build import _file_story_points
-
-        assert _file_story_points("SPEC.md", 4000) == 1000
-        assert _file_story_points("spec.txt", 4000) == 0
-        assert _file_story_points("spec_tests.py", 4000) == 0
-        assert _file_story_points("data.JSON", 4000) == 0
-
+    def test_non_markdown_context_contributes_story_points(self, tmp_path):
         manifest = """# MANIFEST: Demo
 state: approved
 
@@ -166,7 +157,7 @@ state: pending
         step = assemble_step(plan.by_id()["core"], roots)
         example = next(f for f in step.files if f.name == "examples.txt")
         assert example.byte_count == 4000
-        assert example.story_points == 0
+        assert example.story_points == 1000
 
     def test_total_story_points_sum_of_parts(self, tmp_path):
         plan = _plan(tmp_path)
