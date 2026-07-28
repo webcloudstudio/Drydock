@@ -60,6 +60,57 @@ state: pending
 ## ac 3: Core Works""",
 )
 
+_CURRENT_MANIFEST = """# MANIFEST: Demo
+state: approved
+
+## feature 1: Program Surface
+id: feature-program
+summary: Establish the executable filter.
+state: pending
+
+## story 1: Program Interface
+id: prog-001
+parent: feature-program
+summary: Implement the stdin-to-stdout filter.
+implements: FEATURE-Program-Interface.md
+covers: PROG-001
+accepts: st-003
+stack: common.md
+instructions: Implement convert(md) and the stdin/stdout entry point.
+state: pending
+evidence: evidence/prog-001.md
+scope: target
+"""
+
+_CURRENT_BLUEPRINT = """# FEATURE: Program Interface
+
+## Programmatic Acceptance
+
+### filter-function
+The conversion function returns CommonMark HTML.
+```python
+from mycommonmark import convert
+assert convert("hello") == "<p>hello</p>\\n"
+```
+
+### subprocess-filter
+```python
+assert run_filter("hello") == "<p>hello</p>\\n"
+```
+
+## User Acceptance
+
+- Commander confirms the command behaves as a Unix filter.
+
+## Guardrails
+
+- Standard error remains empty on success.
+
+## Open Questions
+
+- Confirm whether Windows newline normalization is required.
+"""
+
 _ITEM = {
     "id": "build_compass",
     "type": "compass",
@@ -152,6 +203,70 @@ class TestRender:
         assert "Core Works" in out
         # The ac is folded under its step, not rendered as its own step.
         assert "STEP " not in out
+
+    def test_current_blueprint_acceptance_and_plan_details_are_rendered(
+        self, tmp_path, monkeypatch
+    ):
+        quarterdeck = _load_quarterdeck()
+        target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
+        (target / "blueprint" / "FEATURE-Program-Interface.md").write_text(
+            _CURRENT_BLUEPRINT,
+            encoding="utf-8",
+        )
+
+        out = quarterdeck.render_compass(_ITEM)
+
+        # Preserve the existing card, controls, cost, and stack presentation.
+        assert "cmp-stype-story" in out
+        assert "compassRegroup(" in out
+        assert "Story Points =" in out
+        assert "stack breakdown" in out
+
+        # Current plans carry routine acceptance in the implemented Blueprint,
+        # without child Manifest ac blocks.
+        assert "definition of done — 2 programmatic checks" in out
+        assert "filter-function" in out
+        assert "subprocess-filter" in out
+        assert "The conversion function returns CommonMark HTML." in out
+        assert "executable assertion" in out
+        assert "assert convert(&quot;hello&quot;)" in out
+        assert "UNVERIFIED" in out
+        assert "orchestration gate" not in out
+
+        # Human review and Manifest traceability remain collapsed, read-only views.
+        assert "<summary>user acceptance</summary>" in out
+        assert "Commander confirms the command behaves as a Unix filter." in out
+        assert "plan and traceability" in out
+        assert "PROG-001" in out
+        assert "st-003" in out
+        assert "evidence/prog-001.md" in out
+        assert "Standard error remains empty on success." in out
+        assert "Confirm whether Windows newline normalization is required." in out
+
+        assert out.index("definition of done") < out.index("user acceptance")
+        assert out.index("user acceptance") < out.index("plan and traceability")
+        assert out.index("plan and traceability") < out.index("stack breakdown")
+
+    def test_verified_story_labels_blueprint_acceptance_passed(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        target = _setup(
+            quarterdeck,
+            tmp_path,
+            monkeypatch,
+            manifest=_CURRENT_MANIFEST.replace(
+                "state: pending\nevidence:",
+                "state: closed/verified\nevidence:",
+            ),
+        )
+        (target / "blueprint" / "FEATURE-Program-Interface.md").write_text(
+            _CURRENT_BLUEPRINT,
+            encoding="utf-8",
+        )
+
+        out = quarterdeck.render_compass(_ITEM)
+
+        assert out.count("cmp-ac-pass") == 2
+        assert out.count(">PASS</span>") == 2
 
     def test_over_warn_flagged(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()

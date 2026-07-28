@@ -1181,6 +1181,205 @@ def _render_step_files(step, duplicate_flags: tuple[bool, ...] | None = None) ->
     )
 
 
+def _blueprint_section(text: str, heading: str) -> str:
+    """Return one level-two Blueprint section without interpreting its Markdown."""
+    match = re.search(
+        rf"^##\s+{re.escape(heading)}\s*$\n(?P<body>.*?)(?=^##\s+|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    return match.group("body").strip() if match else ""
+
+
+def _substantive_section(body: str) -> bool:
+    """Whether an authored review section contains more than the canonical None marker."""
+    normalized = " ".join(body.split()).rstrip(".").lower()
+    return bool(normalized and normalized not in {"- none", "none"})
+
+
+def _implemented_blueprints(
+    step, document_cache: dict[Path, str]
+) -> tuple[tuple[str, Path, str], ...]:
+    """Read the Markdown Blueprint files implemented by a rendered story."""
+    documents = []
+    for file_cost in step.files:
+        source = file_cost.source
+        if file_cost.role != "implements" or source is None or source.suffix.lower() != ".md":
+            continue
+        if source not in document_cache:
+            try:
+                document_cache[source] = source.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+        text = document_cache[source]
+        documents.append((file_cost.name, source, text))
+    return tuple(documents)
+
+
+def _render_definition_of_done(
+    documents: tuple[tuple[str, Path, str], ...],
+    legacy_acs: list,
+    state: str,
+) -> str:
+    """Render Blueprint acceptance plus legacy Manifest gates for one story."""
+    from drydock.acceptance import parse_programmatic_acceptance
+    from drydock.errors import SpecificationError
+
+    checks = []
+    for name, source, _text in documents:
+        try:
+            checks.extend((name, check) for check in parse_programmatic_acceptance(source))
+        except (OSError, UnicodeError, SpecificationError):
+            continue
+
+    rows = []
+    for source_name, check in checks:
+        if state == "closed/verified":
+            status = "<span class='cmp-acstatus cmp-ac-pass'>PASS</span>"
+        elif state == "closed/failed":
+            status = "<span class='cmp-acstatus cmp-ac-failed'>STORY FAILED</span>"
+        else:
+            status = "<span class='cmp-acstatus cmp-ac-unverified'>UNVERIFIED</span>"
+        suite = "<span class='cmp-ackind'>suite</span>" if check.full_suite else ""
+        intent = (
+            f"<div class='cmp-acintent'>{html.escape(check.intent)}</div>"
+            if check.intent and check.intent != check.check_id
+            else ""
+        )
+        rows.append(
+            "<li class='cmp-ac cmp-ac-blueprint'>"
+            "<div class='cmp-acline'>"
+            f"<span class='cmp-acname'>{html.escape(check.check_id)}</span>"
+            f"{suite}{status}"
+            f"<span class='cmp-acsource'>{html.escape(source_name)}</span>"
+            "</div>"
+            f"{intent}"
+            "<details class='cmp-ac-code'><summary>executable assertion</summary>"
+            f"<pre><code>{html.escape(check.code)}</code></pre></details>"
+            "</li>"
+        )
+
+    for ac in legacy_acs:
+        rows.append(
+            "<li class='cmp-ac cmp-ac-legacy'>"
+            "<div class='cmp-acline'>"
+            "<span class='cmp-ackind'>orchestration gate</span>"
+            f"<span class='cmp-acname'>{html.escape(ac.name)}</span>"
+            + (
+                f"<code class='cmp-accheck'>{html.escape(str(ac.fields['check']))}</code>"
+                if ac.fields.get("check")
+                else ""
+            )
+            + "</div></li>"
+        )
+
+    if not rows:
+        return ""
+    count = len(checks)
+    check_label = "check" if count == 1 else "checks"
+    legacy_label = (
+        f" · {len(legacy_acs)} orchestration gate{'' if len(legacy_acs) == 1 else 's'}"
+        if legacy_acs
+        else ""
+    )
+    opened = " open" if state == "closed/failed" else ""
+    return (
+        f"<details class='cmp-detail cmp-dod'{opened}>"
+        f"<summary>definition of done — {count} programmatic {check_label}{legacy_label}</summary>"
+        f"<ul class='cmp-acs'>{''.join(rows)}</ul></details>"
+    )
+
+
+def _render_blueprint_review(
+    documents: tuple[tuple[str, Path, str], ...],
+) -> tuple[str, str]:
+    """Render authored User Acceptance, Guardrails, and Open Questions read-only."""
+    user_sections = []
+    guardrail_sections = []
+    question_sections = []
+    for name, _source, text in documents:
+        for heading, destination in (
+            ("User Acceptance", user_sections),
+            ("Guardrails", guardrail_sections),
+            ("Open Questions", question_sections),
+        ):
+            body = _blueprint_section(text, heading)
+            if _substantive_section(body):
+                destination.append((name, body))
+
+    def render_sections(sections: list[tuple[str, str]]) -> str:
+        return "".join(
+            "<div class='cmp-review-section'>"
+            f"<div class='cmp-review-source'>{html.escape(name)}</div>"
+            f"{_md(body)}"
+            "</div>"
+            for name, body in sections
+        )
+
+    user_html = (
+        "<details class='cmp-detail cmp-review'>"
+        "<summary>user acceptance</summary>"
+        f"{render_sections(user_sections)}</details>"
+        if user_sections
+        else ""
+    )
+    secondary = [
+        ("Guardrails", guardrail_sections),
+        ("Open Questions", question_sections),
+    ]
+    secondary_html = "".join(
+        f"<div class='cmp-plan-section'><strong>{label}</strong>{render_sections(sections)}</div>"
+        for label, sections in secondary
+        if sections
+    )
+    return user_html, secondary_html
+
+
+def _render_plan_traceability(block, by_id: dict[str, Any], blueprint_review: str) -> str:
+    """Render the human-facing Manifest fields omitted by the compact story header."""
+
+    def field_value(key: str) -> str:
+        value = block.fields.get(key, "")
+        if isinstance(value, tuple):
+            return ", ".join(str(item) for item in value)
+        return str(value or "")
+
+    dependencies = []
+    for dependency_id in block.depends:
+        dependency = by_id.get(dependency_id)
+        if dependency is None:
+            dependencies.append(dependency_id)
+        else:
+            dependencies.append(f"{dependency.name} ({dependency.block_id}: {dependency.state})")
+
+    rows = [
+        (f"{block.block_type.title()} ID", block.block_id),
+        ("Summary", field_value("summary")),
+        ("Instructions", field_value("instructions")),
+        ("Question", field_value("question")),
+        ("Finding", field_value("finding")),
+        ("Implements", field_value("implements")),
+        ("Covers", field_value("covers")),
+        ("Sea Trials", field_value("accepts")),
+        ("Scope", field_value("scope")),
+        ("Depends on", ", ".join(dependencies)),
+        ("Evidence", field_value("evidence")),
+        ("Copy", field_value("copy")),
+    ]
+    table_rows = "".join(
+        f"<tr><th>{html.escape(label)}</th><td>{html.escape(value)}</td></tr>"
+        for label, value in rows
+        if value
+    )
+    return (
+        "<details class='cmp-detail cmp-plan'>"
+        "<summary>plan and traceability</summary>"
+        f"<table class='cmp-plan-table'><tbody>{table_rows}</tbody></table>"
+        f"{blueprint_review}"
+        "</details>"
+    )
+
+
 def _stack_tag(step) -> str:
     """Classify a story by what its stack carries: a FEATURE- blueprint makes it
     Feature/Service, a SCREEN- blueprint makes it Screen, and a full (non-compact)
@@ -1297,6 +1496,7 @@ def render_compass(item: dict[str, Any]) -> str:
 
     item_id = html.escape(item.get("id", ""))
     acs_by_parent: dict[str, list] = {}
+    blueprint_document_cache: dict[Path, str] = {}
     for block in plan.blocks:
         if block.block_type == "ac" and block.parent:
             acs_by_parent.setdefault(block.parent, []).append(block)
@@ -1463,31 +1663,48 @@ def render_compass(item: dict[str, Any]) -> str:
             incremental_sp = step_incremental_story_points(step, step_flags)
             kind = _story_kind(step.block_id)
             state = by_id[step.block_id].state if step.block_id in by_id else "pending"
+            block = by_id[step.block_id]
             step_cls = _KIND_STEP_CLS.get(kind, "")
             warn = (
                 f" <span class='cmp-warn'>over {_fmt_sp(step.warn_tokens)} SP</span>"
                 if step.over_warn
                 else ""
             )
-            dod_rows = "".join(
-                "<li class='cmp-ac'>"
-                f"<span class='cmp-ackind'>{html.escape(str(ac.fields.get('kind', 'ac')))}</span>"
-                f"<span class='cmp-acname'>{html.escape(ac.name)}</span>"
-                + (
-                    f"<code class='cmp-accheck'>{html.escape(str(ac.fields['check']))}</code>"
-                    if ac.fields.get("check")
-                    else ""
-                )
-                + "</li>"
-                for ac in acs_by_parent.get(step.block_id, [])
+            blueprint_documents = _implemented_blueprints(step, blueprint_document_cache)
+            dod_html = _render_definition_of_done(
+                blueprint_documents,
+                acs_by_parent.get(step.block_id, []),
+                state,
             )
-            # A failed story opens its Definition of Done so the failed check is visible.
-            dod_open = " open" if kind == "failed" else ""
-            dod_html = (
-                f"<details class='cmp-detail'{dod_open}>"
-                "<summary>definition of done</summary>"
-                f"<ul class='cmp-acs'>{dod_rows}</ul></details>"
-                if dod_rows
+            user_html, blueprint_review = _render_blueprint_review(blueprint_documents)
+            plan_html = _render_plan_traceability(block, by_id, blueprint_review)
+            summary = str(block.fields.get("summary") or "")
+            instructions = str(block.fields.get("instructions") or "")
+            direction_label = "Direction"
+            if block.block_type == "spike" and not instructions:
+                instructions = str(block.fields.get("question") or "")
+                direction_label = "Question"
+            brief_html = (
+                f"<div class='cmp-story-summary'>{html.escape(summary)}</div>" if summary else ""
+            )
+            direction_html = (
+                f"<div class='cmp-story-direction'><strong>{direction_label}:</strong> "
+                f"{html.escape(instructions)}</div>"
+                if instructions and instructions != summary
+                else ""
+            )
+            dependency_names = []
+            for dependency in block.depends:
+                dependency_block = by_id.get(dependency)
+                if dependency_block is None:
+                    dependency_names.append(dependency)
+                    continue
+                dependency_names.append(f"{dependency_block.name} ({dependency_block.state})")
+            dependency_html = (
+                "<div class='cmp-story-deps'><strong>Depends on:</strong> "
+                + ", ".join(html.escape(name) for name in dependency_names)
+                + "</div>"
+                if dependency_names
                 else ""
             )
             finding = (
@@ -1541,8 +1758,11 @@ def render_compass(item: dict[str, Any]) -> str:
                 "</div>"
                 f"{fail_html}"
                 f"{blocked_html}"
-                f"{_render_step_files(step, step_flags)}"
+                f"{brief_html}{direction_html}{dependency_html}"
                 f"{dod_html}"
+                f"{user_html}"
+                f"{plan_html}"
+                f"{_render_step_files(step, step_flags)}"
                 "</div>"
             )
         gname = group.name
@@ -1567,6 +1787,16 @@ def render_compass(item: dict[str, Any]) -> str:
         else:
             title_html = f"<span class='cmp-gname'>{html.escape(gname)}</span>"
         block_tag = "<span class='cmp-stype cmp-stype-block'>BLOCK</span>"
+        group_summary = (
+            str(by_id[group.feature_id].fields.get("summary") or "")
+            if group.feature_id and group.feature_id in by_id
+            else ""
+        )
+        group_summary_html = (
+            f"<div class='cmp-group-summary'>{html.escape(group_summary)}</div>"
+            if group_summary
+            else ""
+        )
         parts.append(
             f"<div class='cmp-group{gdone_cls}'>"
             "<div class='cmp-ghead'>"
@@ -1576,6 +1806,7 @@ def render_compass(item: dict[str, Any]) -> str:
             f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
             f"{feature_controls(group.feature_id, len(group.steps))}"
             "</div>"
+            f"{group_summary_html}"
             f"{''.join(step_cards)}"
             "</div>"
         )
@@ -2896,6 +3127,29 @@ _STYLE = """
   .cmp-acs { list-style:none; margin:6px 0 0; padding:0 0 0 18px; }
   .cmp-ac { font-size:12px; color:#475569; padding:2px 0; }
   .cmp-ackind { font-size:10px; color:#64748b; background:#f1f5f9; padding:0 5px; border-radius:3px; }
+  .cmp-group-summary { padding:6px 12px; font-size:12px; color:#64748b; background:#fbfcfe; border-bottom:1px solid #eef2f7; }
+  .cmp-story-summary { margin:7px 0 0; font-size:13px; color:#334155; }
+  .cmp-story-direction, .cmp-story-deps { margin:3px 0 0; font-size:12px; color:#64748b; }
+  .cmp-ac-blueprint, .cmp-ac-legacy { padding:6px 0; border-bottom:1px solid #eef2f7; }
+  .cmp-ac-blueprint:last-child, .cmp-ac-legacy:last-child { border-bottom:none; }
+  .cmp-acline { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .cmp-acsource { margin-left:auto; color:#64748b; font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+  .cmp-acintent { margin:4px 0 0; color:#475569; }
+  .cmp-acstatus { font-size:10px; font-weight:800; letter-spacing:.03em; padding:1px 6px; border-radius:8px; }
+  .cmp-ac-pass { color:#166534; background:#dcfce7; border:1px solid #86efac; }
+  .cmp-ac-failed { color:#991b1b; background:#fee2e2; border:1px solid #fca5a5; }
+  .cmp-ac-unverified { color:#475569; background:#e2e8f0; border:1px solid #cbd5e1; }
+  .cmp-ac-code { margin:4px 0 0; }
+  .cmp-ac-code summary { font-size:11px; color:#64748b; cursor:pointer; }
+  .cmp-ac-code pre { margin:5px 0 2px; padding:8px 10px; overflow:auto; border-radius:4px; background:#f8fafc; border:1px solid #e2e8f0; }
+  .cmp-ac-code code { font-size:11px; white-space:pre; }
+  .cmp-plan-table { width:100%; margin:6px 0 0; border-collapse:collapse; font-size:12px; }
+  .cmp-plan-table th { width:110px; padding:4px 8px; text-align:left; vertical-align:top; color:#64748b; border-bottom:1px solid #eef2f7; }
+  .cmp-plan-table td { padding:4px 8px; color:#334155; border-bottom:1px solid #eef2f7; white-space:pre-wrap; }
+  .cmp-plan-section { margin:9px 8px 0; font-size:12px; color:#475569; }
+  .cmp-review-section { margin:5px 8px 0; font-size:12px; color:#475569; }
+  .cmp-review-source { color:#64748b; font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+  .cmp-review-section .markdown-body { font-size:12px; }
   .cmp-move { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
   .cmp-mbtn { font-size:11px; line-height:1; padding:2px 6px; border:1px solid #cbd5e1; background:#fff; border-radius:3px; cursor:pointer; color:#475569; }
   .cmp-mbtn:hover { background:#eef2f7; }
