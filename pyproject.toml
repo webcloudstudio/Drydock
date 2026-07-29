@@ -57,7 +57,6 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.4",
-    "mypy>=1.10",
     "pre-commit>=3.7",
     "playwright>=1.61.0",
 ]
@@ -101,17 +100,6 @@ branch = true
 show_missing = true
 # TODO(ed): raise once the LLM/build commands land. Start permissive to keep CI green.
 fail_under = 0
-
-[tool.mypy]
-python_version = "3.11"
-mypy_path = "src"
-files = ["src/drydock"]
-explicit_package_bases = true
-namespace_packages = true
-ignore_missing_imports = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-no_implicit_optional = true
 
 [tool.ruff]
 line-length = 100

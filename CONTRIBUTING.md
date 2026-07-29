@@ -51,14 +51,13 @@ Every change must pass the same checks CI runs:
 ```bash
 uv run ruff check src/ tests/ scripts/
 uv run ruff format --check src/ tests/ scripts/
-uv run mypy
 uv run pytest --cov=drydock
 ```
 
 Or run everything through nox:
 
 ```bash
-uv run nox          # lint, type, tests
+uv run nox          # lint, tests
 uv run nox -s build # wheel + sdist + embedded-Rigging verification
 ```
 

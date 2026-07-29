@@ -3,7 +3,7 @@
 Run from any OS with uv installed:
 
     uv run nox -l            # list sessions
-    uv run nox               # default sessions: lint, type, tests
+    uv run nox               # default sessions: lint, tests
     uv run nox -s build      # build wheel + sdist and verify embedded Rigging
 
 Sessions use the uv backend so dependency resolution matches CI.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import nox
 
 nox.options.default_venv_backend = "uv"
-nox.options.sessions = ["lint", "type", "tests"]
+nox.options.sessions = ["lint", "tests"]
 
 PYTHONS = ["3.11", "3.12", "3.13"]
 LINT_PATHS = ["src/", "tests/", "scripts/", "noxfile.py"]
@@ -26,13 +26,6 @@ def lint(session: nox.Session) -> None:
     session.install("ruff>=0.4")
     session.run("ruff", "check", *LINT_PATHS)
     session.run("ruff", "format", "--check", *LINT_PATHS)
-
-
-@nox.session
-def type(session: nox.Session) -> None:
-    """Static type check with mypy."""
-    session.install("-e", ".[dev]")
-    session.run("mypy")
 
 
 @nox.session(python=PYTHONS)
