@@ -28,6 +28,7 @@ from drydock.execution import (
     sha256_file,
     utc_now,
 )
+from drydock.llm_usage import normalize_tokens
 from drydock.logging import close_execution_logger, create_execution_logger
 from drydock.prompt_assembly import PromptAssembly
 
@@ -430,6 +431,45 @@ def _format_cost(cost_usd: float | None) -> str | None:
     return f"${cost_usd:.4f}"
 
 
+def format_token_summary(stats: LlmStats | None, *, llm: str | None) -> str | None:
+    """Render one call's token accounting, or ``None`` when the provider reported none.
+
+    Provider token conventions differ (codex counts cache reads inside ``input_tokens``,
+    claude does not); normalization is delegated to :func:`llm_usage.normalize_tokens` so
+    every surface reports the same contract: ``in`` is everything sent to the model,
+    ``cached`` is the cache-read share of it, and ``fresh`` is the remainder.
+    """
+    if stats is None:
+        return None
+    fields = asdict(stats)
+    if all(
+        fields.get(name) is None
+        for name in (
+            "input_tokens",
+            "cached_input_tokens",
+            "cache_creation_input_tokens",
+            "output_tokens",
+        )
+    ):
+        return None
+    total_input, cached, output = normalize_tokens(llm or "", fields)
+    parts: list[str] = []
+    if total_input:
+        parts.append(f"in={total_input:,}")
+        parts.append(f"fresh {max(total_input - cached, 0):,}")
+    if cached:
+        parts.append(f"cached {cached:,} ({cached / total_input:.0%} hit)" if total_input else "")
+    if stats.cache_creation_input_tokens:
+        parts.append(f"write {stats.cache_creation_input_tokens:,}")
+    if output:
+        parts.append(f"out={output:,}")
+    cost = _format_cost(stats.cost_usd)
+    if cost is not None:
+        parts.append(f"cost={cost}")
+    parts = [part for part in parts if part]
+    return " · ".join(parts) if parts else None
+
+
 def _performance_summary(
     *,
     llm: str,
@@ -451,19 +491,11 @@ def _performance_summary(
         parts.append(f"provider={provider_duration}")
     if stats.turns is not None:
         parts.append(f"turns={stats.turns}")
-    if stats.input_tokens is not None:
-        parts.append(f"in={stats.input_tokens:,}")
-    if stats.cached_input_tokens is not None:
-        parts.append(f"cached={stats.cached_input_tokens:,}")
-    if stats.cache_creation_input_tokens is not None:
-        parts.append(f"cache_write={stats.cache_creation_input_tokens:,}")
-    if stats.output_tokens is not None:
-        parts.append(f"out={stats.output_tokens:,}")
-        if stats.elapsed_ms and stats.elapsed_ms > 0:
-            parts.append(f"tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
-    cost = _format_cost(stats.cost_usd)
-    if cost is not None:
-        parts.append(f"cost={cost}")
+    tokens = format_token_summary(stats, llm=llm)
+    if tokens:
+        parts.append(tokens)
+    if stats.output_tokens and stats.elapsed_ms and stats.elapsed_ms > 0:
+        parts.append(f"tps={stats.output_tokens / (stats.elapsed_ms / 1000.0):.1f}")
     parts.append(f"id={execution_id}")
     return "  ".join(parts)
 

@@ -13,9 +13,10 @@ show each step's true token cost. Cost and build can never diverge because they
 read the same assembly.
 
 Story points are the token estimate (``ceil(bytes / 4)``), derived on demand and
-never written back. A step whose story-point total exceeds ``PROMPT_WARN_TOKENS``
-is flagged ``over_warn``: it stacks more context than is reliably built in one
-prompt. The ceiling and every displayed cost are the same unit — tokens.
+never written back. A step whose story-point total exceeds the configured
+``PROMPT_WARN_TOKENS`` ceiling is flagged ``over_warn``: it stacks more context than
+is reliably built in one prompt. The ceiling and every displayed cost are the same
+unit — tokens.
 
 Compact substitution: stack files have ``*_compact.md`` derivatives that contain
 only the caller-facing surface (types, config, contracts). The first story to use
@@ -37,6 +38,8 @@ from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.compass_sources import is_compass_file
+from drydock.config import get_prompt_warn_tokens
+from drydock.errors import ConfigurationError
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_markdown_parts,
@@ -57,10 +60,24 @@ def story_points_for(byte_count: int) -> int:
     return math.ceil(byte_count / 4)
 
 
-# Maximum assembled prompt cost, in tokens (story points), for one build step
-# before it is flagged. The stacking strategy groups similar work to stay under
-# this ceiling. Tokens, not bytes: it is the unit every cost is displayed in.
+# Default maximum assembled prompt cost, in tokens (story points), for one build step
+# before it is flagged; the effective ceiling comes from the ``PROMPT_WARN_TOKENS``
+# configuration key. The stacking strategy groups similar work to stay under this
+# ceiling. Tokens, not bytes: it is the unit every cost is displayed in.
 PROMPT_WARN_TOKENS = 50_000
+
+
+def resolve_warn_tokens() -> int:
+    """Return the configured warn ceiling, falling back to the built-in default.
+
+    Assembly is a read-only costing pass; an unusable ``PROMPT_WARN_TOKENS`` setting
+    downgrades to the default rather than failing the build.
+    """
+    try:
+        return get_prompt_warn_tokens()
+    except ConfigurationError:
+        return PROMPT_WARN_TOKENS
+
 
 # Manifest block types that are executable build steps. Features group; ac blocks
 # fold under their parent and are verified, not built.
@@ -500,7 +517,7 @@ def assemble_step(
     block: PlanBlock,
     roots: StepRoots,
     *,
-    warn_tokens: int = PROMPT_WARN_TOKENS,
+    warn_tokens: int | None = None,
     compact_stack: frozenset[str] | None = None,
 ) -> StepAssembly:
     """Resolve and cost the full prompt stack for one executable build block.
@@ -519,6 +536,8 @@ def assemble_step(
     entry whose source file is also in this block's ``implements:`` is dropped —
     the step already carries the authoritative full file.
     """
+    if warn_tokens is None:
+        warn_tokens = resolve_warn_tokens()
     files: list[StepFile] = []
     implements_canonical = {
         _canonical_spec_name(name)
@@ -582,7 +601,7 @@ def assemble_steps(
     plan: BuildPlan,
     roots: StepRoots,
     *,
-    warn_tokens: int = PROMPT_WARN_TOKENS,
+    warn_tokens: int | None = None,
 ) -> tuple[StepAssembly, ...]:
     """Assemble every executable step in the plan, in manifest order.
 
@@ -592,6 +611,8 @@ def assemble_steps(
     Steps show the resolved name so the QuarterDeck displays honest token costs
     before the build runs.
     """
+    if warn_tokens is None:
+        warn_tokens = resolve_warn_tokens()
     files_seen: set[str] = set()
     result: list[StepAssembly] = []
     for block in plan.blocks:

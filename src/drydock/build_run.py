@@ -66,7 +66,7 @@ from drydock.dependency_gate import (
     check_python_dependency_manifests,
 )
 from drydock.errors import SpecificationError, clear_error_record, write_error_record
-from drydock.llm import render_rate_limit_error_block, run_prompt
+from drydock.llm import format_token_summary, render_rate_limit_error_block, run_prompt
 from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
@@ -2062,6 +2062,9 @@ def build_target(
             if execution_id:
                 execution_bits.append(execution_id)
             _emit(on_text, "returned: " + " · ".join(execution_bits))
+            token_line = format_token_summary(getattr(result, "stats", None), llm=llm_provider)
+            if token_line:
+                _emit(on_text, f"  tokens: {token_line}")
             state, status, error, failure_detail = _build_outcome(
                 summary,
                 ok=ok,

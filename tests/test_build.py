@@ -197,6 +197,21 @@ state: pending
         step = assemble_step(plan.by_id()["core"], roots)
         assert step.over_warn is True
 
+    def test_over_warn_honors_configured_ceiling(self, tmp_path, monkeypatch):
+        plan = _plan(tmp_path)
+        roots = _roots(tmp_path)
+        monkeypatch.setenv("PROMPT_WARN_TOKENS", "1")
+        step = assemble_step(plan.by_id()["core"], roots)
+        assert step.warn_tokens == 1
+        assert step.over_warn is True
+
+    def test_invalid_warn_configuration_falls_back_to_the_default(self, tmp_path, monkeypatch):
+        plan = _plan(tmp_path)
+        monkeypatch.setenv("PROMPT_WARN_TOKENS", "not-a-number")
+        step = assemble_step(plan.by_id()["core"], _roots(tmp_path))
+        assert step.warn_tokens == PROMPT_WARN_TOKENS
+        assert step.over_warn is False
+
     def test_under_warn_default(self, tmp_path):
         plan = _plan(tmp_path)
         step = assemble_step(plan.by_id()["core"], _roots(tmp_path))

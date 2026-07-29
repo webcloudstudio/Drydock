@@ -106,11 +106,20 @@ state: pending
 
 
 class FakeResult:
-    def __init__(self, ok=True, text="Built it. Created app.py.", execution_id="exec-1", stderr=""):
+    def __init__(
+        self,
+        ok=True,
+        text="Built it. Created app.py.",
+        execution_id="exec-1",
+        stderr="",
+        stats=None,
+    ):
         self.ok = ok
         self.text = text
         self.execution_id = execution_id
         self.stderr = stderr
+        if stats is not None:
+            self.stats = stats
 
 
 @pytest.fixture(autouse=True)
@@ -130,7 +139,7 @@ def _success_report(*, changed: tuple[str, ...], summary: str = "Built it.") -> 
     )
 
 
-def make_runner(*, ok=True, text: str | None = None, write_files=True, stderr=""):
+def make_runner(*, ok=True, text: str | None = None, write_files=True, stderr="", stats=None):
     calls: list[dict] = []
 
     def runner(prompt, working_directory, **kwargs):
@@ -142,7 +151,9 @@ def make_runner(*, ok=True, text: str | None = None, write_files=True, stderr=""
                 f"built {step_id}\n", encoding="utf-8"
             )
         calls.append({"prompt": prompt, "wd": working_directory, **kwargs})
-        return FakeResult(ok=ok, text=text or _success_report(changed=changed), stderr=stderr)
+        return FakeResult(
+            ok=ok, text=text or _success_report(changed=changed), stderr=stderr, stats=stats
+        )
 
     runner.calls = calls  # type: ignore[attr-defined]
     return runner
@@ -591,9 +602,39 @@ def test_build_emits_step_progress_lines(tmp_path):
     assert "  stories: Foundation [foundation]" in log
     assert any(line.startswith("  call: 1 of up to 4 · initial build · ") for line in log)
     assert any(line == "returned: ok · exec-1" for line in log)
+    assert not any(line.startswith("  tokens:") for line in log)
     assert any(line == "files: 1 changed — foundation.txt" for line in log)
     assert any(re.match(r"result: built · closed/verified · .+", line) for line in log)
     assert any(line == "evidence: evidence/foundation.md" for line in log)
+
+
+def test_build_emits_token_accounting_when_the_provider_reports_it(tmp_path):
+    from drydock.llm import LlmStats
+
+    target_dir, build_dir = _setup(tmp_path)
+    log: list[str] = []
+    runner = make_runner(
+        stats=LlmStats(
+            input_tokens=100,
+            cached_input_tokens=900,
+            cache_creation_input_tokens=40,
+            output_tokens=50,
+            cost_usd=0.25,
+        )
+    )
+
+    build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        on_text=log.append,
+        llm_provider="claude",
+    )
+
+    assert log.index("returned: ok · exec-1") + 1 == log.index(
+        "  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · write 40 · out=50 · cost=$0.2500"
+    )
 
 
 def test_feature_step_with_no_future_consumer_does_not_request_compaction(tmp_path):

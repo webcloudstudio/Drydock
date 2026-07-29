@@ -134,6 +134,7 @@ class TestHelpAndVersion:
             "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]"
         )
         _stream_build_summary("  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt")
+        _stream_build_summary("  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · out=50")
         _stream_build_summary("  failing: block-conformance (240/260 cases)")
         _stream_build_summary(
             "acceptance: call 2 · 2/3 AC passed · failed: block-conformance (240/260 cases)"
@@ -144,6 +145,7 @@ class TestHelpAndVersion:
             capsys.readouterr().out == "\nLLM BUILD: Markdown Parsing [feature-parsing]\n"
             "  stories: Block Parsing [block-parsing], Inline Parsing [inline-parsing]\n"
             "  call: 2 of up to 4 · automatic repair 1 of 3 · codex/gpt\n"
+            "  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · out=50\n"
             "  failing: block-conformance (240/260 cases)\n"
             "acceptance: call 2 · 2/3 AC passed · "
             "failed: block-conformance (240/260 cases)\n"

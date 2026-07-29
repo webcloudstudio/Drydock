@@ -102,7 +102,13 @@ def _stream_build_summary(text: str) -> None:
     if text.startswith("LLM BUILD:"):
         _stream_build("")
         _stream_build(text)
-    elif text.startswith(("  stories:", "  regression gates:", "  call:", "  failing:")):
+    elif text.startswith((
+        "  stories:",
+        "  regression gates:",
+        "  call:",
+        "  failing:",
+        "  tokens:",
+    )):
         _stream_build(text)
     elif text.startswith("acceptance:"):
         _stream_build(text)

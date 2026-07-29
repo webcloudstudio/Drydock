@@ -783,6 +783,65 @@ def test_debug_details_print_to_console_without_debug_log(tmp_path, monkeypatch,
     assert list(tmp_path.glob("*.debug.log")) == []
 
 
+def test_token_summary_sums_cache_reads_for_claude():
+    # Claude reports input_tokens exclusive of cache reads, so everything sent to the
+    # model is the sum, and the hit rate is the cache-read share of that total.
+    from drydock.llm import LlmStats, format_token_summary
+
+    line = format_token_summary(
+        LlmStats(
+            input_tokens=21_904,
+            cached_input_tokens=160_437,
+            cache_creation_input_tokens=12_010,
+            output_tokens=4_812,
+            cost_usd=0.61,
+        ),
+        llm="claude",
+    )
+    assert line == (
+        "in=182,341 · fresh 21,904 · cached 160,437 (88% hit) · write 12,010 · "
+        "out=4,812 · cost=$0.6100"
+    )
+
+
+def test_token_summary_treats_codex_input_as_cache_inclusive():
+    from drydock.llm import LlmStats, format_token_summary
+
+    line = format_token_summary(
+        LlmStats(input_tokens=1_000, cached_input_tokens=900, output_tokens=50),
+        llm="codex",
+    )
+    assert line == "in=1,000 · fresh 100 · cached 900 (90% hit) · out=50"
+
+
+def test_token_summary_omits_absent_segments():
+    from drydock.llm import LlmStats, format_token_summary
+
+    assert format_token_summary(LlmStats(output_tokens=12), llm="claude") == "out=12"
+    assert format_token_summary(LlmStats(model="x", elapsed_ms=10), llm="claude") is None
+    assert format_token_summary(None, llm="claude") is None
+
+
+def test_done_line_reports_normalized_tokens_and_cache_hit_rate():
+    from drydock.llm import LlmStats, _performance_summary
+
+    line = _performance_summary(
+        llm="claude",
+        command_name="build",
+        execution_id="exec-1",
+        returncode=0,
+        stats=LlmStats(
+            model="claude-opus-5",
+            elapsed_ms=2_000,
+            input_tokens=100,
+            cached_input_tokens=900,
+            output_tokens=50,
+        ),
+    )
+    assert "in=1,000 · fresh 100 · cached 900 (90% hit) · out=50" in line
+    assert "tps=25.0" in line
+
+
 def test_done_line_falls_back_to_requested_model():
     # Providers that do not report the model in their result stats (e.g. codex) must still show
     # the requested model on the DONE line rather than a bare `-`.

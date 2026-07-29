@@ -29,6 +29,7 @@ __all__ = [
     "RunUsage",
     "GroupUsage",
     "UsageReport",
+    "normalize_tokens",
     "read_records",
     "record_target",
     "scan_activity",
@@ -414,7 +415,7 @@ def _detail(command: str, parameters: Mapping[str, Any]) -> str:
     return command
 
 
-def _normalize_tokens(provider: str, stats: Mapping[str, Any]) -> tuple[int, int, int]:
+def normalize_tokens(provider: str, stats: Mapping[str, Any]) -> tuple[int, int, int]:
     """Return ``(total_input, cached_input, output)`` on the shared accounting contract."""
     reported_input = _int(stats.get("input_tokens"))
     cached = _int(stats.get("cached_input_tokens"))
@@ -435,7 +436,7 @@ def _run_from_record(record: Mapping[str, Any], target: str) -> RunUsage:
 
     provider = _text(job.get("llm"))
     command = _text(job.get("command_name"))
-    total_input, cached, output = _normalize_tokens(provider, stats)
+    total_input, cached, output = normalize_tokens(provider, stats)
     returncode = result.get("returncode")
 
     return RunUsage(
