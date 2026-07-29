@@ -2805,3 +2805,46 @@ def test_defective_claim_helpers_require_both_a_name_and_a_defect_word():
     # Naming the check without claiming it is defective is an ordinary failure report.
     assert _defective_acceptance_claim(("scoped-number still fails", ""), failed) == ()
     assert _defective_acceptance_claim(None, failed) == ()
+
+
+# A criterion whose invocation cannot launch the command under test grades a different process
+# than the one being built. It is unsatisfiable for the same reason a mis-authored expectation
+# is, so the build must refuse before it spends a pass on it.
+
+_MALFORMED_INVOCATION_SPEC = """# FEATURE: Scoped Verification
+
+## Programmatic Acceptance
+
+### scoped-number
+The supplied harness supports example selection.
+
+```python
+import subprocess
+
+result = subprocess.run(
+    ["PYTHONPATH=sources", "python3", "suite.py", "--number", "1"],
+    shell=True,
+    capture_output=True,
+    text=True,
+)
+print(result.stdout)
+assert "1 passed" in result.stdout
+```
+"""
+
+
+def test_malformed_invocation_blocks_the_build_before_the_agent_runs(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _MALFORMED_INVOCATION_SPEC, encoding="utf-8"
+    )
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    message = str(exc.value)
+    assert "unsatisfiable Programmatic Acceptance" in message
+    assert "DATABASE.md [scoped-number]" in message
+    assert "the intended command never runs" in message
+    assert runner.calls == []
