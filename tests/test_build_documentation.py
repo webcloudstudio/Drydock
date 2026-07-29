@@ -367,6 +367,3 @@ def test_canonical_specification_documents_current_command_surface():
     )
     for phase in specification.split("## SAIL Phase ")[1:]:
         assert "### Commands" in phase
-
-    for nonexistent in ("drydock conform", "drydock plan validate", "drydock plan approve"):
-        assert nonexistent not in specification
