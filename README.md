@@ -222,7 +222,7 @@ Drydock's job is to make that relationship explicit, reviewable, and repeatable.
 
 ## Current Release Status
 
-Drydock `0.1.4` is an alpha release. The primary SAIL path is implemented, but the
+Drydock `0.1.5` is an beta release. The primary SAIL path is implemented, but the
 command surface and Typed Specification contracts remain unstable during the `0.x` series:
 
 - Workspace configuration and Target initialization.

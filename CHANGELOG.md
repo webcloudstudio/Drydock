@@ -8,6 +8,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+## [0.1.4] — Unreleased
+
 ### Added
 
 - 2026-07-27: `drydock plan` now reports the exact location and a JSON-escaped, 100-character
