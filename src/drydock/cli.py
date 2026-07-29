@@ -1687,6 +1687,150 @@ def cmd_score_ac(target: str, step: str | None = None) -> int:
     return report.exit_code()
 
 
+def _compact_clock(milliseconds: int) -> str:
+    """Render a duration for a table column: ``7m 10s``, ``48s``, ``1h 03m``."""
+    total = max(0, milliseconds) // 1000
+    hours, rem = divmod(total, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def _rate(value: float | None) -> str:
+    return "—" if value is None else f"{value * 100:.1f}%"
+
+
+def _render_build_score(report) -> list[str]:
+    """Render the post-build report. Pure formatting over an already-built report."""
+    lines = [
+        "",
+        f"Build report: {report.target}",
+        f"  evidence: {report.evidence_dir}",
+        f"  usage:    {report.records_path}",
+        "",
+    ]
+    if not report.blocks:
+        lines.append("  No build evidence found. Run: drydock build " + report.target)
+        return lines
+
+    headers = ("Block", "AC", "Calls", "Input", "Cached", "Hit", "Output", "Time")
+    rows: list[tuple[str, ...]] = []
+    for block in report.blocks:
+        mark = "✓" if block.verified else "✗"
+        rows.append((
+            f"{mark} {block.name}",
+            f"{block.passed_checks}/{block.total_checks}",
+            str(block.calls),
+            f"{block.total_input:,}",
+            f"{block.cached_input:,}",
+            _rate(block.cache_hit_rate),
+            f"{block.output:,}",
+            _compact_clock(block.elapsed_ms),
+        ))
+    total_row = (
+        "TOTAL",
+        f"{report.passed_checks}/{report.total_checks}",
+        str(report.calls),
+        f"{report.total_input:,}",
+        f"{report.cached_input:,}",
+        _rate(report.cache_hit_rate),
+        f"{report.output:,}",
+        _compact_clock(report.elapsed_ms),
+    )
+    widths = [
+        max(len(headers[i]), len(total_row[i]), *(len(row[i]) for row in rows))
+        for i in range(len(headers))
+    ]
+
+    def _line(cells: tuple[str, ...]) -> str:
+        # First column reads as a label; the numeric columns right-align so magnitudes compare.
+        rendered = [cells[0].ljust(widths[0])]
+        rendered += [cells[i].rjust(widths[i]) for i in range(1, len(cells))]
+        return "  " + "  ".join(rendered).rstrip()
+
+    lines.append(_line(headers))
+    lines.append("  " + "─" * (sum(widths) + 2 * (len(widths) - 1)))
+    lines.extend(_line(row) for row in rows)
+    lines.append("  " + "─" * (sum(widths) + 2 * (len(widths) - 1)))
+    lines.append(_line(total_row))
+    lines.append("")
+
+    verified = sum(1 for block in report.blocks if block.verified)
+    summary = (
+        f"  Blocks: {verified}/{len(report.blocks)} verified · "
+        f"{report.first_call_blocks} on first call · {len(report.repaired_blocks)} repaired"
+    )
+    lines.append(summary)
+    if report.models:
+        lines.append(f"  Model:  {', '.join(report.models)}")
+    fresh = report.fresh_input
+    lines.append(
+        f"  Tokens: {report.total_input:,} in ({fresh:,} fresh, {report.cached_input:,} cached) · "
+        f"{report.output:,} out"
+    )
+
+    # Every pass of any block that needed more than one, so a repair is legible without
+    # opening the evidence: what it scored, and what changed between calls.
+    if report.repaired_blocks:
+        lines += ["", "  Repairs"]
+        for block in report.repaired_blocks:
+            lines.append(f"    {block.name} [{block.block_id}]")
+            for attempt in block.attempts:
+                score = (
+                    f"{attempt.passed_checks}/{attempt.total_checks} AC"
+                    if attempt.total_checks
+                    else "no AC"
+                )
+                cases = (
+                    f" · {attempt.passed_cases}/{attempt.total_cases} cases"
+                    if attempt.passed_cases is not None and attempt.total_cases is not None
+                    else ""
+                )
+                lines.append(
+                    f"      {attempt.label:<14} {attempt.status:<7} {score}{cases} · "
+                    f"{attempt.total_input:,} in · {_rate(attempt.cache_hit_rate)} hit · "
+                    f"{_compact_clock(attempt.elapsed_ms)}"
+                )
+                if attempt.stop_reason:
+                    lines.append(f"      {'':<14} stopped: {attempt.stop_reason}")
+
+    failed = report.failed_blocks
+    if failed:
+        lines += ["", "  Not verified"]
+        for block in failed:
+            lines.append(f"    {block.name} [{block.block_id}] — {block.state or 'unknown state'}")
+            if block.failed_check_ids:
+                lines.append(f"      failing AC: {', '.join(block.failed_check_ids)}")
+            if block.stop_reason:
+                lines.append(f"      stopped: {block.stop_reason}")
+
+    if report.missing_usage:
+        lines += [
+            "",
+            f"  Note: {len(report.missing_usage)} execution(s) have no usage record; "
+            "their tokens read as zero.",
+        ]
+    return lines
+
+
+def cmd_score_build(target: str) -> int:
+    """Print the deterministic post-build report. Reads evidence and usage logs only."""
+    from drydock.build_report import build_score_report
+    from drydock.config import get_workspace, require_target_dir
+
+    target_dir = require_target_dir(target)
+    report = build_score_report(
+        target, target_dir, records_path=get_workspace() / "logs" / "llm.jsonl"
+    )
+    for line in _render_build_score(report):
+        print(line)
+    print()
+    return 0 if report.blocks and not report.failed_blocks else 1
+
+
 def cmd_score_release(target: str) -> int:
     from drydock.config import (
         get_llm_provider,
@@ -2261,6 +2405,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
             "                                            or scoped to one feature/story), update Soundings\n"
+            "drydock score build <Target>             — post-build report: acceptance, repairs, tokens,\n"
+            "                                            cache hit rate (deterministic; reads logs only)\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
             "drydock score drydock [--effort <level>] — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n\n"
@@ -2270,7 +2416,7 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_score.add_argument(
-        "args", nargs=argparse.REMAINDER, metavar="<ac|release|drydock> [<Target>]"
+        "args", nargs=argparse.REMAINDER, metavar="<ac|build|release|drydock> [<Target>]"
     )
 
     # ── refit ─────────────────────────────────────────────────────────────────
@@ -2579,13 +2725,19 @@ def _dispatch_score(args: argparse.Namespace) -> int:
 
         record_activity("score ac", target, target)
         return rc
+    if first == "build" and len(tokens) == 2:
+        rc = cmd_score_build(tokens[1])
+        from drydock.config import record_activity
+
+        record_activity("score build", tokens[1], tokens[1])
+        return rc
     if first == "release" and len(tokens) == 2:
         rc = cmd_score_release(tokens[1])
         from drydock.config import record_activity
 
         record_activity("score release", tokens[1], tokens[1])
         return rc
-    raise UsageError("Usage: drydock score <ac|release> <Target> | drydock score drydock")
+    raise UsageError("Usage: drydock score <ac|build|release> <Target> | drydock score drydock")
 
 
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

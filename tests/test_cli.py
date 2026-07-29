@@ -228,7 +228,7 @@ class TestHelpAndVersion:
     def test_score_bad_subverb_is_usage_error(self):
         rc, _, err = run_cli("score", "bogus", "Demo")
         assert rc == 2
-        assert "ac|release" in err
+        assert "ac|build|release" in err
 
     def test_parse_score_ac_args_accepts_step_flag(self):
         from drydock.cli import _parse_score_ac_args
@@ -2773,3 +2773,182 @@ def test_failure_renderer_omits_the_stop_line_when_the_budget_was_spent():
     rendered = _render_build_failures("commonmark", [step], hint="continue", story_recovery=())
 
     assert "stopped early" not in rendered
+
+
+class TestBuildScoreRendering:
+    """The post-build report is formatting over a prepared report; no logs are read here."""
+
+    class _Attempt:
+        def __init__(self, index, status, passed, total, cases=None, stop=""):
+            self.index, self.status = index, status
+            self.passed_checks, self.total_checks = passed, total
+            self.passed_cases, self.total_cases = cases, cases
+            self.stop_reason = stop
+            self.total_input, self.cached_input, self.output, self.elapsed_ms = (
+                1000,
+                900,
+                50,
+                61000,
+            )
+
+        @property
+        def label(self):
+            return "initial build" if self.index == 0 else f"repair {self.index}"
+
+        @property
+        def cache_hit_rate(self):
+            return 0.9
+
+    class _Block:
+        def __init__(self, name, block_id, state, passed, total, attempts, failing=()):
+            self.name, self.block_id, self.state = name, block_id, state
+            self.passed_checks, self.total_checks = passed, total
+            self.attempts = tuple(attempts)
+            self.failed_check_ids = failing
+            self.total_input, self.cached_input, self.output, self.elapsed_ms = (
+                1000,
+                900,
+                50,
+                61000,
+            )
+
+        @property
+        def verified(self):
+            return self.state == "closed/verified"
+
+        @property
+        def calls(self):
+            return len(self.attempts)
+
+        @property
+        def repaired(self):
+            return self.calls > 1
+
+        @property
+        def cache_hit_rate(self):
+            return 0.9
+
+        @property
+        def stop_reason(self):
+            return self.attempts[-1].stop_reason if self.attempts else ""
+
+    class _Report:
+        def __init__(self, blocks, missing=()):
+            self.target = "commonmark"
+            self.evidence_dir = "/t/evidence"
+            self.records_path = "/t/logs/llm.jsonl"
+            self.blocks = tuple(blocks)
+            self.missing_usage = missing
+            self.total_input, self.cached_input, self.fresh_input = 1000, 900, 100
+            self.output, self.elapsed_ms = 50, 61000
+            self.passed_checks, self.total_checks = 3, 3
+            self.models = ("gpt-5.6-luna",)
+
+        @property
+        def calls(self):
+            return sum(b.calls for b in self.blocks)
+
+        @property
+        def cache_hit_rate(self):
+            return 0.9
+
+        @property
+        def repaired_blocks(self):
+            return tuple(b for b in self.blocks if b.repaired)
+
+        @property
+        def failed_blocks(self):
+            return tuple(b for b in self.blocks if not b.verified)
+
+        @property
+        def first_call_blocks(self):
+            return sum(1 for b in self.blocks if b.verified and not b.repaired)
+
+    def test_clean_build_renders_a_table_without_a_repairs_section(self):
+        from drydock.cli import _render_build_score
+
+        block = self._Block(
+            "Block Parsing",
+            "feature-block-parsing",
+            "closed/verified",
+            3,
+            3,
+            [self._Attempt(0, "built", 3, 3)],
+        )
+        out = "\n".join(_render_build_score(self._Report([block])))
+
+        assert "Build report: commonmark" in out
+        assert "✓ Block Parsing" in out
+        assert "96.7%" not in out and "90.0%" in out
+        assert "1 on first call" in out
+        assert "Repairs" not in out
+        assert "Not verified" not in out
+
+    def test_a_repair_is_broken_out_pass_by_pass(self):
+        from drydock.cli import _render_build_score
+
+        block = self._Block(
+            "Inline Parsing",
+            "feature-inline-parsing",
+            "closed/verified",
+            2,
+            2,
+            [
+                self._Attempt(0, "failed", 1, 2, cases=243),
+                self._Attempt(1, "built", 2, 2, cases=375),
+            ],
+        )
+        out = "\n".join(_render_build_score(self._Report([block])))
+
+        assert "Repairs" in out
+        assert "initial build  failed  1/2 AC · 243/243 cases" in out
+        assert "repair 1       built   2/2 AC · 375/375 cases" in out
+
+    def test_a_failed_block_names_its_criteria_and_stop_reason(self):
+        from drydock.cli import _render_build_score
+
+        block = self._Block(
+            "Filter Delivery",
+            "feature-filter-delivery",
+            "closed/failed",
+            1,
+            2,
+            [self._Attempt(0, "failed", 1, 2, stop="acceptance criterion reported defective")],
+            failing=("verification-scoped-number",),
+        )
+        out = "\n".join(_render_build_score(self._Report([block])))
+
+        assert "✗ Filter Delivery" in out
+        assert "Not verified" in out
+        assert "failing AC: verification-scoped-number" in out
+        assert "stopped: acceptance criterion reported defective" in out
+
+    def test_missing_usage_is_disclosed_rather_than_read_as_zero_cost(self):
+        from drydock.cli import _render_build_score
+
+        block = self._Block(
+            "Block Parsing",
+            "feature-block-parsing",
+            "closed/verified",
+            3,
+            3,
+            [self._Attempt(0, "built", 3, 3)],
+        )
+        out = "\n".join(_render_build_score(self._Report([block], missing=("exec-1",))))
+
+        assert "1 execution(s) have no usage record" in out
+
+    def test_an_empty_report_says_so(self):
+        from drydock.cli import _render_build_score
+
+        out = "\n".join(_render_build_score(self._Report([])))
+
+        assert "No build evidence found" in out
+
+    def test_compact_clock_scales_from_seconds_to_hours(self):
+        from drydock.cli import _compact_clock
+
+        assert _compact_clock(48_000) == "48s"
+        assert _compact_clock(430_000) == "7m 10s"
+        assert _compact_clock(3_780_000) == "1h 03m"
+        assert _compact_clock(-5) == "0s"
