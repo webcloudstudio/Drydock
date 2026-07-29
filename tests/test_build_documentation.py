@@ -335,7 +335,7 @@ def test_canonical_specification_documents_current_command_surface():
         "drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]",
         "drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass>",
         "drydock analyze <Target>",
-        "drydock plan <Target>",
+        "drydock plan [--overwrite] [--no-conform] <Target>",
         "drydock build <Target>",
         "drydock build <Target> --dry-run",
         "drydock build <Target> --reset",

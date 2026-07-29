@@ -9,6 +9,7 @@ not open individual component files.
 | `BRANDING_DOCUMENTATION.md` | Branding | The users voice for Documentation voice, structure, and presentation rules. | — |
 | `BRANDING_MAIN.md` | Branding | Core product branding (colors pallette etc ) and visual identity rules. | — |
 | `BRANDING_POSTS.md` | Branding | Social and announcement post branding rules. | `BRANDING_MAIN.md` |
+| `BRANDING_PROJECT_DOCS.md` | Branding | The users voice, structure, and editing protocol for the authoritative project specification document. | — |
 | `BRANDING_WEBSITE.md` | Branding | Website branding, voice, and presentation rules. | `BRANDING_MAIN.md` |
 | `BRANDING_WHITEPAPERS.md` | Branding | Whitepaper branding and long-form presentation rules. | `BRANDING_MAIN.md` |
 | `alexa-skills-kit.md` | AWS | Alexa Skill kit configuration, interaction models, and intent handling. | `common.md`, `python.md` |
