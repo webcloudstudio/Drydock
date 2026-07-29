@@ -327,3 +327,36 @@ Blocks resolve before inlines.
             if f.section == "Acceptance snippets" and f.severity == Severity.WARN
         ]
         assert any("never prints it" in m for m in warnings), warnings
+
+    def test_argument_list_with_shell_true_fails_validation(self, tmp_target_root):
+        # The defect that cost a commonmark build its whole repair budget: with shell=True,
+        # POSIX runs only element 0 — a bare env assignment — and the harness never executes.
+        target_dir = _init(tmp_target_root)
+        code = (
+            "import subprocess\n"
+            "result = subprocess.run(\n"
+            "    ['PYTHONPATH=sources', 'python3', 'suite.py', '--number', '1'],\n"
+            "    shell=True, capture_output=True, text=True,\n"
+            ")\n"
+            "print(result.stdout)\n"
+            "assert '1 passed' in result.stdout"
+        )
+        result = self._validate(target_dir, code)
+        messages = [f.message for f in result.failures()]
+        assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
+        assert any("the intended command never runs" in m for m in messages), messages
+
+    def test_corrected_invocation_passes_validation(self, tmp_target_root):
+        target_dir = _init(tmp_target_root)
+        code = (
+            "import os\n"
+            "import subprocess\n"
+            "result = subprocess.run(\n"
+            "    ['python3', 'suite.py', '--number', '1'],\n"
+            "    env={**os.environ, 'PYTHONPATH': 'sources'}, capture_output=True, text=True,\n"
+            ")\n"
+            "print(result.stdout)\n"
+            "assert '1 passed' in result.stdout"
+        )
+        result = self._validate(target_dir, code)
+        assert "Acceptance snippets" not in [f.section for f in result.failures()]

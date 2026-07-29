@@ -151,6 +151,18 @@ class TestHelpAndVersion:
             "failed: block-conformance (240/260 cases)\n"
         )
 
+    def test_stream_build_summary_shows_why_the_repair_loop_stopped(self, capsys):
+        # A loop that ends below its budget must account for the shortfall without --debug.
+        # The per-attempt counter stays hidden; the ``call:`` line already carries it.
+        _stream_build_summary("repair: attempt 1/3 · 1 failing check(s)")
+        _stream_build_summary("repair: stopped — deterministic acceptance score did not improve")
+        _stream_build_summary("repair: escalation — final attempt using opus")
+
+        assert capsys.readouterr().out == (
+            "repair: stopped — deterministic acceptance score did not improve\n"
+            "repair: escalation — final attempt using opus\n"
+        )
+
     def test_stream_status_only_drops_model_json_payload(self, capsys):
         """Scoring commands parse the model's JSON; the console must not echo it."""
         _stream_stdout._at_line_start = True  # type: ignore[attr-defined]
@@ -2714,3 +2726,50 @@ class TestStandoffDiagnosis:
         rc, _out, err = run_cli("build")
         assert rc == 2
         assert "A MAJOR ERROR HAS OCCURRED" not in err
+
+
+def test_failure_renderer_explains_a_run_that_stopped_below_its_call_budget():
+    final = AcceptanceRunResult(
+        check_id="verification-scoped-number",
+        source="FEATURE-Verification-Scoped.md",
+        intent="The supplied harness supports example selection.",
+        passed=False,
+        return_code=1,
+        stdout="",
+        stderr="AssertionError\n",
+    )
+    step = BuildStepResult(
+        block_id="filter-interface",
+        name="Filter Interface",
+        block_type="story",
+        status="failed",
+        state="closed/failed",
+        story_points=1,
+        error="programmatic acceptance failed: verification-scoped-number",
+        owned_acceptance=(final,),
+        stop_reason="acceptance criterion reported defective",
+        calls_used=1,
+        calls_budget=4,
+    )
+
+    rendered = _render_build_failures("commonmark", [step], hint="continue", story_recovery=())
+
+    assert "stopped early: 1 of 4 calls · acceptance criterion reported defective" in rendered
+    assert "repair the assertion in the Blueprint specification" in rendered
+
+
+def test_failure_renderer_omits_the_stop_line_when_the_budget_was_spent():
+    step = BuildStepResult(
+        block_id="inlines",
+        name="Inline Parsing",
+        block_type="story",
+        status="failed",
+        state="closed/failed",
+        story_points=1,
+        error="programmatic acceptance failed: inline-suite",
+        failure_detail="Inline suite remains red.",
+    )
+
+    rendered = _render_build_failures("commonmark", [step], hint="continue", story_recovery=())
+
+    assert "stopped early" not in rendered

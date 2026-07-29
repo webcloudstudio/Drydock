@@ -72,7 +72,7 @@ from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
-from drydock.proof_integrity import analyze_literals, analyze_structure
+from drydock.proof_integrity import analyze_invocation, analyze_literals, analyze_structure
 from drydock.source_roles import (
     SourceRole,
     StagedAsset,
@@ -214,6 +214,11 @@ class BuildStepResult:
     agent_summary: str = ""
     agent_blockers: str = ""
     prompt: str | None = None
+    # Why the repair loop stopped short of its budget, and what it spent. Without these the
+    # failure report shows a run that ended at call 2 of 4 and no reason for the shortfall.
+    stop_reason: str = ""
+    calls_used: int = 0
+    calls_budget: int = 0
 
 
 @dataclass(frozen=True)
@@ -679,10 +684,12 @@ def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...])
     implementation satisfies it, so the step would spend a full LLM cycle and fail. Fail here
     instead, naming the Blueprint file to repair.
 
-    Two families qualify. A mis-authored *expectation* (a raw literal carrying what the author
+    Three families qualify. A mis-authored *expectation* (a raw literal carrying what the author
     meant as a control character) asserts against something no conforming implementation
     produces. A mis-authored *snippet* (unparseable, or reading a name it never binds) dies in
-    its own frame before the code under test runs at all.
+    its own frame before the code under test runs at all. A mis-authored *invocation* launches
+    something other than the command under test, so its assertions answer to nothing the build
+    can change.
     """
     lines: list[str] = []
     for check in checks:
@@ -690,6 +697,8 @@ def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...])
             lines.append(f"  - {check.source} [{check.check_id}]: {defect.message}")
         for structural in analyze_structure(check.code):
             lines.append(f"  - {check.source} [{check.check_id}]: {structural.message}")
+        for invocation in analyze_invocation(check.code):
+            lines.append(f"  - {check.source} [{check.check_id}]: {invocation.message}")
     if not lines:
         return
     raise SpecificationError(
@@ -1059,6 +1068,72 @@ def _is_repairable(error: str | None) -> bool:
     return error.startswith("programmatic acceptance failed") or error.startswith(
         _AGENT_REPORTED_PREFIX
     )
+
+
+# Vocabulary that distinguishes "this criterion is itself broken" from an agent merely
+# mentioning the check it failed. Naming a check is not a claim about it; these words are.
+_DEFECT_CLAIM_TERMS = (
+    "malformed",
+    "defective",
+    "mis-authored",
+    "misauthored",
+    "mis-written",
+    "incorrectly written",
+    "broken",
+    "invalid",
+    "cannot pass",
+    "can never pass",
+    "unsatisfiable",
+)
+
+
+def _normalize_words(text: str) -> list[str]:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).split()
+
+
+def _names_check(words: list[str], check_id: str) -> bool:
+    """True when ``words`` contains the check id, or a distinctive tail of it.
+
+    Agents name a criterion the way a reader would — ``scoped-number`` for
+    ``verification-scoped-number`` — so an exact-id match alone would almost never fire. Any
+    contiguous run of two or more trailing id tokens counts, which keeps the match specific
+    without demanding the full identifier.
+    """
+    tokens = _normalize_words(check_id)
+    if not tokens:
+        return False
+    for start in range(len(tokens) - 1):
+        tail = tokens[start:]
+        span = len(tail)
+        if any(words[i : i + span] == tail for i in range(len(words) - span + 1)):
+            return True
+    return False
+
+
+def _defective_acceptance_claim(
+    agent_report: tuple[str, str] | None,
+    failed_checks: tuple[AcceptanceRunResult, ...],
+) -> tuple[str, ...]:
+    """Return the failing check ids the agent reported as defective criteria.
+
+    A repair pass cannot rewrite a criterion: staged acceptance assets are restored before
+    grading, so a genuinely broken assertion consumes the whole budget and fails identically
+    every time. When the agent both names a failing check and claims it is broken, stop
+    immediately and point the operator at the Blueprint.
+
+    The self-report stays advisory. This path never marks a block verified and never hides an
+    acceptance failure — it only reaches the same terminal outcome sooner and with the right
+    diagnosis. An agent that lies here buys itself an earlier failure, not a pass.
+    """
+    if agent_report is None or not failed_checks:
+        return ()
+    words = _normalize_words(" ".join(agent_report))
+    if not words:
+        return ()
+    claim = " ".join(words)
+    if not any(term.replace("-", " ") in claim for term in _DEFECT_CLAIM_TERMS):
+        return ()
+    return tuple(check.check_id for check in failed_checks if _names_check(words, check.check_id))
 
 
 def _output_tail(result: AcceptanceRunResult, max_lines: int = 6) -> list[str]:
@@ -1469,7 +1544,9 @@ def _write_group_evidence(
                 lines.append("  stderr:")
                 lines.extend(f"    {line}" for line in check.stderr.strip().splitlines())
         lines.append("")
-    if len(attempts) > 1:
+    # A single pass that stopped for a stated reason still owes the reader that reason — a
+    # terminal verdict reached on call 1 is exactly the case an operator will question.
+    if len(attempts) > 1 or any(record.stop_reason for record in attempts):
         lines.append("## Repair attempts")
         for record in attempts:
             label = "initial build" if record.index == 0 else f"repair {record.index}"
@@ -2228,8 +2305,38 @@ def build_target(
                 and not ac_progress
                 and not quantitative_progress
             )
+            # A criterion the agent reports as broken is terminal, not repairable: staged
+            # acceptance assets are restored before grading, so no further pass can move it.
+            # Stop on the first such report rather than spending the rest of the budget.
+            defective_ids: tuple[str, ...] = ()
+            if status == "failed" and _is_repairable(error) and acceptance:
+                defective_ids = _defective_acceptance_claim(
+                    agent_report,
+                    tuple(check for check in acceptance if not check.passed),
+                )
             stop_reason = None
-            if stalled:
+            if defective_ids:
+                stop_reason = "acceptance criterion reported defective"
+                sources = sorted({
+                    check.source
+                    for check in checks
+                    if check.check_id in defective_ids and check.source
+                })
+                _emit(
+                    on_text,
+                    "repair: stopped — acceptance criterion reported defective: "
+                    + ", ".join(defective_ids),
+                )
+                failure_detail = (
+                    (failure_detail + "\n\n" if failure_detail else "")
+                    + "The build agent reports the failing acceptance criterion as defective, "
+                    "and a repair pass cannot rewrite it: staged acceptance assets are restored "
+                    "before grading. Review the assertion in "
+                    + (", ".join(sources) if sources else "the Blueprint specification")
+                    + " and repair it there, then rerun the build. Rerunning without repairing "
+                    "the assertion will fail identically."
+                )
+            elif stalled:
                 stop_reason = "deterministic acceptance score did not improve"
                 _emit(on_text, "repair: stopped — deterministic acceptance score did not improve")
             attempt_records.append(
@@ -2252,6 +2359,7 @@ def build_target(
                 status == "failed"
                 and _is_repairable(error)
                 and not stalled
+                and not defective_ids
                 and attempt < max_attempt
             ):
                 attempt += 1
@@ -2472,6 +2580,8 @@ def build_target(
             _emit(on_text, f"result: {status} · {state} · {block_elapsed}")
             _emit(on_text, f"evidence: {_rel(evidence_path, target_dir)}")
         agent_summary, agent_blockers = _parse_build_report(summary)
+        last_attempt = attempt_records[-1] if attempt_records else None
+        step_stop_reason = (last_attempt.stop_reason or "") if last_attempt is not None else ""
         for block, assembly in zip(unit.steps, assemblies):
             owned_check_ids = {
                 check_id
@@ -2502,6 +2612,9 @@ def build_target(
                 owned_acceptance=owned_acceptance,
                 agent_summary=agent_summary,
                 agent_blockers=agent_blockers,
+                stop_reason=step_stop_reason,
+                calls_used=len(attempt_records),
+                calls_budget=max_attempt + 1,
             )
             steps.append(step_result)
             if on_step is not None:

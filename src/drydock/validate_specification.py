@@ -353,6 +353,7 @@ def validate_specification(
     section = "Acceptance snippets"
     from drydock.acceptance import parse_programmatic_acceptance
     from drydock.proof_integrity import (
+        analyze_invocation,
         analyze_literals,
         analyze_structure,
         analyze_swallowed_output,
@@ -371,6 +372,12 @@ def validate_specification(
             # literal is, so it fails validation rather than warning.
             for structural in analyze_structure(check.code):
                 f(section, f"{md_file.name} [{check.check_id}]: {structural.message}")
+                snippet_defects += 1
+            # An invocation that launches something other than the command under test grades
+            # the wrong process. No implementation can move it, so it fails validation here
+            # rather than consuming a build's repair budget.
+            for invocation in analyze_invocation(check.code):
+                f(section, f"{md_file.name} [{check.check_id}]: {invocation.message}")
                 snippet_defects += 1
             # Swallowed diagnostics do not make a check wrong, only undiagnosable. Warn.
             for swallowed in analyze_swallowed_output(check.code):

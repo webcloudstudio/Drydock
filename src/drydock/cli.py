@@ -112,6 +112,11 @@ def _stream_build_summary(text: str) -> None:
         _stream_build(text)
     elif text.startswith("acceptance:"):
         _stream_build(text)
+    # A repair loop that stops below its budget must say why here. Hiding the reason behind
+    # --debug leaves an operator reading "call 2 of up to 4" with no account of the shortfall.
+    # ``repair: attempt`` stays hidden — the ``call:`` line already carries that count.
+    elif text.startswith(("repair: stopped", "repair: escalation")):
+        _stream_build(text)
 
 
 def _stream_status_only(text: str) -> None:
@@ -2859,6 +2864,27 @@ def _failure_check_lines(check) -> list[str]:
     return lines
 
 
+def _failure_stop_lines(step) -> list[str]:
+    """Explain a repair loop that ended below its call budget.
+
+    A run that reports "call 2 of up to 4" and then stops reads as an abandoned build unless
+    the reason is stated where the failure is read.
+    """
+    reason = getattr(step, "stop_reason", "")
+    if not reason:
+        return []
+    used = getattr(step, "calls_used", 0)
+    budget = getattr(step, "calls_budget", 0)
+    spent = f"{used} of {budget} calls · " if used and budget else ""
+    lines = [f"    stopped early: {spent}{reason}"]
+    if reason == "acceptance criterion reported defective":
+        lines.append(
+            "      repair the assertion in the Blueprint specification — a rerun cannot "
+            "rewrite a staged acceptance asset"
+        )
+    return lines
+
+
 def _failure_progress_lines(step) -> list[str]:
     """Show measured acceptance movement, including suite-level tallies when available."""
     checks = step.owned_acceptance or step.acceptance
@@ -2927,6 +2953,7 @@ def _render_build_failures(
                     subsequent_indent="      ",
                 ),
             ]
+        lines.extend(_failure_stop_lines(step))
         lines.extend(_failure_progress_lines(step))
         failed_checks = tuple(
             check for check in (step.owned_acceptance or step.acceptance) if not check.passed

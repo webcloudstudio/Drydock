@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from drydock.proof_integrity import (
+    analyze_invocation,
     analyze_literals,
     analyze_proof,
     analyze_structure,
@@ -247,3 +248,73 @@ def test_in_process_check_is_not_flagged():
         "from app import create_app\nassert create_app().test_client().get('/').status_code == 200"
     )
     assert analyze_swallowed_output(code) == ()
+
+
+# --- Malformed subprocess invocation -----------------------------------------
+#
+# An invocation whose arguments cannot launch the command grades a different process than the
+# one under test. No implementation can move it, so it must be caught before a build spends a
+# repair budget on it.
+
+
+def test_argument_list_with_shell_true_is_flagged():
+    code = (
+        "import subprocess\n"
+        "result = subprocess.run(\n"
+        "    ['PYTHONPATH=sources', 'python3', 'suite.py', '--number', '1'],\n"
+        "    shell=True, capture_output=True, text=True,\n"
+        ")\n"
+        "print(result.stdout)\n"
+        "assert '1 passed' in result.stdout\n"
+    )
+    defects = analyze_invocation(code)
+    assert len(defects) == 1
+    assert defects[0].kind == "shell-with-argv"
+    assert defects[0].call == "subprocess.run"
+    assert "PYTHONPATH=sources" in defects[0].message
+
+
+def test_environment_assignment_as_executable_is_flagged():
+    code = "import subprocess\nsubprocess.run(['PYTHONPATH=sources', 'python3', 'suite.py'])\n"
+    defects = analyze_invocation(code)
+    assert len(defects) == 1
+    assert defects[0].kind == "env-assignment-argv"
+    assert "env={**os.environ, ...}" in defects[0].message
+
+
+def test_unsplit_command_string_without_shell_is_flagged():
+    code = "import subprocess\nsubprocess.run('python3 suite.py --number 1', capture_output=True)\n"
+    defects = analyze_invocation(code)
+    assert len(defects) == 1
+    assert defects[0].kind == "unsplit-command"
+
+
+def test_correct_argument_list_is_clean():
+    code = (
+        "import os\n"
+        "import subprocess\n"
+        "result = subprocess.run(\n"
+        "    ['python3', 'suite.py', '--number', '1'],\n"
+        "    env={**os.environ, 'PYTHONPATH': 'sources'}, capture_output=True, text=True,\n"
+        ")\n"
+        "print(result.stdout)\n"
+        "assert '1 passed' in result.stdout\n"
+    )
+    assert analyze_invocation(code) == ()
+
+
+def test_shell_command_string_is_clean():
+    # A single command string is exactly what shell=True expects.
+    code = "import subprocess\nsubprocess.run('PYTHONPATH=sources python3 suite.py', shell=True)\n"
+    assert analyze_invocation(code) == ()
+
+
+def test_single_token_command_string_is_clean():
+    code = "import subprocess\nsubprocess.run('suite', capture_output=True)\n"
+    assert analyze_invocation(code) == ()
+
+
+def test_dynamic_arguments_are_not_analyzed():
+    # The argument shape is undecidable, so the analysis stays silent rather than guess.
+    code = "import subprocess\ncmd = build_cmd()\nsubprocess.run(cmd, shell=use_shell)\n"
+    assert analyze_invocation(code) == ()

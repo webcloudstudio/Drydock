@@ -409,6 +409,116 @@ def _captures_output(node: ast.Call) -> bool:
     return _call_name(node) == "check_output"
 
 
+# --- Malformed subprocess invocation ---------------------------------------------------
+#
+# ``subprocess.run(["A=1", "prog", "arg"], shell=True)`` does not run ``prog``. On POSIX,
+# ``shell=True`` executes only element 0 as the command string and binds the rest to ``$0, $1,
+# …``. When element 0 is a bare ``NAME=value`` the shell performs an assignment, exits 0, and
+# writes nothing — so a return-code assertion passes and an output assertion fails, for a
+# reason no implementation can influence. The mirror defect, a whitespace-bearing command
+# string without ``shell=True``, dies with FileNotFoundError in its own frame. Both make the
+# check unsatisfiable by construction, so they are caught before a build spends a pass on them.
+
+_INVOKING_CALLS = frozenset({"run", "Popen", "call", "check_call", "check_output"})
+_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+@dataclass(frozen=True)
+class InvocationDefect:
+    """A subprocess invocation whose arguments cannot launch the command as written."""
+
+    kind: str  # shell-with-argv | env-assignment-argv | unsplit-command
+    call: str
+    detail: str
+
+    @property
+    def message(self) -> str:
+        if self.kind == "shell-with-argv":
+            return (
+                f"{self.call} passes an argument list with shell=True, so POSIX executes only "
+                f"{self.detail!r} and binds the remaining elements to $0, $1, … — the intended "
+                "command never runs. Drop shell=True, or pass one command string."
+            )
+        if self.kind == "env-assignment-argv":
+            return (
+                f"{self.call} passes {self.detail!r} as the executable. An environment "
+                "assignment is not a program; the assignment must move to "
+                "env={**os.environ, ...} or into a shell command string."
+            )
+        return (
+            f"{self.call} passes the command string {self.detail!r} without shell=True, so the "
+            "whole string is treated as one executable name and the call raises "
+            "FileNotFoundError. Split it into an argument list, or set shell=True."
+        )
+
+
+def _shell_keyword(node: ast.Call) -> bool | None:
+    """Return the literal value of the ``shell`` keyword, or ``None`` when it is not literal."""
+    for keyword in node.keywords:
+        if keyword.arg != "shell":
+            continue
+        if isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, bool):
+            return keyword.value.value
+        return None
+    return False
+
+
+def _invocation_label(node: ast.Call) -> str:
+    func = node.func
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        return f"{func.value.id}.{func.attr}"
+    return _call_name(node)
+
+
+def _invocation_defect(node: ast.Call) -> InvocationDefect | None:
+    if _call_name(node) not in _INVOKING_CALLS or not node.args:
+        return None
+    shell = _shell_keyword(node)
+    if shell is None:
+        # A non-literal ``shell=`` value leaves the argument shape undecidable. Stay silent,
+        # matching the dynamic-code escape the structural analysis already takes.
+        return None
+    argv = node.args[0]
+    label = _invocation_label(node)
+    if isinstance(argv, (ast.List, ast.Tuple)):
+        if shell:
+            head = argv.elts[0] if argv.elts else None
+            shown = head.value if isinstance(head, ast.Constant) else "<first element>"
+            return InvocationDefect(kind="shell-with-argv", call=label, detail=str(shown))
+        head = argv.elts[0] if argv.elts else None
+        if isinstance(head, ast.Constant) and isinstance(head.value, str):
+            if _ENV_ASSIGNMENT_RE.match(head.value):
+                return InvocationDefect(kind="env-assignment-argv", call=label, detail=head.value)
+        return None
+    if isinstance(argv, ast.Constant) and isinstance(argv.value, str) and not shell:
+        if argv.value.strip() and len(argv.value.split()) > 1:
+            return InvocationDefect(kind="unsplit-command", call=label, detail=argv.value)
+    return None
+
+
+def analyze_invocation(code: str) -> tuple[InvocationDefect, ...]:
+    """Report subprocess invocations that cannot launch the command their arguments name."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+
+    defects: list[InvocationDefect] = []
+    seen: set[tuple[str, str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        defect = _invocation_defect(node)
+        if defect is None:
+            continue
+        key = (defect.kind, defect.call, defect.detail)
+        if key in seen:
+            continue
+        seen.add(key)
+        defects.append(defect)
+    return tuple(defects)
+
+
 def analyze_swallowed_output(code: str) -> tuple[SwallowedOutputDefect, ...]:
     """Report proofs that capture a subprocess's output and discard it on failure."""
     try:

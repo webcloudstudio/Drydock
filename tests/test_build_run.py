@@ -2707,3 +2707,101 @@ assert Path("shared.txt").read_text(encoding="utf-8") == "preserved\\n"
     assert _state(target_dir, "parsing") == "closed/failed"
     assert "verified-output" in (_finding(target_dir, "verified-renderer") or "")
     assert 'filename="FEATURE-Verified.md" role="regression"' in prompts[0]
+
+
+# --- Defective acceptance criterion ------------------------------------------
+#
+# A repair pass cannot rewrite a criterion: staged acceptance assets are restored before
+# grading. When the agent both names a failing check and reports it as broken, the outcome is
+# terminal, and spending the rest of the budget only repeats the same failure.
+
+_DEFECTIVE_AC_REPORT = (
+    "RESULT: FAILURE\n"
+    "FAILURE_SUMMARY: malformed foundation-file acceptance invocation\n"
+    "FAILURE_DETAIL: the foundation-file check is malformed; it never runs the marker writer.\n\n"
+    "FILES CHANGED:\n- foundation.txt\n\nSUMMARY:\nBlocked on a broken criterion.\n"
+)
+
+
+def _defective_claim_runner(report: str):
+    calls: list[dict] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        Path(working_directory).mkdir(parents=True, exist_ok=True)
+        (Path(working_directory) / "foundation.txt").write_text("bad\n", encoding="utf-8")
+        calls.append({"prompt": prompt, "attempt": kwargs["parameters"]["attempt"], **kwargs})
+        return FakeResult(text=report)
+
+    runner.calls = calls  # type: ignore[attr-defined]
+    return runner
+
+
+def test_reported_defective_criterion_stops_the_repair_loop_at_the_first_call(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = _defective_claim_runner(_DEFECTIVE_AC_REPORT)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0]
+    step = result.steps[0]
+    assert step.status == "failed"
+    assert step.stop_reason == "acceptance criterion reported defective"
+    assert step.calls_used == 1
+    assert step.calls_budget == 4
+    assert "DATABASE.md" in step.failure_detail
+    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
+    assert "acceptance criterion reported defective" in evidence
+
+
+def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):
+    # Naming no failing check is editorializing, not a criterion report. The loop must not let
+    # an agent talk its way out of a repair.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = _defective_claim_runner(
+        "RESULT: FAILURE\n"
+        "FAILURE_SUMMARY: the environment is broken\n"
+        "FAILURE_DETAIL: the toolchain is malformed.\n\n"
+        "FILES CHANGED:\n- foundation.txt\n\nSUMMARY:\nBlocked.\n"
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    assert result.steps[0].stop_reason == "deterministic acceptance score did not improve"
+
+
+def test_defective_claim_helpers_require_both_a_name_and_a_defect_word():
+    from drydock.build_run import _defective_acceptance_claim, _names_check, _normalize_words
+
+    class _Check:
+        def __init__(self, check_id):
+            self.check_id = check_id
+
+    failed = (_Check("verification-scoped-number"),)
+    # An agent names a criterion the way a reader would, not by its full identifier.
+    assert _names_check(
+        _normalize_words("scoped-number acceptance is malformed"), failed[0].check_id
+    )
+    assert not _names_check(_normalize_words("the number is wrong"), failed[0].check_id)
+    assert _defective_acceptance_claim(
+        ("Malformed scoped-number acceptance", "uses a broken invocation"), failed
+    ) == ("verification-scoped-number",)
+    # Naming the check without claiming it is defective is an ordinary failure report.
+    assert _defective_acceptance_claim(("scoped-number still fails", ""), failed) == ()
+    assert _defective_acceptance_claim(None, failed) == ()
