@@ -291,6 +291,92 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
     return tuple(checks)
 
 
+@dataclass(frozen=True)
+class DroppedAcceptance:
+    """One acceptance criterion removed from a spec because it can never pass."""
+
+    check_id: str
+    reason: str
+
+
+def unsatisfiable_defects(code: str) -> tuple[str, ...]:
+    """Return every reason ``code`` can never pass, whatever the implementation does."""
+    from drydock.proof_integrity import analyze_invocation, analyze_literals, analyze_structure
+
+    return tuple(
+        defect.message
+        for analyze in (analyze_literals, analyze_structure, analyze_invocation)
+        for defect in analyze(code)
+    )
+
+
+def drop_unsatisfiable_acceptance(
+    text: str, *, source: str
+) -> tuple[str, tuple[DroppedAcceptance, ...]]:
+    """Remove acceptance criteria that no implementation can satisfy, and report them.
+
+    A criterion that dies in its own frame, asserts against an impossible literal, or never
+    launches the command it names is not verification — it is a build failure waiting on a
+    timer. Carrying it into the Manifest poisons the build graph, because the build grades
+    against it and no repair pass may rewrite it. Removing it here costs nothing real: the
+    criterion proved nothing before it was removed.
+
+    Removal is deliberately loud rather than silent. The caller surfaces every drop, and a
+    story left with no acceptance at all still fails the plan's own assertion gate — the
+    absence of verification is a planning defect, and it belongs at plan time where it is
+    cheap, not forty minutes into a build.
+    """
+    section_match = next(
+        (
+            match
+            for match in SECTION_RE.finditer(text)
+            if match.group("name").strip().lower() == "programmatic acceptance"
+        ),
+        None,
+    )
+    if section_match is None:
+        return text, ()
+    following = [m for m in SECTION_RE.finditer(text) if m.start() > section_match.start()]
+    start = section_match.end()
+    end = following[0].start() if following else len(text)
+    section = text[start:end]
+    if not section.strip() or section.strip() == "- None.":
+        return text, ()
+
+    # Split the section into one unit per ``### criterion`` heading so a removal takes the
+    # heading, its intent prose, and its fence together — never half a criterion.
+    headings = list(HEADING_RE.finditer(section))
+    if not headings:
+        return text, ()
+    preamble = section[: headings[0].start()]
+    units: list[tuple[str, str]] = []
+    for index, heading in enumerate(headings):
+        unit_end = headings[index + 1].start() if index + 1 < len(headings) else len(section)
+        units.append((heading.group("title").strip(), section[heading.start() : unit_end]))
+
+    kept: list[str] = []
+    dropped: list[DroppedAcceptance] = []
+    for title, unit in units:
+        fence = PYTHON_FENCE_RE.search(unit)
+        defects = unsatisfiable_defects(fence.group("code").strip()) if fence else ()
+        if not defects:
+            kept.append(unit)
+            continue
+        dropped.append(DroppedAcceptance(check_id=_slugify(title), reason=defects[0]))
+    if not dropped:
+        return text, ()
+
+    body = preamble + "".join(kept)
+    if not PYTHON_FENCE_RE.search(body):
+        # Every criterion was unsatisfiable. Leave the section well-formed and empty rather
+        # than half-deleted; the plan's assertion gate reports the resulting hole.
+        body = "\n- None.\n"
+    if not body.endswith("\n\n"):
+        body = body.rstrip("\n") + "\n\n"
+    del source  # named by the caller, which owns the message
+    return text[:start] + body + text[end:], tuple(dropped)
+
+
 def programmatic_acceptance_for_step(
     block: PlanBlock, blueprint_dir: Path
 ) -> tuple[ProgrammaticAcceptance, ...]:

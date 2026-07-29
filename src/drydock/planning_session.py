@@ -1905,6 +1905,36 @@ def _parse_plan_text(text: str) -> BuildPlan:
     return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
+#: Marks a planning warning that changed an emitted spec rather than merely commenting on it.
+#: The console promotes these above ordinary graph advisories.
+ACCEPTANCE_REMOVED_MARKER = "removed unsatisfiable acceptance criterion"
+
+
+def _strip_unsatisfiable_acceptance(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Remove unsatisfiable acceptance criteria from the emitted specs, in place.
+
+    The Manifest is the build graph. A criterion that cannot pass by construction makes the
+    block that owns it unbuildable, and the build cannot repair it — staged acceptance assets
+    are restored before grading. Catching it at plan time is the difference between a warning
+    now and a failed build later.
+    """
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    removals: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        cleaned, dropped = drop_unsatisfiable_acceptance(blocks[name], source=name)
+        if not dropped:
+            continue
+        blocks[name] = cleaned
+        removals.extend(
+            f"{name} [{drop.check_id}]: {ACCEPTANCE_REMOVED_MARKER} — {drop.reason}"
+            for drop in dropped
+        )
+    return tuple(removals)
+
+
 def _validate_plan_output(
     blocks: dict[str, str], blueprint_dir: Path, result: CompletedRun
 ) -> tuple[BuildPlan, tuple[str, ...]]:
@@ -1969,6 +1999,11 @@ def _validate_plan_output(
     plan = _parse_plan_text(blocks["MANIFEST.md"])
 
     emitted_specs = frozenset(name for name in blocks if name not in _RESERVED_BLOCKS)
+    # A criterion that no implementation can satisfy is not a specification, it is a build the
+    # graph guarantees will fail. Strip it here, before the Manifest is validated or written,
+    # so the emitted plan is one that can actually be built. Removals are reported, and the
+    # assertion gate below still measures what each story has left.
+    dropped_acceptance = _strip_unsatisfiable_acceptance(blocks)
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
         names = ", ".join(forbidden_artifacts)
@@ -2008,7 +2043,9 @@ def _validate_plan_output(
         )
 
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
-    warnings = tuple(
+    # Removals lead the warning list: they changed the artifact the author is about to read,
+    # so they must not be buried under advisory graph notes.
+    warnings = dropped_acceptance + tuple(
         _integrity_check(
             plan,
             blueprint_dir,

@@ -44,10 +44,16 @@ def _pa(*intents: str) -> str:
 
 def _pa_code(*snippets: str) -> str:
     """Like ``_pa`` but each fenced block holds a caller-supplied assertion line,
-    so route paths appear inside the section for test-driven route coverage."""
+    so route paths appear inside the section for test-driven route coverage.
+
+    The binding line matters: every check runs as its own script, so a snippet that read an
+    unbound ``client`` would be unsatisfiable by construction and the plan would strip it
+    before these route assertions could be measured.
+    """
     blocks = []
     for index, code in enumerate(snippets, start=1):
-        blocks.append(f"### check-{index}\nRoute acceptance {index}.\n\n```python\n{code}\n```")
+        body = f"from app import client\n{code}"
+        blocks.append(f"### check-{index}\nRoute acceptance {index}.\n\n```python\n{body}\n```")
     return "\n\n".join(blocks)
 
 
@@ -2531,3 +2537,89 @@ def test_suite_bound_acceptance_accepts_canonical_suite_marker(tmp_path):
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
     assert "story-status" in result.plan.by_id()
+
+
+# --- Unsatisfiable acceptance never reaches the build graph -------------------
+#
+# The Manifest is the build graph. A criterion that cannot pass by construction makes its
+# block unbuildable, and the build may not rewrite it — staged acceptance assets are restored
+# before grading. Plan must not emit one.
+
+_MALFORMED_CRITERION = (
+    "### scoped-number\n"
+    "The supplied harness supports example selection.\n\n"
+    "```python\n"
+    "import subprocess\n\n"
+    "result = subprocess.run(\n"
+    "    ['PYTHONPATH=sources', 'python3', 'spec_tests.py', '--number', '1'],\n"
+    "    shell=True,\n"
+    "    capture_output=True,\n"
+    "    text=True,\n"
+    ")\n"
+    "print(result.stdout)\n"
+    "assert '1 passed' in result.stdout\n"
+    "```"
+)
+
+
+def _spec_with(acceptance: str) -> str:
+    return (
+        "# FEATURE: Status\n\n"
+        "| Field    | Value |\n"
+        "|----------|-------|\n"
+        "| Provides | status command |\n\n"
+        "## Programmatic Acceptance\n\n"
+        f"{acceptance}\n\n"
+        "## User Acceptance\n\n- None.\n\n"
+        "## Guardrails\n\n- None.\n"
+    )
+
+
+def test_plan_strips_an_unsatisfiable_criterion_before_writing_the_graph(tmp_path):
+    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
+
+    manifest = _manifest()
+    spec = _spec_with(
+        _pa("Status reports state.", "Status exits clean.") + "\n\n" + _MALFORMED_CRITERION
+    )
+    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
+
+    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    # The emitted spec is sanitized in place, so what gets written is buildable.
+    written = blocks["FEATURE-Status.md"]
+    assert "scoped-number" not in written
+    assert "PYTHONPATH=sources" not in written
+    assert "### check-1" in written and "### check-2" in written
+    # And the removal is surfaced, leading the warning list.
+    assert ACCEPTANCE_REMOVED_MARKER in warnings[0]
+    assert "FEATURE-Status.md [scoped-number]" in warnings[0]
+    assert "the intended command never runs" in warnings[0]
+
+
+def test_plan_leaves_a_satisfiable_spec_and_its_warnings_alone(tmp_path):
+    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
+
+    manifest = _manifest()
+    spec = _spec_with(_pa("Status reports state.", "Status exits clean."))
+    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
+
+    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert blocks["FEATURE-Status.md"] == spec
+    assert not any(ACCEPTANCE_REMOVED_MARKER in w for w in warnings)
+
+
+def test_a_story_left_without_acceptance_fails_the_plan(tmp_path):
+    """Removing every criterion leaves a story that verifies nothing. That is a planning
+    defect, and it must surface here — cheaply — not as a failed build."""
+    from drydock.planning_session import _validate_plan_output
+
+    manifest = _manifest()
+    blocks = {
+        "MANIFEST.md": manifest,
+        "FEATURE-Status.md": _spec_with(_MALFORMED_CRITERION),
+    }
+
+    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
+        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))

@@ -329,3 +329,100 @@ def test_a_passing_check_carries_no_verdict(tmp_path):
     result = _run_one("assert 1 == 1", tmp_path)
     assert result.passed
     assert result.error is None
+
+
+# --- Removing unsatisfiable criteria -----------------------------------------
+#
+# The Manifest is the build graph. A criterion that cannot pass by construction makes the
+# block that owns it unbuildable, and no repair pass may rewrite it, so it is stripped at plan
+# time rather than carried into a build that is guaranteed to fail.
+
+_TWO_CRITERIA_SPEC = """# FEATURE: Scoped Verification
+
+## Programmatic Acceptance
+
+### scoped-pattern
+The verification command supports section selection.
+
+```python
+import subprocess
+
+result = subprocess.run(["bash", "full_test.sh"], capture_output=True, text=True)
+print(result.stdout)
+assert result.returncode == 0
+```
+
+### scoped-number
+The supplied harness supports example selection.
+
+```python
+import subprocess
+
+result = subprocess.run(
+    ["PYTHONPATH=sources", "python3", "spec_tests.py", "--number", "1"],
+    shell=True,
+    capture_output=True,
+    text=True,
+)
+print(result.stdout)
+assert "1 passed" in result.stdout
+```
+
+## User Acceptance
+
+- None.
+"""
+
+
+def test_unsatisfiable_criterion_is_removed_and_the_rest_is_kept():
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    cleaned, dropped = drop_unsatisfiable_acceptance(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
+
+    assert [d.check_id for d in dropped] == ["scoped-number"]
+    assert "the intended command never runs" in dropped[0].reason
+    # The removal takes the heading, its intent prose, and its fence together.
+    assert "scoped-number" not in cleaned
+    assert "PYTHONPATH=sources" not in cleaned
+    assert "### scoped-pattern" in cleaned
+    assert "bash" in cleaned
+    # Surrounding structure survives intact.
+    assert cleaned.startswith("# FEATURE: Scoped Verification")
+    assert "## User Acceptance" in cleaned
+
+
+def test_a_satisfiable_spec_is_returned_untouched():
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    good = _TWO_CRITERIA_SPEC.split("### scoped-number")[0] + "## User Acceptance\n\n- None.\n"
+    cleaned, dropped = drop_unsatisfiable_acceptance(good, source="FEATURE-X.md")
+
+    assert dropped == ()
+    assert cleaned == good
+
+
+def test_removing_every_criterion_leaves_a_well_formed_empty_section():
+    # The hole is reported by the plan's own assertion gate; the file must stay parseable.
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    only_bad = (
+        "# FEATURE: X\n\n## Programmatic Acceptance\n\n"
+        "### broken\nIt never runs.\n\n"
+        "```python\n"
+        "import subprocess\n"
+        "subprocess.run(['A=1', 'prog'], shell=True)\n"
+        "```\n\n"
+        "## Guardrails\n\n- None.\n"
+    )
+    cleaned, dropped = drop_unsatisfiable_acceptance(only_bad, source="FEATURE-X.md")
+
+    assert [d.check_id for d in dropped] == ["broken"]
+    assert "- None." in cleaned
+    assert "## Guardrails" in cleaned
+
+
+def test_spec_without_acceptance_is_untouched():
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    text = "# FEATURE: X\n\n## Guardrails\n\n- None.\n"
+    assert drop_unsatisfiable_acceptance(text, source="FEATURE-X.md") == (text, ())
