@@ -1150,7 +1150,7 @@ def test_commanders_chair_template_exposes_the_llm_usage_tab():
 
     assert 'data-chair-tab="llm">LLM Usage</button>' in template
     assert 'id="chair-llm"' in template
-    assert '["overview", "history", "llm"]' in template
+    assert '["overview", "build", "history", "llm"]' in template
 
 
 def test_commanders_chair_llm_usage_is_live_target_scoped_and_normalized(tmp_path, monkeypatch):
@@ -1568,3 +1568,157 @@ def test_explicit_target_query_parameter_overrides_the_cookie(tmp_path, monkeypa
     request = _RequestStub({"quarterdeck_target": "Alpha"}, {"target": "Beta"})
     with quarterdeck._request_context(request):
         assert quarterdeck._current_active_target() == "Beta"
+
+
+# --- Build Report pane -------------------------------------------------------
+#
+# The pane reads the target's evidence files and logs/llm.jsonl on every request. It is
+# withheld while a build is running: a partial report invites conclusions from blocks that
+# have not been graded, and the evidence it reads is what the running build is rewriting.
+
+_BUILD_EVIDENCE = """# Evidence: Block Parsing (feature-block-parsing)
+
+- block type: feature
+- date: 2026-07-29
+- resulting state: closed/verified
+- story points (combined assembled cost): 100
+- execution id: exec-one
+
+## Post-build programmatic acceptance
+- PASS: block-basics (FEATURE-Block-Basics.md)
+- PASS: block-code (FEATURE-Block-Code.md)
+"""
+
+_REPAIRED_EVIDENCE = """# Evidence: Inline Parsing (feature-inline-parsing)
+
+- block type: feature
+- date: 2026-07-29
+- resulting state: closed/failed
+- execution id: exec-three
+
+## Post-build programmatic acceptance
+- PASS: inline-emphasis (FEATURE-Inline-Emphasis.md)
+- FAIL: inline-links (FEATURE-Inline-Links.md)
+
+## Repair attempts
+- attempt 0 (initial build): failed; 1/2 checks model=gpt-5.6-luna; execution exec-two
+- attempt 1 (repair 1): failed; 1/2 checks model=gpt-5.6-luna; execution exec-three; stopped: acceptance criterion reported defective
+"""
+
+
+def _build_target(tmp_path, *, state="built", sub_state="complete", evidence=None):
+    target_dir = tmp_path / "commonmark"
+    (target_dir / "evidence").mkdir(parents=True)
+    for name, text in (evidence or {"feature-block-parsing.md": _BUILD_EVIDENCE}).items():
+        (target_dir / "evidence" / name).write_text(text, encoding="utf-8")
+    (target_dir / "METADATA.md").write_text(
+        f"name: commonmark\nbuild_state: {state}\nbuild_sub_state: {sub_state}\n",
+        encoding="utf-8",
+    )
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    records = [
+        {
+            "execution_id": execution_id,
+            "job": {"command_name": "build", "llm": "codex", "model": "gpt-5.6-luna"},
+            "result": {
+                "returncode": 0,
+                "stats": {
+                    "input_tokens": 1000,
+                    "cached_input_tokens": 900,
+                    "output_tokens": 40,
+                    "elapsed_ms": 60000,
+                },
+            },
+            "status": "succeeded",
+        }
+        for execution_id in ("exec-one", "exec-two", "exec-three")
+    ]
+    (logs / "llm.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
+    )
+    return target_dir
+
+
+def _patch_chair_context(quarterdeck, monkeypatch, target_dir, workspace_root):
+    monkeypatch.setattr(quarterdeck, "_current_project_root", lambda: target_dir)
+    monkeypatch.setattr(quarterdeck, "_current_workspace_root", lambda: workspace_root)
+    monkeypatch.setattr(quarterdeck, "_current_active_target", lambda: "commonmark")
+
+
+def test_build_report_pane_is_withheld_while_a_build_is_running(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = _build_target(tmp_path, state="building", sub_state="running")
+    _patch_chair_context(quarterdeck, monkeypatch, target_dir, tmp_path)
+
+    rendered = quarterdeck.render_chair_build_report()
+
+    assert "available once the build completes" in rendered
+    assert "building · running" in rendered
+    # Nothing from the report itself leaks through the gate.
+    assert "Blocks verified" not in rendered
+
+
+def test_build_report_pane_renders_totals_and_per_block_rows(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = _build_target(tmp_path)
+    _patch_chair_context(quarterdeck, monkeypatch, target_dir, tmp_path)
+
+    rendered = quarterdeck.render_chair_build_report()
+
+    assert "Blocks verified" in rendered
+    assert "Cache hit rate" in rendered
+    assert "90.0%" in rendered
+    assert "Block Parsing" in rendered
+    assert "feature-block-parsing" in rendered
+    assert "Verified" in rendered
+    assert "Repairs" not in rendered
+    assert "Not verified" not in rendered
+
+
+def test_build_report_pane_breaks_out_repairs_and_failures(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = _build_target(
+        tmp_path,
+        evidence={
+            "feature-block-parsing.md": _BUILD_EVIDENCE,
+            "feature-inline-parsing.md": _REPAIRED_EVIDENCE,
+        },
+    )
+    _patch_chair_context(quarterdeck, monkeypatch, target_dir, tmp_path)
+
+    rendered = quarterdeck.render_chair_build_report()
+
+    assert "Repairs" in rendered
+    assert "initial build" in rendered
+    assert "repair 1" in rendered
+    assert "Not verified" in rendered
+    assert "failing AC: inline-links" in rendered
+    assert "stopped: acceptance criterion reported defective" in rendered
+
+
+def test_build_report_pane_reports_a_target_with_no_evidence(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "commonmark"
+    (target_dir / "evidence").mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text(
+        "name: commonmark\nbuild_state: built\nbuild_sub_state: complete\n", encoding="utf-8"
+    )
+    (tmp_path / "logs").mkdir()
+    _patch_chair_context(quarterdeck, monkeypatch, target_dir, tmp_path)
+
+    assert "No build evidence recorded" in quarterdeck.render_chair_build_report()
+
+
+def test_commanders_chair_template_exposes_the_build_report_tab():
+    root = Path(__file__).parents[1]
+    markup = (root / "QuarterDeck" / "templates" / "commanders_chair.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'data-chair-tab="build"' in markup
+    assert 'id="chair-build"' in markup
+    # The pane refreshes itself so a tab left open tracks the logs it reads.
+    assert "setInterval" in markup
+    assert "showLoading: false" in markup
+    assert '"build"' in markup

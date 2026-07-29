@@ -165,6 +165,16 @@ def set_sub_state(target_dir: Path, sub_state: str) -> None:
     set_field(target_dir / METADATA_NAME, "build_sub_state", sub_state, overwrite=True)
 
 
+def get_sub_state(target_dir: Path) -> str:
+    """Return the current ``build_sub_state`` from METADATA.md, or an empty string.
+
+    Unlike ``build_state`` this is free-form: it names the phase a command is in, so it has no
+    ladder to validate against and an unknown value is reported as written.
+    """
+    fields = parse_metadata(target_dir / METADATA_NAME)
+    return (fields.get("build_sub_state") or "").strip()
+
+
 def stamp_last(target_dir: Path, command: str) -> None:
     """Write today's ISO date to ``last_<command>`` in METADATA.md."""
     set_field(

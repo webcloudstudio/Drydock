@@ -1012,6 +1012,156 @@ def render_chair_llm_usage() -> str:
     )
 
 
+def _build_score_rate(value: float | None) -> str:
+    return "—" if value is None else f"{value * 100:.1f}%"
+
+
+def render_chair_build_report() -> str:
+    """Render the post-build report, rereading evidence and llm.jsonl on every call.
+
+    Deliberately withheld while a build is running. A partial report invites conclusions from
+    blocks that have not been graded yet, and the evidence files it reads are exactly what a
+    running build is still rewriting.
+    """
+    from drydock.build_report import build_score_report
+    from drydock.metadata import get_build_state, get_sub_state
+
+    project_root = _current_project_root()
+    target = _current_active_target()
+    state = get_build_state(project_root)
+    sub_state = get_sub_state(project_root)
+
+    if state != "built" or sub_state != "complete":
+        phase = " · ".join(part for part in (state, sub_state) if part) or "unknown"
+        return (
+            "<p class='empty'>Build report is available once the build completes. "
+            f"Current state: {html.escape(phase)}.</p>"
+        )
+
+    report = build_score_report(
+        target, project_root, records_path=_current_workspace_root() / "logs" / "llm.jsonl"
+    )
+    if not report.blocks:
+        return f"<p class='empty'>No build evidence recorded for {html.escape(target)}.</p>"
+
+    verified = sum(1 for block in report.blocks if block.verified)
+    cards = "".join([
+        _llm_stat_card(f"{verified}/{len(report.blocks)}", "Blocks verified"),
+        _llm_stat_card(f"{report.passed_checks}/{report.total_checks}", "Acceptance criteria"),
+        _llm_stat_card(str(report.calls), "LLM calls"),
+        _llm_stat_card(str(report.first_call_blocks), "Built first call"),
+        _llm_stat_card(str(len(report.repaired_blocks)), "Repaired"),
+        _llm_stat_card(_format_tokens(report.total_input), "Total input"),
+        _llm_stat_card(_build_score_rate(report.cache_hit_rate), "Cache hit rate"),
+        _llm_stat_card(_format_duration(report.elapsed_ms / 1000), "Model time"),
+    ])
+
+    rows: list[str] = []
+    for block in report.blocks:
+        status_class = "run-status-success" if block.verified else "run-status-failed"
+        status = "Verified" if block.verified else (block.state or "Failed")
+        rows.append(
+            "<tr>"
+            f"<td><span class='run-phase'>{html.escape(block.name)}</span>"
+            f"<div class='llm-detail'>{html.escape(block.block_id)}</div></td>"
+            f"<td><span class='run-status {status_class}'>{html.escape(status)}</span></td>"
+            f"<td class='num'>{block.passed_checks}/{block.total_checks}</td>"
+            f"<td class='num'>{block.calls}</td>"
+            f"<td class='num'>{block.total_input:,}</td>"
+            f"<td class='num llm-muted'>{block.cached_input:,}</td>"
+            f"<td class='num'>{block.fresh_input:,}</td>"
+            f"<td class='num'>{block.output:,}</td>"
+            f"<td class='num'>{html.escape(_build_score_rate(block.cache_hit_rate))}</td>"
+            f"<td class='num'>{html.escape(_format_duration(block.elapsed_ms / 1000))}</td>"
+            "</tr>"
+        )
+
+    # Every pass of any block that needed more than one, so a repair is legible here rather
+    # than only in the evidence file.
+    repairs = ""
+    if report.repaired_blocks:
+        entries: list[str] = []
+        for block in report.repaired_blocks:
+            passes = "".join(
+                "<li>"
+                f"<strong>{html.escape(attempt.label)}</strong> — {html.escape(attempt.status)}"
+                + (
+                    f" · {attempt.passed_checks}/{attempt.total_checks} AC"
+                    if attempt.total_checks
+                    else ""
+                )
+                + (
+                    f" · {attempt.passed_cases}/{attempt.total_cases} cases"
+                    if attempt.passed_cases is not None and attempt.total_cases is not None
+                    else ""
+                )
+                + f" · {attempt.total_input:,} input"
+                + f" · {html.escape(_build_score_rate(attempt.cache_hit_rate))} cached"
+                + f" · {html.escape(_format_duration(attempt.elapsed_ms / 1000))}"
+                + (
+                    f"<div class='llm-detail'>stopped: {html.escape(attempt.stop_reason)}</div>"
+                    if attempt.stop_reason
+                    else ""
+                )
+                + "</li>"
+                for attempt in block.attempts
+            )
+            entries.append(
+                f"<li><code>{html.escape(block.name)}</code>"
+                f"<ul class='llm-failures'>{passes}</ul></li>"
+            )
+        repairs = (
+            f"<h3 class='llm-heading'>Repairs</h3><ul class='llm-failures'>{''.join(entries)}</ul>"
+        )
+
+    unverified = ""
+    if report.failed_blocks:
+        items_html = "".join(
+            "<li>"
+            f"<code>{html.escape(block.name)}</code> — "
+            f"{html.escape(block.state or 'not verified')}"
+            + (
+                f" · failing AC: {html.escape(', '.join(block.failed_check_ids))}"
+                if block.failed_check_ids
+                else ""
+            )
+            + (
+                f"<div class='llm-detail'>stopped: {html.escape(block.stop_reason)}</div>"
+                if block.stop_reason
+                else ""
+            )
+            + "</li>"
+            for block in report.failed_blocks
+        )
+        unverified = (
+            f"<h3 class='llm-heading'>Not verified</h3><ul class='llm-failures'>{items_html}</ul>"
+        )
+
+    missing = ""
+    if report.missing_usage:
+        missing = (
+            f"<p class='llm-rate-limit'>{len(report.missing_usage)} execution(s) have no usage "
+            "record; their tokens read as zero.</p>"
+        )
+
+    models = ", ".join(report.models) or "—"
+    return (
+        f"<p class='run-history-summary'>{len(report.blocks)} block(s) for "
+        f"{html.escape(target)} · model {html.escape(models)}. Read live from the target's "
+        "evidence files and logs/llm.jsonl.</p>"
+        f"<div class='stats llm-stats'>{cards}</div>"
+        f"{missing}"
+        "<h3 class='llm-heading'>Blocks</h3>"
+        "<div class='run-history-scroll'><table class='run-history-table llm-table'>"
+        "<thead><tr><th>Block</th><th>Status</th><th class='num'>AC</th><th class='num'>Calls</th>"
+        "<th class='num'>Input</th><th class='num'>Cached</th><th class='num'>Fresh</th>"
+        "<th class='num'>Output</th><th class='num'>Hit</th><th class='num'>Time</th>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+        f"{repairs}"
+        f"{unverified}"
+    )
+
+
 def render_chair_history() -> str:
     """Render this target's command history, rereading history.jsonl on every call."""
     history_path = _current_workspace_root() / "logs" / "history.jsonl"
@@ -2635,6 +2785,12 @@ def api_chair_history(request: Request = None) -> str:
 def api_chair_llm(request: Request = None) -> str:
     with _request_context(request):
         return render_chair_llm_usage()
+
+
+@app.get("/api/chair/build", response_class=HTMLResponse)
+def api_chair_build(request: Request = None) -> str:
+    with _request_context(request):
+        return render_chair_build_report()
 
 
 @app.get("/api/ticket/{item_id}/{ticket_id}")

@@ -345,6 +345,7 @@ body {
 
 <nav class="chair-tabs" aria-label="Commanders Chair views">
   <button class="chair-tab active" type="button" data-chair-tab="overview">Overview</button>
+  <button class="chair-tab" type="button" data-chair-tab="build">Build Report</button>
   <button class="chair-tab" type="button" data-chair-tab="history">Run History</button>
   <button class="chair-tab" type="button" data-chair-tab="llm">LLM Usage</button>
 </nav>
@@ -383,6 +384,10 @@ body {
 </div>
 </main>
 
+<section id="chair-build" class="chair-pane live-pane" hidden>
+  <p class="empty">Loading build report…</p>
+</section>
+
 <section id="chair-history" class="chair-pane live-pane" hidden>
   <p class="empty">Loading run history…</p>
 </section>
@@ -396,17 +401,39 @@ body {
   const tabs = document.querySelectorAll("[data-chair-tab]");
   const panes = document.querySelectorAll(".chair-pane");
 
-  async function loadLivePane(name) {
+  const NAMES = ["overview", "build", "history", "llm"];
+  // Panes that read files the CLI keeps rewriting, so a left-open tab stays current.
+  const REFRESH_MS = 15000;
+  let refreshTimer = null;
+
+  async function loadLivePane(name, { showLoading = true } = {}) {
     if (name === "overview") return;
     const pane = document.getElementById(`chair-${name}`);
-    pane.innerHTML = '<p class="empty">Loading…</p>';
+    if (showLoading) pane.innerHTML = '<p class="empty">Loading…</p>';
     try {
       const response = await fetch(`/api/chair/${name}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      pane.innerHTML = await response.text();
+      const markup = await response.text();
+      // A silent refresh only repaints on change, so it never interrupts a selection or
+      // scroll position while the reader is looking at the pane.
+      if (pane.innerHTML !== markup) pane.innerHTML = markup;
     } catch (error) {
-      pane.innerHTML = `<p class="empty">Unable to load ${name}: ${error.message}</p>`;
+      if (showLoading) {
+        pane.innerHTML = `<p class="empty">Unable to load ${name}: ${error.message}</p>`;
+      }
     }
+  }
+
+  function scheduleRefresh(name) {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
+    if (name === "overview") return;
+    refreshTimer = setInterval(() => {
+      // A background tab costs nothing: the browser throttles it anyway, and a hidden pane
+      // has no reader to serve.
+      if (document.hidden) return;
+      loadLivePane(name, { showLoading: false });
+    }, REFRESH_MS);
   }
 
   function activate(name, updateHash = true) {
@@ -418,11 +445,12 @@ body {
     panes.forEach(pane => { pane.hidden = pane.id !== `chair-${name}`; });
     if (updateHash) history.replaceState(null, "", `#chair-${name}`);
     loadLivePane(name);
+    scheduleRefresh(name);
   }
 
   tabs.forEach(tab => tab.addEventListener("click", () => activate(tab.dataset.chairTab)));
   const requested = location.hash.replace("#chair-", "");
-  activate(["overview", "history", "llm"].includes(requested) ? requested : "overview", false);
+  activate(NAMES.includes(requested) ? requested : "overview", false);
 })();
 </script>
 </body>
