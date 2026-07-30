@@ -244,6 +244,16 @@ reasoning depth for the LLM-assisted commands; the level maps onto what the sele
 model serve. Precedence is `--effort`, then the prompt's declared effort, then `drydock_effort`,
 then the provider's own default.
 
+### Console encoding
+
+Drydock renders status output with box-drawing rules and glyphs such as `─ · → ✓ ✗`. Consoles that
+cannot encode them — a Windows console on a legacy code page, redirected output under a non-UTF-8
+locale, CI capture with `LANG=C` — are detected at start of run and the output is transliterated to
+ASCII automatically. `--ascii` forces the plain rendering, `--unicode` forces the glyphs, and
+`DRYDOCK_ASCII=1` or `DRYDOCK_ASCII=0` sets the same choice for a whole session. The choice is
+published to the environment, so every Drydock subprocess of the command renders identically. The
+command transcript under `logs/` always keeps the original Unicode.
+
 ```text
 drydock --help
 drydock --version

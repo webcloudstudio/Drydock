@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-07-30: Console output no longer fails on a terminal that cannot encode Drydock's glyphs.
+  Every command detects the stream encoding at start of run and transliterates box-drawing rules,
+  status marks, arrows, and em dashes to ASCII when the console is a legacy Windows code page,
+  a redirect under a non-UTF-8 locale, or CI capture with `LANG=C`. `--ascii` and `--unicode`
+  (or `DRYDOCK_ASCII`) override the detection; the command transcript keeps the original Unicode.
+
 - 2026-07-29: `drydock plan` accepts a wildcard source citation in `ANALYSIS.md`
   (`sources/FEATURE-CATALOG-*.md`), expanding it against the imported source material instead of
   demanding a file named after the fragment before the `*`.

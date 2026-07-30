@@ -231,7 +231,13 @@ def _extract_global_overrides(
     """
 
     if argv is None:
-        return None, {"model": None, "llm_provider": None, "effort": None, "debug": False}
+        return None, {
+            "model": None,
+            "llm_provider": None,
+            "effort": None,
+            "debug": False,
+            "ascii": None,
+        }
 
     from drydock.config import EFFORT_LEVELS
 
@@ -241,6 +247,7 @@ def _extract_global_overrides(
         "llm_provider": None,
         "effort": None,
         "debug": False,
+        "ascii": None,
     }
     index = 0
 
@@ -285,6 +292,10 @@ def _extract_global_overrides(
             continue
         if token == "--debug":
             overrides["debug"] = True
+            index += 1
+            continue
+        if token in {"--ascii", "--unicode"}:
+            overrides["ascii"] = token == "--ascii"
             index += 1
             continue
         cleaned.append(token)
@@ -2140,6 +2151,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Do not call the LLM to diagnose an opaque failure.",
     )
+    parser.add_argument(
+        "--ascii",
+        dest="ascii",
+        action="store_true",
+        default=None,
+        help=(
+            "Render output as plain ASCII. Applied automatically when the console encoding "
+            "cannot carry Drydock's glyphs (DRYDOCK_ASCII=1 does the same)."
+        ),
+    )
+    parser.add_argument(
+        "--unicode",
+        dest="ascii",
+        action="store_false",
+        default=None,
+        help="Keep Unicode glyphs even when the console encoding is not detected as capable.",
+    )
     # Invocation-wide: stripped from argv before this parser runs, and declared here so the
     # top-level help documents what every command accepts.
     _add_llm_override_flags(parser)
@@ -3402,6 +3430,11 @@ def _command_log_name(args: argparse.Namespace) -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from drydock.console import configure_stdio
+
+    # Encoding is settled before anything is written, so a console that cannot carry Drydock's
+    # glyphs degrades to ASCII instead of failing partway through a command.
+    configure_stdio()
     parser = _build_parser()
     raw_argv = argv if argv is not None else sys.argv[1:]
     try:
@@ -3417,6 +3450,11 @@ def main(argv: list[str] | None = None) -> None:
             args.debug = bool(getattr(args, "debug", False) or value)
         elif getattr(args, key, None) is None:
             setattr(args, key, value)
+    if getattr(args, "ascii", None) is not None:
+        # Invocation-wide, and published to the environment so every Drydock subprocess and
+        # LLM runner started by this command renders the same way.
+        os.environ["DRYDOCK_ASCII"] = "1" if args.ascii else "0"
+        configure_stdio()
     if getattr(args, "effort", None):
         # ``--effort`` is invocation-wide: publish it as the configured effort so every
         # LLM-assisted command, and any Drydock subprocess it starts, resolves the same
