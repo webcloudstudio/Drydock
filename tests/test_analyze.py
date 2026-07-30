@@ -1186,6 +1186,7 @@ def test_normalize_discovery_replaces_stack_options_with_full_catalog(monkeypatc
         {"label": "Branding", "options": ["BRANDING_MAIN.md"]},
     ]
     assert question["answer"] == ""
+    assert question["required_before_plan"] is True
 
 
 def test_normalize_discovery_degrades_optionless_select_to_textarea():
@@ -1817,6 +1818,7 @@ QUESTIONS:
             "Branding",
         ]
         assert question["answer"] == ""
+        assert question["required_before_plan"] is True
 
     def test_missing_blueprint_raises(self, tmp_path):
         target_dir = tmp_path / "NoBlueprint"

@@ -1063,6 +1063,34 @@ def _has_stack_selection(target_dir: Path) -> bool:
     return False
 
 
+def _has_answer(question: dict) -> bool:
+    """Return whether a questionnaire answer contains a persisted decision."""
+    answer = question.get("answer", "")
+    if isinstance(answer, str):
+        return bool(answer.strip())
+    if isinstance(answer, list):
+        return any(str(value).strip() for value in answer)
+    return bool(answer)
+
+
+def _required_plan_decisions(target_dir: Path) -> list[str]:
+    """Return labels for unanswered discovery decisions that explicitly gate planning."""
+    unanswered: list[str] = []
+    for path in _collect_discoveries(target_dir):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("archived", False):
+            continue
+        for question in data.get("questions", []):
+            if not question.get("required_before_plan", False) or _has_answer(question):
+                continue
+            label = str(question.get("label") or question.get("id") or path.stem).strip()
+            unanswered.append(f"{path.name}: {label}")
+    return unanswered
+
+
 def _answered_discovery(path: Path) -> dict | None:
     """Return the questionnaire with only its answered questions, or ``None`` if none are answered.
 
@@ -2435,6 +2463,12 @@ def create_plan(
         raise SpecificationError(
             "Technology Stack questionnaire is unanswered — select applicable Rigging components "
             "in QuarterDeck before planning."
+        )
+    required_decisions = _required_plan_decisions(target_dir)
+    if required_decisions:
+        raise SpecificationError(
+            "Required Analyze questionnaire decisions are unanswered — answer them in QuarterDeck "
+            "before planning:\n  - " + "\n  - ".join(required_decisions)
         )
 
     plan_path = target_dir / "MANIFEST.md"

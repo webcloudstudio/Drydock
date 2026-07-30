@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260730 V18
+version: 20260730 V19
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -25,10 +25,12 @@ Your goal is to do planning for the information you have imported.
 
 You will be creating a set of Agile features and stories. Features group stories; they are the
 only grouping unit used by `ANALYSIS.md` and the Commanders Chair.
-You raise anything the human must decide as either a blocker or a discovery questionnaire.  A
-blocker stops the pipeline; a discovery questionnaire does not.  Both are carried as questions for
-the human to answer. Stack selection is a blocking question: planning cannot proceed until the
-Commander selects the applicable Rigging components.
+You raise anything the human must decide as either a blocker or a discovery questionnaire. A
+blocker means the sources cannot be analyzed into a coherent product decomposition. A discovery
+questionnaire records a finite Commander decision. Mark a questionnaire question
+`"required_before_plan": true` when planning cannot author an internally consistent specification
+until it is answered. Stack selection and unresolved conflicting definitions are required planning
+decisions.
 
 A story is an atomic testable unit of work that might have acceptance criteria and guardrails at a later stage. Stories include user interface screens, the routes used to service those screens, cli options, api served, batch scripts needed, import/export operations, and other atomic units of work according to agile best practices. Do not create a separate Screens grouping or count; UI screens are stories under the relevant Agile feature.
 
@@ -59,7 +61,10 @@ and succeeding; it does not require the Commander to specify how well the softwa
 
 Be sure to understand the architecture and component structure.
 
-Any major gap or critical missing information you cannot assume is a blocker.  A blocker is any item which MUST be resolved by the human before planning proceeds.  When you find one or more blockers, you write `BLOCKERS.md`; its mere existence stops the downstream steps until the human clears it.  When there are no blockers, you do not write the file.
+An input failure that prevents coherent analysis is a blocker. A blocker is not a product choice
+between identifiable alternatives: emit that choice as a required discovery questionnaire. When
+you find one or more blockers, write `BLOCKERS.md`; its mere existence stops downstream steps until
+the human clears it. When there are no blockers, do not write the file.
 
 Finally - we use our COMPASS to guide the build.
 
@@ -68,6 +73,15 @@ Finally - we use our COMPASS to guide the build.
 one only when the answer turns on something the sources do not contain: business priority, product
 taste, an external or regulatory constraint, an irreversible trade-off, or a genuinely absent fact
 (for example, no auth model stated for a product that clearly needs one).
+
+**Cross-source conflict test.** Compare all source definitions of the same product concept,
+including default workflows, state vocabularies and transitions, roles and permissions, routes and
+interfaces, data ownership, and behavioral defaults. Two incompatible definitions with no explicit
+precedence are a human-owned decision even though both alternatives appear in the sources. Emit one
+questionnaire question that names the conflicting files and presents the concrete alternatives.
+Set `"required_before_plan": true`; do not choose an alternative, merge incompatible definitions,
+defer the choice to a planning spike, or emit it as `BLOCKERS.md` when the rest of the product can
+still be analyzed.
 
 Anything you can derive from the sources, you **must derive** — into the story list,
 Surfaced Acceptance Criteria, or SEA_TRIALS. Never ask the human to supply work the team owns. In particular,
@@ -113,20 +127,23 @@ After analysis, compute one of three quality values:
 | Quality | Condition | Pipeline |
 |---|---|---|
 | `Blocked` | One or more blockers exist (`BLOCKERS.md` is written) | Halts — `plan create` must not proceed |
-| `Questions` | No blockers; open questions remain | `plan create` may proceed after the required Stack questionnaire is answered |
+| `Questions` | No blockers; open questions remain | `plan create` may proceed after all required planning questions are answered |
 | `Ready` | No blockers; no open questions | `plan create` may proceed |
 
-**Blocker** — the team genuinely cannot proceed without this. Examples: no project name, no
-understanding of what the product does, fundamental contradictions in the sources. One or more
-blockers means you write `BLOCKERS.md`; its existence is the flag that halts the pipeline. Quality
-stays `Blocked` until the human clears it.
+**Blocker** — the team cannot produce a coherent analysis or finite decision form. Examples: no
+understanding of what the product does, unreadable authoritative inputs, or decomposition beyond
+the story cap. A contradiction with identifiable alternatives is instead a required discovery
+questionnaire. One or more blockers means you write `BLOCKERS.md`; its existence is the flag that
+halts the pipeline. Quality stays `Blocked` until the human clears it.
 
 **Question** — an open item that does not stop decomposition. Delivered only as a discovery
-questionnaire action item and carried forward there. The Technology Stack questionnaire is the
-one required questionnaire gate for planning.
+questionnaire action item and carried forward there. A question marked `required_before_plan`
+does not stop analysis, but it gates planning because Plan cannot author a consistent specification
+without the decision.
 
-Only blockers halt the pipeline. The required Technology Stack questionnaire also gates `plan create`;
-other questionnaire action items distinguish `Questions` from `Ready` but do not gate.
+Blockers halt analysis progression. The Technology Stack questionnaire and every question marked
+`required_before_plan` gate `plan create`; other questionnaire action items distinguish `Questions`
+from `Ready` but do not gate.
 
 ---
 
@@ -213,9 +230,11 @@ Mixed signals → `ambiguous`.
 - *Consumes:* the review notes + completeness checklist.
 - *Emits:* the blocker list and the questionnaire action-item list.
 
-Blockers halt the pipeline; you write `BLOCKERS.md` only when one or more exist. Questions are
-carried forward only as discovery questionnaires. A questionnaire records a non-blocking Commander
-decision; it never resolves a blocker. Do not duplicate a questionnaire question in `ANALYSIS.md`.
+First perform the Cross-source conflict test. Blockers halt the pipeline; write `BLOCKERS.md` only
+when one or more exist. Questions are carried forward only as discovery questionnaires. A
+questionnaire records a Commander decision; mark it `required_before_plan` when a consistent plan
+depends on the answer. It never resolves a blocker. Do not duplicate a questionnaire question in
+`ANALYSIS.md`.
 
 **4. Derive the feature and story list.**
 - *Consumes:* the sources + role notes + project type.
@@ -267,8 +286,10 @@ decision; it never resolves a blocker. Do not duplicate a questionnaire question
   routed to "only the human can decide") + injected Rigging manifest.
 - *Emits:* `discovery-stack.json` on every run plus one `discovery-<slug>.json` per other open
   important question. The stack questionnaire contains every real manifest component and a proposed
-  subset; only a Commander selection is an answer. An unanswered stack selection is a required
-  questionnaire gate and is never emitted in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
+  subset; only a Commander selection is an answer. Set `"required_before_plan": true` on the stack
+  question and on every unresolved cross-source conflict or other decision without which Plan
+  cannot author one internally consistent specification. These are questionnaire gates and are
+  never emitted in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
   `discovery-gaps.json`; split into `discovery-gaps-2.json`, etc. only past 5–6 questions in this
   run. Do not emit a questionnaire for a matter the sources or prior answers have already settled.
   Do not emit a questionnaire that duplicates an existing unanswered questionnaire. Existing
@@ -550,6 +571,7 @@ Each questionnaire uses this shape:
       "prompt": "{Full question for the Product Owner.}",
       "input": "text | textarea | select | checkbox_grid",
       "proposed": "{Optional proposed value for the Commander to confirm or override}",
+      "required_before_plan": false,
       "answer": "{Optional current answer. Use the proposed value for generated identity answers; use an empty string for undecided stack selections.}"
     }
   ]
@@ -615,6 +637,7 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
       "input": "checkbox_grid",
       "options": ["{alphabetized injected Rigging manifest component filename}"],
       "proposed": "{Comma-separated LLM recommendation, or empty string}",
+      "required_before_plan": true,
       "answer": ""
     }
   ]
@@ -647,6 +670,9 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   Ownership test). Never emit one for a matter the sources or prior answers have already decided,
   never as a generic catch-all, and never for work the team can derive itself (acceptance criteria,
   success evidence, smoke checks, build gates, test sequences — these are synthesized outputs).
+- Compare competing definitions of every shared product concept across all imported sources. Emit
+  each unresolved incompatibility as a questionnaire question with
+  `"required_before_plan": true`; never silently select, merge, or defer conflicting defaults.
 - Story list is titles + high-level AC only. Do not write typed spec file content.
 - Story list uses `### Feature: {Feature Name}` headings and `| ID | Story | High-level AC |`
   tables only. Do not emit `| # | Story |`, unheaded story tables, a separate Screens section,

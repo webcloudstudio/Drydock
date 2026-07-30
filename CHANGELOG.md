@@ -10,6 +10,9 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-07-30: `drydock analyze` now surfaces incompatible definitions across imported sources as
+  required QuarterDeck questionnaire decisions. `drydock plan` refuses before invoking an LLM
+  while any such decision remains unanswered, preventing late post-LLM conflict failures.
 - 2026-07-30: Console output no longer fails with `UnicodeEncodeError` on a terminal that cannot
   encode Drydock's glyphs. Every command detects the console encoding and renders ASCII when
   needed. `--ascii` and `--unicode` override the detection.

@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260728 V20
+version: 20260730 V21
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -107,6 +107,8 @@ the job block; the rest are fenced sections.
   analyze. Use these as planning context; do not overwrite their intent.
 - **Answered questionnaires** (`discovery-*.json`) — settled human-owned decisions on stack, intent, and guardrails.
   Consume these as authoritative; do not re-raise a question that a questionnaire has already answered.
+  Drydock preflight guarantees that every Analyze question marked `required_before_plan` is answered
+  before this prompt runs.
 - **`COMPASS.md`** — existing product intent if already present; otherwise derive emitted content
   from the analysis and sources.
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field

@@ -277,6 +277,7 @@ def _default_stack_questionnaire() -> dict:
                 ),
                 "input": "checkbox_grid",
                 "options": [],
+                "required_before_plan": True,
                 "answer": "",
             }
         ],
@@ -885,6 +886,7 @@ def _normalize_discovery(name: str, data: dict) -> dict:
         if name == "discovery-stack.json":
             question["id"] = "stack_components"
             question["input"] = "checkbox_grid"
+            question["required_before_plan"] = True
             catalog = _rigging_catalog()
             if catalog:
                 # The option list is deterministic: the full Rigging catalog grouped by

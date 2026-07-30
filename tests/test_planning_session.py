@@ -1227,6 +1227,85 @@ def test_missing_stack_questionnaire_blocks_planning(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
+def test_unanswered_required_analyze_decision_blocks_before_llm(tmp_path):
+    target_dir = _make_target(tmp_path)
+    questionnaire = (
+        target_dir / "QuarterDeck" / "questionnaires" / "discovery-default-workflow.json"
+    )
+    questionnaire.write_text(
+        json.dumps({
+            "id": "discovery-default-workflow",
+            "questions": [
+                {
+                    "id": "default_workflow",
+                    "label": "Default Workflow",
+                    "required_before_plan": True,
+                    "answer": "",
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    def _boom(*a, **k):
+        raise AssertionError("LLM runner called before required Analyze decision was answered")
+
+    with pytest.raises(
+        SpecificationError, match="discovery-default-workflow.json.*Default Workflow"
+    ):
+        create_plan("Example", "Example", tmp_path, runner=_boom)
+
+
+def test_answered_required_analyze_decision_allows_planning(tmp_path):
+    target_dir = _make_target(tmp_path)
+    questionnaire = (
+        target_dir / "QuarterDeck" / "questionnaires" / "discovery-default-workflow.json"
+    )
+    questionnaire.write_text(
+        json.dumps({
+            "id": "discovery-default-workflow",
+            "questions": [
+                {
+                    "id": "default_workflow",
+                    "label": "Default Workflow",
+                    "required_before_plan": True,
+                    "answer": "Use the service workflow.",
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert result.target_dir == target_dir
+    assert (target_dir / "MANIFEST.md").is_file()
+
+
+def test_unanswered_nonrequired_discovery_does_not_gate_planning(tmp_path):
+    target_dir = _make_target(tmp_path)
+    questionnaire = target_dir / "QuarterDeck" / "questionnaires" / "discovery-copy.json"
+    questionnaire.write_text(
+        json.dumps({
+            "id": "discovery-copy",
+            "questions": [
+                {
+                    "id": "empty_state_copy",
+                    "label": "Empty-state Copy",
+                    "required_before_plan": False,
+                    "answer": "",
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert result.target_dir == target_dir
+    assert (target_dir / "MANIFEST.md").is_file()
+
+
 def test_confirmed_stack_selection_does_not_clear_other_blockers(tmp_path):
     target_dir = _make_target(tmp_path)
     (target_dir / "BLOCKERS.md").write_text(
