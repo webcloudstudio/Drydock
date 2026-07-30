@@ -4,16 +4,16 @@
 
 # Drydock
 
-**The missing process layer for specification-driven development.**
+**Your coding agent forgets. Drydock does not.**
 
-Drydock gives specification-driven development the part it skipped: a repeatable <strong><font color="#0a5c38">Agile</font></strong> delivery and <strong><font color="#0a5c38">Test Driven Development</font></strong> based end-to-end process that turns specs into reviewed plans, context-managed builds, and obvious ways to maintain.
+Drydock is the process layer specification-driven development skipped: a repeatable <strong><font color="#0a5c38">Agile</font></strong> and <strong><font color="#0a5c38">Test Driven Development</font></strong> pipeline that turns source material into a reviewed Blueprint, builds it one dependency-ordered step at a time with scoped context, and leaves durable evidence behind every claim.
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-[Install](#install) · [60-Second Example](#60-second-example) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
+[Install](#install) · [The Whole Process](#the-whole-process) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
 [Overview Deck](https://webcloudstudio.com/drydock/) · [White Paper](https://zenodo.org/records/21287574) · [10 Minute Overview](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4) · [User Installation Guide](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
 
 </div>
@@ -22,48 +22,29 @@ Drydock gives specification-driven development the part it skipped: a repeatable
 
 ```bash
 uv tool install drydock-sdd
-# configure a workspace before: drydock init MyApp
+drydock init MyApp
 ```
 
 Drydock runs on your existing Claude or Codex subscription CLI. It does not require
 API keys or per-token API billing.
-
-Drydock adds the missing process layer to specification-driven development: import
-source material, analyze it into stories and acceptance criteria, review decisions in
-the QuarterDeck, plan a dependency graph, build one context-optimized step at a time,
-verify evidence, and keep the Blueprint and software aligned as the product changes.
 
 > **You are the Commander** — the product owner. The LLM is your Agile delivery team.
 > Drydock makes that relationship explicit, reviewable, and repeatable.
 
 Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENSE](LICENSE).
 
-## 60-Second Example
+## The Whole Process
 
-```bash
-uv tool install drydock-sdd
+Every command Drydock has, in the order you use them. There is no hidden surface.
 
-export PROJECTS="$HOME/projects"
-mkdir -p "$PROJECTS/drydock"
-
-drydock config set drydock_workspace "$PROJECTS/drydock"
-drydock config set drydock_build_directory "$PROJECTS"
-drydock config set llm_provider claude
-drydock init MyApp --description "A small web application."
-drydock import MyApp ./notes --format markdown
-drydock analyze MyApp
-drydock run quarterdeck MyApp
-drydock plan MyApp
-drydock build status MyApp
-drydock build MyApp
-drydock score ac MyApp
-drydock score release MyApp
-```
+<div align="center">
+<img src="docs/drydock_process.png" alt="The complete Drydock command surface as a shell script: Set Up, Analyze, Implement, Loop." width="920" />
+</div>
 
 That loop creates a Target workspace, decomposes the source material, opens the
-Commander review surface, builds a dependency graph, executes the first runnable
+Commander review surface, builds a dependency graph, executes each runnable
 frontier with persisted evidence, verifies programmatic acceptance, and evaluates the
-release gate.
+release gate. [Quick Start](#quick-start) has the copy-and-paste version.
 
 ## What Drydock Is
 
@@ -219,6 +200,9 @@ delivery system with durable artifacts:
 
 The Commander is the product owner. The LLM is treated as an Agile delivery team.
 Drydock's job is to make that relationship explicit, reviewable, and repeatable.
+
+For how Drydock compares with other specification-driven tools, see the
+[Product Comparison Matrix](docs/Product_Comparison_Matrix.md).
 
 ## Current Release Status
 
