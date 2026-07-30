@@ -200,6 +200,43 @@ options:
   --debug     Show full traceback on unexpected errors.
 ```
 
+## End-to-End Command Flow
+
+A Target runs from source material to a scored release and through subsequent change with the
+following commands.
+
+```bash
+# Build Specifications into Code With Agile and Test Driven Development
+# Runs on your Claude/Codex/Other subscription CLI. No API keys or per-token-billing.
+
+# ── S ── SET UP ──────────────────────────────────────────────────────────
+drydock config set llm_provider claude      # or codex
+drydock init            MyApp               # create the Target workspace
+
+# ── A ── ANALYZE ─────────────────────────────────────────────────────────
+drydock import          MyApp ./notes       # notes, a source tree, or Spec Kit
+drydock analyze         MyApp               # → stories, acceptance criteria, blockers
+drydock run quarterdeck MyApp               # the Commander answers the open questions
+drydock plan            MyApp               # → Blueprint + MANIFEST.md dependency graph
+drydock validate        MyApp               # typed specification conformance. no LLM.
+
+# ── I ── IMPLEMENT ───────────────────────────────────────────────────────
+while drydock status MyApp --ready; do      # build the runnable frontier, one step at a time
+  drydock build         MyApp               # scoped context in, code + evidence out
+  drydock build status  MyApp               # what is done, blocked, and next
+done
+
+drydock score ac        MyApp               # every assertion, deterministically → SOUNDINGS.md
+drydock score release   MyApp               # Sea Trials release gate → SCORECARD.md
+
+# ── L ── LOOP ────────────────────────────────────────────────────────────
+# The Blueprint changes first; the software follows.
+drydock refit           MyApp               # change tickets → conformed manifest work
+drydock build           MyApp               # rebuild what the change touched
+drydock document        MyApp               # documentation generated from the Blueprint
+drydock rigging update  MyApp               # propagate shared rules and templates
+```
+
 ## SAIL Phase 1 — Set Up: Laying the Keel
 
 Install Drydock, configure runtime defaults, and create a workspace for a Target build.
