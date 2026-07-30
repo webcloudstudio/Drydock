@@ -12,6 +12,12 @@ from pathlib import Path
 
 _MAX_FILE_CHARS = 48_000
 _CHUNK_CHARS = 12_000
+#: Minification is a *line-structure* property: a generated file packs its content into one or a few
+#: enormous lines. Both thresholds must hold — the file carries a machine-scale line, and that line
+#: is most of the file — so ordinary prose never qualifies however long its longest sentence runs.
+_MINIFIED_MIN_CHARS = 2_000
+_MINIFIED_LINE_CHARS = 2_000
+_MINIFIED_LINE_SHARE = 0.5
 _FENCES = {
     ".py": "python",
     ".js": "javascript",
@@ -33,6 +39,21 @@ _FENCES = {
     ".md": "markdown",
     ".txt": "text",
 }
+
+
+def is_generated_or_minified(text: str) -> bool:
+    """Whether a file's content is machine-packed rather than human line-structured.
+
+    A generated or minified file holds its content in one or a few enormous lines: the longest line
+    is itself machine-scale *and* accounts for most of the file. Aggregate newline density cannot
+    make this call — hand-written Markdown that wraps at 120 columns has a newline every ~50
+    characters, which is indistinguishable by ratio alone from genuinely minified output, and
+    misclassifying it silently drops the file's text from every prompt that cites it.
+    """
+    if len(text) <= _MINIFIED_MIN_CHARS:
+        return False
+    longest = max((len(line) for line in text.splitlines()), default=0)
+    return longest >= _MINIFIED_LINE_CHARS and longest >= _MINIFIED_LINE_SHARE * len(text)
 
 
 @dataclass(frozen=True)
@@ -96,8 +117,7 @@ def discover_source_material(
                 )
             )
             continue
-        compact = text.replace("\n", "")
-        if len(text) > 2_000 and len(compact) / max(len(text), 1) > 0.98:
+        if is_generated_or_minified(text):
             result.append(
                 SourceMaterialFile(
                     path, relative, kind, "summarized", "likely generated or minified", fence=fence

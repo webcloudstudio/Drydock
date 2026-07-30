@@ -54,3 +54,76 @@ def test_plan_evidence_bundle_rejects_missing_analyze_citation(tmp_path: Path) -
             "## Planning Instructions\n\n### Delivery Shape\n\nCLI.\n",
             excluded_filenames=frozenset(),
         )
+
+
+def test_plan_evidence_bundle_expands_a_wildcard_citation(tmp_path: Path) -> None:
+    # Observed on the Marina target: Analyze cited a family of sources as
+    # `sources/FEATURE-CATALOG-*.md`. The citation scanner stopped at the `*` and demanded a file
+    # literally named `sources/FEATURE-CATALOG-`, blocking `drydock plan` outright.
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    (sources / "FEATURE-CATALOG-READ.md").write_text("# Read\n", encoding="utf-8")
+    (sources / "FEATURE-CATALOG-PUBLISH.md").write_text("# Publish\n", encoding="utf-8")
+    (sources / "FEATURE-SCANNER.md").write_text("# Scanner\n", encoding="utf-8")
+    analysis = "## Planning Instructions\n\nCloud phase: `sources/FEATURE-CATALOG-*.md`.\n"
+
+    bundle = _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
+
+    assert sorted(entry.relative_path for entry in bundle or []) == [
+        "sources/FEATURE-CATALOG-PUBLISH.md",
+        "sources/FEATURE-CATALOG-READ.md",
+    ]
+
+
+def test_plan_evidence_bundle_rejects_a_wildcard_matching_nothing(tmp_path: Path) -> None:
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    (sources / "FEATURE-SCANNER.md").write_text("# Scanner\n", encoding="utf-8")
+    analysis = "## Planning Instructions\n\nCloud phase: `sources/FEATURE-CATALOG-*.md`.\n"
+
+    with pytest.raises(SpecificationError, match="matching no imported source file"):
+        _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
+
+
+def test_plan_evidence_bundle_still_rejects_an_uncited_missing_file(tmp_path: Path) -> None:
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    (sources / "parser.py").write_text("pass\n", encoding="utf-8")
+    analysis = "## Planning Instructions\n\nScope: `sources/absent.md`.\n"
+
+    with pytest.raises(SpecificationError, match="not present in the imported source material"):
+        _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
+
+
+def test_wrapped_prose_is_not_classified_as_generated(tmp_path: Path) -> None:
+    # Observed on the Marina target: nine hand-written specifications were classified `summarized`
+    # and their text was withheld from every prompt. The old test was aggregate newline density,
+    # which Markdown wrapped at ~120 columns fails by construction.
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    paragraph = ("The scanner records repository identity and provenance evidence. " * 2).strip()
+    prose = "# Feature\n\n" + "\n".join(f"- {paragraph}" for _ in range(60)) + "\n"
+    assert len(prose) > 2_000
+    (sources / "FEATURE.md").write_text(prose, encoding="utf-8")
+
+    source_material = discover_source_material(blueprint)
+
+    assert source_material[0].disposition == "analyzed"
+    assert source_material[0].text == prose
+
+
+def test_single_line_minified_asset_is_still_summarized(tmp_path: Path) -> None:
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    (sources / "bundle.js").write_text("var a=1;" * 1_000, encoding="utf-8")
+
+    source_material = discover_source_material(blueprint)
+
+    assert source_material[0].disposition == "summarized"
+    assert source_material[0].reason == "likely generated or minified"
+    assert source_material[0].text is None

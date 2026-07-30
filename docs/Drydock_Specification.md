@@ -115,7 +115,7 @@ flowchart LR
 **Test Driven Development**
 - Your Crew (LLM) uses Test Driven Development
 - Programmatic acceptance criteria created using a checklist 
-- Use EARS-notation acceptance criteria with grammar validation for Project level AC (SEA_TRIALS.md)
+- Use EARS-notation acceptance criteria for Project level AC (SEA_TRIALS.md)
 
 **The Quarterdeck**
 - QuarterDeck is a custom Commander to Crew web portal.
@@ -140,7 +140,6 @@ flowchart LR
 - `drydock analyze` is Story Planning and surfaces any gaps
 - Persistent intent injection at each process stage 
 - `drydock plan` creates typed specifications with prescribed roles.
-- EARS acceptance criteria, grammar-validated.
 - Programmatic Acceptance criteria for each story.
 - Sealed foundational specifications require a change ticket to alter.
 - Persistence encapsulation (library) prevent forced large rebuilds 

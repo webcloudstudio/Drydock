@@ -8,6 +8,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-07-29: `drydock plan` accepts a wildcard source citation in `ANALYSIS.md`
+  (`sources/FEATURE-CATALOG-*.md`), expanding it against the imported source material instead of
+  demanding a file named after the fragment before the `*`.
+- 2026-07-29: Source-material import no longer classifies wrapped hand-written Markdown as
+  generated or minified. The test is now line structure — one machine-scale line holding most of
+  the file — rather than aggregate newline density, which withheld ordinary specifications from
+  every prompt that cited them.
+
 ### Changed
 
 - 2026-07-29: Sea Trials EARS conformance is now a derived `Notation: ears | other` label on every

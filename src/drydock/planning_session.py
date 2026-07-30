@@ -21,6 +21,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from fnmatch import fnmatch
 from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
@@ -71,7 +72,10 @@ _WRITE_CALL_RE = re.compile(
 _FUNCTION_WRAPPER_RE = re.compile(r"</?function_calls>\s*")
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
 _PLANNING_INSTRUCTIONS_RE = re.compile(r"^## Planning Instructions\s*$", re.MULTILINE)
-_SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.-])(sources/[A-Za-z0-9_./-]+)")
+#: A cited source path. ``*`` and ``?`` are accepted so a citation may name a family of source files
+#: (``sources/FEATURE-CATALOG-*.md``) the way an author naturally abbreviates one; the pattern is
+#: expanded against the discovered source material by :func:`_expand_source_citations`.
+_SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.\-*?])(sources/[A-Za-z0-9_./\-*?]+)")
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
 _RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
@@ -679,6 +683,35 @@ def _collect_sources(
     ]
 
 
+def _expand_source_citations(
+    cited: set[str], available: set[str]
+) -> tuple[set[str], list[str], list[str]]:
+    """Resolve cited source paths against the discovered material.
+
+    Returns ``(resolved, missing, empty_patterns)``. A citation naming a single file resolves to
+    itself and is reported in ``missing`` when no such file was imported. A citation carrying a
+    ``*`` or ``?`` wildcard resolves to every source file it matches, and is reported in
+    ``empty_patterns`` when it matches none — a pattern that matches nothing is an unsatisfiable
+    evidence reference exactly as a missing filename is, but it needs its own wording so the
+    Commander sees the pattern rather than a path fragment.
+    """
+    resolved: set[str] = set()
+    missing: list[str] = []
+    empty_patterns: list[str] = []
+    for citation in cited:
+        if any(character in citation for character in "*?"):
+            matched = {path for path in available if fnmatch(path, citation)}
+            if matched:
+                resolved |= matched
+            else:
+                empty_patterns.append(citation)
+        elif citation in available:
+            resolved.add(citation)
+        else:
+            missing.append(citation)
+    return resolved, sorted(missing), sorted(empty_patterns)
+
+
 def _source_evidence_bundle(
     blueprint_dir: Path,
     analysis_text: str,
@@ -698,11 +731,16 @@ def _source_evidence_bundle(
             "Re-run analyze or add cited source evidence before planning."
         )
     by_path = {entry.relative_path: entry for entry in source_material}
-    missing = sorted(cited - set(by_path))
+    cited, missing, empty_patterns = _expand_source_citations(cited, set(by_path))
     if missing:
         raise SpecificationError(
             "ANALYSIS.md cites source path(s) not present in the imported source material: "
             + ", ".join(missing)
+        )
+    if empty_patterns:
+        raise SpecificationError(
+            "ANALYSIS.md cites source pattern(s) matching no imported source file: "
+            + ", ".join(empty_patterns)
         )
     unusable = sorted(path for path in cited if by_path[path].text is None)
     if unusable:
