@@ -766,7 +766,9 @@ class TestAnalyzeCommand:
         assert "Edit BLOCKERS.md" in out
         assert "Re-run: drydock analyze Proj" in out
         assert "drydock run quarterdeck Proj" in out
-        assert "Warning: SEA_TRIALS.md was not created" in err
+        # Warnings print on stdout so they survive in the run transcript, which tees stdout only.
+        assert "Warning: SEA_TRIALS.md was not created" in out
+        assert "Warning:" not in err
 
 
 class TestLlmOverrideFlags:

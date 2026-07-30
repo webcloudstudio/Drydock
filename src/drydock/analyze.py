@@ -57,7 +57,12 @@ from drydock.sea_trials import (
     parse_sea_trials_text,
     project_questions,
 )
-from drydock.source_material import SourceMaterialFile, discover_source_material, inventory_markdown
+from drydock.source_material import (
+    SourceMaterialFile,
+    discover_source_material,
+    inventory_markdown,
+    withheld_content_warning,
+)
 
 PROMPT_NAME = "analyze"
 
@@ -1266,6 +1271,8 @@ def analyze(
         execution_id=exec_id,
         ok=True,
         blockers_path=written_blockers,
-        warnings=tuple(item for item in (sea_trials_blocker,) if item),
+        warnings=tuple(
+            item for item in (sea_trials_blocker, withheld_content_warning(source_material)) if item
+        ),
         sea_trials_created=sea_trials_text is not None,
     )

@@ -13,10 +13,14 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-07-29: `drydock plan` accepts a wildcard source citation in `ANALYSIS.md`
   (`sources/FEATURE-CATALOG-*.md`), expanding it against the imported source material instead of
   demanding a file named after the fragment before the `*`.
-- 2026-07-29: Source-material import no longer classifies wrapped hand-written Markdown as
-  generated or minified. The test is now line structure — one machine-scale line holding most of
-  the file — rather than aggregate newline density, which withheld ordinary specifications from
-  every prompt that cited them.
+- 2026-07-29: Imported prose content is always read. A Markdown or text source is never withheld as
+  generated or minified — a withheld specification is a lost story — and a large one is chunked
+  rather than summarized. Withholding now applies only to code and data artifacts, judged on line
+  structure (one machine-scale line holding most of the file) rather than aggregate newline
+  density, which had misclassified ordinary hand-written specifications.
+- 2026-07-29: `drydock analyze` warns when any imported file's content was not read, naming each
+  file and the reason. Command warnings print on stdout so they appear in the run log; sent to
+  stderr they were absent from every transcript.
 
 ### Changed
 

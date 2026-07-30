@@ -1323,6 +1323,41 @@ Pattern: unwanted""",
         assert "is missing Criterion" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
 
+    def test_withheld_source_content_is_warned(self, tmp_path):
+        # A file Drydock declines to read produces an analysis with a hole in it. The decision is
+        # reported at the moment it is made rather than surfacing later as a missing story.
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        sources = target_dir / "blueprint" / "sources"
+        sources.mkdir(parents=True)
+        (sources / "bundle.js").write_text("var a=1;" * 1_000, encoding="utf-8")
+        (sources / "FEATURE.md").write_text("# Feature\n\nRegister a repository.\n", "utf-8")
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+        assert result.ok is True
+        assert len(result.warnings) == 1
+        assert "sources/bundle.js (likely generated or minified)" in result.warnings[0]
+        assert "FEATURE.md" not in result.warnings[0]
+
+    def test_imported_specification_content_is_never_withheld(self, tmp_path):
+        # Marina regression: nine hand-written specifications were classified as generated and
+        # their content withheld from the prompt, so their stories were never derived.
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        sources = target_dir / "blueprint" / "sources"
+        sources.mkdir(parents=True)
+        body = "# Feature\n\n" + "- The scanner shall record repository provenance evidence. " * 60
+        (sources / "FUNCTIONALITY.md").write_text(body, encoding="utf-8")
+        prompts: list[str] = []
+
+        def runner(prompt_text, *args, **kwargs):
+            prompts.append(prompt_text)
+            return FakeRun()
+
+        result = analyze("MyTarget", target_dir, runner=runner)
+
+        assert result.warnings == ()
+        assert "The scanner shall record repository provenance evidence." in prompts[0]
+
     def test_clean_analysis_makes_exactly_one_llm_call(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         calls: list[str] = []

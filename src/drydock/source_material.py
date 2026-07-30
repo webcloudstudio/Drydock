@@ -18,6 +18,11 @@ _CHUNK_CHARS = 12_000
 _MINIFIED_MIN_CHARS = 2_000
 _MINIFIED_LINE_CHARS = 2_000
 _MINIFIED_LINE_SHARE = 0.5
+#: Kinds whose text is always injected. Prose is the material an author imports to *be read*: a
+#: specification is where stories come from, so its content is never withheld on formatting grounds.
+#: A large prose file is chunked, never summarized. Withholding applies only to code and data
+#: artifacts, where a build output carries no design intent worth the tokens.
+_PROSE_KINDS = frozenset({"markdown", "text"})
 _FENCES = {
     ".py": "python",
     ".js": "javascript",
@@ -117,7 +122,7 @@ def discover_source_material(
                 )
             )
             continue
-        if is_generated_or_minified(text):
+        if kind not in _PROSE_KINDS and is_generated_or_minified(text):
             result.append(
                 SourceMaterialFile(
                     path, relative, kind, "summarized", "likely generated or minified", fence=fence
@@ -140,6 +145,22 @@ def discover_source_material(
                 SourceMaterialFile(path, relative, kind, "analyzed", "readable UTF-8", text, fence)
             )
     return result
+
+
+def withheld_content_warning(source_material: list[SourceMaterialFile]) -> str | None:
+    """Report imported files whose content was not injected, or ``None`` when every file was read.
+
+    An author imports a file to have it read. When Drydock declines to read one, that decision has
+    to be visible at the moment it is made: a file silently classified as unreadable produces an
+    analysis with a hole in it, and the hole surfaces much later as a missing story or an
+    unsatisfiable citation.
+    """
+    withheld = [entry for entry in source_material if entry.text is None]
+    if not withheld:
+        return None
+    return "Imported source content was not read: " + ", ".join(
+        f"{entry.relative_path} ({entry.reason})" for entry in withheld
+    )
 
 
 def inventory_markdown(source_material: list[SourceMaterialFile]) -> str:
