@@ -311,6 +311,7 @@ automatically when a field loses focus; unanswered questions are simply skipped.
   "title": "Kickoff Questionnaire",
   "state": "open",
   "purpose": "Why this questionnaire exists.",
+  "additional_notes": "Optional context or clarification supplied by the user.",
   "questions": [
     {
       "id": "field_id",
@@ -337,6 +338,9 @@ automatically when a field loses focus; unanswered questions are simply skipped.
 
 After save: each answered question gains an `answer` field, `answered_at` is stamped, and
 `state` becomes `"answered"` once every question has an answer (otherwise it stays `"open"`).
+Every questionnaire also renders an optional **Additional Notes** textarea after its questions.
+Its value is saved as the top-level `additional_notes` field and does not affect questionnaire
+completion.
 An open questionnaire shows a red ✗ in the sidebar; an answered one shows a green ✓ — these
 status icons appear **only** on questionnaires, so an unanswered item is always visible at a
 glance.

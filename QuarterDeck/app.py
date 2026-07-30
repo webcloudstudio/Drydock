@@ -39,6 +39,8 @@ import json
 import os
 import re
 import shlex
+import tempfile
+import threading
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -2359,6 +2361,7 @@ def render_questionnaire(item: dict[str, Any]) -> str:
     is_discovery = item.get("template") == "discovery"
     done = str(data.get("state", "open")) in _DONE_STATES
     q_id = html.escape(data["id"])
+    additional_notes = html.escape(str(data.get("additional_notes") or ""))
 
     prefix = "<span class='q-done-mark'>✓</span> " if done else ""
     title_html = f"<h1>{prefix}{html.escape(data.get('title', data['id']))}</h1>"
@@ -2366,13 +2369,22 @@ def render_questionnaire(item: dict[str, Any]) -> str:
 
     rows = _render_question_controls(data)
     template_attr = " data-template='discovery'" if is_discovery else ""
+    notes_html = (
+        "<section class='question q-additional-notes'>"
+        "<h3>Additional Notes</h3>"
+        "<p>Add context or clarify anything the questions did not capture.</p>"
+        f"<textarea name='__additional_notes' data-optional rows='5'>{additional_notes}</textarea>"
+        "</section>"
+    )
     body = (
         title_html
         + purpose_html
         + "<p class='q-autosave-hint'>Answers save automatically when you leave a field. "
-        "Leave a question blank to skip it — only answered questions feed later steps.</p>"
+        "Leave a question blank to skip it — only answered questions and additional notes "
+        "feed later steps.</p>"
         + f"<form data-questionnaire='{q_id}'{template_attr} autocomplete='off'>"
         + "".join(rows)
+        + notes_html
         + "<span class='q-save-status' aria-live='polite'></span></form>"
     )
     return body
@@ -2701,9 +2713,37 @@ def _find_q_path_by_id(q_id: str) -> Path | None:
     return None
 
 
+#: A select fires ``change`` and ``blur`` in quick succession, so the console can issue two
+#: saves for one edit. Uvicorn runs sync endpoints on a threadpool, so those saves would
+#: read-modify-write the same questionnaire concurrently and leave a truncated write's tail
+#: appended to a longer one ("Extra data" on the next read). Serialize the whole cycle and
+#: replace the file atomically.
+_Q_WRITE_LOCK = threading.Lock()
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` via a same-directory temp file and ``os.replace``."""
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> None:
     """Write answers back into the questionnaire JSON so questions and answers
     live together as a plain input file the next build step can read."""
+    with _Q_WRITE_LOCK:
+        _writeback_questionnaire_locked(key, state, payload)
+
+
+def _writeback_questionnaire_locked(key: str, state: str, payload: dict[str, Any]) -> None:
     if not key.startswith("questionnaire."):
         return
     q_id = key[len("questionnaire.") :]
@@ -2716,6 +2756,8 @@ def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> N
         return
     if "resolution" in payload:
         data["resolution"] = payload["resolution"]
+    if "__additional_notes" in payload:
+        data["additional_notes"] = payload["__additional_notes"]
     for question in data.get("questions", []):
         if question["id"] in payload:
             ans = payload[question["id"]]
@@ -2727,7 +2769,7 @@ def _writeback_questionnaire(key: str, state: str, payload: dict[str, Any]) -> N
     else:
         data["state"] = state
     data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
-    q_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _atomic_write_text(q_path, json.dumps(data, indent=2) + "\n")
 
 
 class StateUpdate(BaseModel):
@@ -3569,6 +3611,7 @@ def index(request: Request = None) -> str:
     }}
     function _qAllAnswered(form) {{
       for (const el of form.querySelectorAll('[name]')) {{
+        if (el.dataset.optional !== undefined) continue;
         if (!el.value || !el.value.trim()) return false;
       }}
       return true;
@@ -3576,7 +3619,12 @@ def index(request: Request = None) -> str:
     function wireAutosave(form) {{
       const status = form.querySelector('.q-save-status');
       let hideTimer = null;
-      const save = async () => {{
+      // A select fires change then blur for one edit. Overlapping POSTs raced each
+      // other writing the same JSON file, so saves are chained and identical
+      // consecutive payloads are dropped.
+      let pending = Promise.resolve();
+      let lastSent = null;
+      const saveOnce = async () => {{
         if (status) {{ status.textContent = 'Saving…'; status.className = 'q-save-status'; }}
         const r = await fetch(`/api/state/questionnaire.${{form.dataset.questionnaire}}`, {{
           method: 'POST', headers: {{'Content-Type': 'application/json'}},
@@ -3596,6 +3644,13 @@ def index(request: Request = None) -> str:
           status.textContent = 'Save failed: ' + (d.detail || r.status);
           status.className = 'q-save-status q-save-failed';
         }}
+      }};
+      const save = () => {{
+        const body = JSON.stringify(questionnairePayload(form));
+        if (body === lastSent) return pending;
+        lastSent = body;
+        pending = pending.then(saveOnce, saveOnce);
+        return pending;
       }};
       form.querySelectorAll('input, select, textarea').forEach(el => {{
         el.addEventListener('blur', save);

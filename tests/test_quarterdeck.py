@@ -6,6 +6,8 @@ import importlib.util
 import json
 import re
 import sys
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -707,7 +709,10 @@ def _discovery_item() -> dict:
 def test_spike_questionnaire_is_buttonless_with_autosave(tmp_path, monkeypatch):
     quarterdeck = _load_quarterdeck()
     discovery_file = tmp_path / "discovery-intent.json"
-    discovery_file.write_text(_discovery_json(), encoding="utf-8")
+    discovery_file.write_text(
+        _discovery_json(additional_notes="<Clarification>"),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _: discovery_file)
 
     rendered = quarterdeck.render_questionnaire(_discovery_item())
@@ -721,6 +726,9 @@ def test_spike_questionnaire_is_buttonless_with_autosave(tmp_path, monkeypatch):
     assert "data-template='discovery'" in rendered
     assert "save automatically" in rendered
     assert "q-save-status" in rendered
+    assert rendered.index("Primary Goal") < rendered.index("Additional Notes")
+    assert "name='__additional_notes' data-optional" in rendered
+    assert "&lt;Clarification&gt;" in rendered
 
 
 def test_spike_questionnaire_done_still_renders_editable_form(tmp_path, monkeypatch):
@@ -795,13 +803,42 @@ def test_writeback_questionnaire_writes_resolution(tmp_path, monkeypatch):
     quarterdeck._writeback_questionnaire(
         "questionnaire.discovery-intent",
         "promoted",
-        {"primary_goal": "Build a ship.", "resolution": "promoted"},
+        {
+            "primary_goal": "Build a ship.",
+            "__additional_notes": "The question assumes a new build; this is a refit.",
+            "resolution": "promoted",
+        },
     )
 
     written = json.loads(discovery_file.read_text(encoding="utf-8"))
     assert written["state"] == "promoted"
     assert written["resolution"] == "promoted"
     assert written["questions"][0]["answer"] == "Build a ship."
+    assert written["additional_notes"] == "The question assumes a new build; this is a refit."
+
+
+def test_optional_questionnaire_notes_do_not_prevent_answered_state(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    discovery_file = tmp_path / "discovery-intent.json"
+    discovery_file.write_text(_discovery_json(), encoding="utf-8")
+
+    item = {
+        "id": "discovery_intent",
+        "type": "questionnaire",
+        "path": str(discovery_file.relative_to(tmp_path)),
+    }
+    monkeypatch.setattr(quarterdeck, "items", lambda: [item])
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path)
+
+    quarterdeck._writeback_questionnaire(
+        "questionnaire.discovery-intent",
+        "answered",
+        {"primary_goal": "Build a ship.", "__additional_notes": ""},
+    )
+
+    written = json.loads(discovery_file.read_text(encoding="utf-8"))
+    assert written["state"] == "answered"
+    assert written["additional_notes"] == ""
 
 
 def test_answered_discovery_stays_in_analyze_section(tmp_path, monkeypatch):
@@ -1758,3 +1795,66 @@ def test_commanders_chair_template_exposes_the_build_report_tab():
     assert "setInterval" in markup
     assert "showLoading: false" in markup
     assert '"build"' in markup
+
+
+# ── Questionnaire writeback concurrency ───────────────────────────────────────
+
+
+def test_questionnaire_writeback_serializes_concurrent_saves(tmp_path, monkeypatch):
+    """A select fires change and blur, so two saves can overlap on one edit.
+
+    Unserialized read-modify-write left a shorter write's tail appended to a longer
+    one, and the next read failed with "Extra data".
+    """
+    quarterdeck = _load_quarterdeck()
+    q_path = tmp_path / "discovery-stack.json"
+    q_path.write_text(
+        _discovery_json(id="discovery-stack", questions=[{"id": "stack", "label": "Stack"}]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quarterdeck, "_find_q_path_by_id", lambda _q_id: q_path)
+
+    active = 0
+    overlapped = False
+    real_write = quarterdeck._atomic_write_text
+
+    def slow_write(path, text):
+        nonlocal active, overlapped
+        active += 1
+        overlapped = overlapped or active > 1
+        try:
+            time.sleep(0.01)
+            real_write(path, text)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(quarterdeck, "_atomic_write_text", slow_write)
+
+    answers = ["python" * 200, "go"] * 6
+    threads = [
+        threading.Thread(
+            target=quarterdeck._writeback_questionnaire,
+            args=("questionnaire.discovery-stack", "answered", {"stack": answer}),
+        )
+        for answer in answers
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not overlapped
+    data = json.loads(q_path.read_text(encoding="utf-8"))
+    assert data["questions"][0]["answer"] in answers
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_atomic_write_text_replaces_longer_content_completely(tmp_path):
+    quarterdeck = _load_quarterdeck()
+    path = tmp_path / "q.json"
+    path.write_text("x" * 5000, encoding="utf-8")
+
+    quarterdeck._atomic_write_text(path, '{"state": "open"}\n')
+
+    assert path.read_text(encoding="utf-8") == '{"state": "open"}\n'
+    assert not list(tmp_path.glob(".*.tmp"))
