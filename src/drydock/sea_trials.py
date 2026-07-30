@@ -13,16 +13,20 @@ TRIAL_TYPES = frozenset({"technical", "behavioral", "qualitative", "outcome", "g
 VERIFICATION_TYPES = frozenset({"proof", "measurement", "evidence", "llm"})
 DETERMINISTIC_VERIFICATION = frozenset({"proof", "measurement"})
 
-#: Types whose Criterion is an assertion and therefore carries an EARS Pattern.
+#: Types whose Criterion is an assertion and therefore normally carries an EARS Pattern. EARS is
+#: preferred writing discipline for these types, not a requirement: ``Pattern`` is optional
+#: everywhere and a criterion that reads better as plain English is notated ``other``.
 ASSERTION_TYPES = frozenset({"technical", "behavioral", "guardrail"})
 
-#: EARS templates. A criterion must match the template its declared Pattern names.
+#: EARS templates. A criterion conforms when it matches the template its declared Pattern names.
+#: The system noun takes an optional article, so a proper-noun system ("Marina shall") conforms
+#: exactly as a common-noun system ("the parser shall") does.
 EARS_PATTERNS: dict[str, re.Pattern[str]] = {
-    "ubiquitous": re.compile(r"^The .+ shall .+", re.I),
-    "event": re.compile(r"^When .+, the .+ shall .+", re.I),
-    "state": re.compile(r"^While .+, the .+ shall .+", re.I),
-    "option": re.compile(r"^Where .+, the .+ shall .+", re.I),
-    "unwanted": re.compile(r"^If .+, then the .+ shall .+", re.I),
+    "ubiquitous": re.compile(r"^(?:The\s+)?.+ shall .+", re.I),
+    "event": re.compile(r"^When .+, (?:the\s+)?.+ shall .+", re.I),
+    "state": re.compile(r"^While .+, (?:the\s+)?.+ shall .+", re.I),
+    "option": re.compile(r"^Where .+, (?:the\s+)?.+ shall .+", re.I),
+    "unwanted": re.compile(r"^If .+, then (?:the\s+)?.+ shall .+", re.I),
 }
 EARS_SHAPES: dict[str, str] = {
     "ubiquitous": "The <system> shall <response>",
@@ -32,10 +36,10 @@ EARS_SHAPES: dict[str, str] = {
     "unwanted": "If <trigger>, then the <system> shall <mitigation>",
 }
 
-#: A guardrail is a *never*. It reads as a prohibition either as a conditional ``unwanted``
-#: criterion (``If <trigger>, then the <system> shall not/mitigate``) or, when the prohibition is
-#: unconditional, as a negative ``ubiquitous`` criterion (``The <system> shall not/never <X>``).
-_PROHIBITION_RE = re.compile(r"\bshall\s+(?:not|never)\b", re.I)
+#: The notation a criterion is written in. Drydock derives this on every read and overwrites it on
+#: every write; it is descriptive, never a gate.
+NOTATIONS = frozenset({"ears", "other"})
+
 _UNIVERSAL_SUITE_RE = re.compile(
     r"\b(?:all|every|complete|full|zero\s+(?:failures?|errors?))\b|100\s*%",
     re.I,
@@ -43,16 +47,19 @@ _UNIVERSAL_SUITE_RE = re.compile(
 _SUITE_RE = re.compile(r"\b(?:test|conformance|suite|cases?|examples?)\b", re.I)
 
 
-def _is_guardrail_prohibition(pattern: str, criterion: str) -> bool:
-    """True when a guardrail's Pattern/Criterion pair states a prohibition.
+def derive_notation(pattern: str, criterion: str) -> str:
+    """Return the notation a criterion is written in: ``ears`` or ``other``.
 
-    ``unwanted`` is the canonical conditional form. An unconditional blanket prohibition has no
-    trigger and is naturally a negative ``ubiquitous`` criterion; accept it when the wording is an
-    explicit ``shall not``/``shall never``. Positive-worded guardrails are steered to ``unwanted``.
+    A criterion is ``ears`` only when it declares one of the five EARS patterns *and* its prose
+    matches that pattern's shape exactly. Anything else — no Pattern, an unrecognized Pattern name,
+    or prose that does not follow the declared shape — is ``other``: plain English, equally binding,
+    and judged on its stated intent. Nothing in Drydock computes on the notation; it is recorded so
+    a human reader and the judge model know which discipline the sentence follows.
     """
-    if pattern == "unwanted":
-        return True
-    return pattern == "ubiquitous" and bool(_PROHIBITION_RE.search(criterion))
+    name = pattern.strip().lower()
+    if name not in EARS_PATTERNS:
+        return "other"
+    return "ears" if EARS_PATTERNS[name].match(criterion.strip()) else "other"
 
 
 def _is_universal_suite_criterion(criterion: str, command: tuple[str, ...]) -> bool:
@@ -118,6 +125,7 @@ _FIELD_NAMES = (
     "Criterion",
     "Verification",
     "Pattern",
+    "Notation",
     "Command",
     "Extract",
     "Evidence",
@@ -138,6 +146,7 @@ class SeaTrial:
     criterion: str
     verification: str
     pattern: str = ""
+    notation: str = "other"
     command: tuple[str, ...] = ()
     extract: str = ""
     evidence: str = ""
@@ -165,26 +174,10 @@ class SeaTrialQuestion:
 
 
 @dataclass(frozen=True)
-class WordingDiagnostic:
-    """One criterion whose prose does not match the EARS pattern it declares.
-
-    Reported rather than raised: the document is still machine-usable, so readers proceed while
-    ``analyze`` repairs the wording and ``score release`` refuses to pass it.
-    """
-
-    criterion_id: str
-    pattern: str
-    criterion: str
-    expected: str
-    message: str
-
-
-@dataclass(frozen=True)
 class SeaTrialsDocument:
     project: str
     trials: tuple[SeaTrial, ...]
     questions: tuple[SeaTrialQuestion, ...]
-    wording: tuple[WordingDiagnostic, ...] = ()
 
 
 #: Canonical reader documentation embedded in ``SEA_TRIALS.md``. Drydock owns this text and
@@ -204,6 +197,13 @@ against.
 
 Stories carry an `accepts:` field naming the criteria they implement, so most criteria are also
 checked during the build. A criterion needs no implementing story to be judged at the end.
+
+### Notation
+
+Every criterion carries a `Notation` of `ears` or `other`. Drydock derives it and rewrites it on
+every write. `ears` means the criterion declares an EARS `Pattern` and its sentence matches that
+pattern exactly. `other` means plain English. Both are equally binding and are judged on what they
+state; the notation records the writing discipline and changes no verdict.
 
 ### Guardrails
 
@@ -285,85 +285,15 @@ def _extract(value: str, criterion_id: str) -> str:
     return pattern
 
 
-def _pattern(value: str, *, trial_type: str, criterion_id: str) -> str:
-    """Validate the EARS Pattern *name* against the trial type.
+def _pattern(value: str) -> str:
+    """Normalize the declared EARS Pattern name, or return ``""``.
 
-    The name is structural: it decides whether the trial is an assertion at all, so a bad name
-    makes the document unusable and raises. The criterion's *wording* is checked separately by
-    :func:`_wording_diagnostic`, which reports rather than raises.
+    ``Pattern`` is optional and decorative on every trial type: it names the shape the author aimed
+    for. An absent or unrecognized name is not an error — it simply leaves the criterion notated
+    ``other`` by :func:`derive_notation`.
     """
     pattern = value.strip().lower()
-    if trial_type not in ASSERTION_TYPES:
-        if pattern:
-            raise SpecificationError(
-                f"SEA_TRIALS.md {criterion_id} is {trial_type} and must not declare a Pattern; "
-                "EARS applies only to technical, behavioral, and guardrail criteria"
-            )
-        return ""
-    if not pattern:
-        raise SpecificationError(
-            f"SEA_TRIALS.md {criterion_id} is {trial_type} and is missing Pattern; "
-            f"expected one of: {', '.join(sorted(EARS_PATTERNS))}"
-        )
-    if pattern not in EARS_PATTERNS:
-        raise SpecificationError(f"SEA_TRIALS.md {criterion_id} has invalid Pattern: {pattern}")
-    return pattern
-
-
-def _wording_diagnostic(
-    *, pattern: str, trial_type: str, criterion: str, criterion_id: str
-) -> WordingDiagnostic | None:
-    """Report an EARS wording violation, or None when the criterion reads correctly.
-
-    Nothing in Drydock computes on the EARS shape; it is writing discipline that keeps a criterion
-    unambiguous to a human reader and to the judge model. A violation is therefore a diagnostic:
-    ``analyze`` repairs it and ``score release`` gates on it, but no reader is blocked by it.
-    """
-    if not pattern:
-        return None
-    if trial_type == "guardrail" and not _is_guardrail_prohibition(pattern, criterion):
-        return WordingDiagnostic(
-            criterion_id=criterion_id,
-            pattern=pattern,
-            criterion=criterion,
-            expected=EARS_SHAPES["unwanted"],
-            message=(
-                f"{criterion_id} is a guardrail and must state a prohibition: use "
-                f"Pattern: unwanted ({EARS_SHAPES['unwanted']}) or a negative ubiquitous "
-                "criterion (The <system> shall not/never <action>)"
-            ),
-        )
-    if not EARS_PATTERNS[pattern].match(criterion):
-        return WordingDiagnostic(
-            criterion_id=criterion_id,
-            pattern=pattern,
-            criterion=criterion,
-            expected=EARS_SHAPES[pattern],
-            message=(
-                f"{criterion_id} declares Pattern: {pattern} but its Criterion is not in that shape"
-            ),
-        )
-    return None
-
-
-def format_wording_failures(document: SeaTrialsDocument) -> str:
-    """Operator-facing text for every EARS wording violation in a parsed document.
-
-    Shared by the ``analyze`` warning and the ``score release`` completion blocker so the wording
-    a Commander reads is identical wherever the violation surfaces.
-    """
-    lines: list[str] = []
-    for item in document.wording:
-        lines.append(f"SEA_TRIALS.md {item.message}.")
-        lines.append(f"  expected: {item.expected}")
-        lines.append(f'  found:    "{item.criterion}"')
-        lines.append(
-            "  Rewrite the sentence so the system is the grammatical subject and it begins with "
-            "the pattern's leading keyword."
-        )
-    if lines:
-        lines.append("  Edit SEA_TRIALS.md directly, or re-run drydock analyze.")
-    return "\n".join(lines)
+    return pattern if pattern in EARS_PATTERNS else ""
 
 
 def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
@@ -373,7 +303,6 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
     lines = text.splitlines()
     trials: list[SeaTrial] = []
     questions: list[SeaTrialQuestion] = []
-    wording: list[WordingDiagnostic] = []
     seen: set[str] = set()
     index = 0
     while index < len(lines):
@@ -435,19 +364,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                 target=target,
                 unit=unit,
             )
-            pattern = _pattern(
-                fields.get("pattern", ""),
-                trial_type=trial_type,
-                criterion_id=criterion_id,
-            )
-            diagnostic = _wording_diagnostic(
-                pattern=pattern,
-                trial_type=trial_type,
-                criterion=criterion,
-                criterion_id=criterion_id,
-            )
-            if diagnostic is not None:
-                wording.append(diagnostic)
+            pattern = _pattern(fields.get("pattern", ""))
             trials.append(
                 SeaTrial(
                     criterion_id=criterion_id,
@@ -457,6 +374,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                     criterion=criterion,
                     verification=verification,
                     pattern=pattern,
+                    notation=derive_notation(pattern, criterion),
                     command=command,
                     extract=extract,
                     evidence=evidence,
@@ -500,7 +418,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             )
     if not trials:
         raise SpecificationError("SEA_TRIALS.md contains no project acceptance criteria")
-    return SeaTrialsDocument(project, tuple(trials), tuple(questions), tuple(wording))
+    return SeaTrialsDocument(project, tuple(trials), tuple(questions))
 
 
 def _strip_documentation(text: str) -> str:
@@ -520,7 +438,13 @@ def _strip_documentation(text: str) -> str:
 
 
 def _format_trial_fields(text: str) -> str:
-    """Put populated criterion fields on aligned, individual lines."""
+    """Put populated criterion fields on aligned, individual lines.
+
+    ``Notation`` is Drydock's, not the author's: it is derived from the criterion's own Pattern and
+    prose and overwrites whatever the source carried. Deriving it here rather than from a parsed
+    document keeps :func:`normalize_sea_trials_text` unable to raise, so raw model output is still
+    normalized before it is validated.
+    """
     lines = text.splitlines()
     formatted: list[str] = []
     index = 0
@@ -548,6 +472,9 @@ def _format_trial_fields(text: str) -> str:
             value_end = matches[position + 1].start() if position + 1 < len(matches) else None
             fields[match.group("key").lower()] = field_text[match.end() : value_end].strip()
         if fields:
+            fields["notation"] = derive_notation(
+                fields.get("pattern", ""), fields.get("criterion", "")
+            )
             for name in _FIELD_NAMES:
                 value = fields.get(name.lower(), "")
                 if value:

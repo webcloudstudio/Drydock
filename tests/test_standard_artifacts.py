@@ -70,6 +70,9 @@ def test_render_console_labels_compass_feedback_files():
     assert items["plan_compass"]["path"] == "../PLAN_COMPASS.md"
     assert "help_text" in items["plan_compass"]
     assert "prompt_text" in items["plan_compass"]
+    assert items["plan_compass"]["section"] == "analyze"
+    assert items["analysis"]["order"] < items["plan_compass"]["order"]
+    assert items["plan_compass"]["order"] < items["sea_trials"]["order"]
     assert "build_compass" not in items
 
 
@@ -126,9 +129,13 @@ def test_render_console_groups_artifacts_by_phase():
     assert items["sea_trials"]["section"] == "analyze"
     assert items["soundings"]["section"] == "analyze"
     assert items["board"]["section"] == "implement"
-    assert items["plan_compass"]["section"] == "implement"
+    assert items["plan_compass"]["section"] == "analyze"
     assert items["refit_status"]["section"] == "refit"
     assert items["refit_status"]["type"] == "refit"
+    assert (
+        next(section for section in parsed["sections"] if section["id"] == "implement")["label"]
+        == "Build"
+    )
 
 
 def test_all_programmatic_acceptance_gathers_implemented_specs_deduped(tmp_path):

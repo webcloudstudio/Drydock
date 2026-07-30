@@ -589,6 +589,10 @@ def nav_model() -> list[dict[str, Any]]:
         if not _item_file_exists(item):
             continue
         sid = item.get("section", "project_pages")
+        # Compatibility for target-local consoles created before Plan Compass moved
+        # into Analysis. ANALYSIS.md is the lifecycle authority for the move.
+        if item.get("id") == "plan_compass" and (PROJECT_ROOT / "ANALYSIS.md").is_file():
+            sid = "analyze"
         if sid not in by_section:
             by_section[sid] = []
             order.append(sid)
@@ -604,6 +608,8 @@ def nav_model() -> list[dict[str, Any]]:
         docs = sorted(by_section.get(sid, []), key=lambda d: d.get("order", 0))
         sec_cfg = config_map.get(sid, {})
         label = sec_cfg.get("label", sid.replace("_", " ").title())
+        if sid in {"implement", "plan"} and str(label).casefold() == "implement":
+            label = "Build"
         if sid == "core":
             label = _current_project_name()
         sections.append({

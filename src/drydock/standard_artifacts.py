@@ -128,7 +128,7 @@ project:
 sections:
   - {{ id: setup, label: "Setup", dot: "#64748b", pinned: true }}
   - {{ id: analyze, label: "Analysis", dot: "#0d9488", pinned: true }}
-  - {{ id: implement, label: "Implement", dot: "#2CB67D" }}
+  - {{ id: implement, label: "Build", dot: "#2CB67D" }}
   - {{ id: refit, label: "Refit", dot: "#d97706" }}
 
 items:
@@ -139,10 +139,10 @@ items:
   - {{ id: analyze_compass, label: "Analyze Compass", section: setup, type: editable_markdown, path: ../ANALYZE_COMPASS.md, order: 4, help_text: {json.dumps(analyze_compass.help_text)}, prompt_text: {json.dumps(analyze_compass.prompt_text)} }}
   - {{ id: exclude_files, label: "Exclude Files", section: setup, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 5, help_text: {json.dumps(exclude_files.help_text)}, prompt_text: {json.dumps(exclude_files.prompt_text)} }}
   - {{ id: analysis, label: "Analysis", section: analyze, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 1, help_text: {json.dumps(analysis.help_text if analysis else "")} }}
-  - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 2, help_text: {json.dumps(sea_trials_help)} }}
-  - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 3, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
+  - {{ id: plan_compass, label: "Plan Compass", section: analyze, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 2, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
+  - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 3, help_text: {json.dumps(sea_trials_help)} }}
+  - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 4, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
   - {{ id: board, label: "Kanban Board", section: implement, type: kanban, path: ../MANIFEST.md, order: 2 }}
-  - {{ id: plan_compass, label: "Plan Compass", section: implement, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 3, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
   - {{ id: scorecard, label: "Build Score", section: implement, type: markdown, path: ../SCORECARD.md, order: 4, help_text: {json.dumps(scorecard_help)} }}
   - {{ id: refit_status, label: "Refit", section: refit, type: refit, order: 1, help_text: "Blueprints that changed since they were applied to the Manifest, plus waiting change tickets. Run drydock refit to fold them in. Never-built blueprints are build items, not refit items." }}
 {build_compass_item}

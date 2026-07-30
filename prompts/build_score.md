@@ -1,7 +1,7 @@
 ---
 name: build_score
 description: Evidence-bound technical quality and project acceptance assessment.
-version: 20260722 V3
+version: 20260730 V4
 intent: Judge the completed project only from supplied deterministic facts and evidence; never infer missing proof.
 command: drydock build score
 model: opus
@@ -40,6 +40,11 @@ Judge every supplied Sea Trial exactly once. Use `PASS`, `FAIL`, or `INCONCLUSIV
 so report the evidence honestly rather than attempting to reinterpret numeric results.
 Recommendations must be ranked, actionable, evidence-based improvements suitable for later
 conversion into refit tickets.
+
+Every supplied Sea Trial carries a `notation`. `ears` means the criterion is written in the EARS
+pattern it declares. `other` means it is written in plain English. Both are equally binding: judge
+each criterion on the behavior or outcome it states. Notation is never a reason to downgrade a
+verdict, discount a dimension, or return `INCONCLUSIVE`.
 
 A `guardrail` is an absolute prohibition. Return `PASS` only when the supplied evidence positively
 shows the prohibition held; absent evidence is `INCONCLUSIVE`, which Drydock reports as

@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260724 V17
+version: 20260730 V18
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -245,7 +245,7 @@ decision; it never resolves a blocker. Do not duplicate a questionnaire question
 - *Consumes:* the story list + the Gap Checklist findings routed to "project-wide" + the COMPASS
   (existing file or the COMPASS you will emit in step 10).
 - *Emits:* structured SEA_TRIALS.md project criteria with stable IDs, one observable behavior or
-  outcome per criterion, EARS wording and a `Pattern` for technical/behavioral/guardrail criteria,
+  outcome per criterion, EARS wording and a `Pattern` where it reads clearly,
   a `guardrail` for each prohibition the sources state or imply, and unresolved measurement facts
   under `QUESTIONS:`.
 - Before finalizing, confirm coverage:
@@ -415,9 +415,9 @@ documentation. Never emit `###` headings or explanatory prose.
 
 Type: {technical | behavioral | qualitative | outcome | guardrail}
 Required: {yes | no}
-Criterion: {One observable behavior or outcome. EARS-shaped for technical, behavioral, and guardrail; plain English for qualitative and outcome.}
+Criterion: {One observable behavior or outcome. Preferably EARS-shaped for technical, behavioral, and guardrail; plain English where that reads more clearly, and always for qualitative and outcome.}
 Verification: {proof | measurement | evidence | llm}
-Pattern: {ubiquitous | event | state | option | unwanted — technical/behavioral/guardrail only}
+Pattern: {optional — ubiquitous | event | state | option | unwanted; declare it only when the Criterion is written in that shape}
 
 Emit only populated optional fields. Each field occupies its own line; align values after the
 field names. Do not combine fields on one line.
@@ -673,10 +673,10 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
 - SEA_TRIALS.md criteria are project-level and use stable `st-*` IDs. Preserve prior IDs for the
   same criterion on reruns. Technical and behavioral criteria normally use Blueprint proof;
   outcomes use measurement; subjective criteria use evidence-bound LLM judgment.
-- Technical, behavioral, and guardrail criteria are written in EARS and declare the `Pattern`
-  their `Criterion` matches:
+- Technical, behavioral, and guardrail criteria are preferably written in EARS, declaring the
+  `Pattern` their `Criterion` matches:
 
-  | Pattern | Required shape |
+  | Pattern | Shape |
   |---|---|
   | `ubiquitous` | `The <system> shall <response>` |
   | `event` | `When <trigger>, the <system> shall <response>` |
@@ -684,16 +684,15 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   | `option` | `Where <feature>, the <system> shall <response>` |
   | `unwanted` | `If <trigger>, then the <system> shall <mitigation>` |
 
-  Drydock checks the shape literally. The `Criterion` string begins with its pattern's leading
-  keyword (`The`, `When`, `While`, `Where`, `If`), and the system under test is the grammatical
-  subject of `shall`. Stating the requirement from the test's point of view fails the check:
-
-  | | |
-  |---|---|
-  | Rejected | `Every supplied CommonMark conformance example shall pass.` |
-  | Accepted | `The parser shall pass every supplied CommonMark conformance example.` |
-
-- Qualitative and outcome criteria never use EARS and leave `Pattern` blank. They are measurement
+  A criterion in EARS begins with its pattern's leading keyword (`The`, `When`, `While`, `Where`,
+  `If`) and makes the system under test the grammatical subject of `shall`. Prefer the system's
+  point of view — `The parser shall pass every supplied CommonMark conformance example.` over
+  `Every supplied CommonMark conformance example shall pass.` Where a requirement is clearer in
+  plain English, write it in plain English and omit `Pattern`; clarity outranks the notation.
+  `Pattern` is optional on every criterion, and declaring it commits the sentence to that shape.
+- Never emit a `Notation` field. Drydock derives it from the `Pattern` and the `Criterion`, marking
+  each criterion `ears` or `other`. Both are equally binding and neither affects any verdict.
+- Qualitative and outcome criteria are plain English and leave `Pattern` blank. They are measurement
   contracts settled by `Baseline`, `Operator`, `Target`, and `Unit`.
 - A `guardrail` is an absolute prohibition the project may never do — a *never*, not a target. It
   is a prohibition written either as `Pattern: unwanted` when it has a trigger

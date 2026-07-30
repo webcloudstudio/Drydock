@@ -1222,6 +1222,7 @@ class TestAnalyze:
         assert result.ok
         assert result.analysis_path.exists()
         assert result.sea_trials_path.exists()
+        assert (target_dir / "PLAN_COMPASS.md").read_text(encoding="utf-8") == "# Plan Compass\n"
         assert not (target_dir / "SOUNDINGS.md").exists()
         assert "## Open Questions" not in result.analysis_path.read_text(encoding="utf-8")
 
@@ -1235,82 +1236,61 @@ class TestAnalyze:
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
         assert result.sea_trials_path == target_dir / "SEA_TRIALS.md"
 
-    def test_ears_wording_slip_is_repaired_by_a_second_pass(self, tmp_path):
-        # Observed on the commonmark target: a criterion stating the requirement from the test's
-        # point of view. One bounded re-ask corrects the wording; nothing is blocked.
+    def test_plain_english_criterion_is_notated_other_in_one_call(self, tmp_path):
+        # Wording is not admission. A criterion that does not follow the EARS pattern it declares is
+        # recorded as `Notation: other`, in one call, with no warning and no repair pass.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        bad_wording = _VALID_LLM_OUTPUT.replace(
+        plain_english = _VALID_LLM_OUTPUT.replace(
             _SEA_TRIALS_CONTENT,
             """# Sea Trials: TestProject
 
 ## st-001: Complete conformance
 Type: technical
 Required: yes
-Criterion: Every supplied conformance example shall pass.
+Criterion: Every supplied conformance example passes.
 Verification: llm
 Pattern: ubiquitous""",
         )
-        repaired = """=== SEA_TRIALS.md ===
-# Sea Trials: TestProject
-
-## st-001: Complete conformance
-Type: technical
-Required: yes
-Criterion: The parser shall pass every supplied conformance example.
-Verification: llm
-Pattern: ubiquitous
-=== END SEA_TRIALS.md ==="""
         calls: list[str] = []
 
         def runner(prompt_text, *args, **kwargs):
             calls.append(prompt_text)
-            return FakeRun(text=repaired if len(calls) > 1 else bad_wording)
+            return FakeRun(text=plain_english)
 
         result = analyze("MyTarget", target_dir, runner=runner)
 
         assert result.ok is True
-        assert len(calls) == 2
+        assert len(calls) == 1
         assert result.sea_trials_created is True
         assert result.warnings == ()
         sea_trials = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
-        assert "The parser shall pass every supplied conformance example." in sea_trials
+        assert "Criterion: Every supplied conformance example passes." in sea_trials
+        assert "Notation:  other" in sea_trials
         assert not (target_dir / "BLOCKERS.md").exists()
 
-    def test_unrepaired_ears_wording_warns_but_never_blocks(self, tmp_path):
-        # The repair pass returns the same bad wording. The criteria are still usable, so the
-        # document is written and the defect is carried as a warning for `score release`.
+    def test_proper_noun_criterion_is_notated_ears(self, tmp_path):
+        # The Marina regression: a proper-noun system name is correct EARS and must notate `ears`.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
-        bad_wording = _VALID_LLM_OUTPUT.replace(
+        proper_noun = _VALID_LLM_OUTPUT.replace(
             _SEA_TRIALS_CONTENT,
             """# Sea Trials: TestProject
 
-## st-001: Operational
-Type: guardrail
+## st-001: Registered project is explorable
+Type: behavioral
 Required: yes
-Criterion: The system shall be operational.
+Criterion: When a user registers a repository, Marina shall present the project.
 Verification: llm
-Pattern: ubiquitous""",
+Pattern: event""",
         )
-        calls: list[str] = []
 
-        def runner(prompt_text, *args, **kwargs):
-            calls.append(prompt_text)
-            return FakeRun(text=bad_wording)
-
-        result = analyze("MyTarget", target_dir, runner=runner)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=proper_noun))
 
         assert result.ok is True
-        assert len(calls) == 2
-        assert result.sea_trials_created is True
-        assert len(result.warnings) == 1
-        assert "must state a prohibition" in result.warnings[0]
-        sea_trials = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
-        assert "The system shall be operational." in sea_trials
-        assert not (target_dir / "BLOCKERS.md").exists()
+        assert result.warnings == ()
+        assert "Notation:  ears" in (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
 
     def test_structurally_invalid_sea_trials_is_a_blocker_without_failing_analyze(self, tmp_path):
-        # An unknown Pattern name makes the contract unusable; that is a genuine Commander gate
-        # and is not re-asked.
+        # A missing Criterion makes the contract unusable; that is a genuine Commander gate.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         broken = _VALID_LLM_OUTPUT.replace(
             _SEA_TRIALS_CONTENT,
@@ -1319,9 +1299,8 @@ Pattern: ubiquitous""",
 ## st-001: Operational
 Type: guardrail
 Required: yes
-Criterion: The system shall never lose an order.
 Verification: llm
-Pattern: whenever""",
+Pattern: unwanted""",
         )
         calls: list[str] = []
 
@@ -1335,13 +1314,13 @@ Pattern: whenever""",
         assert len(calls) == 1
         assert result.sea_trials_created is False
         assert result.warnings == (
-            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 has invalid Pattern: whenever",
+            "SEA_TRIALS.md was not created: SEA_TRIALS.md st-001 is missing Criterion",
         )
         assert not (target_dir / "SEA_TRIALS.md").exists()
         assert (target_dir / "ANALYSIS.md").exists()
         blockers = (target_dir / "BLOCKERS.md").read_text(encoding="utf-8")
         assert "blocker-sea-trials" in blockers
-        assert "invalid Pattern" in blockers
+        assert "is missing Criterion" in blockers
         assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_clean_analysis_makes_exactly_one_llm_call(self, tmp_path):

@@ -53,8 +53,6 @@ from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 from drydock.sea_trials import (
-    SeaTrialsDocument,
-    format_wording_failures,
     normalize_sea_trials_text,
     parse_sea_trials_text,
     project_questions,
@@ -62,8 +60,6 @@ from drydock.sea_trials import (
 from drydock.source_material import SourceMaterialFile, discover_source_material, inventory_markdown
 
 PROMPT_NAME = "analyze"
-#: Bounded second pass that corrects EARS wording without re-deriving the analysis.
-REPAIR_PROMPT_NAME = "analyze_sea_trials_repair"
 
 #: Projected from the SEA_TRIALS.md QUESTIONS: block by this module; the LLM never emits it.
 SEA_TRIALS_QUESTIONNAIRE = "discovery-sea-trials.json"
@@ -907,8 +903,8 @@ def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
     """Add the acceptance-contract gate when no usable Sea Trials contract exists.
 
     Reserved for the structural case: analyze returned no criteria, or the criteria cannot be
-    parsed into a machine-usable contract. EARS wording defects never reach here — they are
-    repaired in ``_repair_sea_trials_wording`` and otherwise carried as a warning.
+    parsed into a machine-usable contract. Notation never reaches here: a criterion written in
+    plain English rather than EARS is recorded as ``Notation: other`` and is fully usable.
     """
     if blockers and _SEA_TRIALS_BLOCKER_ID in _BLOCKER_ID_RE.findall(blockers):
         return blockers
@@ -923,116 +919,6 @@ def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
         if blockers
         else ("# Blockers: Project Acceptance\n\n" + sea_trials_blocker)
     )
-
-
-def _assemble_sea_trials_repair(
-    body: str,
-    sea_trials_text: str,
-    document: SeaTrialsDocument,
-    *,
-    blueprint_dir: Path,
-) -> PromptAssembly:
-    """Assemble the bounded EARS repair prompt: the offending criteria plus the whole document."""
-    offenders = [
-        f"- {item.criterion_id}: declares Pattern: {item.pattern}; "
-        f'expected shape "{item.expected}"; current Criterion: "{item.criterion}"'
-        for item in document.wording
-    ]
-    parts = [
-        system_preamble_part(),
-        part("Repair prompt", body, kind="prompt"),
-        section_heading_part("# Input Context"),
-        lines_part(
-            "Repair job",
-            [
-                "## Repair job",
-                "",
-                f"- BLUEPRINT_PATH: {blueprint_dir}",
-                "- Correct the Criterion wording of exactly these criteria and nothing else:",
-                *offenders,
-                "",
-            ],
-            kind="job",
-        ),
-        part(
-            "SEA_TRIALS.md",
-            "## Current SEA_TRIALS.md\n\n```markdown\n" + sea_trials_text.strip() + "\n```\n",
-            kind="source",
-            role="document to correct",
-        ),
-    ]
-    return PromptAssembly(parts=tuple(parts))
-
-
-def _repair_sea_trials_wording(
-    sea_trials_text: str,
-    document: SeaTrialsDocument,
-    *,
-    run: RunnerFn,
-    target: str,
-    target_dir: Path,
-    blueprint_dir: Path,
-    llm_provider: str | None,
-    model: str | None,
-    log_dir: Path | None,
-    on_text: TextCallback | None,
-) -> tuple[str, SeaTrialsDocument]:
-    """Re-ask once to fix EARS wording; return the repaired pair, or the original unchanged.
-
-    Bounded to a single attempt. Any failure — a failed call, unparsable output, a structural
-    regression, or wording that is still wrong — keeps the original document, which the caller
-    then carries as a warning.
-    """
-    try:
-        prompt = load_prompt(REPAIR_PROMPT_NAME)
-    except DrydockError:
-        return sea_trials_text, document
-    assembly = _assemble_sea_trials_repair(
-        prompt.body, sea_trials_text, document, blueprint_dir=blueprint_dir
-    )
-    if on_text is not None:
-        on_text(
-            "Correcting EARS wording in "
-            + ", ".join(item.criterion_id for item in document.wording)
-            + "..."
-        )
-    try:
-        result = run(
-            assembly.rendered_text,
-            target_dir,
-            llm=llm_provider,
-            model=model or prompt.model,
-            command_name="analyze",
-            parameters={"target": target, "task": "sea-trials-ears-repair"},
-            log_dir=log_dir,
-            target=target,
-            on_text=on_text,
-            prompt_assembly=assembly,
-        )
-    except DrydockError:
-        return sea_trials_text, document
-    if not result.ok or not result.text.strip():
-        return sea_trials_text, document
-    try:
-        blocks = parse_artifact_blocks(
-            result.text, label="Analyze", allowed_names={"SEA_TRIALS.md"}
-        )
-        repaired_raw = blocks.get("SEA_TRIALS.md")
-        if not repaired_raw:
-            return sea_trials_text, document
-        repaired_text = normalize_sea_trials_text(repaired_raw)
-        repaired_document = parse_sea_trials_text(repaired_text)
-    except (DrydockError, ValueError):
-        return sea_trials_text, document
-    # Accept only a strict improvement: the repair must fix the wording without dropping or
-    # renaming criteria. Anything else and the original stands.
-    if repaired_document.wording:
-        return sea_trials_text, document
-    if [trial.criterion_id for trial in repaired_document.trials] != [
-        trial.criterion_id for trial in document.trials
-    ]:
-        return sea_trials_text, document
-    return repaired_text, repaired_document
 
 
 def _parse_output(
@@ -1226,38 +1112,21 @@ def analyze(
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
 
-    # Sea Trials admission is two-tiered. A structural defect makes the contract unusable and is a
-    # genuine Commander blocker. An EARS wording slip is a copy-editing defect that nothing
-    # computes on, so it is repaired here and, failing that, carried as a warning and gated at
-    # `drydock score release` — never converted into a blocker.
+    # Sea Trials admission is structural only. A contract that cannot be parsed into machine-usable
+    # criteria is a genuine Commander blocker. How a criterion is worded is not admission: EARS and
+    # plain English are both accepted, recorded as `Notation: ears` or `Notation: other`, and
+    # explained to the judge at scoring time.
     sea_trials_blocker: str | None = None
-    sea_trials_warning: str | None = None
     if sea_trials_text is None:
         sea_trials_blocker = (
             "SEA_TRIALS.md was not created: analyze returned no acceptance criteria."
         )
     else:
         try:
-            document = parse_sea_trials_text(sea_trials_text)
+            parse_sea_trials_text(sea_trials_text)
         except SpecificationError as exc:
             sea_trials_blocker = f"SEA_TRIALS.md was not created: {exc}"
             sea_trials_text = None
-        else:
-            if document.wording:
-                sea_trials_text, document = _repair_sea_trials_wording(
-                    sea_trials_text,
-                    document,
-                    run=run,
-                    target=target,
-                    target_dir=target_dir,
-                    blueprint_dir=blueprint_dir,
-                    llm_provider=llm_provider,
-                    model=model,
-                    log_dir=log_dir,
-                    on_text=on_text,
-                )
-            if document.wording:
-                sea_trials_warning = format_wording_failures(document)
 
     if compass_pending and not compass_text:
         return _fail("Imported COMPASS.md was not normalized by analyze output")
@@ -1368,6 +1237,12 @@ def analyze(
     stamp_last(target_dir, "analyzed")
     set_sub_state(target_dir, "complete")
 
+    # Planning guidance becomes actionable as soon as Analysis exists. Initialize its
+    # human-owned Compass now so QuarterDeck can surface it before plan creation.
+    from drydock.planning_session import ensure_feedback_file as ensure_plan_compass
+
+    ensure_plan_compass(target_dir)
+
     # Commanders Chair reflects the current analyzed state; delegate to shared builder.
     set_build_state(target_dir, "analyzed")
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
@@ -1391,6 +1266,6 @@ def analyze(
         execution_id=exec_id,
         ok=True,
         blockers_path=written_blockers,
-        warnings=tuple(item for item in (sea_trials_blocker, sea_trials_warning) if item),
+        warnings=tuple(item for item in (sea_trials_blocker,) if item),
         sea_trials_created=sea_trials_text is not None,
     )

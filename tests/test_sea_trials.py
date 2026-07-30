@@ -9,7 +9,6 @@ import pytest
 from drydock.errors import SpecificationError
 from drydock.sea_trials import (
     EARS_PATTERNS,
-    format_wording_failures,
     is_stack_selection_question,
     normalize_sea_trials_text,
     parse_sea_trials_text,
@@ -178,29 +177,41 @@ def test_each_ears_pattern_is_accepted(pattern, criterion):
     )
 
     assert document.trials[0].pattern == pattern
+    assert document.trials[0].notation == "ears"
 
 
 def test_every_ears_pattern_is_covered_by_a_test():
     assert set(EARS_PATTERNS) == {"ubiquitous", "event", "state", "option", "unwanted"}
 
 
-def test_each_ears_pattern_is_accepted_without_a_wording_diagnostic():
+@pytest.mark.parametrize(
+    ("pattern", "criterion"),
+    [
+        ("ubiquitous", "Marina shall register every repository beneath PROJECTS_DIR."),
+        ("event", "When a user registers a repository, Marina shall present the project."),
+        ("state", "While a scan is running, Marina shall reject a second scan."),
+        ("option", "Where AWS is configured, Marina shall report backend health."),
+        ("unwanted", "If a remote carries a credential, then Marina shall redact it."),
+    ],
+)
+def test_proper_noun_system_notates_ears(pattern, criterion):
+    # A proper-noun system name takes no article. Requiring the literal "the" classified correct
+    # EARS as non-conforming and drove a wasted repair pass on Marina's Sea Trials.
     document = parse_sea_trials_text(
         _trial(
-            type="technical",
+            type="behavioral",
             required="yes",
-            criterion="The system shall record every order.",
+            criterion=criterion,
             verification="proof",
-            pattern="ubiquitous",
+            pattern=pattern,
         )
     )
 
-    assert document.wording == ()
+    assert document.trials[0].notation == "ears"
 
 
-def test_criterion_not_matching_its_declared_pattern_is_a_wording_diagnostic():
-    # Wording is not structure. The document stays usable so a copy-editing slip cannot halt the
-    # pipeline; analyze repairs it and `score release` gates on it.
+def test_criterion_not_matching_its_declared_pattern_notates_other():
+    # Notation describes; it never blocks. The criterion stands exactly as written.
     document = parse_sea_trials_text(
         _trial(
             type="behavioral",
@@ -211,91 +222,61 @@ def test_criterion_not_matching_its_declared_pattern_is_a_wording_diagnostic():
         )
     )
 
-    assert len(document.trials) == 1
-    assert document.trials[0].criterion == "Orders get recorded eventually."
-    assert len(document.wording) == 1
-    diagnostic = document.wording[0]
-    assert diagnostic.criterion_id == "st-001"
-    assert diagnostic.pattern == "event"
-    assert diagnostic.expected == "When <trigger>, the <system> shall <response>"
-    assert diagnostic.criterion == "Orders get recorded eventually."
+    trial = document.trials[0]
+    assert trial.criterion == "Orders get recorded eventually."
+    assert trial.pattern == "event"
+    assert trial.notation == "other"
 
 
-def test_format_wording_failures_names_the_criterion_and_the_expected_shape():
+def test_unrecognized_pattern_name_notates_other_without_raising():
     document = parse_sea_trials_text(
         _trial(
             type="technical",
             required="yes",
-            criterion="Every supplied conformance example shall pass.",
+            criterion="The system shall record orders.",
             verification="proof",
-            pattern="ubiquitous",
+            pattern="whenever",
         )
     )
 
-    text = format_wording_failures(document)
-
-    assert "st-001" in text
-    assert "The <system> shall <response>" in text
-    assert '"Every supplied conformance example shall pass."' in text
-    assert "SEA_TRIALS.md" in text
+    trial = document.trials[0]
+    assert trial.pattern == ""
+    assert trial.notation == "other"
 
 
-def test_format_wording_failures_is_empty_for_a_clean_document():
+def test_assertion_type_without_a_pattern_notates_other():
     document = parse_sea_trials_text(
         _trial(
             type="technical",
             required="yes",
-            criterion="The system shall record every order.",
+            criterion="Conversion completes without manual intervention.",
             verification="proof",
+        )
+    )
+
+    assert document.trials[0].notation == "other"
+
+
+def test_qualitative_criterion_may_declare_a_pattern():
+    # Pattern is decorative on every type: it is notated from conformance, never rejected.
+    document = parse_sea_trials_text(
+        _trial(
+            type="qualitative",
+            required="yes",
+            criterion="The workflow is understandable.",
+            verification="llm",
             pattern="ubiquitous",
         )
     )
 
-    assert format_wording_failures(document) == ""
+    assert document.trials[0].trial_type == "qualitative"
+    # The prose carries no `shall`, so it does not match the pattern it names: `other`, not an error.
+    assert document.trials[0].notation == "other"
 
 
-def test_invalid_pattern_name_is_still_rejected():
-    # The Pattern *name* is structural: it decides whether the trial is an assertion at all.
-    with pytest.raises(SpecificationError, match="invalid Pattern"):
-        parse_sea_trials_text(
-            _trial(
-                type="technical",
-                required="yes",
-                criterion="The system shall record orders.",
-                verification="proof",
-                pattern="whenever",
-            )
-        )
-
-
-def test_assertion_type_without_a_pattern_is_rejected():
-    with pytest.raises(SpecificationError, match="is missing Pattern"):
-        parse_sea_trials_text(
-            _trial(
-                type="technical",
-                required="yes",
-                criterion="The system shall record orders.",
-                verification="proof",
-            )
-        )
-
-
-def test_qualitative_criterion_must_not_declare_a_pattern():
-    with pytest.raises(SpecificationError, match="must not declare a Pattern"):
-        parse_sea_trials_text(
-            _trial(
-                type="qualitative",
-                required="yes",
-                criterion="The workflow is understandable.",
-                verification="llm",
-                pattern="ubiquitous",
-            )
-        )
-
-
-def test_positive_ubiquitous_guardrail_is_a_wording_diagnostic():
-    # A guardrail is a prohibition. A positive-worded ubiquitous criterion ("shall omit",
-    # not "shall not/never") is steered to Pattern: unwanted — as wording, not structure.
+def test_positive_ubiquitous_guardrail_is_accepted():
+    # Whether a guardrail reads as a prohibition is editorial, judged by the scoring prompt. It is
+    # not a notation question: this sentence matches its declared pattern, so it is `ears`.
     document = parse_sea_trials_text(
         _trial(
             type="guardrail",
@@ -306,9 +287,8 @@ def test_positive_ubiquitous_guardrail_is_a_wording_diagnostic():
         )
     )
 
-    assert len(document.wording) == 1
-    assert "must state a prohibition" in document.wording[0].message
-    assert document.wording[0].expected == "If <trigger>, then the <system> shall <mitigation>"
+    assert document.trials[0].trial_type == "guardrail"
+    assert document.trials[0].notation == "ears"
 
 
 def test_negative_ubiquitous_guardrail_is_accepted():
@@ -404,7 +384,46 @@ Type: guardrail Required: yes Criterion: If personal data is logged, then the sy
     assert "Criterion: If personal data is logged, then the system shall omit it." in normalized
     assert "Verification: proof" in normalized
     assert "Pattern:   unwanted" in normalized
+    assert "Notation:  ears" in normalized
     assert "Command:" not in normalized
+
+
+def test_normalization_writes_derived_notation_over_an_authored_value():
+    # Notation is Drydock's field. A model-authored or hand-edited value is always replaced by the
+    # value derived from the criterion's own Pattern and prose.
+    normalized = normalize_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-001: Example
+Type: behavioral
+Required: yes
+Criterion: Orders get recorded eventually.
+Verification: proof
+Pattern: event
+Notation: ears
+"""
+    )
+
+    assert "Notation:  other" in normalized
+    assert "Notation:  ears" not in normalized
+    assert normalize_sea_trials_text(normalized) == normalized
+    assert parse_sea_trials_text(normalized).trials[0].notation == "other"
+
+
+def test_normalization_notates_a_criterion_that_declares_no_pattern():
+    normalized = normalize_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-001: Example
+Type: qualitative
+Required: no
+Criterion: Browsing 200 projects stays responsive on a laptop.
+Verification: llm
+"""
+    )
+
+    assert "Notation:  other" in normalized
+    assert normalize_sea_trials_text(normalized) == normalized
 
 
 def test_projects_questions_and_preserves_answers(tmp_path):

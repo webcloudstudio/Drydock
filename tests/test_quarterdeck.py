@@ -927,7 +927,7 @@ def test_nav_renders_bottom_target_switcher(tmp_path, monkeypatch):
     assert "collapse-arrow" not in rendered
 
 
-def test_render_nav_includes_implement_flag_and_static_sections(monkeypatch):
+def test_render_nav_renames_implement_flag_to_build(monkeypatch):
     quarterdeck = _load_quarterdeck()
     monkeypatch.setattr(
         quarterdeck,
@@ -952,8 +952,8 @@ def test_render_nav_includes_implement_flag_and_static_sections(monkeypatch):
 
     rendered = quarterdeck.render_nav()
 
-    # The implement phase renders its label uppercased alongside the section flag.
-    assert "IMPLEMENT" in rendered
+    assert "BUILD" in rendered
+    assert "IMPLEMENT" not in rendered
     assert "sec-flag" in rendered
     assert "onclick='toggleSection" not in rendered
     assert "collapse-arrow" not in rendered
@@ -1005,8 +1005,44 @@ def test_render_nav_phase_headers_show_target_flag_and_right_phase(monkeypatch):
     assert "<span class='section-target-name'>STIM</span>" in rendered
     assert "<span class='section-phase-name'>SETUP</span>" in rendered
     assert "<span class='section-phase-name'>ANALYSIS</span>" in rendered
-    assert "<span class='section-phase-name'>IMPLEMENT</span>" in rendered
+    assert "<span class='section-phase-name'>BUILD</span>" in rendered
     assert "data-sec='plan'" in rendered
+
+
+def test_nav_moves_legacy_plan_compass_to_analysis_after_analyze(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "Example"
+    target_dir.mkdir()
+    (target_dir / "ANALYSIS.md").write_text("# Analysis\n", encoding="utf-8")
+    (target_dir / "PLAN_COMPASS.md").write_text("# Plan Compass\n", encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target_dir)
+    monkeypatch.setattr(
+        quarterdeck,
+        "CONFIG",
+        {
+            "sections": [
+                {"id": "analyze", "label": "Analysis"},
+                {"id": "implement", "label": "Implement"},
+            ],
+            "items": [
+                {
+                    "id": "plan_compass",
+                    "label": "Plan Compass",
+                    "section": "implement",
+                    "type": "editable_markdown",
+                    "path": "../PLAN_COMPASS.md",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    monkeypatch.setattr(quarterdeck, "_item_file_exists", lambda _item: True)
+
+    sections = {section["id"]: section for section in quarterdeck.nav_model()}
+
+    assert [item["id"] for item in sections["analyze"]["items"]] == ["plan_compass"]
+    assert sections["implement"]["label"] == "Build"
+    assert sections["implement"]["items"] == []
 
 
 def test_render_nav_includes_build_compass_item_flag(monkeypatch):

@@ -280,28 +280,32 @@ def test_release_score_fails_on_failing_proof(tmp_path):
     assert any("st-proof" in blocker for blocker in result.blockers)
 
 
-def test_release_score_blocks_on_non_ears_criterion_wording(tmp_path):
-    # The release gate is the one hard EARS gate: earlier stages tolerate the wording so a
-    # copy-editing slip never halts the pipeline, but the project cannot be declared delivered
-    # against a criterion that does not read as a requirement.
+def test_release_score_accepts_a_plain_english_criterion(tmp_path):
+    # Notation is not a gate. A criterion written outside the EARS pattern it declares is judged on
+    # what it states, and its notation is handed to the judge as a fact.
     target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
     sea = target_dir / "SEA_TRIALS.md"
     sea.write_text(
         sea.read_text(encoding="utf-8").replace(
             "Criterion: The built artifact shall contain its marker.",
-            "Criterion: Every built artifact shall contain its marker.",
+            "Criterion: Every built artifact contains its marker.",
         ),
         encoding="utf-8",
     )
+    prompts: list[str] = []
 
-    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+    def runner(prompt_text, *args, **kwargs):
+        prompts.append(prompt_text)
+        return _runner(proof_verdict="PASS")(prompt_text, *args, **kwargs)
 
-    assert not result.complete
-    assert result.exit_code() == 1
-    wording = [blocker for blocker in result.blockers if "st-proof" in blocker]
-    assert wording, result.blockers
-    assert "The <system> shall <response>" in wording[0]
-    assert '"Every built artifact shall contain its marker."' in wording[0]
+    result = score_release("Demo", target_dir, runner=runner)
+
+    assert result.complete
+    assert result.exit_code() == 0
+    assert result.blockers == ()
+    # The evidence facts are the last fenced JSON block; the prompt body carries the reply shape.
+    facts = json.loads(prompts[0].split("```json\n")[-1].split("\n```")[0])
+    assert [trial["notation"] for trial in facts["sea_trials"]] == ["other"]
 
 
 def test_release_score_blocks_on_dirty_worktree(tmp_path):

@@ -52,7 +52,6 @@ from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import (
     DETERMINISTIC_VERIFICATION,
-    format_wording_failures,
     load_sea_trials,
 )
 from drydock.source_roles import tampered_build_assets
@@ -270,11 +269,6 @@ def score_release(
 
     blockers: list[str] = []
     warnings: list[str] = []
-    # The release gate is the one hard EARS gate. Earlier stages tolerate a wording defect so a
-    # copy-editing slip never halts the pipeline, but a criterion the project is judged against
-    # must read unambiguously before the project can be declared delivered.
-    if document.wording:
-        blockers.append(format_wording_failures(document))
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     incomplete = [block.block_id for block in executable if block.state != "closed/verified"]
     if incomplete:

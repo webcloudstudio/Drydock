@@ -8,6 +8,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-07-29: Sea Trials EARS conformance is now a derived `Notation: ears | other` label on every
+  criterion rather than an enforced requirement. `Pattern` is optional and never a parse error,
+  plain-English criteria are fully valid, and both notations are explained to the judge at scoring
+  time. Removes the `drydock analyze` EARS repair pass and the `drydock score release` wording
+  gate; the pattern shapes now accept a proper-noun system name.
+
 ## [0.1.4] — Unreleased
 
 ### Added
