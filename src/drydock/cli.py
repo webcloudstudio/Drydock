@@ -2151,22 +2151,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Do not call the LLM to diagnose an opaque failure.",
     )
+    # Console encoding is detected per run and needs no flag. These override that decision when
+    # the detection is wrong for a particular terminal.
     parser.add_argument(
         "--ascii",
         dest="ascii",
         action="store_true",
         default=None,
-        help=(
-            "Render output as plain ASCII. Applied automatically when the console encoding "
-            "cannot carry Drydock's glyphs (DRYDOCK_ASCII=1 does the same)."
-        ),
+        help="Override console detection: render plain ASCII.",
     )
     parser.add_argument(
         "--unicode",
         dest="ascii",
         action="store_false",
         default=None,
-        help="Keep Unicode glyphs even when the console encoding is not detected as capable.",
+        help="Override console detection: keep Unicode glyphs.",
     )
     # Invocation-wide: stripped from argv before this parser runs, and declared here so the
     # top-level help documents what every command accepts.
