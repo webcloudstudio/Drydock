@@ -138,7 +138,7 @@ title and sidebar headings use the **target directory name**, not `project.name`
 sections:
   - { id: setup,     label: "Setup",     dot: "#64748b", pinned: true }
   - { id: analyze,   label: "Analysis",  dot: "#0d9488", pinned: true }
-  - { id: implement, label: "Implement", dot: "#2CB67D" }
+  - { id: implement, label: "Build", dot: "#2CB67D" }
   - { id: refit,     label: "Refit",     dot: "#d97706" }
 ```
 
