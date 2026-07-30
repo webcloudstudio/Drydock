@@ -677,7 +677,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         get_workspace,
         require_target_dir,
     )
-    from drydock.planning_session import create_plan
+    from drydock.planning_session import PlanDeferredResult, create_plan
     from drydock.quarterdeck_state import commanders_chair_command
 
     def _progress(text: str) -> None:
@@ -707,6 +707,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
             ),
         )
+    if isinstance(result, PlanDeferredResult):
+        print()
+        print(_render_plan_deferred(result, target=args.Target))
+        return 2
     print()
     mode_label = {
         "reuse-manifest-first": "REUSE (existing Blueprint specs preserved)",
@@ -3216,6 +3220,31 @@ def _render_recorded_error(record) -> str:
         lines += ["", indent + "Recovery"]
         lines += _block(record.recovery.strip(), pad=indent + "  ")
     lines += ["", border]
+    return "\n".join(lines)
+
+
+def _render_plan_deferred(result, *, target: str) -> str:
+    """Render a prominent, actionable handoff for a model-declared planning conflict."""
+    border = "=" * 72
+    lines = [
+        border,
+        "PLAN NEEDS COMMANDER DIRECTION",
+        border,
+        "",
+        "  Planning found unresolved product decisions. No model-generated",
+        "  Blueprint or Manifest artifacts were written.",
+        "",
+        f"  PLAN COMPASS: {result.feedback_path}",
+        "",
+        "  REQUIRED ACTION",
+        "    Edit the `## Commander Direction` section in PLAN_COMPASS.md.",
+        "    Resolve each generated blocker, then run:",
+        f"    drydock plan {target}",
+        "",
+        f"  Execution: {result.execution_id or '-'}",
+        "",
+        border,
+    ]
     return "\n".join(lines)
 
 

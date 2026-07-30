@@ -162,6 +162,17 @@ class PlanCreateResult:
 
 
 @dataclass(frozen=True)
+class PlanDeferredResult:
+    """Recoverable planning handoff requiring Commander direction."""
+
+    target_dir: Path
+    feedback_path: Path
+    detail: str
+    execution_id: str | None = None
+    plan_mode: str = ""
+
+
+@dataclass(frozen=True)
 class ExistingSpec:
     path: Path
     filename: str
@@ -1127,6 +1138,55 @@ def ensure_feedback_file(target_dir: Path) -> str:
             newline="\n",
         )
     return path.read_text(encoding="utf-8")
+
+
+_PLAN_BLOCKERS_START = "<!-- DRYDOCK PLAN BLOCKERS START -->"
+_PLAN_BLOCKERS_END = "<!-- DRYDOCK PLAN BLOCKERS END -->"
+_PLAN_BLOCKERS_RE = re.compile(
+    rf"\n*{re.escape(_PLAN_BLOCKERS_START)}.*?{re.escape(_PLAN_BLOCKERS_END)}\n*",
+    re.DOTALL,
+)
+_COMMANDER_DIRECTION_HEADING = "## Commander Direction"
+
+
+def _write_plan_compass_blockers(target_dir: Path, detail: str) -> Path:
+    """Persist model-declared blockers without replacing Commander direction."""
+    path = target_dir / _FEEDBACK_FILENAME
+    current = ensure_feedback_file(target_dir)
+    preserved = _PLAN_BLOCKERS_RE.sub("\n\n", current).rstrip()
+    if _COMMANDER_DIRECTION_HEADING not in preserved:
+        preserved += (
+            "\n\n## Commander Direction\n\n"
+            "Record the decisions that resolve the generated blockers above.\n"
+        )
+    generated = (
+        f"{_PLAN_BLOCKERS_START}\n"
+        "## Unresolved Plan Blockers\n\n"
+        f"{detail.strip()}\n"
+        f"{_PLAN_BLOCKERS_END}"
+    )
+    heading_at = preserved.find(_COMMANDER_DIRECTION_HEADING)
+    updated = (
+        preserved[:heading_at].rstrip()
+        + "\n\n"
+        + generated
+        + "\n\n"
+        + preserved[heading_at:].lstrip()
+        + "\n"
+    )
+    path.write_text(updated, encoding="utf-8", newline="\n")
+    return path
+
+
+def _clear_plan_compass_blockers(target_dir: Path) -> None:
+    """Remove resolved generated blockers while preserving Commander-authored content."""
+    path = target_dir / _FEEDBACK_FILENAME
+    if not path.is_file():
+        return
+    current = path.read_text(encoding="utf-8")
+    updated = _PLAN_BLOCKERS_RE.sub("\n\n", current).rstrip() + "\n"
+    if updated != current:
+        path.write_text(updated, encoding="utf-8", newline="\n")
 
 
 # ── Prompt assembly ────────────────────────────────────────────────────────────────
@@ -2431,7 +2491,7 @@ def create_plan(
     llm_provider: str | None = None,
     log_dir: Path | None = None,
     allow_diagnostic_recovery: bool = False,
-) -> PlanCreateResult:
+) -> PlanCreateResult | PlanDeferredResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
     blueprint_dir = target_dir / "blueprint"
@@ -2719,6 +2779,24 @@ def create_plan(
                 ),
             ) from reported_exc
     if validated_plan is None:
+        deferred_block = blocks.get("PLAN_CREATE_ERROR.txt") or blocks.get(
+            "PLAN_CREATE_BLOCKED.txt"
+        )
+        if deferred_block is not None and set(blocks) in (
+            {"PLAN_CREATE_ERROR.txt"},
+            {"PLAN_CREATE_BLOCKED.txt"},
+        ):
+            feedback_path = _write_plan_compass_blockers(target_dir, deferred_block)
+            from drydock.quarterdeck_state import refresh_commanders_chair
+
+            refresh_commanders_chair(target_dir)
+            return PlanDeferredResult(
+                target_dir=target_dir,
+                feedback_path=feedback_path,
+                detail=deferred_block.strip(),
+                execution_id=exec_id,
+                plan_mode=plan_mode,
+            )
         try:
             plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
         except Exception as exc:
@@ -2780,6 +2858,7 @@ def create_plan(
 
     # 2. Persist the already merged, normalized, fully validated executable graph once.
     plan.save(plan_path)
+    _clear_plan_compass_blockers(target_dir)
 
     # 4. The in-memory graph now reflects the target path and persisted artifact.
 

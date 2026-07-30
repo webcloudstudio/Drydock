@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260730 V21
+version: 20260730 V22
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -572,7 +572,8 @@ Required action:
 ### Error Mode
 
 Use Error Mode only when you cannot produce a complete, internally consistent Success Mode
-response. Emit only:
+response. Drydock writes this report into `PLAN_COMPASS.md` as a Commander-decision handoff and
+does not persist model-generated Blueprint or Manifest artifacts. Emit only:
 
 ```text
 === PLAN_CREATE_ERROR.txt ===
@@ -581,7 +582,7 @@ Error type: {format|missing-input|conflict|insufficient-specification|other}
 Reason:
 - {specific reason}
 Required action:
-- {specific user or source correction}
+- {specific decision the Commander must record in PLAN_COMPASS.md}
 === END PLAN_CREATE_ERROR.txt ===
 ```
 

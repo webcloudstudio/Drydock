@@ -15,6 +15,7 @@ import pytest
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.planning_session import (
+    PlanDeferredResult,
     _answered_discovery,
     _assemble_prompt,
     _load_prior_plan_state,
@@ -1333,20 +1334,17 @@ def test_missing_analysis_refuses(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
-def test_plan_create_blocked_block_refuses(tmp_path):
+def test_plan_create_blocked_block_defers_to_plan_compass(tmp_path):
     target_dir = _make_target(tmp_path)
     out = "=== PLAN_CREATE_BLOCKED.txt ===\nBlocked.\n=== END PLAN_CREATE_BLOCKED.txt ===\n"
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="Planning cannot proceed",
-    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert isinstance(result, PlanDeferredResult)
+    assert result.feedback_path == target_dir / "PLAN_COMPASS.md"
+    assert "Blocked." in result.feedback_path.read_text(encoding="utf-8")
 
 
-def test_plan_create_error_block_refuses_without_writes(tmp_path):
+def test_plan_create_error_block_defers_to_plan_compass_without_partial_writes(tmp_path):
     target_dir = _make_target(tmp_path)
     out = (
         "=== PLAN_CREATE_ERROR.txt ===\n"
@@ -1359,18 +1357,78 @@ def test_plan_create_error_block_refuses_without_writes(tmp_path):
         "=== END PLAN_CREATE_ERROR.txt ===\n"
     )
 
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="could not produce a complete plan",
-    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
+    assert isinstance(result, PlanDeferredResult)
+    compass = result.feedback_path.read_text(encoding="utf-8")
+    assert "## Unresolved Plan Blockers" in compass
+    assert "Missing route ownership." in compass
+    assert "Clarify route ownership." in compass
+    assert "## Commander Direction" in compass
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
     assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
+
+
+def test_repeated_plan_deferral_updates_blockers_and_preserves_commander_direction(tmp_path):
+    _make_target(tmp_path)
+    first = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Reason:\n- First conflict.\n"
+        "Required action:\n- Choose A or B.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(first))
+    compass_path = result.feedback_path
+    compass_path.write_text(
+        compass_path.read_text(encoding="utf-8").replace(
+            "Record the decisions that resolve the generated blockers above.",
+            "Use workflow A.",
+        ),
+        encoding="utf-8",
+    )
+    second = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Reason:\n- Second conflict.\n"
+        "Required action:\n- Choose C or D.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(second))
+
+    compass = compass_path.read_text(encoding="utf-8")
+    assert "First conflict." not in compass
+    assert "Second conflict." in compass
+    assert "Use workflow A." in compass
+    assert compass.count("## Unresolved Plan Blockers") == 1
+    assert compass.count("## Commander Direction") == 1
+
+
+def test_successful_replan_clears_generated_blockers_and_preserves_direction(tmp_path):
+    _make_target(tmp_path)
+    deferred = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Reason:\n- Choose a workflow.\n"
+        "Required action:\n- Record the default.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(deferred))
+    compass_path = result.feedback_path
+    compass_path.write_text(
+        compass_path.read_text(encoding="utf-8").replace(
+            "Record the decisions that resolve the generated blockers above.",
+            "The default is workflow A.",
+        ),
+        encoding="utf-8",
+    )
+
+    completed = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert not isinstance(completed, PlanDeferredResult)
+    compass = compass_path.read_text(encoding="utf-8")
+    assert "## Unresolved Plan Blockers" not in compass
+    assert "Choose a workflow." not in compass
+    assert "The default is workflow A." in compass
 
 
 def test_integrity_missing_implements_is_fatal(tmp_path):

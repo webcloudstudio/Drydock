@@ -969,6 +969,36 @@ class TestLlmOverrideFlags:
         assert rc == 0, err
         assert seen["kwargs"]["conform"] is False
 
+    def test_plan_conflict_returns_deferred_banner(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from drydock.planning_session import PlanDeferredResult
+
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        target_dir = tmp_target_root / "Proj"
+        (target_dir / "blueprint" / "sources").mkdir(parents=True)
+        feedback_path = target_dir / "PLAN_COMPASS.md"
+        feedback_path.write_text("# Plan Compass\n", encoding="utf-8")
+
+        def fake_create_plan(*args, **kwargs):
+            return PlanDeferredResult(
+                target_dir=target_dir,
+                feedback_path=feedback_path,
+                detail="Conflicting workflows.",
+                execution_id="exec-123",
+                plan_mode="full-rewrite",
+            )
+
+        monkeypatch.setattr("drydock.planning_session.create_plan", fake_create_plan)
+
+        rc, out, err = run_cli("plan", "Proj")
+
+        assert rc == 2
+        assert not err
+        assert "PLAN NEEDS COMMANDER DIRECTION" in out
+        assert "PLAN COMPASS:" in out
+        assert "drydock plan Proj" in out
+
 
 class TestPlanInspection:
     PLAN = """# MANIFEST: Example
@@ -2477,6 +2507,27 @@ def test_render_recorded_error_shows_diagnostic_and_recovery():
     assert end > start
     # Every line except the standalone file-path/command lines (indented 4 spaces) fits the border.
     assert all(len(line) <= 72 for line in lines if not line.startswith("    "))
+
+
+def test_render_plan_deferred_is_prominent_and_actionable(tmp_path):
+    from drydock.cli import _render_plan_deferred
+    from drydock.planning_session import PlanDeferredResult
+
+    result = PlanDeferredResult(
+        target_dir=tmp_path,
+        feedback_path=tmp_path / "PLAN_COMPASS.md",
+        detail="Conflicting workflows.",
+        execution_id="exec-123",
+    )
+
+    out = _render_plan_deferred(result, target="Marina")
+
+    assert "PLAN NEEDS COMMANDER DIRECTION" in out
+    assert "PLAN COMPASS:" in out
+    assert "## Commander Direction" in out
+    assert "No model-generated" in out
+    assert "drydock plan Marina" in out
+    assert "exec-123" in out
 
 
 def test_render_recorded_error_omits_recovery_when_empty():
