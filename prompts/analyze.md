@@ -88,7 +88,7 @@ Surfaced Acceptance Criteria, or SEA_TRIALS. Never ask the human to supply work 
 acceptance criteria, smoke checks, build gates, and test sequences are *outputs you synthesize*,
 not questions you ask. Outcome baselines, business thresholds, observation windows, and external
 measurement sources are different: never invent them. Record the criterion and emit a stable-ID
-entry under the SEA_TRIALS.md `QUESTIONS:` block for each missing human-owned measurement fact.
+entry under the SEA_TRIALS.md `## Questions` section for each missing human-owned measurement fact.
 
 A discovery questionnaire is delivered as a form for the human to answer. Do not raise one for a
 matter the sources, `ANALYZE_COMPASS.md`, prior `BLOCKERS.md` answers, or existing answered
@@ -269,7 +269,7 @@ depends on the answer. It never resolves a blocker. Do not duplicate a questionn
 - *Emits:* structured SEA_TRIALS.md project criteria with stable IDs, one observable behavior or
   outcome per criterion, EARS wording and a `Pattern` where it reads clearly,
   a `guardrail` for each prohibition the sources state or imply, and unresolved measurement facts
-  under `QUESTIONS:`.
+  under `## Questions`.
 - Before finalizing, confirm coverage:
   - [ ] A guardrail exists for every explicit or clearly implied prohibition
   - [ ] A timeout/failure criterion exists for every external service call the sources describe
@@ -475,8 +475,18 @@ question for a missing threshold when the source already requires all supplied t
 
 {Repeat one section per criterion.}
 
-QUESTIONS:
-- q-st-001-baseline: {Human-owned missing measurement fact. Omit the entire QUESTIONS block when none remain.}
+## Questions
+
+### Q-st-001-baseline: {Short question name}
+
+- Origin: analyze-questionnaire
+- Status: open
+
+#### Question
+
+{Human-owned missing measurement fact.}
+
+#### Answer
 === END SEA_TRIALS.md ===
 
 ```
@@ -660,7 +670,7 @@ and do not raise a stack questionnaire; the Commander edits this file directly.
   `TECHNOLOGY_STACK.md`, and reaches the builder through per-story `stack:` fields.
 - Never emit a questionnaire that asks the Commander to select the technology stack or Rigging
   files. That decision lives in `TECHNOLOGY_STACK.md`.
-- Do not include `## Open Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
+- Do not include `## Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
   questions live only in `discovery-*.json` questionnaire action items.
 - `## Surfaced Acceptance Criteria` is always present in `ANALYSIS.md`, "None." when empty. Its row
   count is never counted toward the Quality Signal or the `questions`/`blockers` summary fields.
@@ -728,13 +738,13 @@ and do not raise a stack questionnaire; the Commander edits this file directly.
 - Prefer `proof` or `measurement` for required technical, behavioral, and guardrail criteria. A
   required assertion resting only on `llm` judgment reduces the project's acceptance coverage score.
 - Never invent outcome baselines, targets, units, or external measurement sources. Emit stable-ID
-  `QUESTIONS:` entries for missing human-owned facts. Omit `QUESTIONS:` when none remain.
+  `## Questions` records for missing human-owned facts. Emit `- None.` when none remain.
 - Never emit a `discovery-sea-trials.json` block. Sea Trials questions live in the SEA_TRIALS.md
-  `QUESTIONS:` block; Drydock projects them into that questionnaire itself.
-- The SEA_TRIALS.md `QUESTIONS:` block holds only human-owned measurement facts (baselines,
+  `## Questions` section; Drydock projects them into that questionnaire itself.
+- The SEA_TRIALS.md `## Questions` section holds only human-owned measurement facts (baselines,
   targets, workloads, business measures). Never place a stack or Rigging selection question there —
   the technology stack is owned solely by `TECHNOLOGY_STACK.md` and must appear in no
-  questionnaire. Drydock drops any stack/Rigging question found in the Sea Trials QUESTIONS block.
+  questionnaire. Drydock drops any stack/Rigging question found in the Sea Trials Questions section.
 - All questionnaire JSON must be valid JSON.
 - Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources — there are no
   typed spec files at analyze time, so do not inspect or invent them.

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.errors import SpecificationError
+from drydock.questions import parse_questions, render_questions
 
 TRIAL_TYPES = frozenset({"technical", "behavioral", "qualitative", "outcome", "guardrail"})
 VERIFICATION_TYPES = frozenset({"proof", "measurement", "evidence", "llm"})
@@ -111,7 +112,6 @@ def _validate_universal_suite_contract(
 _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", re.I)
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
 _PLACEHOLDER_RE = re.compile(r"<[^<>]+>")
-_QUESTION_RE = re.compile(r"^-\s+(?P<id>q-[a-z0-9-]+):\s*(?P<text>.+?)\s*$", re.I)
 #: Stack/Rigging selection is owned solely by ``TECHNOLOGY_STACK.md``. A Sea Trials
 #: QUESTIONS entry that asks the Commander to pick Rigging stack components is a misplaced
 #: duplicate and is dropped so stack is never asked in a second questionnaire.
@@ -171,6 +171,8 @@ def is_stack_selection_question(question_id: str, text: str) -> bool:
 class SeaTrialQuestion:
     question_id: str
     text: str
+    status: str = "open"
+    answer: str = ""
 
 
 @dataclass(frozen=True)
@@ -218,10 +220,9 @@ Guardrails are exempt from `accepts:` coverage. No story builds a prohibition.
 
 ### Questions
 
-A `QUESTIONS:` block lists measurement facts only a human can supply — unknown baselines,
-targets, workloads, or business measures. Drydock projects these into a QuarterDeck
-questionnaire and preserves the answers across reruns. An unanswered question leaves its
-criterion `INCONCLUSIVE` at scoring time.\
+The canonical `## Questions` section lists measurement facts only a human can supply — unknown
+baselines, targets, workloads, or business measures. QuarterDeck writes answers directly into
+this artifact. An unanswered question leaves its criterion `INCONCLUSIVE` at scoring time.\
 """
 
 
@@ -302,7 +303,12 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
     project = first.partition(":")[2].strip() if first.startswith("# Sea Trials:") else ""
     lines = text.splitlines()
     trials: list[SeaTrial] = []
-    questions: list[SeaTrialQuestion] = []
+    markdown_questions = parse_questions(text, source="SEA_TRIALS.md")
+    questions = [
+        SeaTrialQuestion(item.question_id.lower(), item.question, item.status, item.answer)
+        for item in markdown_questions
+        if not is_stack_selection_question(item.question_id, item.question)
+    ]
     seen: set[str] = set()
     index = 0
     while index < len(lines):
@@ -316,11 +322,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             index += 1
             # Any heading ends the field scan. Documentation blocks are h3, so a "## " test
             # would let their prose reach _FIELD_RE and overwrite this criterion's fields.
-            while (
-                index < len(lines)
-                and not lines[index].lstrip().startswith("#")
-                and lines[index].strip() != "QUESTIONS:"
-            ):
+            while index < len(lines) and not lines[index].lstrip().startswith("#"):
                 match = _FIELD_RE.match(lines[index].strip())
                 if match:
                     fields[match.group("key").lower().replace(" ", "_")] = match.group(
@@ -385,18 +387,6 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                 )
             )
             continue
-        if lines[index].strip() == "QUESTIONS:":
-            index += 1
-            while index < len(lines) and not lines[index].lstrip().startswith("#"):
-                match = _QUESTION_RE.match(lines[index].strip())
-                if match and not is_stack_selection_question(
-                    match.group("id"), match.group("text")
-                ):
-                    questions.append(
-                        SeaTrialQuestion(match.group("id").lower(), match.group("text"))
-                    )
-                index += 1
-            continue
         index += 1
 
     if not trials:
@@ -422,7 +412,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
 
 
 def _strip_documentation(text: str) -> str:
-    """Drop every h3 block, so stale or model-authored documentation never survives a write."""
+    """Drop h3 documentation blocks after the canonical Questions section is removed."""
     lines = text.splitlines()
     kept: list[str] = []
     index = 0
@@ -457,11 +447,7 @@ def _format_trial_fields(text: str) -> str:
         formatted.append(lines[index])
         index += 1
         field_lines: list[str] = []
-        while (
-            index < len(lines)
-            and not lines[index].lstrip().startswith("#")
-            and lines[index].strip() != "QUESTIONS:"
-        ):
+        while index < len(lines) and not lines[index].lstrip().startswith("#"):
             field_lines.append(lines[index].strip())
             index += 1
 
@@ -487,37 +473,38 @@ def _format_trial_fields(text: str) -> str:
     return "\n".join(formatted)
 
 
-def _drop_stack_questions(text: str) -> str:
-    """Remove misplaced stack/Rigging selection lines from the QUESTIONS block.
-
-    When every question is dropped, the now-empty ``QUESTIONS:`` header is dropped too so the
-    written artifact never carries a bare header.
-    """
-    lines = text.splitlines()
-    kept: list[str] = []
-    for line in lines:
-        match = _QUESTION_RE.match(line.strip())
-        if match and is_stack_selection_question(match.group("id"), match.group("text")):
-            continue
-        kept.append(line)
-    result: list[str] = []
-    for position, line in enumerate(kept):
-        if line.strip() == "QUESTIONS:":
-            following = kept[position + 1 :]
-            if not any(_QUESTION_RE.match(later.strip()) for later in following):
-                continue
-        result.append(line)
-    return "\n".join(result)
-
-
 def normalize_sea_trials_text(text: str) -> str:
-    """Return the document with exactly the canonical documentation blocks after the title."""
-    lines = _drop_stack_questions(_strip_documentation(text)).splitlines()
+    """Return canonical Questions first, followed by documentation and criteria."""
+    questions = tuple(
+        item
+        for item in parse_questions(text, source="SEA_TRIALS.md")
+        if not is_stack_selection_question(item.question_id, item.question)
+    )
+    without_questions = re.sub(
+        r"^## Questions\s*$\n.*?(?=^##\s+|\Z)",
+        "",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    without_questions = re.sub(
+        r"^## Reader Guide\s*$.*\Z",
+        "",
+        without_questions,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    lines = _strip_documentation(without_questions).splitlines()
     title = ""
     if lines and lines[0].startswith("# Sea Trials:"):
         title, lines = lines[0], lines[1:]
     body = _format_trial_fields("\n".join(lines)).strip()
-    sections = [section for section in (title, SEA_TRIALS_DOC, body) if section]
+    if body and not re.search(r"^##\s+", body, re.MULTILINE):
+        body = "## Trials\n\n" + body
+    reader_guide = "## Reader Guide\n\n" + SEA_TRIALS_DOC
+    sections = [
+        section
+        for section in (title, render_questions(questions).strip(), body, reader_guide)
+        if section
+    ]
     return "\n\n".join(sections) + "\n"
 
 
@@ -560,7 +547,7 @@ def project_questions(document: SeaTrialsDocument, path: Path) -> Path | None:
                 "id": question.question_id,
                 "label": question.text,
                 "input": "textarea",
-                "answer": answers.get(question.question_id, ""),
+                "answer": question.answer or answers.get(question.question_id, ""),
             }
             for question in document.questions
         ],

@@ -22,7 +22,7 @@ from drydock.errors import SpecificationError
 logger = logging.getLogger(__name__)
 
 BLOCK_TYPES = ("feature", "story", "spike", "ac")
-STATES = ("pending", "implemented", "closed/verified", "closed/failed")
+STATES = ("pending", "blocked/questions", "implemented", "closed/verified", "closed/failed")
 PLAN_STATES = ("draft", "approved", "closed")
 SCOPES = ("blueprint", "target", "both")
 AC_KINDS = ("smoke", "assertion")
@@ -59,6 +59,9 @@ _CANONICAL_FIELDS = {
         "copy",
         "instructions",
         "depends",
+        "questions",
+        "questions_approved",
+        "feedback",
         "state",
         "evidence",
         "scope",
@@ -687,7 +690,12 @@ class DrydockManifest:
                 for child in self.children(feature.block_id)
                 if child.block_type in {"story", "spike"}
             )
-            grouped.update(node.block_id for node in work)
+            # A feature is normally one grouped build unit. Question-blocked
+            # children split that group temporarily so unrelated siblings stay
+            # available on the frontier.
+            question_blocked = any(node.state == "blocked/questions" for node in work)
+            if not question_blocked:
+                grouped.update(node.block_id for node in work)
             pending = tuple(node for node in work if node.state == "pending")
             internal = {node.block_id for node in work}
             dependencies = [
@@ -696,7 +704,7 @@ class DrydockManifest:
                 for dependency in node.depends
                 if dependency not in internal and not verified(dependency)
             ]
-            if pending and not dependencies:
+            if pending and not dependencies and not question_blocked:
                 result.append(feature)
         result.extend(
             node

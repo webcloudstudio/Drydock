@@ -52,7 +52,7 @@ def test_default_feedback_heading_is_analyze_compass(tmp_path):
 def test_open_questions_section_is_removed_from_analysis_output():
     result = _remove_open_questions_section(_ANALYSIS_CONTENT)
 
-    assert "## Open Questions" not in result
+    assert "## Questions" not in result
     assert "## Story List" in result
     assert "## Notes" in result
 
@@ -108,7 +108,7 @@ Quality: Ready
   display_name: Test Project
   short_description: A test project for automated analysis.
 
-## Open Questions
+## Questions
 
 - None.
 
@@ -272,7 +272,7 @@ Quality: Blocked
   stack: not declared
   screens: 0
 
-## Open Questions
+## Questions
 
 - None.
 
@@ -1181,7 +1181,7 @@ class TestAnalyze:
         assert result.sea_trials_path.exists()
         assert (target_dir / "PLAN_COMPASS.md").read_text(encoding="utf-8") == "# Plan Compass\n"
         assert not (target_dir / "SOUNDINGS.md").exists()
-        assert "## Open Questions" not in result.analysis_path.read_text(encoding="utf-8")
+        assert "## Questions" not in result.analysis_path.read_text(encoding="utf-8")
 
     def test_analysis_path_is_at_target_root(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1386,8 +1386,18 @@ Required: yes
 Criterion: The representative workflow is faster than its baseline.
 Verification: measurement
 
-QUESTIONS:
-- q-speed-workload: Which representative workload defines the measurement?
+## Questions
+
+### Q-speed-workload: Measurement workload
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which representative workload defines the measurement?
+
+#### Answer
 """
         output = _VALID_LLM_OUTPUT.replace(_SEA_TRIALS_CONTENT, structured)
 

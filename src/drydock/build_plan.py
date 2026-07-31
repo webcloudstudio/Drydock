@@ -18,7 +18,7 @@ BLOCK_TYPES = ("feature", "story", "spike", "ac")
 # Sealed foundational Blueprint specifications: once applied, a direct edit blocks the
 # build and the change must arrive as a change ticket processed by ``drydock refit``.
 FOUNDATIONAL_SPECS = frozenset({"ARCHITECTURE.md", "DATABASE.md", "UI-GENERAL.md"})
-STATES = ("pending", "implemented", "closed/verified", "closed/failed")
+STATES = ("pending", "blocked/questions", "implemented", "closed/verified", "closed/failed")
 PLAN_STATES = ("draft", "approved", "closed")
 SCOPES = ("blueprint", "target", "both")
 

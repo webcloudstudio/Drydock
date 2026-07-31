@@ -36,8 +36,18 @@ Operator: <=
 Target: 100
 Unit: ms
 
-QUESTIONS:
-- q-latency-baseline: Which representative workload defines the baseline?
+## Questions
+
+### Q-latency-baseline: Latency baseline
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which representative workload defines the baseline?
+
+#### Answer
 """
     )
 
@@ -83,9 +93,29 @@ Criterion: The parser passes every case in the full conformance test suite.
 Verification: proof
 Command: ["python", "run.py"]
 
-QUESTIONS:
-- q-st-001-baseline: Which test-suite edition defines the baseline?
-- q-st-001-stack: Select the applicable Rigging stack components before planning.
+## Questions
+
+### Q-st-001-baseline: Suite baseline
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which test-suite edition defines the baseline?
+
+#### Answer
+
+### Q-st-001-stack: Stack
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Select the applicable Rigging stack components before planning.
+
+#### Answer
 """
     )
 
@@ -104,15 +134,23 @@ Criterion: The parser passes every case in the full conformance test suite.
 Verification: proof
 Command: ["python", "run.py"]
 
-QUESTIONS:
-- q-st-001-stack: Select the applicable Rigging stack components before planning.
+## Questions
+
+### Q-st-001-stack: Stack
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Select the applicable Rigging stack components before planning.
+
+#### Answer
 """
     )
 
     assert "q-st-001-stack" not in normalized
-    # The bare QUESTIONS: block header is dropped once its only question is removed. The prose
-    # mention inside the canonical reader documentation is not a block header.
-    assert not any(line.strip() == "QUESTIONS:" for line in normalized.splitlines())
+    assert "## Questions\n\n- None." in normalized
 
 
 def test_trial_after_questions_block_is_parsed():
@@ -125,8 +163,19 @@ Required: yes
 Criterion: When the system starts, the system shall log a ready message.
 Verification: proof
 Pattern: event
-QUESTIONS:
-- q-st-001-target: Which environment defines the baseline?
+
+## Questions
+
+### Q-st-001-target: Target environment
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which environment defines the baseline?
+
+#### Answer
 
 ## st-002: Second
 Type: technical
@@ -441,8 +490,18 @@ Required: yes
 Criterion: The workflow is understandable.
 Verification: llm
 
-QUESTIONS:
-- q-one: Which workload applies?
+## Questions
+
+### Q-one: Workload
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which workload applies?
+
+#### Answer
 """
     )
 
@@ -472,8 +531,18 @@ Required: yes
 Criterion: The workflow is understandable.
 Verification: llm
 
-QUESTIONS:
-- q-one: Which workload applies?
+## Questions
+
+### Q-one: Workload
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which workload applies?
+
+#### Answer
 """
     )
 

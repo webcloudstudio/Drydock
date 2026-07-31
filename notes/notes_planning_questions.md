@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | Deterministic story-question capture, persistence, replanning, display, and build gating. |
 | Pending spec | 6 approved items |
-| Pending impl | 6 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 
 ## Goal
 
@@ -18,7 +18,7 @@ in QuarterDeck.
 ## Decisions
 
 ### Canonical Questions section
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Every question-bearing Markdown artifact uses the exact heading `## Questions`. Alternate structural
 headings such as `## Open Questions`, `## Question`, and bare `QUESTIONS:` are invalid. In a Typed
@@ -46,7 +46,7 @@ Origins include `plan` and `analyze-questionnaire`. Status values include `open`
 An answered record requires a non-empty answer. Sea Trials uses the same section syntax.
 
 ### Story-local build gate
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 An open Blueprint question marks the owning Manifest story `Blocked Questions`. The story and its
 transitive dependents are not buildable. Independent frontier stories remain buildable. Answering
@@ -57,7 +57,7 @@ approve an unanswered story in the current Manifest. That approval ungates the c
 not a substantive answer and does not survive Manifest replacement or feed a future Plan run.
 
 ### QuarterDeck question editing
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 QuarterDeck groups Build Questions by Blueprint and provides an answer textarea and Save action for
 each question, in addition to full Blueprint editing. Saving writes directly to the Blueprint,
@@ -69,7 +69,7 @@ exists, the persistent record is read-only and the Blueprint question interface 
 the originating Blueprint no longer exists, QuarterDeck may edit the persistent record directly.
 
 ### Persistent Plan feedback
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 A substantive answer is promoted into a persistent Plan feedback store. The durable decision has a
 stable semantic identity independent of Blueprint filenames and story decomposition. A source
@@ -80,7 +80,7 @@ answer timestamp, source Blueprint provenance, and current disposition. The Blue
 authority while it exists; the feedback store preserves continuity across Blueprint replacement.
 
 ### Replan decision realization
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Before replacing Blueprints, Plan harvests answered Blueprint questions into persistent feedback and
 injects all active feedback into the Plan prompt. A resolved decision is written into normal Blueprint
@@ -95,7 +95,7 @@ The Manifest records the current run's feedback disposition and realization with
 authoritative decision store.
 
 ### Analyze-to-Plan closure
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Analyze questionnaires remain persistent pre-Plan human-decision sources. Plan consumes their answers
 and creates the owning Blueprint with the decision applied to normal specification content. Provenance

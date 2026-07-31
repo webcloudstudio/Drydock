@@ -34,6 +34,7 @@ Contract: QuarterDeck/README.md
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -1460,15 +1461,13 @@ def _render_definition_of_done(
 def _render_blueprint_review(
     documents: tuple[tuple[str, Path, str], ...],
 ) -> tuple[str, str]:
-    """Render authored User Acceptance, Guardrails, and Open Questions read-only."""
+    """Render authored User Acceptance and Guardrails read-only."""
     user_sections = []
     guardrail_sections = []
-    question_sections = []
     for name, _source, text in documents:
         for heading, destination in (
             ("User Acceptance", user_sections),
             ("Guardrails", guardrail_sections),
-            ("Open Questions", question_sections),
         ):
             body = _blueprint_section(text, heading)
             if _substantive_section(body):
@@ -1492,7 +1491,6 @@ def _render_blueprint_review(
     )
     secondary = [
         ("Guardrails", guardrail_sections),
-        ("Open Questions", question_sections),
     ]
     secondary_html = "".join(
         f"<div class='cmp-plan-section'><strong>{label}</strong>{render_sections(sections)}</div>"
@@ -1608,20 +1606,127 @@ _KIND_CHIP = {
     "built": "<span class='bp-state bp-done'>Built</span>",
     "failed": "<span class='bp-state bp-failed'>Failed</span>",
     "blocked": "<span class='bp-state bp-blocked'>Blocked</span>",
+    "questions": "<span class='bp-state bp-blocked'>Blocked Questions</span>",
 }
 _KIND_STEP_CLS = {
     "built": " bp-step-done",
     "ready": " cmp-step-buildable",
     "blocked": " cmp-step-blocked",
+    "questions": " cmp-step-blocked",
     "failed": " cmp-step-failed",
 }
 _KIND_GROUP_CLS = {
     "built": " cmp-group-done",
     "ready": " cmp-group-buildable",
     "blocked": " cmp-group-blocked",
+    "questions": " cmp-group-blocked",
     "failed": " cmp-group-failed",
 }
-_KIND_SEVERITY = {"built": 0, "ready": 1, "blocked": 2, "failed": 3}
+_KIND_SEVERITY = {"built": 0, "ready": 1, "blocked": 2, "questions": 2, "failed": 3}
+
+
+def _render_build_questions(
+    documents: tuple[tuple[str, Path, str], ...],
+) -> str:
+    """Render editable canonical questions grouped by authoritative artifact."""
+    from drydock.errors import SpecificationError
+    from drydock.questions import parse_questions
+
+    groups = []
+    for name, source, text in documents:
+        try:
+            questions = parse_questions(text, source=str(source))
+        except SpecificationError as exc:
+            groups.append(
+                "<div class='cmp-plan-section'><strong>"
+                f"{html.escape(name)}</strong><div class='item-error'>{html.escape(str(exc))}</div>"
+                "</div>"
+            )
+            continue
+        if not questions:
+            continue
+        rows = []
+        relative = source.relative_to(_current_project_root()).as_posix()
+        path_arg = html.escape(json.dumps(relative), quote=True)
+        for question in questions:
+            answered = question.status == "answered"
+            answer_id = (
+                "answer-"
+                + hashlib.sha256(f"{relative}#{question.question_id}".encode()).hexdigest()[:12]
+            )
+            question_arg = html.escape(json.dumps(question.question_id), quote=True)
+            answer_id_arg = html.escape(json.dumps(answer_id), quote=True)
+            rows.append(
+                "<div class='cmp-review-section'>"
+                f"<strong>{html.escape(question.question_id)}: {html.escape(question.name)}</strong>"
+                f"<div>{_md(question.question)}</div>"
+                f"<div class='subtle'>Origin: {html.escape(question.origin)} · "
+                f"Status: {html.escape(question.status)}</div>"
+                + (
+                    f"<div><strong>Answer:</strong>{_md(question.answer)}</div>"
+                    if answered
+                    else (
+                        f"<textarea id='{answer_id}' "
+                        "rows='3' placeholder='Answer this question'></textarea>"
+                        f'<button onclick="saveBlueprintQuestion({path_arg},'
+                        f'{question_arg},{answer_id_arg})">'
+                        "Save answer</button>"
+                    )
+                )
+                + "</div>"
+            )
+        editor_id = "blueprint-" + hashlib.sha256(relative.encode()).hexdigest()[:12]
+        editor_id_arg = html.escape(json.dumps(editor_id), quote=True)
+        groups.append(
+            "<div class='cmp-plan-section'><strong>Build Questions — "
+            f"{html.escape(name)}</strong>{''.join(rows)}"
+            "<details class='cmp-detail'><summary>Edit Blueprint</summary>"
+            f"<textarea id='{editor_id}' rows='24'>{html.escape(text)}</textarea>"
+            f'<button onclick="saveBlueprintSource({path_arg},{editor_id_arg})">'
+            "Save Blueprint</button></details></div>"
+        )
+    return "".join(groups)
+
+
+def _render_plan_feedback() -> str:
+    """Render the filename-independent planning-decision continuity store."""
+    from drydock.plan_feedback import authoritative_artifact, load_feedback
+
+    target = _current_project_root()
+    decisions = load_feedback(target)
+    if not decisions:
+        return ""
+    rows = []
+    for item in decisions:
+        authority = authoritative_artifact(target, item)
+        source_kind = (
+            "Analyze questionnaire"
+            if authority is not None and authority.suffix.lower() == ".json"
+            else "Blueprint"
+        )
+        control = (
+            f"<span class='subtle'>Edit in authoritative {source_kind}</span>"
+            if authority is not None
+            else (
+                f"<textarea id='feedback-{html.escape(item.decision_id)}' rows='2'>"
+                f"{html.escape(item.answer)}</textarea>"
+                f"<button onclick=\"savePlanFeedback('{html.escape(item.decision_id)}')\">"
+                "Save feedback</button>"
+            )
+        )
+        rows.append(
+            "<div class='cmp-review-section'>"
+            f"<strong>{html.escape(item.decision_id)}</strong>"
+            f"<div>{html.escape(item.question)}</div>"
+            f"<div><strong>Decision:</strong> {html.escape(item.answer)}</div>"
+            f"<div class='subtle'>{html.escape(item.disposition)} · "
+            f"{html.escape(item.source_blueprint)}</div>{control}</div>"
+        )
+    return (
+        "<details class='cmp-detail cmp-plan'><summary>Persistent Plan Feedback</summary>"
+        + "".join(rows)
+        + "</details>"
+    )
 
 
 def render_compass(item: dict[str, Any]) -> str:
@@ -1641,6 +1746,11 @@ def render_compass(item: dict[str, Any]) -> str:
     project_root = _current_project_root()
 
     try:
+        from drydock.question_gates import synchronize_manifest_question_gates
+
+        synchronize_manifest_question_gates(
+            project_root / "MANIFEST.md", project_root / "blueprint"
+        )
         plan = parse_build_plan(project_root / "MANIFEST.md")
     except SpecificationError:
         return _render_compass_empty()
@@ -1683,6 +1793,8 @@ def render_compass(item: dict[str, Any]) -> str:
         # default rerun. Failed therefore takes precedence over the buildable/ready label.
         if state == "closed/failed":
             return "failed"
+        if state == "blocked/questions":
+            return "questions"
         if block_id in buildable:
             return "ready"
         if state in ("closed/verified", "implemented"):
@@ -1784,7 +1896,7 @@ def render_compass(item: dict[str, Any]) -> str:
         buildable_txt = "(none)"
 
     ready_n = len(buildable)
-    pending_n = status.steps_pending - ready_n
+    pending_n = status.steps_pending + status.steps_questions - ready_n
     header = (
         "<div class='cmp-hdr'>"
         "<div class='cmp-hdr-counts'>"
@@ -1804,6 +1916,7 @@ def render_compass(item: dict[str, Any]) -> str:
 
     parts = [
         header,
+        _render_plan_feedback(),
         "<div class='cmp-toolbar'>"
         f"<span class='cmp-total'>{warn_html}</span>"
         f"<button class='cmp-normalize' title='Reorder groups into canonical "
@@ -1844,6 +1957,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 state,
             )
             user_html, blueprint_review = _render_blueprint_review(blueprint_documents)
+            questions_html = _render_build_questions(blueprint_documents)
             plan_html = _render_plan_traceability(block, by_id, blueprint_review)
             summary = str(block.fields.get("summary") or "")
             instructions = str(block.fields.get("instructions") or "")
@@ -1894,6 +2008,21 @@ def render_compass(item: dict[str, Any]) -> str:
                 if blockers
                 else ""
             )
+            if kind == "questions":
+                approved = str(block.fields.get("questions_approved", "")).lower() == "true"
+                blocked_html = (
+                    "<div class='cmp-blocked-by'><strong>Unanswered Questions Exist.</strong> "
+                    f"{html.escape(str(block.fields.get('questions') or ''))}"
+                    + (
+                        ""
+                        if approved
+                        else (
+                            f" <button onclick=\"approveBlueprintQuestions('{item_id}',"
+                            f"'{html.escape(step.block_id)}')\">Approve for this Manifest</button>"
+                        )
+                    )
+                    + "</div>"
+                )
             done_check = (
                 "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
             )
@@ -1928,6 +2057,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 f"{brief_html}{direction_html}{dependency_html}"
                 f"{dod_html}"
                 f"{user_html}"
+                f"{questions_html}"
                 f"{plan_html}"
                 f"{_render_step_files(step, step_flags)}"
                 "</div>"
@@ -2888,6 +3018,22 @@ class CompassEdit(BaseModel):
     name: str = ""
 
 
+class BlueprintQuestionUpdate(BaseModel):
+    path: str
+    question_id: str
+    answer: str
+
+
+class BlueprintSourceUpdate(BaseModel):
+    path: str
+    content: str
+
+
+class PlanFeedbackUpdate(BaseModel):
+    decision_id: str
+    answer: str
+
+
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -3031,6 +3177,89 @@ def api_compass_edit(item_id: str, edit: CompassEdit, request: Request = None) -
         except SpecificationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True, **result}
+
+
+@app.post("/api/build-question/answer")
+def api_answer_build_question(update: BlueprintQuestionUpdate, request: Request = None):
+    from drydock.errors import SpecificationError
+    from drydock.plan_feedback import harvest_answered_questions
+    from drydock.question_gates import synchronize_manifest_question_gates
+    from drydock.questions import answer_question
+
+    with _request_context(request):
+        root = _current_project_root().resolve()
+        path = (root / update.path).resolve()
+        allowed = path == root / "SEA_TRIALS.md" or root / "blueprint" in path.parents
+        if not allowed:
+            raise HTTPException(
+                status_code=400, detail="Question path is outside governed artifacts"
+            )
+        try:
+            answer_question(path, update.question_id, update.answer)
+            harvest_answered_questions(root)
+            manifest = root / "MANIFEST.md"
+            if manifest.is_file():
+                synchronize_manifest_question_gates(manifest, root / "blueprint")
+        except (OSError, UnicodeError, SpecificationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
+
+@app.post("/api/build-question/approve/{story_id}")
+def api_approve_build_question(story_id: str, request: Request = None):
+    from drydock.errors import SpecificationError
+    from drydock.question_gates import approve_story_questions
+
+    with _request_context(request):
+        try:
+            approve_story_questions(_current_project_root() / "MANIFEST.md", story_id)
+        except SpecificationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
+
+@app.post("/api/build-question/source")
+def api_update_blueprint_source(update: BlueprintSourceUpdate, request: Request = None):
+    from drydock.errors import SpecificationError
+    from drydock.plan_feedback import harvest_answered_questions
+    from drydock.question_gates import synchronize_manifest_question_gates
+    from drydock.questions import validate_questions_document
+
+    with _request_context(request):
+        root = _current_project_root().resolve()
+        path = (root / update.path).resolve()
+        if (
+            root / "blueprint" not in path.parents
+            or path.suffix.lower() != ".md"
+            or not path.is_file()
+        ):
+            raise HTTPException(status_code=400, detail="Blueprint path is outside blueprint/")
+        try:
+            validate_questions_document(
+                update.content,
+                source=str(path),
+                require_first_section=True,
+            )
+            _atomic_write_text(path, update.content.rstrip() + "\n")
+            harvest_answered_questions(root)
+            manifest = root / "MANIFEST.md"
+            if manifest.is_file():
+                synchronize_manifest_question_gates(manifest, root / "blueprint")
+        except (OSError, UnicodeError, SpecificationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
+
+@app.post("/api/plan-feedback")
+def api_update_plan_feedback(update: PlanFeedbackUpdate, request: Request = None):
+    from drydock.plan_feedback import update_feedback_answer
+
+    with _request_context(request):
+        try:
+            update_feedback_answer(_current_project_root(), update.decision_id, update.answer)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
 
 
 @app.get("/raw/{item_id}")
@@ -3707,6 +3936,47 @@ def index(request: Request = None) -> str:
       }});
       if (r.ok) loadDoc(itemId);
       else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Edit failed'); }}
+    }}
+
+    async function saveBlueprintQuestion(path, questionId, inputId) {{
+      const input = document.getElementById(inputId);
+      const answer = input ? input.value.trim() : '';
+      if (!answer) {{ alert('Answer is required.'); return; }}
+      const r = await fetch('/api/build-question/answer', {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{path, question_id: questionId, answer}})
+      }});
+      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save answer'); return; }}
+      location.reload();
+    }}
+
+    async function saveBlueprintSource(path, inputId) {{
+      const input = document.getElementById(inputId);
+      const r = await fetch('/api/build-question/source', {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{path, content: input ? input.value : ''}})
+      }});
+      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save Blueprint'); return; }}
+      location.reload();
+    }}
+
+    async function approveBlueprintQuestions(itemId, storyId) {{
+      if (!confirm('Approve this story for the current Manifest without answering its questions?')) return;
+      const r = await fetch(`/api/build-question/approve/${{storyId}}`, {{method: 'POST'}});
+      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to approve questions'); return; }}
+      await loadItem(itemId);
+    }}
+
+    async function savePlanFeedback(decisionId) {{
+      const input = document.getElementById(`feedback-${{decisionId}}`);
+      const answer = input ? input.value.trim() : '';
+      if (!answer) {{ alert('Decision is required.'); return; }}
+      const r = await fetch('/api/plan-feedback', {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{decision_id: decisionId, answer}})
+      }});
+      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save feedback'); return; }}
+      location.reload();
     }}
     function compassRename(itemId, blockId, current) {{
       const name = prompt('Rename to:', current);

@@ -634,5 +634,5 @@ def _build_next_step(status, plan, target: str) -> str:
         )
         if first_review:
             return f"drydock build verify {target} {first_review}"
-    remaining = status.steps_pending
+    remaining = status.steps_pending + status.steps_questions
     return f"drydock build {target}  ({remaining} step{'s' if remaining != 1 else ''} remaining)"

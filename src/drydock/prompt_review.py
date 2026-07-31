@@ -386,7 +386,7 @@ def render_review_markdown(
         ])
     lines.extend(["", "## Strengths"])
     lines.extend([f"- {item}" for item in review.strengths])
-    lines.extend(["", "## Open Questions"])
+    lines.extend(["", "## Questions"])
     if review.open_questions:
         lines.extend([f"- {item}" for item in review.open_questions])
     else:

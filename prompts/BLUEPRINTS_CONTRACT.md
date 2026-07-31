@@ -33,8 +33,9 @@ project is, what it must do, and how it is built.
 | `*-AC.md` / `AC-*.md` / `*-AC-*.md` | Acceptance criteria — any file where `AC` is a whole word in the filename | As needed |
 | `changes/TICKET-NNN-{Name}.md` | Post-baseline change, defect, or spike request | As needed |
 
-Every authored Specification file ends with `## Programmatic Acceptance`, `## User Acceptance`,
-`## Guardrails`, and `## Open Questions`. Use `- None.` when no entries apply.
+Every authored Specification file places `## Questions` immediately after its title and typed
+metadata table. It ends with `## Programmatic Acceptance`, `## User Acceptance`, and
+`## Guardrails`. Use `- None.` when no entries apply.
 
 `ARCHITECTURE_compact.md` is a compact derivative of `ARCHITECTURE.md` produced by
 `drydock rigging compact`. Drydock uses filename-selected compaction algorithms rather than
@@ -102,6 +103,34 @@ are not authored Specification files.
 
 ## Common Authored Specification Sections
 
+Every authored Specification file places this section immediately after its typed metadata table:
+
+```markdown
+## Questions
+
+- None.
+```
+
+When Plan discovers a human-owned unknown while authoring a story, replace `- None.` with one or
+more deterministic records:
+
+```markdown
+### Q-state-model: State Changer
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Which state model governs this workflow?
+
+#### Answer
+```
+
+An Analyze questionnaire answer uses `Origin: analyze-questionnaire`, `Status: answered`, and a
+non-empty Answer. An answered decision is applied to normal specification content on later plans
+and is not recreated as a question.
+
 Every authored Specification file ends with these sections, using `- None.` when no entries apply:
 
 ```markdown
@@ -117,9 +146,6 @@ Every authored Specification file ends with these sections, using `- None.` when
 
 - None.
 
-## Open Questions
-
-- None.
 ```
 
 `Programmatic Acceptance` contains executable Python assertion snippets. Each check uses a stable
@@ -335,7 +361,7 @@ scanner to group related repositories under a named service.
 
 ## Authoring Conventions
 
-**Authoring phase:** all unresolved questions go in `## Open Questions` sections. Do not create
+**Authoring phase:** all unresolved questions go in `## Questions` sections. Do not create
 `MANIFEST.md` or numbered ticket files while authoring.
 
 **Build phase:** run `drydock plan create` once the specification is ready. Use `drydock status`

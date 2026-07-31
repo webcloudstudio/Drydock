@@ -67,7 +67,7 @@ from drydock.source_material import (
 
 PROMPT_NAME = "analyze"
 
-#: Projected from the SEA_TRIALS.md QUESTIONS: block by this module; the LLM never emits it.
+#: Projected from the SEA_TRIALS.md Questions section by this module; the LLM never emits it.
 SEA_TRIALS_QUESTIONNAIRE = "discovery-sea-trials.json"
 
 _SOURCES_SUBDIR = "sources"
@@ -94,7 +94,7 @@ _RESOLUTION_PLACEHOLDER = (
     "<!-- Enter the decision that resolves this blocker, then re-run Analyze. -->"
 )
 _OPEN_QUESTIONS_SECTION_RE = re.compile(
-    r"^## Open Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
+    r"^## Questions\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
 )
 _TUNING_OPTIONS_SECTION_RE = re.compile(
     r"^### Tuning Options\s*$.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
@@ -841,7 +841,7 @@ def _parse_output(
         if name.startswith("discovery-") and name.endswith(".json"):
             if name == SEA_TRIALS_QUESTIONNAIRE:
                 raise ValueError(
-                    f"{name} is written by Drydock from the SEA_TRIALS.md QUESTIONS: block "
+                    f"{name} is written by Drydock from the SEA_TRIALS.md Questions section "
                     "and must not be emitted"
                 )
             try:

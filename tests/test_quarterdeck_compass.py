@@ -84,6 +84,19 @@ scope: target
 
 _CURRENT_BLUEPRINT = """# FEATURE: Program Interface
 
+## Questions
+
+### Q-001: Windows newline normalization
+
+- Origin: plan
+- Status: open
+
+#### Question
+
+Is Windows newline normalization required?
+
+#### Answer
+
 ## Programmatic Acceptance
 
 ### filter-function
@@ -105,11 +118,11 @@ assert run_filter("hello") == "<p>hello</p>\\n"
 ## Guardrails
 
 - Standard error remains empty on success.
-
-## Open Questions
-
-- Confirm whether Windows newline normalization is required.
 """
+
+_CURRENT_BLUEPRINT_ANSWERED = _CURRENT_BLUEPRINT.replace(
+    "- Status: open", "- Status: answered"
+).replace("#### Answer\n", "#### Answer\n\nYes. Normalize to LF.\n", 1)
 
 _ITEM = {
     "id": "build_compass",
@@ -210,7 +223,7 @@ class TestRender:
         quarterdeck = _load_quarterdeck()
         target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
         (target / "blueprint" / "FEATURE-Program-Interface.md").write_text(
-            _CURRENT_BLUEPRINT,
+            _CURRENT_BLUEPRINT_ANSWERED,
             encoding="utf-8",
         )
 
@@ -241,11 +254,67 @@ class TestRender:
         assert "st-003" in out
         assert "evidence/prog-001.md" in out
         assert "Standard error remains empty on success." in out
-        assert "Confirm whether Windows newline normalization is required." in out
+        assert "Is Windows newline normalization required?" in out
 
         assert out.index("definition of done") < out.index("user acceptance")
         assert out.index("user acceptance") < out.index("plan and traceability")
         assert out.index("plan and traceability") < out.index("stack breakdown")
+
+    def test_build_questions_are_grouped_editable_and_gate_the_story(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
+        source = target / "blueprint" / "FEATURE-Program-Interface.md"
+        source.write_text(_CURRENT_BLUEPRINT, encoding="utf-8")
+
+        out = quarterdeck.render_compass(_ITEM)
+
+        assert "Blocked Questions" in out
+        assert "Unanswered Questions Exist" in out
+        assert "Build Questions — FEATURE-Program-Interface.md" in out
+        assert "Save answer" in out
+        assert "Edit Blueprint" in out
+        assert "Approve for this Manifest" in out
+
+        quarterdeck.api_answer_build_question(
+            quarterdeck.BlueprintQuestionUpdate(
+                path="blueprint/FEATURE-Program-Interface.md",
+                question_id="Q-001",
+                answer="Yes, normalize to LF.",
+            )
+        )
+
+        updated = source.read_text(encoding="utf-8")
+        assert "- Status: answered" in updated
+        assert "Yes, normalize to LF." in updated
+        assert "state: pending" in (target / "MANIFEST.md").read_text(encoding="utf-8")
+
+    def test_full_blueprint_editor_validates_canonical_questions(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
+        source = target / "blueprint" / "FEATURE-Program-Interface.md"
+        source.write_text(_CURRENT_BLUEPRINT, encoding="utf-8")
+
+        changed = _CURRENT_BLUEPRINT.replace(
+            "Standard error remains empty on success.",
+            "Standard output remains deterministic.",
+        )
+        quarterdeck.api_update_blueprint_source(
+            quarterdeck.BlueprintSourceUpdate(
+                path="blueprint/FEATURE-Program-Interface.md",
+                content=changed,
+            )
+        )
+        assert "Standard output remains deterministic." in source.read_text(encoding="utf-8")
+
+        import pytest
+
+        with pytest.raises(quarterdeck.HTTPException, match="exactly '## Questions'"):
+            quarterdeck.api_update_blueprint_source(
+                quarterdeck.BlueprintSourceUpdate(
+                    path="blueprint/FEATURE-Program-Interface.md",
+                    content=changed.replace("## Questions", "## Open Questions"),
+                )
+            )
 
     def test_verified_story_labels_blueprint_acceptance_passed(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
@@ -259,7 +328,7 @@ class TestRender:
             ),
         )
         (target / "blueprint" / "FEATURE-Program-Interface.md").write_text(
-            _CURRENT_BLUEPRINT,
+            _CURRENT_BLUEPRINT_ANSWERED,
             encoding="utf-8",
         )
 

@@ -8,6 +8,10 @@
 | Provides | |
 | Build Order | |
 
+## Questions
+
+- None.
+
 <!-- One file per reusable UI component. Examples: UI-NavBar.md, UI-FilterBar.md, UI-StatusBadge.md -->
 
 ## Purpose
@@ -37,9 +41,5 @@ What this component does. One sentence.
 - None.
 
 ## Guardrails
-
-- None.
-
-## Open Questions
 
 - None.

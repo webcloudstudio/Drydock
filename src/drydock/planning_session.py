@@ -48,6 +48,11 @@ from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
+from drydock.plan_feedback import (
+    apply_manifest_dispositions,
+    harvest_answered_questions,
+    render_feedback_prompt,
+)
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -60,6 +65,7 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
+from drydock.questions import normalize_questions_first, validate_questions_document
 from drydock.sea_trials import parse_sea_trials_text
 from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
@@ -114,15 +120,15 @@ _PLAN_MODE_LABELS = {
 _SPECKIT_PROMPT_NAME = "plan_create_speckit"
 _CONFORM_PROMPT_NAME = "plan_conform"
 _TERMINAL_SECTIONS = (
+    "Questions",
     "Programmatic Acceptance",
     "User Acceptance",
     "Guardrails",
-    "Open Questions",
 )
 _TYPED_HEADING_RE = re.compile(r"^#\s+(?P<kind>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*(?P<name>.+?)\s*$")
 _HEADER_ROW_RE = re.compile(r"^\|\s*(?P<field>[^|]+?)\s*\|\s*(?P<value>.*?)\s*\|$")
 _TERMINAL_SECTION_RE = re.compile(
-    r"^## (?P<heading>Programmatic Acceptance|User Acceptance|Guardrails|Open Questions)\s*$"
+    r"^## (?P<heading>Questions|Programmatic Acceptance|User Acceptance|Guardrails)\s*$"
     r".*?(?=^## |\Z)",
     re.MULTILINE | re.DOTALL,
 )
@@ -1022,9 +1028,10 @@ def _render_normalized_spec(spec: ExistingSpec, *, today: str, ui_general_exists
         heading: _extract_terminal_section(spec.body, heading) for heading in _TERMINAL_SECTIONS
     }
     rendered = "\n".join(header_lines).rstrip()
+    rendered += "\n\n" + _render_terminal_section("Questions", sections["Questions"]).rstrip()
     if body:
         rendered += "\n\n" + body.strip()
-    for heading in _TERMINAL_SECTIONS:
+    for heading in _TERMINAL_SECTIONS[1:]:
         rendered += "\n\n" + _render_terminal_section(heading, sections[heading]).rstrip()
     return rendered.rstrip() + "\n"
 
@@ -1375,6 +1382,12 @@ def _assemble_prompt_assembly(
             )
         return parts_list
 
+    def persistent_feedback_parts() -> list:
+        rendered = render_feedback_prompt(harvest_answered_questions(target_dir))
+        if not rendered:
+            return []
+        return [lines_part("Persistent Plan feedback", rendered.splitlines(), kind="feedback")]
+
     def typed_spec_parts() -> list:
         parts_list = [
             lines_part(
@@ -1490,6 +1503,7 @@ def _assemble_prompt_assembly(
         if render is None:
             continue
         prompt_parts.extend(render())
+    prompt_parts.extend(persistent_feedback_parts())
     prompt_parts.append(section_heading_part("# Agent Task"))
     prompt_parts.append(part("Prompt body", body + "\n\n", kind="prompt-body"))
     return PromptAssembly(parts=tuple(prompt_parts))
@@ -1833,6 +1847,20 @@ def _integrity_check(
         for name in targets:
             if name and name not in available_specs and not (blueprint_dir / name).is_file():
                 fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
+            text = spec_text(str(name)) if name else None
+            if (
+                text is not None
+                and str(name).lower().endswith(".md")
+                and str(name) in emitted_files
+            ):
+                try:
+                    validate_questions_document(
+                        text,
+                        source=str(name),
+                        require_first_section=True,
+                    )
+                except SpecificationError as exc:
+                    fatal.append(f"{block.block_id}: {exc}")
         # Test-driven acceptance is Blueprint-first. A story whose implemented
         # specs declare a programmatic surface
         # must carry several concrete Python assertions unless an inline-justified
@@ -2098,6 +2126,24 @@ def _validate_plan_output(
     plan = _parse_plan_text(blocks["MANIFEST.md"])
 
     emitted_specs = frozenset(name for name in blocks if name not in _RESERVED_BLOCKS)
+    implemented_specs = {
+        str(name)
+        for block in plan.blocks
+        if block.block_type == "story"
+        for name in (
+            block.fields.get("implements", ())
+            if isinstance(block.fields.get("implements", ()), tuple)
+            else (block.fields.get("implements", ""),)
+        )
+        if name
+    }
+    for name in emitted_specs:
+        if (
+            name in implemented_specs
+            and name.lower().endswith(".md")
+            and name not in _NON_BLUEPRINT_ARTIFACTS
+        ):
+            blocks[name] = normalize_questions_first(blocks[name], source=name)
     # A criterion that no implementation can satisfy is not a specification, it is a build the
     # graph guarantees will fail. Strip it here, before the Manifest is validated or written,
     # so the emitted plan is one that can actually be built. Removals are reported, and the
@@ -2660,6 +2706,9 @@ def create_plan(
     if overwrite:
         prior_applied_specs = {}
 
+    # Capture durable answers before unbuilt Blueprint files are discarded for regeneration.
+    harvest_answered_questions(target_dir)
+
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
     ensure_feedback_file(target_dir)
@@ -3089,6 +3138,13 @@ def create_plan(
 
     # 2. Persist the already merged, normalized, fully validated executable graph once.
     plan.save(plan_path)
+    from drydock.question_gates import synchronize_manifest_question_gates
+
+    plan = synchronize_manifest_question_gates(plan_path, blueprint_dir)
+    apply_manifest_dispositions(
+        target_dir,
+        plan.metadata.fields.get("planning_feedback", ""),
+    )
     _clear_plan_compass_blockers(target_dir)
 
     # 4. The in-memory graph now reflects the target path and persisted artifact.

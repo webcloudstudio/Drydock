@@ -1511,9 +1511,13 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"scope: step {args.step}")
     else:
         print("scope: entire project")
-    from drydock.build_plan import parse_build_plan
+    from drydock.question_gates import synchronize_manifest_question_gates
 
-    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    plan = synchronize_manifest_question_gates(
+        target_dir / "MANIFEST.md",
+        target_dir / "blueprint",
+        persist=not bool(getattr(args, "dry_run", False)),
+    )
     frontier = plan.buildable_steps()
     frontier_text = ", ".join(block.block_id for block in frontier) or "empty"
     if not getattr(args, "story", None) and not getattr(args, "step", None):
@@ -1957,6 +1961,7 @@ _BUILD_STATE_MARK = {
     "closed/verified": "[done]",
     "implemented": "[review]",
     "pending": "[pending]",
+    "blocked/questions": "[QUESTIONS]",
     "closed/failed": "[FAILED]",
 }
 
@@ -1966,8 +1971,10 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     from drydock.build_score import score_evidence_state
     from drydock.build_status import build_status
     from drydock.config import get_target_directory, require_target_dir
+    from drydock.question_gates import synchronize_manifest_question_gates
 
     target_path = require_target_dir(target)
+    synchronize_manifest_question_gates(target_path / "MANIFEST.md", target_path / "blueprint")
     plan = load_target_plan(target, get_target_directory())
     report = build_status(plan)
 
@@ -2021,6 +2028,7 @@ def cmd_build_status(blueprint: str, target: str) -> int:
         f"{report.steps_verified} done, "
         f"{report.steps_implemented} in review, "
         f"{report.steps_pending} pending, "
+        f"{report.steps_questions} blocked by questions, "
         f"{report.steps_failed} failed "
         f"({report.percent_complete()}% complete)"
     )

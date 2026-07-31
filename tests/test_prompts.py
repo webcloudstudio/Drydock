@@ -81,7 +81,7 @@ class TestInputTokens:
             "=== END ANALYSIS.md ===", 1
         )[0]
 
-        assert "## Open Questions" not in analysis_contract
+        assert "## Questions" not in analysis_contract
         assert "### Tuning Options" not in analysis_contract
         assert "questions live only in `discovery-*.json`" in prompt.body
 

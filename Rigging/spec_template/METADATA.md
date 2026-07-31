@@ -16,4 +16,4 @@ messages_directory: ../Messages
 
 ## Agent Instructions
 
-When working on this specification, add unresolved questions to the `## Open Questions` section at the bottom of the relevant spec file.
+When working on a Typed Blueprint, put unresolved questions in its first `## Questions` section after the title and metadata table.

@@ -92,7 +92,7 @@ After the header, organize the ticket content into these sections:
 
 - None.
 
-## Open Questions
+## Questions
 
 - None.
 ```

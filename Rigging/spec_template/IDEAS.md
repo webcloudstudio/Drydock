@@ -27,6 +27,6 @@ Process with the command: "process ideas" in an interactive session.
 
 - None.
 
-## Open Questions
+## Questions
 
 - None.

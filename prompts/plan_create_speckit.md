@@ -51,7 +51,7 @@ Translate each Spec Kit input to its Drydock destination:
 | `spec.md` success criteria and assumptions | `COMPASS.md` when project-wide; otherwise the owning `FEATURE-*.md` |
 | `plan.md` technical context and structure | `ARCHITECTURE.md`, `METADATA.md`, and `DATABASE.md` where applicable |
 | `research.md` accepted decisions | The owning `FEATURE-*.md`, `ARCHITECTURE.md`, or `DATABASE.md` |
-| `research.md` unresolved decisions | `## Open Questions` in the owning Drydock file |
+| `research.md` unresolved decisions | `## Questions` in the owning Drydock file |
 | `data-model.md` | `DATABASE.md` |
 | `contracts/` | Routes and interfaces in `FEATURE-*.md` and `ARCHITECTURE.md` |
 | `quickstart.md` | Useful operating instructions in `README.md` or `AGENTS.md`; otherwise ignored |
@@ -71,7 +71,7 @@ Translate in this order. Do not skip a step.
    multiple Spec Kit files that describe the same durable capability merge into one authored file;
    do not duplicate the same statement across files.
 5. **Preserve conflicts.** A `research.md` unresolved decision, or a statement that conflicts
-   across Spec Kit files, becomes a `## Open Questions` entry in the owning file rather than being
+   across Spec Kit files, becomes a `## Questions` entry in the owning file rather than being
    silently resolved or discarded.
 6. **Compute relationships.** Generate `Depends On`, `Provides`, `Phase`, and SCREEN `Consumes`
    exactly as in the Typed Specification Format section, then validate the proposed Blueprint
@@ -131,7 +131,8 @@ SCREEN files may also include `Route`, `Parent`, `Main Menu`, `Sub Menu`, `Tab O
 `Consumes`. Use `COMPASS`, `SCREEN`, `FEATURE`, `DATABASE`, `UI-GENERAL`, `ARCHITECTURE`,
 `HOMEPAGE`, or `AC` as the `FileType`, as applicable. Do not invent a new typed file category.
 
-Every authored Specification file ends with:
+Every authored Specification file places the canonical `## Questions` section immediately after
+the typed metadata table, then ends with:
 
 ```markdown
 ## Programmatic Acceptance
@@ -146,13 +147,10 @@ Every authored Specification file ends with:
 
 - None.
 
-## Open Questions
-
-- None.
 ```
 
 Use `- None.` only when that section is truly empty. Do not emit placeholder phrases like `TBD` or
-`to be determined`; unresolved Spec Kit content belongs under `## Open Questions`.
+`to be determined`; unresolved Spec Kit content belongs under `## Questions`.
 
 Default decomposition by `SYSTEM_SHAPE` follows the same table as standard `drydock plan create`:
 `ARCHITECTURE.md` always; one `FEATURE-*.md` per Spec Kit feature directory (splitting further
@@ -283,7 +281,7 @@ Required action:
 - Every emitted authored spec file except `CONVERSION_REPORT.md` must use the exact typed header
   table and terminal sections.
 - Do not silently discard ambiguous or conflicting Spec Kit content — record it in
-  `CONVERSION_REPORT.md` and, where it blocks a decision, in `## Open Questions`.
+  `CONVERSION_REPORT.md` and, where it blocks a decision, in `## Questions`.
 - Do not invent interfaces, routes, datasets, commands, or capabilities the Spec Kit source does
   not support.
 - Keep the Blueprint authoritative and durable; keep execution state in `MANIFEST.md`.

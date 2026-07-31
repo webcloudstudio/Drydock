@@ -11,6 +11,10 @@
 | Provides | |
 | Build Order | |
 
+## Questions
+
+- None.
+
 <!-- One file per screen. Rename to match nav bar label: SCREEN-Dashboard.md -->
 <!-- Delete this template after creating real screen files. -->
 
@@ -37,9 +41,5 @@
 - None.
 
 ## Guardrails
-
-- None.
-
-## Open Questions
 
 - None.

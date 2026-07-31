@@ -8,6 +8,10 @@
 | Provides | |
 | Build Order | |
 
+## Questions
+
+- None.
+
 <!-- Optional file. Delete if this project does not publish a portfolio homepage. -->
 <!-- Used by the Publisher (bin/build_documentation.sh / publisher.py) to generate the static site. -->
 
@@ -42,9 +46,5 @@ phone_e164:
 - None.
 
 ## Guardrails
-
-- None.
-
-## Open Questions
 
 - None.

@@ -165,7 +165,7 @@ _SPEC_HEADER = (
 
 - None.
 
-## Open Questions
+## Questions
 
 - None.
 """
@@ -224,7 +224,7 @@ _ARCH_CONFORMANT = (
     "## Modules\n\n- Architecture body.\n\n"
     "## Programmatic Acceptance\n\n"
     + _pa("The architecture package imports cleanly.")
-    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
 )
 
 _FEATURE_EMPTY_ACCEPTANCE = (
@@ -235,7 +235,7 @@ _FEATURE_EMPTY_ACCEPTANCE = (
     "## Trigger\n\n- User runs drydock status.\n\n"
     "## Test\n\n- Verify status prints the build state.\n\n"
     "## Programmatic Acceptance\n\n- None.\n\n"
-    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
 )
 
 _FEATURE_CONFORMED_BODY = (
@@ -249,7 +249,7 @@ _FEATURE_CONFORMED_BODY = (
         "The status command exits with code 0.",
         "The status output names the current build state.",
     )
-    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Open Questions\n\n- None.\n"
+    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
 )
 
 _REUSE_TWO_STORY_MANIFEST = (
@@ -2103,7 +2103,7 @@ def _screen_output(pa_lines: str, *, provides: str = "GET /welcome", consumes: s
         "## Layout\n\n- Welcome body.\n\n"
         f"## Programmatic Acceptance\n\n{pa_lines}\n\n"
         "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n"
-        "## Open Questions\n\n- None.\n"
+        "## Questions\n\n- None.\n"
     )
     manifest = _manifest(implements="SCREEN-Welcome.md")
     return (
@@ -2857,6 +2857,7 @@ def _spec_with(acceptance: str) -> str:
         "| Field    | Value |\n"
         "|----------|-------|\n"
         "| Provides | status command |\n\n"
+        "## Questions\n\n- None.\n\n"
         "## Programmatic Acceptance\n\n"
         f"{acceptance}\n\n"
         "## User Acceptance\n\n- None.\n\n"

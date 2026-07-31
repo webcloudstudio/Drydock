@@ -28,6 +28,9 @@ updated:     2026-06-08T12:00:00
 plan_hash:   abc123456789
 applied_specs: |
   DATABASE.md sha256=<content_sha256> commit=<file_commit_sha> applied_by=foundation applied_at=2026-06-26T14:22:00Z
+planning_feedback: |
+  decision-0123456789abcdef applied FEATURE-CATALOG.md
+  decision-fedcba9876543210 retained
 ```
 
 Build execution evidence lives in the execution log. The Manifest preamble carries build-state
@@ -107,6 +110,9 @@ scope:        blueprint | target | both
 | `copy` | No | `source -> destination` file copies applied before build |
 | `instructions` | Yes | Freeform build instructions for the agent |
 | `depends` | No | Space-separated story/spike ids that must be `closed/verified` first — never `ac` ids |
+| `questions` | Generated | Current `<open> open, <answered> answered` projection from the implemented Blueprint |
+| `questions_approved` | No | `true` only for a current-Manifest Commander override; it is never durable Plan feedback |
+| `feedback` | No | Persistent Plan decision ids realized by this story |
 | `state` | Yes | Current block state |
 | `evidence` | No | Path to the evidence file written after execution |
 | `scope` | No | `blueprint` \| `target` \| `both` — what this story changes |
@@ -115,6 +121,11 @@ Stories block on stories. An `ac` id never appears in a `depends:` list: an acce
 check gates only its own parent, and a story does not become `closed/verified` until its
 child `ac` blocks pass, so depending on a story already implies its acceptance checks.
 The reader rewrites a story `depends:` entry that names an `ac` id to that ac's parent.
+
+An open Blueprint question projects the story state as `blocked/questions`. That story and its
+dependents are unavailable, while independent frontier stories remain buildable. Answering every
+question restores `pending`. A `questions_approved: true` override restores `pending` only in the
+current Manifest and is discarded on replan.
 
 When `implements` is `DATABASE.md`, `stack` must include `persistence.md` and the selected
 backend stack file, such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.

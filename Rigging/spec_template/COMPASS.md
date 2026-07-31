@@ -8,6 +8,10 @@
 | Provides    | |
 | Build Order | |
 
+## Questions
+
+- None.
+
 ## Compass
 
 <!-- The single question this project answers — what you are building and why it
@@ -31,9 +35,5 @@
 - None.
 
 ## Guardrails
-
-- None.
-
-## Open Questions
 
 - None.

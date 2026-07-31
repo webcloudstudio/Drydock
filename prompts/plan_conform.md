@@ -43,6 +43,10 @@ Emit the conformed spec as a single artifact block. The conformed spec:
 - <concrete Python assertion>
 - <concrete Python assertion>
 
+## Questions
+
+- None.
+
 ## User Acceptance
 
 - None.
@@ -51,9 +55,6 @@ Emit the conformed spec as a single artifact block. The conformed spec:
 
 - None.
 
-## Open Questions
-
-- None.
 ```
 
 ## Authoring Programmatic Acceptance (test-driven)
@@ -86,7 +87,7 @@ This is the point of the conform pass. Treat it as writing the failing tests fir
   programmatic surface — a pure visual or manual concern. A bare `- None.` is not acceptable for a
   spec that provides anything.
 - `User Acceptance` holds only Commander-observed checks that cannot be honestly automated.
-  `Guardrails` and `Open Questions` carry only what the source genuinely raises; otherwise `- None.`
+  `Guardrails` and `Questions` carry only what the source genuinely raises; otherwise `- None.`
 
 ## Artifact Contract
 
@@ -112,6 +113,10 @@ The block name is the exact source filename injected in the job (for example `FE
 
 - ...
 
+## Questions
+
+- None.
+
 ## User Acceptance
 
 - None.
@@ -120,9 +125,6 @@ The block name is the exact source filename injected in the job (for example `FE
 
 - None.
 
-## Open Questions
-
-- None.
 === END FEATURE-CATALOG-READ.md ===
 ```
 

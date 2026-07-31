@@ -48,7 +48,7 @@ Why this change is needed. One paragraph.
 - Specific, unambiguous instruction
 - Another instruction
 
-## Open Questions
+## Questions
 None.
 ```
 

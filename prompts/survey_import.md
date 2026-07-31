@@ -24,7 +24,7 @@ For each command/capability, emit a file with:
 - `## Acceptance Criteria — Code` — a table of behavioral AC.
 - `## Acceptance Criteria — Specification` — a table of artifact/spec-quality AC.
 - `## Guardrails` — MUST NOT statements.
-- `## Open Questions` — genuine unknowns; never resolve one silently.
+- `## Questions` — genuine unknowns; never resolve one silently.
 
 Each AC table row has columns: `ID | Criterion | Dim | Check | Weight | Verify`.
 - `ID`: `<COMMAND>-<n>` (e.g. `STATUS-C1`), unique within the file.

@@ -74,6 +74,10 @@ class BuildStatus:
         return self._step_count("pending")
 
     @property
+    def steps_questions(self) -> int:
+        return self._step_count("blocked/questions")
+
+    @property
     def steps_failed(self) -> int:
         return self._step_count("closed/failed")
 

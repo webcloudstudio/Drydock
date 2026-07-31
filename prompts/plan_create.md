@@ -244,7 +244,7 @@ Rules:
 - *Emits:* complete authored spec markdown with exact header format and required terminal sections.
 
 Each authored file must be build-usable. Write concrete sections, not placeholders, unless the
-source material genuinely leaves an item open; then put it under `## Open Questions`.
+source material genuinely leaves an item open; then put it under `## Questions`.
 
 **5. Author programmatic acceptance (test-driven).**
 - *Consumes:* each authored spec's routes, interfaces, reads, writes, guardrails, any tests
@@ -322,7 +322,9 @@ Manifest rules:
   story per file. A spec file that grows to cover several distinct behaviors has under-decomposed
   the plan; split the file, not the story's `implements:` list.
 - Use `context:` only for genuine read-only support files.
-- Open questions that do not block authored spec creation become `spike` blocks.
+- Technical research questions become `spike` blocks. Human-owned unknowns discovered while
+  authoring one story remain in that Blueprint's canonical `## Questions` section and block only
+  that story; they never force Error Mode when the rest of the plan is coherent.
 - Group coherent capabilities under `feature` parents; keep unrelated capabilities in separate
   features. Prefer a feature parent when multiple stories belong to one durable workflow.
 - A `parent:` value names a `feature` block emitted in this same Manifest. Never reference a feature
@@ -345,6 +347,11 @@ Manifest rules:
   and never place a story ahead of the block it depends on. A `depends:` entry expresses a genuine
   input requirement, not decoration; a block with no real prerequisite carries an empty `depends:`.
 - All blocks start `state: pending`.
+- For every injected Persistent Plan feedback decision, add one line to the Manifest preamble's
+  `planning_feedback: |` block: `<decision-id> applied <Blueprint path>`, `<decision-id> retained`,
+  or `<decision-id> retired <scope-change reason>`. A renamed file is never a retirement reason.
+  Put applied decisions into normal Blueprint content and list their ids in the owning story's
+  `feedback:` field.
 
 ---
 
@@ -385,7 +392,9 @@ Required rules:
   or `AC` as the `FileType`, as applicable.
 - Do not invent a new typed file category.
 
-Every authored Specification file ends with these sections:
+Every authored Specification file places `## Questions` immediately after the typed metadata table.
+Use `- None.` when no human-owned unknown remains. Otherwise use the exact record contract from
+`BLUEPRINTS_CONTRACT.md`. The file then ends with these sections:
 
 ```markdown
 ## Programmatic Acceptance
@@ -400,9 +409,6 @@ Every authored Specification file ends with these sections:
 
 - None.
 
-## Open Questions
-
-- None.
 ```
 
 Use `- None.` only when that section is truly empty, and for `## Programmatic Acceptance` state the
@@ -652,7 +658,7 @@ Required action:
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
   header table and end with `## Programmatic Acceptance`, `## User Acceptance`, `## Guardrails`,
-  and `## Open Questions`.
+  and `## Questions`.
 - `Depends On`, `Provides`, `Consumes`, and `Phase` must be internally consistent across the full
   emitted Blueprint.
 - Do not invent interfaces, routes, datasets, commands, or capabilities that the sources and
@@ -666,7 +672,7 @@ Required action:
 - The Manifest has a non-empty initial runnable frontier: at least one `story` or `spike` with an
   empty `depends:`. Emit blocks in topological order with no forward-referencing `depends:`.
 - Do not emit placeholder phrases like `TBD`, `fill later`, `to be determined`, or
-  `implementation details here`; unresolved items belong in `## Open Questions`.
+  `implementation details here`; unresolved items belong in `## Questions`.
 - Do not emit empty authored files.
 - Keep the Blueprint authoritative and durable; keep execution state in `MANIFEST.md`.
 

@@ -146,11 +146,11 @@ class TestNonSpecBlueprintFiles:
         assert "ARCHITECTURE_compact.md missing ## Programmatic Acceptance" not in messages
         assert "ARCHITECTURE_compact.md missing ## User Acceptance" not in messages
         assert "ARCHITECTURE_compact.md missing ## Guardrails" not in messages
-        assert "ARCHITECTURE_compact.md missing ## Open Questions" not in messages
+        assert "ARCHITECTURE_compact.md missing ## Questions" not in messages
         assert "DATABASE_compact.md missing ## Programmatic Acceptance" not in messages
         assert "DATABASE_compact.md missing ## User Acceptance" not in messages
         assert "DATABASE_compact.md missing ## Guardrails" not in messages
-        assert "DATABASE_compact.md missing ## Open Questions" not in messages
+        assert "DATABASE_compact.md missing ## Questions" not in messages
 
 
 class TestExampleFileWarnings:
@@ -220,7 +220,7 @@ assert convert({literal}) == "<p>*a*</p>\\n"
 
 - None.
 
-## Open Questions
+## Questions
 
 - None.
 """
@@ -278,7 +278,7 @@ Blocks resolve before inlines.
 
 - None.
 
-## Open Questions
+## Questions
 
 - None.
 """

@@ -390,7 +390,7 @@ class TestRefitTarget:
             "## Summary\n\nAdd a copy button.\n\n"
             "## Acceptance Criteria\n\n- Button is present.\n\n"
             "## Guardrails\n\n- None.\n\n"
-            "## Open Questions\n\n- None.\n"
+            "## Questions\n\n- None.\n"
         )
         manifest_rows = (
             "## story 2: Add copy button\n"

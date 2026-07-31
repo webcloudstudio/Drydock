@@ -544,4 +544,4 @@ Projects that expose callable platform functions add a `## Capabilities` section
 
 ---
 
-## Open Questions
+## Questions

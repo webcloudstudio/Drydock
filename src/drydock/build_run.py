@@ -1767,6 +1767,11 @@ def build_target(
 
     stack_dir = get_stack_dir()
     blueprint_dir = blueprint_dir_for(target_dir)
+    from drydock.question_gates import synchronize_manifest_question_gates
+
+    synchronized_plan = synchronize_manifest_question_gates(
+        manifest_path, blueprint_dir, persist=not dry_run
+    )
 
     # Place the imported build assets the Analysis marked `stage` before anything observes the
     # build directory. Acceptance checks run with the build directory as their working
@@ -1795,7 +1800,7 @@ def build_target(
     stack_head = _git_head(stack_dir)
     if stack_head is not None and _is_dirty(stack_dir):
         stack_head = None
-    plan = parse_build_plan(manifest_path)
+    plan = synchronized_plan
     if step_id is not None:
         step_id = _resolve_step_selector(plan, step_id)
     if story_id is not None:

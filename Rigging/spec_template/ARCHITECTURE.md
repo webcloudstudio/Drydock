@@ -8,6 +8,10 @@
 | Provides | |
 | Build Order | |
 
+## Questions
+
+- None.
+
 <!-- Code organization: modules, entry point, routes, directory layout. -->
 
 ## Modules
@@ -46,9 +50,5 @@ __PROJECT_SLUG__/
 - None.
 
 ## Guardrails
-
-- None.
-
-## Open Questions
 
 - None.
