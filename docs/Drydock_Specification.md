@@ -1118,7 +1118,7 @@ The QuarterDeck is documented in `QuarterDeck/README.md`.
 | `document` | Collapses `path_md` / `path_html` / `path_pdf` variants into a tab bar. |
 | `jsonl` | Read-only table from an append-only JSONL file. |
 | `kanban` | Renders `MANIFEST.md`-derived tickets as a four-column board. |
-| `questionnaire` | Form backed by a JSON file; saves answers in SQLite and writes them back to the source file. |
+| `questionnaire` | Form backed by a JSON file. |
 | `link` | External URL or local file; opens in a new tab. |
 | `command_status` | Derived read-only acceptance-readiness view from Core Docs. |
 | `compass` | The Build Compass: the live `MANIFEST.md` work graph — grouped, costed, state-badged (buildable now / review / done / failed with reason), and editable (reorder/regroup/rename/split). |

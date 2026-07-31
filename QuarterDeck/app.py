@@ -308,17 +308,26 @@ def _add_drydock_runtime_items(config: dict[str, Any], *, project_root: Path) ->
     if "setup" not in section_ids:
         return
     items = config.setdefault("items", [])
-    if any(item.get("id") == "blockers_doc" for item in items):
-        return
-    items.append({
-        "id": "blockers_doc",
-        "label": "⛔ Blockers",
-        "section": "setup",
-        "type": "editable_markdown",
-        "path": "../BLOCKERS.md",
-        "order": 1,
-        "help_text": "Resolve these planning gates, then re-run drydock analyze.",
-    })
+    if not any(item.get("id") == "blockers_doc" for item in items):
+        items.append({
+            "id": "blockers_doc",
+            "label": "⛔ Blockers",
+            "section": "setup",
+            "type": "editable_markdown",
+            "path": "../BLOCKERS.md",
+            "order": 1,
+            "help_text": "Resolve these planning gates, then re-run drydock analyze.",
+        })
+    if "analyze" in section_ids and not any(item.get("id") == "technology_stack" for item in items):
+        items.append({
+            "id": "technology_stack",
+            "label": "Technology Stack",
+            "section": "analyze",
+            "type": "technology_stack",
+            "path": "../TECHNOLOGY_STACK.md",
+            "order": 3,
+            "help_text": "Technologies this target uses and the Rigging file governing each.",
+        })
 
 
 def _expand_sources(
@@ -2390,6 +2399,84 @@ def render_questionnaire(item: dict[str, Any]) -> str:
     return body
 
 
+# ── Technology Stack (row editor) ───────────────────────────────────────────────
+
+
+def _tech_rigging_select(selected: str | None) -> str:
+    """Render the Rigging selector: the grouped catalog plus an explicit "none"."""
+    from drydock import technology_stack
+
+    chosen = selected or ""
+    none_selected = " selected" if not chosen else ""
+    options = [
+        f"<option value=''{none_selected}>{html.escape(technology_stack.NONE_CELL)}</option>"
+    ]
+    known = set()
+    for group in technology_stack.rigging_groups():
+        label = html.escape(str(group.get("label", "")))
+        opts = []
+        for name in group.get("options", []):
+            known.add(name)
+            mark = " selected" if name == chosen else ""
+            opts.append(f"<option value='{html.escape(name)}'{mark}>{html.escape(name)}</option>")
+        if opts:
+            options.append(f"<optgroup label='{label}'>{''.join(opts)}</optgroup>")
+    # A hand-entered Rigging file that is not in the catalog must survive a save
+    # rather than being silently reset to "none".
+    if chosen and chosen not in known:
+        options.append(
+            f"<option value='{html.escape(chosen)}' selected>{html.escape(chosen)}</option>"
+        )
+    return "<select class='ts-rigging'>" + "".join(options) + "</select>"
+
+
+def _tech_row(technology: str = "", rigging: str | None = None, notes: str = "") -> str:
+    return (
+        "<tr class='ts-row'>"
+        f"<td><input class='ts-technology' type='text' value='{html.escape(technology)}'></td>"
+        f"<td>{_tech_rigging_select(rigging)}</td>"
+        f"<td><input class='ts-notes' type='text' value='{html.escape(notes)}'></td>"
+        "<td><button type='button' class='ts-remove' onclick='tsRemoveRow(this)' "
+        "title='Remove this technology'>✕</button></td>"
+        "</tr>"
+    )
+
+
+def render_technology_stack(item: dict[str, Any]) -> str:
+    """Row editor for TECHNOLOGY_STACK.md: technology name plus its Rigging file.
+
+    The technology is free text so the Commander can name anything the product uses,
+    including technologies Rigging has no guidance for. The Rigging cell is a
+    selector over the catalog, seeded by name similarity when a row is added.
+    """
+    from drydock import technology_stack
+
+    try:
+        entries = technology_stack.parse(resolve_path(item["path"]).read_text(encoding="utf-8"))
+    except HTTPException:
+        entries = []
+    rows = "".join(_tech_row(e.technology, e.rigging, e.notes) for e in entries)
+    helper = _render_help_note(item)
+    catalog = json.dumps({
+        name.removesuffix(".md").lower().replace("-", "").replace("_", ""): name
+        for name in technology_stack.rigging_names()
+    })
+    return (
+        helper
+        + "<h1>Technology Stack</h1>"
+        + "<p class='q-autosave-hint'>Rows save automatically when you leave a field. "
+        f"Set Rigging to {html.escape(technology_stack.NONE_CELL)} when no Rigging guidance "
+        "exists — the builder then applies general best practice.</p>"
+        + f"<div class='ts-editor' data-item='{html.escape(item['id'])}' "
+        f"data-catalog='{html.escape(catalog)}'>"
+        + "<table class='ts-table'><thead><tr>"
+        + "<th>Technology</th><th>Rigging</th><th>Notes</th><th></th>"
+        + f"</tr></thead><tbody>{rows}</tbody></table>"
+        + "<button type='button' class='ts-add' onclick='tsAddRow(this)'>+ Add technology</button>"
+        + "<span class='q-save-status' aria-live='polite'></span></div>"
+    )
+
+
 # ── Kanban (MANIFEST-backed, read-only) ─────────────────────────────────────────
 
 
@@ -2579,6 +2666,7 @@ TYPES: dict[str, TypeDef] = {
     "command_status": TypeDef((), render_command_status),
     "compass": TypeDef(("path",), render_compass),
     "refit": TypeDef((), render_refit),
+    "technology_stack": TypeDef(("path",), render_technology_stack),
 }
 
 
@@ -2719,6 +2807,7 @@ def _find_q_path_by_id(q_id: str) -> Path | None:
 #: appended to a longer one ("Extra data" on the next read). Serialize the whole cycle and
 #: replace the file atomically.
 _Q_WRITE_LOCK = threading.Lock()
+_TS_WRITE_LOCK = threading.Lock()
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -2780,6 +2869,10 @@ class StateUpdate(BaseModel):
 
 class SourceUpdate(BaseModel):
     content: str
+
+
+class TechnologyStackUpdate(BaseModel):
+    rows: list[dict[str, Any]] = []
 
 
 class CompassMove(BaseModel):
@@ -2863,6 +2956,38 @@ def api_set_source(item_id: str, update: SourceUpdate, request: Request = None) 
         path = resolve_write_path(item["path"])
         path.write_text(update.content, encoding="utf-8")
         return {"ok": True, "item_id": item_id}
+
+
+@app.post("/api/technology-stack/{item_id}")
+def api_set_technology_stack(
+    item_id: str, update: TechnologyStackUpdate, request: Request = None
+) -> dict[str, Any]:
+    """Persist the Technology Stack rows as TECHNOLOGY_STACK.md.
+
+    Rows with an empty Technology cell are dropped — they carry no decision. The
+    write is atomic and serialized so overlapping autosaves cannot interleave.
+    """
+    from drydock import technology_stack
+
+    with _request_context(request):
+        item = find_item(item_id)
+        if item.get("type") != "technology_stack":
+            raise HTTPException(
+                status_code=400, detail=f"Item {item_id!r} is not a Technology Stack"
+            )
+        entries = [
+            technology_stack.StackEntry(
+                technology=technology,
+                rigging=str(row.get("rigging") or "").strip() or None,
+                notes=str(row.get("notes") or "").strip(),
+            )
+            for row in update.rows
+            if (technology := str(row.get("technology") or "").strip())
+        ]
+        path = resolve_write_path(item["path"])
+        with _TS_WRITE_LOCK:
+            _atomic_write_text(path, technology_stack.render(entries))
+        return {"ok": True, "item_id": item_id, "rows": len(entries)}
 
 
 @app.post("/api/compass/{item_id}/move")
@@ -3298,6 +3423,15 @@ _STYLE = """
   .q-save-status { display:inline-block; min-height:18px; margin-top:12px; font-size:13px;
                    font-weight:600; color:#16a34a; }
   .q-save-status.q-save-failed { color:#b91c1c; }
+  .ts-table { width:100%; border-collapse:collapse; margin:12px 0; }
+  .ts-table th { text-align:left; font-size:13px; color:#475569; padding:6px 8px;
+    border-bottom:1px solid #e2e8f0; }
+  .ts-table td { padding:4px 8px; vertical-align:middle; }
+  .ts-table input, .ts-table select { width:100%; box-sizing:border-box; }
+  .ts-table td:last-child { width:32px; }
+  .ts-remove { border:none; background:none; color:#94a3b8; cursor:pointer; font-size:15px; }
+  .ts-remove:hover { color:#b91c1c; }
+  .ts-add { margin-right:12px; }
   .cmp-total { font-size:14px; font-weight:700; margin:0 0 14px; padding:8px 12px; background:#eef2f7; border-radius:4px; }
   .cmp-group { border:1px solid #d7dde5; border-radius:5px; margin:0 0 12px; overflow:hidden; }
   .cmp-ghead { display:flex; align-items:center; gap:12px; padding:8px 12px; background:#f8fafc; border:2px solid #94a3b8; }
@@ -3529,6 +3663,8 @@ def index(request: Request = None) -> str:
       contentEl.innerHTML = data.html;
       const form = contentEl.querySelector('form[data-questionnaire]');
       if (form) wireAutosave(form);
+      const stack = contentEl.querySelector('.ts-editor');
+      if (stack) wireTechnologyStack(stack);
     }}
     async function loadTicket(itemId, ticketId) {{
       const res = await fetch(`/api/ticket/${{itemId}}/${{ticketId}}`);
@@ -3655,6 +3791,89 @@ def index(request: Request = None) -> str:
       form.querySelectorAll('input, select, textarea').forEach(el => {{
         el.addEventListener('blur', save);
         if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio') el.addEventListener('change', save);
+      }});
+    }}
+    function _tsEditor(el) {{ return el.closest('.ts-editor'); }}
+    function _tsNormalize(value) {{
+      return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    }}
+    // Seeding only: a technology whose name matches a catalog file preselects it.
+    // An explicit choice is never overwritten, so the Commander always wins.
+    function tsSuggest(editor, row) {{
+      const select = row.querySelector('.ts-rigging');
+      if (!select || select.value || select.dataset.touched) return;
+      const catalog = JSON.parse(editor.dataset.catalog || '{{}}');
+      const match = catalog[_tsNormalize(row.querySelector('.ts-technology').value)];
+      if (match) select.value = match;
+    }}
+    function tsPayload(editor) {{
+      return [...editor.querySelectorAll('.ts-row')].map(row => ({{
+        technology: row.querySelector('.ts-technology').value,
+        rigging: row.querySelector('.ts-rigging').value,
+        notes: row.querySelector('.ts-notes').value,
+      }}));
+    }}
+    function tsAddRow(btn) {{
+      const editor = _tsEditor(btn);
+      const body = editor.querySelector('tbody');
+      const template = editor.querySelector('.ts-row');
+      if (!template) return;
+      const row = template.cloneNode(true);
+      row.querySelectorAll('input').forEach(i => {{ i.value = ''; }});
+      const select = row.querySelector('.ts-rigging');
+      select.value = '';
+      delete select.dataset.touched;
+      body.appendChild(row);
+      wireTechnologyStack(editor);
+      row.querySelector('.ts-technology').focus();
+    }}
+    function tsRemoveRow(btn) {{
+      const editor = _tsEditor(btn);
+      btn.closest('.ts-row').remove();
+      editor.dispatchEvent(new CustomEvent('ts-save'));
+    }}
+    function wireTechnologyStack(editor) {{
+      if (editor.dataset.wired) {{ editor.dispatchEvent(new CustomEvent('ts-save')); return; }}
+      editor.dataset.wired = '1';
+      const status = editor.querySelector('.q-save-status');
+      let hideTimer = null;
+      // Same contract as the questionnaire autosave: chained saves and a
+      // dropped duplicate payload, so overlapping writes cannot race.
+      let pending = Promise.resolve();
+      let lastSent = null;
+      const saveOnce = async () => {{
+        if (status) {{ status.textContent = 'Saving…'; status.className = 'q-save-status'; }}
+        const r = await fetch(`/api/technology-stack/${{editor.dataset.item}}`, {{
+          method: 'POST', headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{rows: tsPayload(editor)}})
+        }});
+        if (!status) return;
+        clearTimeout(hideTimer);
+        if (r.ok) {{
+          status.textContent = 'Saved ✓';
+          hideTimer = setTimeout(() => {{ status.textContent = ''; }}, 1500);
+        }} else {{
+          const d = await r.json().catch(() => ({{}}));
+          status.textContent = 'Save failed: ' + (d.detail || r.status);
+          status.className = 'q-save-status q-save-failed';
+        }}
+      }};
+      const save = () => {{
+        const body = JSON.stringify(tsPayload(editor));
+        if (body === lastSent) return pending;
+        lastSent = body;
+        pending = pending.then(saveOnce, saveOnce);
+        return pending;
+      }};
+      editor.addEventListener('ts-save', save);
+      editor.querySelectorAll('.ts-row').forEach(row => {{
+        if (row.dataset.wired) return;
+        row.dataset.wired = '1';
+        const tech = row.querySelector('.ts-technology');
+        const select = row.querySelector('.ts-rigging');
+        tech.addEventListener('blur', () => {{ tsSuggest(editor, row); save(); }});
+        select.addEventListener('change', () => {{ select.dataset.touched = '1'; save(); }});
+        row.querySelector('.ts-notes').addEventListener('blur', save);
       }});
     }}
     function fleetToggle(ev) {{

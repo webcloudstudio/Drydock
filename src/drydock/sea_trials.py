@@ -112,7 +112,7 @@ _HEADING_RE = re.compile(r"^##\s+(?P<id>st-[a-z0-9-]+):\s*(?P<title>.+?)\s*$", r
 _FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]+):\s*(?P<value>.*)$")
 _PLACEHOLDER_RE = re.compile(r"<[^<>]+>")
 _QUESTION_RE = re.compile(r"^-\s+(?P<id>q-[a-z0-9-]+):\s*(?P<text>.+?)\s*$", re.I)
-#: Stack/Rigging selection is owned solely by the ``discovery-stack`` questionnaire. A Sea Trials
+#: Stack/Rigging selection is owned solely by ``TECHNOLOGY_STACK.md``. A Sea Trials
 #: QUESTIONS entry that asks the Commander to pick Rigging stack components is a misplaced
 #: duplicate and is dropped so stack is never asked in a second questionnaire.
 _STACK_QUESTION_ID_RE = re.compile(r"(?:^|-)stack(?:-|$)", re.I)
@@ -159,7 +159,7 @@ class SeaTrial:
 def is_stack_selection_question(question_id: str, text: str) -> bool:
     """Return True when a Sea Trials question is really a stack/Rigging selection.
 
-    Stack selection belongs only to ``discovery-stack``; such a question is never a Sea Trials
+    Stack selection belongs only to ``TECHNOLOGY_STACK.md``; such a question is never a Sea Trials
     measurement fact and must not be projected into a second questionnaire.
     """
     if _STACK_QUESTION_ID_RE.search(question_id):

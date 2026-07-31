@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from drydock import technology_stack
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.planning_session import (
@@ -1220,12 +1221,44 @@ def test_blockers_file_precedes_stack_questionnaire_gate(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
-def test_missing_stack_questionnaire_blocks_planning(tmp_path):
+def test_absent_technology_stack_does_not_block_planning(tmp_path):
+    """An undecided stack is planning input, not a gate. Nothing here may raise."""
     target_dir = _make_target(tmp_path)
     (target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json").unlink()
+    assert not (target_dir / technology_stack.FILENAME).exists()
 
-    with pytest.raises(SpecificationError, match="Technology Stack questionnaire"):
-        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    assert (target_dir / "MANIFEST.md").is_file()
+
+
+def test_empty_technology_stack_does_not_block_planning(tmp_path):
+    target_dir = _make_target(tmp_path)
+    technology_stack.write(target_dir, [])
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    assert (target_dir / "MANIFEST.md").is_file()
+
+
+def test_technology_stack_is_injected_into_the_plan_prompt(tmp_path):
+    target_dir = _make_target(tmp_path)
+    technology_stack.write(
+        target_dir,
+        [
+            technology_stack.StackEntry("FastAPI", "fastapi.md"),
+            technology_stack.StackEntry("marina-library", None, "Internal."),
+        ],
+    )
+    captured = {}
+
+    def runner(*args, **kwargs):
+        captured["assembly"] = kwargs.get("prompt_assembly")
+        return FakeRun(text=_llm_output())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+    prompt = captured["assembly"].rendered_text
+    assert technology_stack.FILENAME in prompt
+    assert "fastapi.md" in prompt
+    assert "marina-library" in prompt
 
 
 def test_unanswered_required_analyze_decision_blocks_before_llm(tmp_path):

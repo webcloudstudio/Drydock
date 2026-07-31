@@ -108,6 +108,7 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     analyze_compass = docs_by_item["analyze_compass"]
     plan_compass = docs_by_item["plan_compass"]
     exclude_files = docs_by_item["exclude_files"]
+    tech_stack = docs_by_item["technology_stack"]
     analysis = prompt_header_for_file("ANALYSIS.md")
     soundings_doc = prompt_header_for_file("SOUNDINGS.md")
     commanders_chair_help = "Live project overview and delivery snapshot for this target."
@@ -140,8 +141,9 @@ items:
   - {{ id: exclude_files, label: "Exclude Files", section: setup, type: editable_markdown, path: ../EXCLUDE_FILES.md, order: 5, help_text: {json.dumps(exclude_files.help_text)}, prompt_text: {json.dumps(exclude_files.prompt_text)} }}
   - {{ id: analysis, label: "Analysis", section: analyze, type: markdown, tabs: true, path: ../ANALYSIS.md, order: 1, help_text: {json.dumps(analysis.help_text if analysis else "")} }}
   - {{ id: plan_compass, label: "Plan Compass", section: analyze, type: editable_markdown, path: ../PLAN_COMPASS.md, order: 2, help_text: {json.dumps(plan_compass.help_text)}, prompt_text: {json.dumps(plan_compass.prompt_text)} }}
-  - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 3, help_text: {json.dumps(sea_trials_help)} }}
-  - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 4, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
+  - {{ id: technology_stack, label: "Technology Stack", section: analyze, type: technology_stack, path: ../TECHNOLOGY_STACK.md, order: 3, help_text: {json.dumps(tech_stack.help_text)}, prompt_text: {json.dumps(tech_stack.prompt_text)} }}
+  - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 4, help_text: {json.dumps(sea_trials_help)} }}
+  - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 5, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
   - {{ id: board, label: "Kanban Board", section: implement, type: kanban, path: ../MANIFEST.md, order: 2 }}
   - {{ id: scorecard, label: "Build Score", section: implement, type: markdown, path: ../SCORECARD.md, order: 4, help_text: {json.dumps(scorecard_help)} }}
   - {{ id: refit_status, label: "Refit", section: refit, type: refit, order: 1, help_text: "Blueprints that changed since they were applied to the Manifest, plus waiting change tickets. Run drydock refit to fold them in. Never-built blueprints are build items, not refit items." }}

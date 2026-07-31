@@ -26,6 +26,7 @@ from hashlib import sha256 as _sha256
 from pathlib import Path
 from typing import Protocol, cast
 
+from drydock import technology_stack
 from drydock.acceptance import PYTHON_FENCE_RE
 from drydock.build_plan import (
     AppliedSpecRecord,
@@ -1055,25 +1056,6 @@ def _collect_discoveries(target_dir: Path) -> list[Path]:
     return sorted(qd.glob("discovery-*.json"))
 
 
-def _has_stack_selection(target_dir: Path) -> bool:
-    """Return whether QuarterDeck has persisted a non-empty stack selection."""
-    path = target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    for question in data.get("questions", []):
-        if question.get("id") != "stack_components":
-            continue
-        answer = question.get("answer", "")
-        if isinstance(answer, str):
-            return bool(answer.strip())
-        if isinstance(answer, list):
-            return any(str(value).strip() for value in answer)
-        return bool(answer)
-    return False
-
-
 def _has_answer(question: dict) -> bool:
     """Return whether a questionnaire answer contains a persisted decision."""
     answer = question.get("answer", "")
@@ -1327,6 +1309,17 @@ def _assemble_prompt_assembly(
             path=path,
         )
 
+    def technology_stack_parts() -> list:
+        text = technology_stack.load_text(target_dir)
+        if not text.strip():
+            return []
+        return _managed_doc_parts(
+            filename=technology_stack.FILENAME,
+            content=text.strip(),
+            content_role="technology stack",
+            path=technology_stack.path_for(target_dir),
+        )
+
     def plan_compass_parts() -> list:
         if not (feedback_text and feedback_text.strip()):
             return []
@@ -1496,6 +1489,7 @@ def _assemble_prompt_assembly(
 
     renderers: dict[str, Callable[[], list]] = {
         "COMPASS.md": compass_parts,
+        technology_stack.FILENAME: technology_stack_parts,
         "PLAN_COMPASS.md": plan_compass_parts,
         "ANALYSIS.md": analysis_parts,
         "SEA_TRIALS.md": sea_trials_parts,
@@ -2519,11 +2513,8 @@ def create_plan(
         raise SpecificationError(
             "ANALYSIS.md quality is Blocked — resolve blockers and re-run analyze before planning."
         )
-    if not _has_stack_selection(target_dir):
-        raise SpecificationError(
-            "Technology Stack questionnaire is unanswered — select applicable Rigging components "
-            "in QuarterDeck before planning."
-        )
+    # TECHNOLOGY_STACK.md never gates planning. An absent or empty stack file means the stack is
+    # undecided, which plan resolves from the sources — it is not a Commander decision to await.
     required_decisions = _required_plan_decisions(target_dir)
     if required_decisions:
         raise SpecificationError(

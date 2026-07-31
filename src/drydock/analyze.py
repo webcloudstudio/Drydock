@@ -18,6 +18,7 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
+from drydock import technology_stack
 from drydock.artifact_blocks import parse_artifact_blocks
 from drydock.compass_sources import (
     clear_compass_import_pending,
@@ -203,46 +204,6 @@ def _feedback_body(feedback_text: str | None) -> str:
     return body
 
 
-_DEFAULT_STACK_CATEGORY = "Technologies"
-_STACK_CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
-_CATEGORY_HEADER = re.compile(r"^\*\*Category:\*\*\s*(.+?)\s*$", re.MULTILINE)
-
-
-def _stack_option_category(path: Path) -> str:
-    """Read the ``**Category:**`` header from a Rigging file's header block.
-
-    Only the first 20 lines are scanned — the header block sits at the top of every
-    Rigging file. Files without the header fall into the default category.
-    """
-    try:
-        head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:20])
-    except OSError:
-        return _DEFAULT_STACK_CATEGORY
-    match = _CATEGORY_HEADER.search(head)
-    return match.group(1) if match else _DEFAULT_STACK_CATEGORY
-
-
-def _rigging_catalog() -> list[tuple[str, str]]:
-    """Return ``(filename, category)`` pairs for the stack questionnaire options.
-
-    Source: ``Rigging/BRA*.md`` plus ``Rigging/stack/*.md``, excluding ``README.md``
-    and ``_compact`` variants. Categories come from each file's ``**Category:**``
-    header; only the tooling opens these files, never the analyze LLM.
-    """
-    try:
-        root = get_rigging_root()
-    except Exception:
-        return []
-    paths = [p for p in root.glob("BRA*.md") if "_compact" not in p.name]
-    paths += [p for p in (root / "stack").glob("*.md") if "_compact" not in p.name]
-    return sorted((p.name, _stack_option_category(p)) for p in paths if p.name != "README.md")
-
-
-def _rigging_catalog_names() -> list[str]:
-    """Return the stack-option filenames offered to the stack questionnaire."""
-    return [name for name, _ in _rigging_catalog()]
-
-
 def _rigging_manifest() -> str:
     """Return the compact Rigging selection catalog injected into Analyze."""
     try:
@@ -255,48 +216,6 @@ def _rigging_manifest() -> str:
         return path.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
-
-
-def _default_stack_questionnaire() -> dict:
-    """Return the canonical stack questionnaire shell.
-
-    Options and groups are filled by ``_normalize_discovery``; analyze writes this
-    whenever the LLM did not emit a ``discovery-stack.json`` of its own.
-    """
-    return {
-        "id": "discovery-stack",
-        "title": "Discovery: Technology Stack",
-        "purpose": "Select the stack guidance components that apply before planning.",
-        "questions": [
-            {
-                "id": "stack_components",
-                "label": "Stack Components",
-                "prompt": (
-                    "Select all Rigging stack guidance components that apply. "
-                    "Leave blank when undecided."
-                ),
-                "input": "checkbox_grid",
-                "options": [],
-                "required_before_plan": True,
-                "answer": "",
-            }
-        ],
-        "state": "open",
-    }
-
-
-def _stack_option_groups(catalog: list[tuple[str, str]]) -> list[dict]:
-    """Group catalog options by category for the stack questionnaire.
-
-    Known categories render in ``_STACK_CATEGORY_ORDER``; unknown categories follow
-    alphabetically.
-    """
-    by_category: dict[str, list[str]] = {}
-    for name, category in catalog:
-        by_category.setdefault(category, []).append(name)
-    ordered = [c for c in _STACK_CATEGORY_ORDER if c in by_category]
-    ordered += sorted(c for c in by_category if c not in _STACK_CATEGORY_ORDER)
-    return [{"label": c, "options": sorted(by_category[c])} for c in ordered]
 
 
 _EMPTY_LINE = frozenset({"", "- None.", "- None"})
@@ -366,15 +285,16 @@ def _managed_doc_parts(
 def _render_typed_spec(
     blueprint_dir: Path, *, excluded_filenames: frozenset[str] = frozenset()
 ) -> list[str]:
-    # The Rigging catalog (stack-option filenames, no content) is analyze scaffolding that
-    # reads immediately before the imported sources it contextualizes.
+    # The Rigging catalog (filenames, no content) is analyze scaffolding that reads
+    # immediately before the imported sources it contextualizes.
     parts: list[str] = []
-    catalog = _rigging_catalog_names()
+    catalog = technology_stack.rigging_names()
     if catalog:
         parts += [
             "## Rigging catalog (filenames only)",
             "",
-            "Selectable stack options for discovery-stack.json. Names only — never open these files.",
+            f"Available Rigging files for the Rigging column of {technology_stack.FILENAME}. "
+            "Names only — never open these files.",
             "",
             *[f"- {name}" for name in catalog],
             "",
@@ -854,30 +774,11 @@ def _normalize_discovery(name: str, data: dict) -> dict:
         if question.get("input") in ("select", "multiselect", "checkbox_grid") and not question.get(
             "options"
         ):
-            if name != "discovery-stack.json":  # stack options are filled below
-                question["input"] = "textarea"
+            question["input"] = "textarea"
         if name == "discovery-identity.json":
             proposed = str(question.get("proposed", "")).strip()
             if proposed and not str(question.get("answer", "")).strip():
                 question["answer"] = proposed
-        if name == "discovery-stack.json":
-            question["id"] = "stack_components"
-            question["input"] = "checkbox_grid"
-            question["required_before_plan"] = True
-            catalog = _rigging_catalog()
-            if catalog:
-                # The option list is deterministic: the full Rigging catalog grouped by
-                # category, regardless of what the LLM emitted. The LLM must not filter
-                # the choices offered to the Commander.
-                question["options"] = [name_ for name_, _ in catalog]
-                question["groups"] = _stack_option_groups(catalog)
-            else:
-                options = question.get("options", [])
-                if isinstance(options, list):
-                    question["options"] = sorted(str(option) for option in options)
-            # Stack selection is Commander-owned. A model may recommend components
-            # through ``proposed`` but cannot pre-fill the persisted answer.
-            question["answer"] = ""
         questions.append(question)
     normalized["questions"] = questions
     return normalized
@@ -907,19 +808,27 @@ def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
 
 def _parse_output(
     text: str,
-) -> tuple[str, str | None, str | None, str | None, dict[str, dict], str, dict[str, str]]:
+) -> tuple[
+    str, str | None, str | None, str | None, dict[str, dict], str, dict[str, str], str | None
+]:
     """Return (analysis, sea_trials, compass_or_none, blockers_or_none, discoveries,
-    quality, summary).
+    quality, summary, technology_stack_or_none).
 
     ``summary`` contains parsed sub-fields: blockers, questions, stories, stack, features.
-    Questionnaires (``discovery-*.json``) and ``BLOCKERS.md`` are emitted dynamically — only when
-    the analysis surfaces an open question or a blocker — so none of them are required.
+    Questionnaires (``discovery-*.json``), ``BLOCKERS.md``, and ``TECHNOLOGY_STACK.md`` are
+    emitted dynamically, so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
     """
     blocks = parse_artifact_blocks(
         text,
         label="Analyze",
-        allowed_names={"ANALYSIS.md", "SEA_TRIALS.md", "BLOCKERS.md", "COMPASS.md"},
+        allowed_names={
+            "ANALYSIS.md",
+            "SEA_TRIALS.md",
+            "BLOCKERS.md",
+            "COMPASS.md",
+            technology_stack.FILENAME,
+        },
         allowed_prefixes=("discovery-",),
     )
 
@@ -963,6 +872,7 @@ def _parse_output(
         discoveries,
         quality,
         summary,
+        blocks.get(technology_stack.FILENAME) or None,
     )
 
 
@@ -1092,6 +1002,7 @@ def analyze(
             discoveries,
             quality,
             summary,
+            technology_stack_text,
         ) = _parse_output(result.text)
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
@@ -1174,15 +1085,15 @@ def analyze(
         if sea_questions_path is not None:
             discovery_paths.append(sea_questions_path)
 
-    # The stack questionnaire always exists after analyze — its content is deterministic
-    # (the full Rigging catalog), so it never depends on the LLM choosing to emit it.
-    stack_path = questionnaires_dir / "discovery-stack.json"
-    if not stack_path.exists():
-        stack_data = _normalize_discovery("discovery-stack.json", _default_stack_questionnaire())
-        stack_path.write_text(
-            json.dumps(stack_data, indent=2) + "\n", encoding="utf-8", newline="\n"
+    # TECHNOLOGY_STACK.md is proposed once and owned by the Commander thereafter. An existing
+    # file is never overwritten, so re-analysis cannot discard hand-edited technology decisions.
+    # A superseded discovery-stack answer migrates into rows on first pass.
+    if technology_stack_text:
+        technology_stack.ensure_technology_stack(
+            target_dir, technology_stack.parse(technology_stack_text)
         )
-        discovery_paths.append(stack_path)
+    else:
+        technology_stack.ensure_technology_stack(target_dir)
 
     if sea_trials_blocker:
         blockers_text_out = _ensure_sea_trials_blocker(blockers_text_out, sea_trials_blocker)

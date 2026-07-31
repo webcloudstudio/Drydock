@@ -8,6 +8,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-07-30: `TECHNOLOGY_STACK.md` replaces the stack questionnaire as the technology decision of
+  record. It maps each technology to the Rigging file governing it, or to none, so a target can
+  name technologies Rigging does not document. `drydock analyze` proposes it once and never
+  overwrites it; `drydock plan` reads it to assign per-story `stack:` guidance; QuarterDeck edits
+  it as rows with a Rigging selector seeded by name similarity. The technology stack no longer
+  gates planning, and `plan` resolves an input disagreement by a stated precedence order instead of
+  deferring to the Commander. An answered `discovery-stack.json` migrates into rows on first use
+  and is archived.
+
 ### Fixed
 
 - 2026-07-30: QuarterDeck questionnaires are durable Commander-owned input. Answers survive every

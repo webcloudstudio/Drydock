@@ -34,6 +34,12 @@
       "default_text": "# Exclude Files\n\nExact filenames listed here are excluded from `blueprint/sources/` prompt injection for `drydock analyze` and `drydock plan`.\n\n## Excluded files\n",
       "help_text": "This file controls which imported source filenames are excluded from prompt injection for `drydock analyze` and `drydock plan create`. List exact filenames, one per bullet, when a source should stay out of future LLM context.",
       "prompt_text": "Exclude File List - THIS FILE MUST NEVER BE INJECTED AND THE LLM SHOULD ERROR and EXIT IF IT SEES THIS TEXT.  It represents filenames to NOT provide the llm and is used by python."
+    },
+    "TECHNOLOGY_STACK.md": {
+      "item_id": "technology_stack",
+      "label": "Technology Stack",
+      "help_text": "The technology decisions of record for this target. One row per technology, naming the Rigging best-practice file that governs building it. Leave the Rigging cell as none when no Rigging file exists; the builder then applies general best practice. Analyze proposes this file once and never overwrites it; plan reads it to assign per-story stack guidance.",
+      "prompt_text": "Edit freely. Adding a technology never requires a matching Rigging file, and this file never blocks planning."
     }
   },
   "injected_files": {
@@ -105,7 +111,7 @@
       "label": "Change Ticket",
       "role": "change ticket",
       "help_text": "Incremental change ticket under blueprint/changes/. Amends an existing Blueprint spec via its Amends: header.",
-      "prompt_text": "Change Ticket — amends an existing Blueprint spec. Inherit parent spec dependencies in the manifest."
+      "prompt_text": "Change Ticket \u2014 amends an existing Blueprint spec. Inherit parent spec dependencies in the manifest."
     },
     {
       "pattern": "*/questionnaires/*.json",

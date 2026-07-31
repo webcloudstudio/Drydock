@@ -1,11 +1,11 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260730 V22
+version: 20260730 V23
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
 output: Blueprint specification files, MANIFEST.md
 ---
 
@@ -105,12 +105,32 @@ the job block; the rest are fenced sections.
   parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
   analyze. Use these as planning context; do not overwrite their intent.
-- **Answered questionnaires** (`discovery-*.json`) — settled human-owned decisions on stack, intent, and guardrails.
-  Consume these as authoritative; do not re-raise a question that a questionnaire has already answered.
+- **Answered questionnaires** (`discovery-*.json`) — settled human-owned decisions on intent and
+  guardrails. Do not re-raise a question that a questionnaire has already answered.
   Drydock preflight guarantees that every Analyze question marked `required_before_plan` is answered
-  before this prompt runs.
+  before this prompt runs. Questionnaires never carry technology-stack decisions.
+- **`TECHNOLOGY_STACK.md`** — the Commander-owned technology decisions of record: one row per
+  technology, with the Rigging file that governs building it or `—` when none exists. This is the
+  sole authority on the stack. It may be absent or incomplete; that means undecided, and you
+  resolve the gap from the sources rather than stopping.
 - **`COMPASS.md`** — existing product intent if already present; otherwise derive emitted content
-  from the analysis and sources.
+  from the analysis and sources. It does not carry technology choices.
+
+### Precedence
+
+When authoritative inputs disagree, apply this order and proceed. Do not stop on a disagreement
+that this order resolves:
+
+1. `PLAN_COMPASS.md` **Commander Direction**
+2. `TECHNOLOGY_STACK.md` (technology questions only)
+3. `COMPASS.md`
+4. Imported source files and `ANALYSIS.md`
+5. Answered questionnaires
+
+**Absence is never prohibition.** An item missing from `TECHNOLOGY_STACK.md`, unselected in a
+questionnaire, or unmentioned in `COMPASS.md` is undecided, not forbidden. Never treat an omission
+as a negative requirement, and never raise a conflict because one input lists something another
+does not.
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field
   contracts for the outputs.
 - **Imported source files** — the original material under `blueprint/sources/`, injected below.
@@ -379,6 +399,9 @@ Additional body guidance:
 - `COMPASS.md` body uses `## Compass`, `## Constraints`, and `## Guardrails`.
 - `ARCHITECTURE.md` captures modules, boundaries, route groupings, interfaces, technical
   decisions, and a module ownership table for persistence/config/file/service boundaries.
+- `ARCHITECTURE.md` carries a `## Technology Stack` section derived from `TECHNOLOGY_STACK.md`:
+  the technologies in use and where each applies. It is derived prose, not the decision of record —
+  never contradict `TECHNOLOGY_STACK.md` and never introduce a technology it does not list.
 - `DATABASE.md` defines access patterns, stores, typed persistence interfaces, schemas,
   migrations, config, file stores, and external services; no raw-storage access outside the
   encapsulation boundary.
@@ -422,6 +445,12 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   - `state: pending`
 - Add `parent`, `context`, `stack`, `rules`, `copy`, `depends`, `evidence`, and `scope` only
   when appropriate.
+- Draw `stack:` values from the Rigging column of `TECHNOLOGY_STACK.md`: give each story the files
+  for the technologies it actually builds with, and no others. A technology whose Rigging cell is
+  `—` contributes no `stack:` entry — the builder applies general best practice for it. Never name
+  a Rigging file that `TECHNOLOGY_STACK.md` does not list. When `TECHNOLOGY_STACK.md` is absent or
+  silent on a technology the story needs, choose the conventional Rigging file for it; a name that
+  does not resolve is reported as a missing context file and does not fail the build.
 - For context files classified in `ANALYSIS.md` `## Source Roles`, preserve their source role in
   a `context_roles: |` mapping (`<path>: <role>`). Key it by the promoted Blueprint name, never a
   `sources/...` path — write `spec.txt: normative specification and conformance test suite`, not
@@ -572,8 +601,15 @@ Required action:
 ### Error Mode
 
 Use Error Mode only when you cannot produce a complete, internally consistent Success Mode
-response. Drydock writes this report into `PLAN_COMPASS.md` as a Commander-decision handoff and
-does not persist model-generated Blueprint or Manifest artifacts. Emit only:
+response, and only for an unresolvable **product** question — one the Precedence order above cannot
+settle and no reasonable assumption can bridge. Drydock writes this report into `PLAN_COMPASS.md`
+as a Commander-decision handoff and does not persist model-generated Blueprint or Manifest
+artifacts.
+
+A technology-stack disagreement is never Error Mode. Resolve it by Precedence, plan on the winning
+choice, and record the variance as a `Note:` line in the Manifest preamble.
+
+Emit only:
 
 ```text
 === PLAN_CREATE_ERROR.txt ===

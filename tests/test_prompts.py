@@ -109,6 +109,7 @@ class TestInputTokens:
         assert tokens[0] == "COMPASS.md"
         assert tokens == (
             "COMPASS.md",
+            "TECHNOLOGY_STACK.md",
             "PLAN_COMPASS.md",
             "ANALYSIS.md",
             "SEA_TRIALS.md",

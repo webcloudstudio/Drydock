@@ -1691,7 +1691,6 @@ class TestPlanningSession:
             return SimpleNamespace(ok=True, text=payload, execution_id="exec-fake")
 
         monkeypatch.setattr("drydock.planning_session.run_prompt", _run)
-        monkeypatch.setattr("drydock.planning_session._has_stack_selection", lambda *_: True)
 
     def test_markdown_import_plan_create_and_approve(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch

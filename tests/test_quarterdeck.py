@@ -1858,3 +1858,179 @@ def test_atomic_write_text_replaces_longer_content_completely(tmp_path):
 
     assert path.read_text(encoding="utf-8") == '{"state": "open"}\n'
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+# ── Technology Stack row editor ───────────────────────────────────────────────
+
+
+def _stack_item():
+    return {"id": "technology_stack", "type": "technology_stack", "path": "../TECHNOLOGY_STACK.md"}
+
+
+def test_technology_stack_renders_one_row_per_technology(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    source = tmp_path / "TECHNOLOGY_STACK.md"
+    technology_stack.write(
+        tmp_path,
+        [
+            technology_stack.StackEntry("FastAPI", "fastapi.md"),
+            technology_stack.StackEntry("marina-library", None, "Internal."),
+        ],
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: source)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    assert rendered.count("class='ts-row'") == 2
+    assert "value='FastAPI'" in rendered
+    assert "value='marina-library'" in rendered
+    assert "<option value='fastapi.md' selected>" in rendered
+    # A technology with no Rigging file keeps the explicit "none" option selected.
+    assert f"<option value='' selected>{technology_stack.NONE_CELL}</option>" in rendered
+    assert "value='Internal.'" in rendered
+
+
+def test_technology_stack_renders_empty_editor_when_file_is_absent(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+
+    def _missing(_path):
+        raise quarterdeck.HTTPException(status_code=404, detail="Missing file")
+
+    monkeypatch.setattr(quarterdeck, "resolve_path", _missing)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    assert "class='ts-row'" not in rendered
+    assert "ts-editor" in rendered
+    assert "+ Add technology" in rendered
+
+
+def test_technology_stack_keeps_an_uncatalogued_rigging_file_selectable(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    source = tmp_path / "TECHNOLOGY_STACK.md"
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Custom", "not-in-catalog.md")])
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: source)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    assert "<option value='not-in-catalog.md' selected>not-in-catalog.md</option>" in rendered
+
+
+def test_technology_stack_escapes_html_in_cells(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    source = tmp_path / "TECHNOLOGY_STACK.md"
+    technology_stack.write(
+        tmp_path, [technology_stack.StackEntry("<script>x</script>", None, "<b>note</b>")]
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: source)
+
+    rendered = quarterdeck.render_technology_stack(_stack_item())
+
+    assert "<script>x</script>" not in rendered
+    assert "&lt;script&gt;" in rendered
+
+
+def test_technology_stack_writeback_persists_rows_and_drops_empty_ones(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+
+    result = quarterdeck.api_set_technology_stack(
+        "technology_stack",
+        quarterdeck.TechnologyStackUpdate(
+            rows=[
+                {
+                    "technology": " FastAPI ",
+                    "rigging": "fastapi.md",
+                    "notes": " Served by uvicorn ",
+                },
+                {"technology": "", "rigging": "flask.md", "notes": "no technology"},
+                {"technology": "marina-library", "rigging": "", "notes": ""},
+            ]
+        ),
+        None,
+    )
+
+    assert result == {"ok": True, "item_id": "technology_stack", "rows": 2}
+    assert technology_stack.load(tmp_path) == [
+        technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn"),
+        technology_stack.StackEntry("marina-library", None, ""),
+    ]
+
+
+def test_technology_stack_writeback_rejects_a_non_stack_item(tmp_path, monkeypatch):
+    import pytest
+
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(
+        quarterdeck, "find_item", lambda _id: {"id": "compass_edit", "type": "editable_markdown"}
+    )
+
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.api_set_technology_stack(
+            "compass_edit", quarterdeck.TechnologyStackUpdate(rows=[]), None
+        )
+    assert exc.value.status_code == 400
+
+
+def test_technology_stack_writeback_serializes_concurrent_saves(tmp_path, monkeypatch):
+    """Autosave fires on blur and change, so two writes can overlap on one edit."""
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+
+    active = 0
+    overlapped = False
+    real_write = quarterdeck._atomic_write_text
+
+    def slow_write(path, text):
+        nonlocal active, overlapped
+        active += 1
+        overlapped = overlapped or active > 1
+        try:
+            time.sleep(0.01)
+            real_write(path, text)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(quarterdeck, "_atomic_write_text", slow_write)
+
+    names = ["FastAPI" * 200, "Go"] * 6
+    threads = [
+        threading.Thread(
+            target=quarterdeck.api_set_technology_stack,
+            args=(
+                "technology_stack",
+                quarterdeck.TechnologyStackUpdate(rows=[{"technology": name}]),
+                None,
+            ),
+        )
+        for name in names
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not overlapped
+    from drydock import technology_stack
+
+    assert [e.technology for e in technology_stack.load(tmp_path)][0] in names
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_technology_stack_is_a_registered_renderer_type():
+    quarterdeck = _load_quarterdeck()
+    assert "technology_stack" in quarterdeck.TYPES
+    assert quarterdeck.validate_item(_stack_item()) is None
+    assert quarterdeck.validate_item({"id": "x", "type": "technology_stack"}) is not None

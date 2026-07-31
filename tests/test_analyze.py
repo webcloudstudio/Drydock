@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from drydock import technology_stack
 from drydock.analyze import (
     _assemble_prompt,
     _collect_blueprint_files,
@@ -215,23 +216,14 @@ _DISCOVERY_INTENT = json.dumps(
     indent=2,
 )
 
-_DISCOVERY_STACK = json.dumps(
-    {
-        "id": "discovery-stack",
-        "title": "Discovery: Technology Stack",
-        "purpose": "Confirm stack.",
-        "questions": [
-            {
-                "id": "stack_confirmed",
-                "label": "Stack",
-                "prompt": "What stack?",
-                "input": "textarea",
-                "options": ["flask.md", "python.md"],
-            }
-        ],
-    },
-    indent=2,
-)
+_TECHNOLOGY_STACK_CONTENT = """# Technology Stack
+
+| Technology | Rigging | Notes |
+|---|---|---|
+| Python | python.md | |
+| Flask | flask.md | |
+| uvicorn | \u2014 | No Rigging guidance. |
+"""
 
 _DISCOVERY_GAPS_AC = json.dumps(
     {
@@ -321,6 +313,7 @@ def _make_llm_output(
     blocks = [
         f"=== ANALYSIS.md ===\n{analysis}\n=== END ANALYSIS.md ===",
         f"=== SEA_TRIALS.md ===\n{_SEA_TRIALS_CONTENT}\n=== END SEA_TRIALS.md ===",
+        f"=== TECHNOLOGY_STACK.md ===\n{_TECHNOLOGY_STACK_CONTENT}\n=== END TECHNOLOGY_STACK.md ===",
     ]
     if include_identity:
         blocks.append(
@@ -329,7 +322,6 @@ def _make_llm_output(
     if include_spikes:
         blocks += [
             f"=== discovery-intent.json ===\n{_DISCOVERY_INTENT}\n=== END discovery-intent.json ===",
-            f"=== discovery-stack.json ===\n{_DISCOVERY_STACK}\n=== END discovery-stack.json ===",
             f"=== discovery-gaps-ac.json ===\n{_DISCOVERY_GAPS_AC}\n=== END discovery-gaps-ac.json ===",
             f"=== discovery-guardrails.json ===\n{_DISCOVERY_GUARDRAILS}\n=== END discovery-guardrails.json ===",
         ]
@@ -718,7 +710,7 @@ class TestParseBlocks:
 
 class TestParseOutput:
     def test_valid_output_extracts_all_fields(self):
-        analysis, sea_trials, compass, blockers, spikes, quality, summary = _parse_output(
+        analysis, sea_trials, compass, blockers, spikes, quality, summary, _ = _parse_output(
             _VALID_LLM_OUTPUT_WITH_SPIKES
         )
         assert "Blueprint Analysis" in analysis
@@ -728,12 +720,11 @@ class TestParseOutput:
         assert blockers is None
         assert quality == "Ready"
         assert "discovery-intent.json" in spikes
-        assert "discovery-stack.json" in spikes
         assert "discovery-gaps-ac.json" in spikes
         assert "discovery-guardrails.json" in spikes
 
     def test_summary_fields_parsed(self):
-        _, _, _, _, _, _, summary = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
+        _, _, _, _, _, _, summary, _ = _parse_output(_VALID_LLM_OUTPUT_WITH_SPIKES)
         assert summary.get("stories") == "5"
         assert summary.get("features") == "4"
         assert summary.get("blockers") == "0"
@@ -745,21 +736,21 @@ class TestParseOutput:
 
     def test_blocked_quality_parsed(self):
         output = _make_llm_output(quality="Blocked")
-        _, _, _, _, _, quality, _ = _parse_output(output)
+        _, _, _, _, _, quality, _, _ = _parse_output(output)
         assert quality == "Blocked"
 
     def test_questions_quality_parsed(self):
         output = _make_llm_output(quality="Questions")
-        _, _, _, _, _, quality, _ = _parse_output(output)
+        _, _, _, _, _, quality, _, _ = _parse_output(output)
         assert quality == "Questions"
 
     def test_no_compass_block_returns_none(self):
-        _, _, compass, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
+        _, _, compass, _, _, _, _, _ = _parse_output(_VALID_LLM_OUTPUT_NO_COMPASS)
         assert compass is None
 
     def test_blockers_block_returned_when_present(self):
         output = _make_llm_output(blockers=_BLOCKERS_CONTENT)
-        _, _, _, blockers, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _, _ = _parse_output(output)
         assert blockers is not None
         assert "Missing project name" in blockers
 
@@ -767,13 +758,13 @@ class TestParseOutput:
         # Regression (FIX-10): the LLM emitted the block with placeholder text instead of
         # omitting it; the writer must treat it as "no blockers" so its existence stays a real flag.
         output = _make_llm_output(blockers="(omitted — no blockers)")
-        _, _, _, blockers, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _, _ = _parse_output(output)
         assert blockers is None
 
     def test_titleonly_blockers_block_returns_none(self):
         # Heading prose but no "## " blocker entry → not a genuine blocker list.
         output = _make_llm_output(blockers="# Blockers: TestProject\n\nNo blockers found.")
-        _, _, _, blockers, _, _, _ = _parse_output(output)
+        _, _, _, blockers, _, _, _, _ = _parse_output(output)
         assert blockers is None
 
     def test_missing_analysis_block_raises(self):
@@ -824,7 +815,7 @@ Verification: proof""",
     def test_no_spikes_is_tolerated(self):
         # Spikes are emitted dynamically; an analysis with nothing open is valid.
         output = _make_llm_output(include_spikes=False)
-        _, _, _, _, spikes, _, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _, _ = _parse_output(output)
         assert spikes == {}
 
     def test_invalid_spike_json_raises(self):
@@ -839,18 +830,18 @@ Verification: proof""",
             1,
         )
 
-        _, _, _, _, discoveries, _, _ = _parse_output(missing_end)
+        _, _, _, _, discoveries, _, _, _ = _parse_output(missing_end)
 
         assert discoveries["discovery-intent.json"]["id"] == "discovery-intent"
 
     def test_unknown_quality_when_absent(self):
         no_quality = _VALID_LLM_OUTPUT.replace("Quality: Ready", "")
-        _, _, _, _, _, quality, _ = _parse_output(no_quality)
+        _, _, _, _, _, quality, _, _ = _parse_output(no_quality)
         assert quality == "unknown"
 
     def test_variable_spikes_collected(self):
         output = _make_llm_output(extra_spike=True)
-        _, _, _, _, spikes, _, _ = _parse_output(output)
+        _, _, _, _, spikes, _, _, _ = _parse_output(output)
         assert "discovery-auth.json" in spikes
 
     def test_write_tool_transcript_is_recovered(self):
@@ -903,7 +894,7 @@ Compass text.
 - None stated.</parameter>
 </invoke>
 </function_calls>"""
-        analysis, sea_trials, compass, blockers, spikes, quality, _ = _parse_output(text)
+        analysis, sea_trials, compass, blockers, spikes, quality, _, _ = _parse_output(text)
         assert "Blueprint Analysis" in analysis
         assert "Sea Trials" in sea_trials
         assert compass is not None
@@ -1165,30 +1156,6 @@ _FAKE_CATALOG = [
 ]
 
 
-def test_normalize_discovery_replaces_stack_options_with_full_catalog(monkeypatch):
-    monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: _FAKE_CATALOG)
-    normalized = _normalize_discovery("discovery-stack.json", json.loads(_DISCOVERY_STACK))
-
-    question = normalized["questions"][0]
-    assert question["input"] == "checkbox_grid"
-    assert question["options"] == [
-        "BRANDING_MAIN.md",
-        "aws-s3.md",
-        "flask.md",
-        "python.md",
-        "sqlite.md",
-    ]
-    assert question["groups"] == [
-        {"label": "Web Server", "options": ["flask.md"]},
-        {"label": "Persistence", "options": ["sqlite.md"]},
-        {"label": "AWS", "options": ["aws-s3.md"]},
-        {"label": "Technologies", "options": ["python.md"]},
-        {"label": "Branding", "options": ["BRANDING_MAIN.md"]},
-    ]
-    assert question["answer"] == ""
-    assert question["required_before_plan"] is True
-
-
 def test_normalize_discovery_degrades_optionless_select_to_textarea():
     normalized = _normalize_discovery(
         "discovery-stack-guidance.json",
@@ -1198,17 +1165,6 @@ def test_normalize_discovery_degrades_optionless_select_to_textarea():
         },
     )
     assert normalized["questions"][0]["input"] == "textarea"
-
-
-def test_normalize_discovery_stack_falls_back_to_sorted_llm_options(monkeypatch):
-    monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: [])
-    normalized = _normalize_discovery("discovery-stack.json", json.loads(_DISCOVERY_STACK))
-
-    question = normalized["questions"][0]
-    assert question["input"] == "checkbox_grid"
-    assert question["options"] == ["flask.md", "python.md"]
-    assert "groups" not in question
-    assert question["answer"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -1451,11 +1407,12 @@ QUESTIONS:
         assert not (target_dir / "SOUNDINGS.md").exists()
 
     def test_quality_signal_in_result(self, tmp_path):
-        # The empty always-written stack questionnaire is a required planning gate,
-        # but it is not a BLOCKERS.md entry.
+        # No questionnaire is written unconditionally, so an analysis that raises no
+        # open question is Ready. The technology stack never gates.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
-        assert result.quality == "Questions"
+        assert result.quality == "Ready"
+        assert result.question_count == 0
         assert not (target_dir / "BLOCKERS.md").exists()
 
     def test_reanalysis_removes_legacy_stack_blocker(self, tmp_path):
@@ -1467,7 +1424,7 @@ QUESTIONS:
 
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
 
-        assert result.quality == "Questions"
+        assert result.quality == "Ready"
         assert not (target_dir / "BLOCKERS.md").exists()
 
     def test_summary_counts_in_result(self, tmp_path):
@@ -1476,7 +1433,7 @@ QUESTIONS:
         assert result.story_count == 5
         assert result.feature_count == 4
         assert result.blocker_count == 0
-        assert result.question_count == 1  # the always-written stack questionnaire
+        assert result.question_count == 0
         assert result.screen_count == 4
         assert result.stack == "python/flask"
 
@@ -1485,11 +1442,11 @@ QUESTIONS:
         output = _make_llm_output(include_spikes=True, quality="Ready")
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
 
-        assert result.question_count == 4
+        assert result.question_count == 3
         assert result.quality == "Questions"
         analysis = result.analysis_path.read_text(encoding="utf-8")
         assert "Quality: Questions" in analysis
-        assert "  questions: 4" in analysis
+        assert "  questions: 3" in analysis
 
     def test_compass_written_when_absent(self, tmp_path):
         target_dir = _target(tmp_path, **{"FEATURE-Auth.md": "auth"})
@@ -1566,31 +1523,24 @@ QUESTIONS:
         questionnaires = target_dir / "QuarterDeck" / "questionnaires"
         for name in (
             "discovery-intent.json",
-            "discovery-stack.json",
             "discovery-gaps-ac.json",
             "discovery-guardrails.json",
         ):
             assert (questionnaires / name).exists(), f"{name} not written"
 
-    def test_no_spikes_emitted_still_writes_stack_questionnaire(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: _FAKE_CATALOG)
+    def test_no_spikes_emitted_writes_no_questionnaires(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         output = _make_llm_output(include_spikes=False)
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert result.ok
-        assert [p.name for p in result.discovery_paths] == ["discovery-stack.json"]
-        data = json.loads(result.discovery_paths[0].read_text(encoding="utf-8"))
-        question = data["questions"][0]
-        assert question["input"] == "checkbox_grid"
-        assert "other" not in question["options"]
-        assert "Other" not in [g["label"] for g in question["groups"]]
-        assert question["answer"] == ""
+        assert [p.name for p in result.discovery_paths] == []
+        assert not (target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json").exists()
 
     def test_spike_paths_in_result(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         output = _make_llm_output(include_spikes=True)
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
-        assert len(result.discovery_paths) >= 4
+        assert len(result.discovery_paths) >= 3
 
     def test_spike_files_are_valid_json(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
@@ -1791,34 +1741,28 @@ QUESTIONS:
         assert questions["display_name"]["answer"] == "Test Project"
         assert questions["short_description"]["answer"] == "A test project for automated analysis."
 
-    def test_discovery_stack_questionnaire_written_as_grouped_checkbox_grid(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr("drydock.analyze._rigging_catalog", lambda: _FAKE_CATALOG)
+    def test_technology_stack_written_from_emitted_block(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         output = _make_llm_output(include_spikes=True)
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
         assert result.ok
-        stack_path = target_dir / "QuarterDeck" / "questionnaires" / "discovery-stack.json"
-        data = json.loads(stack_path.read_text(encoding="utf-8"))
-        question = data["questions"][0]
-        assert question["input"] == "checkbox_grid"
-        assert question["options"] == [
-            "BRANDING_MAIN.md",
-            "aws-s3.md",
-            "flask.md",
-            "python.md",
-            "sqlite.md",
+        entries = technology_stack.load(target_dir)
+        assert [(e.technology, e.rigging) for e in entries] == [
+            ("Python", "python.md"),
+            ("Flask", "flask.md"),
+            ("uvicorn", None),
         ]
-        assert [g["label"] for g in question["groups"]] == [
-            "Web Server",
-            "Persistence",
-            "AWS",
-            "Technologies",
-            "Branding",
-        ]
-        assert question["answer"] == ""
-        assert question["required_before_plan"] is True
+
+    def test_technology_stack_is_never_overwritten(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        technology_stack.write(
+            target_dir, [technology_stack.StackEntry("FastAPI", "fastapi.md", "Commander choice")]
+        )
+        output = _make_llm_output(include_spikes=True)
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+        assert result.ok
+        entries = technology_stack.load(target_dir)
+        assert [(e.technology, e.rigging) for e in entries] == [("FastAPI", "fastapi.md")]
 
     def test_missing_blueprint_raises(self, tmp_path):
         target_dir = tmp_path / "NoBlueprint"
@@ -2004,8 +1948,6 @@ class TestLifecycleState:
         assert "Build Directory:" not in html
         assert 'class="stat" href="#stories"' in html
         assert 'section id="stories"' in html
-        # The always-written stack questionnaire keeps questionnaires open on first run.
-        assert "Open questionnaires remain" in html
         assert "Next Step" in html
         assert "drydock plan MyTarget" in html
         assert "FND-001 - One" in html

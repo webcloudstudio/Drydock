@@ -1,12 +1,12 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260730 V20
+version: 20260730 V21
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
 inputs: COMPASS.md, ANALYZE_COMPASS.md, BLOCKERS.md, SEA_TRIALS.md, EXISTING_SPIKES, RIGGING_MANIFEST, IMPORTED_SOURCES
-output: ANALYSIS.md, SEA_TRIALS.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
+output: ANALYSIS.md, SEA_TRIALS.md, TECHNOLOGY_STACK.md, BLOCKERS.md (conditional), COMPASS.md (conditional), discovery-<slug>.json (variable — one per open question; discovery-sea-trials.json is written by Drydock and must never be emitted)
 ---
 
 # Agent for: blueprint analysis
@@ -144,9 +144,9 @@ questionnaire action item and carried forward there. A question marked `required
 does not stop analysis, but it gates planning because Plan cannot author a consistent specification
 without the decision.
 
-Blockers halt analysis progression. The Technology Stack questionnaire and every question marked
-`required_before_plan` gate `plan create`; other questionnaire action items distinguish `Questions`
-from `Ready` but do not gate.
+Blockers halt analysis progression. Every question marked `required_before_plan` gates
+`plan create`; other questionnaire action items distinguish `Questions` from `Ready` but do not
+gate. `TECHNOLOGY_STACK.md` never gates planning.
 
 ---
 
@@ -287,10 +287,9 @@ depends on the answer. It never resolves a blocker. Do not duplicate a questionn
 **9. Build the discovery questionnaires.**
 - *Consumes:* the project type + questionnaire action-item list (including Gap Checklist findings
   routed to "only the human can decide") + injected Rigging manifest.
-- *Emits:* `discovery-stack.json` on every run plus one `discovery-<slug>.json` per other open
-  important question. The stack questionnaire contains every real manifest component and a proposed
-  subset; only a Commander selection is an answer. Set `"required_before_plan": true` on the stack
-  question and on every unresolved cross-source conflict or other decision without which Plan
+- *Emits:* `TECHNOLOGY_STACK.md` on every run plus one `discovery-<slug>.json` per open
+  important question. Set `"required_before_plan": true` on every unresolved cross-source conflict
+  or other decision without which Plan
   cannot author one internally consistent specification. These are questionnaire gates and are
   never emitted in `BLOCKERS.md`. Gap Checklist questions default to one consolidated
   `discovery-gaps.json`; split into `discovery-gaps-2.json`, etc. only past 5–6 questions in this
@@ -308,8 +307,8 @@ blockers exist; emit the `COMPASS.md` block when `COMPASS_EXISTS: false` or
 ## Output Format
 
 Emit blocks only in this order. Conditional blocks are omitted when their condition is false:
-`ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, `COMPASS.md`, `discovery-identity.json`,
-`discovery-stack.json`, then `discovery-gaps*.json` and other `discovery-<slug>.json` blocks in
+`ANALYSIS.md`, `SEA_TRIALS.md`, `TECHNOLOGY_STACK.md`, `BLOCKERS.md`, `COMPASS.md`,
+`discovery-identity.json`, then `discovery-gaps*.json` and other `discovery-<slug>.json` blocks in
 lexical filename order.
 **Nothing outside the blocks.** No preamble, no explanation, no commentary, no tool calls, no `<invoke>` XML. Start your response with `=== ANALYSIS.md ===`.
 
@@ -529,7 +528,8 @@ Do NOT reproduce source file content. Synthesize.}
 
 ## Constraints
 {Bullet list: hard technical, regulatory, scale, and operating constraints derived from the sources.
-These bound what the agent may build — stack, runtime, compatibility, environment.
+These bound what the agent may build — runtime, compatibility, environment, operating limits.
+Do NOT list the technology stack here; technologies belong only in TECHNOLOGY_STACK.md.
 "- None stated." if the sources are silent.}
 
 ## Guardrails
@@ -619,33 +619,28 @@ emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` 
 === END discovery-identity.json ===
 ```
 
-**Stack questionnaire rule.** Always emit `discovery-stack.json`. Its `options` are every real
-component in the injected Rigging manifest, alphabetized. Never emit a synthetic `"other"` option.
-Use the manifest and sources to propose a small applicable subset, but leave `answer` empty unless
-the injected prior questionnaire already contains a Commander selection. A source-named technology
-is evidence for the proposal, not a confirmed stack decision. An empty selection remains a required
-questionnaire gate before planning; do not emit a stack-selection blocker.
+**Technology Stack rule.** Always emit `TECHNOLOGY_STACK.md`: one row per technology the sources
+show the product using, in dependency order (language, framework, persistence, infrastructure,
+tooling). Drydock discards the block when the file already exists, so this proposal never
+overwrites a Commander decision.
+
+The `Rigging` column names a file from the injected Rigging catalog, or `—` when no catalog file
+governs that technology. A technology with no Rigging file is normal and expected — record the
+technology anyway. Never omit a technology because the catalog lacks a matching file, never invent
+a Rigging filename that is not in the catalog, and never list a Rigging file that no row uses.
+
+Derive the technologies from the sources. Where the sources are silent on a slot the product
+plainly needs, propose the conventional choice and say so in `Notes`. Do not emit a stack blocker
+and do not raise a stack questionnaire; the Commander edits this file directly.
 
 ```
-=== discovery-stack.json ===
-{
-  "id": "discovery-stack",
-  "title": "Discovery: Technology Stack",
-  "purpose": "Select the stack guidance components that apply before planning.",
-  "questions": [
-    {
-      "id": "stack_components",
-      "label": "Stack Components",
-      "prompt": "Select all Rigging components that apply. A selection confirms the stack for planning.",
-      "input": "checkbox_grid",
-      "options": ["{alphabetized injected Rigging manifest component filename}"],
-      "proposed": "{Comma-separated LLM recommendation, or empty string}",
-      "required_before_plan": true,
-      "answer": ""
-    }
-  ]
-}
-=== END discovery-stack.json ===
+=== TECHNOLOGY_STACK.md ===
+# Technology Stack
+
+| Technology | Rigging | Notes |
+|---|---|---|
+| {Technology name as the product uses it} | {catalog filename or —} | {Short note, or empty} |
+=== END TECHNOLOGY_STACK.md ===
 ```
 
 ---
@@ -661,6 +656,10 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
 - COMPASS.md is orientation for a build agent, not project documentation. Never reproduce source
   file content verbatim, never write API references or usage guides, never narrate architecture.
   Synthesize intent, constraints, and guardrails only.
+- Never enumerate the technology stack in COMPASS.md. The stack is recorded once, in
+  `TECHNOLOGY_STACK.md`, and reaches the builder through per-story `stack:` fields.
+- Never emit a questionnaire that asks the Commander to select the technology stack or Rigging
+  files. That decision lives in `TECHNOLOGY_STACK.md`.
 - Do not include `## Open Questions` or any duplicate question list in `ANALYSIS.md`. Nonblocking
   questions live only in `discovery-*.json` questionnaire action items.
 - `## Surfaced Acceptance Criteria` is always present in `ANALYSIS.md`, "None." when empty. Its row
@@ -689,10 +688,7 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   unanswered questionnaire.
 - Preserve every existing questionnaire indefinitely. Never rewrite or replace an existing
   questionnaire; emit genuinely new, non-duplicate questions in new `discovery-<slug>.json` files.
-- Always emit `discovery-stack.json` with `"input": "checkbox_grid"`. Options are the complete,
-  alphabetized injected manifest component filenames. Never emit `"other"`; never open individual
-  component rule files. Use `proposed` for the recommended subset and preserve a prior Commander
-  `answer` only when it is already present.
+- Never open individual Rigging component rule files; the catalog supplies filenames only.
 - Never emit a `select` or `multiselect` question without a non-empty `options` list. A free-text
   decision uses `"input": "textarea"`.
 - A named technology with a matching manifest component informs the proposal; it is not a confirmed
@@ -737,7 +733,7 @@ questionnaire gate before planning; do not emit a stack-selection blocker.
   `QUESTIONS:` block; Drydock projects them into that questionnaire itself.
 - The SEA_TRIALS.md `QUESTIONS:` block holds only human-owned measurement facts (baselines,
   targets, workloads, business measures). Never place a stack or Rigging selection question there —
-  stack selection is owned solely by `discovery-stack.json` and must appear in no other
+  the technology stack is owned solely by `TECHNOLOGY_STACK.md` and must appear in no
   questionnaire. Drydock drops any stack/Rigging question found in the Sea Trials QUESTIONS block.
 - All questionnaire JSON must be valid JSON.
 - Do not write to `blueprint/` or read `MANIFEST.md`. Read imported sources — there are no

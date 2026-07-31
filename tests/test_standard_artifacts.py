@@ -163,3 +163,25 @@ def test_all_programmatic_acceptance_gathers_implemented_specs_deduped(tmp_path)
         ("FEATURE-Catalog.md", "catalog-responds"),
         ("FEATURE-Catalog.md", "catalog-writes"),
     ]
+
+
+def test_render_console_registers_the_technology_stack_editor():
+    import yaml
+
+    parsed = yaml.safe_load(render_console("Example"))
+    items = {item["id"]: item for item in parsed["items"]}
+
+    stack = items["technology_stack"]
+    assert stack["type"] == "technology_stack"
+    assert stack["path"] == "../TECHNOLOGY_STACK.md"
+    assert stack["section"] == "analyze"
+    assert "help_text" in stack
+    assert "prompt_text" in stack
+
+
+def test_render_console_keeps_analyze_item_order_unique():
+    import yaml
+
+    parsed = yaml.safe_load(render_console("Example"))
+    orders = [i["order"] for i in parsed["items"] if i.get("section") == "analyze"]
+    assert len(orders) == len(set(orders)), "analyze items must not share an order"
