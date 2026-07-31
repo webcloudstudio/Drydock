@@ -169,6 +169,25 @@ def test_answered_feedback_survives_blueprint_rename_and_requires_explicit_retir
     assert retired[0].reason == "Product no longer has a visual surface."
 
 
+def test_answered_feedback_ignores_unformatted_imported_sources(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    (blueprint / "FEATURE-Color.md").write_text(
+        _blueprint(status="answered", answer="Blue"), encoding="utf-8"
+    )
+    (sources / "ARCHITECTURE.md").write_text(
+        "# Architecture\n\n## Open Questions\n\nAnything can go here.\n",
+        encoding="utf-8",
+    )
+
+    decisions = harvest_answered_questions(target)
+
+    assert len(decisions) == 1
+    assert decisions[0].source_blueprint == "blueprint/FEATURE-Color.md"
+
+
 def test_realized_blueprint_remains_authoritative_after_source_rename(tmp_path):
     target = tmp_path / "Demo"
     blueprint = target / "blueprint"

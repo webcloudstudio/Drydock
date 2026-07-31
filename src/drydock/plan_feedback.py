@@ -96,9 +96,14 @@ def save_feedback(target_dir: Path, decisions: tuple[PlanningDecision, ...]) -> 
 
 
 def harvest_answered_questions(target_dir: Path) -> tuple[PlanningDecision, ...]:
-    """Promote answered current artifacts while preserving filename-independent history."""
+    """Promote answered governed artifacts while preserving filename-independent history.
+
+    Imported material below ``blueprint/sources/`` is user-authored provenance, not a
+    Drydock-governed Blueprint artifact.  Only top-level Blueprint Markdown participates
+    in the canonical Questions contract.
+    """
     existing = {item.decision_id: item for item in load_feedback(target_dir)}
-    candidates = list(sorted((target_dir / "blueprint").glob("**/*.md")))
+    candidates = list(sorted((target_dir / "blueprint").glob("*.md")))
     sea_trials = target_dir / "SEA_TRIALS.md"
     if sea_trials.is_file():
         candidates.append(sea_trials)
