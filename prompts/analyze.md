@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scrum team Blueprint analysis — quality signal (Blocked/Questions/Ready), story list at title+AC level, blockers, questionnaire action items, and all analyze artifacts.
-version: 20260730 V19
+version: 20260730 V20
 intent: Act as an Agile Development Team: perform sprint planning on imported source material to derive a story list, compute a quality signal, surface blockers and questionnaire action items, and emit all analyze artifacts in a single response.
 command: drydock analyze
 model: opus
@@ -105,9 +105,12 @@ questionnaires have already decided, nor for anything you can derive yourself.
 - **Prior blocker answers** — any prior `BLOCKERS.md` responses, injected if present. Treat settled
   items as decided; never re-raise a resolved blocker or duplicate it as a questionnaire.
 - **Existing discovery questionnaires** — prior `discovery-*.json` action items, injected when
-  present. Treat questions with non-empty `answer` fields as settled decisions. Do not re-emit an
-  existing questionnaire file, do not ask duplicate or reworded versions of existing unanswered
-  questions, and do not move questionnaire questions into `ANALYSIS.md`.
+  present. They are input to this run, not output of it. Every non-empty `answer`, `resolution`,
+  and `additional_notes` field is a Commander decision and is authoritative: apply it to the story
+  list, the stack, the scope, `SEA_TRIALS.md`, and the quality signal, and never contradict it or
+  re-open it. Do not re-emit an existing questionnaire file, do not ask duplicate or reworded
+  versions of existing unanswered questions, and do not move questionnaire questions into
+  `ANALYSIS.md`. Questionnaire files are owned by the Commander; Drydock never rewrites them.
 - **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root. `false`: write it.
 - **COMPASS_PENDING_FORMAT** — `true`: COMPASS.md was imported as raw Commander intent and is
   injected as an input block. Rewrite it into the canonical COMPASS.md format and emit the

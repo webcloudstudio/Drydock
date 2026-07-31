@@ -453,6 +453,82 @@ QUESTIONS:
     assert payload["questions"][0]["answer"] == "Known workload"
 
 
+def test_projection_preserves_commander_notes_and_resolution(tmp_path):
+    path = tmp_path / "discovery-sea-trials.json"
+    path.write_text(
+        json.dumps({
+            "questions": [{"id": "q-one", "answer": "Known workload"}],
+            "resolution": "Commander accepted",
+            "additional_notes": "Measured against the 2026 baseline.",
+        }),
+        encoding="utf-8",
+    )
+    document = parse_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-one: One
+Type: qualitative
+Required: yes
+Criterion: The workflow is understandable.
+Verification: llm
+
+QUESTIONS:
+- q-one: Which workload applies?
+"""
+    )
+
+    project_questions(document, path)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["resolution"] == "Commander accepted"
+    assert payload["additional_notes"] == "Measured against the 2026 baseline."
+
+
+def test_answered_projection_survives_a_rerun_without_questions(tmp_path):
+    """A regenerated SEA_TRIALS.md must not delete answers the Commander already gave."""
+    path = tmp_path / "discovery-sea-trials.json"
+    path.write_text(
+        json.dumps({"questions": [{"id": "q-one", "answer": "Known workload"}]}),
+        encoding="utf-8",
+    )
+    document = parse_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-one: One
+Type: qualitative
+Required: yes
+Criterion: The workflow is understandable.
+Verification: llm
+"""
+    )
+
+    assert project_questions(document, path) == path
+    assert json.loads(path.read_text(encoding="utf-8"))["questions"][0]["answer"] == (
+        "Known workload"
+    )
+
+
+def test_unanswered_projection_is_removed_when_questions_disappear(tmp_path):
+    path = tmp_path / "discovery-sea-trials.json"
+    path.write_text(
+        json.dumps({"questions": [{"id": "q-one", "answer": ""}]}),
+        encoding="utf-8",
+    )
+    document = parse_sea_trials_text(
+        """# Sea Trials: Demo
+
+## st-one: One
+Type: qualitative
+Required: yes
+Criterion: The workflow is understandable.
+Verification: llm
+"""
+    )
+
+    assert project_questions(document, path) is None
+    assert not path.exists()
+
+
 # ---------------------------------------------------------------------------
 # Extract: and literal-argv Command:
 # ---------------------------------------------------------------------------

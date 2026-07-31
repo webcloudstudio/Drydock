@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-07-30: QuarterDeck questionnaires are durable Commander-owned input. Answers survive every
+  re-run of `drydock analyze` and feed the analysis as authoritative decisions alongside
+  `drydock plan`; only the Commander edits them, in the QuarterDeck. Concurrent autosaves no
+  longer corrupt a questionnaire file.
 - 2026-07-30: A model-declared `drydock plan` conflict no longer raises a post-LLM operational
   failure. Drydock writes the blockers to `PLAN_COMPASS.md`, preserves an editable Commander
   Direction section, prints a prominent recovery banner, and returns deferred status without

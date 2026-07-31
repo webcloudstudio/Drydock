@@ -329,34 +329,20 @@ def _is_compass_unpopulated(path: Path) -> bool:
     return all(line in _EMPTY_LINE for line in content_lines)
 
 
-def _render_existing_discoveries(questionnaires_dir: Path) -> list[str]:
-    """Inject existing discovery questionnaires into the analyze prompt.
-
-    The LLM must not re-emit a questionnaire whose filename already exists, and must treat
-    questions with non-empty ``answer`` fields as settled decisions.
-    """
-    if not questionnaires_dir.is_dir():
-        return []
-    paths = sorted(questionnaires_dir.glob("discovery-*.json"))
-    if not paths:
-        return []
-    parts = [
-        "## Existing discovery questionnaires",
-        "",
-        "These were created by prior analyze runs and live in the target QuarterDeck.",
-        "Rules:",
-        "- Do not emit a discovery block whose filename already appears here.",
-        "- Questions with a non-empty `answer` field are settled — do not re-raise them.",
-        "- Generate new discovery-*.json blocks only for genuinely new open questions.",
-        "",
-    ]
-    for path in paths:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        parts += [f"### {path.name}", "", "```json", json.dumps(data, indent=2), "```", ""]
-    return parts
+#: Header for the existing-questionnaire prompt block. Answered questionnaires are Commander
+#: guidance carried across every later run: analyze consumes them as input and never rewrites
+#: them, so re-running analyze cannot cost the Commander an answer.
+EXISTING_QUESTIONNAIRE_HEADER = (
+    "## Existing discovery questionnaires",
+    "",
+    "These live in the target QuarterDeck and are Commander-owned input to this run.",
+    "Rules:",
+    "- Do not emit a discovery block whose filename already appears here.",
+    "- `answer`, `resolution`, and `additional_notes` values are Commander decisions and are",
+    "  authoritative — apply them to the analysis and never re-raise or contradict them.",
+    "- Generate new discovery-*.json blocks only for genuinely new open questions.",
+    "",
+)
 
 
 def _managed_doc_parts(
@@ -516,16 +502,7 @@ def _assemble_prompt_assembly(
         parts_list = [
             lines_part(
                 "Existing discovery questionnaire header",
-                [
-                    "## Existing discovery questionnaires",
-                    "",
-                    "These were created by prior analyze runs and live in the target QuarterDeck.",
-                    "Rules:",
-                    "- Do not emit a discovery block whose filename already appears here.",
-                    "- Questions with a non-empty `answer` field are settled — do not re-raise them.",
-                    "- Generate new discovery-*.json blocks only for genuinely new open questions.",
-                    "",
-                ],
+                list(EXISTING_QUESTIONNAIRE_HEADER),
                 kind="section",
             )
         ]

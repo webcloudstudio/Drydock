@@ -528,11 +528,12 @@ def load_sea_trials(path: Path) -> SeaTrialsDocument:
 
 
 def project_questions(document: SeaTrialsDocument, path: Path) -> Path | None:
-    """Write the normal QuarterDeck JSON projection for unresolved Markdown questions."""
-    if not document.questions:
-        if path.is_file():
-            path.unlink()
-        return None
+    """Write the normal QuarterDeck JSON projection for unresolved Markdown questions.
+
+    Commander input is never destroyed by a rerun: prior answers are carried across by question
+    ID, the Commander's ``resolution`` and ``additional_notes`` are preserved, and an answered
+    questionnaire survives even when the regenerated SEA_TRIALS.md no longer asks its questions.
+    """
     existing: dict = {}
     if path.is_file():
         try:
@@ -544,6 +545,11 @@ def project_questions(document: SeaTrialsDocument, path: Path) -> Path | None:
         for item in existing.get("questions", [])
         if isinstance(item, dict)
     }
+    if not document.questions:
+        if path.is_file() and not any(value.strip() for value in answers.values()):
+            path.unlink()
+            return None
+        return path if path.is_file() else None
     payload = {
         "id": "discovery-sea-trials",
         "title": "Sea Trials Measurement Questions",
@@ -559,6 +565,9 @@ def project_questions(document: SeaTrialsDocument, path: Path) -> Path | None:
             for question in document.questions
         ],
     }
+    for field in ("resolution", "additional_notes"):
+        if str(existing.get(field, "")).strip():
+            payload[field] = existing[field]
     if payload["questions"] and all(str(q["answer"]).strip() for q in payload["questions"]):
         payload["state"] = "answered"
     path.parent.mkdir(parents=True, exist_ok=True)

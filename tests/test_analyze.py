@@ -1865,6 +1865,47 @@ QUESTIONS:
         assert result.ok
         assert calls[0]["llm"] == "codex"
 
+    def test_rerun_preserves_commander_answers_and_notes(self, tmp_path):
+        """Questionnaires are Commander-owned input; re-running analyze never rewrites them."""
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(include_spikes=True)
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+
+        answered = target_dir / "QuarterDeck" / "questionnaires" / "discovery-intent.json"
+        data = json.loads(answered.read_text(encoding="utf-8"))
+        data["questions"][0]["answer"] = "Ship the harbourmaster console."
+        data["additional_notes"] = "Commander guidance retained across runs."
+        data["state"] = "answered"
+        answered.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        before = answered.read_text(encoding="utf-8")
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+
+        assert result.ok
+        assert answered.read_text(encoding="utf-8") == before
+        assert answered not in result.discovery_paths
+
+    def test_existing_questionnaires_are_authoritative_prompt_input(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        output = _make_llm_output(include_spikes=True)
+        analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
+
+        answered = target_dir / "QuarterDeck" / "questionnaires" / "discovery-intent.json"
+        data = json.loads(answered.read_text(encoding="utf-8"))
+        data["questions"][0]["answer"] = "Ship the harbourmaster console."
+        answered.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+        prompts: list[str] = []
+
+        def runner(prompt_text, *a, **k):
+            prompts.append(prompt_text)
+            return FakeRun(text=output)
+
+        analyze("MyTarget", target_dir, runner=runner)
+
+        assert "Ship the harbourmaster console." in prompts[0]
+        assert "Commander decisions and are" in prompts[0]
+
     def test_exit_code_zero_on_success(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
