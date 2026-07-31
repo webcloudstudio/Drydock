@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, block types, field semantics, lifecycle states, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20260727 V11
+version: 20260731 V12
 ---
 
 ## Overview
@@ -110,7 +110,7 @@ scope:        blueprint | target | both
 | `copy` | No | `source -> destination` file copies applied before build |
 | `instructions` | Yes | Freeform build instructions for the agent |
 | `depends` | No | Space-separated story/spike ids that must be `closed/verified` first — never `ac` ids |
-| `questions` | Generated | Current `<open> open, <answered> answered` projection from the implemented Blueprint |
+| `questions` | Generated | Current `<open> open (<blocking> blocking), <answered> answered` projection from the implemented Blueprint |
 | `questions_approved` | No | `true` only for a current-Manifest Commander override; it is never durable Plan feedback |
 | `feedback` | No | Persistent Plan decision ids realized by this story |
 | `state` | Yes | Current block state |
@@ -122,10 +122,11 @@ check gates only its own parent, and a story does not become `closed/verified` u
 child `ac` blocks pass, so depending on a story already implies its acceptance checks.
 The reader rewrites a story `depends:` entry that names an `ac` id to that ac's parent.
 
-An open Blueprint question projects the story state as `blocked/questions`. That story and its
-dependents are unavailable, while independent frontier stories remain buildable. Answering every
-question restores `pending`. A `questions_approved: true` override restores `pending` only in the
-current Manifest and is discarded on replan.
+An open `Blocking` Blueprint question projects the story state as `blocked/questions`. That story
+and its dependents are unavailable, while independent frontier stories remain buildable. Open `Low`
+and `Material` decisions remain visible without gating. Answering every Blocking question restores
+`pending`. A `questions_approved: true` override restores `pending` only in the current Manifest and
+is discarded on replan.
 
 When `implements` is `DATABASE.md`, `stack` must include `persistence.md` and the selected
 backend stack file, such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.

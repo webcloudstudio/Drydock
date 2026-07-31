@@ -11,7 +11,8 @@ from drydock.errors import SpecificationError
 
 QUESTIONS_HEADING = "## Questions"
 QUESTION_STATUSES = frozenset({"open", "answered"})
-QUESTION_ORIGINS = frozenset({"plan", "analyze-questionnaire"})
+QUESTION_ORIGINS = frozenset({"plan", "build", "analyze-questionnaire"})
+QUESTION_SEVERITIES = frozenset({"low", "material", "blocking"})
 
 _SECTION_RE = re.compile(r"^## Questions\s*$\n(?P<body>.*?)(?=^##\s+|\Z)", re.MULTILINE | re.DOTALL)
 _ALTERNATE_HEADING_RE = re.compile(
@@ -22,7 +23,7 @@ _QUESTION_HEADER_RE = re.compile(
     re.MULTILINE,
 )
 _FIELD_RE = re.compile(
-    r"^-\s+(?P<key>Origin|Status):\s*(?P<value>.*?)\s*$",
+    r"^-\s+(?P<key>Origin|Status|Severity):\s*(?P<value>.*?)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -35,6 +36,7 @@ class MarkdownQuestion:
     status: str
     question: str
     answer: str
+    severity: str = "blocking"
 
 
 def _subsection(body: str, heading: str) -> str:
@@ -91,6 +93,7 @@ def parse_questions(text: str, *, source: str = "<memory>") -> tuple[MarkdownQue
         }
         origin = fields.get("origin", "")
         status = fields.get("status", "")
+        severity = fields.get("severity", "blocking").lower()
         question = _subsection(record, "Question")
         answer = _subsection(record, "Answer")
         if origin not in QUESTION_ORIGINS:
@@ -102,6 +105,11 @@ def parse_questions(text: str, *, source: str = "<memory>") -> tuple[MarkdownQue
             raise SpecificationError(
                 f"{source} question {question_id} has invalid Status {status!r}; expected "
                 + ", ".join(sorted(QUESTION_STATUSES))
+            )
+        if severity not in QUESTION_SEVERITIES:
+            raise SpecificationError(
+                f"{source} question {question_id} has invalid Severity {severity!r}; expected "
+                + ", ".join(sorted(QUESTION_SEVERITIES))
             )
         if not question:
             raise SpecificationError(f"{source} question {question_id} has no #### Question text")
@@ -121,6 +129,7 @@ def parse_questions(text: str, *, source: str = "<memory>") -> tuple[MarkdownQue
                 status=status,
                 question=question,
                 answer=answer,
+                severity=severity,
             )
         )
     return tuple(questions)
@@ -155,6 +164,7 @@ def render_questions(questions: tuple[MarkdownQuestion, ...]) -> str:
             f"### {item.question_id}: {item.name}",
             "",
             f"- Origin: {item.origin}",
+            f"- Severity: {item.severity.title()}",
             f"- Status: {item.status}",
             "",
             "#### Question",
@@ -225,3 +235,20 @@ def answer_question(path: Path, question_id: str, answer: str) -> MarkdownQuesti
         temporary = Path(handle.name)
     temporary.replace(path)
     return updated
+
+
+def append_question(path: Path, question: MarkdownQuestion) -> bool:
+    """Atomically append a non-duplicate record to a governed Questions section."""
+    text = path.read_text(encoding="utf-8")
+    questions = list(parse_questions(text, source=str(path)))
+    if any(item.question_id == question.question_id for item in questions):
+        return False
+    questions.append(question)
+    rendered = replace_questions_section(text, tuple(questions))
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False, newline="\n"
+    ) as handle:
+        handle.write(rendered)
+        temporary = Path(handle.name)
+    temporary.replace(path)
+    return True

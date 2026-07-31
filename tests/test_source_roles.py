@@ -7,6 +7,7 @@ from drydock.source_roles import (
     _staged_destination,
     parse_source_roles,
     promote_imported_sources,
+    source_role_for,
     stage_build_assets,
     verify_staged_assets,
 )
@@ -34,6 +35,50 @@ def test_promotes_assets_and_routes_author_intent_to_compass(tmp_path):
     assert (sources / "spec.txt").read_text(encoding="utf-8") == "example"
     assert not (blueprint / "ED_INSTRUCTIONS.md").exists()
     assert "Build it." in (tmp_path / "COMPASS.md").read_text(encoding="utf-8")
+
+
+def test_markdown_source_is_interpreted_not_promoted_over_blueprint(tmp_path):
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    (sources / "ARCHITECTURE.md").write_text(
+        "# Messy source\n\n## Open Questions\n", encoding="utf-8"
+    )
+    governed = blueprint / "ARCHITECTURE.md"
+    governed.write_text("# ARCHITECTURE: Governed\n", encoding="utf-8")
+
+    promoted = promote_imported_sources(blueprint, {}, tmp_path)
+
+    assert promoted == []
+    assert governed.read_text(encoding="utf-8") == "# ARCHITECTURE: Governed\n"
+
+
+def test_non_markdown_projection_preserves_bytes_and_nested_path(tmp_path):
+    blueprint = tmp_path / "blueprint"
+    source = blueprint / "sources" / "fixtures" / "sample.py"
+    source.parent.mkdir(parents=True)
+    payload = b"first\r\nsecond"
+    source.write_bytes(payload)
+
+    promote_imported_sources(blueprint, {}, tmp_path)
+
+    assert (blueprint / "fixtures" / "sample.py").read_bytes() == payload
+
+
+def test_source_role_globs_resolve_imported_files():
+    roles = parse_source_roles(
+        """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/FEATURE-*.md | source reference | context | prompt-only |
+"""
+    )
+
+    role = source_role_for("FEATURE-CATALOG.md", roles)
+
+    assert role is not None
+    assert role.plan_disposition == "context"
 
 
 # ---------------------------------------------------------------------------

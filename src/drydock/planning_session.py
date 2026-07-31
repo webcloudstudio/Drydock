@@ -6,11 +6,10 @@ delimited ``=== NAME ===`` blocks. The Manifest is the single work graph: it car
 grouping, and per-step prompt-assembly fields, so no separate build-ordering file is emitted.
 The module parses the blocks, runs a deterministic integrity gate, and writes the files.
 
-When a prior MANIFEST.md exists, a state-preserving merge runs after the new Manifest is written:
-``applied_specs`` is restored verbatim, block states are carried forward for clean files (sha256
-unchanged), dirty files (sha256 changed) are reset to ``pending``, and applied Blueprint files are
-protected from overwrite. The model emits text; the module writes files. Tests inject a fake runner
-and never spend API credits.
+When a prior MANIFEST.md exists, Planning runs as an authoritative rewrite. Build provenance and
+closed states survive only for specification files whose regenerated content has the recorded
+sha256; changed specifications return to ``pending``. The model emits text; the module writes files.
+Tests inject a fake runner and never spend API credits.
 """
 
 from __future__ import annotations
@@ -745,40 +744,12 @@ def _source_evidence_bundle(
     *,
     excluded_filenames: frozenset[str],
 ) -> list[SourceMaterialFile] | None:
-    """Return Analyze-cited prompt evidence; ``None`` preserves legacy full-source-material plans."""
-    if not _PLANNING_INSTRUCTIONS_RE.search(analysis_text):
-        return None
-    source_material = discover_source_material(blueprint_dir, excluded_filenames=excluded_filenames)
-    if not source_material:
-        return []
-    cited = set(_SOURCE_CITATION_RE.findall(analysis_text))
-    if not cited:
-        raise SpecificationError(
-            "ANALYSIS.md Planning Instructions contain no `sources/...` evidence citations. "
-            "Re-run analyze or add cited source evidence before planning."
-        )
-    by_path = {entry.relative_path: entry for entry in source_material}
-    cited, missing, empty_patterns = _expand_source_citations(cited, set(by_path))
-    if missing:
-        raise SpecificationError(
-            "ANALYSIS.md cites source path(s) not present in the imported source material: "
-            + ", ".join(missing)
-        )
-    if empty_patterns:
-        raise SpecificationError(
-            "ANALYSIS.md cites source pattern(s) matching no imported source file: "
-            + ", ".join(empty_patterns)
-        )
-    unusable = sorted(path for path in cited if by_path[path].text is None)
-    if unusable:
-        raise SpecificationError(
-            "ANALYSIS.md cites source path(s) that cannot be injected as readable evidence: "
-            + ", ".join(unusable)
-        )
+    """Return every readable source; Analyze guides interpretation, not visibility."""
+    del analysis_text
     return [
         entry
-        for entry in source_material
-        if entry.relative_path in cited and entry.text is not None
+        for entry in discover_source_material(blueprint_dir, excluded_filenames=excluded_filenames)
+        if entry.text is not None
     ]
 
 
@@ -1394,10 +1365,8 @@ def _assemble_prompt_assembly(
                 "Imported source file header", ["## Imported source files", ""], kind="section"
             )
         ]
-        if source_evidence is not None:
-            source_material = source_evidence
-        elif typed_spec_paths is not None:
-            source_material = [
+        if typed_spec_paths is not None:
+            typed_material = [
                 SourceMaterialFile(
                     path_obj,
                     path_obj.relative_to(blueprint_dir).as_posix(),
@@ -1409,6 +1378,9 @@ def _assemble_prompt_assembly(
                 )
                 for path_obj in typed_spec_paths
             ]
+            source_material = [*typed_material, *(source_evidence or [])]
+        elif source_evidence is not None:
+            source_material = source_evidence
         else:
             source_material = [
                 entry
@@ -1836,6 +1808,7 @@ def _integrity_check(
 
     story_count = 0
     executable_with_empty_depends = False
+    spec_owners: dict[str, list[str]] = {}
     for block in plan.blocks:
         if block.block_type in ("story", "spike") and not block.depends:
             executable_with_empty_depends = True
@@ -1844,6 +1817,14 @@ def _integrity_check(
         story_count += 1
         implements = block.fields.get("implements", ())
         targets = implements if isinstance(implements, tuple) else (implements,)
+        targets = tuple(name for name in targets if name)
+        if len(targets) != 1:
+            fatal.append(
+                f"{block.block_id}: story must implement exactly one Blueprint specification; "
+                f"found {len(targets)}"
+            )
+        for name in targets:
+            spec_owners.setdefault(str(name), []).append(block.block_id)
         for name in targets:
             if name and name not in available_specs and not (blueprint_dir / name).is_file():
                 fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
@@ -1926,6 +1907,13 @@ def _integrity_check(
                     "with the runner's --pattern/--number selector, or gate the full run on "
                     "the terminal Suite: full story and SEA_TRIALS.md final measurement"
                 )
+
+    for name, owners in sorted(spec_owners.items()):
+        if len(owners) > 1:
+            fatal.append(
+                f"{name}: implemented by multiple stories: {', '.join(owners)}; "
+                "each governed specification has exactly one owning story"
+            )
 
     sea_path = blueprint_dir.parent / "SEA_TRIALS.md"
     sea_text = sea_path.read_text(encoding="utf-8") if sea_path.is_file() else ""
@@ -2307,8 +2295,17 @@ def _prepare_manifest_in_memory(
     available = set(emitted_files)
     available.update(path.name for path in blueprint_dir.glob("*.md") if path.is_file())
 
-    if prior_applied_specs:
-        plan.set_metadata(applied_specs=_format_applied_specs(prior_applied_specs))
+    retained_applied_specs: dict[str, AppliedSpecRecord] = {}
+    for name, record in prior_applied_specs.items():
+        if name in emitted_files:
+            digest = _sha256(emitted_files[name].encode("utf-8")).hexdigest()
+        else:
+            path = blueprint_dir / name
+            digest = _file_sha256(path) if path.is_file() else ""
+        if digest == record.sha256:
+            retained_applied_specs[name] = record
+    if retained_applied_specs:
+        plan.set_metadata(applied_specs=_format_applied_specs(retained_applied_specs))
 
     for block in plan.blocks:
         updates: dict[str, str | tuple[str, ...] | None] = {}
@@ -2348,7 +2345,7 @@ def _prepare_manifest_in_memory(
                 record = prior_applied_specs.get(name)
                 if record is None:
                     continue
-                if name in emitted_files and name not in prior_applied_specs:
+                if name in emitted_files:
                     digest = _sha256(emitted_files[name].encode("utf-8")).hexdigest()
                 else:
                     path = blueprint_dir / name
@@ -2700,9 +2697,10 @@ def create_plan(
 
     plan_path = target_dir / "MANIFEST.md"
     prior_manifest = _read_if(plan_path)
+    replanning = prior_manifest is not None
     prior_applied_specs, prior_block_states = _load_prior_plan_state(plan_path)
-    # In overwrite mode nothing is protected: every regenerated spec is written so the
-    # rewrite (e.g. freshly authored programmatic acceptance) actually lands on disk.
+    # Explicit overwrite also discards all prior build provenance. A normal replan retains
+    # provenance only when the authoritative rewrite emits byte-identical specification content.
     if overwrite:
         prior_applied_specs = {}
 
@@ -2732,12 +2730,14 @@ def create_plan(
     run = runner if runner is not None else run_prompt
     today = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017
     excluded_filenames = load_excluded_filenames(target_dir)
-    # A replan preserves only what has been built; the rest is prior plan output and is
-    # regenerated. Deleting first means mode selection, the reuse prompt's "emit the
-    # missing files" instruction, and `typed_spec_paths` all see the built set alone.
-    # `--overwrite` cleared prior_applied_specs above, so it discards every spec.
-    discarded_specs = _discard_unbuilt_specs(
-        blueprint_dir, prior_applied_specs, excluded_filenames=excluded_filenames
+    # Remove unbuilt Plan output before regeneration. Built files remain as a failure-safe until
+    # validated replacement artifacts are available, but they carry no overwrite protection.
+    discarded_specs = (
+        _discard_unbuilt_specs(
+            blueprint_dir, prior_applied_specs, excluded_filenames=excluded_filenames
+        )
+        if replanning or overwrite
+        else []
     )
     if discarded_specs and on_text is not None:
         on_text(
@@ -2747,10 +2747,12 @@ def create_plan(
     existing_specs = _collect_existing_typed_specs(
         blueprint_dir, excluded_filenames=excluded_filenames
     )
-    # `--overwrite` forces a full rewrite: ignore existing specs for mode selection so
-    # the Blueprint is regenerated from the analysis rather than preserved.
-    reuse_mode = not overwrite and _is_reuse_candidate(existing_specs)
-    speckit_mode = not overwrite and not reuse_mode and _is_speckit_source(blueprint_dir)
+    # A replan is a fresh Planning Crew review with full authority over Plan-owned outputs.
+    # Existing built specs remain on disk as failure-safe context until the validated response
+    # replaces them, but they never force reuse mode or block regenerated content.
+    force_rewrite = overwrite or replanning
+    reuse_mode = not force_rewrite and _is_reuse_candidate(existing_specs)
+    speckit_mode = not force_rewrite and not reuse_mode and _is_speckit_source(blueprint_dir)
     imported_source_paths = _collect_sources(blueprint_dir, excluded_filenames=excluded_filenames)
     reusable_spec_paths: list[Path] | None = None
     normalized_existing: list[Path] = []
@@ -3097,12 +3099,11 @@ def create_plan(
     else:
         plan, warnings = validated_plan, validated_warnings
 
-    # Applied (built) Blueprint files are protected: the LLM's regenerated version is
-    # discarded so delivered code keeps the spec it was built against. A clean file also
-    # keeps its sha256 stable, letting the merge confirm the story needs no re-run; a
-    # file the author edited keeps the author's content, and `_merge_prior_state` returns
-    # that block to `pending` so the story rebuilds against the edit.
-    _protected: frozenset[str] = frozenset(prior_applied_specs)
+    # A fresh import may preserve reusable specs. A replan has full authority over every Plan-owned
+    # output, including specifications previously used by Build.
+    _protected: frozenset[str] = (
+        frozenset() if replanning or overwrite else frozenset(prior_applied_specs)
+    )
 
     emitted_blueprints = {
         name: content for name, content in blocks.items() if name not in _RESERVED_BLOCKS

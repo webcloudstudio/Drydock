@@ -13,7 +13,7 @@ from drydock.errors import SpecificationError
 from drydock.questions import MarkdownQuestion, parse_questions
 
 FILENAME = "planning-feedback.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,7 @@ class PlanningDecision:
     realization: str = ""
     reason: str = ""
     subject: str = ""
+    severity: str = "material"
 
 
 def feedback_path(target_dir: Path) -> Path:
@@ -78,12 +79,29 @@ def authoritative_artifact(target_dir: Path, item: PlanningDecision) -> Path | N
     return None
 
 
-def save_feedback(target_dir: Path, decisions: tuple[PlanningDecision, ...]) -> Path:
+def save_feedback(
+    target_dir: Path,
+    decisions: tuple[PlanningDecision, ...],
+    *,
+    events: tuple[dict[str, str], ...] = (),
+) -> Path:
     path = feedback_path(target_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
+    history: list[dict[str, str]] = []
+    if path.is_file():
+        try:
+            prior = json.loads(path.read_text(encoding="utf-8"))
+            raw_history = prior.get("history", []) if isinstance(prior, dict) else []
+            if isinstance(raw_history, list):
+                history = [item for item in raw_history if isinstance(item, dict)]
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            # ``load_feedback`` owns corruption reporting. Never hide a corrupt store here.
+            load_feedback(target_dir)
+    history.extend(events)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "decisions": [asdict(item) for item in decisions],
+        "history": history,
     }
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=path.parent, delete=False, newline="\n"
@@ -108,6 +126,7 @@ def harvest_answered_questions(target_dir: Path) -> tuple[PlanningDecision, ...]
     if sea_trials.is_file():
         candidates.append(sea_trials)
     now = datetime.now(UTC).isoformat()
+    events: list[dict[str, str]] = []
     for path in candidates:
         try:
             questions = parse_questions(path.read_text(encoding="utf-8"), source=str(path))
@@ -132,7 +151,22 @@ def harvest_answered_questions(target_dir: Path) -> tuple[PlanningDecision, ...]
                 realization=prior.realization if prior else "",
                 reason=prior.reason if prior else "",
                 subject=question.name,
+                severity=question.severity,
             )
+            current = existing[key]
+            if (
+                prior is None
+                or prior.answer != current.answer
+                or prior.severity != current.severity
+            ):
+                events.append({
+                    "observed_at": now,
+                    "decision_id": key,
+                    "question_id": current.question_id,
+                    "source": source,
+                    "answer": current.answer,
+                    "severity": current.severity,
+                })
     questionnaire_dir = target_dir / "QuarterDeck" / "questionnaires"
     if questionnaire_dir.is_dir():
         for path in sorted(questionnaire_dir.glob("discovery-*.json")):
@@ -155,6 +189,7 @@ def harvest_answered_questions(target_dir: Path) -> tuple[PlanningDecision, ...]
                     status="answered",
                     question=question_text,
                     answer=answer,
+                    severity="material",
                 )
                 key = decision_id(question)
                 prior = existing.get(key)
@@ -171,10 +206,21 @@ def harvest_answered_questions(target_dir: Path) -> tuple[PlanningDecision, ...]
                     realization=prior.realization if prior else "",
                     reason=prior.reason if prior else "",
                     subject=question.name,
+                    severity=question.severity,
                 )
+                current = existing[key]
+                if prior is None or prior.answer != current.answer:
+                    events.append({
+                        "observed_at": now,
+                        "decision_id": key,
+                        "question_id": current.question_id,
+                        "source": current.source_blueprint,
+                        "answer": current.answer,
+                        "severity": current.severity,
+                    })
     decisions = tuple(sorted(existing.values(), key=lambda item: item.decision_id))
     if decisions:
-        save_feedback(target_dir, decisions)
+        save_feedback(target_dir, decisions, events=tuple(events))
     return decisions
 
 
@@ -195,6 +241,7 @@ def render_feedback_prompt(decisions: tuple[PlanningDecision, ...]) -> str:
             f"- Subject: {item.subject or item.question_id}",
             f"- Question: {item.question}",
             f"- Decision: {item.answer}",
+            f"- Severity: {item.severity.title()}",
             f"- Prior source: {item.source_blueprint}",
             "",
         ])

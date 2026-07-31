@@ -399,6 +399,30 @@ class TestGroupSteps:
         assert groups[0].name == "Ungrouped"
         assert groups[0].feature_id is None
 
+    def test_feature_and_screen_work_are_separate_preview_groups(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(
+            "# MANIFEST: D\nstate: approved\n\n"
+            "## feature 1: Catalog\nid: catalog\nstate: pending\n\n"
+            "## story 1: API\nid: api\nparent: catalog\n"
+            "implements: FEATURE-Catalog.md\nstate: pending\n\n"
+            "## story 2: Screen\nid: screen\nparent: catalog\n"
+            "implements: SCREEN-Catalog.md\nstate: pending\n",
+            encoding="utf-8",
+        )
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "FEATURE-Catalog.md").write_text("api", encoding="utf-8")
+        (roots.blueprint_dir / "SCREEN-Catalog.md").write_text("screen", encoding="utf-8")
+        plan = parse_build_plan(path)
+
+        groups = group_steps(plan, assemble_steps(plan, roots))
+
+        assert [group.name for group in groups] == ["Catalog - Feature", "Catalog - Screen"]
+        assert [[step.block_id for step in group.steps] for group in groups] == [
+            ["api"],
+            ["screen"],
+        ]
+
 
 _TWO_STORY_MANIFEST = """# MANIFEST: Demo
 state: approved

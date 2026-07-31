@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
 | Pending spec | 16 approved items |
-| Pending impl | 10 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -65,7 +65,7 @@ team reviews it after Commander questionnaires are answered and may retain, spli
 replace, or reorder its candidate stories.
 
 ### Scrum Guardrails
-`2026-06-16` · `spec:recommended` · `impl:unimplemented`
+`2026-07-31` · `spec:recommended` · `impl:implemented`
 
 - **Story too big → split.** A story exceeding the atomicity threshold must be split until atomic.
   Threshold configured in `.env`. Standard scrum guardrail.
@@ -75,11 +75,10 @@ replace, or reorder its candidate stories.
 - **Every story has ≥1 AC gate.** A story without a `depends-on` AC node is a defect; `plan create`
   must not emit it.
 
-**As-built (2026-06-16, item A):** the ≥1-AC gate is now a **fatal** `_integrity_check` finding
-(was a warning), and the ~100-story cap is enforced (`_STORY_CAP`, fatal). **Blocked / not built:**
-the story-too-big split has no defined atomicity threshold — the `.env` value has no agreed default
-(see Open Questions #1), so deterministic split enforcement is deferred. The prompt still instructs
-the LLM to keep stories atomic.
+**As-built:** semantic splitting is owned by the frontier Planning Crew; deterministic validation
+enforces exactly one governed specification per story, exactly one owning story per specification,
+required acceptance, valid dependency structure, and the ~100-story cap. The Plan prompt requires
+independent actions and screen/provider work to remain separate specifications.
 
 ### Integrity / Validation Check
 `2026-06-13` · `spec:recommended` · `impl:implemented`
@@ -97,14 +96,12 @@ Fatal findings raise `SpecificationError` (exit 1). Note: spec files are written
 runs, so a fatal failure currently leaves authored specs but no console update — make atomic later.
 
 ### Order and Batch
-`2026-06-16` · `spec:recommended` · `impl:unimplemented`
+`2026-07-31` · `spec:recommended` · `impl:implemented`
 
-**Blocked / not built (item B, 2026-06-16):** the automatic batching algorithm depends on the
-`MANUAL_BUILD_ORDER` flag, which lived in the now-retired `BUILD_CONFIGURATION.md`. With that file
-gone, the manual/auto toggle has no persistence home, so the auto-batcher cannot be wired as
-specified. Decide a new home for the flag (e.g. `PLAN_COMPASS.md` directive, `METADATA.md`
-field, or always-auto with no toggle) before building this. Until then `plan create` keeps the
-LLM-seeded Compass ordering.
+**As-built:** Manifest dependencies and order define the runnable frontier. Build deterministically
+selects dependency-ready work in Manifest order and splits each feature group into contiguous work
+kinds. Feature/service and screen work never share a build prompt. QuarterDeck cost previews use
+the same feature-plus-work-kind grouping, so the preview and execution boundaries agree.
 
 
 **Hard guardrail — no cross-stack batches.** Never put different stacks / component types in one
@@ -165,9 +162,9 @@ by the PO.
      computing order.
 
 ### Build-Time Context (Downstream — Noted Here, Not Owned Here)
-`2026-06-13` · `spec:na` · `impl:unimplemented`
+`2026-07-31` · `spec:na` · `impl:implemented`
 
-These belong to `build`; the graph must support them:
+These are implemented by `build`; the graph supports them:
 
 - **No long-term memory.** Each build iteration assembles a complete, clean instruction set from
   scratch: full builder view of the stack + compacted user/contract view. No reliance on what the
@@ -224,7 +221,7 @@ so attempting state/id consistency across re-plans is not worth it. **Supersedes
 Removed vs current: `BUILD_CONFIGURATION.md` and the existing `MANIFEST.md` (prior plan).
 
 ### Analyze Team Lead and Product Owner handoff
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Analyze is the Team Lead conducting the Product Owner feedback session. It evaluates completeness
 of the epic and surfaces Commander expectations as product-level assertions, such as "Commander
@@ -237,7 +234,7 @@ handoff must be complete and capable of becoming a buildable Plan. It authors `A
 proposal for Plan to review, not a binding work breakdown.
 
 ### Cross-functional Plan team authority
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Plan is a room containing the Scrum Master, test-driven development, UI, data, architecture, and
 delivery disciplines. The team reviews the whole epic, determines atomic stories, authors governed
@@ -251,7 +248,7 @@ authority: Plan splits non-atomic files according to normal Agile rules and does
 independent actions.
 
 ### Immutable sources and Blueprint projection
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 `blueprint/sources/**` is immutable, unconstrained Commander input. Source filenames, nesting,
 headings, formatting, and completeness are never validated as governed Blueprint syntax. Analyze
@@ -264,7 +261,7 @@ preserves every existing byte, including line-ending convention and final-newlin
 Markdown is never copied over an authored governed specification.
 
 ### Persistent Commander input across replans
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Commander input is preserved before Plan overwrites any Plan-owned artifact. It includes every
 stage Compass, persistent questionnaire answers, and Commander edits or answers in Blueprint
@@ -273,7 +270,7 @@ persistent replan memory. Replan consumes that accumulated memory so regenerated
 human decisions or corrections.
 
 ### Plan decisions, severity, and implied approval
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Plan normally resolves contradictions and incomplete detail by making its best decision, encoding
 that decision consistently, and exposing it in the relevant Blueprint's `## Questions` section.
@@ -287,7 +284,7 @@ no mandatory review ceremony. The next stage fails only when a material blocker 
 that stage.
 
 ### Shipyard Crew build handoff and decision records
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Build is performed by the outsourced **Shipyard Crew**, which has no synchronous feedback channel
 to the Commander. It cannot generate questionnaires or create a new question workflow. When a
@@ -299,7 +296,7 @@ A decision appears only in the specification that owns it. The same conflict is 
 across related stories. Commander edits to these records become persistent input to a later replan.
 
 ### Crew presentation and terminal compatibility
-`2026-07-31` · `spec:approved` · `impl:unimplemented`
+`2026-07-31` · `spec:approved` · `impl:implemented`
 
 Analyze presents the handoff using a stable crew roster: Commander, Team Lead, Planning Crew, and
 Shipyard Crew. Descriptions may adapt to the project while role names and authority remain stable.
@@ -413,8 +410,6 @@ registry — two passes, same substitution decisions.
 
 1. **Compact scope** — does the applied registry and compact substitution rule cover only `stack:`
    files, or also `rules:` and `context:` files?
-2. **Story-too-big threshold** — atomicity heuristic (token/context budget? AC count? touched-files
-   estimate?). Configured in `.env`; specific default value TBD.
 2. **Integrity failure UX** — block `MANIFEST.md` write only, surface as QuarterDeck questions, or
    both? (Lean: block + surface findings; PO decides whether to re-analyze or fix the spec.)
 3. **Drift propagation model** — how green/stale propagates when an upstream node changes post-build.

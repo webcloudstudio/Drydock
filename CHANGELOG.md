@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-31: Analyze now acts as the Team Lead/Product Owner completeness session, records
+  Commander expectations as assertions, and emits an ASCII-safe crew handoff. Plan receives every
+  readable imported source and treats Analyze's story map as a proposal: governed Markdown is
+  authored from unconstrained source material, while non-Markdown assets are projected byte-for-byte
+  without modifying source provenance. Structural validation enforces one specification per story
+  and one owner per specification; preview and execution grouping both separate screen work from
+  feature/service work. Blueprint decisions carry Low, Material, or Blocking severity, with only
+  Blocking questions gating work. Commander answer revisions persist as replan history, and the
+  Shipyard Crew can report bounded implementation decisions into only the owning Blueprint. MSYS,
+  MinGW, and Cygwin terminals default to ASCII-safe output so status glyphs remain legible.
 - 2026-07-31: `drydock run quarterdeck` accepts an optional Target and defaults to the most
   recently updated initialized Target in the configured workspace.
 - 2026-07-30: `TECHNOLOGY_STACK.md` replaces the stack questionnaire as the technology decision of

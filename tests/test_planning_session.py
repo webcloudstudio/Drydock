@@ -296,8 +296,6 @@ def _seed_conform_target(tmp_path: Path, *, feature_text: str) -> tuple[Path, Pa
     (blueprint_dir / "ARCHITECTURE.md").write_text(_ARCH_CONFORMANT, encoding="utf-8")
     feature = blueprint_dir / "FEATURE-Status.md"
     feature.write_text(feature_text, encoding="utf-8")
-    # Reuse requires built specs: a replan discards anything with no build record.
-    _mark_built(target_dir, "ARCHITECTURE.md", "FEATURE-Status.md")
     return target_dir, feature
 
 
@@ -468,11 +466,7 @@ def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:
 
 
 def _mark_built(target_dir: Path, *spec_names: str, manifest: str | None = None) -> None:
-    """Record specs in MANIFEST.md ``applied_specs``, as ``drydock build`` does on success.
-
-    A replan preserves built specs and discards the rest, so a test that exercises reuse
-    must first establish that the specs it seeds were actually built against.
-    """
+    """Record specs in MANIFEST.md ``applied_specs``, as ``drydock build`` does on success."""
     import hashlib
 
     blueprint_dir = target_dir / "blueprint"
@@ -585,11 +579,6 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "state: pending\n",
     )
 
-    # Reuse requires built specs: a replan discards anything with no build record.
-    _mark_built(target_dir, "ARCHITECTURE.md", "FEATURE-Status.md")
-    architecture_before = architecture.read_text(encoding="utf-8")
-    feature_before = feature.read_text(encoding="utf-8")
-
     def runner(prompt_text, *a, **k):
         prompt_texts.append(prompt_text)
         return FakeRun(text=f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n")
@@ -601,15 +590,14 @@ def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path)
         "[plan] mode=reuse-manifest-first prompt=plan_reuse existing_specs=2 imported_sources=1"
     )
     assert "reuse-mode: preserving existing Blueprint specs" in "".join(progress)
-    assert "# Request" not in prompt_texts[0]
+    assert "# Request" in prompt_texts[0]
     assert "Preserve this architecture body." in prompt_texts[0]
     assert "Preserve this feature body." in prompt_texts[0]
     assert "Do not emit any existing conformant Blueprint file again." in prompt_texts[0]
     assert "## Programmatic Acceptance" in architecture.read_text(encoding="utf-8")
-    # Built specs are preserved verbatim — headers are not restamped and terminal
-    # sections are not completed, so the story stays clean and does not rebuild.
-    assert architecture.read_text(encoding="utf-8") == architecture_before
-    assert feature.read_text(encoding="utf-8") == feature_before
+    # Initial imported specs keep their substance while Plan normalizes the governed envelope.
+    assert "Preserve this architecture body." in architecture.read_text(encoding="utf-8")
+    assert "Preserve this feature body." in feature.read_text(encoding="utf-8")
 
 
 def test_overwrite_forces_full_rewrite_over_existing_specs(tmp_path):
@@ -928,7 +916,7 @@ def _spec_sha256(path: Path) -> str:
     return _sha256(path.read_bytes()).hexdigest()
 
 
-def test_replan_preserves_closed_verified_block_with_clean_file(tmp_path):
+def test_replan_resets_closed_block_when_authoritative_spec_changes(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     spec_file = blueprint_dir / "FEATURE-Status.md"
@@ -943,7 +931,8 @@ def test_replan_preserves_closed_verified_block_with_clean_file(tmp_path):
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
     text = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
-    assert "state: closed/verified" in text
+    assert "state: closed/verified" not in text
+    assert "state: pending" in text
 
 
 def test_replan_resets_dirty_block_to_pending(tmp_path):
@@ -966,7 +955,7 @@ def test_replan_resets_dirty_block_to_pending(tmp_path):
     assert "state: pending" in text
 
 
-def test_replan_restores_applied_specs(tmp_path):
+def test_replan_prunes_applied_spec_when_authoritative_spec_changes(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     spec_file = blueprint_dir / "FEATURE-Status.md"
@@ -981,8 +970,7 @@ def test_replan_restores_applied_specs(tmp_path):
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
     plan = parse_build_plan(target_dir / "MANIFEST.md")
-    assert "FEATURE-Status.md" in plan.applied_specs
-    assert plan.applied_specs["FEATURE-Status.md"].applied_by == "story-status"
+    assert "FEATURE-Status.md" not in plan.applied_specs
 
 
 def test_plan_references_build_time_compacts_without_generating_them(tmp_path):
@@ -1653,6 +1641,47 @@ def test_integrity_story_parented_to_non_feature_is_fatal(tmp_path):
     )
 
 
+def test_integrity_story_must_implement_exactly_one_spec(tmp_path):
+    target_dir = _make_target(tmp_path)
+    manifest = _manifest().replace(
+        "implements: FEATURE-Status.md",
+        "implements: FEATURE-Status.md, ARCHITECTURE.md",
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="must implement exactly one Blueprint specification",
+    )
+
+
+def test_integrity_spec_has_exactly_one_owning_story(tmp_path):
+    target_dir = _make_target(tmp_path)
+    manifest = _manifest() + (
+        "\n## story 2: Duplicate owner\n"
+        "id: duplicate-owner\n"
+        "parent: feature-status\n"
+        "summary: Duplicate ownership.\n"
+        "implements: FEATURE-Status.md\n"
+        "instructions: Do it again.\n"
+        "state: pending\n"
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output(manifest)))
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="duplicate implementation ownership",
+    )
+
+
 # Decomposition coverage. `_STORY_CAP` rejects an over-decomposed plan; these gates
 # reject the opposite failure, where analyzed stories are silently collapsed away.
 
@@ -1837,6 +1866,7 @@ def test_unbuilt_specs_are_discarded_and_regenerated(tmp_path):
     (blueprint_dir / "ARCHITECTURE.md").write_text("STALE ARCHITECTURE\n", encoding="utf-8")
     (blueprint_dir / "FEATURE-Status.md").write_text("STALE FEATURE\n", encoding="utf-8")
     (blueprint_dir / "FEATURE-Ghost.md").write_text("ORPHAN SPEC\n", encoding="utf-8")
+    (target_dir / "MANIFEST.md").write_text(_manifest(), encoding="utf-8")
     progress: list[str] = []
 
     result = create_plan(
@@ -1851,24 +1881,22 @@ def test_unbuilt_specs_are_discarded_and_regenerated(tmp_path):
     assert "discarding 3 unbuilt Blueprint spec(s)" in "".join(progress)
 
 
-def test_built_spec_is_preserved_and_unbuilt_sibling_regenerated(tmp_path):
-    """The guardrail: a spec delivered code was built against survives the replan."""
+def test_replan_overwrites_built_spec_and_unbuilt_sibling(tmp_path):
+    """Planning Crew authority includes specifications used by an earlier build."""
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     architecture = blueprint_dir / "ARCHITECTURE.md"
     architecture.write_text(_ARCH_CONFORMANT, encoding="utf-8")
     (blueprint_dir / "FEATURE-Status.md").write_text("STALE FEATURE\n", encoding="utf-8")
     _mark_built(target_dir, "ARCHITECTURE.md")
-    before = architecture.read_text(encoding="utf-8")
-
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
-    assert architecture.read_text(encoding="utf-8") == before
+    assert architecture.read_text(encoding="utf-8") != _ARCH_CONFORMANT
     assert "STALE" not in (blueprint_dir / "FEATURE-Status.md").read_text(encoding="utf-8")
 
 
-def test_author_edited_built_spec_is_not_overwritten(tmp_path):
-    """A built spec the author edited keeps the author's content; the LLM's is discarded."""
+def test_replan_overwrites_author_edited_built_spec(tmp_path):
+    """Commander redirection is input; prior Plan output is not protected from replanning."""
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     architecture = blueprint_dir / "ARCHITECTURE.md"
@@ -1880,7 +1908,7 @@ def test_author_edited_built_spec_is_not_overwritten(tmp_path):
 
     create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
-    assert architecture.read_text(encoding="utf-8") == edited
+    assert architecture.read_text(encoding="utf-8") != edited
 
 
 def test_overwrite_discards_even_built_specs(tmp_path):

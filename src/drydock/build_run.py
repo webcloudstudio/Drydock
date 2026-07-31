@@ -49,6 +49,7 @@ from drydock.build import (
     reusable_build_compact_sources,
     work_kind_of,
 )
+from drydock.build_decisions import record_build_decisions
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -2381,6 +2382,29 @@ def build_target(
             )
             if written_reusable_compacts:
                 _emit(on_text, "reusable compacts: " + ", ".join(written_reusable_compacts))
+
+        written_decisions: tuple[Path, ...] = ()
+        if status != "failed":
+            allowed_specs = frozenset(
+                str(name)
+                for block in unit.steps
+                for name in (
+                    block.fields.get("implements", ())
+                    if isinstance(block.fields.get("implements", ()), tuple)
+                    else (block.fields.get("implements", ""),)
+                )
+                if name
+            )
+            written_decisions = record_build_decisions(
+                summary,
+                blueprint_dir=blueprint_dir,
+                allowed_specs=allowed_specs,
+            )
+            if written_decisions:
+                _emit(
+                    on_text,
+                    "Shipyard decisions: " + ", ".join(path.name for path in written_decisions),
+                )
 
         evidence_path = evidence_dir / f"{unit.block_id}.md"
         _write_group_evidence(

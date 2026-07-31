@@ -116,14 +116,14 @@ def test_answer_writes_authoritative_blueprint_and_ungates_story(tmp_path):
     plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
     color = plan.node("color")
     assert color.state == "blocked/questions"
-    assert color.fields["questions"] == "2 open, 0 answered"
+    assert color.fields["questions"] == "2 open (2 blocking), 0 answered"
     assert [node.block_id for node in plan.buildable_steps()] == ["independent"]
 
     answer_question(blueprint / "FEATURE-Color.md", "Q-001", "Blue")
     answer_question(blueprint / "UI.md", "Q-002", "Navy")
     plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
     assert plan.node("color").state == "pending"
-    assert plan.node("color").fields["questions"] == "0 open, 2 answered"
+    assert plan.node("color").fields["questions"] == "0 open (0 blocking), 2 answered"
     assert [node.block_id for node in plan.buildable_steps()] == ["delivery"]
 
 
@@ -140,6 +140,21 @@ def test_manifest_approval_is_current_only_and_not_feedback(tmp_path):
     assert approved.node("color").state == "pending"
     assert approved.node("color").fields["questions_approved"] == "true"
     assert load_feedback(target) == ()
+
+
+def test_material_plan_decision_is_visible_without_blocking_story(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    (target / "MANIFEST.md").write_text(_manifest(), encoding="utf-8")
+    material = _blueprint().replace("- Status: open", "- Severity: Material\n- Status: open")
+    (blueprint / "FEATURE-Color.md").write_text(material, encoding="utf-8")
+
+    plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
+
+    color = plan.node("color")
+    assert color.state == "pending"
+    assert color.fields["questions"] == "1 open (0 blocking), 0 answered"
 
 
 def test_answered_feedback_survives_blueprint_rename_and_requires_explicit_retirement(tmp_path):
@@ -167,6 +182,24 @@ def test_answered_feedback_survives_blueprint_rename_and_requires_explicit_retir
     )
     assert retired[0].status == "retired"
     assert retired[0].reason == "Product no longer has a visual surface."
+
+
+def test_feedback_store_appends_commander_answer_revisions(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+    path = blueprint / "FEATURE-Color.md"
+    path.write_text(_blueprint(status="answered", answer="Blue"), encoding="utf-8")
+
+    harvest_answered_questions(target)
+    path.write_text(_blueprint(status="answered", answer="Green"), encoding="utf-8")
+    harvest_answered_questions(target)
+
+    payload = json.loads(
+        (target / "QuarterDeck" / "planning-feedback.json").read_text(encoding="utf-8")
+    )
+    assert payload["schema_version"] == 2
+    assert [event["answer"] for event in payload["history"]] == ["Blue", "Green"]
 
 
 def test_answered_feedback_ignores_unformatted_imported_sources(tmp_path):

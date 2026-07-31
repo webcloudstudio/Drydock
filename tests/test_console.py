@@ -31,6 +31,8 @@ class _Stream(io.StringIO):
 def _clear_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """Auto-detect during tests, and let monkeypatch restore whatever a test writes."""
     monkeypatch.setenv("DRYDOCK_ASCII", "")
+    monkeypatch.delenv("MSYSTEM", raising=False)
+    monkeypatch.delenv("OSTYPE", raising=False)
 
 
 # ── to_ascii ────────────────────────────────────────────────────────────────
@@ -98,6 +100,24 @@ def test_env_forces_ascii(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_env_forces_unicode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DRYDOCK_ASCII", "0")
     assert console.stream_supports_unicode(_Stream("cp1252")) is True
+
+
+def test_msys_terminal_defaults_to_ascii(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MSYSTEM", "MSYS")
+    assert console.msys_terminal(_Stream("utf-8", tty=True)) is True
+    assert console.stream_supports_unicode(_Stream("utf-8", tty=True)) is False
+
+
+def test_msys_redirect_keeps_encoding_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MSYSTEM", "MINGW64")
+    assert console.msys_terminal(_Stream("utf-8", tty=False)) is False
+    assert console.stream_supports_unicode(_Stream("utf-8", tty=False)) is True
+
+
+def test_unicode_override_wins_in_msys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MSYSTEM", "MSYS")
+    monkeypatch.setenv("DRYDOCK_ASCII", "0")
+    assert console.stream_supports_unicode(_Stream("utf-8", tty=True)) is True
 
 
 # ── AsciiStream ─────────────────────────────────────────────────────────────

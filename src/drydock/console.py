@@ -13,9 +13,10 @@ covered without change, including streamed model text.
 Detection order:
 
 1. ``DRYDOCK_ASCII`` (or ``--ascii``) forces ASCII; ``DRYDOCK_ASCII=0`` forces Unicode.
-2. A Windows console host on a non-UTF-8 code page is ASCII: it reports ``utf-8`` to Python but
-   draws a box for anything its raster fonts lack.
-3. Otherwise the stream's own encoding is probed with Drydock's glyph set.
+2. An MSYS, MinGW, or Cygwin terminal is ASCII by default: compatibility terminals can report
+   ``utf-8`` while rendering status glyphs incorrectly.
+3. A Windows console host on a non-UTF-8 code page is ASCII.
+4. Otherwise the stream's own encoding is probed with Drydock's glyph set.
 """
 
 from __future__ import annotations
@@ -139,6 +140,8 @@ def stream_supports_unicode(stream: TextIO | None) -> bool:
         return not forced
     if stream is None:
         return False
+    if msys_terminal(stream):
+        return False
     if legacy_windows_console(stream):
         return False
     encoding = getattr(stream, "encoding", None)
@@ -149,6 +152,29 @@ def stream_supports_unicode(stream: TextIO | None) -> bool:
     except (UnicodeEncodeError, LookupError, TypeError):
         return False
     return True
+
+
+def msys_terminal(stream: TextIO | None) -> bool:
+    """Whether a terminal is hosted by the MSYS/MinGW/Cygwin compatibility layer.
+
+    These hosts can advertise UTF-8 through Python while still producing confused emoji and
+    status glyph output. ``--unicode`` remains an explicit invocation-wide override.
+    """
+    if stream is None:
+        return False
+    try:
+        if not stream.isatty():
+            return False
+    except (AttributeError, ValueError):
+        return False
+    markers = (
+        os.environ.get("MSYSTEM", ""),
+        os.environ.get("OSTYPE", ""),
+        sys.platform,
+    )
+    return any(
+        marker.lower().startswith(("msys", "mingw", "cygwin")) for marker in markers if marker
+    )
 
 
 def _console_code_page() -> int | None:

@@ -50,17 +50,20 @@ def synchronize_manifest_question_gates(
             for question in parse_questions(text, source=str(path))
         )
         open_count = sum(item.status == "open" for item in questions)
+        blocking_count = sum(
+            item.status == "open" and item.severity == "blocking" for item in questions
+        )
         answered_count = sum(item.status == "answered" for item in questions)
-        summary = f"{open_count} open, {answered_count} answered"
+        summary = f"{open_count} open ({blocking_count} blocking), {answered_count} answered"
         approved = str(node.fields.get("questions_approved", "")).lower() == "true"
         updates: dict[str, str | None] = {}
         if node.fields.get("questions") != summary:
             updates["questions"] = summary
-        if open_count and not approved and node.state != "blocked/questions":
+        if blocking_count and not approved and node.state != "blocked/questions":
             updates["state"] = "blocked/questions"
-        elif (not open_count or approved) and node.state == "blocked/questions":
+        elif (not blocking_count or approved) and node.state == "blocked/questions":
             updates["state"] = "pending"
-        if not open_count and "questions_approved" in node.fields:
+        if not blocking_count and "questions_approved" in node.fields:
             updates["questions_approved"] = None
         if updates:
             manifest.set_fields(node.block_id, **updates)
@@ -77,7 +80,7 @@ def approve_story_questions(manifest_path: Path, story_id: str) -> DrydockManife
     if node.block_type != "story":
         raise SpecificationError(f"{story_id!r} is not a story")
     questions = str(node.fields.get("questions", ""))
-    if not questions or questions.startswith("0 open"):
+    if not questions or questions.startswith("0 open") or "(0 blocking)" in questions:
         raise SpecificationError(f"Story {story_id!r} has no unanswered questions")
     manifest.set_fields(story_id, questions_approved="true", state="pending")
     manifest.save()

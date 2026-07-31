@@ -11,6 +11,7 @@ import pytest
 from drydock import technology_stack
 from drydock.analyze import (
     _assemble_prompt,
+    _attach_source_material_handoff,
     _collect_blueprint_files,
     _feedback_body,
     _is_compass_unpopulated,
@@ -39,10 +40,35 @@ from drydock.quarterdeck_state import (
     _with_running_panel,
     commanders_chair_command,
 )
+from drydock.source_material import SourceMaterialFile
 
 # ---------------------------------------------------------------------------
 # Minimal valid LLM output helpers
 # ---------------------------------------------------------------------------
+
+
+def test_handoff_adds_ascii_safe_crew_and_commander_expectations(tmp_path):
+    source = tmp_path / "request.md"
+    source.write_text("Build it.\n", encoding="utf-8")
+
+    rendered = _attach_source_material_handoff(
+        "# Blueprint Analysis: Demo\n\n## Story List\n\nNone.",
+        [
+            SourceMaterialFile(
+                source,
+                "sources/request.md",
+                "markdown",
+                "analyzed",
+                "readable UTF-8",
+                "Build it.\n",
+                "markdown",
+            )
+        ],
+    )
+
+    assert "## Commander Expectations" in rendered
+    assert "| Shipyard Crew |" in rendered
+    assert rendered.isascii()
 
 
 def test_default_feedback_heading_is_analyze_compass(tmp_path):

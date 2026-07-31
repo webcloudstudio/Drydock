@@ -27,7 +27,6 @@ from drydock.compass_sources import (
 )
 from drydock.errors import DrydockError, SpecificationError
 from drydock.exclude_files import (
-    append_suggested_exclusions,
     ensure_exclude_file,
     load_excluded_filenames,
 )
@@ -731,6 +730,21 @@ def _attach_source_material_handoff(
     for heading in ("Relationship Model", "Planning Instructions"):
         if not re.search(rf"^## {re.escape(heading)}\s*$", text, re.MULTILINE):
             text += f"\n\n## {heading}\n\nNone identified."
+    if not re.search(r"^## Commander Expectations\s*$", text, re.MULTILINE):
+        text += (
+            "\n\n## Commander Expectations\n\n"
+            "- assert Commander intent is preserved by the planned product."
+        )
+    if not re.search(r"^## Crew\s*$", text, re.MULTILINE):
+        text += (
+            "\n\n## Crew\n\n"
+            "| Crew | Charge |\n"
+            "|---|---|\n"
+            "| Commander | Defines intent and decides what done means. |\n"
+            "| Team Lead | Confirms epic completeness and stakeholder expectations. |\n"
+            "| Planning Crew | Authors atomic specifications and the ordered Manifest. |\n"
+            "| Shipyard Crew | Builds the tickets without synchronous Commander access. |"
+        )
     # Inventory is tool-derived evidence, not a model assertion. Place it before the
     # relationship and planning sections so QuarterDeck renders coverage prominently.
     inventory = inventory_markdown(source_material)
@@ -925,7 +939,6 @@ def analyze(
     feedback_text = ensure_feedback_file(target_dir)
     feedback_for_prompt = _feedback_body(feedback_text) or None
     ensure_exclude_file(target_dir)
-    append_suggested_exclusions(target_dir, source_files)
     excluded_filenames = load_excluded_filenames(target_dir)
     # Inventory proves coverage of every imported file. EXCLUDE_FILES controls only prompt
     # injection, never the immutable source-material record rendered into ANALYSIS.md.

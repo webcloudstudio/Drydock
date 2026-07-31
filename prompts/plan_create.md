@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260730 V24
+version: 20260731 V25
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -77,6 +77,10 @@ spec files unless the source material explicitly calls for a persistent ticket o
 
 When the analysis is too coarse, refine it into smaller spec scopes. When it is too fine, merge it
 into the smallest durable spec structure that preserves correctness and clear ownership.
+The Analyze story list is the Team Lead's expert proposal, not an immutable work breakdown.
+Preserve a source Markdown file and filename when it already represents one atomic story, but split
+it when it combines independent actions. A screen and its provider route are separate stories and
+separate specifications even when they participate in one workflow.
 
 ---
 
@@ -88,9 +92,9 @@ the job block; the rest are fenced sections.
 - **Plan feedback (standing directive)** — `PLAN_COMPASS.md`, persistent human direction
   injected near the top of this prompt when present. Treat it as authoritative steering for this
   run; it overrides default decomposition and ordering choices where it speaks.
-- **`ANALYSIS.md`** — the reviewed plan: quality signal, the **story list (treat as the file
-  map)**, open questions, tuning options, and notes. Each analyzed story names the durable file(s)
-  it becomes; honor that mapping rather than re-deriving it from scratch.
+- **`ANALYSIS.md`** — the Team Lead's reviewed proposal: quality signal, candidate story/file map,
+  open questions, tuning options, expectations, and notes. Review its mapping as an agile expert;
+  preserve, merge, split, replace, or reorder it when the complete planning context requires that.
 - **`## Surfaced Acceptance Criteria`** in `ANALYSIS.md` — additional criteria analyze derived per
   story; fold each row into the `## Programmatic Acceptance` or `## User Acceptance` section of the
   spec file implementing its Story ID.
@@ -98,9 +102,8 @@ the job block; the rest are fenced sections.
   Analyze-to-Plan handoff. Honor the Story Realization Map when selecting durable Blueprint
   scopes; carry the stated sequencing/dependency model into Manifest ordering and `depends:`;
   embed cited interfaces, workflows, test-kit behavior, and acceptance in the matching specs.
-  The imported evidence bundle contains only paths cited by Analyze. Do not assume uncited source
-  content is available; surface a conflict or gap through the existing blocker/questionnaire
-  mechanisms rather than inventing it.
+  Every readable imported source is available below. Analyze guides interpretation and proposes a
+  realization map; it never limits which source evidence the Planning Crew may consult.
 - **`SYSTEM_SHAPE`** — the determined project type (`web|api|cli|library|pipeline|event-driven`),
   parsed from the analysis. Drives the default decomposition table below.
 - **`SEA_TRIALS.md`** and **`SOUNDINGS.md`** — product objectives and acceptance milestones from
@@ -122,10 +125,10 @@ When authoritative inputs disagree, apply this order and proceed. Do not stop on
 that this order resolves:
 
 1. `PLAN_COMPASS.md` **Commander Direction**
-2. `TECHNOLOGY_STACK.md` (technology questions only)
-3. `COMPASS.md`
-4. Imported source files and `ANALYSIS.md`
-5. Answered questionnaires
+2. Answered questionnaires and persisted Commander answers from Blueprint `## Questions`
+3. `TECHNOLOGY_STACK.md` (technology questions only)
+4. `COMPASS.md`
+5. Imported source files and `ANALYSIS.md`
 
 **Absence is never prohibition.** An item missing from `TECHNOLOGY_STACK.md`, unselected in a
 questionnaire, or unmentioned in `COMPASS.md` is undecided, not forbidden. Never treat an omission
@@ -147,8 +150,11 @@ does not.
 
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field
   contracts for the outputs.
-- **Imported source files** — the original material under `blueprint/sources/`, injected below.
-  The authored spec files are fundamentally a structured rewrite of this material per the file map.
+- **Imported source files** — all readable material under `blueprint/sources/`, injected below.
+  It is unconstrained Commander input, not governed Blueprint syntax. Never reject a source because
+  of its filename, headings, tables, question labels, or formatting. Authored Markdown specs are a
+  structured interpretation. Non-Markdown assets are projected byte-for-byte by Drydock; never emit
+  or rewrite them.
 
 If `ANALYSIS_QUALITY` is `Blocked`, planning must not proceed. Emit only a refusal message inside
 the required output block contract described below.
@@ -215,8 +221,8 @@ needed and they should not bloat the parent spec.
 Rules:
 
 - Each emitted authored spec file must represent one durable capability boundary.
-- The `## Story Realization Map` in `ANALYSIS.md` is the default partition. A row that names a
-  distinct capability scope stays its own story, and therefore its own authored spec file.
+- The `## Story Realization Map` in `ANALYSIS.md` is a proposed partition. Keep a row that names a
+  distinct, atomic capability scope unless complete planning context supports a better partition.
 - Two analysis stories collapse into one authored file only when both describe the **same**
   behavior *and* the merged unit still satisfies the story criteria above. Distinct scopes — for
   example a block parser, an inline parser, reference resolution, a renderer, and an executable
@@ -322,9 +328,12 @@ Manifest rules:
   story per file. A spec file that grows to cover several distinct behaviors has under-decomposed
   the plan; split the file, not the story's `implements:` list.
 - Use `context:` only for genuine read-only support files.
-- Technical research questions become `spike` blocks. Human-owned unknowns discovered while
-  authoring one story remain in that Blueprint's canonical `## Questions` section and block only
-  that story; they never force Error Mode when the rest of the plan is coherent.
+- Technical research questions become `spike` blocks. For a human-owned ambiguity, choose the best
+  coherent interpretation and record it in the owning Blueprint's canonical `## Questions`
+  section. State the options, selected choice and reason, then ask whether the Commander wants to
+  redirect and replan. Assign `Low`, `Material`, or exceptionally `Blocking` severity. Low and
+  Material decisions do not gate Build. Blocking means the team cannot responsibly endorse any
+  available interpretation; it never forces Error Mode when the rest of the plan is coherent.
 - Group coherent capabilities under `feature` parents; keep unrelated capabilities in separate
   features. Prefer a feature parent when multiple stories belong to one durable workflow.
 - A `parent:` value names a `feature` block emitted in this same Manifest. Never reference a feature

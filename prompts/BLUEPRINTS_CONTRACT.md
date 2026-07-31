@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260728 V10
+version: 20260731 V11
 ---
 
 ## Overview
@@ -118,6 +118,7 @@ more deterministic records:
 ### Q-state-model: State Changer
 
 - Origin: plan
+- Severity: Material
 - Status: open
 
 #### Question
@@ -130,6 +131,12 @@ Which state model governs this workflow?
 An Analyze questionnaire answer uses `Origin: analyze-questionnaire`, `Status: answered`, and a
 non-empty Answer. An answered decision is applied to normal specification content on later plans
 and is not recreated as a question.
+
+Severity is `Low`, `Material`, or `Blocking`. Low and Material records document a decision and do
+not gate the owning story. Blocking is exceptional and gates only the owning story. A Plan decision
+normally states the considered options, selected option and reason, then asks whether the Commander
+wants to redirect and replan. `Origin: build` records a Shipyard Crew implementation decision in
+the owning specification; it never initiates a questionnaire or blocks completed work.
 
 Every authored Specification file ends with these sections, using `- None.` when no entries apply:
 

@@ -1,8 +1,5 @@
 from pathlib import Path
 
-import pytest
-
-from drydock.errors import SpecificationError
 from drydock.planning_session import _source_evidence_bundle
 from drydock.source_material import (
     discover_source_material,
@@ -34,7 +31,7 @@ def test_discover_source_material_accounts_for_heterogeneous_imports(tmp_path: P
     assert source_material[2].fence == "python"
 
 
-def test_plan_evidence_bundle_selects_only_analyze_citations(tmp_path: Path) -> None:
+def test_plan_evidence_bundle_includes_every_readable_source(tmp_path: Path) -> None:
     blueprint = tmp_path / "blueprint"
     sources = blueprint / "sources"
     sources.mkdir(parents=True)
@@ -44,62 +41,24 @@ def test_plan_evidence_bundle_selects_only_analyze_citations(tmp_path: Path) -> 
 
     bundle = _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
 
-    assert [entry.relative_path for entry in bundle or []] == ["sources/parser.py"]
+    assert [entry.relative_path for entry in bundle or []] == [
+        "sources/normalizer.py",
+        "sources/parser.py",
+    ]
 
 
-def test_plan_evidence_bundle_rejects_missing_analyze_citation(tmp_path: Path) -> None:
+def test_plan_evidence_bundle_does_not_require_analyze_citations(tmp_path: Path) -> None:
     blueprint = tmp_path / "blueprint"
     (blueprint / "sources").mkdir(parents=True)
     (blueprint / "sources" / "parser.py").write_text("pass\n", encoding="utf-8")
 
-    with pytest.raises(SpecificationError, match="no `sources/...` evidence citations"):
-        _source_evidence_bundle(
-            blueprint,
-            "## Planning Instructions\n\n### Delivery Shape\n\nCLI.\n",
-            excluded_filenames=frozenset(),
-        )
+    bundle = _source_evidence_bundle(
+        blueprint,
+        "## Planning Instructions\n\nScope: `sources/absent.md`.\n",
+        excluded_filenames=frozenset(),
+    )
 
-
-def test_plan_evidence_bundle_expands_a_wildcard_citation(tmp_path: Path) -> None:
-    # Observed on the Marina target: Analyze cited a family of sources as
-    # `sources/FEATURE-CATALOG-*.md`. The citation scanner stopped at the `*` and demanded a file
-    # literally named `sources/FEATURE-CATALOG-`, blocking `drydock plan` outright.
-    blueprint = tmp_path / "blueprint"
-    sources = blueprint / "sources"
-    sources.mkdir(parents=True)
-    (sources / "FEATURE-CATALOG-READ.md").write_text("# Read\n", encoding="utf-8")
-    (sources / "FEATURE-CATALOG-PUBLISH.md").write_text("# Publish\n", encoding="utf-8")
-    (sources / "FEATURE-SCANNER.md").write_text("# Scanner\n", encoding="utf-8")
-    analysis = "## Planning Instructions\n\nCloud phase: `sources/FEATURE-CATALOG-*.md`.\n"
-
-    bundle = _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
-
-    assert sorted(entry.relative_path for entry in bundle or []) == [
-        "sources/FEATURE-CATALOG-PUBLISH.md",
-        "sources/FEATURE-CATALOG-READ.md",
-    ]
-
-
-def test_plan_evidence_bundle_rejects_a_wildcard_matching_nothing(tmp_path: Path) -> None:
-    blueprint = tmp_path / "blueprint"
-    sources = blueprint / "sources"
-    sources.mkdir(parents=True)
-    (sources / "FEATURE-SCANNER.md").write_text("# Scanner\n", encoding="utf-8")
-    analysis = "## Planning Instructions\n\nCloud phase: `sources/FEATURE-CATALOG-*.md`.\n"
-
-    with pytest.raises(SpecificationError, match="matching no imported source file"):
-        _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
-
-
-def test_plan_evidence_bundle_still_rejects_an_uncited_missing_file(tmp_path: Path) -> None:
-    blueprint = tmp_path / "blueprint"
-    sources = blueprint / "sources"
-    sources.mkdir(parents=True)
-    (sources / "parser.py").write_text("pass\n", encoding="utf-8")
-    analysis = "## Planning Instructions\n\nScope: `sources/absent.md`.\n"
-
-    with pytest.raises(SpecificationError, match="not present in the imported source material"):
-        _source_evidence_bundle(blueprint, analysis, excluded_filenames=frozenset())
+    assert [entry.relative_path for entry in bundle or []] == ["sources/parser.py"]
 
 
 def test_wrapped_prose_is_not_classified_as_generated(tmp_path: Path) -> None:

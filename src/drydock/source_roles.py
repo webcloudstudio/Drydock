@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
 from drydock.errors import SpecificationError
@@ -62,10 +64,30 @@ def parse_source_roles(analysis_text: str) -> dict[str, SourceRole]:
     return rows
 
 
+def source_role_for(path: str, roles: dict[str, SourceRole]) -> SourceRole | None:
+    """Resolve an exact or globbed Analyze role for one imported relative path."""
+    exact = roles.get(path)
+    if exact is not None:
+        return exact
+    matches = [
+        role
+        for pattern, role in roles.items()
+        if any(character in pattern for character in "*?[") and fnmatchcase(path, pattern)
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda role: len(role.path))
+
+
 def promote_imported_sources(
     blueprint_dir: Path, roles: dict[str, SourceRole], target_dir: Path
 ) -> list[Path]:
-    """Copy immutable imports to Blueprint build paths; author intent becomes Compass only."""
+    """Project non-Markdown assets byte-for-byte; Markdown remains source provenance.
+
+    Plan authors governed Markdown specifications. Imported non-Markdown files are assets,
+    examples, fixtures, tests, or executable resources and are projected one level above
+    ``sources/`` without text decoding or newline normalization.
+    """
     sources_dir = blueprint_dir / "sources"
     if not sources_dir.is_dir():
         return []
@@ -74,19 +96,22 @@ def promote_imported_sources(
         rel = source.relative_to(sources_dir).as_posix()
         if source.name in _IMPORT_MARKERS:
             continue
-        role = roles.get(rel)
+        role = source_role_for(rel, roles)
         if role is not None and role.plan_disposition == "compass":
             _append_compass(target_dir / "COMPASS.md", source)
             continue
+        if source.suffix.lower() == ".md":
+            continue
         destination = blueprint_dir / rel
-        if destination.exists() and destination.resolve() != source.resolve():
-            if destination.read_bytes() != source.read_bytes():
-                raise SpecificationError(
-                    f"Imported source promotion conflicts with existing Blueprint file: {rel}"
-                )
-        else:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        payload = source.read_bytes()
+        if destination.is_file() and destination.read_bytes() == payload:
+            promoted.append(destination)
+            continue
+        with tempfile.NamedTemporaryFile("wb", dir=destination.parent, delete=False) as handle:
+            handle.write(payload)
+            temporary = Path(handle.name)
+        temporary.replace(destination)
         promoted.append(destination)
     return promoted
 
@@ -140,7 +165,7 @@ def declared_build_assets(
         if source.name in _IMPORT_MARKERS:
             continue
         rel = source.relative_to(sources_dir).as_posix()
-        role = roles.get(rel)
+        role = source_role_for(rel, roles)
         if role is None or role.build_disposition != "stage":
             continue
         # Markdown is prompt material, never a deliverable file.

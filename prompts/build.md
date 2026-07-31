@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260728 V4
+version: 20260731 V5
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 model: opus
@@ -86,6 +86,18 @@ SUMMARY:
 BLOCKERS:
 - <only if any>
 ```
+   Before `RESULT`, you may emit one optional JSON payload when implementation required a bounded
+   choice not already settled by the owning specification. This records what you did; it does not
+   ask permission, create a questionnaire, or excuse incomplete work:
+
+```text
+<blueprint-decisions>
+[{"spec":"FEATURE-Example.md","severity":"Material","subject":"Chosen behavior","decision":"Options A and B were available. I implemented B because ... Is that acceptable, or should this change on replan?"}]
+</blueprint-decisions>
+```
+
+   Name only a specification implemented by this build block. Use `Low` or `Material`; Build never
+   emits a Blocking decision. Omit the payload when no implementation decision was necessary.
 
 13. `FILES CHANGED` must list only files actually written in the build working
    directory. If no files were written, use `RESULT: FAILED`.

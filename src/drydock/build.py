@@ -1096,17 +1096,21 @@ def render_build_group_prompt_assembly(
 
 
 def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepGroup, ...]:
-    """Group assembled steps under their parent feature, in manifest order.
+    """Group steps by feature and work kind, in manifest order.
 
     Steps with no feature parent fall into a trailing ``Ungrouped`` group. Group
-    order follows first appearance of each feature's steps in manifest order.
+    order follows first appearance in manifest order. Screen and feature/service
+    work never share a prompt even when they have the same feature parent.
     """
     by_id = plan.by_id()
-    order: list[str | None] = []
-    members: dict[str | None, list[StepAssembly]] = {}
+    order: list[tuple[str | None, str]] = []
+    members: dict[tuple[str | None, str], list[StepAssembly]] = {}
     for step in steps:
         parent = step.parent
-        key = parent if parent and parent in by_id else None
+        feature_id = parent if parent and parent in by_id else None
+        block = by_id.get(step.block_id)
+        kind = work_kind_of(block) if block is not None else "feature"
+        key = (feature_id, kind)
         if key not in members:
             members[key] = []
             order.append(key)
@@ -1114,10 +1118,18 @@ def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepG
 
     groups: list[StepGroup] = []
     for key in order:
+        feature_id, kind = key
         steps_in = tuple(members[key])
-        if key is None:
+        if feature_id is None:
             name = "Ungrouped"
         else:
-            name = by_id[key].name
-        groups.append(make_step_group(feature_id=key, name=name, steps=steps_in))
+            name = by_id[feature_id].name
+            kinds = {
+                work_kind_of(by_id[step.block_id])
+                for step in steps
+                if step.parent == feature_id and step.block_id in by_id
+            }
+            if len(kinds) > 1:
+                name += f" - {kind.title()}"
+        groups.append(make_step_group(feature_id=feature_id, name=name, steps=steps_in))
     return tuple(groups)
