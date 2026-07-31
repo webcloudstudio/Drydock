@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -2174,6 +2175,46 @@ class TestRunQuarterdeck:
         assert rc == 0
         assert calls == [{"target_dir": target, "port": 8080, "host": "127.0.0.1"}]
         assert str(target) in out
+
+    def test_run_quarterdeck_without_target_uses_most_recently_updated_target(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+        older = self._make_target(tmp_target_root, "Older")
+        latest = self._make_target(tmp_target_root, "Latest")
+        nested_artifact = latest / "blueprint" / "FEATURE.md"
+        nested_artifact.parent.mkdir()
+        nested_artifact.write_text("latest\n", encoding="utf-8")
+        old_ns = 1_000_000_000
+        new_ns = 2_000_000_000
+        for path in [older, *older.rglob("*"), latest, *latest.rglob("*")]:
+            os.utime(path, ns=(old_ns, old_ns), follow_symlinks=False)
+        os.utime(nested_artifact, ns=(new_ns, new_ns))
+        calls: list[Path] = []
+
+        def fake_run(target_dir, *, port, host):
+            calls.append(target_dir)
+            return SimpleNamespace(exit_code=0)
+
+        monkeypatch.setattr("drydock.quarterdeck_run.run_quarterdeck", fake_run)
+        rc, out, err = run_cli("run", "quarterdeck")
+
+        assert rc == 0
+        assert err == ""
+        assert calls == [latest]
+        assert str(latest) in out
+
+    def test_run_quarterdeck_without_target_reports_empty_workspace(
+        self, tmp_target_root, isolated_config
+    ):
+        run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
+
+        rc, out, err = run_cli("run", "quarterdeck")
+
+        assert rc == 1
+        assert "No initialized Target found" in err
 
     def test_run_quarterdeck_custom_port(self, tmp_target_root, isolated_config, monkeypatch):
         from types import SimpleNamespace

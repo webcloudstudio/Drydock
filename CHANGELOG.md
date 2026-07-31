@@ -10,6 +10,8 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-07-31: `drydock run quarterdeck` accepts an optional Target and defaults to the most
+  recently updated initialized Target in the configured workspace.
 - 2026-07-30: `TECHNOLOGY_STACK.md` replaces the stack questionnaire as the technology decision of
   record. It maps each technology to the Rigging file governing it, or to none, so a target can
   name technologies Rigging does not document. `drydock analyze` proposes it once and never

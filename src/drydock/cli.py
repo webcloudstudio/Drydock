@@ -1134,12 +1134,42 @@ def _resolve_sole_target(targets_root: Path) -> Path:
     )
 
 
+def _target_last_updated(target_dir: Path) -> int:
+    """Return the newest modification timestamp in an initialized Target tree."""
+    try:
+        latest = target_dir.lstat().st_mtime_ns
+    except OSError:
+        latest = 0
+    for path in target_dir.rglob("*"):
+        try:
+            latest = max(latest, path.lstat().st_mtime_ns)
+        except OSError:
+            # A concurrent command may replace an artifact while Targets are scanned.
+            continue
+    return latest
+
+
+def _resolve_latest_target(targets_root: Path) -> Path:
+    """Resolve the most recently modified initialized Target under the workspace."""
+    candidates = (
+        [path for path in targets_root.iterdir() if path.is_dir() and _is_target_dir(path)]
+        if targets_root.is_dir()
+        else []
+    )
+    if not candidates:
+        raise DrydockError(
+            f"No initialized Target found under {targets_root}\n  Run: drydock init <Target>"
+        )
+    updated = [(path, _target_last_updated(path)) for path in candidates]
+    return min(updated, key=lambda item: (-item[1], item[0].name.casefold(), item[0].name))[0]
+
+
 def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
     from drydock import quarterdeck_run as _qd
     from drydock.config import get_quarterdeck_port, get_target_directory
 
     targets_root = get_target_directory()
-    target_dir = targets_root / args.Target if args.Target else _resolve_sole_target(targets_root)
+    target_dir = targets_root / args.Target if args.Target else _resolve_latest_target(targets_root)
     port = args.port if args.port is not None else get_quarterdeck_port()
     host = args.host
 
@@ -2523,7 +2553,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "Target",
         metavar="<Target>",
         nargs="?",
-        help="Configured target name; omit to run the current directory's QuarterDeck.",
+        help="Configured target name; omit to use the most recently updated target.",
     )
     p_run_qd.add_argument(
         "--port",
