@@ -1,7 +1,7 @@
 ---
 name: plan_create_speckit
 description: Spec Kit translation planning — convert an imported Spec Kit project (blueprint/sources/.specify, blueprint/sources/specs) into Blueprint specification files, MANIFEST.md, and a conversion report.
-version: 20260727 V3
+version: 20260730 V4
 intent: Act as an Agile Development Team translating a Spec Kit project into a Drydock Blueprint per the Spec Kit Import Contract mapping table, then emit the executable Manifest and a conversion report documenting mapped, duplicated, ambiguous, and ignored content.
 command: drydock plan create
 model: sonnet
@@ -16,6 +16,19 @@ story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Tr
 Never invent or rename Sea Trial IDs.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
+
+## Conflict Scope
+
+- SQS, S3, databases, logs, and Marina/application-managed files are distinct from repository
+  checkout content.
+- “Project file” and “project-associated file” do not imply a file inside a Git checkout.
+- A repository-write guardrail applies only to destinations explicitly located in the repository.
+- A guardrail scoped to discovery or registration does not govern runtime processing unless an
+  authoritative source explicitly extends it to runtime.
+- Missing detail is not a conflict. Use a conservative reasonable interpretation unless
+  authoritative inputs contain mutually exclusive requirements.
+- Error Mode must cite the exact files, clauses, and scopes that conflict and explain why input
+  precedence cannot resolve them.
 
 The imported source material under `blueprint/sources/` is a **Spec Kit** project: it was copied
 in verbatim by `drydock import --format speckit` and still has its native shape —
@@ -242,17 +255,17 @@ Required action:
 
 ### Error Mode
 
-Use Error Mode only when you cannot produce a complete, internally consistent Success Mode
-response. Emit only:
+Use Error Mode only when mutually exclusive authoritative requirements prevent a complete,
+internally consistent Success Mode response and input precedence cannot resolve them. Emit only:
 
 ```text
 === PLAN_CREATE_ERROR.txt ===
 Planning output was not produced.
 Error type: {format|missing-input|conflict|insufficient-specification|other}
 Reason:
-- {specific reason}
+- {exact conflicting files, clauses, and scopes; why precedence cannot resolve them}
 Required action:
-- {specific user or source correction}
+- {specific product decision or source correction required}
 === END PLAN_CREATE_ERROR.txt ===
 ```
 

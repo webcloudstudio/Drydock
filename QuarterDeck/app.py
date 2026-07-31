@@ -3136,6 +3136,8 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
         return "pending" if item_pending(item) else "done"
     if item.get("id") == "blockers_doc":
         return "pending" if item_pending(item) else "done"
+    if item.get("id") == "big_errors":
+        return "pending"
     return None
 
 

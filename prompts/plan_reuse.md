@@ -1,7 +1,7 @@
 ---
 name: plan_reuse
 description: Manifest-first planning for an already-populated Blueprint — preserve conformant specs, emit MANIFEST.md, and author only truly missing required spec files.
-version: 20260727 V5
+version: 20260730 V6
 intent: Act as an Agile Development Team reviewing an existing Drydock Blueprint. Reuse the current typed spec files as authoritative where they already define the product correctly. Emit MANIFEST.md and only those Blueprint files that are truly missing and required to make the Blueprint buildable.
 command: drydock plan create
 model: sonnet
@@ -36,6 +36,19 @@ Your job is to:
   without them
 
 The module will preserve existing files on disk. Your response must therefore be minimal.
+
+## Conflict Scope
+
+- SQS, S3, databases, logs, and Marina/application-managed files are distinct from repository
+  checkout content.
+- “Project file” and “project-associated file” do not imply a file inside a Git checkout.
+- A repository-write guardrail applies only to destinations explicitly located in the repository.
+- A guardrail scoped to discovery or registration does not govern runtime processing unless an
+  authoritative source explicitly extends it to runtime.
+- Missing detail is not a conflict. Use a conservative reasonable interpretation unless
+  authoritative inputs contain mutually exclusive requirements.
+- Error Mode must cite the exact files, clauses, and scopes that conflict and explain why input
+  precedence cannot resolve them.
 
 ## Reuse Rules
 
@@ -136,15 +149,16 @@ Required action:
 
 ### Error Mode
 
-If you cannot produce a valid Manifest while following the artifact contract, emit only:
+If mutually exclusive authoritative requirements prevent a valid Manifest and input precedence
+cannot resolve them, emit only:
 
 ```text
 === PLAN_CREATE_ERROR.txt ===
 Error type: ...
 Reason:
-- ...
+- {exact conflicting files, clauses, and scopes; why precedence cannot resolve them}
 Required action:
-- ...
+- {specific product decision or source correction required}
 === END PLAN_CREATE_ERROR.txt ===
 ```
 

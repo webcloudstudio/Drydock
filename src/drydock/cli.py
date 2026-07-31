@@ -3187,7 +3187,7 @@ def _render_build_failures(
     return "\n".join(lines)
 
 
-def _render_recorded_error(record) -> str:
+def _render_recorded_error(record, *, target: str | None = None) -> str:
     """Format a post-LLM failure for the terminal: the diagnostic itself, not just a filename."""
     width = 72
     border = "=" * width
@@ -3213,35 +3213,87 @@ def _render_recorded_error(record) -> str:
             )
         return wrapped
 
-    heading = f"POST-LLM FAILURE  ·  {record.command}  ·  {record.classification}"
+    plan_challenge_failed = (
+        record.command == "plan" and record.classification == "plan conflict challenge failed"
+    )
+    heading = (
+        f"PLAN FAILED  ·  {record.classification}"
+        if plan_challenge_failed
+        else f"POST-LLM FAILURE  ·  {record.command}  ·  {record.classification}"
+    )
     lines = [border, heading, border, ""]
+    if plan_challenge_failed:
+        lines += [indent + f"Classification: {record.classification}", ""]
     lines += _block(record.detail.strip())
     if record.recovery.strip():
         lines += ["", indent + "Recovery"]
         lines += _block(record.recovery.strip(), pad=indent + "  ")
+    if plan_challenge_failed:
+        errors_display = "ERRORS.md"
+        if target:
+            from drydock.config import get_target_directory
+
+            errors_display = str(get_target_directory() / target / "ERRORS.md")
+        lines += [
+            "",
+            f"{indent}ERRORS.md: {errors_display}",
+            f"{indent}Initial execution: {record.execution_id or '-'}",
+            f"{indent}Challenge execution: {record.challenge_execution_id or '-'}",
+        ]
+        if target:
+            lines += [
+                f"{indent}QuarterDeck: drydock run quarterdeck {target}",
+                f"{indent}Retry: drydock plan {target}",
+            ]
     lines += ["", border]
     return "\n".join(lines)
 
 
 def _render_plan_deferred(result, *, target: str) -> str:
     """Render a prominent, actionable handoff for a model-declared planning conflict."""
-    border = "=" * 72
+    width = 72
+    border = "=" * width
+
+    def _block(text: str, pad: str = "  ") -> list[str]:
+        wrapped: list[str] = []
+        for paragraph in text.splitlines() or [""]:
+            if not paragraph.strip():
+                wrapped.append("")
+                continue
+            wrapped.extend(
+                textwrap.wrap(
+                    paragraph.rstrip(),
+                    width=width - len(pad),
+                    initial_indent=pad,
+                    subsequent_indent=pad,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [pad + paragraph]
+            )
+        return wrapped
+
+    record = result.error_record
     lines = [
         border,
-        "PLAN NEEDS COMMANDER DIRECTION",
+        "PLAN DEFERRED",
         border,
         "",
-        "  Planning found unresolved product decisions. No model-generated",
-        "  Blueprint or Manifest artifacts were written.",
+        f"  Classification: {record.classification}",
         "",
-        f"  PLAN COMPASS: {result.feedback_path}",
+        "  Diagnostic",
+    ]
+    lines += _block(result.detail, pad="    ")
+    lines += ["", "  Required action"]
+    lines += _block(record.recovery, pad="    ")
+    lines += [
         "",
-        "  REQUIRED ACTION",
-        "    Edit the `## Commander Direction` section in PLAN_COMPASS.md.",
-        "    Resolve each generated blocker, then run:",
-        f"    drydock plan {target}",
-        "",
-        f"  Execution: {result.execution_id or '-'}",
+        "  No model-generated Blueprint or Manifest artifacts were written.",
+        f"  ERRORS.md: {result.errors_path}",
+        f"  QuarterDeck: drydock run quarterdeck {target}",
+        f"  Retry: drydock plan {target}",
+        f"  Initial execution: {result.initial_execution_id or '-'}",
+        f"  Challenge execution: {result.challenge_execution_id or '-'}",
         "",
         border,
     ]
@@ -3536,7 +3588,10 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"error: {exc}", file=sys.stderr)
                 exit_code = 2
             except RecordedError as exc:
-                print(_render_recorded_error(exc.record), file=sys.stderr)
+                print(
+                    _render_recorded_error(exc.record, target=getattr(args, "Target", None)),
+                    file=sys.stderr,
+                )
                 exit_code = 1
                 deterministic_validation = (
                     exc.record.phase == "post-output validation"

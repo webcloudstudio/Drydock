@@ -46,6 +46,7 @@ class ErrorRecord:
     detail: str
     recovery: str
     execution_id: str = ""
+    challenge_execution_id: str = ""
     evidence: str = ""
     state: str = "Error"
     diagnosis: str = ""
@@ -63,9 +64,13 @@ def errors_path(target_dir: Path) -> Path:
     return target_dir / "ERRORS.md"
 
 
-def _safe(text: str, limit: int = 800) -> str:
+def _safe(text: str, limit: int | None = 800) -> str:
+    if limit is None:
+        return text.strip()
     text = " ".join(text.split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 def write_error_record(
@@ -77,8 +82,10 @@ def write_error_record(
     detail: str,
     recovery: str,
     execution_id: str | None = None,
+    challenge_execution_id: str | None = None,
     evidence: Path | str | None = None,
     state: str = "Error",
+    detail_limit: int | None = 800,
 ) -> ErrorRecord:
     """Overwrite the Target's current post-LLM error; execution evidence is history."""
     record = ErrorRecord(
@@ -86,9 +93,10 @@ def write_error_record(
         phase=phase,
         timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
         classification=_safe(classification, 240),
-        detail=_safe(detail) or "No additional safe diagnostic was available.",
+        detail=_safe(detail, detail_limit) or "No additional safe diagnostic was available.",
         recovery=recovery,
         execution_id=execution_id or "",
+        challenge_execution_id=challenge_execution_id or "",
         evidence=str(evidence or ""),
         state=state,
     )
@@ -100,6 +108,7 @@ def write_error_record(
         f"- State: {record.state}",
         f"- Timestamp: {record.timestamp}",
         f"- Execution ID: {record.execution_id or '-'}",
+        f"- Challenge Execution ID: {record.challenge_execution_id or '-'}",
         f"- Classification: {record.classification}",
         f"- Evidence / logs: {record.evidence or '-'}",
         "",
@@ -182,6 +191,7 @@ def read_error_record(target_dir: Path) -> ErrorRecord | None:
         detail=diagnostic,
         recovery=recovery,
         execution_id=fields.get("execution id", ""),
+        challenge_execution_id=fields.get("challenge execution id", ""),
         evidence=fields.get("evidence / logs", ""),
         state=fields.get("state", "Error"),
         diagnosis=diagnosis,

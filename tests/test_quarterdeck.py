@@ -527,6 +527,43 @@ def test_legacy_drydock_console_surfaces_blockers_on_refresh_without_rewrite(tmp
     assert "ns-done" in quarterdeck.render_nav()
 
 
+def test_big_errors_is_pending_while_error_record_exists(tmp_path, monkeypatch):
+    from drydock.errors import write_error_record
+    from drydock.standard_artifacts import render_console
+
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "Example"
+    base_dir = target_dir / "QuarterDeck"
+    base_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text("name: Example\n", encoding="utf-8")
+    (base_dir / "console.yaml").write_text(render_console("Example"), encoding="utf-8")
+    config, error = quarterdeck.load_config(base_dir=base_dir, project_root=target_dir)
+    assert error is None
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", base_dir)
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target_dir)
+    monkeypatch.setattr(quarterdeck, "CONFIG", config)
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+
+    write_error_record(
+        target_dir,
+        command="plan",
+        phase="product decision",
+        classification="plan requires a product decision",
+        detail="sources/a.md conflicts with sources/b.md.",
+        recovery="Correct one source.",
+        state="Deferred",
+    )
+
+    item = next(
+        item
+        for section in quarterdeck.nav_model()
+        for item in section["items"]
+        if item["id"] == "big_errors"
+    )
+    assert quarterdeck.item_nav_status(item) == "pending"
+    assert "ns-pending" in quarterdeck.render_nav()
+
+
 def test_legacy_drydock_console_blocker_uses_critical_error_marker(tmp_path):
     quarterdeck = _load_quarterdeck()
     target_dir = tmp_path / "Example"

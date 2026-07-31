@@ -84,6 +84,19 @@ def test_plan_prompt_separates_final_sea_trial_traceability_from_story_execution
     assert "perform an exhaustive traceability audit" in prompt
 
 
+def test_all_plan_prompts_scope_repository_guardrails_and_require_source_cited_conflicts():
+    prompts = Path(__file__).parents[1] / "prompts"
+
+    for name in ("plan_create.md", "plan_reuse.md", "plan_create_speckit.md"):
+        text = (prompts / name).read_text(encoding="utf-8")
+        assert "Marina/application-managed files are distinct from repository" in text
+        assert "do not imply a file inside a Git checkout" in text
+        assert "repository-write guardrail applies only" in text
+        assert "scoped to discovery or registration does not govern runtime" in text
+        assert "Missing detail is not a conflict" in text
+        assert "exact files, clauses, and scopes" in text
+
+
 def test_validate_plan_output_rejects_agents_artifact(tmp_path):
     from drydock.planning_session import _validate_plan_output
 
@@ -1367,17 +1380,28 @@ def test_missing_analysis_refuses(tmp_path):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
 
 
-def test_plan_create_blocked_block_defers_to_plan_compass(tmp_path):
+def test_plan_create_blocked_block_without_diagnosis_defers_to_errors(tmp_path):
     target_dir = _make_target(tmp_path)
     out = "=== PLAN_CREATE_BLOCKED.txt ===\nBlocked.\n=== END PLAN_CREATE_BLOCKED.txt ===\n"
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    calls = 0
+
+    def runner(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return FakeRun(text=out)
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
 
     assert isinstance(result, PlanDeferredResult)
-    assert result.feedback_path == target_dir / "PLAN_COMPASS.md"
-    assert "Blocked." in result.feedback_path.read_text(encoding="utf-8")
+    assert calls == 1
+    assert result.errors_path == target_dir / "ERRORS.md"
+    assert result.error_record.state == "Deferred"
+    assert result.error_record.classification == "plan requires a product decision"
+    assert "Blocked." in result.errors_path.read_text(encoding="utf-8")
+    assert (target_dir / "PLAN_COMPASS.md").read_text(encoding="utf-8") == "# Plan Compass\n"
 
 
-def test_plan_create_error_block_defers_to_plan_compass_without_partial_writes(tmp_path):
+def test_plan_create_error_without_diagnosis_defers_without_partial_writes(tmp_path):
     target_dir = _make_target(tmp_path)
     out = (
         "=== PLAN_CREATE_ERROR.txt ===\n"
@@ -1393,75 +1417,170 @@ def test_plan_create_error_block_defers_to_plan_compass_without_partial_writes(t
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
     assert isinstance(result, PlanDeferredResult)
-    compass = result.feedback_path.read_text(encoding="utf-8")
-    assert "## Unresolved Plan Blockers" in compass
-    assert "Missing route ownership." in compass
-    assert "Clarify route ownership." in compass
-    assert "## Commander Direction" in compass
+    errors = result.errors_path.read_text(encoding="utf-8")
+    assert "Missing route ownership." in errors
+    assert "Clarify route ownership." in errors
+    assert "- State: Deferred" in errors
+    assert (target_dir / "PLAN_COMPASS.md").read_text(encoding="utf-8") == "# Plan Compass\n"
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
     assert not (target_dir / "QuarterDeck" / "tickets.json").exists()
 
 
-def test_repeated_plan_deferral_updates_blockers_and_preserves_commander_direction(tmp_path):
-    _make_target(tmp_path)
-    first = (
+def test_false_conflict_challenge_recovers_complete_plan(tmp_path):
+    target_dir = _make_target(tmp_path)
+    compass = target_dir / "PLAN_COMPASS.md"
+    compass.write_text("# Plan Compass\n\n## Commander Direction\n\nKeep runtime state external.\n")
+    initial = (
         "=== PLAN_CREATE_ERROR.txt ===\n"
-        "Reason:\n- First conflict.\n"
-        "Required action:\n- Choose A or B.\n"
+        "Reason:\n- Runtime file conflicts with repository read-only policy.\n"
+        "Required action:\n- Choose repository writes or voice capture.\n"
         "=== END PLAN_CREATE_ERROR.txt ===\n"
     )
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(first))
-    compass_path = result.feedback_path
-    compass_path.write_text(
-        compass_path.read_text(encoding="utf-8").replace(
-            "Record the decisions that resolve the generated blockers above.",
-            "Use workflow A.",
-        ),
+    calls = []
+
+    def runner(prompt, *args, **kwargs):
+        calls.append((prompt, kwargs))
+        if len(calls) == 1:
+            return FakeRun(text=initial, execution_id="initial-exec")
+        return FakeRun(text=_llm_output(), execution_id="challenge-exec")
+
+    before = compass.read_text(encoding="utf-8")
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+    )
+
+    assert not isinstance(result, PlanDeferredResult)
+    assert result.execution_id == "challenge-exec"
+    assert len(calls) == 2
+    assert "Plan Conflict Challenge" in calls[1][0]
+    assert "Initial execution ID: initial-exec" in calls[1][0]
+    assert "repository-write guardrail applies only" in calls[1][0]
+    assert not (target_dir / "ERRORS.md").exists()
+    assert compass.read_text(encoding="utf-8") == before
+
+
+def test_confirmed_conflict_challenge_writes_errors_and_no_plan_artifacts(tmp_path):
+    target_dir = _make_target(tmp_path)
+    initial = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Reason:\n- Sources disagree about retention.\n"
+        "Required action:\n- Choose retention behavior.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+    confirmed = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Reason:\n"
+        "- sources/request.md clause `retain forever` governs runtime retention, while "
+        "COMPASS.md clause `delete immediately` governs the same runtime scope. The clauses "
+        "are mutually exclusive and precedence does not identify a winner.\n"
+        "Required action:\n"
+        "- Correct one cited clause or choose the runtime retention rule.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+
+    calls = 0
+
+    def runner(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return FakeRun(
+            text=initial if calls == 1 else confirmed,
+            execution_id="initial-exec" if calls == 1 else "challenge-exec",
+        )
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+    )
+
+    assert isinstance(result, PlanDeferredResult)
+    assert result.initial_execution_id == "initial-exec"
+    assert result.challenge_execution_id == "challenge-exec"
+    errors = result.errors_path.read_text(encoding="utf-8")
+    assert "sources/request.md clause `retain forever`" in errors
+    assert "Correct one cited clause" in errors
+    assert "- State: Deferred" in errors
+    assert "- Execution ID: initial-exec" in errors
+    assert "- Challenge Execution ID: challenge-exec" in errors
+    assert not (target_dir / "MANIFEST.md").exists()
+    assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+    assert (target_dir / "PLAN_COMPASS.md").read_text(encoding="utf-8") == "# Plan Compass\n"
+    chair = (target_dir / "QuarterDeck" / "commanders_chair.html").read_text(encoding="utf-8")
+    assert "big-error-panel" in chair
+    assert "Deferred: plan requires a product decision" in chair
+
+
+def test_conflict_challenge_failure_records_original_and_exits_as_error(tmp_path):
+    target_dir = _make_target(tmp_path)
+    initial = (
+        "=== PLAN_CREATE_ERROR.txt ===\n"
+        "Reason:\n- Apparent conflict.\n"
+        "Required action:\n- Resolve it.\n"
+        "=== END PLAN_CREATE_ERROR.txt ===\n"
+    )
+    calls = 0
+
+    def runner(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return FakeRun(text=initial, execution_id="initial-exec")
+        return FakeRun(
+            ok=False,
+            stderr="provider unavailable during challenge",
+            execution_id="challenge-exec",
+        )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan(
+            "Example",
+            "Example",
+            tmp_path,
+            runner=runner,
+            allow_diagnostic_recovery=True,
+        )
+
+    assert excinfo.value.record.classification == "plan conflict challenge failed"
+    assert "Apparent conflict." in excinfo.value.record.detail
+    assert "provider unavailable during challenge" in excinfo.value.record.detail
+    assert excinfo.value.record.execution_id == "initial-exec"
+    assert excinfo.value.record.challenge_execution_id == "challenge-exec"
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_legacy_plan_compass_block_is_cleaned_before_failed_plan(tmp_path):
+    target_dir = _make_target(tmp_path)
+    compass = target_dir / "PLAN_COMPASS.md"
+    compass.write_text(
+        "# Plan Compass\n\n"
+        "<!-- DRYDOCK PLAN BLOCKERS START -->\n"
+        "## Unresolved Plan Blockers\n\nGenerated conflict.\n"
+        "<!-- DRYDOCK PLAN BLOCKERS END -->\n\n"
+        "## Commander Direction\n\nUse workflow A.\n",
         encoding="utf-8",
     )
-    second = (
-        "=== PLAN_CREATE_ERROR.txt ===\n"
-        "Reason:\n- Second conflict.\n"
-        "Required action:\n- Choose C or D.\n"
-        "=== END PLAN_CREATE_ERROR.txt ===\n"
-    )
-
-    create_plan("Example", "Example", tmp_path, runner=_fake(second))
-
-    compass = compass_path.read_text(encoding="utf-8")
-    assert "First conflict." not in compass
-    assert "Second conflict." in compass
-    assert "Use workflow A." in compass
-    assert compass.count("## Unresolved Plan Blockers") == 1
-    assert compass.count("## Commander Direction") == 1
-
-
-def test_successful_replan_clears_generated_blockers_and_preserves_direction(tmp_path):
-    _make_target(tmp_path)
     deferred = (
         "=== PLAN_CREATE_ERROR.txt ===\n"
-        "Reason:\n- Choose a workflow.\n"
-        "Required action:\n- Record the default.\n"
+        "Reason:\n- New conflict.\n"
+        "Required action:\n- Correct the source.\n"
         "=== END PLAN_CREATE_ERROR.txt ===\n"
     )
-    result = create_plan("Example", "Example", tmp_path, runner=_fake(deferred))
-    compass_path = result.feedback_path
-    compass_path.write_text(
-        compass_path.read_text(encoding="utf-8").replace(
-            "Record the decisions that resolve the generated blockers above.",
-            "The default is workflow A.",
-        ),
-        encoding="utf-8",
-    )
 
-    completed = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    create_plan("Example", "Example", tmp_path, runner=_fake(deferred))
 
-    assert not isinstance(completed, PlanDeferredResult)
-    compass = compass_path.read_text(encoding="utf-8")
-    assert "## Unresolved Plan Blockers" not in compass
-    assert "Choose a workflow." not in compass
-    assert "The default is workflow A." in compass
+    text = compass.read_text(encoding="utf-8")
+    assert "DRYDOCK PLAN BLOCKERS" not in text
+    assert "Generated conflict." not in text
+    assert "Use workflow A." in text
+    assert "New conflict." not in text
 
 
 def test_integrity_missing_implements_is_fatal(tmp_path):

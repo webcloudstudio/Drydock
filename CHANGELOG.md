@@ -25,10 +25,10 @@ command surface and Typed Specification contract are unstable and may change bet
   re-run of `drydock analyze` and feed the analysis as authoritative decisions alongside
   `drydock plan`; only the Commander edits them, in the QuarterDeck. Concurrent autosaves no
   longer corrupt a questionnaire file.
-- 2026-07-30: A model-declared `drydock plan` conflict no longer raises a post-LLM operational
-  failure. Drydock writes the blockers to `PLAN_COMPASS.md`, preserves an editable Commander
-  Direction section, prints a prominent recovery banner, and returns deferred status without
-  writing model-generated Blueprint or Manifest artifacts.
+- 2026-07-30: `drydock plan` challenges a model-declared product conflict once before deferring.
+  A recovered artifact batch proceeds through normal validation; a confirmed conflict is recorded
+  in `ERRORS.md`, appears as pending BIG ERRORS and in the Commander's Chair, and prints its full
+  diagnostic, required action, and execution evidence. `PLAN_COMPASS.md` remains human-owned.
 - 2026-07-30: `drydock analyze` now surfaces incompatible definitions across imported sources as
   required QuarterDeck questionnaire decisions. `drydock plan` refuses before invoking an LLM
   while any such decision remains unanswered, preventing late post-LLM conflict failures.

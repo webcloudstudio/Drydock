@@ -35,7 +35,14 @@ from drydock.build_plan import (
     parse_build_plan,
     set_applied_specs,
 )
-from drydock.errors import RecordedError, SpecificationError, clear_error_record, write_error_record
+from drydock.errors import (
+    ErrorRecord,
+    RecordedError,
+    SpecificationError,
+    clear_error_record,
+    errors_path,
+    write_error_record,
+)
 from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
@@ -167,9 +174,11 @@ class PlanDeferredResult:
     """Recoverable planning handoff requiring Commander direction."""
 
     target_dir: Path
-    feedback_path: Path
+    error_record: ErrorRecord
+    errors_path: Path
     detail: str
-    execution_id: str | None = None
+    initial_execution_id: str | None = None
+    challenge_execution_id: str | None = None
     plan_mode: str = ""
 
 
@@ -1128,36 +1137,6 @@ _PLAN_BLOCKERS_RE = re.compile(
     rf"\n*{re.escape(_PLAN_BLOCKERS_START)}.*?{re.escape(_PLAN_BLOCKERS_END)}\n*",
     re.DOTALL,
 )
-_COMMANDER_DIRECTION_HEADING = "## Commander Direction"
-
-
-def _write_plan_compass_blockers(target_dir: Path, detail: str) -> Path:
-    """Persist model-declared blockers without replacing Commander direction."""
-    path = target_dir / _FEEDBACK_FILENAME
-    current = ensure_feedback_file(target_dir)
-    preserved = _PLAN_BLOCKERS_RE.sub("\n\n", current).rstrip()
-    if _COMMANDER_DIRECTION_HEADING not in preserved:
-        preserved += (
-            "\n\n## Commander Direction\n\n"
-            "Record the decisions that resolve the generated blockers above.\n"
-        )
-    generated = (
-        f"{_PLAN_BLOCKERS_START}\n"
-        "## Unresolved Plan Blockers\n\n"
-        f"{detail.strip()}\n"
-        f"{_PLAN_BLOCKERS_END}"
-    )
-    heading_at = preserved.find(_COMMANDER_DIRECTION_HEADING)
-    updated = (
-        preserved[:heading_at].rstrip()
-        + "\n\n"
-        + generated
-        + "\n\n"
-        + preserved[heading_at:].lstrip()
-        + "\n"
-    )
-    path.write_text(updated, encoding="utf-8", newline="\n")
-    return path
 
 
 def _clear_plan_compass_blockers(target_dir: Path) -> None:
@@ -2368,6 +2347,157 @@ def _record_plan_error(
     return RecordedError(record)
 
 
+def _conflict_challenge_assembly(
+    prompt_assembly: PromptAssembly,
+    *,
+    declaration: str,
+    initial_execution_id: str | None,
+) -> PromptAssembly:
+    """Append one bounded challenge instruction to the complete original planning context."""
+    challenge = lines_part(
+        "Plan conflict challenge",
+        [
+            "# Plan Conflict Challenge",
+            "",
+            "The initial planning call declared the product conflict reproduced below. Challenge",
+            "that declaration once against every authoritative input already present in this full",
+            "prompt. Do not assume that project-associated runtime state is repository content.",
+            "",
+            "Apply these rules:",
+            "- SQS, S3, databases, logs, and Marina/application-managed files are distinct from",
+            "  files in a repository checkout.",
+            "- “Project file” and “project-associated file” do not imply a Git checkout path.",
+            "- A repository-write guardrail applies only to a destination explicitly located in",
+            "  the repository.",
+            "- A discovery or registration guardrail does not govern runtime processing unless",
+            "  an authoritative source explicitly extends its scope.",
+            "- Missing detail is not a conflict. Use a conservative reasonable interpretation.",
+            "- A genuine conflict requires mutually exclusive authoritative requirements that",
+            "  the declared precedence cannot resolve.",
+            "",
+            "If the declaration is unsupported, emit the complete Success Mode artifact batch.",
+            "If it is genuine, emit only PLAN_CREATE_ERROR.txt and cite the exact files, clauses,",
+            "and scopes in conflict, explain why precedence cannot resolve them, and state the",
+            "exact product decision or source correction required.",
+            "",
+            f"Initial execution ID: {initial_execution_id or '-'}",
+            "",
+            "Initial declaration:",
+            declaration.strip(),
+        ],
+        kind="challenge",
+    )
+    return PromptAssembly(parts=(*prompt_assembly.parts, challenge))
+
+
+def _required_action_from_declaration(declaration: str) -> str:
+    """Return the model's complete Required action body, without inventing a decision."""
+    marker = re.search(r"(?im)^Required action:\s*$", declaration)
+    if marker is None:
+        return declaration.strip()
+    action = declaration[marker.end() :].strip()
+    return action or declaration.strip()
+
+
+def _confirmed_conflict_is_source_cited(declaration: str) -> bool:
+    """Require the challenge to identify sources and both decision-bearing sections."""
+    has_source = bool(
+        re.search(
+            r"(?im)(?:sources/[A-Za-z0-9_./?*\-]+|[A-Za-z0-9_.\-]+\.md\b)",
+            declaration,
+        )
+    )
+    return (
+        has_source
+        and bool(re.search(r"(?im)^Reason:\s*$", declaration))
+        and bool(re.search(r"(?im)^Required action:\s*$", declaration))
+    )
+
+
+def _record_confirmed_plan_conflict(
+    target_dir: Path,
+    *,
+    target: str,
+    declaration: str,
+    initial_declaration: str,
+    initial_execution_id: str | None,
+    challenge_execution_id: str | None,
+    log_dir: Path | None,
+) -> ErrorRecord:
+    """Persist a source-cited product conflict as the Target's current deferred error."""
+    detail_parts = []
+    if challenge_execution_id:
+        detail_parts.extend([
+            "Confirmed conflict:",
+            declaration.strip(),
+            "",
+            "Initial declaration:",
+            initial_declaration.strip(),
+        ])
+    else:
+        detail_parts.extend(["Model-declared conflict:", declaration.strip()])
+    action = _required_action_from_declaration(declaration)
+    record = write_error_record(
+        target_dir,
+        command="plan",
+        phase="product decision",
+        classification="plan requires a product decision",
+        detail="\n".join(detail_parts),
+        recovery=(
+            f"{action}\n\n"
+            f"Review the active record: drydock run quarterdeck {target}\n"
+            f"After correcting the decision or source: drydock plan {target}"
+        ),
+        execution_id=initial_execution_id,
+        challenge_execution_id=challenge_execution_id,
+        evidence=log_dir,
+        state="Deferred",
+        detail_limit=None,
+    )
+    from drydock.quarterdeck_state import refresh_commanders_chair
+
+    refresh_commanders_chair(target_dir)
+    return record
+
+
+def _record_conflict_challenge_failure(
+    target_dir: Path,
+    *,
+    target: str,
+    initial_declaration: str,
+    initial_execution_id: str | None,
+    challenge_execution_id: str | None,
+    failure: str,
+    log_dir: Path | None,
+) -> RecordedError:
+    """Record a failed challenge without confirming the model's product declaration."""
+    record = write_error_record(
+        target_dir,
+        command="plan",
+        phase="post-output validation",
+        classification="plan conflict challenge failed",
+        detail=(
+            "The initial product-conflict declaration was not confirmed because the required "
+            "challenge pass failed.\n\n"
+            f"Initial declaration:\n{initial_declaration.strip()}\n\n"
+            f"Challenge failure:\n{failure.strip() or 'No diagnostic output was returned.'}"
+        ),
+        recovery=(
+            "Inspect the initial and challenge execution evidence, correct the provider or "
+            f"artifact failure, then run: drydock plan {target}\n"
+            f"Review the active record: drydock run quarterdeck {target}"
+        ),
+        execution_id=initial_execution_id,
+        challenge_execution_id=challenge_execution_id,
+        evidence=log_dir,
+        detail_limit=None,
+    )
+    from drydock.quarterdeck_state import refresh_commanders_chair
+
+    refresh_commanders_chair(target_dir)
+    return RecordedError(record)
+
+
 def _approve_outside_text_candidate(
     exc: OutsideArtifactTextError,
     *,
@@ -2532,7 +2662,11 @@ def create_plan(
 
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
-    feedback_text = ensure_feedback_file(target_dir)
+    ensure_feedback_file(target_dir)
+    # Compatibility only: retire generated blocker blocks written by older Drydock releases.
+    # PLAN_COMPASS.md is now strictly human-owned and is never a plan-error destination.
+    _clear_plan_compass_blockers(target_dir)
+    feedback_text = (target_dir / _FEEDBACK_FILENAME).read_text(encoding="utf-8")
     ensure_exclude_file(target_dir)
     default_feedback = prompt_header_for_file(_FEEDBACK_FILENAME)
     feedback_for_prompt = (
@@ -2777,17 +2911,123 @@ def create_plan(
             {"PLAN_CREATE_ERROR.txt"},
             {"PLAN_CREATE_BLOCKED.txt"},
         ):
-            feedback_path = _write_plan_compass_blockers(target_dir, deferred_block)
-            from drydock.quarterdeck_state import refresh_commanders_chair
-
-            refresh_commanders_chair(target_dir)
-            return PlanDeferredResult(
-                target_dir=target_dir,
-                feedback_path=feedback_path,
-                detail=deferred_block.strip(),
-                execution_id=exec_id,
-                plan_mode=plan_mode,
-            )
+            initial_declaration = deferred_block.strip()
+            challenge_exec_id: str | None = None
+            if allow_diagnostic_recovery:
+                if on_text is not None:
+                    on_text(
+                        "[plan] model declared a product conflict; challenging its assumptions\n"
+                    )
+                challenge_assembly = _conflict_challenge_assembly(
+                    prompt_assembly,
+                    declaration=initial_declaration,
+                    initial_execution_id=exec_id,
+                )
+                try:
+                    challenge_result = cast(
+                        CompletedRun,
+                        run(
+                            challenge_assembly.rendered_text,
+                            target_dir,
+                            llm=llm_provider,
+                            model=model or prompt.model,
+                            command_name="plan",
+                            parameters={
+                                "target": target,
+                                "blueprint": str(blueprint_dir),
+                                "conflict_challenge": True,
+                                "initial_execution_id": exec_id or "",
+                            },
+                            log_dir=log_dir,
+                            target=target,
+                            on_text=on_text,
+                            prompt_assembly=challenge_assembly,
+                        ),
+                    )
+                except Exception as challenge_exc:
+                    raise _record_conflict_challenge_failure(
+                        target_dir,
+                        target=target,
+                        initial_declaration=initial_declaration,
+                        initial_execution_id=exec_id,
+                        challenge_execution_id=None,
+                        failure=f"{type(challenge_exc).__name__}: {challenge_exc}",
+                        log_dir=log_dir,
+                    ) from challenge_exc
+                challenge_exec_id = getattr(challenge_result, "execution_id", None)
+                if not challenge_result.ok or not challenge_result.text.strip():
+                    challenge_failure = (
+                        challenge_result.text.strip()
+                        or challenge_result.stderr.strip()
+                        or "The challenge execution returned no output."
+                    )
+                    raise _record_conflict_challenge_failure(
+                        target_dir,
+                        target=target,
+                        initial_declaration=initial_declaration,
+                        initial_execution_id=exec_id,
+                        challenge_execution_id=challenge_exec_id,
+                        failure=challenge_failure,
+                        log_dir=log_dir,
+                    )
+                try:
+                    challenge_blocks = _parse_strict_blocks(challenge_result.text, challenge_result)
+                except Exception as challenge_exc:
+                    raise _record_conflict_challenge_failure(
+                        target_dir,
+                        target=target,
+                        initial_declaration=initial_declaration,
+                        initial_execution_id=exec_id,
+                        challenge_execution_id=challenge_exec_id,
+                        failure=str(challenge_exc),
+                        log_dir=log_dir,
+                    ) from challenge_exc
+                confirmed = challenge_blocks.get("PLAN_CREATE_ERROR.txt") or challenge_blocks.get(
+                    "PLAN_CREATE_BLOCKED.txt"
+                )
+                if confirmed is not None and set(challenge_blocks) in (
+                    {"PLAN_CREATE_ERROR.txt"},
+                    {"PLAN_CREATE_BLOCKED.txt"},
+                ):
+                    if not _confirmed_conflict_is_source_cited(confirmed):
+                        raise _record_conflict_challenge_failure(
+                            target_dir,
+                            target=target,
+                            initial_declaration=initial_declaration,
+                            initial_execution_id=exec_id,
+                            challenge_execution_id=challenge_exec_id,
+                            failure=(
+                                "The challenge repeated a conflict without the required exact "
+                                "source citations, Reason section, and Required action section.\n\n"
+                                f"Challenge declaration:\n{confirmed.strip()}"
+                            ),
+                            log_dir=log_dir,
+                        )
+                    deferred_block = confirmed.strip()
+                else:
+                    blocks = challenge_blocks
+                    result = challenge_result
+                    exec_id = challenge_exec_id
+                    deferred_block = None
+            if deferred_block is not None:
+                record = _record_confirmed_plan_conflict(
+                    target_dir,
+                    target=target,
+                    declaration=deferred_block,
+                    initial_declaration=initial_declaration,
+                    initial_execution_id=exec_id,
+                    challenge_execution_id=challenge_exec_id,
+                    log_dir=log_dir,
+                )
+                return PlanDeferredResult(
+                    target_dir=target_dir,
+                    error_record=record,
+                    errors_path=errors_path(target_dir),
+                    detail=record.detail,
+                    initial_execution_id=record.execution_id or None,
+                    challenge_execution_id=record.challenge_execution_id or None,
+                    plan_mode=plan_mode,
+                )
         try:
             plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
         except Exception as exc:

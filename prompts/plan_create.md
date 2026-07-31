@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260730 V23
+version: 20260730 V24
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -131,6 +131,20 @@ that this order resolves:
 questionnaire, or unmentioned in `COMPASS.md` is undecided, not forbidden. Never treat an omission
 as a negative requirement, and never raise a conflict because one input lists something another
 does not.
+
+### Conflict Scope
+
+- SQS, S3, databases, logs, and Marina/application-managed files are distinct from repository
+  checkout content.
+- “Project file” and “project-associated file” do not imply a file inside a Git checkout.
+- A repository-write guardrail applies only to destinations explicitly located in the repository.
+- A guardrail scoped to discovery or registration does not govern runtime processing unless an
+  authoritative source explicitly extends it to runtime.
+- Missing detail is not a conflict. Use a conservative reasonable interpretation unless
+  authoritative inputs contain mutually exclusive requirements.
+- Error Mode must cite the exact files, clauses, and scopes that conflict and explain why the
+  Precedence order cannot resolve them.
+
 - **`MANIFEST_CONTRACT.md`** and **`BLUEPRINTS_CONTRACT.md`** — authoritative format and field
   contracts for the outputs.
 - **Imported source files** — the original material under `blueprint/sources/`, injected below.
@@ -602,9 +616,8 @@ Required action:
 
 Use Error Mode only when you cannot produce a complete, internally consistent Success Mode
 response, and only for an unresolvable **product** question — one the Precedence order above cannot
-settle and no reasonable assumption can bridge. Drydock writes this report into `PLAN_COMPASS.md`
-as a Commander-decision handoff and does not persist model-generated Blueprint or Manifest
-artifacts.
+settle and no reasonable assumption can bridge. Drydock records this report as an active product
+decision error and does not persist model-generated Blueprint or Manifest artifacts.
 
 A technology-stack disagreement is never Error Mode. Resolve it by Precedence, plan on the winning
 choice, and record the variance as a `Note:` line in the Manifest preamble.
@@ -616,9 +629,9 @@ Emit only:
 Planning output was not produced.
 Error type: {format|missing-input|conflict|insufficient-specification|other}
 Reason:
-- {specific reason}
+- {exact conflicting files, clauses, and scopes; why precedence cannot resolve them}
 Required action:
-- {specific decision the Commander must record in PLAN_COMPASS.md}
+- {specific product decision or source correction required}
 === END PLAN_CREATE_ERROR.txt ===
 ```
 

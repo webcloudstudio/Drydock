@@ -972,20 +972,36 @@ class TestLlmOverrideFlags:
     def test_plan_conflict_returns_deferred_banner(
         self, tmp_target_root, isolated_config, monkeypatch
     ):
+        from drydock.errors import ErrorRecord
         from drydock.planning_session import PlanDeferredResult
 
         run_cli("config", "set", "drydock_workspace", str(tmp_target_root.parent))
         target_dir = tmp_target_root / "Proj"
         (target_dir / "blueprint" / "sources").mkdir(parents=True)
-        feedback_path = target_dir / "PLAN_COMPASS.md"
-        feedback_path.write_text("# Plan Compass\n", encoding="utf-8")
+        error_path = target_dir / "ERRORS.md"
+        record = ErrorRecord(
+            command="plan",
+            phase="product decision",
+            timestamp="t",
+            classification="plan requires a product decision",
+            detail=(
+                "Confirmed conflict:\nReason:\n- sources/a.md and sources/b.md govern the "
+                "same scope differently."
+            ),
+            recovery="Choose the governing clause.",
+            execution_id="exec-123",
+            challenge_execution_id="exec-456",
+            state="Deferred",
+        )
 
         def fake_create_plan(*args, **kwargs):
             return PlanDeferredResult(
                 target_dir=target_dir,
-                feedback_path=feedback_path,
-                detail="Conflicting workflows.",
-                execution_id="exec-123",
+                error_record=record,
+                errors_path=error_path,
+                detail=record.detail,
+                initial_execution_id="exec-123",
+                challenge_execution_id="exec-456",
                 plan_mode="full-rewrite",
             )
 
@@ -995,9 +1011,14 @@ class TestLlmOverrideFlags:
 
         assert rc == 2
         assert not err
-        assert "PLAN NEEDS COMMANDER DIRECTION" in out
-        assert "PLAN COMPASS:" in out
+        assert "PLAN DEFERRED" in out
+        assert "sources/a.md and sources/b.md" in out
+        assert "Choose the governing clause." in out
+        assert "ERRORS.md:" in out
+        assert "drydock run quarterdeck Proj" in out
         assert "drydock plan Proj" in out
+        assert "exec-123" in out
+        assert "exec-456" in out
 
 
 class TestPlanInspection:
@@ -2510,23 +2531,74 @@ def test_render_recorded_error_shows_diagnostic_and_recovery():
 
 def test_render_plan_deferred_is_prominent_and_actionable(tmp_path):
     from drydock.cli import _render_plan_deferred
+    from drydock.errors import ErrorRecord
     from drydock.planning_session import PlanDeferredResult
 
+    record = ErrorRecord(
+        command="plan",
+        phase="product decision",
+        timestamp="t",
+        classification="plan requires a product decision",
+        detail=(
+            "Confirmed conflict:\nReason:\n- sources/a.md clause A conflicts with "
+            "COMPASS.md clause B in the runtime scope."
+        ),
+        recovery="Correct clause A or select clause B.",
+        execution_id="exec-123",
+        challenge_execution_id="exec-456",
+        state="Deferred",
+    )
     result = PlanDeferredResult(
         target_dir=tmp_path,
-        feedback_path=tmp_path / "PLAN_COMPASS.md",
-        detail="Conflicting workflows.",
-        execution_id="exec-123",
+        error_record=record,
+        errors_path=tmp_path / "ERRORS.md",
+        detail=record.detail,
+        initial_execution_id="exec-123",
+        challenge_execution_id="exec-456",
     )
 
     out = _render_plan_deferred(result, target="Marina")
 
-    assert "PLAN NEEDS COMMANDER DIRECTION" in out
-    assert "PLAN COMPASS:" in out
-    assert "## Commander Direction" in out
+    assert "PLAN DEFERRED" in out
+    assert "plan requires a product decision" in out
+    assert "sources/a.md clause A" in out
+    assert "Correct clause A or select clause B." in out
+    assert "ERRORS.md:" in out
     assert "No model-generated" in out
+    assert "drydock run quarterdeck Marina" in out
     assert "drydock plan Marina" in out
     assert "exec-123" in out
+    assert "exec-456" in out
+
+
+def test_render_plan_challenge_failure_includes_original_failure_and_recovery():
+    from drydock.cli import _render_recorded_error
+    from drydock.errors import ErrorRecord
+
+    record = ErrorRecord(
+        command="plan",
+        phase="post-output validation",
+        timestamp="t",
+        classification="plan conflict challenge failed",
+        detail=(
+            "Initial declaration:\nReason:\n- sources/a.md conflicts with COMPASS.md.\n\n"
+            "Challenge failure:\nprovider unavailable"
+        ),
+        recovery="Inspect evidence, then run: drydock plan Marina",
+        execution_id="exec-123",
+        challenge_execution_id="exec-456",
+    )
+
+    out = _render_recorded_error(record, target="Marina")
+
+    assert "PLAN FAILED" in out
+    assert "sources/a.md conflicts with COMPASS.md" in out
+    assert "provider unavailable" in out
+    assert "ERRORS.md:" in out
+    assert "drydock run quarterdeck Marina" in out
+    assert "drydock plan Marina" in out
+    assert "exec-123" in out
+    assert "exec-456" in out
 
 
 def test_render_recorded_error_omits_recovery_when_empty():
