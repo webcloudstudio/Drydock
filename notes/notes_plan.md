@@ -2,19 +2,20 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-06-22 V6 |
+| Version | 2026-07-31 V7 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
-| Description | Implementation detail for drydock plan: decomposition pipeline, guardrails, ordering, the Compass, and compact substitution for stack files. V6 adds compact/applied registry design and cost estimator forward-pass. |
-| Pending spec | 14 items (6 recommended, 8 approved) |
-| Pending impl | 2 unimplemented sections |
+| Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
+| Pending spec | 16 approved items |
+| Pending impl | 10 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
 ## Goal
 
-From the approved Blueprint + `BUILD_CONFIGURATION.md` + `ANALYSIS.md`, produce a validated,
-ordered, atomically-decomposed work graph and the executable Manifest, with ROOT seeded green.
+From the Commander-reviewed epic, all immutable source material, and the Team Lead's complete
+Analyze handoff, author the governed Blueprint and a validated, ordered, atomically decomposed
+Manifest that the Shipyard Crew can build without synchronous access to the Commander.
 
 ## Decisions
 
@@ -59,12 +60,18 @@ Each story maps to **one spec file** (`spec:` field). Hard constraint, not a gui
 the lever that makes the no-cross-stack guardrail enforceable: typed spec filenames
 (`FEATURE-*` vs `SCREEN-*`) prevent cross-stack mixing within one story.
 
+The Analyze story list is the Team Lead's proposed map, not an immutable decomposition. The Plan
+team reviews it after Commander questionnaires are answered and may retain, split, rename,
+replace, or reorder its candidate stories.
+
 ### Scrum Guardrails
 `2026-06-16` · `spec:recommended` · `impl:unimplemented`
 
 - **Story too big → split.** A story exceeding the atomicity threshold must be split until atomic.
   Threshold configured in `.env`. Standard scrum guardrail.
 - **Stories are atomic.** One spec file; one bounded unit of work.
+- **Independent actions remain independent stories.** A screen and its route are separate stories;
+  a story does not combine actions merely because they participate in one workflow.
 - **Every story has ≥1 AC gate.** A story without a `depends-on` AC node is a defect; `plan create`
   must not emit it.
 
@@ -212,9 +219,95 @@ so attempting state/id consistency across re-plans is not worth it. **Supersedes
 5. `<target>/SEA_TRIALS.md`, `SOUNDINGS.md`, `COMPASS.md` (if present)
 6. answered `QuarterDeck/questionnaires/spike-*.json`
 7. contract files — `MANIFEST_CONTRACT.md`, `BLUEPRINTS_CONTRACT.md`
-8. `<target>/blueprint/sources/*.md` — imported sources
+8. `<target>/blueprint/sources/**` — all readable imported source material
 
 Removed vs current: `BUILD_CONFIGURATION.md` and the existing `MANIFEST.md` (prior plan).
+
+### Analyze Team Lead and Product Owner handoff
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+Analyze is the Team Lead conducting the Product Owner feedback session. It evaluates completeness
+of the epic and surfaces Commander expectations as product-level assertions, such as "Commander
+wants a web server." Its acceptance criterion is that the Commander is satisfied that intent,
+goals, constraints, contradictions, and required decisions have been captured.
+
+Analyze is deliberately "secretly waterfall": it works iteratively with the Commander, but its
+handoff must be complete and capable of becoming a buildable Plan. It authors `ANALYSIS.md` and
+`COMPASS.md`; required questionnaires are answered before Plan. The story list is an expert
+proposal for Plan to review, not a binding work breakdown.
+
+### Cross-functional Plan team authority
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+Plan is a room containing the Scrum Master, test-driven development, UI, data, architecture, and
+delivery disciplines. The team reviews the whole epic, determines atomic stories, authors governed
+specifications, computes dependencies, and orders the work in `MANIFEST.md`.
+
+Plan does not return to the Commander for synchronous clarification. It has full authority to
+replace Plan-owned top-level Blueprint files and the Manifest as needed to implement Commander
+intent. It may revise Analyze's proposed story list. A source Markdown file already organized as
+one candidate story is strong evidence for retaining that file and boundary, but it is not
+authority: Plan splits non-atomic files according to normal Agile rules and does not combine
+independent actions.
+
+### Immutable sources and Blueprint projection
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+`blueprint/sources/**` is immutable, unconstrained Commander input. Source filenames, nesting,
+headings, formatting, and completeness are never validated as governed Blueprint syntax. Analyze
+and Plan receive all readable source content; Analyze guides interpretation and decomposition but
+does not restrict Plan's visibility to cited files.
+
+Markdown sources are interpreted into governed top-level Blueprint specifications. Non-Markdown
+sources are copied to the corresponding path one level above `sources/`, byte for byte. The copy
+preserves every existing byte, including line-ending convention and final-newline state. Imported
+Markdown is never copied over an authored governed specification.
+
+### Persistent Commander input across replans
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+Commander input is preserved before Plan overwrites any Plan-owned artifact. It includes every
+stage Compass, persistent questionnaire answers, and Commander edits or answers in Blueprint
+`## Questions` sections. A deterministic scanner appends newly observed Commander information to
+persistent replan memory. Replan consumes that accumulated memory so regenerated files cannot erase
+human decisions or corrections.
+
+### Plan decisions, severity, and implied approval
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+Plan normally resolves contradictions and incomplete detail by making its best decision, encoding
+that decision consistently, and exposing it in the relevant Blueprint's `## Questions` section.
+A useful record states the available options, the option selected and why, and asks whether the
+Commander wants to redirect and replan. This enables override; it is not a request for permission.
+
+Severity is plain English: `Low`, `Material`, or `Blocking`. Blocking decisions are extremely rare
+and mean the team cannot responsibly endorse even its best available interpretation. Low and
+Material records do not gate execution. Approval is implied by running the next command; there is
+no mandatory review ceremony. The next stage fails only when a material blocker actually prevents
+that stage.
+
+### Shipyard Crew build handoff and decision records
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+Build is performed by the outsourced **Shipyard Crew**, which has no synchronous feedback channel
+to the Commander. It cannot generate questionnaires or create a new question workflow. When a
+story requires an interpretation, the builder proceeds with the best bounded choice and may append
+a decision record to that story's owning Blueprint `## Questions` section. The record states what
+was done and enables later override; it does not ask for approval or block the completed build.
+
+A decision appears only in the specification that owns it. The same conflict is not duplicated
+across related stories. Commander edits to these records become persistent input to a later replan.
+
+### Crew presentation and terminal compatibility
+`2026-07-31` · `spec:approved` · `impl:unimplemented`
+
+Analyze presents the handoff using a stable crew roster: Commander, Team Lead, Planning Crew, and
+Shipyard Crew. Descriptions may adapt to the project while role names and authority remain stable.
+The presentation is concise, nautical, cute, and fun without obscuring status or responsibility.
+
+CLI output is ASCII-safe on MSYS and other terminals whose Unicode rendering is not controlled.
+Decorative emoji may appear in QuarterDeck HTML, where Drydock controls presentation, but terminal
+meaning never depends on emoji or other ambiguous-width Unicode glyphs.
 
 ---
 
@@ -230,6 +323,13 @@ Removed vs current: `BUILD_CONFIGURATION.md` and the existing `MANIFEST.md` (pri
 6. Deterministic given the same Intent + Decisions.
 7. All `depends-on` edges use the single direction (dependent node declares); no `gates` syntax.
 8. Multiple `parent` values allowed and parsed correctly.
+9. Analyze hands Plan a Commander-reviewed, expectation-complete epic and a proposed story map.
+10. Plan receives all readable immutable sources and may revise the proposed decomposition.
+11. Markdown becomes governed specifications; non-Markdown assets are projected byte-for-byte.
+12. Commander questionnaires and Blueprint question edits survive every replan.
+13. Plan and Build decisions remain story-local, visible, non-duplicated, and non-blocking unless
+    explicitly classified `Blocking`.
+14. Running the next command implies approval when no blocker prevents that stage.
 
 ## Guardrails
 
@@ -240,8 +340,9 @@ Removed vs current: `BUILD_CONFIGURATION.md` and the existing `MANIFEST.md` (pri
 - **Story-too-big → split.** Must split before `MANIFEST.md` is written.
 - **~100-story cap.** Over threshold: refuse to emit.
 - **Integrity check gates emission.** `MANIFEST.md` not written until the graph passes fully.
-- **Derived artifacts only.** Never writes to `blueprint/` Typed Specification files or
-  `BUILD_CONFIGURATION.md`.
+- **Immutable source provenance.** Never modifies `blueprint/sources/**`.
+- **Plan owns governed outputs.** Plan may replace top-level Blueprint specifications and
+  `MANIFEST.md` only after persistent Commander input has been harvested.
 - **`depends-on` is the only edge syntax.** No `gates`, no other direction. Parser enforces this.
 
 ### Compact substitution rule — stack files
@@ -321,7 +422,7 @@ registry — two passes, same substitution decisions.
 
 ## Not in scope yet
 
-Editing the canonical specification. Full `build`-time execution design. (The command itself is
-now built — see As-Built.) Remaining work: story-too-big split, ~100-story cap, hard AC gate,
-deterministic no-cross-stack enforcement, and the `MANUAL_BUILD_ORDER = false` automatic batching
-algorithm.
+Editing the canonical specification. Detailed Shipyard Crew execution mechanics beyond the
+story-local decision-record contract. Remaining implementation work includes the approved
+source-to-Blueprint handoff, persistent Commander-input harvesting, question severity, ASCII-safe
+crew presentation, story-too-big splitting, and deterministic no-cross-stack enforcement.
