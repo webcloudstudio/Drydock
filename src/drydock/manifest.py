@@ -43,6 +43,21 @@ _LIST_FIELDS = frozenset({
     "accepts",
     "covers",
 })
+#: Interface lists are comma-separated only: a route such as ``GET /health`` contains a space, so
+#: the whitespace fallback used for filename lists would split one entry into two.
+_INTERFACE_FIELDS = frozenset({"provides", "consumes"})
+
+#: Story types. The Manifest is a list of stories; ``type`` is the only variation. See
+#: :mod:`drydock.plan_graph` for the authoritative definitions. ``spike`` is retired as a node
+#: type: research questions are handled by questionnaires before Plan and by the owning story's
+#: ``## Questions`` section after. ``ac`` is not a node type — Programmatic Acceptance is
+#: verification the build runs to prove a story is complete, so it is a field the story owns and
+#: passing is part of the story's own state transition.
+STORY_TYPES = ("foundational", "service", "feature")
+
+#: Story fields computed by Zone C. They describe the *schedule*, not the artifact, so they live
+#: only in the Manifest and are regenerated wholly by every plan run.
+_SCHEDULE_FIELDS = ("type", "kind", "phase", "block", "stack_mode", "acceptance")
 _SCALAR_MARKERS = frozenset({"|", "|-", "|+", ">", ">-", ">+"})
 _CANONICAL_FIELDS = {
     "feature": ("id", "summary", "state"),
@@ -50,14 +65,22 @@ _CANONICAL_FIELDS = {
         "id",
         "parent",
         "summary",
+        "type",
+        "kind",
+        "phase",
+        "block",
         "implements",
         "covers",
         "accepts",
         "context",
         "stack",
+        "stack_mode",
+        "provides",
+        "consumes",
         "rules",
         "copy",
         "instructions",
+        "acceptance",
         "depends",
         "questions",
         "questions_approved",
@@ -206,6 +229,51 @@ class ManifestNode:
     @property
     def node_type(self) -> str:
         return self.block_type
+
+    def _scalar(self, name: str) -> str:
+        value = self.fields.get(name, "")
+        if isinstance(value, tuple):
+            return ", ".join(value)
+        return str(value).strip()
+
+    @property
+    def story_type(self) -> str:
+        """``foundational`` | ``service`` | ``feature``, or '' on a legacy-taxonomy block."""
+        return self._scalar("type").lower()
+
+    @property
+    def delivery_kind(self) -> str:
+        return self._scalar("kind").lower()
+
+    @property
+    def stack_mode(self) -> str:
+        """``builder`` | ``consumer``. Computed from first use in the build-order-global sort."""
+        return self._scalar("stack_mode").lower()
+
+    @property
+    def phase(self) -> int:
+        """Commander build sequencing. Describes when the file is built, not the file."""
+        try:
+            return int(self._scalar("phase"))
+        except ValueError:
+            return 0
+
+    @property
+    def block(self) -> int:
+        """Ephemeral context-optimization group; regenerated every plan run."""
+        try:
+            return int(self._scalar("block"))
+        except ValueError:
+            return 0
+
+    @property
+    def has_acceptance_contract(self) -> bool:
+        """Whether the story carries real acceptance to honor.
+
+        Acceptance is a field the story owns, not an independent node with independent state: a
+        story is not "built and failed", it is built or it is not.
+        """
+        return self._scalar("acceptance").lower() in {"yes", "true", "1"}
 
 
 class FeatureNode(ManifestNode):
@@ -447,7 +515,14 @@ class DrydockManifest:
                     parsed_fields[key] = scalar
                     body_index = next_body
                     continue
-                parsed_fields[key] = _split_list(value) if key in _LIST_FIELDS else value
+                if key in _LIST_FIELDS:
+                    parsed_fields[key] = _split_list(value)
+                elif key in _INTERFACE_FIELDS:
+                    parsed_fields[key] = tuple(
+                        part.strip() for part in value.split(",") if part.strip()
+                    )
+                else:
+                    parsed_fields[key] = value
                 body_index += 1
 
             legacy = False

@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V10 |
+| Version | 2026-08-01 V11 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
 | Pending spec | 36 approved items |
-| Pending impl | 18 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -254,7 +254,7 @@ Session goal: build `plan` the correct way. The driver was three consecutive Mar
 The diagnostic is recorded below; the restructure is the design response.
 
 ### Plan job inventory — deterministic versus model work
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 `plan` performs seventeen distinct jobs. Only four require a model.
 
@@ -276,7 +276,7 @@ header shape. They occupy the same context window as the four jobs that require 
 Tightening that prose is not the lever; removing the jobs from the prompt is.
 
 ### One node type with story types
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 The Manifest is a list of stories. A `type` field is the only variation.
 
@@ -295,7 +295,7 @@ by the owning story's `## Questions` section after. **Supersedes** the `feature`
 block taxonomy in `MANIFEST_CONTRACT.md`.
 
 ### Foundational versus service naming
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Foundational work is structure and scaffolding. Standing up S3 and proving the connection
 is architecture. Everything S3 subsequently does is a service.
@@ -313,7 +313,7 @@ depends on it, which the edges already state more precisely than a label could. 
 encode in a name what the graph holds as fact.
 
 ### Story attributes
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 A story carries four orthogonal attributes, all deterministic:
 
@@ -338,7 +338,7 @@ Type is separate from stack. A `service` may be a backend provider or a screen, 
 no-cross-stack guardrail — which operates on stack — is unaffected.
 
 ### Feature is an assembly story
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Features do not exist as a grouping construct. A feature is a story that depends on its member
 stories, carries acceptance criteria, and carries assembly and intent instructions instead of
@@ -351,7 +351,7 @@ seams between stories where multi-story builds actually break.
 A feature story is preferably placed in the same block as its members.
 
 ### Blocks replace features as the build grouping
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 A **block** is a set of stories optimized for context: sized to amortize fixed stack-file cost
 across one build run, never crossing stacks. Blocks are an optimization output, not a taxonomy.
@@ -363,7 +363,7 @@ bundling." Context economy comes from blocks. This is the same construct already
 Python-computed.
 
 ### Phase is Commander build sequencing
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 `Phase` is loose terminology for Commander instruction on how to build: *build Feature X, then
 Feature Y*. It is not a layer chain. The layer stack repeats inside each phase rather than running
@@ -383,7 +383,7 @@ direction that Python applies and placement as a latest-valid computation. Order
 solved.
 
 ### Acceptance lives in one place per audience
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 - **Programmatic Acceptance** — executable assertions carrying pass/fail state. Lives in
   `MANIFEST.md`. Not human-readable, not human-editable, regenerated wholly by every plan run.
@@ -396,7 +396,7 @@ Durability is not a discriminator: the Blueprint does not survive a replan. Only
 section, harvested deterministically beforehand, and notes changes survive.
 
 ### Story sizing
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 The correct ceiling is what one build agent can implement and verify in a single pass — its
 specification plus stack files in, a working diff and passing assertions out. This is measurable in
@@ -410,7 +410,7 @@ Note the symmetry: an over-sized story fails at build for the same reason an ove
 at plan. One ceiling, one diagnosis, two altitudes.
 
 ### Shape conformance is a checker, not an instruction
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Absolute guardrails against shape failure come from a deterministic post-checker over a declared
 output contract, per `ideas/PROMPT_HARDENING.md` (Warrant / Hull Check / Second Pass). The prompt
@@ -423,7 +423,7 @@ thirty-file monolith re-sends the entire input. Hardening addresses shape failur
 address the Marina failure recorded below.
 
 ### Plan command workflow — Zones A, B, C, D
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 The spine of this file. `plan` is four zones, and the fix for a prompt holding seventeen jobs is not
 to split the model call into phases but to take the thirteen deterministic jobs out of it.
@@ -468,7 +468,7 @@ routinely that is a signal about Zone B, not a repair. Review deferred.
 Closes open questions 6 and 7.
 
 ### Authorship versus verification
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 The division of labour is not semantic-versus-arithmetic. It is **authorship versus verification**.
 The model decides everything requiring judgment; Python proves the result is internally consistent
@@ -495,7 +495,7 @@ for a model to reliably self-audit across a hundred stories. It is available onl
 topologies are authored explicitly.
 
 ### Content and acceptance are authored together
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Zone B steps 4 and 5 stay in one prompt. Splitting them breaks the discipline: test-driven means the
 assertion is written *with* the behavior, not audited onto it afterward. A separate acceptance call
@@ -511,7 +511,7 @@ correct if every token is cold. A cache hit is an optimization, never a load-bea
 load-bearing assumptions that cannot be tested are how undiagnosable failures happen.
 
 ### Programmatic Acceptance is not a node
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Programmatic Acceptance is verification the build runs to prove a story is complete. A story is not
 "built and failed" — it is built or it is not. Acceptance is therefore a field the story owns, and
@@ -522,7 +522,7 @@ passing is part of the story's own state transition, not an independent node wit
 Closes open question 5.
 
 ### Blueprint holds the artifact, Manifest holds the schedule
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 The discriminator: **does the fact describe the artifact or the schedule?**
 
@@ -543,7 +543,7 @@ Whether the model emits a stub Manifest or nothing is immaterial. What matters i
 declarations are complete, because Python's output is only as good as those edges.
 
 ### Blocks and stack creep
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Blocks are ephemeral, Manifest-only, regenerated every run, and computed by Python. They are a
 bounded bin-pack with every input known at plan time — types, stacks, phases, edges, story size:
@@ -558,7 +558,7 @@ that a mixed batch produced materially worse results than two batches now has a 
 reason story and topology types exist: they are the block-partition key.
 
 ### Builder and consumer mode
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 Split ownership:
 
@@ -583,7 +583,7 @@ asymmetric — consumer-when-it-should-be-builder starves the agent; builder-whe
 merely costs tokens — so default to builder on ambiguity.
 
 ### Story count is not capped
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
 The ~100-story cap (`_STORY_CAP`, fatal) is removed. §Story sizing replaced the effort threshold with
 "one build pass," which has no opinion about how many stories a project contains; a correct
@@ -591,6 +591,165 @@ The ~100-story cap (`_STORY_CAP`, fatal) is removed. §Story sizing replaced the
 not a refusal to plan.
 
 A manageable number well under 100 remains the ideal, as guidance rather than a gate.
+
+### As-Built Structure (2026-08-01)
+`2026-08-01` · `spec:approved` · `impl:implemented`
+
+The exact shape the restructure landed as. This section is the structural record; the sections
+above remain the decision record.
+
+**Module map**
+
+| Module | Owns | Depends on |
+|---|---|---|
+| `src/drydock/plan_graph.py` | The deterministic core: story model, verification, ordering, stack-mode assignment, block grouping | nothing in Drydock |
+| `src/drydock/plan_topology.py` | Declaration parsing, Manifest projection both ways, Manifest serialization | `plan_graph`, `errors` |
+| `src/drydock/plan_shape.py` | Declared output contract and its post-checker (Hull Check) | nothing in Drydock |
+| `src/drydock/plan_stack.py` | Zone A stack-file resolution and measurement; the single-build-pass ceiling | `technology_stack`, `paths`, `prompt_assembly` |
+| `src/drydock/planning_session.py` | Zone A/B/D orchestration; calls the four modules above | all of them |
+| `src/drydock/manifest.py` | Story-taxonomy fields on the node model | nothing new |
+
+`plan_graph` deliberately imports nothing from Drydock. It is pure data plus algorithms, so the
+thirteen deterministic jobs are testable without a filesystem, a Manifest, or a process.
+
+**Data model — `plan_graph.PlannedStory`**
+
+| Field | Type | Authored by |
+|---|---|---|
+| `story_id`, `name` | `str` | Model |
+| `story_type` | `foundational` \| `service` \| `feature` | Model |
+| `phase` | `int` | Model |
+| `delivery_kind` | `capability` \| `integration` \| `migration` \| `test harness` | Model |
+| `acceptance_contract` | `bool` | Model |
+| `implements` | `str` — exactly one specification | Model |
+| `depends`, `provides`, `consumes`, `stack` | `tuple[str, ...]` | Model |
+| `size_tokens` | `int` | Drydock (`plan_stack`) |
+| `stack_mode` | `builder` \| `consumer` | Drydock (`assign_stack_modes`) |
+| `block` | `int` | Drydock (`group_blocks`) |
+
+`STORY_TYPES`, `DELIVERY_KINDS`, and `STACK_MODES` are module constants in `plan_graph`;
+`manifest.STORY_TYPES` mirrors the first for the parser's benefit.
+
+**Verification — `plan_graph.verify_graph`**
+
+Returns `tuple[GraphDefect, ...]`; each defect carries `code`, `story_id`, `message`, `fatal`.
+Codes emitted: `missing-id`, `duplicate-id`, `unknown-type`, `unknown-kind`, `self-edge`,
+`unknown-edge`, `cycle`, `no-specification`, `shared-specification`, `empty-frontier`,
+`feature-without-members`, `phase-inversion`. `assign_stack_modes` additionally emits
+`unfounded-stack` (non-fatal). All are fatal except `unfounded-stack`.
+
+**Pipeline — `plan_graph.compute_plan`**
+
+`verify_graph` → short-circuit on any fatal defect → `order_stories` → `assign_stack_modes` →
+`group_blocks`. Returns `PlanComputation(stories, blocks, defects)` with `.fatal` and `.warnings`
+partitions. Verification short-circuits because an inconsistent graph is not orderable and a
+precise defect beats a derived artifact built on a contradiction.
+
+`order_stories` is a Kahn topological sort over a heap keyed by `(phase, declaration index)`, so
+the order is fully deterministic and the declared high-level topology sequences the work while the
+declared edges constrain it.
+
+`group_blocks` is a contiguous run-length pack over that order. The partition key is
+`(phase, story_type, sorted(stack))`; the soft constraint is `budget_tokens`. Because the input is
+already topologically ordered, contiguous grouping cannot violate an edge, so the packer never
+needs an edge check.
+
+**Zone C wiring**
+
+`planning_session._apply_computed_schedule(plan)` runs inside `_prepare_manifest_in_memory`,
+before `plan.validate()` and before any target artifact is written. It calls
+`plan_topology.stories_from_manifest` → `plan_graph.compute_plan` →
+`plan_topology.computed_field_updates` → `plan.set_fields`. Fatal defects become plan warnings
+that the caller surfaces; `planning_session._integrity_check` independently runs `verify_graph`
+and raises `SpecificationError` on any fatal defect, so an inconsistent plan never reaches disk.
+
+**Taxonomy gate.** `stories_from_manifest` participates only for nodes carrying `type:`. A
+Manifest written before the restructure has no `type:` field, projects to an empty tuple, and
+skips Zone C entirely. That is the whole backward-compatibility mechanism — there is no version
+flag and no migration.
+
+**Manifest field contract**
+
+Added to `manifest._CANONICAL_FIELDS["story"]`: `type`, `kind`, `phase`, `block`, `stack_mode`,
+`provides`, `consumes`, `acceptance`. `provides` and `consumes` parse comma-only
+(`manifest._INTERFACE_FIELDS`) because a route such as `GET /health` contains a space and the
+whitespace fallback used for filename lists would split it in two. `ManifestNode` gained
+`story_type`, `delivery_kind`, `stack_mode`, `phase`, `block`, and `has_acceptance_contract`
+accessors; a legacy node returns `""`/`0`/`False` from all of them.
+
+`feature`, `story`, `spike`, and `ac` remain in `manifest.BLOCK_TYPES` as the *block header*
+vocabulary. Story types are a `type:` field, not a block header, so the parser is unchanged and
+existing Targets keep loading.
+
+**Zone A**
+
+`plan_stack.resolve_target_stack(target_dir)` runs in `create_plan` immediately after
+`ensure_exclude_file`. It reads `technology_stack.stack_files`, resolves each name against
+`paths.get_stack_dir()`, and measures both the full file and its `*_compact.md` sibling
+(suppressed by a `*_compact.skip.md` marker). Unresolved names become plan warnings; an empty
+result is a normal outcome and never gates planning.
+
+`ResolvedStackFile.tokens_for(mode)` is the computable form of the compact-substitution rule:
+builder gets the full file, consumer gets the compact sibling when one exists and otherwise falls
+back to the full file.
+
+**Story sizing**
+
+`plan_stack.story_budget_tokens()` reads `DRYDOCK_STORY_BUDGET_TOKENS`, defaulting to 60,000.
+`story_pass_tokens(specification_tokens, stack, resolved, mode)` measures one story;
+`exceeds_build_pass(tokens, budget=None)` compares it to the ceiling. The same number is passed to
+`group_blocks` as `budget_tokens`, so the story ceiling and the block ceiling are one constant at
+two altitudes.
+
+**Shape conformance**
+
+`plan_shape.OutputContract` declares `required`, `terminal`, `untyped`,
+`require_typed_headings`, and `forbid_outside_text`. `check_contract` measures a parsed response
+against it and emits `unclosed`, `orphan-end`, `duplicate-open`, `missing-artifact`,
+`terminal-artifact`, `empty-artifact`, and `untyped-heading`. `second_pass_instruction` renders
+the bounded re-emit — only the failed artifacts — which is what makes a Second Pass affordable.
+
+`planning_session` splits the contract in two. `PLAN_OUTPUT_CONTRACT` is the fatal half
+(`required=("MANIFEST.md",)`, typed headings off); `check_plan_shape` runs it in
+`_validate_plan_output` once Success Mode is confirmed, before any parse or write.
+`PLAN_SHAPE_ADVISORY` is the repairable half; `advisory_plan_shape` reports `untyped-heading` as a
+warning because `conform_specs` (Zone D) is the existing repair path for exactly that.
+
+Delimiter pairing is **not** re-checked in the plan path. `_parse_strict_blocks` already owns
+pairing together with its documented recoveries (`_repair_missing_leading_delimiter`,
+`_is_transposed_artifact_boundary`); running `check_delimiters` over the raw text would contradict
+them. `check_delimiters` remains in `plan_shape` as the reusable Hull Check for stages that have
+no such recovery.
+
+Artifact *ordering* is likewise not in the fatal contract: the strict parser preserves response
+order and `_outside_text_is_waiver_eligible` already requires a terminal `MANIFEST.md`.
+
+**Removed**
+
+- `planning_session._STORY_CAP` and its `story_count` accumulator.
+- The `Before responding, verify:` self-audit tail of `plan_create.md`.
+- The `Phase` row from the typed Blueprint header template.
+- The `feature`-as-batching-unit and `spike`/`ac` block rules from `plan_create.md` and
+  `MANIFEST_CONTRACT.md`.
+
+**Prompt versions**
+
+`prompts/plan_create.md` V27, `prompts/MANIFEST_CONTRACT.md` V13.
+
+**Tests**
+
+`tests/test_plan_graph.py` (34), `tests/test_plan_topology.py` (13), `tests/test_plan_shape.py`
+(14), `tests/test_plan_stack.py` (17), plus eight Zone A/C integration tests appended to
+`tests/test_planning_session.py`.
+
+**Not carried across**
+
+`plan_topology.TOPOLOGY_BLOCK`, `parse_topology`, `parse_topology_strict`, and `render_manifest`
+are implemented and tested but not yet on the `plan create` path: the model still emits
+`MANIFEST.md` directly and Zone C projects it back through `stories_from_manifest`. Moving Zone B
+to a pure declaration block is a prompt change, not a code change, and is deferred so the
+restructure lands without a simultaneous output-format cutover. Zone D (`conform_specs`) remains
+unreviewed — see Open Question 4.
 
 ### Diagnostic — the Marina plan failure was not a capacity limit
 `2026-08-01` · `spec:na` · `impl:n/a`
@@ -731,10 +890,12 @@ exist.
 ## Not in scope yet
 
 Editing the canonical specification. Detailed Shipyard Crew execution mechanics beyond the
-story-local decision-record contract. Remaining implementation work includes the approved
-source-to-Blueprint handoff, persistent Commander-input harvesting, question severity, ASCII-safe
-crew presentation, and deterministic no-cross-stack enforcement. Story-too-big splitting is retired
-by §Story sizing; the story count cap is retired by §Story count is not capped.
+story-local decision-record contract. Story-too-big splitting is retired by §Story sizing; the
+story count cap is retired by §Story count is not capped and removed from the code.
+
+Remaining implementation work: moving Zone B to a pure `TOPOLOGY.md` declaration block (the parser
+and serializer exist and are tested; only the prompt and the block-name wiring are outstanding),
+and the Zone D review in Open Question 4.
 
 `BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
 artifacts that never existed in implementation. They are removed from these notes and from

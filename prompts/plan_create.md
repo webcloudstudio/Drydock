@@ -1,8 +1,8 @@
 ---
 name: plan_create
-description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260731 V26
-intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
+description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a declared MANIFEST.md that Drydock verifies, orders, blocks, and serializes.
+version: 20260801 V27
+intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
@@ -15,8 +15,7 @@ Map each required technical or behavioral ID in structured `SEA_TRIALS.md` into 
 story's `accepts:` field and the proving Programmatic Acceptance check's `Sea Trials:` line.
 Never invent or rename Sea Trial IDs.
 Do not turn a final project measurement or release threshold into a story Programmatic Acceptance
-assertion or child `ac` block. Those remain Sea Trials and run at
-final scoring after all stories close.
+assertion. Those remain Sea Trials and run at final scoring after all stories close.
 The one terminal `Suite: full` assertion is the exception: it proves a complete-suite Sea Trial by
 running the supplied suite and requiring success. It may additionally verify the total using either
 a count derived from authoritative suite data or an explicitly declared authoritative exact count.
@@ -52,8 +51,8 @@ The primary outputs are:
 
 - Typed Specification files such as `ARCHITECTURE.md`, `FEATURE-*.md`, `SCREEN-*.md`,
   `DATABASE.md`, `UI-GENERAL.md`, and AC files where warranted.
-- `MANIFEST.md` — the executable build plan containing features, stories, spikes, and `ac` blocks;
-  the single work graph that determines build order and grouping.
+- `MANIFEST.md` — the declared work graph: one story block per governed specification, typed
+  `foundational`, `service`, or `feature`. Drydock computes build order and block grouping from it.
 
 **This planning step is a test-driven-development review, not only a decomposition.** Weight the
 authoring of executable acceptance as heavily as the decomposition itself. Every buildable story
@@ -66,7 +65,7 @@ when the item genuinely has no programmatic surface, and then the reason is stat
 This step must produce **decomposed specifications with solid header relationships**:
 
 - every authored spec file uses the Drydock typed header format
-- `Depends On`, `Provides`, `Phase`, and SCREEN `Consumes` are computed consistently
+- `Depends On`, `Provides`, and `Consumes` are declared consistently across the emitted Blueprint
 - stories in `MANIFEST.md` point at real emitted spec files
 - the runnable frontier implied by the Manifest is coherent
 
@@ -77,9 +76,6 @@ inaccurate, contradictory, incomplete, or assigns content to the wrong owner. Wh
 necessary, split, merge, move, replace, or reorder the affected scope. Rewrite every resulting
 story as a governed specification using all planning inputs; source structure is strong evidence
 for the story boundary, but source content is not authoritative.
-
-Spikes stay execution objects in `MANIFEST.md`; they do not become authored Blueprint spec files
-unless the source material explicitly calls for a persistent ticket or AC file.
 
 When the analysis is too coarse, refine it into smaller spec scopes. When it is too fine, merge it
 into the smallest durable spec structure that preserves correctness and clear ownership.
@@ -300,73 +296,54 @@ Rules:
   `- None. Visual-only screen; behavior covered by its backing FEATURE spec.` Bare `- None.` on a
   spec that declares any `Provides` entry is a defect.
 
-**6. Compute header relationships.**
+**6. Declare relationships.**
 - *Consumes:* the authored spec set as a whole.
-- *Emits:* `Depends On`, `Provides`, `Phase`, and optional SCREEN `Consumes`.
+- *Emits:* `Depends On`, `Provides`, and `Consumes` in each Blueprint header.
 
 Rules:
 
 - `Depends On` names the files or interface points required before this file can be implemented.
 - `Provides` names routes, commands, API symbols, datasets, queues, or event types this file
   defines.
-- `Consumes` is SCREEN-only and lists the routes called by that screen.
-- `Phase` is an integer hint reflecting build order. Foundation and architecture usually precede
-  downstream features and screens.
+- `Consumes` lists the interface points this file calls. A SCREEN lists the routes it calls.
 - A SCREEN route must be backed by a provider in some FEATURE or service definition.
-- Do not leave relationship fields contradictory across files.
+- Do not leave relationship fields contradictory across files. State what each file requires and
+  provides; Drydock derives the rest.
 
-**7. Build the executable plan.**
-- *Consumes:* authored spec files, their computed `Phase`/`Depends On` relationships, open
-  questions, and stack decisions.
-- *Emits:* `MANIFEST.md` — the single work graph. It carries build order (block order plus
-  `depends:`), grouping (`feature` parents), and every per-step prompt-assembly field. No separate
-  build-ordering file is produced.
+**7. Declare the plan.**
+- *Consumes:* the authored spec set and its declared relationships.
+- *Emits:* `MANIFEST.md` — one story block per authored specification, carrying declarations only.
 
-Manifest rules:
+You author judgment. Drydock computes everything positional. **Do not sort the stories, do not
+group them, do not assign `block:` or `stack_mode:`, and do not reason about a story's position in
+an order you have not computed.** Emit the stories in any order that is convenient; Drydock
+verifies the graph, orders it, packs it into blocks, and serializes the Manifest. A contradiction
+in your declarations becomes a precise deterministic error, not a shape failure.
 
-- Use `feature`, `story`, `spike`, and `ac` blocks exactly as defined by `MANIFEST_CONTRACT.md`.
-- Stories and authored Blueprint spec files are one-to-one: each `story` names exactly one real
-  emitted (or existing) spec file in `implements:`, and every authored Blueprint spec file is
-  implemented by exactly one story. Never bundle multiple spec files into one story; context
-  economy comes from `feature` grouping, not from bundling.
-- Because that mapping is one-to-one, **decomposition happens at the spec-file level**. Splitting a
-  story means emitting an additional `FEATURE-*.md` (or `SCREEN-*.md`) file for the split scope, one
-  story per file. A spec file that grows to cover several distinct behaviors has under-decomposed
-  the plan; split the file, not the story's `implements:` list.
-- Use `context:` only for genuine read-only support files.
-- Technical research questions become `spike` blocks. For a human-owned ambiguity, choose the best
-  coherent interpretation and record it in the owning Blueprint's canonical `## Questions`
-  section. State the options, selected choice and reason, then ask whether the Commander wants to
-  redirect and replan. Assign `Low`, `Material`, or exceptionally `Blocking` severity. Low and
-  Material decisions do not gate Build. Blocking means the team cannot responsibly endorse any
-  available interpretation; it never forces Error Mode when the rest of the plan is coherent.
-- Group coherent capabilities under `feature` parents; keep unrelated capabilities in separate
-  features. Prefer a feature parent when multiple stories belong to one durable workflow.
-- A `parent:` value names a `feature` block emitted in this same Manifest. Never reference a feature
-  id that is not emitted: the story is then orphaned from every group and the plan is rejected.
-- Order blocks foundational-first. The first work establishes initial conditions before product
-  capability work: package or runtime scaffold, test harness, architecture boundary, configuration,
-  and persistence foundation. For a web application, build the application factory and health check
-  before feature routes or screens. Build shared providers before their consumers; build screens
-  only after their backing providers; defer secondary, reporting, documentation, compatibility, and
-  help work until the core user path works.
-- Dependencies must reference earlier-emitted ids and form a runnable, acyclic build order.
-  `depends:` is topologically consistent: a later block never supplies a dependency to an earlier
-  block, and every id in a `depends:` list has already appeared above the block that names it.
-- Stories block on stories: a `depends:` list names story or spike ids only, never `ac` ids. An
-  acceptance check gates its own parent story, and a story is not `closed/verified` until its
-  child acs pass, so depending on the story already implies its acceptance checks. `ac` blocks
-  carry no `depends:` of their own — the `parent` relationship alone gates when an ac runs.
-- The initial runnable frontier is never empty: **at least one `story` or `spike` has an empty
-  `depends:`** and can build immediately. Do not gate the first executable block on another block,
-  and never place a story ahead of the block it depends on. A `depends:` entry expresses a genuine
-  input requirement, not decoration; a block with no real prerequisite carries an empty `depends:`.
-- All blocks start `state: pending`.
-- For every injected Persistent Plan feedback decision, add one line to the Manifest preamble's
-  `planning_feedback: |` block: `<decision-id> applied <Blueprint path>`, `<decision-id> retained`,
-  or `<decision-id> retired <scope-change reason>`. A renamed file is never a retirement reason.
-  Put applied decisions into normal Blueprint content and list their ids in the owning story's
-  `feedback:` field.
+Declare, per story:
+
+- `id`, `summary`, `implements` (exactly one governed specification), `instructions`
+- `type` — `foundational`, `service`, or `feature`, per `MANIFEST_CONTRACT.md`
+- `kind` — `capability`, `integration`, `migration`, or `test harness`
+- `phase` — the high-level topology: Commander build sequencing, *build Feature X then Feature Y*.
+  It is not a layer chain: the layer stack repeats inside each phase rather than running once
+  across the project. Weigh Commander ordering direction as input when assigning it.
+- `depends` — the actual topology: the genuine input requirements of this story. A `feature` story
+  depends on its member stories.
+- `provides` / `consumes` — what this story defines and calls
+- `stack` — the Rigging stack files this story builds with
+- `acceptance` — `yes` when the story has real acceptance to honor
+- `covers`, `accepts`, `context`, `rules`, `copy`, `scope` when applicable
+- `state: pending`
+
+The two topologies must agree: a story in phase 2 cannot depend on a story in phase 3. Drydock
+checks this and rejects the plan when they disagree.
+
+For every injected Persistent Plan feedback decision, add one line to the Manifest preamble's
+`planning_feedback: |` block: `<decision-id> applied <Blueprint path>`, `<decision-id> retained`,
+or `<decision-id> retired <scope-change reason>`. A renamed file is never a retirement reason. Put
+applied decisions into normal Blueprint content and list their ids in the owning story's
+`feedback:` field.
 
 ---
 
@@ -384,8 +361,11 @@ shape:
 | Description | One sentence summary. |
 | Depends On  | FEATURE-SERVICE-CATALOG.md, UI-GENERAL.md |
 | Provides    | GET /welcome, GET /welcome/summary |
-| Phase       | 2 |
+| Consumes    | GET /api/welcome-summary |
 ```
+
+`Phase` is **not** a Blueprint header field. It describes when a file is built, not the file, so it
+is declared in `MANIFEST.md` only.
 
 SCREEN files may also include:
 
@@ -395,7 +375,6 @@ SCREEN files may also include:
 | Main Menu   | Welcome (1) |
 | Sub Menu    | Summary (1) |
 | Tab Order   | 1 |
-| Consumes    | GET /api/welcome-summary |
 ```
 
 Required rules:
@@ -457,102 +436,85 @@ Additional body guidance:
 
 Derive the Manifest from the authored specs, not directly from the imported source text.
 
-**Feature blocks**
-- One `feature` block per substantial workflow or delivery grouping.
-- The feature block is the batching unit: its stories build together in one combined prompt with
-  the shared stack deduped.
-- Small plans may omit feature blocks only when a parent would add no planning value.
+**Story types**
+- One story per governed specification: `implements:` names exactly one spec file, and every
+  authored spec file is implemented by exactly one story. The story is the atomic build primitive.
+- `foundational` — structure and scaffolding. Standing up S3 and proving the connection is
+  architecture. Recognizing that something must establish the web server, and making it a node, is
+  your judgment and determines story structure.
+- `service` — everything that does work. Much of what source material labels architecture is
+  service work: the web server and the database are foundation; a voice service interpreter is a
+  service wearing an architecture filename.
+- `feature` — an assembly story. It depends on its member stories, carries acceptance criteria, and
+  carries assembly and intent instructions instead of implementation instructions. It is not a
+  grouping construct and it is not a batching unit.
+- There is no fourth type, and no `spike` or `ac` story type. A research question becomes a
+  questionnaire before Plan or a `## Questions` record in the owning specification after.
 
-**Story blocks**
-- One story per Blueprint file: `implements:` names exactly one spec file, and every authored
-  spec file is implemented by exactly one story. The story is the atomic build primitive.
-- Each story is independently buildable and verifiable.
-- Group stories that share a stack and workflow under one `feature` block — the screens of one
-  workflow together, related backend features together. The feature group builds as a single
-  combined prompt with the shared stack deduped, so grouping is where context is saved. Keep a
-  group's combined size within the context ceiling; the Commander can split or regroup in the
-  QuarterDeck.
-- Every story must have:
-  - `id`
-  - `summary`
-  - `implements`
-  - `instructions`
-  - `state: pending`
-- Add `parent`, `context`, `stack`, `rules`, `copy`, `depends`, `evidence`, and `scope` only
-  when appropriate.
+**Story sizing**
+- The ceiling is what one build agent can implement and verify in a single pass: its specification
+  plus stack files in, a working diff and passing assertions out. Split anything larger.
+- Story count is not capped. A manageable number well under 100 is the ideal, as guidance rather
+  than a gate. Never collapse distinct behaviors to reduce the count.
+
+**Stack**
 - Draw `stack:` values from the Rigging column of `TECHNOLOGY_STACK.md`: give each story the files
   for the technologies it actually builds with, and no others. A technology whose Rigging cell is
-  `—` contributes no `stack:` entry — the builder applies general best practice for it. Never name
-  a Rigging file that `TECHNOLOGY_STACK.md` does not list. When `TECHNOLOGY_STACK.md` is absent or
-  silent on a technology the story needs, choose the conventional Rigging file for it; a name that
-  does not resolve is reported as a missing context file and does not fail the build.
+  `—` contributes no `stack:` entry. When `TECHNOLOGY_STACK.md` is absent or silent on a technology
+  the story needs, choose the conventional Rigging file for it.
+- Never emit `stack_mode:`. Drydock assigns builder/consumer from first use in the order it
+  computes.
+- Any story that implements `DATABASE.md` must include `persistence.md` in `stack:` plus the
+  selected backend stack file such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
+
+**Context**
+- Use `context:` only for genuine read-only support files.
 - For context files classified in `ANALYSIS.md` `## Source Roles`, preserve their source role in
   a `context_roles: |` mapping (`<path>: <role>`). Key it by the promoted Blueprint name, never a
-  `sources/...` path — write `spec.txt: normative specification and conformance test suite`, not
-  `sources/spec.txt: ...`. A test suite or harness is `context`, never `implements`.
+  `sources/...` path. A test suite or harness is `context`, never `implements`.
 - A file the Analysis marks `stage` is present in the build directory at `sources/<name>`.
-  Reference it by that build-relative path in `Programmatic Acceptance` and in `ac` `check:`
-  commands. Never reference a `blueprint/` path or an absolute path, and never author, rewrite,
-  or trim a staged asset — it is a read-only input.
-- `scope` should usually be:
-  - `blueprint` when the story chiefly authors or revises specs
-  - `target` when it chiefly builds software from an already-authoritative spec
-  - `both` when both are intentionally part of the same delivery unit
+  Reference it by that build-relative path in Programmatic Acceptance. Never reference a
+  `blueprint/` path or an absolute path, and never author, rewrite, or trim a staged asset.
 
-**Spike blocks**
-- Create one spike per important open question that should be answered during delivery rather than
-  before planning.
-- Spikes precede dependent stories and appear in those stories' `depends:`.
+**Decisions**
+- For a human-owned ambiguity, choose the best coherent interpretation and record it in the owning
+  Blueprint's canonical `## Questions` section. State the options, selected choice and reason, then
+  ask whether the Commander wants to redirect and replan. Assign `Low`, `Material`, or
+  exceptionally `Blocking` severity. Low and Material decisions do not gate Build. Blocking means
+  the team cannot responsibly endorse any available interpretation; it never forces Error Mode when
+  the rest of the plan is coherent.
 
-**Acceptance check blocks**
-- Routine story acceptance lives only in the implemented spec's concrete `Programmatic
-  Acceptance` assertions (or an inline-justified `- None.` when the item genuinely has no
-  programmatic surface). Do not create one Manifest `ac` block per story.
-- Manifest `ac` blocks are exceptional orchestration gates: deliberately selected Sea Trial graph
-  gates or cross-story/release gates whose lifecycle must be represented in the work graph.
-- Every emitted `ac` uses explicit `id`, `parent`, `summary`, `kind`, `state`, and, for `smoke`,
-  `check` fields. Never emit compact AC syntax.
-- Durable behavioral acceptance lives in the implemented spec's `Programmatic Acceptance`: a
-  SCREEN spec's assertions call every route the screen provides and consumes; a FEATURE spec's
-  assertions exercise every route, interface, read, and write it provides.
+**Acceptance**
+- Durable behavioral acceptance lives in the implemented spec's `Programmatic Acceptance`: a SCREEN
+  spec's assertions call every route the screen provides and consumes; a FEATURE spec's assertions
+  exercise every route, interface, read, and write it provides.
 - Do not copy Sea Trial commands into ordinary story acceptance or execute them while planning.
 - When the Analysis states a terminal verification story, that one story gates on the complete
   suite: its `Programmatic Acceptance` assertion declares `Suite: full` on its own line in the
   heading block, above the fenced code, and it `depends` on every implementation story. Without
-  that declaration a full-suite run is rejected. The assertion requires runner success and may
-  additionally compare the result with a total derived from the authoritative suite data or an
-  explicitly declared authoritative exact count. **Only the terminal story runs the whole suite.**
+  that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
 - A harness staging or integration story — one that runs the imported runner only to prove it is
   staged and executes, not to gate correctness — must bound its invocation with the runner's
-  `--pattern`/`--number` selector (a single-example smoke). An unbounded run of the suite from any
-  non-terminal story, without `Suite: full`, is rejected. Assert the harness's presence and a
-  bounded run; leave the complete pass to the terminal `Suite: full` story and `SEA_TRIALS.md`.
+  `--pattern`/`--number` selector. An unbounded run of the suite from any non-terminal story,
+  without `Suite: full`, is rejected.
 - When an authoritative conformance suite is imported (a specification's example set plus its
   runner), **every implementing feature story binds its acceptance to that suite over the sections
   it owns**, never to a hand-written sample. The assertion invokes the imported runner limited to
-  the feature's sections (the runner's section/pattern selector) and asserts a full pass of that
-  slice; it declares `Suite: scoped` on its own line so the check receives the suite timeout.
-  Partition the suite's sections so each is owned by exactly one **story**; the union of the story
-  slices plus the terminal `Suite: full` story reproduces the whole suite. One story owning every
-  section of the suite is an under-decomposed plan: the section partition and the story partition are
-  the same partition. A feature whose behavior is defined by an external specification is never
-  accepted by a curated sample of cases.
+  the feature's sections and asserts a full pass of that slice; it declares `Suite: scoped` on its
+  own line so the check receives the suite timeout. Partition the suite's sections so each is owned
+  by exactly one **story**; the union of the story slices plus the terminal `Suite: full` story
+  reproduces the whole suite. One story owning every section is an under-decomposed plan.
 - Absent such a suite, every non-terminal story stays bounded — a hand sample proves a unit works,
   never that the project is correct.
-- Feature-level `ac` blocks are optional group gates for orchestration checks that cannot be
-  represented in a Blueprint spec.
 
-**Ordering**
-- Emit blocks in dependency order: every `depends:` id appears above the block that names it, and no
-  block depends on a block emitted later. The order in the file matches the build order.
-- At least one `story` or `spike` has an empty `depends:` so the initial frontier can run. Never
-  emit a plan whose first executable block is blocked by a block that appears after it.
-- Foundation and architecture work precede downstream features.
-- Persistence foundations precede features that depend on state.
-- Backend/provider stories precede UI consumer stories.
-- Feature-level acceptance follows its child executable work.
-- Any story that implements `DATABASE.md` must include `persistence.md` in `stack:` plus the
-  selected backend stack file such as `sqlite.md`, `postgres.md`, or `aws-dynamodb.md`.
+**Ordering and grouping — not yours**
+- Do not sort the stories. Do not compute a topological order. Do not group them into batches.
+- Do not emit `block:`. Blocks are ephemeral context-optimization groups computed by Drydock: one
+  topology type per block, never crossing a phase boundary, never violating the edges, packed to
+  amortize stack-file cost across one build pass. Context economy comes from blocks, not from
+  feature grouping.
+- Declare `depends:` as genuine input requirements only. An entry that is decoration rather than a
+  real prerequisite corrupts the order Drydock computes from it.
 
 ---
 
@@ -664,38 +626,33 @@ Required action:
 - Never emit `MANIFEST.md` in Error Mode or Blocked Mode.
 - Never emit partial Blueprint files in Error Mode or Blocked Mode.
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
-- Every `implements:` entry in `MANIFEST.md` must name a real emitted authored spec file or an
-  authored spec file that already exists in the input Blueprint.
-- Stories and Blueprint spec files are one-to-one: each story's `implements:` names exactly one
+- Every `implements:` entry in `MANIFEST.md` names a real emitted authored spec file or an authored
+  spec file that already exists in the input Blueprint.
+- Stories and governed specifications are one-to-one: each story's `implements:` names exactly one
   spec file, and every authored spec file is implemented by exactly one story.
-- Every story's implemented spec carries concrete `Programmatic Acceptance` assertions or an
-  inline-justified `- None.`. Routine stories do not require Manifest `ac` blocks.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
-- Every emitted authored spec file except `METADATA.md` and `README.md` must use the exact typed
-  header table and end with `## Programmatic Acceptance`, `## User Acceptance`, `## Guardrails`,
-  and `## Questions`.
-- `Depends On`, `Provides`, `Consumes`, and `Phase` must be internally consistent across the full
-  emitted Blueprint.
-- Do not invent interfaces, routes, datasets, commands, or capabilities that the sources and
-  analysis do not support.
-- Do not leave user-facing screens without backing providers.
-- Every spec that declares a `Provides` entry (or any route, interface, read, or write) must carry
+- Every emitted authored spec file except `METADATA.md` and `README.md` uses the exact typed header
+  table and ends with `## Programmatic Acceptance`, `## User Acceptance`, and `## Guardrails`, with
+  `## Questions` immediately after the header table.
+- `Phase` is never a Blueprint header field; declare it in `MANIFEST.md` only.
+- Never emit `block:` or `stack_mode:`; both are computed by Drydock.
+- Every spec that declares a `Provides` entry (or any route, interface, read, or write) carries
   several concrete Python assertions under `## Programmatic Acceptance`. `- None.` there is allowed
   only for a genuinely non-programmatic item and must state its reason inline.
 - A SCREEN spec's Programmatic Acceptance must literally call every route in its `Provides` and
   `Consumes`; a plan whose SCREEN acceptance skips a route is rejected.
-- The Manifest has a non-empty initial runnable frontier: at least one `story` or `spike` with an
-  empty `depends:`. Emit blocks in topological order with no forward-referencing `depends:`.
+- Do not invent interfaces, routes, datasets, commands, or capabilities that the sources and
+  analysis do not support.
+- Do not leave user-facing screens without backing providers.
 - Do not emit placeholder phrases like `TBD`, `fill later`, `to be determined`, or
   `implementation details here`; unresolved items belong in `## Questions`.
 - Do not emit empty authored files.
 - Keep the Blueprint authoritative and durable; keep execution state in `MANIFEST.md`.
 
-Before responding, verify:
-
-1. The first non-whitespace text is an opening delimiter.
-2. Every opening delimiter has exactly one matching END delimiter.
-3. `MANIFEST.md` is the final block.
-4. No non-whitespace text exists outside the blocks.
+Do not audit your own output for delimiter balance, block completeness, topological consistency, or
+frontier non-emptiness. Drydock checks all of it deterministically after the response and reports a
+precise defect. Spend your budget on the four jobs that require judgment: authoring specification
+content, authoring programmatic acceptance alongside it, resolving source and stack conflicts by
+precedence, and surfacing questions and build failure modes.
 
 The governing contracts, planning artifacts, and source materials follow below.

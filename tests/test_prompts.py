@@ -121,15 +121,24 @@ class TestInputTokens:
             "TYPED_SPEC",
         )
 
-    def test_plan_create_manifest_carries_build_order_and_grouping(self):
+    def test_plan_create_declares_the_graph_and_leaves_ordering_to_drydock(self):
         body = load_prompt("plan_create").body
 
         # The Manifest is the single work graph; no separate ordering file is emitted.
         assert "BUILD_COMPASS" not in body
-        assert "Order blocks foundational-first." in body
         assert "implemented by exactly one story." in body
-        assert "Build shared providers before their consumers" in body
-        assert "topologically consistent" in body
+        # Authorship versus verification: the model declares, Drydock orders, blocks, serializes.
+        assert "Do not sort the stories." in body
+        assert "Never emit `block:` or `stack_mode:`" in body
+        assert "Drydock computes everything positional" in body
+
+    def test_plan_create_declares_the_story_taxonomy(self):
+        body = load_prompt("plan_create").body
+
+        assert "`foundational`, `service`, or `feature`" in body
+        assert "no `spike` or `ac` story type" in body
+        assert "Story count is not capped." in body
+        assert "`Phase` is never a Blueprint header field" in body
 
     def test_plan_create_uses_analysis_decomposition_as_default_work_breakdown(self):
         body = load_prompt("plan_create").body

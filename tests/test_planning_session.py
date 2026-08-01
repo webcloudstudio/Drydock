@@ -26,6 +26,8 @@ from drydock.planning_session import (
     _repair_missing_leading_delimiter,
     _spec_is_conformant,
     _spec_is_dirty,
+    advisory_plan_shape,
+    check_plan_shape,
     create_plan,
     ensure_feedback_file,
 )
@@ -74,7 +76,11 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "Never emit `AGENTS.md`." in prompt
     assert "The response is processed by a deterministic parser." in prompt
     assert "Now the Manifest." in prompt
-    assert "No non-whitespace text exists outside the blocks." in prompt
+    # Shape conformance is a checker, not an instruction: the prompt no longer asks the model to
+    # audit its own delimiters, block completeness, or topological consistency. Drydock measures
+    # all of it against the declared output contract after the response.
+    assert "Do not audit your own output for delimiter balance" in prompt
+    assert "Before responding, verify:" not in prompt
 
 
 def test_plan_prompt_separates_final_sea_trial_traceability_from_story_execution():
@@ -2946,3 +2952,151 @@ def test_a_story_left_without_acceptance_fails_the_plan(tmp_path):
 
     with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
         _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+
+# ── Plan restructure: deterministic Zone A and Zone C wiring ─────────────────────────
+
+
+_STORY_TAXONOMY_MANIFEST = """# MANIFEST: Example
+updated: 2026-08-01
+plan_hash: test
+state: draft
+
+## story 1: Serve Status
+id: story-status
+summary: Build the status command.
+type: service
+kind: capability
+phase: 2
+implements: FEATURE-Status.md
+stack: fastapi.md
+depends: story-foundation
+acceptance: yes
+state: pending
+
+## story 2: Application Factory
+id: story-foundation
+summary: Stand up the application factory.
+type: foundational
+kind: capability
+phase: 1
+implements: ARCHITECTURE.md
+stack: fastapi.md
+acceptance: yes
+state: pending
+"""
+
+
+def _story_taxonomy_output() -> str:
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    )
+    return (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_STORY_TAXONOMY_MANIFEST}\n=== END MANIFEST.md ===\n"
+    )
+
+
+def test_zone_c_stamps_the_computed_schedule_onto_the_story_taxonomy(tmp_path):
+    """Block grouping and stack mode are computed, never authored."""
+    target_dir = _make_target(tmp_path)
+    runner = _fake(_story_taxonomy_output())
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    foundation = result.plan.by_id()["story-foundation"]
+    status = result.plan.by_id()["story-status"]
+    assert foundation.stack_mode == "builder"
+    assert status.stack_mode == "consumer"
+    # Different phases never share a block.
+    assert foundation.block != status.block
+    assert "stack_mode:" in manifest
+
+
+def test_zone_c_refuses_a_phase_inverted_plan(tmp_path):
+    """The two topologies must agree: a phase-2 story cannot depend on a phase-3 story."""
+    target_dir = _make_target(tmp_path)
+    inverted = _STORY_TAXONOMY_MANIFEST.replace("phase: 1", "phase: 3")
+    runner = _fake(_story_taxonomy_output().replace(_STORY_TAXONOMY_MANIFEST, inverted))
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner)
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_zone_c_refuses_two_stories_owning_one_specification(tmp_path):
+    _make_target(tmp_path)
+    shared = _STORY_TAXONOMY_MANIFEST.replace(
+        "implements: ARCHITECTURE.md", "implements: FEATURE-Status.md"
+    )
+    runner = _fake(_story_taxonomy_output().replace(_STORY_TAXONOMY_MANIFEST, shared))
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+
+def test_legacy_taxonomy_manifest_is_left_alone(tmp_path):
+    """A Manifest with no ``type:`` predates the restructure and skips Zone C entirely."""
+    target_dir = _make_target(tmp_path)
+    runner = _fake(_llm_output())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert "stack_mode:" not in (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+
+
+def test_story_count_is_not_capped(tmp_path):
+    """The ~100-story cap is removed; scale is answered with a stronger model."""
+    _make_target(tmp_path)
+    header = "# MANIFEST: Example\nupdated: 2026-08-01\nplan_hash: test\nstate: draft\n"
+    specs = []
+    blocks = []
+    for index in range(120):
+        name = f"FEATURE-Item{index}.md"
+        specs.append(
+            f"=== {name} ===\n"
+            + _SPEC_HEADER.format(ftype="FEATURE", name=f"Item{index}", ac="None.")
+            + f"\n=== END {name} ===\n"
+        )
+        blocks.append(
+            f"## story {index + 1}: Item {index}\n"
+            f"id: story-item-{index}\n"
+            f"summary: Build item {index}.\n"
+            f"implements: {name}\n"
+            "state: pending\n"
+        )
+    manifest = header + "\n" + "\n".join(blocks)
+    runner = _fake("".join(specs) + f"=== MANIFEST.md ===\n{manifest}\n=== END MANIFEST.md ===\n")
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(result.plan.blocks) == 120
+    assert not any("cap" in warning for warning in result.warnings)
+
+
+def test_zone_a_reports_an_unresolvable_declared_stack_file(tmp_path):
+    """TECHNOLOGY_STACK.md declares which stack is used; Zone A opens the Rigging files."""
+    target_dir = _make_target(tmp_path)
+    technology_stack.write(
+        target_dir, [technology_stack.StackEntry("Ghost", "ghost.md", "Technologies")]
+    )
+    runner = _fake(_llm_output())
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert any("ghost.md" in warning for warning in result.warnings)
+
+
+def test_advisory_shape_reports_an_untyped_specification_without_refusing_the_plan():
+    blocks = {"NOTE.md": "plain prose", "MANIFEST.md": "# MANIFEST: Example"}
+    assert check_plan_shape(blocks) == ()
+    assert [defect.code for defect in advisory_plan_shape(blocks)] == ["untyped-heading"]
+
+
+def test_fatal_shape_check_requires_the_manifest_artifact():
+    assert [defect.code for defect in check_plan_shape({"ARCHITECTURE.md": "x"})] == [
+        "missing-artifact"
+    ]

@@ -1,0 +1,144 @@
+"""Topology declaration parsing and its projection into ``MANIFEST.md``."""
+
+from __future__ import annotations
+
+import pytest
+
+from drydock.errors import SpecificationError
+from drydock.manifest import DrydockManifest
+from drydock.plan_graph import PlannedStory, compute_plan
+from drydock.plan_topology import (
+    computed_field_updates,
+    parse_topology,
+    parse_topology_strict,
+    render_manifest,
+    render_story_block,
+    stories_from_manifest,
+)
+
+DECLARATION = """
+## story foundation
+summary:    Stand up the application factory.
+type:       foundational
+kind:       capability
+phase:      1
+implements: ARCHITECTURE.md
+stack:      common.md, fastapi.md
+provides:   GET /health
+acceptance: yes
+depends:
+
+## story catalog
+summary:    Serve the catalog.
+type:       service
+kind:       capability
+phase:      2
+implements: FEATURE-CATALOG.md
+stack:      fastapi.md
+consumes:   GET /health
+depends:    foundation
+"""
+
+
+def test_declaration_parses_into_stories():
+    stories, defects = parse_topology(DECLARATION)
+    assert defects == ()
+    assert [s.story_id for s in stories] == ["foundation", "catalog"]
+    foundation, catalog = stories
+    assert foundation.story_type == "foundational"
+    assert foundation.phase == 1
+    assert foundation.stack == ("common.md", "fastapi.md")
+    assert foundation.provides == ("GET /health",)
+    assert foundation.acceptance_contract is True
+    assert catalog.depends == ("foundation",)
+    assert catalog.acceptance_contract is False
+
+
+def test_declaration_order_carries_no_schedule_meaning():
+    """Parsing reads the declaration only; nothing is sorted, grouped, or repositioned."""
+    stories, _ = parse_topology(DECLARATION)
+    assert all(story.block == 0 and story.stack_mode == "" for story in stories)
+
+
+def test_unknown_type_is_a_defect_and_falls_back_to_service():
+    stories, defects = parse_topology("## story a\ntype: architecture\nimplements: A.md\n")
+    assert [d.story_id for d in defects] == ["a"]
+    assert stories[0].story_type == "service"
+
+
+def test_unknown_kind_is_a_defect():
+    _, defects = parse_topology("## story a\nkind: chore\nimplements: A.md\n")
+    assert "chore" in defects[0].message
+
+
+def test_non_integer_phase_is_a_defect():
+    stories, defects = parse_topology("## story a\nphase: early\nimplements: A.md\n")
+    assert "not an integer" in defects[0].message
+    assert stories[0].phase == 1
+
+
+def test_empty_declaration_is_a_defect():
+    _, defects = parse_topology("no stories here")
+    assert defects[0].story_id == ""
+
+
+def test_strict_parse_raises_on_defect():
+    with pytest.raises(SpecificationError, match="malformed"):
+        parse_topology_strict("## story a\ntype: nonsense\n")
+
+
+def test_strict_parse_returns_stories_when_clean():
+    assert len(parse_topology_strict(DECLARATION)) == 2
+
+
+# ── Serialization ───────────────────────────────────────────────────────────────────
+
+
+def test_rendered_story_block_carries_the_computed_schedule_fields():
+    computed = compute_plan(parse_topology_strict(DECLARATION))
+    block = render_story_block(computed.stories[0], 1)
+    assert "type:         foundational" in block
+    assert "phase:        1" in block
+    assert "block:        1" in block
+    assert "stack_mode:   builder" in block
+    assert "acceptance:   yes" in block
+    assert "state:        pending" in block
+
+
+def test_rendered_manifest_parses_as_a_manifest():
+    computed = compute_plan(parse_topology_strict(DECLARATION))
+    text = render_manifest("Demo", computed.stories, computed.blocks)
+    manifest = DrydockManifest.parse(text, source="MANIFEST.md")
+    assert manifest.project == "Demo"
+    assert [node.block_id for node in manifest.blocks] == ["foundation", "catalog"]
+
+
+def test_manifest_round_trip_recovers_the_planning_model():
+    computed = compute_plan(parse_topology_strict(DECLARATION))
+    text = render_manifest("Demo", computed.stories, computed.blocks)
+    manifest = DrydockManifest.parse(text, source="MANIFEST.md")
+    recovered = stories_from_manifest(manifest.blocks)
+    assert [s.story_id for s in recovered] == ["foundation", "catalog"]
+    assert recovered[0].story_type == "foundational"
+    assert recovered[0].phase == 1
+    assert recovered[1].depends == ("foundation",)
+
+
+def test_legacy_taxonomy_manifest_projects_to_nothing():
+    """A Manifest written before the restructure carries no ``type:`` and is left alone."""
+    text = (
+        "# MANIFEST: Legacy\n\n"
+        "## story 1: Foundation\n"
+        "id:           foundation\n"
+        "summary:      Legacy story.\n"
+        "implements:   ARCHITECTURE.md\n"
+        "instructions: Build it.\n"
+        "state:        pending\n"
+    )
+    manifest = DrydockManifest.parse(text, source="MANIFEST.md")
+    assert stories_from_manifest(manifest.blocks) == ()
+
+
+def test_computed_field_updates_only_carry_computed_facts():
+    stories = (PlannedStory(story_id="a", stack_mode="consumer", block=3),)
+    assert computed_field_updates(stories) == {"a": {"stack_mode": "consumer", "block": "3"}}

@@ -52,6 +52,7 @@ from drydock.plan_feedback import (
     harvest_answered_questions,
     render_feedback_prompt,
 )
+from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -96,8 +97,11 @@ _NON_BLUEPRINT_ARTIFACTS = frozenset({"AGENTS.md"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
 
-# Hard cap on story count; plan create refuses to emit an over-decomposed plan.
-_STORY_CAP = 100
+# Story count is not capped. The ~100-story cap was a proxy for over-decomposition, but story
+# sizing is now "one build pass" (see drydock.plan_stack), which has no opinion about how many
+# stories a project contains: a correct 300-story project is plausible and would have been
+# refused. Scale is answered with a stronger model, not a refusal to plan. A manageable number
+# well under 100 remains the ideal, as guidance rather than a gate.
 _OUTSIDE_TEXT_LIMIT = 100
 _OUTSIDE_SPAN_LIMIT = 3
 _OUTSIDE_FORBIDDEN_MARKERS = ("===", "<invoke", "<function_calls", "```", "~~~")
@@ -1806,7 +1810,6 @@ def _integrity_check(
         path = blueprint_dir / name
         return path.read_text(encoding="utf-8") if path.is_file() else None
 
-    story_count = 0
     executable_with_empty_depends = False
     spec_owners: dict[str, list[str]] = {}
     for block in plan.blocks:
@@ -1814,7 +1817,6 @@ def _integrity_check(
             executable_with_empty_depends = True
         if block.block_type != "story":
             continue
-        story_count += 1
         implements = block.fields.get("implements", ())
         targets = implements if isinstance(implements, tuple) else (implements,)
         targets = tuple(name for name in targets if name)
@@ -1950,10 +1952,7 @@ def _integrity_check(
                 "required Sea Trials lack implementation/proof coverage: " + ", ".join(missing)
             )
 
-    # Reject an over-decomposed plan.
-    if story_count > _STORY_CAP:
-        fatal.append(f"story count {story_count} exceeds the ~{_STORY_CAP}-story cap")
-
+    # Story count is not capped; see the module note.
     # Reject an under-decomposed plan: every analyzed story is delivered by some
     # story, and a story that swallows several analyzed stories declares it. The
     # gate is inactive when the analysis carries no Story List — the Spec Kit and
@@ -1998,6 +1997,17 @@ def _integrity_check(
                 + " — name each analyzed Story ID in the covers: field of the story "
                 "that delivers it"
             )
+
+    # Zone C — deterministic verification of the declared graph. The model authors judgment;
+    # Python proves the result is internally consistent and refuses it otherwise. Active only
+    # for the story taxonomy (`type:`); a legacy-taxonomy Manifest projects to an empty set.
+    from drydock.plan_graph import verify_graph
+    from drydock.plan_topology import stories_from_manifest
+
+    declared = stories_from_manifest(plan.blocks)
+    if declared:
+        for defect in verify_graph(declared):
+            (fatal if defect.fatal else warnings).append(defect.rendered())
 
     # Initial runnable frontier — a soft warning. At least one executable block must
     # start with an empty `depends:` or the build has nothing it can run first.
@@ -2048,6 +2058,41 @@ def _strip_unsatisfiable_acceptance(blocks: dict[str, str]) -> tuple[str, ...]:
             for drop in dropped
         )
     return tuple(removals)
+
+
+#: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
+#: Shape conformance is a checker, not an instruction: the prompt no longer asks the model to
+#: verify its own delimiters and block completeness, because that verification is free and
+#: reliable in code. Delimiter pairing is not re-checked here — the strict parser above already
+#: owns pairing together with its documented recoveries.
+#: Artifact *ordering* is not part of this contract: the strict parser preserves response order
+#: and the waiver path already requires a terminal ``MANIFEST.md``, so re-asserting it here would
+#: reject a complete plan over a fact nothing downstream depends on.
+PLAN_OUTPUT_CONTRACT = OutputContract(
+    required=("MANIFEST.md",),
+    require_typed_headings=False,
+)
+
+#: The advisory half of the same contract. A missing typed heading is a real defect but a
+#: repairable one — ``conform_specs`` is the existing second model pass for exactly this — so it
+#: is reported rather than used to refuse a complete plan.
+PLAN_SHAPE_ADVISORY = OutputContract(
+    untyped=frozenset({"MANIFEST.md", "TOPOLOGY.md", "README.md", "METADATA.md"}),
+)
+
+
+def check_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
+    """Measure Success Mode artifacts against the fatal half of the declared output contract."""
+    return check_contract("", blocks, PLAN_OUTPUT_CONTRACT)
+
+
+def advisory_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
+    """Measure the same artifacts against the repairable half of the contract."""
+    return tuple(
+        defect
+        for defect in check_contract("", blocks, PLAN_SHAPE_ADVISORY)
+        if defect.code == "untyped-heading"
+    )
 
 
 def _validate_plan_output(
@@ -2103,6 +2148,21 @@ def _validate_plan_output(
                 "Plan generation failed: LLM output mixed response modes.\n"
                 "  SUCCESS MODE must not include PLAN_CREATE_BLOCKED.txt or PLAN_CREATE_ERROR.txt.\n"
                 "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    # Success Mode is confirmed. Measure the artifact set against the declared output contract
+    # before anything is parsed or written — an absolute, deterministic guardrail in place of the
+    # prompt's former self-verification tail.
+    shape_defects = check_plan_shape(blocks)
+    if shape_defects:
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output did not satisfy the declared output "
+                "contract.\n  "
+                + render_defects(shape_defects)
+                + "\n  No Blueprint or Manifest artifacts were written.",
                 result,
             )
         )
@@ -2178,7 +2238,10 @@ def _validate_plan_output(
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
     # Removals lead the warning list: they changed the artifact the author is about to read,
     # so they must not be buried under advisory graph notes.
-    warnings = dropped_acceptance + tuple(
+    warnings = (
+        dropped_acceptance
+        + tuple(defect.rendered() for defect in advisory_plan_shape(emitted_files))
+    ) + tuple(
         _integrity_check(
             plan,
             blueprint_dir,
@@ -2360,8 +2423,34 @@ def _prepare_manifest_in_memory(
         if updates:
             plan.set_fields(block.block_id, **updates)
 
+    warnings.extend(_apply_computed_schedule(plan))
     plan.validate()
     return tuple(warnings)
+
+
+def _apply_computed_schedule(plan: BuildPlan) -> list[str]:
+    """Compute and stamp the schedule fields the model must never author.
+
+    Block grouping, stack-mode assignment, and ordering are Python's job. The model states what
+    each story requires and provides; Zone C derives everything positional from that. Deriving
+    builder/consumer mode here rather than at build time makes it visible in the QuarterDeck cost
+    preview, auditable before anything runs, and independent of working-tree state.
+
+    A Manifest still using the legacy block taxonomy carries no ``type:`` and is left untouched.
+    """
+    from drydock.plan_graph import compute_plan
+    from drydock.plan_stack import story_budget_tokens
+    from drydock.plan_topology import computed_field_updates, stories_from_manifest
+
+    declared = stories_from_manifest(plan.blocks)
+    if not declared:
+        return []
+    computation = compute_plan(declared, budget_tokens=story_budget_tokens())
+    if computation.fatal:
+        return [defect.rendered() for defect in computation.fatal]
+    for story_id, updates in computed_field_updates(computation.stories).items():
+        plan.set_fields(story_id, **updates)
+    return [defect.rendered() for defect in computation.warnings]
 
 
 def _record_plan_error(
@@ -2719,6 +2808,23 @@ def create_plan(
     _clear_plan_compass_blockers(target_dir)
     feedback_text = (target_dir / _FEEDBACK_FILENAME).read_text(encoding="utf-8")
     ensure_exclude_file(target_dir)
+    # Zone A — resolve the stack file set. TECHNOLOGY_STACK.md declares *which* stack is used;
+    # the Rigging files themselves must be opened and measured at plan time or builder/consumer
+    # mode and the single-build-pass ceiling have no basis. An empty or unresolved result never
+    # gates planning: absence means undecided.
+    from drydock.plan_stack import resolve_target_stack, unresolved_names
+
+    resolved_stack = resolve_target_stack(target_dir)
+    stack_warnings = [
+        f"stack: {name!r} is declared in {technology_stack.FILENAME} but no Rigging stack file "
+        "resolves to it; the build agent receives no guidance for that technology"
+        for name in unresolved_names(resolved_stack)
+    ]
+    if on_text is not None and resolved_stack:
+        on_text(
+            f"[plan] resolved {len(resolved_stack) - len(stack_warnings)} of "
+            f"{len(resolved_stack)} declared Rigging stack file(s)\n"
+        )
     default_feedback = prompt_header_for_file(_FEEDBACK_FILENAME)
     feedback_for_prompt = (
         feedback_text
@@ -3170,6 +3276,7 @@ def create_plan(
         authored_files=tuple(sorted({*authored, *normalized_existing, *conformed_specs})),
         warnings=tuple([
             *([waiver_warning] if waiver_warning else []),
+            *stack_warnings,
             *conform_warnings,
             *warnings,
             *context_warnings,

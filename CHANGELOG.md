@@ -10,6 +10,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-01: `drydock plan` is restructured around authorship versus verification. The model
+  authors the four jobs requiring judgment — specification content, programmatic acceptance
+  alongside it, conflict resolution by precedence, and questions — and declares each story's type,
+  phase, relationships, and stack. Drydock now owns the deterministic remainder in
+  `plan_graph`, `plan_topology`, `plan_shape`, and `plan_stack`: graph verification, ordering,
+  block grouping, builder/consumer stack-mode assignment, and output-contract shape checking. The
+  Manifest becomes a list of stories typed `foundational`, `service`, or `feature`; `spike` and
+  `ac` are retired as node types, acceptance becomes a field the story owns, and `Phase` moves out
+  of the Blueprint header into the Manifest. Blocks replace feature grouping as the context
+  optimization, never crossing a phase, topology type, or stack. Story sizing is a
+  single-build-pass token ceiling and the ~100-story cap is removed. A phase/edge two-topology
+  disagreement is now a deterministic error instead of a silent defect.
 - 2026-07-31: Analyze now acts as the Team Lead/Product Owner completeness session, records
   Commander expectations as assertions, and emits an ASCII-safe crew handoff. Plan receives every
   readable imported source and treats Analyze's story map as a proposal: governed Markdown is
