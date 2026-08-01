@@ -11,40 +11,40 @@ pass — its specification plus stack files in, a working diff and passing asser
 measurable in tokens before anything runs, which is why it replaces an effort threshold. Note the
 symmetry: an over-sized story fails at build for the same reason an over-sized plan fails at plan.
 One ceiling, one diagnosis, two altitudes.
+
+That symmetry is literal, not rhetorical: the ceiling is the existing ``prompt_warn_tokens``
+configuration key. It already means *the maximum assembled prompt cost of one build step*, which is
+the same quantity this module measures at plan time. A second key would be the same number under a
+second name, defaulting differently and drifting from it.
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from drydock import technology_stack
+from drydock.build import PROMPT_WARN_TOKENS, resolve_warn_tokens
 from drydock.paths import get_stack_dir
 from drydock.prompt_assembly import estimate_tokens
 
-#: Environment override for the single-build-pass ceiling, in tokens.
-STORY_BUDGET_ENV = "DRYDOCK_STORY_BUDGET_TOKENS"
-
-#: Default single-build-pass ceiling. A story whose specification plus resolved stack files
-#: exceeds this cannot be implemented and verified in one pass and must be split.
-DEFAULT_STORY_BUDGET_TOKENS = 60_000
+#: Fallback ceiling when ``prompt_warn_tokens`` is unreadable. Mirrors the build-time default so
+#: plan-time and build-time sizing cannot disagree.
+DEFAULT_STORY_BUDGET_TOKENS = PROMPT_WARN_TOKENS
 
 _COMPACT_SUFFIX = "_compact.md"
 _SKIP_SUFFIX = "_compact.skip.md"
 
 
 def story_budget_tokens() -> int:
-    """Return the configured single-build-pass ceiling in tokens."""
-    raw = os.environ.get(STORY_BUDGET_ENV, "").strip()
-    if not raw:
-        return DEFAULT_STORY_BUDGET_TOKENS
-    try:
-        value = int(raw)
-    except ValueError:
-        return DEFAULT_STORY_BUDGET_TOKENS
-    return value if value > 0 else DEFAULT_STORY_BUDGET_TOKENS
+    """Return the configured single-build-pass ceiling in tokens.
+
+    Resolves ``prompt_warn_tokens`` — the same key ``drydock build`` uses to flag an over-stacked
+    step. Sizing is a read-only costing pass, so an unusable setting downgrades to the built-in
+    default rather than refusing to plan.
+    """
+    return resolve_warn_tokens()
 
 
 @dataclass(frozen=True)

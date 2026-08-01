@@ -695,11 +695,25 @@ back to the full file.
 
 **Story sizing**
 
-`plan_stack.story_budget_tokens()` reads `DRYDOCK_STORY_BUDGET_TOKENS`, defaulting to 60,000.
+The ceiling is the existing `prompt_warn_tokens` configuration key — no new key was introduced.
+That key already means *the maximum assembled prompt cost of one build step*, which is the same
+quantity measured here at plan time; a second key would be the same number under a second name,
+defaulting differently and drifting from it. §Story sizing's "one ceiling, one diagnosis, two
+altitudes" is therefore literal.
+
+`plan_stack.story_budget_tokens()` delegates to `build.resolve_warn_tokens()`, which resolves
+`prompt_warn_tokens` through `config` (file, then environment) and downgrades to
+`build.PROMPT_WARN_TOKENS` on an unusable setting rather than refusing to plan — sizing is a
+read-only costing pass. `plan_stack.DEFAULT_STORY_BUDGET_TOKENS` is an alias of
+`build.PROMPT_WARN_TOKENS` so plan-time and build-time sizing cannot disagree.
+
 `story_pass_tokens(specification_tokens, stack, resolved, mode)` measures one story;
 `exceeds_build_pass(tokens, budget=None)` compares it to the ceiling. The same number is passed to
-`group_blocks` as `budget_tokens`, so the story ceiling and the block ceiling are one constant at
-two altitudes.
+`group_blocks` as `budget_tokens`, so the story ceiling and the block ceiling are one value.
+
+`plan_graph.DEFAULT_BLOCK_BUDGET_TOKENS` mirrors `config.DEFAULT_PROMPT_WARN_TOKENS` as a
+standalone fallback; it exists only so `plan_graph` can stay free of Drydock imports, and matters
+only to a direct caller that supplies no budget.
 
 **Shape conformance**
 

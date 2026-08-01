@@ -368,7 +368,12 @@ def assign_stack_modes(
 #: specification plus stack files in, a working diff and passing assertions out. Measurable in
 #: tokens before anything runs. A one-week sprint is an artifact of human capacity and carries
 #: no meaning here.
-DEFAULT_BLOCK_BUDGET_TOKENS = 60_000
+#:
+#: This is a standalone fallback so the module stays free of Drydock imports. Callers pass the
+#: configured ceiling — ``plan_stack.story_budget_tokens()``, which resolves ``prompt_warn_tokens``
+#: — so the value here matters only to a direct caller that supplies nothing. It mirrors
+#: ``config.DEFAULT_PROMPT_WARN_TOKENS``.
+DEFAULT_BLOCK_BUDGET_TOKENS = 50_000
 
 
 @dataclass(frozen=True)

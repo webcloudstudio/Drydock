@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from drydock import plan_stack
+from drydock.config import DEFAULT_PROMPT_WARN_TOKENS
 from drydock.plan_stack import (
     DEFAULT_STORY_BUDGET_TOKENS,
-    STORY_BUDGET_ENV,
     exceeds_build_pass,
     resolve_stack_file,
     resolve_stack_set,
     resolve_target_stack,
+    resolve_warn_tokens,
     stack_cost,
     story_budget_tokens,
     story_pass_tokens,
@@ -96,27 +97,31 @@ def test_story_pass_tokens_is_specification_plus_stack(tmp_path):
 
 
 def test_build_pass_ceiling_replaces_the_effort_threshold(monkeypatch):
-    monkeypatch.delenv(STORY_BUDGET_ENV, raising=False)
-    assert story_budget_tokens() == DEFAULT_STORY_BUDGET_TOKENS
-    assert exceeds_build_pass(DEFAULT_STORY_BUDGET_TOKENS + 1)
-    assert not exceeds_build_pass(DEFAULT_STORY_BUDGET_TOKENS)
+    monkeypatch.setattr(plan_stack, "resolve_warn_tokens", lambda: 50_000)
+    assert story_budget_tokens() == 50_000
+    assert exceeds_build_pass(50_001)
+    assert not exceeds_build_pass(50_000)
+
+
+def test_the_ceiling_is_the_build_step_warn_ceiling():
+    """One ceiling, one diagnosis, two altitudes — plan-time sizing reuses prompt_warn_tokens."""
+    assert DEFAULT_STORY_BUDGET_TOKENS == DEFAULT_PROMPT_WARN_TOKENS
+    assert story_budget_tokens() == resolve_warn_tokens()
 
 
 def test_ceiling_is_configurable(monkeypatch):
-    monkeypatch.setenv(STORY_BUDGET_ENV, "1234")
+    monkeypatch.setenv("PROMPT_WARN_TOKENS", "1234")
     assert story_budget_tokens() == 1234
     assert exceeds_build_pass(2000)
 
 
-def test_invalid_or_nonpositive_ceiling_falls_back(monkeypatch):
-    monkeypatch.setenv(STORY_BUDGET_ENV, "not-a-number")
-    assert story_budget_tokens() == DEFAULT_STORY_BUDGET_TOKENS
-    monkeypatch.setenv(STORY_BUDGET_ENV, "0")
+def test_unusable_setting_downgrades_rather_than_refusing_to_plan(monkeypatch):
+    monkeypatch.setenv("PROMPT_WARN_TOKENS", "not-a-number")
     assert story_budget_tokens() == DEFAULT_STORY_BUDGET_TOKENS
 
 
-def test_explicit_budget_overrides_the_environment(monkeypatch):
-    monkeypatch.setenv(STORY_BUDGET_ENV, "10")
+def test_explicit_budget_overrides_the_configured_ceiling(monkeypatch):
+    monkeypatch.setattr(plan_stack, "resolve_warn_tokens", lambda: 10)
     assert not exceeds_build_pass(50, budget=100)
 
 
