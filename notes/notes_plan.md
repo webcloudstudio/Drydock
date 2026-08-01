@@ -2,11 +2,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-07-31 V7 |
+| Version | 2026-07-31 V8 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 16 approved items |
+| Pending spec | 17 approved items |
 | Pending impl | 0 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
@@ -161,19 +161,6 @@ by the PO.
   3. **Consume (`build`):** reads `BUILD_PLAN_COMPASS.md` as its ordering input instead of
      computing order.
 
-### Build-Time Context (Downstream — Noted Here, Not Owned Here)
-`2026-07-31` · `spec:na` · `impl:implemented`
-
-These are implemented by `build`; the graph supports them:
-
-- **No long-term memory.** Each build iteration assembles a complete, clean instruction set from
-  scratch: full builder view of the stack + compacted user/contract view. No reliance on what the
-  model remembers.
-- **Verification.** After each build, tool calls check success. AC expressed as executable Python
-  runnables where possible; some non-executable AC is unavoidable.
-- **Drift oracle.** Graph node state tracks what is built and verified; green propagates along
-  `depends-on` edges. Propagation model not yet fully elaborated.
-
 ## Feedback Loop & Injection Stack (2026-06-16)
 
 Companion to notes_analyze.md §Feedback Loop & Injection Stack. Applies the standing-directive
@@ -232,6 +219,19 @@ Analyze is deliberately "secretly waterfall": it works iteratively with the Comm
 handoff must be complete and capable of becoming a buildable Plan. It authors `ANALYSIS.md` and
 `COMPASS.md`; required questionnaires are answered before Plan. The story list is an expert
 proposal for Plan to review, not a binding work breakdown.
+
+### Analyze decomposition is the default work breakdown
+`2026-07-31` · `spec:approved` · `impl:implemented`
+
+The Story List and Story Realization Map in `ANALYSIS.md` are the completed planning decomposition
+and Plan's default work breakdown. Plan preserves their proposed story boundaries and mapped source
+filenames unless the complete planning context shows that a story is non-atomic, inaccurate,
+contradictory, incomplete, or assigns content to the wrong owner. Plan then splits, merges, moves,
+replaces, or reorders the affected scope without a deviation-reporting requirement.
+
+Full rewrite remains authoritative over governed content. Plan rewrites every resulting story as a
+governed specification using all planning inputs. Source structure is strong evidence for the story
+boundary; source content is not authoritative.
 
 ### Cross-functional Plan team authority
 `2026-07-31` · `spec:approved` · `impl:implemented`

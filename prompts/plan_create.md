@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and MANIFEST.md with computed header relationships.
-version: 20260731 V25
+version: 20260731 V26
 intent: Act as an Agile Development Team and apply Agile feature and story decomposition at expert level: consume the reviewed analysis artifacts, decompose the product into INVEST stories realized as Drydock Typed Specification files, compute inter-file relationships, and emit the executable Manifest in a single response.
 command: drydock plan create
 model: sonnet
@@ -70,10 +70,16 @@ This step must produce **decomposed specifications with solid header relationshi
 - stories in `MANIFEST.md` point at real emitted spec files
 - the runnable frontier implied by the Manifest is coherent
 
-Treat the story list from `ANALYSIS.md` as the planning seed, not as the final artifact. A story
-named in analysis becomes one or more authored specification files when durable authority is
-required. Spikes stay execution objects in `MANIFEST.md`; they do not become authored Blueprint
-spec files unless the source material explicitly calls for a persistent ticket or AC file.
+Treat the Story List and Story Realization Map in `ANALYSIS.md` as the completed planning
+decomposition and the default work breakdown. Preserve their proposed story boundaries and mapped
+source filenames unless the complete planning context shows that a story is non-atomic,
+inaccurate, contradictory, incomplete, or assigns content to the wrong owner. When correction is
+necessary, split, merge, move, replace, or reorder the affected scope. Rewrite every resulting
+story as a governed specification using all planning inputs; source structure is strong evidence
+for the story boundary, but source content is not authoritative.
+
+Spikes stay execution objects in `MANIFEST.md`; they do not become authored Blueprint spec files
+unless the source material explicitly calls for a persistent ticket or AC file.
 
 When the analysis is too coarse, refine it into smaller spec scopes. When it is too fine, merge it
 into the smallest durable spec structure that preserves correctness and clear ownership.

@@ -131,6 +131,16 @@ class TestInputTokens:
         assert "Build shared providers before their consumers" in body
         assert "topologically consistent" in body
 
+    def test_plan_create_uses_analysis_decomposition_as_default_work_breakdown(self):
+        body = load_prompt("plan_create").body
+        normalized = " ".join(body.split())
+
+        assert "completed planning decomposition and the default work breakdown" in normalized
+        assert "Preserve their proposed story boundaries and mapped" in normalized
+        assert "split, merge, move, replace, or reorder the affected scope" in normalized
+        assert "source content is not authoritative" in normalized
+        assert "planning seed, not as the final artifact" not in normalized
+
     def test_build_prompt_requires_dependency_verification_before_install(self):
         body = load_prompt("build").body
 
