@@ -6,7 +6,7 @@
 | Route | build / plan (acceptance-criteria gating) |
 | Status | Working notes — not canonical specification |
 | Description | Acceptance criteria are the definition of done; deterministic ACs are never sampled, tested at story/block build and mirrored into Sea Trials. |
-| Pending spec | 7 approved items |
+| Pending spec | 4 approved items |
 | Pending impl | 4 unimplemented sections |
 
 ## Implementation status (2026-07-23)
@@ -38,31 +38,6 @@ nothing here: Drydock builds one-shot with no iterate loop, so there is no loop 
 sample; a deterministic suite simply runs longer, and the LLM build is a single pass regardless
 of AC count. "100%" is not an exotic bar — it is just what "definition of done" means: a story
 with failing ACs is not done.
-
-### Two acceptance levels, both tested
-`2026-07-23` · `spec:approved` · `impl:implemented`
-
-Story/block acceptance criteria (in the Blueprint) and project acceptance criteria (Sea Trials)
-are both real and both tested — not either/or. Sea Trials are the LLM-judged project layer and
-are naturally small (a reasonable project is not 100 LLM-evaluated criteria). The "never sample"
-rule therefore bites on the programmatic ACs, not on Sea Trials.
-
-### The block is the test unit; failures report a Block → Story → AC chain
-`2026-07-23` · `spec:applied` · `impl:implemented`
-
-Multiple stories build together in one step (the block). After the block builds, the block's
-entire AC set runs once. Because every AC maps to its story, a failure is attributed per story
-and reported as a chain: **"Block failed → Story X failed → AC abc failed"**, naming the story,
-its stated intent, and the concrete assertion (e.g. "must add two numbers, but a+b≠c"). No
-per-story execution; per-story attribution.
-
-### Strong gates, fail fast; `score ac` stays manual
-`2026-07-23` · `spec:approved` · `impl:implemented`
-
-The gate's job is to stop a wrong story from propagating: halting and redoing a mis-built step
-is cheaper than diagnosing a large finished project. The story/block-stage AC test during build
-is the **automatic gate**. `drydock score ac` is **manual re-verification, not a gate** — if the
-stories built honestly, it is already green.
 
 ### A whole-project deterministic AC lives in both the completing block AC and Sea Trials
 `2026-07-23` · `spec:approved` · `impl:unimplemented`
