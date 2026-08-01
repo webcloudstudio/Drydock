@@ -47,7 +47,19 @@ _LIST_FIELDS = frozenset({"depends", "provides", "consumes", "stack"})
 #: Interface points are comma-separated only: a route such as ``GET /health`` contains a space.
 _COMMA_ONLY_FIELDS = frozenset({"provides", "consumes"})
 #: Fields carried verbatim into the Manifest story block without deterministic interpretation.
-_PASSTHROUGH_FIELDS = ("summary", "implements", "covers", "accepts", "context", "rules")
+_PASSTHROUGH_FIELDS = (
+    "summary",
+    "implements",
+    "covers",
+    "accepts",
+    "context",
+    "rules",
+    "instructions",
+)
+
+#: Fields the declaration may write as a ``field: |`` block scalar. ``instructions`` is prose the
+#: build engine requires, and it does not fit one line.
+_BLOCK_SCALAR_FIELDS = frozenset({"instructions"})
 
 
 @dataclass(frozen=True)
@@ -71,6 +83,28 @@ def _split_list(value: str) -> tuple[str, ...]:
 def _split_interfaces(value: str) -> tuple[str, ...]:
     """Split an interface list on commas only — ``GET /health`` is one entry, not two."""
     return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _consume_block_scalar(lines: Sequence[str], start: int) -> tuple[str, int]:
+    """Consume an indented ``field: |`` body, returning its dedented text and the next index.
+
+    The body runs until the first non-blank line at column zero, so a following field line or
+    ``## story`` heading ends it. Common indentation is stripped: the declaration's indentation
+    is presentation, and the Manifest renderer applies its own.
+    """
+    body: list[str] = []
+    index = start
+    while index < len(lines):
+        raw = lines[index]
+        if raw.strip() and not raw[:1].isspace():
+            break
+        body.append(raw)
+        index += 1
+    while body and not body[-1].strip():
+        body.pop()
+    indents = [len(line) - len(line.lstrip()) for line in body if line.strip()]
+    pad = min(indents) if indents else 0
+    return "\n".join(line[pad:].rstrip() for line in body), index
 
 
 def _parse_phase(raw: str) -> int | None:
@@ -141,20 +175,31 @@ def parse_topology(text: str) -> tuple[tuple[PlannedStory, ...], tuple[TopologyD
         current_id = None
         values = {}
 
-    for line in text.splitlines():
-        header = _STORY_HEADER_RE.match(line.strip())
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        header = _STORY_HEADER_RE.match(stripped)
         if header:
             flush()
             current_id = header.group("id").strip()
+            index += 1
             continue
         if current_id is None:
+            index += 1
             continue
-        match = _FIELD_RE.match(line.strip())
+        match = _FIELD_RE.match(stripped)
         if match:
             field_name = match.group("field").strip().lower()
             value = match.group("value").strip()
+            if value == "|" and field_name in _BLOCK_SCALAR_FIELDS:
+                body, index = _consume_block_scalar(lines, index + 1)
+                if field_name not in values:
+                    values[field_name] = body
+                continue
             if field_name in _LIST_FIELDS or field_name not in values:
                 values[field_name] = value
+        index += 1
     flush()
 
     if not stories:
@@ -266,6 +311,14 @@ def render_story_block(story: PlannedStory, number: int) -> str:
     for key in ("covers", "accepts", "context", "rules"):
         if story.fields.get(key):
             lines.append(f"{key + ':':<14}{story.fields[key]}")
+    if story.fields.get("instructions"):
+        # Block scalar, two-space body: the form ``build_plan`` reads, and the reason its field
+        # scan inspects column-zero lines only.
+        lines.append("instructions: |")
+        lines.extend(
+            f"  {body_line}" if body_line.strip() else ""
+            for body_line in str(story.fields["instructions"]).splitlines()
+        )
     if story.stack:
         lines.append(f"stack:        {_render_list(story.stack)}")
     if story.stack_mode:

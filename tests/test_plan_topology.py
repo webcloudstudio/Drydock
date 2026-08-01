@@ -159,3 +159,88 @@ def test_rendered_block_carries_the_over_target_marker():
     )
     assert "size:         90000" in rendered
     assert "budget:       over-target" in rendered
+
+
+# ── instructions block scalar ───────────────────────────────────────────────────────
+
+INSTRUCTIONS_DECLARATION = """
+## story architecture
+summary: Application architecture
+type: foundational
+phase: 1
+implements: ARCHITECTURE.md
+instructions: |
+  Establish the parser module boundaries
+  described by ARCHITECTURE.md.
+
+  Do not add side effects.
+acceptance: yes
+
+## story parser
+summary: Parser core
+type: service
+phase: 1
+implements: FEATURE-Parser.md
+depends: architecture
+instructions: |
+  Implement the block foundation.
+"""
+
+
+def test_instructions_block_scalar_is_parsed_across_lines():
+    """The build engine requires `instructions:`, and it does not fit one line."""
+    stories, defects = parse_topology(INSTRUCTIONS_DECLARATION)
+
+    assert defects == ()
+    by_id = {story.story_id: story for story in stories}
+    assert by_id["architecture"].fields["instructions"] == (
+        "Establish the parser module boundaries\n"
+        "described by ARCHITECTURE.md.\n"
+        "\n"
+        "Do not add side effects."
+    )
+    assert by_id["parser"].fields["instructions"] == "Implement the block foundation."
+
+
+def test_a_block_scalar_body_never_swallows_the_next_story():
+    """The body ends at the first column-zero line, so the following heading still parses."""
+    stories, _ = parse_topology(INSTRUCTIONS_DECLARATION)
+
+    assert [story.story_id for story in stories] == ["architecture", "parser"]
+    assert {story.story_id for story in stories if story.fields.get("implements")} == {
+        "architecture",
+        "parser",
+    }
+
+
+def test_a_field_after_a_block_scalar_is_still_read():
+    """`acceptance: yes` follows the architecture body at column zero and must survive it."""
+    stories, _ = parse_topology(INSTRUCTIONS_DECLARATION)
+    by_id = {story.story_id: story for story in stories}
+
+    assert by_id["architecture"].acceptance_contract is True
+    assert by_id["parser"].acceptance_contract is False
+
+
+def test_instructions_round_trip_through_the_manifest_parser():
+    """Declaration to computed Manifest to parsed plan, with the prose intact."""
+    stories, _ = parse_topology(INSTRUCTIONS_DECLARATION)
+    computation = compute_plan(stories, target_tokens=50_000, size_fn=lambda story: 100)
+    text = render_manifest("Example", computation.stories, computation.blocks)
+
+    parsed = {block.block_id: block for block in DrydockManifest.parse(text).blocks}
+    assert parsed["architecture"].fields["instructions"] == (
+        "Establish the parser module boundaries\n"
+        "described by ARCHITECTURE.md.\n"
+        "\n"
+        "Do not add side effects."
+    )
+    assert parsed["parser"].depends == ("architecture",)
+
+
+def test_rendered_instructions_use_the_indented_block_scalar_form():
+    """`build_plan` scans column-zero fields only, so the body must stay indented."""
+    story = PlannedStory(story_id="a", block=1, fields={"instructions": "One.\nTwo."})
+    rendered = render_story_block(story, 1)
+
+    assert "instructions: |\n  One.\n  Two." in rendered
