@@ -737,5 +737,6 @@ crew presentation, and deterministic no-cross-stack enforcement. Story-too-big s
 by §Story sizing; the story count cap is retired by §Story count is not capped.
 
 `BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
-artifacts that never existed in implementation. They are removed from these notes, not retired.
-`CHANGELOG.md` and `notes/archive/archive_plan.md` retain historical mentions as records.
+artifacts that never existed in implementation. They are removed from these notes and from
+`notes/archive/archive_plan.md`, which carries a deprecation banner. `CHANGELOG.md` retains its
+historical mention as a release record.
