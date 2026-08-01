@@ -25,6 +25,11 @@ command surface and Typed Specification contract are unstable and may change bet
   size limit is a target, not a gate: over-target stories and blocks are measured, marked in the
   Manifest, reported as warnings, and planned as-is, because an irreducible specification makes
   every story implementing against it over target by construction.
+- 2026-08-01: `drydock plan create` asks the model for a `TOPOLOGY.md` declaration instead of a
+  finished `MANIFEST.md`. The declaration has no way to express a position, so the model cannot
+  assert an order it has not computed; Drydock verifies the declared graph, orders it, packs it
+  into blocks, and serializes the Manifest itself. The declaration is transient and never reaches
+  the Blueprint. The reuse and Spec Kit prompts continue to emit `MANIFEST.md` directly.
 - 2026-07-31: Analyze now acts as the Team Lead/Product Owner completeness session, records
   Commander expectations as assertions, and emits an ASCII-safe crew handoff. Plan receives every
   readable imported source and treats Analyze's story map as a proposal: governed Markdown is

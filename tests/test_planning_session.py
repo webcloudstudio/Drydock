@@ -16,6 +16,7 @@ from drydock import technology_stack
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.planning_session import (
+    PLAN_TOPOLOGY_CONTRACT,
     PlanDeferredResult,
     _answered_discovery,
     _artifact_delimiter_defects,
@@ -72,8 +73,9 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "Emit exactly one response mode" in prompt
     assert "### Success Mode" in prompt
     assert "=== PLAN_CREATE_ERROR.txt ===" in prompt
-    assert "Never emit `MANIFEST.md` in Error Mode or Blocked Mode" in prompt
-    assert "Every `implements:` filename in `MANIFEST.md` must exactly match" in prompt
+    assert "Never emit `TOPOLOGY.md` in Error Mode or Blocked Mode" in prompt
+    assert "Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`." in prompt
+    assert "Every `implements:` filename in `TOPOLOGY.md` must exactly match" in prompt
     assert "Never emit `AGENTS.md`." in prompt
     assert "The response is processed by a deterministic parser." in prompt
     assert "Now the Manifest." in prompt
@@ -2273,7 +2275,7 @@ def test_missing_manifest_block_refuses(tmp_path):
         excinfo,
         target_dir,
         classification="plan output validation failed",
-        detail="missing === MANIFEST.md",
+        detail="missing === TOPOLOGY.md",
     )
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
 
@@ -3165,3 +3167,136 @@ def test_fatal_shape_check_requires_the_manifest_artifact():
     assert [defect.code for defect in check_plan_shape({"ARCHITECTURE.md": "x"})] == [
         "missing-artifact"
     ]
+
+
+# ── Zone B topology declaration cutover ──────────────────────────────────────────────
+
+
+_TOPOLOGY_DECLARATION = """planning_feedback: |
+  decision-0123456789abcdef applied FEATURE-Status.md
+
+## story story-status
+summary:      Build the status command.
+type:         service
+kind:         capability
+phase:        2
+implements:   FEATURE-Status.md
+stack:        fastapi.md
+depends:      story-foundation
+acceptance:   yes
+instructions: |
+  Implement the status command against the application factory.
+
+  Exit non-zero when the service is unreachable.
+
+## story story-foundation
+summary:      Stand up the application factory.
+type:         foundational
+kind:         capability
+phase:        1
+implements:   ARCHITECTURE.md
+stack:        fastapi.md
+acceptance:   yes
+"""
+
+
+def _topology_output(declaration: str = _TOPOLOGY_DECLARATION) -> str:
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    )
+    return (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== TOPOLOGY.md ===\n{declaration}\n=== END TOPOLOGY.md ===\n"
+    )
+
+
+def test_declaration_is_serialized_into_the_manifest(tmp_path):
+    """The model declares; Drydock verifies, orders, blocks, and serializes."""
+    target_dir = _make_target(tmp_path)
+    runner = _fake(_topology_output())
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert manifest.startswith("# MANIFEST: Example")
+    ordered = [block.block_id for block in result.plan.blocks]
+    # Declared status-first; phase 1 is serialized first because Drydock computed the order.
+    assert ordered == ["story-foundation", "story-status"]
+    foundation = result.plan.by_id()["story-foundation"]
+    status = result.plan.by_id()["story-status"]
+    assert foundation.stack_mode == "builder"
+    assert status.stack_mode == "consumer"
+    assert foundation.block != status.block
+    # Multi-paragraph instructions survive the declaration round trip.
+    instructions = status.fields["instructions"]
+    assert "Exit non-zero when the service is unreachable." in instructions
+
+
+def test_declaration_never_reaches_disk(tmp_path):
+    """``TOPOLOGY.md`` is transient: part of the response, never a Blueprint file."""
+    target_dir = _make_target(tmp_path)
+    runner = _fake(_topology_output())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert not (target_dir / "blueprint" / "TOPOLOGY.md").exists()
+    assert not (target_dir / "TOPOLOGY.md").exists()
+
+
+def test_declaration_carries_planning_feedback_into_the_manifest_preamble(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _fake(_topology_output())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    manifest = (target_dir / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "decision-0123456789abcdef applied FEATURE-Status.md" in manifest
+
+
+def test_a_phase_inverted_declaration_is_refused_before_any_write(tmp_path):
+    target_dir = _make_target(tmp_path)
+    inverted = _TOPOLOGY_DECLARATION.replace("phase:        1", "phase:        3")
+    runner = _fake(_topology_output(inverted))
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner)
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_a_declaration_with_an_unknown_edge_is_refused(tmp_path):
+    target_dir = _make_target(tmp_path)
+    dangling = _TOPOLOGY_DECLARATION.replace(
+        "depends:      story-foundation", "depends:      ghost"
+    )
+    runner = _fake(_topology_output(dangling))
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner)
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_an_empty_declaration_is_refused(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _fake(_topology_output("planning_feedback: |\n  nothing declared\n"))
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner)
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_the_manifest_carrier_still_works_for_the_reuse_and_speckit_prompts(tmp_path):
+    """The legacy branch is explicit, not incidental: a declared Manifest still plans."""
+    _make_target(tmp_path)
+    runner = _fake(_story_taxonomy_output())
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert result.plan.by_id()["story-foundation"].stack_mode == "builder"
+
+
+def test_fatal_shape_check_requires_the_topology_artifact():
+    assert [
+        defect.code for defect in check_plan_shape({"ARCHITECTURE.md": "x"}, PLAN_TOPOLOGY_CONTRACT)
+    ] == ["missing-artifact"]

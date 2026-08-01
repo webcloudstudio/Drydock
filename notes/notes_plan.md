@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V13 |
+| Version | 2026-08-01 V14 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 42 approved items |
-| Pending impl | 3 unimplemented sections (Zone B declaration cutover; constraints as questions — plan side; continuation) |
+| Pending spec | 43 approved items |
+| Pending impl | 2 unimplemented sections (constraints as questions — plan side; continuation) |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -792,17 +792,19 @@ order and `_outside_text_is_waiver_eligible` already requires a terminal `MANIFE
 **Not carried across**
 
 Zone D (`conform_specs`) remains unreviewed — see Open Question 4. The Zone B declaration cutover
-is specified in its own section below.
+landed separately on 2026-08-01; see §Declaration cutover as-built.
 
 ---
 
-### RESUME HERE — Zone B topology declaration cutover
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+### Zone B topology declaration cutover
+`2026-08-01` · `spec:approved` · `impl:implemented`
 
-**Status: designed, half-built, not wired.** Everything below is the outstanding work. Start here.
+**Status: landed `2026-08-01`.** `plan create` asks for `TOPOLOGY.md`; Drydock serializes
+`MANIFEST.md` from it. The as-built record is §Declaration cutover as-built below; the seven-step
+plan that follows is the decision record and is retained for its rationale.
 
-**What is already done.** `src/drydock/plan_topology.py` contains a complete, tested declaration
-parser and Manifest serializer:
+**What was already done before the cutover.** `src/drydock/plan_topology.py` contains a complete,
+tested declaration parser and Manifest serializer:
 
 - `TOPOLOGY_BLOCK = "TOPOLOGY.md"` — the reserved artifact name. **Nothing writes or reads it
   today.** It is a constant, not a live artifact.
@@ -901,6 +903,61 @@ section was written and changed the signatures it describes.
 asked to emit. A fake runner emitting `TOPOLOGY.md` proves the plumbing only. The real check is a
 live `drydock plan Marina` (~12 min, ~$2.70) and a live `drydock plan CommonMark` regression. Land
 the wiring with fake-runner tests, then verify live — do not treat a green suite as proof.
+
+### Declaration cutover as-built
+`2026-08-01` · `spec:approved` · `impl:implemented`
+
+**Carrier branch.** `_validate_plan_output` resolves `carrier = TOPOLOGY.md if present else
+MANIFEST.md` as its first statement, and every mode check below it keys on `carrier`. The reuse and
+Spec Kit prompts are unchanged and keep the Manifest path; the branch is explicit rather than
+incidental, as step 7 required.
+
+**Zone C entry.** Once Success Mode, delimiter pairing, and the shape contract pass,
+`_manifest_from_declaration` runs: `parse_topology` → `_compute_schedule` → `render_manifest`. Its
+result replaces `blocks["MANIFEST.md"]` and the declaration is popped, so the rest of the function
+— disambiguation, `_parse_plan_text`, questions normalization, acceptance stripping, the integrity
+check — is untouched. An empty declaration and any fatal graph defect raise before a file is
+written. Parse defects with a documented fallback (unknown `type`/`kind`, non-integer `phase`) and
+computation warnings become plan warnings.
+
+**`_apply_computed_schedule` did not collapse; it was lifted.** Both paths now call the shared
+`_compute_schedule(declared, blueprint_dir, emitted_files)`, which owns the `size_fn` over
+`resolve_stack_set` and `block_target_tokens()`. Only the *input* differs — a parsed declaration
+versus `stories_from_manifest`. `_prepare_manifest_in_memory` takes `schedule_computed`, set from
+`declared_topology` in `create_plan`, so the declaration path does not re-derive from the Manifest
+it just wrote.
+
+**Preamble.** Solved by splitting ownership rather than by extending the renderer. `render_manifest`
+emits `# MANIFEST:`, `updated:`, `state: approved`, and `blocks:`, plus a `preamble` mapping;
+`applied_specs` stays with `_prepare_manifest_in_memory`, which already owns it. `plan_hash` is
+written by nothing and read by nothing but a dataclass field, so it is not emitted.
+`planning_feedback` had no home in a declaration and would have been silently lost: the new
+`parse_topology_preamble` reads `planning_feedback` and `note` from before the first `## story`
+heading, and the prompt directs the model to put them there.
+
+**Contract.** `PLAN_TOPOLOGY_CONTRACT` (`required=(TOPOLOGY.md,)`) sits beside the unchanged
+`PLAN_OUTPUT_CONTRACT`; `check_plan_shape` takes the contract as an argument and the carrier
+selects it. `TOPOLOGY.md` joined `_RESERVED_BLOCKS`, so it is never written to `blueprint/`, and
+`_outside_text_is_waiver_eligible` accepts either plan artifact as the terminal block.
+`_parse_write_call_blocks` recovers a target-root `TOPOLOGY.md` write call the same way it recovers
+`MANIFEST.md`.
+
+**Passthrough.** `copy`, `scope`, and `feedback` joined `_PASSTHROUGH_FIELDS` and the render order,
+closing the gap between what `MANIFEST_CONTRACT.md` lets the model author and what a declaration
+could carry.
+
+**Prompt versions.** `prompts/plan_create.md` V28 (step 7 rewritten as a declaration grammar with a
+worked example; Output Contract, Hard Rules, and the Sea Trials audit retargeted),
+`prompts/MANIFEST_CONTRACT.md` V14 (one paragraph stating that `plan create` emits the declaration
+and that the field semantics govern both forms).
+
+**Tests.** Eight in `tests/test_planning_session.py` (serialization and computed order, declaration
+never on disk, `planning_feedback` carried, phase inversion refused, unknown edge refused, empty
+declaration refused, Manifest carrier still plans, topology contract) and three in
+`tests/test_plan_topology.py` (preamble fields, no preamble after the first story, rendered preamble
+parses back).
+
+**Still true: not verified live.** The suite proves plumbing only.
 
 ### Diagnostic — the Marina plan failure was not a capacity limit
 `2026-08-01` · `spec:na` · `impl:n/a`
@@ -1045,8 +1102,8 @@ error to the same prompt and continue while progress is measurable ("5/10 AC" �
 - Never discard already-valid artifacts.
 
 **Depends on the declaration.** Progress is unmeasurable without a count of what should exist, which
-is what §RESUME HERE — Zone B topology declaration cutover produces. That is the whole reason the
-cutover pays for itself here, and it is the strongest argument for landing it.
+is what §Zone B topology declaration cutover produces. That cutover landed on 2026-08-01, so this
+section is now unblocked.
 
 **Implementation.**
 
@@ -1196,8 +1253,8 @@ Editing the canonical specification. Detailed Shipyard Crew execution mechanics 
 story-local decision-record contract. Story-too-big splitting is retired by §Story sizing; the
 story count cap is retired by §Story count is not capped and removed from the code.
 
-Remaining implementation work: §RESUME HERE — Zone B topology declaration cutover, and the Zone D
-review in Open Question 4.
+Remaining implementation work: §Constraints surface as questions (plan side), §Continuation —
+resume, never discard, and the Zone D review in Open Question 4.
 
 `BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
 artifacts that never existed in implementation. They are removed from these notes and from

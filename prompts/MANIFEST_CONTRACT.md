@@ -1,7 +1,7 @@
 ---
 name: Manifest Contract
 description: Contract governing the format, story types, field semantics, lifecycle states, block grouping, and execution rules for `MANIFEST.md` — the single generated executable build plan for a Drydock Target.
-version: 20260801 V13
+version: 20260801 V14
 ---
 
 ## Overview
@@ -150,6 +150,11 @@ the work, and serializes the Manifest.
 The model never sorts, never checks its own consistency, and never reasons about a position in an
 order it has not computed. It states what each story requires and provides; Drydock does the rest.
 Contradictions become a deterministic error with a precise message instead of a shape failure.
+
+`drydock plan create` therefore does not emit this file. It emits a flat `TOPOLOGY.md` declaration
+carrying the Model-authored fields below — one `## story <id>` heading per governed specification,
+no ordering, no `block:`, no `stack_mode:`, no `state:` — and Drydock serializes `MANIFEST.md` from
+it. The field semantics in this contract govern both forms.
 
 **Two-topology check.** The high-level and actual topologies must agree: a story in phase 2 cannot
 depend on a story in phase 3.

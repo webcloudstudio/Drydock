@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from fnmatch import fnmatch
@@ -52,7 +52,9 @@ from drydock.plan_feedback import (
     harvest_answered_questions,
     render_feedback_prompt,
 )
+from drydock.plan_graph import PlanComputation, PlannedStory
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
+from drydock.plan_topology import TOPOLOGY_BLOCK
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -93,7 +95,12 @@ _PLANNING_INSTRUCTIONS_RE = re.compile(r"^## Planning Instructions\s*$", re.MULT
 _SOURCE_CITATION_RE = re.compile(r"(?<![A-Za-z0-9_.\-*?])(sources/[A-Za-z0-9_./\-*?]+)")
 _SHAPE_RE = re.compile(r"Project type:\s*`?([A-Za-z][\w-]*)`?", re.MULTILINE)
 # Block names the LLM emits that are not authored Blueprint spec files.
-_RESERVED_BLOCKS = frozenset({"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"})
+_RESERVED_BLOCKS = frozenset({
+    "MANIFEST.md",
+    TOPOLOGY_BLOCK,
+    "PLAN_CREATE_BLOCKED.txt",
+    "PLAN_CREATE_ERROR.txt",
+})
 _NON_BLUEPRINT_ARTIFACTS = frozenset({"AGENTS.md"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
@@ -508,8 +515,8 @@ def _parse_write_call_blocks(text: str, target_dir: Path, blueprint_dir: Path) -
         except OSError:
             continue
         content = match.group("content").strip()
-        if path == target_root / "MANIFEST.md":
-            name = "MANIFEST.md"
+        if path.parent == target_root and path.name in {"MANIFEST.md", TOPOLOGY_BLOCK}:
+            name = path.name
         elif path.is_relative_to(blueprint_root):
             name = path.relative_to(blueprint_root).as_posix()
         else:
@@ -608,7 +615,9 @@ def _outside_text_is_waiver_eligible(
         return False
     if not _artifact_delimiters_are_complete(text, blocks):
         return False
-    if tuple(blocks)[-1] != "MANIFEST.md":
+    # The plan artifact is last: `TOPOLOGY.md` for a declaration, `MANIFEST.md` for the reuse and
+    # Spec Kit prompts, which still emit the plan directly.
+    if tuple(blocks)[-1] not in {"MANIFEST.md", TOPOLOGY_BLOCK}:
         return False
     normalized = [span.normalized for span in spans]
     if sum(len(text) for text in normalized) > _OUTSIDE_TEXT_LIMIT:
@@ -2125,6 +2134,14 @@ PLAN_OUTPUT_CONTRACT = OutputContract(
     require_typed_headings=False,
 )
 
+#: The same contract for the declaration path. ``plan create`` asks for a topology declaration and
+#: Drydock serializes the Manifest from it; the reuse and Spec Kit prompts still emit ``MANIFEST.md``
+#: directly and keep :data:`PLAN_OUTPUT_CONTRACT`.
+PLAN_TOPOLOGY_CONTRACT = OutputContract(
+    required=(TOPOLOGY_BLOCK,),
+    require_typed_headings=False,
+)
+
 #: The advisory half of the same contract. A missing typed heading is a real defect but a
 #: repairable one — ``conform_specs`` is the existing second model pass for exactly this — so it
 #: is reported rather than used to refuse a complete plan.
@@ -2133,9 +2150,12 @@ PLAN_SHAPE_ADVISORY = OutputContract(
 )
 
 
-def check_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
+def check_plan_shape(
+    blocks: dict[str, str],
+    contract: OutputContract = PLAN_OUTPUT_CONTRACT,
+) -> tuple[ShapeDefect, ...]:
     """Measure Success Mode artifacts against the fatal half of the declared output contract."""
-    return check_contract("", blocks, PLAN_OUTPUT_CONTRACT)
+    return check_contract("", blocks, contract)
 
 
 def advisory_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
@@ -2147,19 +2167,115 @@ def advisory_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
     )
 
 
+def _compute_schedule(
+    declared: Sequence[PlannedStory],
+    *,
+    blueprint_dir: Path,
+    emitted_files: dict[str, str],
+) -> PlanComputation:
+    """Verify a declared graph and compute everything positional about it.
+
+    Sizing is measured against the specification the story implements plus the Rigging stack files
+    it builds with, in the mode assigned to it — so it runs after stack modes are known, never
+    before. The result is a target, not a gate.
+    """
+    from drydock.plan_graph import compute_plan
+    from drydock.plan_stack import block_target_tokens, resolve_stack_set, story_pass_tokens
+
+    resolved = resolve_stack_set(name for story in declared for name in story.stack)
+
+    def specification_tokens(name: str) -> int:
+        text = emitted_files.get(name)
+        if text is None:
+            path = blueprint_dir / name
+            text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        return estimate_tokens(len(text.encode("utf-8")))
+
+    def size_fn(story: PlannedStory) -> int:
+        return story_pass_tokens(
+            specification_tokens=specification_tokens(story.implements),
+            stack=story.stack,
+            resolved=resolved,
+            mode=story.stack_mode or "builder",
+        )
+
+    return compute_plan(declared, target_tokens=block_target_tokens(), size_fn=size_fn)
+
+
+def _manifest_from_declaration(
+    declaration: str,
+    *,
+    project: str,
+    blueprint_dir: Path,
+    emitted_files: dict[str, str],
+    result: CompletedRun,
+) -> tuple[str, tuple[str, ...]]:
+    """Serialize ``MANIFEST.md`` from the model's topology declaration.
+
+    A declaration has nowhere to express a position, so the model cannot assert an order it has
+    not computed even by accident. Drydock verifies the declared graph and refuses an inconsistent
+    one with a precise defect rather than letting it reach disk.
+    """
+    from drydock.plan_topology import parse_topology, parse_topology_preamble, render_manifest
+
+    declared, defects = parse_topology(declaration)
+    if not declared:
+        raise SpecificationError(
+            _with_execution_evidence(
+                f"Plan generation failed: {TOPOLOGY_BLOCK} declared no stories.\n  "
+                + "\n  ".join(defect.rendered() for defect in defects)
+                + "\n  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    computation = _compute_schedule(
+        declared, blueprint_dir=blueprint_dir, emitted_files=emitted_files
+    )
+    if computation.fatal:
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: the declared work graph is inconsistent.\n  "
+                + "\n  ".join(defect.rendered() for defect in computation.fatal)
+                + "\n  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+
+    manifest_text = render_manifest(
+        project,
+        computation.stories,
+        computation.blocks,
+        updated=datetime.now(timezone.utc).isoformat(timespec="seconds"),  # noqa: UP017
+        preamble=parse_topology_preamble(declaration),
+    )
+    warnings = tuple(defect.rendered() for defect in defects) + tuple(
+        defect.rendered() for defect in computation.warnings
+    )
+    return manifest_text, warnings
+
+
 def _validate_plan_output(
     blocks: dict[str, str],
     blueprint_dir: Path,
     result: CompletedRun,
     source_text: str | None = None,
+    *,
+    project: str = "",
 ) -> tuple[BuildPlan, tuple[str, ...]]:
     """Validate one LLM response mode and return the parsed plan for success mode.
 
     ``source_text`` is the delimited response the blocks were parsed from, when there
     is one.  It is ``None`` for blocks recovered from write-tool-call syntax, which
     carry no ``=== NAME ===`` delimiters and therefore cannot be pairing-checked.
+
+    Two success carriers are accepted, branched on explicitly: a ``TOPOLOGY.md`` declaration,
+    which Drydock verifies, orders, blocks, and serializes into ``MANIFEST.md`` here, and a
+    ``MANIFEST.md`` the model wrote directly, which the reuse and Spec Kit prompts still emit.
     """
-    mode_blocks = {"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"} & set(blocks)
+    # Branch on which plan artifact the response carries, before anything else reads it.
+    carrier = TOPOLOGY_BLOCK if TOPOLOGY_BLOCK in blocks else "MANIFEST.md"
+    mode_blocks = {carrier, "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"} & set(blocks)
 
     if "PLAN_CREATE_BLOCKED.txt" in blocks:
         if set(blocks) != {"PLAN_CREATE_BLOCKED.txt"}:
@@ -2195,14 +2311,14 @@ def _validate_plan_output(
     if not mode_blocks:
         raise SpecificationError(
             _with_execution_evidence(
-                "Plan generation failed: LLM output missing === MANIFEST.md === block.\n"
+                f"Plan generation failed: LLM output missing === {TOPOLOGY_BLOCK} === block.\n"
                 "  The response must contain only delimited artifact blocks.\n"
                 "  No Blueprint or Manifest artifacts were written.",
                 result,
             )
         )
 
-    if mode_blocks != {"MANIFEST.md"}:
+    if mode_blocks != {carrier}:
         raise SpecificationError(
             _with_execution_evidence(
                 "Plan generation failed: LLM output mixed response modes.\n"
@@ -2230,7 +2346,10 @@ def _validate_plan_output(
     # Measure the artifact set against the declared output contract before anything is parsed
     # or written — an absolute, deterministic guardrail in place of the prompt's former
     # self-verification tail.
-    shape_defects = check_plan_shape(blocks)
+    shape_defects = check_plan_shape(
+        blocks,
+        PLAN_TOPOLOGY_CONTRACT if carrier == TOPOLOGY_BLOCK else PLAN_OUTPUT_CONTRACT,
+    )
     if shape_defects:
         raise SpecificationError(
             _with_execution_evidence(
@@ -2240,6 +2359,21 @@ def _validate_plan_output(
                 + "\n  No Blueprint or Manifest artifacts were written.",
                 result,
             )
+        )
+
+    declaration_warnings: tuple[str, ...] = ()
+    if carrier == TOPOLOGY_BLOCK:
+        # Zone C. The model declared what each story is, requires, and provides; Drydock verifies
+        # the graph, orders it, packs it into blocks, and serializes the Manifest. The declaration
+        # is transient and never reaches disk.
+        blocks["MANIFEST.md"], declaration_warnings = _manifest_from_declaration(
+            blocks.pop(TOPOLOGY_BLOCK),
+            project=project,
+            blueprint_dir=blueprint_dir,
+            emitted_files={
+                name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS
+            },
+            result=result,
         )
 
     # Guarantee unique block ids before validation: the model may reuse one slug
@@ -2315,6 +2449,7 @@ def _validate_plan_output(
     # so they must not be buried under advisory graph notes.
     warnings = (
         dropped_acceptance
+        + declaration_warnings
         + tuple(defect.rendered() for defect in advisory_plan_shape(emitted_files))
     ) + tuple(
         _integrity_check(
@@ -2424,8 +2559,14 @@ def _prepare_manifest_in_memory(
     compass_sources: frozenset[str],
     prior_applied_specs: dict[str, AppliedSpecRecord],
     prior_block_states: dict[str, tuple[str, str | None]],
+    schedule_computed: bool = False,
 ) -> tuple[str, ...]:
-    """Merge prior state and normalize context before any target artifact write."""
+    """Merge prior state and normalize context before any target artifact write.
+
+    ``schedule_computed`` is set when the Manifest was serialized from a topology declaration:
+    the schedule was already computed from the declaration, so re-deriving it from the Manifest
+    that carries it would repeat the same measurement for the same answer.
+    """
     from drydock.build import is_feature_step, is_screen_step, normalize_context_names
     from drydock.build_plan import _format_applied_specs
 
@@ -2498,9 +2639,10 @@ def _prepare_manifest_in_memory(
         if updates:
             plan.set_fields(block.block_id, **updates)
 
-    warnings.extend(
-        _apply_computed_schedule(plan, blueprint_dir=blueprint_dir, emitted_files=emitted_files)
-    )
+    if not schedule_computed:
+        warnings.extend(
+            _apply_computed_schedule(plan, blueprint_dir=blueprint_dir, emitted_files=emitted_files)
+        )
     plan.validate()
     return tuple(warnings)
 
@@ -2524,36 +2666,15 @@ def _apply_computed_schedule(
 
     A Manifest still using the legacy block taxonomy carries no ``type:`` and is left untouched.
     """
-    from drydock.plan_graph import compute_plan
-    from drydock.plan_stack import (
-        resolve_stack_set,
-        story_budget_tokens,
-        story_pass_tokens,
-    )
     from drydock.plan_topology import computed_field_updates, stories_from_manifest
 
     declared = stories_from_manifest(plan.blocks)
     if not declared:
         return []
 
-    resolved = resolve_stack_set(name for story in declared for name in story.stack)
-
-    def specification_tokens(name: str) -> int:
-        text = emitted_files.get(name)
-        if text is None:
-            path = blueprint_dir / name
-            text = path.read_text(encoding="utf-8") if path.is_file() else ""
-        return estimate_tokens(len(text.encode("utf-8")))
-
-    def size_fn(story) -> int:
-        return story_pass_tokens(
-            specification_tokens=specification_tokens(story.implements),
-            stack=story.stack,
-            resolved=resolved,
-            mode=story.stack_mode or "builder",
-        )
-
-    computation = compute_plan(declared, target_tokens=story_budget_tokens(), size_fn=size_fn)
+    computation = _compute_schedule(
+        declared, blueprint_dir=blueprint_dir, emitted_files=emitted_files
+    )
     if computation.fatal:
         return [defect.rendered() for defect in computation.fatal]
     for story_id, updates in computed_field_updates(computation.stories).items():
@@ -2773,7 +2894,7 @@ def _approve_outside_text_candidate(
 
     try:
         validated_plan, validated_warnings = _validate_plan_output(
-            exc.blocks, blueprint_dir, result, source_text=result.text
+            exc.blocks, blueprint_dir, result, source_text=result.text, project=target
         )
     except Exception as validation_exc:
         raise _record_plan_error(
@@ -3103,6 +3224,9 @@ def create_plan(
 
     validated_plan: BuildPlan | None = None
     validated_warnings: tuple[str, ...] = ()
+    # Whether the plan was serialized from a topology declaration, in which case the schedule is
+    # already computed and the merge path must not re-derive it.
+    declared_topology = False
     waiver_execution_id: str | None = None
     waiver_warning: str | None = None
     # The delimited response the blocks came from, tracked so the pairing check measures the
@@ -3130,6 +3254,7 @@ def create_plan(
             blocks_text = None
         else:
             blocks = exc.blocks
+            declared_topology = TOPOLOGY_BLOCK in blocks
             (
                 validated_plan,
                 validated_warnings,
@@ -3298,8 +3423,9 @@ def create_plan(
                     plan_mode=plan_mode,
                 )
         try:
+            declared_topology = TOPOLOGY_BLOCK in blocks
             plan, warnings = _validate_plan_output(
-                blocks, blueprint_dir, result, source_text=blocks_text
+                blocks, blueprint_dir, result, source_text=blocks_text, project=target
             )
         except Exception as exc:
             record = write_error_record(
@@ -3337,6 +3463,7 @@ def create_plan(
         ),
         prior_applied_specs=prior_applied_specs,
         prior_block_states=prior_block_states,
+        schedule_computed=declared_topology,
     )
     plan.path = plan_path
     blocks["MANIFEST.md"] = plan.render()

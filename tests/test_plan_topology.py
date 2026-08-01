@@ -10,6 +10,7 @@ from drydock.plan_graph import PlannedStory, compute_plan
 from drydock.plan_topology import (
     computed_field_updates,
     parse_topology,
+    parse_topology_preamble,
     parse_topology_strict,
     render_manifest,
     render_story_block,
@@ -244,3 +245,44 @@ def test_rendered_instructions_use_the_indented_block_scalar_form():
     rendered = render_story_block(story, 1)
 
     assert "instructions: |\n  One.\n  Two." in rendered
+
+
+# ── Plan-level declaration fields ────────────────────────────────────────────────────
+
+PREAMBLE_DECLARATION = (
+    """note:        Stack variance resolved in favour of FastAPI.
+planning_feedback: |
+  decision-0123456789abcdef applied FEATURE-Catalog.md
+  decision-fedcba9876543210 retained
+ignored:     not a plan-level field
+
+"""
+    + DECLARATION
+)
+
+
+def test_preamble_fields_are_read_from_before_the_first_story():
+    preamble = parse_topology_preamble(PREAMBLE_DECLARATION)
+    assert preamble["note"] == "Stack variance resolved in favour of FastAPI."
+    assert "decision-fedcba9876543210 retained" in preamble["planning_feedback"]
+    assert "ignored" not in preamble
+
+
+def test_a_field_after_the_first_story_is_not_a_preamble_field():
+    assert parse_topology_preamble(DECLARATION) == {}
+
+
+def test_rendered_preamble_parses_back_into_manifest_metadata():
+    computed = compute_plan(parse_topology_strict(PREAMBLE_DECLARATION))
+    text = render_manifest(
+        "Demo",
+        computed.stories,
+        computed.blocks,
+        preamble=parse_topology_preamble(PREAMBLE_DECLARATION),
+    )
+    manifest = DrydockManifest.parse(text, source="MANIFEST.md")
+    assert manifest.state == "approved"
+    assert (
+        "decision-0123456789abcdef applied FEATURE-Catalog.md"
+        in manifest.metadata.fields["planning_feedback"]
+    )

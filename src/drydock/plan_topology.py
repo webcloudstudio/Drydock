@@ -25,7 +25,7 @@ one home and removes the duplication of the same fact in both files.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from drydock.errors import SpecificationError
@@ -54,8 +54,15 @@ _PASSTHROUGH_FIELDS = (
     "accepts",
     "context",
     "rules",
+    "copy",
+    "scope",
+    "feedback",
     "instructions",
 )
+
+#: Preamble fields the declaration may state before its first ``## story`` heading. They describe
+#: the plan rather than a story, so they are carried into the rendered Manifest preamble.
+_PREAMBLE_FIELDS = ("note", "planning_feedback")
 
 #: Fields the declaration may write as a ``field: |`` block scalar. ``instructions`` is prose the
 #: build engine requires, and it does not fit one line.
@@ -207,6 +214,37 @@ def parse_topology(text: str) -> tuple[tuple[PlannedStory, ...], tuple[TopologyD
     return tuple(stories), tuple(defects)
 
 
+def parse_topology_preamble(text: str) -> dict[str, str]:
+    """Return the plan-level fields declared before the first ``## story`` heading.
+
+    A declaration has no Manifest preamble of its own, but two facts belong to the plan rather
+    than to any story: ``planning_feedback``, which records what became of each injected
+    Persistent Plan decision, and ``note``, which records a resolved variance. Both are carried
+    through to the rendered Manifest preamble; everything else there is Drydock's to set.
+    """
+    values: dict[str, str] = {}
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if _STORY_HEADER_RE.match(stripped):
+            break
+        match = _FIELD_RE.match(stripped)
+        if match:
+            field_name = match.group("field").strip().lower()
+            value = match.group("value").strip()
+            if field_name not in _PREAMBLE_FIELDS:
+                index += 1
+                continue
+            if value == "|":
+                body, index = _consume_block_scalar(lines, index + 1)
+                values.setdefault(field_name, body)
+                continue
+            values.setdefault(field_name, value)
+        index += 1
+    return {key: value for key, value in values.items() if value.strip()}
+
+
 def parse_topology_strict(text: str) -> tuple[PlannedStory, ...]:
     """Parse a declaration, raising :class:`SpecificationError` on any defect."""
     stories, defects = parse_topology(text)
@@ -308,7 +346,7 @@ def render_story_block(story: PlannedStory, number: int) -> str:
     lines.append(f"block:        {story.block}")
     if story.implements:
         lines.append(f"implements:   {story.implements}")
-    for key in ("covers", "accepts", "context", "rules"):
+    for key in ("covers", "accepts", "context", "rules", "copy", "scope", "feedback"):
         if story.fields.get(key):
             lines.append(f"{key + ':':<14}{story.fields[key]}")
     if story.fields.get("instructions"):
@@ -344,11 +382,27 @@ def render_manifest(
     blocks: Sequence[Block],
     *,
     updated: str = "",
+    preamble: Mapping[str, str] | None = None,
 ) -> str:
-    """Serialize the computed plan. Ordering and serialization are Python's job, never the model's."""
+    """Serialize the computed plan. Ordering and serialization are Python's job, never the model's.
+
+    ``preamble`` carries the declaration's plan-level fields. The remaining preamble fields
+    (``plan_hash``, ``applied_specs``) are set by the merge path on the parsed plan, which already
+    owns them and does not need a second writer here.
+    """
     header = [f"# MANIFEST: {project}"]
     if updated:
         header.append(f"updated:     {updated}")
+    header.append("state:       approved")
     header.append(f"blocks:      {len(blocks)}")
+    for key, value in (preamble or {}).items():
+        if not str(value).strip():
+            continue
+        body = str(value).splitlines()
+        if len(body) > 1:
+            header.append(f"{key}: |")
+            header.extend(f"  {line}" if line.strip() else "" for line in body)
+        else:
+            header.append(f"{key + ':':<13}{body[0]}")
     body = [render_story_block(story, index) for index, story in enumerate(stories, start=1)]
     return "\n".join(header) + "\n\n" + "\n\n".join(body) + "\n"

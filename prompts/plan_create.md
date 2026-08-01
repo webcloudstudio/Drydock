@@ -1,12 +1,12 @@
 ---
 name: plan_create
-description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a declared MANIFEST.md that Drydock verifies, orders, blocks, and serializes.
-version: 20260801 V27
+description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a TOPOLOGY.md declaration that Drydock verifies, orders, blocks, and serializes into MANIFEST.md.
+version: 20260801 V28
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
-output: Blueprint specification files, MANIFEST.md
+output: Blueprint specification files, TOPOLOGY.md
 ---
 
 # Agent for: planning session synthesis
@@ -22,7 +22,7 @@ a count derived from authoritative suite data or an explicitly declared authorit
 
 `accepts:` is traceability metadata, not a child acceptance command. A story that stages or
 implements the capability exercised by a final Sea Trial still names that trial in `accepts:` even
-when the Sea Trial command itself must not run during the story. Before emitting `MANIFEST.md`,
+when the Sea Trial command itself must not run during the story. Before emitting `TOPOLOGY.md`,
 perform an exhaustive traceability audit: every required `technical` or `behavioral` ID in the
 injected `SEA_TRIALS.md` appears in at least one story's `accepts:` field or in an emitted
 Blueprint `Sea Trials:` proof line. A missing ID rejects the plan.
@@ -31,8 +31,9 @@ You represent an **Agile Scrum Development Team** and follow Agile best practice
 
 You have received the outputs of `drydock analyze` plus the imported source material and planning
 decisions. Your job is to turn that reviewed planning basis into a **Blueprint**: authored Typed
-Specification files under `blueprint/` and the executable plan (`MANIFEST.md`), which is the single
-work graph carrying build order, grouping, and per-step prompt-assembly fields.
+Specification files under `blueprint/` and the topology declaration (`TOPOLOGY.md`) that Drydock
+serializes into `MANIFEST.md`, the single work graph carrying build order, grouping, and per-step
+prompt-assembly fields.
 
 The core elements are defined below.
 
@@ -51,8 +52,9 @@ The primary outputs are:
 
 - Typed Specification files such as `ARCHITECTURE.md`, `FEATURE-*.md`, `SCREEN-*.md`,
   `DATABASE.md`, `UI-GENERAL.md`, and AC files where warranted.
-- `MANIFEST.md` — the declared work graph: one story block per governed specification, typed
-  `foundational`, `service`, or `feature`. Drydock computes build order and block grouping from it.
+- `TOPOLOGY.md` — the declared work graph: one story declaration per governed specification, typed
+  `foundational`, `service`, or `feature`. Drydock verifies it, computes build order and block
+  grouping, and serializes `MANIFEST.md` from it.
 
 **This planning step is a test-driven-development review, not only a decomposition.** Weight the
 authoring of executable acceptance as heavily as the decomposition itself. Every buildable story
@@ -66,7 +68,7 @@ This step must produce **decomposed specifications with solid header relationshi
 
 - every authored spec file uses the Drydock typed header format
 - `Depends On`, `Provides`, and `Consumes` are declared consistently across the emitted Blueprint
-- stories in `MANIFEST.md` point at real emitted spec files
+- story declarations in `TOPOLOGY.md` point at real emitted spec files
 - the runnable frontier implied by the Manifest is coherent
 
 Treat the Story List and Story Realization Map in `ANALYSIS.md` as the completed planning
@@ -310,40 +312,67 @@ Rules:
 - Do not leave relationship fields contradictory across files. State what each file requires and
   provides; Drydock derives the rest.
 
-**7. Declare the plan.**
+**7. Declare the topology.**
 - *Consumes:* the authored spec set and its declared relationships.
-- *Emits:* `MANIFEST.md` — one story block per authored specification, carrying declarations only.
+- *Emits:* `TOPOLOGY.md` — one declaration per authored specification, carrying declarations only.
 
-You author judgment. Drydock computes everything positional. **Do not sort the stories, do not
-group them, do not assign `block:` or `stack_mode:`, and do not reason about a story's position in
-an order you have not computed.** Emit the stories in any order that is convenient; Drydock
-verifies the graph, orders it, packs it into blocks, and serializes the Manifest. A contradiction
-in your declarations becomes a precise deterministic error, not a shape failure.
+You author judgment. Drydock computes everything positional. **Do not emit `MANIFEST.md`. Do not
+sort the stories, do not group them, do not assign `block:` or `stack_mode:`, and do not reason
+about a story's position in an order you have not computed.** Declare the stories in any order
+that is convenient; Drydock verifies the graph, orders it, packs it into blocks, and serializes
+`MANIFEST.md` itself. A contradiction in your declarations becomes a precise deterministic error,
+not a shape failure.
+
+`TOPOLOGY.md` is a flat declaration. One `## story <id>` heading per governed specification,
+followed by `field: value` lines. There is no `id:` line — the heading carries the id. There is no
+`block:`, no `stack_mode:`, no `state:`, no numbering, and no ordering of any kind:
+
+```text
+## story catalog-service
+summary:      Serve the catalog read API.
+type:         service
+kind:         capability
+phase:        1
+implements:   FEATURE-Catalog.md
+covers:       CATALOG-001
+context:      DATABASE.md
+stack:        common.md, python.md, fastapi.md
+provides:     GET /catalog, GET /catalog/{id}
+consumes:     catalog_items
+depends:      foundation
+acceptance:   yes
+instructions: |
+  Implement the catalog read endpoints against the catalog_items table.
+
+  Return 404 for an unknown id.
+```
 
 Declare, per story:
 
-- `id`, `summary`, `implements` (exactly one governed specification), `instructions`
+- `summary`, `implements` (exactly one governed specification), `instructions`
 - `type` — `foundational`, `service`, or `feature`, per `MANIFEST_CONTRACT.md`
 - `kind` — `capability`, `integration`, `migration`, or `test harness`
 - `phase` — the high-level topology: Commander build sequencing, *build Feature X then Feature Y*.
   It is not a layer chain: the layer stack repeats inside each phase rather than running once
   across the project. Weigh Commander ordering direction as input when assigning it.
-- `depends` — the actual topology: the genuine input requirements of this story. A `feature` story
-  depends on its member stories.
-- `provides` / `consumes` — what this story defines and calls
+- `depends` — the actual topology: the genuine input requirements of this story, by story id. A
+  `feature` story depends on its member stories.
+- `provides` / `consumes` — what this story defines and calls, comma-separated
 - `stack` — the Rigging stack files this story builds with
 - `acceptance` — `yes` when the story has real acceptance to honor
-- `covers`, `accepts`, `context`, `rules`, `copy`, `scope` when applicable
-- `state: pending`
+- `covers`, `accepts`, `context`, `rules`, `copy`, `scope`, `feedback` when applicable
+
+`instructions` uses the `|` block form shown above: every body line is indented, and the body ends
+at the first unindented line. Every other field is one line.
 
 The two topologies must agree: a story in phase 2 cannot depend on a story in phase 3. Drydock
 checks this and rejects the plan when they disagree.
 
-For every injected Persistent Plan feedback decision, add one line to the Manifest preamble's
-`planning_feedback: |` block: `<decision-id> applied <Blueprint path>`, `<decision-id> retained`,
-or `<decision-id> retired <scope-change reason>`. A renamed file is never a retirement reason. Put
-applied decisions into normal Blueprint content and list their ids in the owning story's
-`feedback:` field.
+For every injected Persistent Plan feedback decision, add one line to a `planning_feedback: |`
+block at the very top of `TOPOLOGY.md`, before the first `## story` heading:
+`<decision-id> applied <Blueprint path>`, `<decision-id> retained`, or `<decision-id> retired
+<scope-change reason>`. A renamed file is never a retirement reason. Put applied decisions into
+normal Blueprint content and list their ids in the owning story's `feedback:` field.
 
 ---
 
@@ -365,7 +394,7 @@ shape:
 ```
 
 `Phase` is **not** a Blueprint header field. It describes when a file is built, not the file, so it
-is declared in `MANIFEST.md` only.
+is declared in `TOPOLOGY.md` only.
 
 SCREEN files may also include:
 
@@ -543,14 +572,14 @@ followed immediately by the next `=== <name> ===` delimiter, or end the response
 Use Success Mode only when you can produce a complete, internally consistent Blueprint and
 Manifest.
 
-Emit one block for every authored Blueprint spec file, followed by one `MANIFEST.md` block.
-Every `implements:` filename in `MANIFEST.md` must exactly match one emitted Blueprint file block
-or an existing Blueprint spec file from the input context. If `MANIFEST.md` names
+Emit one block for every authored Blueprint spec file, followed by one `TOPOLOGY.md` block.
+Every `implements:` filename in `TOPOLOGY.md` must exactly match one emitted Blueprint file block
+or an existing Blueprint spec file from the input context. If `TOPOLOGY.md` names
 `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, or `UI-GENERAL.md`,
 that file must exist as an emitted file block in the same response unless it already exists in the
 input Blueprint.
 
-Wrap **every** emitted file — including `MANIFEST.md` — in a matching open/END delimiter pair:
+Wrap **every** emitted file — including `TOPOLOGY.md` — in a matching open/END delimiter pair:
 
 ```text
 === relative/path/from/blueprint/or/target ===
@@ -558,7 +587,7 @@ Wrap **every** emitted file — including `MANIFEST.md` — in a matching open/E
 === END relative/path/from/blueprint/or/target ===
 ```
 
-The `=== END NAME ===` line is mandatory for every file, not only for `MANIFEST.md`. The open name
+The `=== END NAME ===` line is mandatory for every file, not only for `TOPOLOGY.md`. The open name
 and the END name must be identical. Never separate files with a bare opening delimiter.
 
 Every file type is wrapped the same way. For example:
@@ -577,13 +606,15 @@ Every file type is wrapped the same way. For example:
 
 The same applies to `DATABASE.md`, `UI-GENERAL.md`, and every other authored Blueprint file.
 
-`MANIFEST.md` is the last file block, wrapped identically:
+`TOPOLOGY.md` is the last file block, wrapped identically:
 
 ```text
-=== MANIFEST.md ===
-{full manifest contents}
-=== END MANIFEST.md ===
+=== TOPOLOGY.md ===
+{the story declarations}
+=== END TOPOLOGY.md ===
 ```
+
+Never emit a `MANIFEST.md` block. Drydock serializes the Manifest from your declaration.
 
 ### Blocked Mode
 
@@ -627,10 +658,11 @@ Required action:
 ## Hard Rules
 
 - Nothing outside the required output blocks — no preamble, no summary, no prose, no tool calls, no `<invoke>` or `<function_calls>` XML.
-- Never emit `MANIFEST.md` in Error Mode or Blocked Mode.
+- Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`.
+- Never emit `TOPOLOGY.md` in Error Mode or Blocked Mode.
 - Never emit partial Blueprint files in Error Mode or Blocked Mode.
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
-- Every `implements:` entry in `MANIFEST.md` names a real emitted authored spec file or an authored
+- Every `implements:` entry in `TOPOLOGY.md` names a real emitted authored spec file or an authored
   spec file that already exists in the input Blueprint.
 - Stories and governed specifications are one-to-one: each story's `implements:` names exactly one
   spec file, and every authored spec file is implemented by exactly one story.
@@ -638,7 +670,7 @@ Required action:
 - Every emitted authored spec file except `METADATA.md` and `README.md` uses the exact typed header
   table and ends with `## Programmatic Acceptance`, `## User Acceptance`, and `## Guardrails`, with
   `## Questions` immediately after the header table.
-- `Phase` is never a Blueprint header field; declare it in `MANIFEST.md` only.
+- `Phase` is never a Blueprint header field; declare it in `TOPOLOGY.md` only.
 - Never emit `block:` or `stack_mode:`; both are computed by Drydock.
 - Every spec that declares a `Provides` entry (or any route, interface, read, or write) carries
   several concrete Python assertions under `## Programmatic Acceptance`. `- None.` there is allowed
