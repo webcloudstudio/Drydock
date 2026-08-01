@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V12 |
+| Version | 2026-08-01 V13 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 38 approved items |
-| Pending impl | 1 unimplemented section (Zone B declaration cutover) |
+| Pending spec | 42 approved items |
+| Pending impl | 3 unimplemented sections (Zone B declaration cutover; constraints as questions — plan side; continuation) |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -398,16 +398,24 @@ section, harvested deterministically beforehand, and notes changes survive.
 ### Story sizing
 `2026-08-01` · `spec:approved` · `impl:implemented`
 
-The correct ceiling is what one build agent can implement and verify in a single pass — its
-specification plus stack files in, a working diff and passing assertions out. This is measurable in
-tokens before anything runs.
+A story is a normal Agile story: **1 to 5 story points**. Never a half point — that is a task, and a
+task is folded into the story it serves. Never twelve — that is split. A story does one thing
+completely, carries test criteria, and is releasable on its own. A task is not releasable and is
+therefore not a story.
 
-**Supersedes** the story-too-big effort threshold in §Scrum Guardrails and its `.env` setting. A
-one-week sprint is an artifact of human capacity and carries no meaning here. The goal is a set of
-small building blocks that can be built easily.
+**A story has no token dimension.** Tokens measure the block a story is built in, never the story.
+See §Token thresholds belong to the block.
 
-Note the symmetry: an over-sized story fails at build for the same reason an over-sized plan fails
-at plan. One ceiling, one diagnosis, two altitudes.
+**Supersedes** the story-too-big effort threshold in §Scrum Guardrails and its `.env` setting, and
+supersedes this section's own earlier ceiling — "what one build agent can implement and verify in a
+single pass". That framing was wrong at the root, not merely misplaced. It presumed a build pass has
+a capacity edge corresponding to a unit of work; a model will accept a whole epic in one pass and
+build it badly, so capacity says nothing about whether the unit is a story. It also read to a model
+as a permission slip: anything that fits is fine, and "add a button" fits best of all. That was a
+ceiling with no floor. The Agile definition above is the floor and the ceiling together.
+
+The abandoned symmetry claim — an over-sized story fails at build for the same reason an over-sized
+plan fails at plan — was the same error at two altitudes. Only the block has a token ceiling.
 
 ### Shape conformance is a checker, not an instruction
 `2026-08-01` · `spec:approved` · `impl:implemented`
@@ -585,12 +593,18 @@ merely costs tokens — so default to builder on ambiguity.
 ### Story count is not capped
 `2026-08-01` · `spec:approved` · `impl:implemented`
 
-The ~100-story cap (`_STORY_CAP`, fatal) is removed. §Story sizing replaced the effort threshold with
-"one build pass," which has no opinion about how many stories a project contains; a correct
-300-story project is plausible and would be refused today. Scale is answered with a stronger model,
-not a refusal to plan.
+The ~100-story cap (`_STORY_CAP`, fatal) is removed. A correct 300-story project is plausible and
+would be refused today. Scale is answered with a stronger model, not a refusal to plan.
 
-A manageable number well under 100 remains the ideal, as guidance rather than a gate.
+**Justification replaced `2026-08-01`.** This section originally rested on §Story sizing's "one
+build pass," which that section has since retracted. The conclusion stands on a different footing:
+story count is an *output* of correct Agile decomposition, never a target to hit or avoid. The thing
+worth bounding is blocks, not stories. Do not re-derive a cap from the retracted argument.
+
+The old cap was catching bad granularity by proxy — an LLM deciding that "add a button" and "add a
+test" were each a story. The proxy is gone and the thing it stood for is now stated directly in
+§Story sizing. A manageable number remains the ideal, as guidance rather than a gate; when the count
+is implausibly high, Analyze asks (see §Constraints surface as questions).
 
 ### As-Built Structure (2026-08-01)
 `2026-08-01` · `spec:approved` · `impl:implemented`
@@ -771,7 +785,7 @@ order and `_outside_text_is_waiver_eligible` already requires a terminal `MANIFE
 
 **Tests**
 
-`tests/test_plan_graph.py` (34), `tests/test_plan_topology.py` (13), `tests/test_plan_shape.py`
+`tests/test_plan_graph.py` (34), `tests/test_plan_topology.py` (20), `tests/test_plan_shape.py`
 (14), `tests/test_plan_stack.py` (17), plus eight Zone A/C integration tests appended to
 `tests/test_planning_session.py`.
 
@@ -827,10 +841,12 @@ output format; the cutover is a separable, smaller change.
    `render_manifest(...)` → `DrydockManifest.parse` for validation → the existing
    `_prepare_manifest_in_memory` merge path. `_apply_computed_schedule` collapses into this: it
    exists only to re-derive from a Manifest the model wrote.
-4. **Instructions field.** `render_story_block` does not yet emit `instructions:`, which the build
-   engine requires. Add it to `_PASSTHROUGH_FIELDS` and to the renderer, and handle the scalar
-   block form (`instructions: |`) in `parse_topology` — the current field parser is single-line
-   only. **This is the one real gap; the rest is wiring.**
+4. ~~**Instructions field.**~~ **DONE `2026-08-01`.** `parse_topology` consumes a `field: |` body,
+   ending it at the first column-zero line so a following field or `## story` heading still parses;
+   common indentation is stripped. `render_story_block` emits the indented two-space form
+   `build_plan` reads. `instructions` joined `_PASSTHROUGH_FIELDS`. Verified end to end:
+   declaration → computed Manifest → `DrydockManifest.parse`, multi-paragraph prose and blank line
+   intact. This was the one real gap; **the rest is wiring.**
 5. **Preamble.** `render_manifest` emits only `# MANIFEST:`, `updated:`, and `blocks:`. It must
    also carry `plan_hash`, `state`, `applied_specs`, and `planning_feedback`, which
    `_prepare_manifest_in_memory` currently sets on a parsed plan. Decide whether the renderer
@@ -866,13 +882,127 @@ Recorded so the analysis is not repeated.
 
 All five runs used `claude-sonnet-5` on the same code path and ended with `stop_reason: end_turn`.
 Sonnet emitted 132,692 output tokens and a complete thirty-file plan five days before the failures,
-so there is no ceiling near 70,000. Every emitted block was well-formed and correctly closed; the
-runs were not truncated.
+so there is no ceiling near 70,000.
 
 `drydock plan CommonMark` passes under the current prompt, so `plan_create.md` V26 and the
 accumulated guardrails are exonerated. The three Marina runs terminating within 1.5% of each other
-indicates a consistent stopping condition rather than model variance. The cause remains
-unidentified and Marina-specific.
+indicates a consistent stopping condition rather than model variance.
+
+**Amended `2026-08-01` after a fourth Marina run (41 files).** The headline holds and is now proven
+rather than inferred: **capacity is not the discriminator.** The premise "the runs were not
+truncated" does not hold, and the per-message evidence identifies the real signal.
+
+Every `claude` run — failures *and* successes — carries a `max_tokens` message end. Crossing the
+64,000-token per-message output cap is routine and `claude -p` transparently continues past it.
+
+| Run | msg 1 | msg 2 | msg 3 | Files | MANIFEST |
+|---|---|---|---|---|---|
+| CommonMark 07-27 | cap 64k (63,999 thinking) | cap 64k (25,955 thinking) | end_turn 4,692 | 30 | yes |
+| CommonMark 07-27 | cap 64k (64,000 thinking) | cap 64k (27,886 thinking) | end_turn 6,592 | 31 | yes |
+| Marina 08-01 a/b/c | cap 64k | end_turn 5–6k | — | 8–13 | no |
+| Marina 08-01 d | cap 64k (39,249 thinking) | end_turn 18,420 | — | 41 | no |
+
+**The successes truncate more than the failures.** The discriminator is message count: CommonMark
+continues into a third message and lands the Manifest there; Marina's second message ends
+voluntarily, one artifact short. The model is not being cut off at the end — it is stopping.
+
+Why it stops is still unidentified: thinking text is not persisted, only token counts. One untested
+observation — CommonMark spent its entire first message thinking (63,999 of 64,000) and then wrote
+cleanly, while Marina interleaves, so its cap lands mid-artifact and the resumption must recover
+from a broken tail.
+
+Two corrections to the record:
+
+- **Granularity was never the problem.** `targets/Marina/ANALYSIS.md` holds 63 stories and 43 Story
+  Realization Map entries against 46 source files — close to the one-story-per-source expectation,
+  at defensible Agile granularity (`HARNESS-001 Typed settings model and resolution order`). A
+  "99 candidate stories" figure reported by a second agent is not in the file. Verify counts before
+  acting on them.
+- **Some output was damaged, and silently.** Marina run *d* was cut inside
+  `FEATURE-Reconciliation.md` and the continuation restarted that artifact, leaving the truncated
+  attempt and its retry fused into one block that still pairs 1:1. Run *b* has the same shape
+  (`DATABASE.md (continued)` inside `DATABASE.md`). A CommonMark codex run lost
+  `FEATURE-Autolinks.md` entirely to an opener with no `END`. All three now fail loudly — see
+  §Artifact delimiter guardrail.
+
+The trajectory across the four Marina runs is 8 → 8 → 13 → 41 files. The restructure is converging;
+run *d* authored a near-complete Blueprint and failed only on its final artifact.
+
+### Token thresholds belong to the block
+`2026-08-01` · `spec:approved` · `impl:implemented`
+
+The token ceiling is a **block** property. Because a block holds at least one story, it constrains a
+story only in the degenerate single-story case — which is the only sense in which token cost is ever
+story guidance. One measurement, one owner, no duplicate rule to keep in sync.
+
+Two thresholds, both user-settable:
+
+| Threshold | Default | Meaning |
+|---|---|---|
+| `prompt_warn_tokens` | 50,000 | Yellow. Advisory, surfaced as a Manifest annotation. Never a stop sign. |
+| `prompt_error_tokens` | 120,000 | Red. The only genuine ceiling. |
+
+Warn must stay advisory on evidence, not preference: the first real specification tested against it
+— CommonMark — tripped 50K immediately with a legitimate contract. A threshold a correct plan
+crosses on day one cannot be a gate.
+
+`plan_stack` names this directly: `block_target_tokens()`, `exceeds_block_target()`,
+`DEFAULT_BLOCK_TARGET_TOKENS`. Prior spellings (`story_budget_tokens`, `exceeds_build_pass`,
+`DEFAULT_STORY_BUDGET_TOKENS`) are retained as aliases; they attached the measurement to a story.
+
+### Constraints surface as questions
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Red and yellow lights are raised as **questions, not refusals**, through machinery that already
+exists — `questions.py` defines `QUESTION_ORIGINS = {plan, build, analyze-questionnaire}`,
+`QUESTION_SEVERITIES`, and the `## Questions` / `QUESTIONS:` contract.
+
+- **Analyze — story count.** Above 80 stories, emit one `discovery-story-count.json` asking the
+  Commander to confirm granularity, quoting the real count and offering to take a target NUMBER for
+  a replan. `required_before_plan: false` — the plan is usable either way. Never drop, merge, or
+  withhold stories to get under the number, and never cap the list. *(Prompt-side: implemented.)*
+- **Plan — error threshold.** Raised as a `QUESTION:` block in a Blueprint rather than a hard
+  failure. Any question that does not belong to a specific story defaults to a foundational
+  Blueprint (`ARCHITECTURE.md`). Location is not load-bearing; being asked is. *(Unimplemented.)*
+
+### Artifact delimiter guardrail
+`2026-08-01` · `spec:approved` · `impl:implemented`
+
+Two structural failures reached the Blueprint as silent damage. Both now fail loudly in
+`_validate_plan_output`, via `_artifact_delimiter_defects`.
+
+- **Opens but never closes.** `_BLOCK_RE` pairs on a backreference, so an opener with no
+  `=== END ===` matches nothing and the whole specification vanishes without a word. One real run
+  lost `FEATURE-Autolinks.md` from a 26-artifact response.
+- **A header inside a parsed body.** The response was cut mid-artifact and resumed by restarting it;
+  `_BLOCK_RE` then spans from the first header to the first `=== END ===`, fusing the truncated
+  attempt and its retry into one block that still pairs 1:1 and still counts as present.
+
+Validated against 26 recorded runs: 23 clean accepted, 3 rejected, each provable damage. The check
+is **structural and has no opinion about size** — it is not a token gate and must never become one.
+It is deliberately narrow: missing leading and trailing delimiters have their own recovery paths,
+and orphan `END` lines are already rejected by `_reject_unpaired_end_delimiters`.
+
+The check runs only when the blocks came from delimited text. Blocks recovered from write-tool-call
+syntax carry no delimiters, so `source_text` is `None` for them and the check is skipped.
+
+### Continuation — resume, never discard
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+A run that stops one artifact short must not throw away twelve minutes and $2.70 of valid work.
+Model the existing build loop, which succeeds by exactly this method: append the prior state and the
+error to the same prompt and continue while progress is measurable ("5/10 AC" → "8/10 AC" → done).
+
+- **Progress metric:** specifications authored against specifications *declared*.
+- Continue while the missing count strictly decreases. Stop on no progress, not on an iteration
+  count. There is no retry limit and no size limit.
+- Assemble as the **byte-identical base prompt prefix** plus an appended block. The failed run
+  logged `cached 305,407 (100% hit)`; an identical prefix re-hits it.
+- Never discard already-valid artifacts.
+
+**Depends on the declaration.** Progress is unmeasurable without a count of what should exist, which
+is what §RESUME HERE — Zone B topology declaration cutover produces. That is the whole reason the
+cutover pays for itself here, and it is the strongest argument for landing it.
 
 ---
 
