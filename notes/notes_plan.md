@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-07-31 V8 |
+| Version | 2026-08-01 V9 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 17 approved items |
-| Pending impl | 0 unimplemented sections |
+| Pending spec | 28 approved items |
+| Pending impl | 10 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -306,6 +306,190 @@ CLI output is ASCII-safe on MSYS and other terminals whose Unicode rendering is 
 Decorative emoji may appear in QuarterDeck HTML, where Drydock controls presentation, but terminal
 meaning never depends on emoji or other ambiguous-width Unicode glyphs.
 
+## Plan Restructure (2026-08-01)
+
+Session goal: build `plan` the correct way. The driver was three consecutive Marina plan failures.
+The diagnostic is recorded below; the restructure is the design response.
+
+### Plan job inventory — deterministic versus model work
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+`plan` performs seventeen distinct jobs. Only four require a model.
+
+**Model work:**
+1. Author specification content.
+2. Author programmatic acceptance (test-driven).
+3. Resolve source and stack conflicts by precedence.
+4. Surface questions and build failure modes.
+
+**Deterministic work, to be grouped in one Python module:** phase computation, ordering, block
+grouping, Manifest assembly, topological sort, runnable-frontier check, planning-feedback ledger,
+typed-header shape, and delimiter verification.
+
+**Moved upstream:** decomposition belongs to Analyze.
+
+The Hard Rules in `plan_create.md` are largely instructions telling a model to behave like a
+program — topological consistency, one-to-one mapping, non-empty frontier, delimiter balance,
+header shape. They occupy the same context window as the four jobs that require intelligence.
+Tightening that prose is not the lever; removing the jobs from the prompt is.
+
+### One node type with story types
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+The Manifest is a list of stories. A `type` field is the only variation.
+
+| Type | Contains | Runs |
+|---|---|---|
+| `architecture` | Foundation and scaffolding | Early; work depends on it |
+| `service` | Everything that does work | Reorderable |
+| `feature` | Acceptance criteria plus assembly and intent; no implementation instructions | After its members |
+
+`spike` is retired as a node type. Research questions are handled by questionnaires before Plan and
+by the owning story's `## Questions` section after. **Supersedes** the `feature`/`story`/`spike`/`ac`
+block taxonomy in `MANIFEST_CONTRACT.md`.
+
+### Architecture versus service naming
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Architecture is foundational structure and scaffolding. Standing up S3 and proving the connection
+is architecture. Everything S3 subsequently does is a service.
+
+Everything that is not architecture is a service, and services are reorderable because they carry
+no structural debt. Much of what source material labels architecture is service work: the web
+server and the database are foundation; a voice service interpreter is a service wearing an
+architecture filename.
+
+Foundation status derives from the dependency graph, not from a filename prefix. The rule is
+*build the architecture framework that is needed*, not *build all architecture first*.
+
+### Story attributes
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+A story carries four orthogonal attributes, all deterministic:
+
+| Attribute | Values |
+|---|---|
+| Type | `architecture`, `service`, `feature` |
+| Delivery kind | `capability`, `integration`, `migration`, `test harness` |
+| Acceptance contract | Flag; the story has real acceptance to honor |
+| Stack | Stack files, each attached in **builder** or **consumer** mode |
+
+Delivery kind is already emitted by Analyze in the Story Realization Map. Observed distribution
+across Marina's 105 stories: capability 56, integration 13, migration 14, test harness 2, with the
+acceptance-contract flag on 14. `acceptance contract` never appears alone, confirming it is a flag
+rather than a kind.
+
+Stack mode is a property of the story's relationship to the stack, not of build order. A builder
+story receives the full stack file; a consumer story receives the interface view. This is the
+computable form of the compact-substitution rule and can be decided at plan time rather than
+tracked through an applied registry at build time.
+
+Type is separate from stack. A `service` may be a backend provider or a screen, so the
+no-cross-stack guardrail — which operates on stack — is unaffected.
+
+### Feature is an assembly story
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Features do not exist as a grouping construct. A feature is a story that depends on its member
+stories, carries acceptance criteria, and carries assembly and intent instructions instead of
+implementation instructions. Same node, same execution path, different content shape.
+
+When its member stories complete, the feature story runs and is made to pass like any other story.
+Integration testing therefore becomes a real build step rather than an implicit hope, covering the
+seams between stories where multi-story builds actually break.
+
+A feature story is preferably placed in the same block as its members.
+
+### Blocks replace features as the build grouping
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+A **block** is a set of stories optimized for context: sized to amortize fixed stack-file cost
+across one build run, never crossing stacks. Blocks are an optimization output, not a taxonomy.
+UI stories group together whether or not they belong to the same Agile feature.
+
+**Supersedes** the plan prompt rule that "context economy comes from `feature` grouping, not from
+bundling." Context economy comes from blocks. This is the same construct already specified in
+§Order and Batch and §The Compass as the `#`-delimited batch, still LLM-seeded rather than
+Python-computed.
+
+### Ordering inputs
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Ordering is guidance applied deterministically, not a hard-coded phase chain. Three inputs:
+
+1. **Topological constraint** — hard. Nothing precedes what it requires.
+2. **Stage assignment** — Commander direction. Marina is built in stages; work belonging to
+   stage 3 stays in stage 3 even when it could run earlier. Architecture required by stage 3 is a
+   stage-3 artifact.
+3. **Placement within the valid range** — the *latest* valid position in the assigned stage, not
+   the earliest.
+
+**Supersedes** the current `Phase` reading in `plan_create.md` ("foundation and architecture
+usually precede downstream features and screens"), which places work as early as possible.
+
+### Acceptance lives in one place per audience
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+- **Programmatic Acceptance** — executable assertions carrying pass/fail state. Lives in
+  `MANIFEST.md`. Not human-readable, not human-editable, regenerated wholly by every plan run.
+- **User Acceptance** — human-readable intent. Lives in the Blueprint specification.
+
+Today both appear in the Blueprint *and* `ac` blocks appear in the Manifest. That is the
+duplication. Splitting by audience gives each one home.
+
+Durability is not a discriminator: the Blueprint does not survive a replan. Only the `## Questions`
+section, harvested deterministically beforehand, and notes changes survive.
+
+### Story sizing
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+The correct ceiling is what one build agent can implement and verify in a single pass — its
+specification plus stack files in, a working diff and passing assertions out. This is measurable in
+tokens before anything runs.
+
+**Supersedes** the story-too-big effort threshold in §Scrum Guardrails and its `.env` setting. A
+one-week sprint is an artifact of human capacity and carries no meaning here. The goal is a set of
+small building blocks that can be built easily.
+
+Note the symmetry: an over-sized story fails at build for the same reason an over-sized plan fails
+at plan. One ceiling, one diagnosis, two altitudes.
+
+### Shape conformance is a checker, not an instruction
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Absolute guardrails against shape failure come from a deterministic post-checker over a declared
+output contract, per `ideas/PROMPT_HARDENING.md` (Warrant / Hull Check / Second Pass). The prompt
+currently ends by asking the model to verify its own delimiters and block completeness; that is
+free and reliable in code.
+
+Prompt hardening and this restructure are complementary, not alternatives. Staging is what makes a
+Second Pass affordable: re-emitting a two-file stage costs almost nothing, while re-emitting a
+thirty-file monolith re-sends the entire input. Hardening addresses shape failure only; it does not
+address the Marina failure recorded below.
+
+### Diagnostic — the Marina plan failure was not a capacity limit
+`2026-08-01` · `spec:na` · `impl:n/a`
+
+Recorded so the analysis is not repeated.
+
+| Run | Prompt | Output tokens | Text | Files | MANIFEST |
+|---|---|---|---|---|---|
+| CommonMark 07-27 | 313 KB | 132,692 | 107 KB | 30 | yes |
+| CommonMark 07-27 | 314 KB | 134,592 | 106 KB | 31 | yes |
+| Marina 08-01 | 373 KB | 69,657 | 65 KB | 13 | no |
+| Marina 08-01 | 374 KB | 69,052 | 35 KB | 8 | no |
+| Marina 08-01 | 374 KB | 70,077 | 35 KB | 8 | no |
+
+All five runs used `claude-sonnet-5` on the same code path and ended with `stop_reason: end_turn`.
+Sonnet emitted 132,692 output tokens and a complete thirty-file plan five days before the failures,
+so there is no ceiling near 70,000. Every emitted block was well-formed and correctly closed; the
+runs were not truncated.
+
+`drydock plan CommonMark` passes under the current prompt, so `plan_create.md` V26 and the
+accumulated guardrails are exonerated. The three Marina runs terminating within 1.5% of each other
+indicates a consistent stopping condition rather than model variance. The cause remains
+unidentified and Marina-specific.
+
 ---
 
 ## Acceptance Criteria
@@ -414,10 +598,24 @@ registry — two passes, same substitution decisions.
    both? (Lean: block + surface findings; PO decides whether to re-analyze or fix the spec.)
 3. **Drift propagation model** — how green/stale propagates when an upstream node changes post-build.
 4. **Compass setup verb** — command name TBD; no command needed until implemented.
+5. **`ac` as node or field** — Programmatic Acceptance moves to the Manifest, but does it need its
+   own node with independent pass/fail state in the graph, or does it collapse to a field the story
+   owns? Ed leans toward the Manifest holding it; the node-versus-field question is unresolved.
+6. **Deterministic and model phase grouping** — how the four model jobs and the deterministic module
+   are sequenced into phases. Deliberately deferred: the grouping must be settled before the phase
+   boundaries are drawn.
+7. **TDD phase placement** — whether acceptance authoring runs once per block (parallel, bounded
+   context, cheap) or once across all stories (sequential, expensive, cross-story assertion
+   consistency). Downstream of question 6. Assertion authoring needs only the story specification,
+   its stack file in builder mode, and its `Provides`/`Consumes` row; screen acceptance needs
+   provider route names, which come from the deterministic relationship matrix.
+8. **Marina stopping condition** — the diagnostic above rules out capacity, model, and prompt
+   template. The actual cause of the consistent ~70,000-token termination is unknown.
 
 ## Not in scope yet
 
 Editing the canonical specification. Detailed Shipyard Crew execution mechanics beyond the
 story-local decision-record contract. Remaining implementation work includes the approved
 source-to-Blueprint handoff, persistent Commander-input harvesting, question severity, ASCII-safe
-crew presentation, story-too-big splitting, and deterministic no-cross-stack enforcement.
+crew presentation, and deterministic no-cross-stack enforcement. Story-too-big splitting is retired
+by §Story sizing.
