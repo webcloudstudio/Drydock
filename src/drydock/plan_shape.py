@@ -49,6 +49,10 @@ class OutputContract:
 
     #: Artifacts that must be present, by exact block name.
     required: tuple[str, ...] = ()
+    #: The artifact that must appear first, when the contract fixes a leading artifact.
+    #: A declaration emitted first is what makes a short response resumable: the count of
+    #: what should exist survives even when most bodies do not.
+    leading: str = ""
     #: The artifact that must appear last, when the contract fixes a terminal artifact.
     terminal: str = ""
     #: Blocks exempt from the typed-heading requirement.
@@ -93,6 +97,17 @@ def check_contract(
     for name in contract.required:
         if name not in blocks:
             defects.append(ShapeDefect("missing-artifact", name, "required artifact not emitted"))
+
+    if contract.leading and blocks:
+        first = tuple(blocks)[0]
+        if contract.leading in blocks and first != contract.leading:
+            defects.append(
+                ShapeDefect(
+                    "leading-artifact",
+                    contract.leading,
+                    f"must be the first artifact; found {first!r} first",
+                )
+            )
 
     if contract.terminal and blocks:
         last = tuple(blocks)[-1]

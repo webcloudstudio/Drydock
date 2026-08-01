@@ -87,6 +87,48 @@ def test_terminal_artifact_must_be_last():
     assert "terminal-artifact" in codes(check_contract(text, parsed(text), CONTRACT))
 
 
+LEADING_CONTRACT = OutputContract(
+    required=("TOPOLOGY.md",),
+    leading="TOPOLOGY.md",
+    untyped=frozenset({"TOPOLOGY.md"}),
+)
+
+
+def test_leading_artifact_must_be_first():
+    text = (
+        "=== ARCHITECTURE.md ===\n# ARCHITECTURE: Demo\n=== END ARCHITECTURE.md ===\n"
+        "=== TOPOLOGY.md ===\n## story a\n=== END TOPOLOGY.md ===\n"
+    )
+    assert "leading-artifact" in codes(check_contract(text, parsed(text), LEADING_CONTRACT))
+
+
+def test_declaration_emitted_first_satisfies_the_leading_contract():
+    text = (
+        "=== TOPOLOGY.md ===\n## story a\n=== END TOPOLOGY.md ===\n"
+        "=== ARCHITECTURE.md ===\n# ARCHITECTURE: Demo\n=== END ARCHITECTURE.md ===\n"
+    )
+    assert check_contract(text, parsed(text), LEADING_CONTRACT) == ()
+
+
+def test_leading_check_is_silent_when_the_artifact_is_absent():
+    """A contract fixing a leading artifact must not fire on a response that omits it —
+    the missing-artifact defect owns that case."""
+    text = "=== ARCHITECTURE.md ===\n# ARCHITECTURE: Demo\n=== END ARCHITECTURE.md ===\n"
+    assert "leading-artifact" not in codes(check_contract(text, parsed(text), LEADING_CONTRACT))
+
+
+def test_short_response_keeps_a_usable_declaration():
+    """The point of declaring first: a response that ends early still carries the count of
+    what should exist, which is what makes it resumable."""
+    text = (
+        "=== TOPOLOGY.md ===\n## story a\n## story b\n## story c\n=== END TOPOLOGY.md ===\n"
+        "=== ARCHITECTURE.md ===\n# ARCHITECTURE: Demo\n=== END ARCHITECTURE.md ===\n"
+    )
+    blocks = parsed(text)
+    assert check_contract(text, blocks, LEADING_CONTRACT) == ()
+    assert blocks["TOPOLOGY.md"].count("## story ") == 3
+
+
 def test_empty_artifact_is_detected():
     text = "=== A.md ===\n=== END A.md ===\n=== MANIFEST.md ===\nx\n=== END MANIFEST.md ===\n"
     assert "empty-artifact" in codes(check_contract(text, parsed(text), CONTRACT))

@@ -2145,7 +2145,12 @@ PLAN_TOPOLOGY_CONTRACT = OutputContract(
 #: The advisory half of the same contract. A missing typed heading is a real defect but a
 #: repairable one — ``conform_specs`` is the existing second model pass for exactly this — so it
 #: is reported rather than used to refuse a complete plan.
+#: ``leading`` is advisory on purpose. A complete response whose declaration arrives last is
+#: still a valid plan, so refusing it would trade a working run for tidiness. Ordering only
+#: pays off on a *short* response, where a leading declaration is what makes the run resumable
+#: — so report the deviation and let the run stand.
 PLAN_SHAPE_ADVISORY = OutputContract(
+    leading=TOPOLOGY_BLOCK,
     untyped=frozenset({"MANIFEST.md", "TOPOLOGY.md", "README.md", "METADATA.md"}),
 )
 
@@ -2163,7 +2168,7 @@ def advisory_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
     return tuple(
         defect
         for defect in check_contract("", blocks, PLAN_SHAPE_ADVISORY)
-        if defect.code == "untyped-heading"
+        if defect.code in {"untyped-heading", "leading-artifact"}
     )
 
 

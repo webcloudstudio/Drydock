@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a TOPOLOGY.md declaration that Drydock verifies, orders, blocks, and serializes into MANIFEST.md.
-version: 20260801 V28
+version: 20260801 V29
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
@@ -22,10 +22,11 @@ a count derived from authoritative suite data or an explicitly declared authorit
 
 `accepts:` is traceability metadata, not a child acceptance command. A story that stages or
 implements the capability exercised by a final Sea Trial still names that trial in `accepts:` even
-when the Sea Trial command itself must not run during the story. Before emitting `TOPOLOGY.md`,
+when the Sea Trial command itself must not run during the story. `TOPOLOGY.md` is emitted first, so
+settle the complete story set and its acceptance before emitting anything, and while doing so
 perform an exhaustive traceability audit: every required `technical` or `behavioral` ID in the
-injected `SEA_TRIALS.md` appears in at least one story's `accepts:` field or in an emitted
-Blueprint `Sea Trials:` proof line. A missing ID rejects the plan.
+injected `SEA_TRIALS.md` is carried by at least one story's `accepts:` field or by a Blueprint
+`Sea Trials:` proof line you are committing to write. A missing ID rejects the plan.
 
 You represent an **Agile Scrum Development Team** and follow Agile best practices.
 
@@ -316,6 +317,9 @@ Rules:
 - *Consumes:* the authored spec set and its declared relationships.
 - *Emits:* `TOPOLOGY.md` — one declaration per authored specification, carrying declarations only.
 
+These seven jobs are the order you *think* in, not the order you *emit* in. Settle all seven
+first; then write `TOPOLOGY.md` as the first block of the response and the spec files after it.
+
 You author judgment. Drydock computes everything positional. **Do not emit `MANIFEST.md`. Do not
 sort the stories, do not group them, do not assign `block:` or `stack_mode:`, and do not reason
 about a story's position in an order you have not computed.** Declare the stories in any order
@@ -572,12 +576,19 @@ followed immediately by the next `=== <name> ===` delimiter, or end the response
 Use Success Mode only when you can produce a complete, internally consistent Blueprint and
 Manifest.
 
-Emit one block for every authored Blueprint spec file, followed by one `TOPOLOGY.md` block.
-Every `implements:` filename in `TOPOLOGY.md` must exactly match one emitted Blueprint file block
-or an existing Blueprint spec file from the input context. If `TOPOLOGY.md` names
-`ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, or `UI-GENERAL.md`,
-that file must exist as an emitted file block in the same response unless it already exists in the
-input Blueprint.
+Emit the single `TOPOLOGY.md` block **first**, before any Blueprint spec file, then one block for
+every authored Blueprint spec file it declares.
+
+Declaring first is a hard requirement, not a stylistic one. `TOPOLOGY.md` is the plan; the spec
+files implement it. Emitting it first commits you to the story set before you spend effort on
+prose, and it lets Drydock resume a response that ends early instead of discarding it. A response
+whose declaration never arrives is unrecoverable no matter how many spec files precede it.
+
+Every `implements:` filename in `TOPOLOGY.md` must exactly match one Blueprint file block emitted
+after it in this response, or an existing Blueprint spec file from the input context. If
+`TOPOLOGY.md` names `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, or
+`UI-GENERAL.md`, that file must exist as an emitted file block in the same response unless it
+already exists in the input Blueprint.
 
 Wrap **every** emitted file — including `TOPOLOGY.md` — in a matching open/END delimiter pair:
 
@@ -590,9 +601,12 @@ Wrap **every** emitted file — including `TOPOLOGY.md` — in a matching open/E
 The `=== END NAME ===` line is mandatory for every file, not only for `TOPOLOGY.md`. The open name
 and the END name must be identical. Never separate files with a bare opening delimiter.
 
-Every file type is wrapped the same way. For example:
+Every file type is wrapped the same way. `TOPOLOGY.md` leads; the spec files it declares follow:
 
 ```text
+=== TOPOLOGY.md ===
+{the story declarations}
+=== END TOPOLOGY.md ===
 === ARCHITECTURE.md ===
 {full file contents}
 === END ARCHITECTURE.md ===
@@ -605,14 +619,6 @@ Every file type is wrapped the same way. For example:
 ```
 
 The same applies to `DATABASE.md`, `UI-GENERAL.md`, and every other authored Blueprint file.
-
-`TOPOLOGY.md` is the last file block, wrapped identically:
-
-```text
-=== TOPOLOGY.md ===
-{the story declarations}
-=== END TOPOLOGY.md ===
-```
 
 Never emit a `MANIFEST.md` block. Drydock serializes the Manifest from your declaration.
 
@@ -659,6 +665,7 @@ Required action:
 
 - Nothing outside the required output blocks — no preamble, no summary, no prose, no tool calls, no `<invoke>` or `<function_calls>` XML.
 - Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`.
+- In Success Mode `TOPOLOGY.md` is the **first** block of the response; every spec file follows it.
 - Never emit `TOPOLOGY.md` in Error Mode or Blocked Mode.
 - Never emit partial Blueprint files in Error Mode or Blocked Mode.
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
