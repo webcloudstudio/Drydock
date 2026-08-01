@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V9 |
+| Version | 2026-08-01 V10 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 28 approved items |
-| Pending impl | 10 unimplemented sections |
+| Pending spec | 36 approved items |
+| Pending impl | 18 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -32,16 +32,10 @@ does not exist or is not green.
 
 **Inputs:**
 - `<Target>/blueprint/` Typed Specification (Intent: guardrails, AC, spec files)
-- `<Target>/blueprint/BUILD_CONFIGURATION.md` (Decisions: approved route, `MANUAL_BUILD_ORDER`, PO answers)
+- `<Target>/blueprint/BUILD_CONFIGURATION.md` (Decisions: approved route, PO answers)
 - `<Target>/ANALYSIS.md` (approved top-level shape and recommendation)
-- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` *(on re-run, when `MANUAL_BUILD_ORDER = true` and the PO
-  has edited it)* — PO manual ordering; read-only input when present
 
 **Outputs (derived):**
-- `<Target>/blueprint/BUILD_PLAN_COMPASS.md` — the ordering file, **always written** and always the
-  input `build` consumes (spec files `#`-delimited into batches at no-cross-stack boundaries).
-  `MANUAL_BUILD_ORDER = false` (default): Drydock auto-computes the order and `build` uses it as-is.
-  `MANUAL_BUILD_ORDER = true`: written in a default order for the PO to reorder by hand.
 - `<Target>/MANIFEST.md` — the single executable build plan: work graph in header format
   (nodes + `depends-on` edges + state), ROOT seeded green.
 
@@ -77,7 +71,7 @@ replace, or reorder its candidate stories.
 
 **As-built:** semantic splitting is owned by the frontier Planning Crew; deterministic validation
 enforces exactly one governed specification per story, exactly one owning story per specification,
-required acceptance, valid dependency structure, and the ~100-story cap. The Plan prompt requires
+required acceptance, and valid dependency structure. The Plan prompt requires
 independent actions and screen/provider work to remain separate specifications.
 
 ### Integrity / Validation Check
@@ -90,76 +84,25 @@ Runs in `_integrity_check` after the Manifest is parsed.
 - Every story's `implements` names a real emitted spec file. **(fatal — built)**
 - Every story has ≥1 AC. **(fatal — built 2026-06-16; was a warning)**
 - Reachable / no orphans. **(warning — built)**
-- Story count ≤ ~100. **(fatal — built 2026-06-16, `_STORY_CAP`)**
+- ~~Story count ≤ ~100~~ — **retired**; see §Story count is not capped.
 
 Fatal findings raise `SpecificationError` (exit 1). Note: spec files are written before the gate
 runs, so a fatal failure currently leaves authored specs but no console update — make atomic later.
 
 ### Order and Batch
-`2026-07-31` · `spec:recommended` · `impl:implemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
+
+**`BUILD_PLAN_COMPASS.md` does not exist and never did.** It was a prototype artifact that reached
+these notes but no implementation. `MANUAL_BUILD_ORDER` and PO hand-authored ordering came from the
+same prototype and are equally void. There is no separate ordering file: `MANIFEST.md` is the
+ordering. All references are removed rather than retired — there is nothing to retire.
 
 **As-built:** Manifest dependencies and order define the runnable frontier. Build deterministically
-selects dependency-ready work in Manifest order and splits each feature group into contiguous work
-kinds. Feature/service and screen work never share a build prompt. QuarterDeck cost previews use
-the same feature-plus-work-kind grouping, so the preview and execution boundaries agree.
+selects dependency-ready work in Manifest order and splits each group into contiguous work kinds.
+Feature/service and screen work never share a build prompt. QuarterDeck cost previews use the same
+grouping, so the preview and execution boundaries agree.
 
-
-**Hard guardrail — no cross-stack batches.** Never put different stacks / component types in one
-batch. V1 evidence: batching a feature with a screen produced materially worse results than two
-batches. Applies to both grouping strategies.
-
-**Order authorship** is a PO Decision, set in console review, persisted in `BUILD_CONFIGURATION.md`
-via `MANUAL_BUILD_ORDER`. *(Renamed 2026-06-16 from `USE_COMPASS`: the Compass is always written and
-always consumed by `build`, so "use compass" was a misnomer — the flag toggles who authors the order,
-not whether the Compass exists.)* The Compass is seeded either way; the flag only decides who orders it.
-
-**`MANUAL_BUILD_ORDER = true` — manual:**
-`plan create` seeds `BUILD_PLAN_COMPASS.md` in a default order; the PO reorders it by hand; `build`
-consumes the edited file.
-
-**`MANUAL_BUILD_ORDER = false` (default) — automatic:**
-`plan create` seeds the Compass from a Python batching algorithm: topological sort by `depends-on`
-order, then secondary sort by build-cost similarity — group nodes sharing stack / build rules to
-amortize fixed per-run token cost (UI changes batch together; feature builds batch separately).
-`build` consumes it as-is. Not yet implemented; fully specified here so it can be built.
-
-Both strategies must respect the no-cross-stack guardrail.
-
-### The Compass — Manual Build-Ordering Methodology
-`2026-06-13` · `spec:recommended` · `impl:implemented`
-
-*This is now the single definition of `BUILD_PLAN_COMPASS.md` (ordered spec-file list, `#`-delimited
-into no-cross-stack batches, consumed by `build`). As-built it is **LLM-seeded** in the plan create
-call rather than Python-seeded; the `MANUAL_BUILD_ORDER` gate and automatic alternative are not yet
-built.*
-
-One file, always seeded by `plan create`, then (when `MANUAL_BUILD_ORDER = true`) edited directly
-by the PO.
-
-- **Gate:** `MANUAL_BUILD_ORDER` in `BUILD_CONFIGURATION.md`. The Compass is always written and always
-  consumed by `build`. When `true`, the PO hand-authors the order; when `false` (default), the order
-  is auto-computed and used as-is.
-- **File:** `<Target>/blueprint/BUILD_PLAN_COMPASS.md`.
-- **Format:** ordered list of spec files (one per story via the story→spec mapping), `#`-delimited
-  into build steps/batches. One file = one step + its related stack. Never cross-stack within a step.
-
-  ```
-  FEATURE-Authentication.md
-  FEATURE-UserManagement.md
-  #
-  SCREEN-Login.md
-  SCREEN-Dashboard.md
-  #
-  DATABASE.md
-  ```
-
-- **Lifecycle:**
-  1. **Seed (`plan create`):** writes every spec file in default topological order with `#`
-     delimiters at no-cross-stack boundaries.
-  2. **Edit (PO):** PO reorders entries and adjusts `#` delimiters directly in the file. The edited
-     Compass is the authoritative manual ordering (a Decision once edited).
-  3. **Consume (`build`):** reads `BUILD_PLAN_COMPASS.md` as its ordering input instead of
-     computing order.
+**Hard guardrail — no cross-stack batches.** See §Blocks and stack creep for the mechanism.
 
 ## Feedback Loop & Injection Stack (2026-06-16)
 
@@ -180,9 +123,8 @@ the top (after the job block). See notes_analyze.md §Standing-Directive Feedbac
 
 Drop `BUILD_CONFIGURATION.md` injection from `planning_session.py` and scrub `prompts/plan_create.md`.
 **Supersedes** the BUILD_CONFIGURATION.md inputs in §Plan Create CLI / Inputs / Outputs and the
-`MANUAL_BUILD_ORDER` persistence in §Order and Batch (if that feature is later built, its flag
-needs a new home; out of scope here). PO direction now comes from PLAN_COMPASS.md and answered
-spikes.
+prototype ordering flags in §Order and Batch. PO direction now comes from PLAN_COMPASS.md and
+answered questionnaires.
 
 ### Single-directional regenerate — no state merge
 `2026-06-16` · `spec:approved` · `impl:implemented`
@@ -340,18 +282,22 @@ The Manifest is a list of stories. A `type` field is the only variation.
 
 | Type | Contains | Runs |
 |---|---|---|
-| `architecture` | Foundation and scaffolding | Early; work depends on it |
+| `foundational` | Foundation and scaffolding | Early; work depends on it |
 | `service` | Everything that does work | Reorderable |
 | `feature` | Acceptance criteria plus assembly and intent; no implementation instructions | After its members |
+
+`architecture` was renamed `foundational` on 2026-08-01: it names a role in the graph, not a
+document category, and it stopped colliding with source files labelled architecture that describe
+services. `ac` is not a node type — see §Programmatic Acceptance is not a node.
 
 `spike` is retired as a node type. Research questions are handled by questionnaires before Plan and
 by the owning story's `## Questions` section after. **Supersedes** the `feature`/`story`/`spike`/`ac`
 block taxonomy in `MANIFEST_CONTRACT.md`.
 
-### Architecture versus service naming
+### Foundational versus service naming
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
 
-Architecture is foundational structure and scaffolding. Standing up S3 and proving the connection
+Foundational work is structure and scaffolding. Standing up S3 and proving the connection
 is architecture. Everything S3 subsequently does is a service.
 
 Everything that is not architecture is a service, and services are reorderable because they carry
@@ -360,7 +306,11 @@ server and the database are foundation; a voice service interpreter is a service
 architecture filename.
 
 Foundation status derives from the dependency graph, not from a filename prefix. The rule is
-*build the architecture framework that is needed*, not *build all architecture first*.
+*build the foundation that is needed*, not *build all foundation first*.
+
+No fourth type. A "foundational service" — voice-to-text, for example — is foundational to whatever
+depends on it, which the edges already state more precisely than a label could. A hybrid type would
+encode in a name what the graph holds as fact.
 
 ### Story attributes
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
@@ -369,7 +319,7 @@ A story carries four orthogonal attributes, all deterministic:
 
 | Attribute | Values |
 |---|---|
-| Type | `architecture`, `service`, `feature` |
+| Type | `foundational`, `service`, `feature` |
 | Delivery kind | `capability`, `integration`, `migration`, `test harness` |
 | Acceptance contract | Flag; the story has real acceptance to honor |
 | Stack | Stack files, each attached in **builder** or **consumer** mode |
@@ -412,20 +362,25 @@ bundling." Context economy comes from blocks. This is the same construct already
 §Order and Batch and §The Compass as the `#`-delimited batch, still LLM-seeded rather than
 Python-computed.
 
-### Ordering inputs
+### Phase is Commander build sequencing
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
 
-Ordering is guidance applied deterministically, not a hard-coded phase chain. Three inputs:
+`Phase` is loose terminology for Commander instruction on how to build: *build Feature X, then
+Feature Y*. It is not a layer chain. The layer stack repeats inside each phase rather than running
+once across the project — foundational / database / service / ui, then service / ui, then
+foundational / service / service / ui.
 
-1. **Topological constraint** — hard. Nothing precedes what it requires.
-2. **Stage assignment** — Commander direction. Marina is built in stages; work belonging to
-   stage 3 stays in stage 3 even when it could run earlier. Architecture required by stage 3 is a
-   stage-3 artifact.
-3. **Placement within the valid range** — the *latest* valid position in the assigned stage, not
-   the earliest.
+**Supersedes** the `Phase` reading in `plan_create.md` ("foundation and architecture usually precede
+downstream features and screens"), which assumes a single pass through the layers and places work as
+early as possible.
 
-**Supersedes** the current `Phase` reading in `plan_create.md` ("foundation and architecture
-usually precede downstream features and screens"), which places work as early as possible.
+There are two topologies: the **high-level topology** (phases) and the **actual topology** (the
+story dependency graph). The model authors both. Commander ordering direction is input the model
+weighs, not an override applied afterward.
+
+**Supersedes** the earlier reading of this section, which framed stage assignment as Commander
+direction that Python applies and placement as a latest-valid computation. Ordering is authored, not
+solved.
 
 ### Acceptance lives in one place per audience
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
@@ -467,6 +422,176 @@ Second Pass affordable: re-emitting a two-file stage costs almost nothing, while
 thirty-file monolith re-sends the entire input. Hardening addresses shape failure only; it does not
 address the Marina failure recorded below.
 
+### Plan command workflow — Zones A, B, C, D
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+The spine of this file. `plan` is four zones, and the fix for a prompt holding seventeen jobs is not
+to split the model call into phases but to take the thirteen deterministic jobs out of it.
+
+| Zone | Owner | Job |
+|---|---|---|
+| A | Python | Gates, harvest, discard, resolve stack set, assemble prompt |
+| B | Model | Author specifications, acceptance, relationships, topology, phases |
+| C | Python | Verify, block, order, assemble `MANIFEST.md` |
+| D | Model | Conform pass — guardrail, not load-bearing |
+
+**Zone A as-built (13 steps):** clear the error record; verify `blueprint/`; read `ANALYSIS.md` and
+parse source roles; gate on `BLOCKERS.md`; gate on `ANALYSIS_QUALITY: blocked`; gate on unanswered
+required questionnaires; read prior `MANIFEST.md` and load prior applied-specs and block states;
+harvest `## Questions` before Blueprints are discarded; ensure and read `PLAN_COMPASS.md`; ensure
+the exclude file and load exclusions; discard unbuilt Blueprint specs; collect surviving specs and
+decide rewrite/reuse/speckit mode; assemble the prompt — sources, contracts, questionnaires,
+compass, `TECHNOLOGY_STACK.md`, analysis.
+
+**Zone A gap:** the Rigging stack files themselves (`fastapi.md`, `common.md`) are never opened at
+plan time; only `TECHNOLOGY_STACK.md`, which declares *which* stack is used. Resolving the stack
+file set is a required new Zone A step — §Story attributes cannot assign builder/consumer mode
+without it.
+
+**Zone B as-built (one call, seven numbered steps):** review the planning basis; confirm the
+decomposition shape; map analysis stories to authored spec scopes; write authored specification
+content; author programmatic acceptance; compute header relationships; build the executable plan.
+Steps 6 and 7 leave the prompt. Step 7 — the entire Manifest, including ordering, grouping,
+topological consistency, and frontier non-emptiness — is the largest job, is almost entirely
+deterministic, and runs *last*, after the model has spent its output budget on content and
+acceptance. That is the structural reason a shortfall anywhere kills the Manifest specifically.
+
+**Zone C as-built:** parse delimited blocks; validate output shape; strip unsatisfiable acceptance;
+disambiguate Manifest IDs; integrity check; `conform_specs`; normalize Manifest contexts; write
+specs, `MANIFEST.md`, QuarterDeck state.
+
+**Zone D already exists.** `conform_specs` is a second model call, fired per non-conformant spec.
+The stacked-pipeline architecture is a generalization of something already present, not an
+invention. It is unreviewed, may rewrite authored content, and must not be relied on: if it fires
+routinely that is a signal about Zone B, not a repair. Review deferred.
+
+Closes open questions 6 and 7.
+
+### Authorship versus verification
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+The division of labour is not semantic-versus-arithmetic. It is **authorship versus verification**.
+The model decides everything requiring judgment; Python proves the result is internally consistent
+and refuses it otherwise. Same principle as the Hull Check, applied to the graph instead of the
+delimiters.
+
+| Job | Owner |
+|---|---|
+| Relationships — `Depends On`, `Provides`, `Consumes` | Model |
+| Actual topology — the story dependency graph | Model |
+| High-level topology — phases | Model |
+| Programmatic Acceptance | Model |
+| Verification of all the above | Python |
+| Block grouping | Python |
+| Ordering and Manifest serialization | Python |
+
+The model never sorts, never checks its own consistency, and never reasons about a position in an
+order it has not computed. It states what each file requires and provides; Python does the rest.
+Contradictions become a deterministic error with a precise message instead of a shape failure.
+
+**Two-topology check.** The high-level and actual topologies must agree: a story in phase 2 cannot
+depend on a story in phase 3. This is a real, silent, common failure, free to detect and impossible
+for a model to reliably self-audit across a hundred stories. It is available only because both
+topologies are authored explicitly.
+
+### Content and acceptance are authored together
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Zone B steps 4 and 5 stay in one prompt. Splitting them breaks the discipline: test-driven means the
+assertion is written *with* the behavior, not audited onto it afterward. A separate acceptance call
+would re-read every spec just written, re-derive what each route does, and infer intent from output
+instead of holding it — paying full context to reconstruct what was free a moment earlier.
+Reconstructed intent is where assertions drift from what the spec meant.
+
+**Do not architect around prompt caching.** Caching demonstrably works within a run (Marina logs show
+`cache_read_input_tokens: 303696`). Across separate `claude -p` invocations a prefix hit is
+plausible — the mechanism keys on exact prefix match — but the breakpoints are not controllable from
+outside the CLI, the preamble must match byte-for-byte, and the TTL is short. Every phase must be
+correct if every token is cold. A cache hit is an optimization, never a load-bearing assumption;
+load-bearing assumptions that cannot be tested are how undiagnosable failures happen.
+
+### Programmatic Acceptance is not a node
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Programmatic Acceptance is verification the build runs to prove a story is complete. A story is not
+"built and failed" — it is built or it is not. Acceptance is therefore a field the story owns, and
+passing is part of the story's own state transition, not an independent node with independent state.
+
+`ac` leaves the block taxonomy entirely. Manifest node types are the three story types.
+
+Closes open question 5.
+
+### Blueprint holds the artifact, Manifest holds the schedule
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+The discriminator: **does the fact describe the artifact or the schedule?**
+
+| Fact | Home | Why |
+|---|---|---|
+| `Provides`, `Consumes`, `Depends On` | Blueprint header | Describe the file — what it offers and requires |
+| Story `type` | Manifest | Computed, machine-focused |
+| `Phase` | Manifest | Describes when the file is built, not the file |
+| Programmatic Acceptance | Manifest | Machine-focused; nobody should hand-edit it |
+| User Acceptance, `## Questions` | Blueprint | Human intent |
+
+Blueprint is the human-readable epic rewrite. Manifest is dependency and machine information.
+`Phase` never touches disk in the Blueprint: the model emits it in its topology declaration —
+transient, part of the response — and Zone C persists it as a story property in `MANIFEST.md`.
+Zone D does not consume it.
+
+Whether the model emits a stub Manifest or nothing is immaterial. What matters is that the header
+declarations are complete, because Python's output is only as good as those edges.
+
+### Blocks and stack creep
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Blocks are ephemeral, Manifest-only, regenerated every run, and computed by Python. They are a
+bounded bin-pack with every input known at plan time — types, stacks, phases, edges, story size:
+
+- **Hard:** one topology type per block; never cross a phase boundary; never violate the edges
+- **Objective:** amortize stack-file cost across the most stories that still fit one build pass
+
+**The mechanism behind the no-cross-stack guardrail is stack creep from Rigging.** Mixing topology
+types in one block forces every stack file each type needs into the block, so it pays for context
+neither half uses and the build agent reads instructions for work it is not doing. The V1 evidence
+that a mixed batch produced materially worse results than two batches now has a cause. This is the
+reason story and topology types exist: they are the block-partition key.
+
+### Builder and consumer mode
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+Split ownership:
+
+- **The model authors** the foundational story that stands the stack up. Recognizing that something
+  must establish the web server, and making it a node, is judgment and determines story structure.
+- **Python assigns** the builder/consumer flag from first use in the computed order. By definition
+  the first topology node using a stack is the builder; later ones are consumers. Ordering stays
+  build-order-global, as compact substitution already is — not per-block, not phase-based.
+
+If the model assigned the flag it would be asserting a position in an order it has not computed —
+the same failure as authoring the Manifest last.
+
+**Disagreement is a defect signal, not a tie to break.** A story requiring a stack to be stood up
+carries that edge, so topology puts the founding story first and the first user *is* the builder.
+The two answers diverge only when an edge or a foundational story is missing. If the first user of a
+stack is not a foundational-type story, Python flags it. Both defects are silent today and both hand
+a build agent an interface view of something nobody stood up.
+
+Deriving this in Zone C rather than at build time makes it visible in the QuarterDeck cost preview,
+auditable before anything runs, and independent of working-tree state. The cost of being wrong is
+asymmetric — consumer-when-it-should-be-builder starves the agent; builder-when-it-should-be-consumer
+merely costs tokens — so default to builder on ambiguity.
+
+### Story count is not capped
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+The ~100-story cap (`_STORY_CAP`, fatal) is removed. §Story sizing replaced the effort threshold with
+"one build pass," which has no opinion about how many stories a project contains; a correct
+300-story project is plausible and would be refused today. Scale is answered with a stronger model,
+not a refusal to plan.
+
+A manageable number well under 100 remains the ideal, as guidance rather than a gate.
+
 ### Diagnostic — the Marina plan failure was not a capacity limit
 `2026-08-01` · `spec:na` · `impl:n/a`
 
@@ -496,11 +621,10 @@ unidentified and Marina-specific.
 
 1. Does not run without ROOT green (approval precondition enforced; exits with error otherwise).
 2. Emits a graph that is atomic-story (one spec per story), fully AC-gated, acyclic, reachable,
-   ≤ ~100 stories.
+   with no story-count ceiling.
 3. Story-too-big guardrail applied; oversized stories split before emission.
 4. Integrity check passes before `MANIFEST.md` is written; failure surfaces actionable findings.
-5. Always writes `BUILD_PLAN_COMPASS.md` (auto-ordered, or default-ordered for PO edit when
-   `MANUAL_BUILD_ORDER = true`) + `MANIFEST.md` with ROOT seeded green.
+5. Writes `MANIFEST.md` with ROOT seeded green. No separate ordering file is produced.
 6. Deterministic given the same Intent + Decisions.
 7. All `depends-on` edges use the single direction (dependent node declares); no `gates` syntax.
 8. Multiple `parent` values allowed and parsed correctly.
@@ -518,8 +642,6 @@ unidentified and Marina-specific.
 - **No cross-stack batches.** Hard rule; applies to both manual and automatic ordering.
 - **One spec per story.** `spec:` field required; blank is a defect.
 - **Every story has ≥1 AC gate.** A story without a `depends-on` AC node must not be emitted.
-- **Story-too-big → split.** Must split before `MANIFEST.md` is written.
-- **~100-story cap.** Over threshold: refuse to emit.
 - **Integrity check gates emission.** `MANIFEST.md` not written until the graph passes fully.
 - **Immutable source provenance.** Never modifies `blueprint/sources/**`.
 - **Plan owns governed outputs.** Plan may replace top-level Blueprint specifications and
@@ -597,20 +719,14 @@ registry — two passes, same substitution decisions.
 2. **Integrity failure UX** — block `MANIFEST.md` write only, surface as QuarterDeck questions, or
    both? (Lean: block + surface findings; PO decides whether to re-analyze or fix the spec.)
 3. **Drift propagation model** — how green/stale propagates when an upstream node changes post-build.
-4. **Compass setup verb** — command name TBD; no command needed until implemented.
-5. **`ac` as node or field** — Programmatic Acceptance moves to the Manifest, but does it need its
-   own node with independent pass/fail state in the graph, or does it collapse to a field the story
-   owns? Ed leans toward the Manifest holding it; the node-versus-field question is unresolved.
-6. **Deterministic and model phase grouping** — how the four model jobs and the deterministic module
-   are sequenced into phases. Deliberately deferred: the grouping must be settled before the phase
-   boundaries are drawn.
-7. **TDD phase placement** — whether acceptance authoring runs once per block (parallel, bounded
-   context, cheap) or once across all stories (sequential, expensive, cross-story assertion
-   consistency). Downstream of question 6. Assertion authoring needs only the story specification,
-   its stack file in builder mode, and its `Provides`/`Consumes` row; screen acceptance needs
-   provider route names, which come from the deterministic relationship matrix.
-8. **Marina stopping condition** — the diagnostic above rules out capacity, model, and prompt
-   template. The actual cause of the consistent ~70,000-token termination is unknown.
+4. **Zone D review** — `conform_specs` is unreviewed and may rewrite authored content. Determine
+   whether it stays, and what its firing rate says about Zone B.
+
+*Closed 2026-08-01:* `ac` as node or field (§Programmatic Acceptance is not a node); deterministic
+and model phase grouping (§Plan command workflow); TDD phase placement (§Content and acceptance are
+authored together). *Dropped:* the Marina stopping condition — it was a property of the plan
+boundary being rewritten. *Removed:* the Compass setup verb — `BUILD_PLAN_COMPASS.md` does not
+exist.
 
 ## Not in scope yet
 
@@ -618,4 +734,8 @@ Editing the canonical specification. Detailed Shipyard Crew execution mechanics 
 story-local decision-record contract. Remaining implementation work includes the approved
 source-to-Blueprint handoff, persistent Commander-input harvesting, question severity, ASCII-safe
 crew presentation, and deterministic no-cross-stack enforcement. Story-too-big splitting is retired
-by §Story sizing.
+by §Story sizing; the story count cap is retired by §Story count is not capped.
+
+`BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
+artifacts that never existed in implementation. They are removed from these notes, not retired.
+`CHANGELOG.md` and `notes/archive/archive_plan.md` retain historical mentions as records.
