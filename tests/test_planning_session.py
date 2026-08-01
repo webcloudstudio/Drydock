@@ -1363,9 +1363,14 @@ def test_confirmed_stack_selection_does_not_clear_other_blockers(tmp_path):
 
 
 def test_missing_analysis_refuses(tmp_path):
-    _make_target(tmp_path, analysis=None)
+    target_dir = _make_target(tmp_path, analysis=None)
+    errors_path = target_dir / "ERRORS.md"
+    errors_path.write_text("# BIG ERRORS — action required\n", encoding="utf-8")
+
     with pytest.raises(SpecificationError, match="ANALYSIS.md"):
         create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert not errors_path.exists()
 
 
 def test_plan_create_blocked_block_without_diagnosis_defers_to_errors(tmp_path):

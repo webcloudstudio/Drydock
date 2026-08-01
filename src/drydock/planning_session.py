@@ -2661,6 +2661,10 @@ def create_plan(
 ) -> PlanCreateResult | PlanDeferredResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
+    # Every planning attempt starts a new current-error lifecycle, including attempts that fail
+    # preflight before reaching an LLM call.
+    clear_error_record(target_dir)
+
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(
@@ -2781,9 +2785,6 @@ def create_plan(
         # test-driven assertions. Runs before normalization so the reuse prompt and the
         # MANIFEST are built from already-conformed specs.
         if conform:
-            # Conformance is itself an LLM call in reuse mode. Its inputs are now
-            # fully preflighted, so it follows the same current-error lifecycle.
-            clear_error_record(target_dir)
             try:
                 conformed_specs, conform_warnings = conform_specs(
                     existing_specs,
@@ -2839,9 +2840,6 @@ def create_plan(
         ),
     )
 
-    # Preflight is complete. A retry now retires the prior current error immediately
-    # before its replacement LLM call; failed preflight attempts never reach here.
-    clear_error_record(target_dir)
     try:
         result = cast(
             CompletedRun,

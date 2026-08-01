@@ -1199,6 +1199,16 @@ def test_normalize_discovery_degrades_optionless_select_to_textarea():
 
 
 class TestAnalyze:
+    def test_starting_analyze_clears_prior_big_errors_even_when_run_fails(self, tmp_path):
+        target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
+        errors_path = target_dir / "ERRORS.md"
+        errors_path.write_text("# BIG ERRORS — action required\n", encoding="utf-8")
+
+        result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(ok=False, text=""))
+
+        assert result.ok is False
+        assert not errors_path.exists()
+
     def test_writes_all_core_artifacts(self, tmp_path):
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())

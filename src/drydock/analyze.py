@@ -25,7 +25,7 @@ from drydock.compass_sources import (
     compass_import_pending,
     seed_compass_from_sources,
 )
-from drydock.errors import DrydockError, SpecificationError
+from drydock.errors import DrydockError, SpecificationError, clear_error_record
 from drydock.exclude_files import (
     ensure_exclude_file,
     load_excluded_filenames,
@@ -901,6 +901,10 @@ def analyze(
     log_dir: Path | None = None,
 ) -> AnalyzeResult:
     """Analyze a Blueprint and write all analyze artifacts to the Target."""
+    # Starting an earlier lifecycle step retires any current failure from a later one. If this
+    # run produces a new recoverable failure, that command owns writing its replacement record.
+    clear_error_record(target_dir)
+
     blueprint_dir = target_dir / "blueprint"
     if not blueprint_dir.is_dir():
         raise SpecificationError(f"Blueprint directory not found: {blueprint_dir}")
