@@ -1,7 +1,7 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a TOPOLOGY.md declaration that Drydock verifies, orders, blocks, and serializes into MANIFEST.md.
-version: 20260801 V29
+version: 20260801 V30
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
@@ -600,6 +600,11 @@ Wrap **every** emitted file — including `TOPOLOGY.md` — in a matching open/E
 
 The `=== END NAME ===` line is mandatory for every file, not only for `TOPOLOGY.md`. The open name
 and the END name must be identical. Never separate files with a bare opening delimiter.
+
+Every file needs both delimiters, in this order: the opening delimiter carries no `END` keyword,
+and the closing delimiter carries it. Never open a file with `=== END NAME ===`, never close one
+with `=== NAME ===`, and never emit two consecutive `=== END ... ===` lines. Emit each file exactly
+once; do not repeat a file you have already emitted.
 
 Every file type is wrapped the same way. `TOPOLOGY.md` leads; the spec files it declares follow:
 

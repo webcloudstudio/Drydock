@@ -440,6 +440,58 @@ def test_strict_blocks_recover_transposed_artifact_boundary():
     }
 
 
+def test_strict_blocks_recover_end_delimiter_used_as_opener():
+    """Regression: the model wrapped every file in `END X` … `END X`, dropping every opener.
+
+    The open-delimiter pattern used to match `=== END X ===` too, so each such file parsed under
+    the corrupt name `END X` and the artifacts between the recovered boundaries were swallowed.
+    """
+    output = (
+        "=== TOPOLOGY.md ===\n"
+        "# TOPOLOGY\n"
+        "=== END TOPOLOGY.md ===\n"
+        "=== END FEATURE-Alpha.md ===\n"
+        "# FEATURE: Alpha\n"
+        "=== END FEATURE-Alpha.md ===\n"
+        "=== END FEATURE-Beta.md ===\n"
+        "# FEATURE: Beta\n"
+        "=== END FEATURE-Beta.md ===\n"
+    )
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert blocks == {
+        "TOPOLOGY.md": "# TOPOLOGY",
+        "FEATURE-Alpha.md": "# FEATURE: Alpha",
+        "FEATURE-Beta.md": "# FEATURE: Beta",
+    }
+
+
+def test_strict_blocks_never_key_a_block_on_an_end_delimiter():
+    output = (
+        "=== END FEATURE-Alpha.md ===\n# FEATURE: Alpha\n=== END FEATURE-Alpha.md ===\n"
+        "=== END MANIFEST.md ===\n# MANIFEST\n=== END MANIFEST.md ===\n"
+    )
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert not [name for name in blocks if name.startswith("END ")]
+    assert set(blocks) == {"FEATURE-Alpha.md", "MANIFEST.md"}
+
+
+def test_strict_blocks_reject_delimiter_inside_a_parsed_body():
+    output = (
+        "=== FEATURE-Alpha.md ===\n"
+        "# FEATURE: Alpha\n"
+        "=== FEATURE-Beta.md ===\n"
+        "# FEATURE: Beta\n"
+        "=== END FEATURE-Alpha.md ===\n"
+    )
+
+    with pytest.raises(SpecificationError, match="Delimiter pairing mismatch"):
+        _parse_strict_blocks(output, FakeRun(text=output))
+
+
 def test_strict_blocks_reject_ambiguous_mismatched_end_delimiter():
     output = (
         "=== FEATURE-Autolinks.md ===\n"
@@ -2617,12 +2669,13 @@ def test_transition_text_between_write_calls_is_rejected(tmp_path):
     assert not (target_dir / "MANIFEST.md").exists()
 
 
-def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
+def test_conflicting_duplicate_artifact_block_refuses_without_writes(tmp_path):
     target_dir = _make_target(tmp_path)
     arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    other = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="Something else.")
     out = (
         f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
-        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== ARCHITECTURE.md ===\n{other}\n=== END ARCHITECTURE.md ===\n"
         f"=== MANIFEST.md ===\n{_manifest(implements='ARCHITECTURE.md')}\n=== END MANIFEST.md ===\n"
     )
 
@@ -2632,11 +2685,28 @@ def test_duplicate_artifact_block_refuses_without_writes(tmp_path):
         excinfo,
         target_dir,
         classification="model artifact contract failed",
-        detail="Duplicate artifact block: ARCHITECTURE.md",
+        detail="Duplicate artifact block with conflicting content: ARCHITECTURE.md",
     )
 
     assert not (target_dir / "MANIFEST.md").exists()
     assert not (target_dir / "blueprint" / "ARCHITECTURE.md").exists()
+
+
+def test_identical_duplicate_artifact_block_is_accepted(tmp_path):
+    """A verbatim repeat of an artifact is unambiguous: either copy is the file."""
+    target_dir = _make_target(tmp_path)
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest(implements='ARCHITECTURE.md')}\n=== END MANIFEST.md ===\n"
+    )
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert (target_dir / "MANIFEST.md").exists()
+    written = (target_dir / "blueprint" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert written.lstrip().startswith("# ARCHITECTURE")
 
 
 def test_simulated_write_calls_are_recovered(tmp_path):

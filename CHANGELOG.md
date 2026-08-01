@@ -10,6 +10,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-01: `drydock plan` recovers artifact responses whose opening delimiters were transposed
+  onto the `=== END NAME ===` line, and accepts a byte-identical repeat of an artifact instead of
+  discarding the run. Duplicate blocks with conflicting content, and delimiters appearing inside a
+  parsed body, remain contract failures.
+
 - 2026-08-01: `drydock plan` is restructured around authorship versus verification. The model
   authors the four jobs requiring judgment — specification content, programmatic acceptance
   alongside it, conflict resolution by precedence, and questions — and declares each story's type,

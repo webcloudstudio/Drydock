@@ -9,7 +9,7 @@ from re import Pattern
 
 from drydock.errors import DrydockError
 
-_OPEN_BLOCK_RE = re.compile(r"^===\s*(?P<name>[^\n=]+?)\s*===\s*$")
+_OPEN_BLOCK_RE = re.compile(r"^===\s*(?!END\s)(?P<name>[^\n=]+?)\s*===\s*$")
 _END_BLOCK_RE = re.compile(r"^===\s*END\s+(?P<name>[^\n=]+?)\s*===\s*$")
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
@@ -91,6 +91,14 @@ def parse_artifact_blocks(
     return blocks
 
 
+def _has_later_opening_delimiter(lines: list[str], *, index: int, name: str) -> bool:
+    for later_line in lines[index + 1 :]:
+        open_match = _OPEN_BLOCK_RE.match(later_line.strip())
+        if open_match and open_match.group("name").strip() == name:
+            return True
+    return False
+
+
 def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
     blocks: dict[str, str] = {}
     current_name: str | None = None
@@ -98,7 +106,8 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
     outside: list[str] = []
     saw_delimiter = False
 
-    for line in text.splitlines(keepends=True):
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
         open_match = _OPEN_BLOCK_RE.match(line.strip())
         end_match = _END_BLOCK_RE.match(line.strip())
 
@@ -114,10 +123,22 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
                 current_body = []
                 saw_delimiter = True
                 continue
-            if open_match:
+            orphan_opener = (
+                end_match is not None
+                and saw_delimiter
+                and not _outside_has_text(outside, after_artifacts=True)
+                and not _has_later_opening_delimiter(
+                    lines, index=index, name=end_match.group("name").strip()
+                )
+            )
+            if open_match or orphan_opener:
                 if _outside_has_text(outside, after_artifacts=saw_delimiter):
                     raise _outside_text_error(label)
-                current_name = open_match.group("name").strip()
+                # An END delimiter with no block open cannot close anything: the model dropped
+                # the opener, and the block runs to the delimiter that closes it.
+                opening_match = open_match or end_match
+                assert opening_match is not None
+                current_name = opening_match.group("name").strip()
                 current_body = []
                 outside = []
                 saw_delimiter = True
@@ -137,7 +158,10 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
             current_body = []
             saw_delimiter = True
             continue
-        if open_match:
+        transposed_end = end_match is not None and not _has_later_opening_delimiter(
+            lines, index=index, name=end_match.group("name").strip()
+        )
+        if open_match or transposed_end:
             if current_name in blocks:
                 raise DrydockError(
                     f"{label} failed: LLM output did not satisfy the artifact contract.\n"
@@ -145,11 +169,14 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
                     "  No generated artifacts were written."
                 )
             # Recover when the model omits an END delimiter between otherwise
-            # well-formed artifact blocks. The next opening delimiter cannot be
-            # content under the artifact protocol, so it unambiguously closes
+            # well-formed artifact blocks, or transposes it onto the next artifact
+            # (`=== END next ===` in place of `=== END current ===` plus the opener).
+            # A delimiter cannot be content under the artifact protocol, so it closes
             # the current block and starts the next one.
+            next_match = open_match or end_match
+            assert next_match is not None
             blocks[current_name] = "".join(current_body).strip()
-            current_name = open_match.group("name").strip()
+            current_name = next_match.group("name").strip()
             current_body = []
             saw_delimiter = True
             continue

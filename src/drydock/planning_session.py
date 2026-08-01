@@ -76,8 +76,8 @@ from drydock.standard_artifacts import ensure_standard_artifacts, render_console
 
 PROMPT_NAME = "plan_create"
 
-_BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
-_OPEN_BLOCK_LINE_RE = re.compile(r"^=== (?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
+_BLOCK_RE = re.compile(r"=== (?!END )(.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+_OPEN_BLOCK_LINE_RE = re.compile(r"^=== (?!END )(?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
 _END_BLOCK_LINE_RE = re.compile(r"^=== END (?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
@@ -338,6 +338,7 @@ def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
         text = repaired
     blocks, spans = _parse_strict_blocks_by_line(text, result)
     _reject_unpaired_end_delimiters(text, blocks, result)
+    _reject_embedded_delimiters(blocks, result)
     if spans:
         raise OutsideArtifactTextError(blocks=blocks, spans=spans, result=result)
     return blocks
@@ -370,6 +371,30 @@ def _reject_unpaired_end_delimiters(
             )
 
 
+def _reject_embedded_delimiters(blocks: dict[str, str], result: CompletedRun) -> None:
+    """Fail loudly when a parsed body contains an artifact delimiter line.
+
+    Under the protocol a delimiter never appears inside a file. One that survives into a body means
+    the recovery rules could not resolve the boundary — the model restarted an artifact or nested
+    one inside another — and the block that absorbed it is not the file it claims to be.
+    """
+    for name, body in blocks.items():
+        for line in body.splitlines():
+            stripped = line.strip()
+            if _OPEN_BLOCK_LINE_RE.match(stripped) or _END_BLOCK_LINE_RE.match(stripped):
+                raise SpecificationError(
+                    _with_execution_evidence(
+                        "Plan generation failed: LLM output did not satisfy the artifact "
+                        "contract.\n"
+                        f"  Delimiter pairing mismatch: `{stripped}` appears inside the body of "
+                        f"`{name}`.\n"
+                        "  Every file must be wrapped in a paired open/END delimiter.\n"
+                        "  No Blueprint or Manifest artifacts were written.",
+                        result,
+                    )
+                )
+
+
 def _parse_strict_blocks_by_line(
     text: str, result: CompletedRun
 ) -> tuple[dict[str, str], tuple[OutsideTextSpan, ...]]:
@@ -386,17 +411,30 @@ def _parse_strict_blocks_by_line(
         open_match = _OPEN_BLOCK_LINE_RE.match(line.strip())
         end_match = _END_BLOCK_LINE_RE.match(line.strip())
         if current_name is None:
+            opening_name: str | None = None
             if open_match:
+                opening_name = open_match.group("name").strip()
+            elif (
+                end_match
+                and not _contains_delimiter_line(outside)
+                and _is_orphan_artifact_opener(
+                    lines, index=index, name=end_match.group("name").strip()
+                )
+            ):
+                # `=== END X ===` with no open block and no later `=== X ===` can only be the
+                # opening delimiter the model transposed; its later END closes the block.
+                opening_name = end_match.group("name").strip()
+            if opening_name is not None:
                 outside_text = "".join(outside)
                 if outside_text.strip():
                     outside_spans.append(
                         OutsideTextSpan(
                             text=outside_text,
                             previous_artifact=previous_name,
-                            next_artifact=open_match.group("name").strip(),
+                            next_artifact=opening_name,
                         )
                     )
-                current_name = open_match.group("name").strip()
+                current_name = opening_name
                 current_body = []
                 outside = []
                 saw_delimiter = True
@@ -404,37 +442,23 @@ def _parse_strict_blocks_by_line(
             outside.append(line)
             continue
         if end_match and end_match.group("name").strip() == current_name:
-            if current_name in blocks:
-                raise SpecificationError(
-                    _with_execution_evidence(
-                        "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                        f"  Duplicate artifact block: {current_name}\n"
-                        "  No Blueprint or Manifest artifacts were written.",
-                        result,
-                    )
-                )
-            blocks[current_name] = "".join(current_body).strip()
+            _record_block(blocks, current_name, current_body, result)
             previous_name = current_name
             current_name = None
             current_body = []
             saw_delimiter = True
             continue
-        if end_match and _is_transposed_artifact_boundary(
-            lines,
-            index=index,
-            current_name=current_name,
-            next_name=end_match.group("name").strip(),
+        if (
+            end_match
+            and not _contains_delimiter_line(current_body)
+            and _is_transposed_artifact_boundary(
+                lines,
+                index=index,
+                current_name=current_name,
+                next_name=end_match.group("name").strip(),
+            )
         ):
-            if current_name in blocks:
-                raise SpecificationError(
-                    _with_execution_evidence(
-                        "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                        f"  Duplicate artifact block: {current_name}\n"
-                        "  No Blueprint or Manifest artifacts were written.",
-                        result,
-                    )
-                )
-            blocks[current_name] = "".join(current_body).strip()
+            _record_block(blocks, current_name, current_body, result)
             previous_name = current_name
             current_name = end_match.group("name").strip()
             current_body = []
@@ -443,16 +467,7 @@ def _parse_strict_blocks_by_line(
         current_body.append(line)
 
     if current_name is not None:
-        if current_name in blocks:
-            raise SpecificationError(
-                _with_execution_evidence(
-                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                    f"  Duplicate artifact block: {current_name}\n"
-                    "  No Blueprint or Manifest artifacts were written.",
-                    result,
-                )
-            )
-        blocks[current_name] = "".join(current_body).strip()
+        _record_block(blocks, current_name, current_body, result)
         previous_name = current_name
         saw_delimiter = True
 
@@ -468,6 +483,53 @@ def _parse_strict_blocks_by_line(
     return (blocks if saw_delimiter else {}), tuple(outside_spans)
 
 
+def _record_block(
+    blocks: dict[str, str],
+    name: str,
+    body: list[str],
+    result: CompletedRun,
+) -> None:
+    """Store a parsed artifact body, tolerating only a byte-identical repeat of the same name.
+
+    A model that emits the same artifact twice with identical content has lost nothing: either copy
+    is the artifact. Two blocks with the same name and different content are unresolvable, so the
+    whole response is rejected.
+    """
+    content = "".join(body).strip()
+    if name in blocks:
+        if blocks[name] == content:
+            return
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                f"  Duplicate artifact block with conflicting content: {name}\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+    blocks[name] = content
+
+
+def _contains_delimiter_line(chunk: list[str]) -> bool:
+    """Whether accumulated lines already hold a delimiter, which makes any recovery ambiguous."""
+    for line in chunk:
+        stripped = line.strip()
+        if _OPEN_BLOCK_LINE_RE.match(stripped) or _END_BLOCK_LINE_RE.match(stripped):
+            return True
+    return False
+
+
+def _is_orphan_artifact_opener(lines: list[str], *, index: int, name: str) -> bool:
+    """Whether an ``=== END X ===`` line with no block open is really X's opening delimiter.
+
+    Recover only when no later ``=== X ===`` opening delimiter exists. With no block open, an END
+    line cannot close anything, so the model dropped the opener; the block runs to the next
+    delimiter that closes it. A later opener means the model instead restarted the artifact, which
+    stays ambiguous and is rejected by the pairing check.
+    """
+    return not _has_later_opening_delimiter(lines, index=index, name=name)
+
+
 def _is_transposed_artifact_boundary(
     lines: list[str],
     *,
@@ -477,18 +539,20 @@ def _is_transposed_artifact_boundary(
 ) -> bool:
     """Recognize ``END next`` used in place of ``END current`` + ``open next``.
 
-    Recover only when the candidate next artifact has a later matching END delimiter and no
-    opening delimiter before it. That sequence makes the transposed boundary unambiguous. Other
-    mismatched delimiters remain body text and are rejected by the pairing check.
+    Recover only when no later opening delimiter for the candidate next artifact exists. Under the
+    artifact protocol an END delimiter never appears inside a body, so a mismatched END is a
+    boundary. A later opener for the same name means the model restarted the artifact instead:
+    that stays ambiguous, remains body text, and is rejected by the pairing check.
     """
     if next_name == current_name:
         return False
+    return not _has_later_opening_delimiter(lines, index=index, name=next_name)
+
+
+def _has_later_opening_delimiter(lines: list[str], *, index: int, name: str) -> bool:
     for later_line in lines[index + 1 :]:
         open_match = _OPEN_BLOCK_LINE_RE.match(later_line.strip())
-        if open_match and open_match.group("name").strip() == next_name:
-            return False
-        end_match = _END_BLOCK_LINE_RE.match(later_line.strip())
-        if end_match and end_match.group("name").strip() == next_name:
+        if open_match and open_match.group("name").strip() == name:
             return True
     return False
 
@@ -568,11 +632,7 @@ def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str,
     """
     defects: list[str] = []
 
-    opened = [
-        name
-        for match in _OPEN_BLOCK_LINE_RE.finditer(text)
-        if not (name := match.group("name").strip()).startswith("END ")
-    ]
+    opened = [match.group("name").strip() for match in _OPEN_BLOCK_LINE_RE.finditer(text)]
     for name in sorted({name for name in opened if name not in blocks}):
         defects.append(
             f"`{name}` opens but never closes, so it was dropped from the response entirely; "
@@ -594,11 +654,7 @@ def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str,
 
 def _artifact_delimiters_are_complete(text: str, blocks: dict[str, str]) -> bool:
     """Whether every parsed artifact appears in exactly one paired delimiter set."""
-    opens = Counter(
-        name
-        for match in _OPEN_BLOCK_LINE_RE.finditer(text)
-        if not (name := match.group("name").strip()).startswith("END ")
-    )
+    opens = Counter(match.group("name").strip() for match in _OPEN_BLOCK_LINE_RE.finditer(text))
     ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(text))
     expected = Counter({name: 1 for name in blocks})
     return bool(expected) and opens == ends == expected
