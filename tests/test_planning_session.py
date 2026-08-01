@@ -18,6 +18,7 @@ from drydock.errors import RecordedError, SpecificationError
 from drydock.planning_session import (
     PlanDeferredResult,
     _answered_discovery,
+    _artifact_delimiter_defects,
     _assemble_prompt,
     _load_prior_plan_state,
     _normalize_existing_specs,
@@ -2352,6 +2353,70 @@ def test_missing_final_delimiter_is_recovered(tmp_path):
 
 def test_repair_missing_leading_delimiter_refuses_ordinary_preamble():
     assert _repair_missing_leading_delimiter("Here is the plan.\n" + _llm_output()) is None
+
+
+def test_truncated_artifact_restarted_mid_body_is_rejected(tmp_path):
+    """A response cut mid-artifact that resumes by restarting it must not be written.
+
+    Reproduces the Marina failure: the provider cut the response inside
+    `FEATURE-Reconciliation.md` and the continuation spliced that artifact's header onto
+    the broken line. `_BLOCK_RE` then spanned from the first header to the first END,
+    absorbing the truncated attempt and its retry into one block that pairs 1:1.
+    """
+    target_dir = _make_target(tmp_path)
+    feature = _SPEC_HEADER.format(ftype="FEATURE", name="Status", ac="Status command exits.")
+    output = _llm_output().replace(
+        "=== FEATURE-Status.md ===\n",
+        f"=== FEATURE-Status.md ===\n{feature[:80]}=== FEATURE-Status.md ===\n",
+        1,
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(output))
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="contains an artifact header inside its body",
+    )
+    assert not (target_dir / "MANIFEST.md").exists()
+
+
+def test_artifact_that_opens_without_closing_is_reported():
+    """An opener with no END is dropped by `_BLOCK_RE`'s backreference — a silent loss.
+
+    Observed in a real run where `FEATURE-Autolinks.md` opened, never closed, and vanished
+    from a 26-artifact response without any error. Parsing is the backstop after the
+    contract guards, so the branch is measured directly.
+    """
+    text = _llm_output().replace("\n=== END FEATURE-Status.md ===\n", "\n", 1)
+    blocks = _parse_blocks(text)
+
+    assert "FEATURE-Status.md" not in blocks
+    defects = _artifact_delimiter_defects(text, blocks)
+    assert any(
+        "FEATURE-Status.md" in defect and "opens but never closes" in defect for defect in defects
+    )
+
+
+def test_delimiter_check_ignores_artifact_size():
+    """The check is structural. A large body is not a defect."""
+    text = _llm_output()
+    blocks = _parse_blocks(text)
+    blocks["ARCHITECTURE.md"] = blocks["ARCHITECTURE.md"] + "\nfiller line" * 50_000
+
+    assert _artifact_delimiter_defects(text, blocks) == ()
+
+
+def test_well_formed_output_passes_the_delimiter_check(tmp_path):
+    """The check is structural: undamaged output is never rejected, at any size."""
+    target_dir = _make_target(tmp_path)
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert result.plan.by_id()["story-status"].fields.get("implements") == ("FEATURE-Status.md",)
+    assert (target_dir / "MANIFEST.md").exists()
 
 
 def test_transition_text_between_blocks_is_reported_without_recovery(tmp_path):

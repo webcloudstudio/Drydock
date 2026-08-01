@@ -85,6 +85,23 @@ class TestInputTokens:
         assert "### Tuning Options" not in analysis_contract
         assert "questions live only in `discovery-*.json`" in prompt.body
 
+    def test_analyze_sizes_stories_in_agile_points(self):
+        body = load_prompt("analyze").body
+        normalized = " ".join(body.split())
+
+        assert "1 to 5 story points" in normalized
+        assert "releasable on its own" in normalized
+        assert "a story has no token dimension" in normalized
+
+    def test_analyze_asks_about_high_story_counts_instead_of_capping(self):
+        """A high count is a granularity signal for the Commander, never a refusal."""
+        body = load_prompt("analyze").body
+        normalized = " ".join(body.split())
+
+        assert "discovery-story-count.json" in normalized
+        assert "never drop, merge, or withhold stories" in normalized
+        assert "never cap the list" in normalized
+
     def test_render_inputs_emits_in_token_order(self):
         renderers = {
             "A": lambda: ["a-section"],
@@ -137,8 +154,19 @@ class TestInputTokens:
 
         assert "`foundational`, `service`, or `feature`" in body
         assert "no `spike` or `ac` story type" in body
-        assert "Story count is not capped." in body
+        assert "Story count is not capped" in body
         assert "`Phase` is never a Blueprint header field" in body
+
+    def test_plan_create_sizes_stories_in_agile_points_not_tokens(self):
+        """A story is sized by Agile judgement. Tokens are a property of its block."""
+        body = load_prompt("plan_create").body
+        normalized = " ".join(body.split())
+
+        assert "**1 to 5 story points**" in normalized
+        assert "releasable on its own" in normalized
+        assert "A story has no token dimension" in normalized
+        # The superseded framing invited a model to treat capacity as a decomposition boundary.
+        assert "implement and verify in a single pass" not in normalized
 
     def test_plan_create_uses_analysis_decomposition_as_default_work_breakdown(self):
         body = load_prompt("plan_create").body

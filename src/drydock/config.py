@@ -21,6 +21,7 @@ _KEY_MAP = {
     "llm_provider": "LLM_PROVIDER",
     "codex_sandbox": "DRYDOCK_CODEX_SANDBOX",
     "prompt_warn_tokens": "PROMPT_WARN_TOKENS",
+    "prompt_error_tokens": "PROMPT_ERROR_TOKENS",
     "quarterdeck_port": "QUARTERDECK_PORT",
     "diagnose": "DRYDOCK_DIAGNOSE",
     "sandbox_mem_limit": "DRYDOCK_SANDBOX_MEM_LIMIT",
@@ -38,6 +39,9 @@ DEFAULT_MODEL = "sonnet"
 EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
 
 DEFAULT_PROMPT_WARN_TOKENS = 50_000
+# The red light to ``PROMPT_WARN_TOKENS``' yellow. The warn threshold is advisory and a
+# legitimate specification trips it routinely, so only this one is a genuine ceiling.
+DEFAULT_PROMPT_ERROR_TOKENS = 120_000
 DEFAULT_QUARTERDECK_PORT = 8080
 # Address-space ceiling, in MB, for a build's acceptance run and everything it spawns. A JVM,
 # a Go toolchain, or a sanitizer build reserves far more virtual address space than it uses;
@@ -274,6 +278,19 @@ def get_prompt_warn_tokens() -> int:
     return tokens
 
 
+def get_prompt_error_tokens() -> int:
+    value, _source = _get("PROMPT_ERROR_TOKENS", str(DEFAULT_PROMPT_ERROR_TOKENS))
+    try:
+        tokens = int(value or DEFAULT_PROMPT_ERROR_TOKENS)
+    except ValueError:
+        tokens = 0
+    if tokens <= 0:
+        raise ConfigurationError(
+            f"Invalid PROMPT_ERROR_TOKENS: {value!r}\n  Expected a positive integer (tokens)."
+        )
+    return tokens
+
+
 def get_quarterdeck_port() -> int:
     value, _source = _get("QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT))
     try:
@@ -348,6 +365,7 @@ def config_show() -> list[tuple[str, str, str]]:
         ("llm_provider", "LLM_PROVIDER", "claude"),
         ("codex_sandbox", "DRYDOCK_CODEX_SANDBOX", DEFAULT_CODEX_SANDBOX),
         ("prompt_warn_tokens", "PROMPT_WARN_TOKENS", str(DEFAULT_PROMPT_WARN_TOKENS)),
+        ("prompt_error_tokens", "PROMPT_ERROR_TOKENS", str(DEFAULT_PROMPT_ERROR_TOKENS)),
         ("quarterdeck_port", "QUARTERDECK_PORT", str(DEFAULT_QUARTERDECK_PORT)),
         ("diagnose", "DRYDOCK_DIAGNOSE", "true"),
         (
@@ -423,10 +441,10 @@ def config_set(key: str, value: str) -> Path:
                 f"Invalid codex_sandbox: {value!r}\n"
                 f"  Valid values: {', '.join(CODEX_SANDBOX_MODES)}"
             )
-    elif upper == "PROMPT_WARN_TOKENS":
+    elif upper in {"PROMPT_WARN_TOKENS", "PROMPT_ERROR_TOKENS"}:
         if not value.isdigit() or int(value) <= 0:
             raise ConfigurationError(
-                f"Invalid prompt_warn_tokens: {value!r}\n  Expected a positive integer (tokens)."
+                f"Invalid {upper.lower()}: {value!r}\n  Expected a positive integer (tokens)."
             )
         stored_value = value
     elif upper == "DRYDOCK_DIAGNOSE":

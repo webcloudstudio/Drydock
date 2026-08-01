@@ -1,21 +1,23 @@
-"""Zone A stack resolution and build-pass sizing.
+"""Zone A stack resolution and block cost sizing.
 
 `TECHNOLOGY_STACK.md` declares *which* stack is used; it is the only stack input Zone A used to
 read. The Rigging stack files themselves — ``fastapi.md``, ``common.md`` — were never opened at
 plan time, so a story's builder/consumer mode had no measurable basis. Resolving the stack file
 set is therefore a required Zone A step: the mode assignment in :mod:`drydock.plan_graph` and the
-build-pass ceiling below both need the real files.
+cost target below both need the real files.
 
-**Story sizing.** The correct ceiling is what one build agent can implement and verify in a single
-pass — its specification plus stack files in, a working diff and passing assertions out. That is
-measurable in tokens before anything runs, which is why it replaces an effort threshold. Note the
-symmetry: an over-sized story fails at build for the same reason an over-sized plan fails at plan.
-One ceiling, one diagnosis, two altitudes.
+**Tokens belong to the block, not the story.** A story is sized by Agile judgement — 1 to 5 story
+points, one thing done completely, releasable on its own — and has no token dimension at all. What
+is measured in tokens is the block: the assembled cost of one build run. Because a block holds at
+least one story, the target constrains a story only in the degenerate single-story case.
 
-That symmetry is literal, not rhetorical: the ceiling is the existing ``prompt_warn_tokens``
-configuration key. It already means *the maximum assembled prompt cost of one build step*, which is
-the same quantity this module measures at plan time. A second key would be the same number under a
-second name, defaulting differently and drifting from it.
+The earlier framing sized a *story* by "what one build agent can implement and verify in a single
+pass". That was never a decomposition boundary: a model will accept a whole epic in one pass and
+build it badly, so capacity says nothing about whether the unit of work is a story.
+
+The target is the existing ``prompt_warn_tokens`` configuration key, which already means *the
+maximum assembled prompt cost of one build step* — the same quantity measured here at plan time. A
+second key would be the same number under a second name, defaulting differently and drifting.
 """
 
 from __future__ import annotations
@@ -29,22 +31,31 @@ from drydock.build import PROMPT_WARN_TOKENS, resolve_warn_tokens
 from drydock.paths import get_stack_dir
 from drydock.prompt_assembly import estimate_tokens
 
-#: Fallback ceiling when ``prompt_warn_tokens`` is unreadable. Mirrors the build-time default so
+#: Fallback target when ``prompt_warn_tokens`` is unreadable. Mirrors the build-time default so
 #: plan-time and build-time sizing cannot disagree.
-DEFAULT_STORY_BUDGET_TOKENS = PROMPT_WARN_TOKENS
+DEFAULT_BLOCK_TARGET_TOKENS = PROMPT_WARN_TOKENS
+
+#: Prior spelling, retained for callers. The old name attached the measurement to a story; tokens
+#: are a property of the block a story is built in.
+DEFAULT_STORY_BUDGET_TOKENS = DEFAULT_BLOCK_TARGET_TOKENS
 
 _COMPACT_SUFFIX = "_compact.md"
 _SKIP_SUFFIX = "_compact.skip.md"
 
 
-def story_budget_tokens() -> int:
-    """Return the configured single-build-pass ceiling in tokens.
+def block_target_tokens() -> int:
+    """Return the configured block cost target in tokens.
 
     Resolves ``prompt_warn_tokens`` — the same key ``drydock build`` uses to flag an over-stacked
     step. Sizing is a read-only costing pass, so an unusable setting downgrades to the built-in
-    default rather than refusing to plan.
+    default rather than refusing to plan. This is a target, not a gate: over-target work is
+    marked and built.
     """
     return resolve_warn_tokens()
+
+
+#: Prior spelling. Tokens measure a block, never a story.
+story_budget_tokens = block_target_tokens
 
 
 @dataclass(frozen=True)
@@ -161,10 +172,20 @@ def story_pass_tokens(
     resolved: dict[str, ResolvedStackFile],
     mode: str = "builder",
 ) -> int:
-    """Estimate one story's single-build-pass cost: its specification plus its stack files."""
+    """Estimate one story's contribution to its block's cost: its specification plus stack files.
+
+    This is an input to block sizing, not a verdict on the story. A story that measures large is
+    not thereby mis-sized — story sizing is the Agile judgement, and this number belongs to the
+    block the story lands in.
+    """
     return specification_tokens + stack_cost(stack, resolved, mode=mode)
 
 
+def exceeds_block_target(tokens: int, *, target: int | None = None) -> bool:
+    """Whether a measured block exceeds the cost target and should be marked over-target."""
+    return tokens > (block_target_tokens() if target is None else target)
+
+
 def exceeds_build_pass(tokens: int, *, budget: int | None = None) -> bool:
-    """Whether a measured story exceeds the single-build-pass ceiling and must be split."""
-    return tokens > (story_budget_tokens() if budget is None else budget)
+    """Prior spelling of :func:`exceeds_block_target`."""
+    return exceeds_block_target(tokens, target=budget)

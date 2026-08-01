@@ -134,11 +134,12 @@ Stories and governed specifications are one-to-one: every story implements exact
 specification, and every specification is implemented by exactly one story. The story is the atomic
 build primitive.
 
-**Story sizing.** The ceiling is what one build agent can implement and verify in a single pass —
-its specification plus stack files in, a working diff and passing assertions out. That is measurable
-in tokens before anything runs. A one-week sprint is an artifact of human capacity and carries no
-meaning here. The goal is a set of small building blocks that can be built easily. Story count is
-not capped; a manageable number well under 100 is the ideal, as guidance rather than a gate.
+**Story sizing.** A story is a normal Agile story: 1 to 5 story points. Never a half point — that is
+a task, folded into the story it serves. Never twelve — that is split. A story does one thing
+completely, carries test criteria, and is releasable on its own; a task is not releasable and is
+therefore not a story. A story has no token dimension. Token cost is measured against the block a
+story is built in, never against the story. Story count is not capped: it is an output of correct
+decomposition, not a target.
 
 ### Authorship versus verification
 

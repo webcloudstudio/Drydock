@@ -452,10 +452,14 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   questionnaire before Plan or a `## Questions` record in the owning specification after.
 
 **Story sizing**
-- The ceiling is what one build agent can implement and verify in a single pass: its specification
-  plus stack files in, a working diff and passing assertions out. Split anything larger.
-- Story count is not capped. A manageable number well under 100 is the ideal, as guidance rather
-  than a gate. Never collapse distinct behaviors to reduce the count.
+- A story is a normal Agile story: **1 to 5 story points**. Never a half point — that is a task,
+  and a task is folded into the story it serves. Never twelve — that is split.
+- A story does one thing completely, carries test criteria, and is releasable on its own. A task is
+  not releasable and is therefore not a story.
+- Size by that judgement alone. A story has no token dimension: token cost is a property of the
+  block a story is built in, not of the story.
+- Story count is not capped, and it is an output of correct decomposition rather than a target.
+  Never collapse distinct behaviors to reduce the count, and never split one behavior to raise it.
 
 **Stack**
 - Draw `stack:` values from the Rigging column of `TECHNOLOGY_STACK.md`: give each story the files

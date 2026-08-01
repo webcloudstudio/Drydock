@@ -36,6 +36,8 @@ decisions.
 
 A story is an atomic testable unit of work that might have acceptance criteria and guardrails at a later stage. Stories include user interface screens, the routes used to service those screens, cli options, api served, batch scripts needed, import/export operations, and other atomic units of work according to agile best practices. Do not create a separate Screens grouping or count; UI screens are stories under the relevant Agile feature.
 
+**Story granularity.** A story is a normal Agile story: 1 to 5 story points. Never a half point — that is a task, and a task is folded into the story it serves rather than listed beside it. Never twelve — that is split. A story does one thing completely and is releasable on its own; a task is not releasable and is therefore not a story. "Add a button" and "add a test" are tasks. Size by that judgement alone: a story has no token dimension, and story count is an output of correct decomposition, never a target to hit or avoid.
+
 You will note the interrelationships between these elements — for example, a user interface screen uses api calls, and an export depends on the data it reads.  Note them to inform how you cut stories; do not build a dependency graph.  The graph is constructed later, by `plan create`.
 
 You will also look at the technologies mentioned in the sources and create a list. If a needed
@@ -303,6 +305,15 @@ depends on the answer. It never resolves a blocker. Do not duplicate a questionn
   Do not emit a questionnaire that duplicates an existing unanswered questionnaire. Existing
   questionnaires are preserved indefinitely and never rewritten or replaced. On re-analysis, emit
   each genuinely new, non-duplicate question in a new `discovery-<slug>.json` file.
+- **Story-count sanity question.** When the story list exceeds **80** stories, emit one
+  `discovery-story-count.json` asking the Commander to confirm the granularity. A high count is a
+  signal that tasks were listed as stories, not a reason to refuse: never drop, merge, or withhold
+  stories to get under the number, and never cap the list. Ask, emit the full list, and let the
+  Commander decide. Phrase the question with the real count and offer a target, for example:
+  "Analysis decomposed this epic into 257 stories, which is high for one Blueprint and usually
+  means tasks were listed as stories. Is this granularity correct, or supply a target NUMBER of
+  stories for a replan." Set `"required_before_plan": false` — the plan is usable either way.
+  Do not emit it when an equivalent unanswered questionnaire already exists.
 
 **10. Emit all output blocks.** See Output Format below. Emit the `BLOCKERS.md` block only when
 blockers exist; emit the `COMPASS.md` block when `COMPASS_EXISTS: false` or

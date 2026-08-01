@@ -534,6 +534,57 @@ def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
     return bool(text.strip())
 
 
+#: Any artifact header, anchored or not. A parsed body must never contain one: when a
+#: response is cut mid-artifact and resumes by restarting that artifact, ``_BLOCK_RE``
+#: spans from the first header to the first ``=== END ===``, swallowing the truncated
+#: attempt and the restart into one block that still pairs 1:1.
+_HEADER_ANYWHERE_RE = re.compile(r"=== (?:END )?(?P<name>[^=\n]+?) ===")
+
+
+def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str, ...]:
+    """Report artifacts silently dropped by the parser, or whose body absorbed another.
+
+    Two structural failures survive the parser and reach the Blueprint as damage.
+
+    An artifact opened but never closed is dropped entirely: ``_BLOCK_RE`` pairs on a
+    backreference, so an opener with no ``=== END ===`` matches nothing and the whole
+    specification vanishes from the response without a word.
+
+    An artifact header inside a parsed body means the response was cut mid-artifact and
+    resumed by restarting it. ``_BLOCK_RE`` then spans from the first header to the first
+    ``=== END ===``, swallowing the truncated attempt and its retry into one block that
+    still pairs 1:1 and still counts as present.
+
+    Deliberately narrow: missing leading and trailing delimiters have their own recovery
+    paths, orphan END lines are already rejected by ``_reject_unpaired_end_delimiters``,
+    and none of this measures size.
+    """
+    defects: list[str] = []
+
+    opened = [
+        name
+        for match in _OPEN_BLOCK_LINE_RE.finditer(text)
+        if not (name := match.group("name").strip()).startswith("END ")
+    ]
+    for name in sorted({name for name in opened if name not in blocks}):
+        defects.append(
+            f"`{name}` opens but never closes, so it was dropped from the response entirely; "
+            "every artifact that opens must close"
+        )
+
+    for name, body in blocks.items():
+        embedded = sorted({
+            match.group("name").strip() for match in _HEADER_ANYWHERE_RE.finditer(body)
+        })
+        if embedded:
+            defects.append(
+                f"`{name}` contains an artifact header inside its body "
+                f"({', '.join(f'`{found}`' for found in embedded)}); the response was cut "
+                "mid-artifact and its truncated attempt was absorbed into this block"
+            )
+    return tuple(defects)
+
+
 def _artifact_delimiters_are_complete(text: str, blocks: dict[str, str]) -> bool:
     """Whether every parsed artifact appears in exactly one paired delimiter set."""
     opens = Counter(
@@ -2097,9 +2148,17 @@ def advisory_plan_shape(blocks: dict[str, str]) -> tuple[ShapeDefect, ...]:
 
 
 def _validate_plan_output(
-    blocks: dict[str, str], blueprint_dir: Path, result: CompletedRun
+    blocks: dict[str, str],
+    blueprint_dir: Path,
+    result: CompletedRun,
+    source_text: str | None = None,
 ) -> tuple[BuildPlan, tuple[str, ...]]:
-    """Validate one LLM response mode and return the parsed plan for success mode."""
+    """Validate one LLM response mode and return the parsed plan for success mode.
+
+    ``source_text`` is the delimited response the blocks were parsed from, when there
+    is one.  It is ``None`` for blocks recovered from write-tool-call syntax, which
+    carry no ``=== NAME ===`` delimiters and therefore cannot be pairing-checked.
+    """
     mode_blocks = {"MANIFEST.md", "PLAN_CREATE_BLOCKED.txt", "PLAN_CREATE_ERROR.txt"} & set(blocks)
 
     if "PLAN_CREATE_BLOCKED.txt" in blocks:
@@ -2153,9 +2212,24 @@ def _validate_plan_output(
             )
         )
 
-    # Success Mode is confirmed. Measure the artifact set against the declared output contract
-    # before anything is parsed or written — an absolute, deterministic guardrail in place of the
-    # prompt's former self-verification tail.
+    # Success Mode is confirmed. Everything that opens must close: a header spliced onto the
+    # tail of a truncated line parses as a valid block, so only the line-anchored delimiter
+    # counts prove the artifact set is undamaged. Structural, never a size judgement.
+    if source_text is not None:
+        pairing_defects = _artifact_delimiter_defects(source_text, blocks)
+        if pairing_defects:
+            raise SpecificationError(
+                _with_execution_evidence(
+                    "Plan generation failed: LLM output has damaged artifact delimiters.\n  "
+                    + "\n  ".join(pairing_defects)
+                    + "\n  No Blueprint or Manifest artifacts were written.",
+                    result,
+                )
+            )
+
+    # Measure the artifact set against the declared output contract before anything is parsed
+    # or written — an absolute, deterministic guardrail in place of the prompt's former
+    # self-verification tail.
     shape_defects = check_plan_shape(blocks)
     if shape_defects:
         raise SpecificationError(
@@ -2699,7 +2773,7 @@ def _approve_outside_text_candidate(
 
     try:
         validated_plan, validated_warnings = _validate_plan_output(
-            exc.blocks, blueprint_dir, result
+            exc.blocks, blueprint_dir, result, source_text=result.text
         )
     except Exception as validation_exc:
         raise _record_plan_error(
@@ -3031,6 +3105,9 @@ def create_plan(
     validated_warnings: tuple[str, ...] = ()
     waiver_execution_id: str | None = None
     waiver_warning: str | None = None
+    # The delimited response the blocks came from, tracked so the pairing check measures the
+    # right text. Write-call recovery produces blocks with no delimiters, and clears this.
+    blocks_text: str | None = result.text
     try:
         blocks = _parse_strict_blocks(result.text, result)
     except OutsideArtifactTextError as exc:
@@ -3050,6 +3127,7 @@ def create_plan(
             ) from write_exc
         if recovered:
             blocks = recovered
+            blocks_text = None
         else:
             blocks = exc.blocks
             (
@@ -3080,6 +3158,7 @@ def create_plan(
             recovered = {}
         if recovered:
             blocks = recovered
+            blocks_text = None
         else:
             raise _record_plan_error(
                 target_dir,
@@ -3195,6 +3274,7 @@ def create_plan(
                     deferred_block = confirmed.strip()
                 else:
                     blocks = challenge_blocks
+                    blocks_text = challenge_result.text
                     result = challenge_result
                     exec_id = challenge_exec_id
                     deferred_block = None
@@ -3218,7 +3298,9 @@ def create_plan(
                     plan_mode=plan_mode,
                 )
         try:
-            plan, warnings = _validate_plan_output(blocks, blueprint_dir, result)
+            plan, warnings = _validate_plan_output(
+                blocks, blueprint_dir, result, source_text=blocks_text
+            )
         except Exception as exc:
             record = write_error_record(
                 target_dir,

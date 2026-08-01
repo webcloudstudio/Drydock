@@ -38,7 +38,7 @@ from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.compass_sources import is_compass_file
-from drydock.config import get_prompt_warn_tokens
+from drydock.config import get_prompt_error_tokens, get_prompt_warn_tokens
 from drydock.errors import ConfigurationError
 from drydock.prompt_assembly import (
     PromptAssembly,
@@ -77,6 +77,20 @@ def resolve_warn_tokens() -> int:
         return get_prompt_warn_tokens()
     except ConfigurationError:
         return PROMPT_WARN_TOKENS
+
+
+# The red light to ``PROMPT_WARN_TOKENS``' yellow. Warn is advisory and a legitimate
+# specification trips it routinely, so it is deliberately not a stop sign; this is the
+# threshold worth raising with the Commander.
+PROMPT_ERROR_TOKENS = 120_000
+
+
+def resolve_error_tokens() -> int:
+    """Return the configured error ceiling, falling back to the built-in default."""
+    try:
+        return get_prompt_error_tokens()
+    except ConfigurationError:
+        return PROMPT_ERROR_TOKENS
 
 
 # Manifest block types that are executable build steps. Features group; ac blocks
