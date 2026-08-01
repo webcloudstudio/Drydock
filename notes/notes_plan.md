@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V14 |
+| Version | 2026-08-01 V15 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
@@ -1054,15 +1054,19 @@ exists — `questions.py` defines `QUESTION_ORIGINS = {plan, build, analyze-ques
   a replan. `required_before_plan: false` — the plan is usable either way. Never drop, merge, or
   withhold stories to get under the number, and never cap the list. *(Prompt-side: implemented.)*
 - **Plan — error threshold.** Raised as a `QUESTION:` block in a Blueprint rather than a hard
-  failure. Any question that does not belong to a specific story defaults to a foundational
-  Blueprint (`ARCHITECTURE.md`). Location is not load-bearing; being asked is. *(Unimplemented.)*
+  failure. The question belongs to the block; it does not require a foundational specification or
+  architecture context. Its deterministic carrier is the specification implemented by the first
+  story in computed block order. *(Unimplemented.)*
 
 **Implementation of the plan side.** After `compute_plan` returns, compare each block's measured
 cost against `build.resolve_error_tokens()` (default 120,000; `resolve_warn_tokens()` stays the
 advisory marker already written as `size:` / `budget: over-target`). For each block over the error
-threshold, append a question to the owning foundational Blueprint through the existing
-`questions.py` contract — `origin: plan`, `severity: material`, `status: open`, id `Q-BLOCK-<n>` —
-naming the block, its measured cost, the threshold, and its member stories. Emit the plan; do not
+threshold, append a question through the existing `questions.py` contract — `origin: plan`,
+`severity: material`, `status: open`, id `Q-BLOCK-<n>` — to the specification implemented by the
+first story in computed block order, naming the block, its measured cost, the threshold, and its
+complete member-story list. Do not inject an
+architecture specification or `architecture_compact.md`, change block membership, invalidate the
+block, or change its execution eligibility merely to carry the question. Emit the plan; do not
 refuse it. `normalize_questions_first` already runs over emitted specs in `_validate_plan_output`,
 so the section lands in the right place. Test with a fake runner and a deliberately huge spec.
 
@@ -1091,12 +1095,16 @@ syntax carry no delimiters, so `source_text` is `None` for them and the check is
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
 
 A run that stops one artifact short must not throw away twelve minutes and $2.70 of valid work.
-Model the existing build loop, which succeeds by exactly this method: append the prior state and the
-error to the same prompt and continue while progress is measurable ("5/10 AC" → "8/10 AC" → done).
+Model the existing build loop, which succeeds by exactly this method: append a bounded instruction
+to the same prompt and continue while progress is measurable ("5/10 accepted stories" → "8/10
+accepted stories" → done).
 
-- **Progress metric:** specifications authored against specifications *declared*.
-- Continue while the missing count strictly decreases. Stop on no progress, not on an iteration
-  count. There is no retry limit and no size limit.
+- **Progress metric:** accepted story artifacts against story artifacts declared in `TOPOLOGY.md`.
+  The declaration supplies both the expected story count and the exact story ID → `implements`
+  filename mapping. A parsed block is not progress until it is individually valid and accepted.
+- Continue while the accepted count strictly increases. Stop on no progress, not on an iteration
+  count. There is no retry limit and no size limit; strict increase bounds successful continuation
+  passes by the number of declared stories.
 - Assemble as the **byte-identical base prompt prefix** plus an appended block. The failed run
   logged `cached 305,407 (100% hit)`; an identical prefix re-hits it.
 - Never discard already-valid artifacts.
@@ -1108,31 +1116,46 @@ section is now unblocked.
 **Implementation.**
 
 1. **Prompt.** New `prompts/plan_continue.md` per the Prompt Contract Standard (`AGENTS.md`):
-   frontmatter `name`, `description`, `version`, `intent`. Body states one job — emit only the
-   named missing artifacts, in the same delimited block format, nothing else.
+   frontmatter `name`, `description`, `version`, `intent`. Its body is the bounded continuation
+   instruction appended to the original assembly; it is not a replacement prompt. It states one
+   job — emit only the named missing or replacement artifacts, in the same delimited block format,
+   nothing else.
 2. **Assembly.** Reuse the original `PromptAssembly` and append one part, the way
    `_conflict_challenge_assembly` already does (`planning_session.py`, near the Zone C helpers).
    Copy that shape: it appends a bounded instruction to the complete original planning context and
    is the proven pattern for a second pass. The **prefix must stay byte-identical** or the cache
    hit is lost.
-3. **Appended block carries:** the still-missing specification names from the declaration; the
-   error actually received; and the instruction to emit those artifacts only. Do **not** resend the
-   already-emitted specification bodies — the declaration names them, which is the point.
-4. **Loop.** After each pass, recompute `declared - emitted`. Continue while that count strictly
-   decreases. Stop on no decrease. No iteration cap, no token cap.
-5. **Execution.** Through the injected `runner` (default `llm.run_prompt`), same `llm`/`model`/
-   `effort`, its own `execution_id` per pass, `command_name="plan"`. Console: one line per pass
-   showing the count, `n specifications missing — continuing`.
-6. **Merge.** Accumulate blocks across passes into the single `blocks` dict, then fall through to
-   the existing validation path unchanged. Keep `blocks_text` correct — accumulate the response
-   texts, or validate each pass's contribution as it arrives.
-7. **Failure.** When progress stalls, raise the existing error with the pass count and every
+3. **Ledger.** Python derives `expected`, `accepted`, `missing`, and `invalid` from the declaration
+   and returned artifacts. An accepted artifact corresponds to exactly one declared story and
+   filename, has a complete structural boundary, satisfies the applicable Typed Specification
+   shape needed for accumulation, and does not conflict with an already accepted artifact. Invalid
+   artifacts never enter the accumulator and remain eligible for replacement. A conflicting second
+   version of an already-valid artifact is an error.
+4. **Appended block carries:** accepted story/artifact metadata; remaining story IDs and required
+   filenames; invalid artifact names and concise validation defects when applicable; and the
+   instruction to emit only missing or replacement artifacts. Do **not** resend accepted artifact
+   bodies.
+5. **Loop.** After each pass, recompute `expected - accepted`. Continue only when
+   `len(accepted)` strictly increases. Complete when every declared story has one accepted artifact.
+   Stop on no increase. No iteration cap, no token cap.
+6. **Execution.** Make another invocation through the injected `runner` (default
+   `llm.run_prompt`) using the same `llm`/`model`/`effort`, target context, and byte-identical base
+   prefix. Give every pass its own `execution_id` and use `command_name="plan"`. This is a runner
+   invocation, not an agent file-write tool call: Plan keeps provider tools disabled and the module
+   owns filesystem writes. Console: one line per pass showing the accepted and missing counts.
+7. **Merge.** Accumulate only accepted artifacts across passes. Validate each pass's contribution
+   before admission, permit a later pass to replace an invalid earlier attempt, and run the existing
+   whole-plan validation over the merged set before writing. Keep `blocks_text` correct by
+   validating each contribution against its own source response before accumulation.
+8. **Failure.** When progress stalls, raise the existing error with the pass count and every
    `execution_id` appended. Already-valid artifacts are still never written on failure; that is
    the current all-or-nothing contract and this section does not change it.
 
 **Tests** (fake runner, `tests/test_planning_session.py`): missing specs → continues and completes;
-count decreases then stalls → stops with all execution ids reported; nothing missing → never fires;
-a pass returning junk → does not corrupt accumulated blocks; no valid artifact discarded.
+accepted count increases then stalls → stops with all execution IDs reported; nothing missing →
+never fires; a pass returning junk → does not corrupt accumulated artifacts; invalid artifact →
+remains replaceable; conflicting valid artifact → fails; no accepted artifact discarded; no files
+written until the merged set passes whole-plan validation.
 
 ---
 
@@ -1238,8 +1261,9 @@ registry — two passes, same substitution decisions.
 2. **Integrity failure UX** — block `MANIFEST.md` write only, surface as QuarterDeck questions, or
    both? (Lean: block + surface findings; PO decides whether to re-analyze or fix the spec.)
 3. **Drift propagation model** — how green/stale propagates when an upstream node changes post-build.
-4. **Zone D review** — `conform_specs` is unreviewed and may rewrite authored content. Determine
-   whether it stays, and what its firing rate says about Zone B.
+4. **Zone D review** — dependent and deferred. `conform_specs` is unreviewed and may rewrite
+   authored content. Determine whether it stays, and what its firing rate says about Zone B, only
+   after its dependency and actual behavior are understood. No implementation decision is made.
 
 *Closed 2026-08-01:* `ac` as node or field (§Programmatic Acceptance is not a node); deterministic
 and model phase grouping (§Plan command workflow); TDD phase placement (§Content and acceptance are
@@ -1253,8 +1277,9 @@ Editing the canonical specification. Detailed Shipyard Crew execution mechanics 
 story-local decision-record contract. Story-too-big splitting is retired by §Story sizing; the
 story count cap is retired by §Story count is not capped and removed from the code.
 
-Remaining implementation work: §Constraints surface as questions (plan side), §Continuation —
-resume, never discard, and the Zone D review in Open Question 4.
+Remaining implementation work: §Constraints surface as questions (plan side) and §Continuation —
+resume, never discard. Zone D remains a dependent, deferred review in Open Question 4, not an
+implementation item.
 
 `BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
 artifacts that never existed in implementation. They are removed from these notes and from
