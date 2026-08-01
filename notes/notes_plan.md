@@ -867,6 +867,41 @@ a Second Pass over a malformed declaration re-sends almost nothing, whereas re-e
 thirty-file `MANIFEST.md` re-sends the entire plan. That is the staging argument in §Shape
 conformance, and it only pays off once the declaration is the artifact.
 
+**Constraints added `2026-08-01` — read before step 3.** The delimiter guardrail landed after this
+section was written and changed the signatures it describes.
+
+- `_validate_plan_output(blocks, blueprint_dir, result, source_text=None)` takes a fourth argument:
+  the delimited response the blocks were parsed from. The cutover must keep passing it. It is
+  `None` only for blocks recovered from write-tool-call syntax, which carry no delimiters.
+- `create_plan` tracks a `blocks_text: str | None` local alongside `blocks`. Every path that
+  reassigns `blocks` must reassign it: `_parse_write_call_blocks` recovery sets it to `None` (two
+  sites), and the conflict-challenge path sets it to `challenge_result.text` where it already
+  rebinds `result`. Miss one and the check measures the wrong text.
+- **Do not tighten delimiter pairing.** Two lenient recovery paths are deliberate and tested:
+  `_repair_missing_leading_delimiter` synthesizes a dropped opening delimiter, and
+  `_parse_strict_blocks_by_line` tolerates a missing final one. A strict
+  `opens == ends == expected` rule breaks `test_missing_first_delimiter_is_recovered` and
+  `test_missing_final_delimiter_is_recovered`. `_artifact_delimiter_defects` is narrow on purpose;
+  `_artifact_delimiters_are_complete` keeps the strict rule for waiver eligibility only.
+- `parse_build_plan` takes a **Path**, not text. To validate rendered Manifest text in memory use
+  `DrydockManifest.parse(text)`.
+- `_apply_computed_schedule` already builds the `size_fn` step 3 needs: `story_pass_tokens(...)`
+  over `resolve_stack_set(...)`, with the target from `plan_stack.block_target_tokens()`. Lift it
+  rather than rewriting it — only its *input* changes, from `stories_from_manifest(plan.blocks)` to
+  `parse_topology(blocks[TOPOLOGY_BLOCK])`.
+- Step 7 recommendation: keep `plan_reuse.md` and `plan_create_speckit.md` on the Manifest path.
+  Branch on which artifact the response carries, explicitly, at the top of `_validate_plan_output`.
+- **Two names are duplicated across modules — edit the right one.** `render_manifest` exists in
+  both `plan_topology.py` (the serializer this section means) and `manifest_edit.py` (unrelated,
+  takes a `ManifestDoc`). `_repair_missing_leading_delimiter` exists in both
+  `planning_session.py` (the one on the plan path, returns `str | None`) and `artifact_blocks.py`
+  (returns `str`).
+
+**Verification reality.** No test proves the cutover works, because it changes what the *model* is
+asked to emit. A fake runner emitting `TOPOLOGY.md` proves the plumbing only. The real check is a
+live `drydock plan Marina` (~12 min, ~$2.70) and a live `drydock plan CommonMark` regression. Land
+the wiring with fake-runner tests, then verify live — do not treat a green suite as proof.
+
 ### Diagnostic — the Marina plan failure was not a capacity limit
 `2026-08-01` · `spec:na` · `impl:n/a`
 
@@ -965,6 +1000,15 @@ exists — `questions.py` defines `QUESTION_ORIGINS = {plan, build, analyze-ques
   failure. Any question that does not belong to a specific story defaults to a foundational
   Blueprint (`ARCHITECTURE.md`). Location is not load-bearing; being asked is. *(Unimplemented.)*
 
+**Implementation of the plan side.** After `compute_plan` returns, compare each block's measured
+cost against `build.resolve_error_tokens()` (default 120,000; `resolve_warn_tokens()` stays the
+advisory marker already written as `size:` / `budget: over-target`). For each block over the error
+threshold, append a question to the owning foundational Blueprint through the existing
+`questions.py` contract — `origin: plan`, `severity: material`, `status: open`, id `Q-BLOCK-<n>` —
+naming the block, its measured cost, the threshold, and its member stories. Emit the plan; do not
+refuse it. `normalize_questions_first` already runs over emitted specs in `_validate_plan_output`,
+so the section lands in the right place. Test with a fake runner and a deliberately huge spec.
+
 ### Artifact delimiter guardrail
 `2026-08-01` · `spec:approved` · `impl:implemented`
 
@@ -1003,6 +1047,35 @@ error to the same prompt and continue while progress is measurable ("5/10 AC" �
 **Depends on the declaration.** Progress is unmeasurable without a count of what should exist, which
 is what §RESUME HERE — Zone B topology declaration cutover produces. That is the whole reason the
 cutover pays for itself here, and it is the strongest argument for landing it.
+
+**Implementation.**
+
+1. **Prompt.** New `prompts/plan_continue.md` per the Prompt Contract Standard (`AGENTS.md`):
+   frontmatter `name`, `description`, `version`, `intent`. Body states one job — emit only the
+   named missing artifacts, in the same delimited block format, nothing else.
+2. **Assembly.** Reuse the original `PromptAssembly` and append one part, the way
+   `_conflict_challenge_assembly` already does (`planning_session.py`, near the Zone C helpers).
+   Copy that shape: it appends a bounded instruction to the complete original planning context and
+   is the proven pattern for a second pass. The **prefix must stay byte-identical** or the cache
+   hit is lost.
+3. **Appended block carries:** the still-missing specification names from the declaration; the
+   error actually received; and the instruction to emit those artifacts only. Do **not** resend the
+   already-emitted specification bodies — the declaration names them, which is the point.
+4. **Loop.** After each pass, recompute `declared - emitted`. Continue while that count strictly
+   decreases. Stop on no decrease. No iteration cap, no token cap.
+5. **Execution.** Through the injected `runner` (default `llm.run_prompt`), same `llm`/`model`/
+   `effort`, its own `execution_id` per pass, `command_name="plan"`. Console: one line per pass
+   showing the count, `n specifications missing — continuing`.
+6. **Merge.** Accumulate blocks across passes into the single `blocks` dict, then fall through to
+   the existing validation path unchanged. Keep `blocks_text` correct — accumulate the response
+   texts, or validate each pass's contribution as it arrives.
+7. **Failure.** When progress stalls, raise the existing error with the pass count and every
+   `execution_id` appended. Already-valid artifacts are still never written on failure; that is
+   the current all-or-nothing contract and this section does not change it.
+
+**Tests** (fake runner, `tests/test_planning_session.py`): missing specs → continues and completes;
+count decreases then stalls → stops with all execution ids reported; nothing missing → never fires;
+a pass returning junk → does not corrupt accumulated blocks; no valid artifact discarded.
 
 ---
 
