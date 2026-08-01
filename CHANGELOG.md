@@ -21,7 +21,10 @@ command surface and Typed Specification contract are unstable and may change bet
   of the Blueprint header into the Manifest. Blocks replace feature grouping as the context
   optimization, never crossing a phase, topology type, or stack. Story sizing is a
   single-build-pass token ceiling and the ~100-story cap is removed. A phase/edge two-topology
-  disagreement is now a deterministic error instead of a silent defect.
+  disagreement is now a deterministic error instead of a silent defect. The single-build-pass
+  size limit is a target, not a gate: over-target stories and blocks are measured, marked in the
+  Manifest, reported as warnings, and planned as-is, because an irreducible specification makes
+  every story implementing against it over target by construction.
 - 2026-07-31: Analyze now acts as the Team Lead/Product Owner completeness session, records
   Commander expectations as assertions, and emits an ASCII-safe crew handoff. Plan receives every
   readable imported source and treats Analyze's story map as a proposal: governed Markdown is

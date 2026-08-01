@@ -25,7 +25,7 @@ order it has not computed.
 from __future__ import annotations
 
 import heapq
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
 #: The Manifest is a list of stories; ``type`` is the only variation.
@@ -92,8 +92,12 @@ class PlannedStory:
     provides: tuple[str, ...] = ()
     consumes: tuple[str, ...] = ()
     stack: tuple[str, ...] = ()
-    #: Estimated build-pass cost in tokens; 0 when unmeasured.
+    #: Estimated single-build-pass cost in tokens; 0 when unmeasured.
     size_tokens: int = 0
+    #: Whether the measured cost exceeds the single-build-pass target. A marker, never a refusal:
+    #: an irreducible specification makes every story over target by construction, and those
+    #: stories build.
+    over_target: bool = False
     #: Assigned by :func:`assign_stack_modes`; never authored by the model.
     stack_mode: str = ""
     #: Assigned by :func:`group_blocks`; ephemeral, Manifest-only, regenerated every run.
@@ -364,16 +368,25 @@ def assign_stack_modes(
 
 # ── Blocks ──────────────────────────────────────────────────────────────────────────
 
-#: A build pass ceiling: what one build agent can implement and verify in a single pass — its
-#: specification plus stack files in, a working diff and passing assertions out. Measurable in
-#: tokens before anything runs. A one-week sprint is an artifact of human capacity and carries
-#: no meaning here.
+#: The single-build-pass **target**: roughly what one build agent implements and verifies in one
+#: pass — its specification plus stack files in, a working diff and passing assertions out.
+#: Measurable in tokens before anything runs, which is why it replaces an effort threshold.
 #:
-#: This is a standalone fallback so the module stays free of Drydock imports. Callers pass the
-#: configured ceiling — ``plan_stack.story_budget_tokens()``, which resolves ``prompt_warn_tokens``
-#: — so the value here matters only to a direct caller that supplies nothing. It mirrors
-#: ``config.DEFAULT_PROMPT_WARN_TOKENS``.
-DEFAULT_BLOCK_BUDGET_TOKENS = 50_000
+#: **This is a target, not a gate.** Nothing here refuses, splits away, or downgrades work for
+#: exceeding it. Some specifications are irreducible: a language definition that is 50,000 tokens
+#: of normative text is one indivisible input, and every story implementing against it exceeds the
+#: target by construction and still builds. The target exists so the Commander can *see* cost
+#: before spending it — over-target work is marked, reported, and built.
+#:
+#: This constant is a standalone fallback so the module stays free of Drydock imports. Callers
+#: pass the configured target — ``plan_stack.story_budget_tokens()``, resolving
+#: ``prompt_warn_tokens`` — so this value matters only to a direct caller that supplies nothing.
+#: It mirrors ``config.DEFAULT_PROMPT_WARN_TOKENS``.
+DEFAULT_BLOCK_TARGET_TOKENS = 50_000
+
+#: Retained spelling of the same value. The old name implied a budget that could be exceeded only
+#: by overspending; it is a target.
+DEFAULT_BLOCK_BUDGET_TOKENS = DEFAULT_BLOCK_TARGET_TOKENS
 
 
 @dataclass(frozen=True)
@@ -385,7 +398,10 @@ class Block:
     same Agile feature. Context economy comes from blocks, not from feature grouping.
 
     - **Hard:** one topology type per block; never cross a phase boundary; never violate the edges
-    - **Objective:** amortize stack-file cost across the most stories that still fit one build pass
+    - **Soft:** aim to amortize stack-file cost across the stories that fit one build pass
+
+    Only the first three are guardrails. The size target is advisory: a block that exceeds it is
+    marked ``over_target`` and built anyway.
 
     The mechanism behind the no-cross-stack guardrail is stack creep from Rigging: mixing
     topology types in one block forces every stack file each type needs into the block, so it
@@ -399,6 +415,8 @@ class Block:
     stack: tuple[str, ...]
     story_ids: tuple[str, ...]
     size_tokens: int = 0
+    #: Whether this block exceeds the single-build-pass target. A marker, never a refusal.
+    over_target: bool = False
 
 
 def _partition_key(story: PlannedStory) -> tuple[int, str, tuple[str, ...]]:
@@ -408,14 +426,21 @@ def _partition_key(story: PlannedStory) -> tuple[int, str, tuple[str, ...]]:
 def group_blocks(
     ordered: Sequence[PlannedStory],
     *,
-    budget_tokens: int = DEFAULT_BLOCK_BUDGET_TOKENS,
+    target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
 ) -> tuple[tuple[PlannedStory, ...], tuple[Block, ...]]:
-    """Bin-pack the computed order into blocks and stamp each story's block number.
+    """Pack the computed order into blocks and stamp each story's block number.
 
     Every input is known at plan time — types, stacks, phases, edges, story size. Because the
     input is already in topological order, contiguous grouping cannot violate an edge, so the
-    packer only enforces the partition key (phase, topology type, stack set) and the build-pass
-    budget.
+    packer enforces only the partition key (phase, topology type, stack set) and then aims at the
+    size target.
+
+    **The target never refuses work.** It ends the current block when the *next* story would push
+    it past the target and that story could plausibly start a smaller one. A story that already
+    exceeds the target on its own is placed regardless: splitting around it achieves nothing —
+    the story is irreducible — and isolating every such story would destroy the amortization
+    blocks exist for, which is precisely the case for a project whose specifications are large by
+    nature. Blocks that end up over target are marked, not rejected.
     """
     blocks: list[Block] = []
     stamped: list[PlannedStory] = []
@@ -436,6 +461,7 @@ def group_blocks(
                 stack=current[0].stack_signature,
                 story_ids=tuple(story.story_id for story in current),
                 size_tokens=current_size,
+                over_target=bool(target_tokens) and current_size > target_tokens,
             )
         )
         stamped.extend(replace(story, block=number) for story in current)
@@ -445,10 +471,16 @@ def group_blocks(
 
     for story in ordered:
         key = _partition_key(story)
-        oversize = (
-            bool(budget_tokens) and current and current_size + story.size_tokens > budget_tokens
+        # Splitting only helps when the incoming story could actually fit a fresh block. When it
+        # is over target by itself, a new block would be over target too, so pack and mark.
+        divisible = bool(target_tokens) and story.size_tokens <= target_tokens
+        over_target = (
+            bool(target_tokens)
+            and bool(current)
+            and divisible
+            and current_size + story.size_tokens > target_tokens
         )
-        if current_key is not None and (key != current_key or oversize):
+        if current_key is not None and (key != current_key or over_target):
             flush()
         current.append(story)
         current_key = key
@@ -480,12 +512,17 @@ class PlanComputation:
 def compute_plan(
     stories: Iterable[PlannedStory],
     *,
-    budget_tokens: int = DEFAULT_BLOCK_BUDGET_TOKENS,
+    target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
+    size_fn: Callable[[PlannedStory], int] | None = None,
 ) -> PlanComputation:
-    """Verify, order, assign stack modes, and block a declared plan.
+    """Verify, order, assign stack modes, size, and block a declared plan.
 
     Verification runs first and short-circuits: an inconsistent graph is not orderable, and a
     precise defect is more useful than a derived artifact built on a contradiction.
+
+    ``size_fn`` measures one story after its stack mode is known, because a consumer story costs
+    the compact stack view and a builder story costs the full file. Sizing produces markers and
+    non-fatal warnings only; nothing is refused for exceeding the target.
     """
     declared = tuple(stories)
     defects = verify_graph(declared)
@@ -493,5 +530,58 @@ def compute_plan(
         return PlanComputation(stories=declared, blocks=(), defects=defects)
     ordered = order_stories(declared)
     ordered, mode_defects = assign_stack_modes(ordered)
-    stamped, blocks = group_blocks(ordered, budget_tokens=budget_tokens)
-    return PlanComputation(stories=stamped, blocks=blocks, defects=defects + mode_defects)
+    size_defects: tuple[GraphDefect, ...] = ()
+    if size_fn is not None:
+        ordered, size_defects = measure_stories(ordered, size_fn, target_tokens=target_tokens)
+    stamped, blocks = group_blocks(ordered, target_tokens=target_tokens)
+    return PlanComputation(
+        stories=stamped,
+        blocks=blocks,
+        defects=defects + mode_defects + size_defects + _block_size_defects(blocks, target_tokens),
+    )
+
+
+def measure_stories(
+    ordered: Sequence[PlannedStory],
+    size_fn: Callable[[PlannedStory], int],
+    *,
+    target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
+) -> tuple[tuple[PlannedStory, ...], tuple[GraphDefect, ...]]:
+    """Measure each story's single-build-pass cost and mark the ones over target.
+
+    Over-target is a marker, never a refusal. An irreducible specification — a language
+    definition that is normative text rather than instructions, for instance — makes every story
+    implementing against it over target by construction, and those stories build. The Commander
+    sees the marker in the Manifest and decides.
+    """
+    measured: list[PlannedStory] = []
+    defects: list[GraphDefect] = []
+    for story in ordered:
+        tokens = max(0, size_fn(story))
+        over = bool(target_tokens) and tokens > target_tokens
+        measured.append(replace(story, size_tokens=tokens, over_target=over))
+        if over:
+            defects.append(
+                GraphDefect(
+                    "over-target-story",
+                    story.story_id,
+                    f"one build pass costs about {tokens:,} tokens against a "
+                    f"{target_tokens:,}-token target; marked over target and planned as-is",
+                    fatal=False,
+                )
+            )
+    return tuple(measured), tuple(defects)
+
+
+def _block_size_defects(blocks: Sequence[Block], target_tokens: int) -> tuple[GraphDefect, ...]:
+    return tuple(
+        GraphDefect(
+            "over-target-block",
+            f"block {block.number}",
+            f"packs {len(block.story_ids)} story(s) costing about {block.size_tokens:,} tokens "
+            f"against a {target_tokens:,}-token target; marked over target and built as-is",
+            fatal=False,
+        )
+        for block in blocks
+        if block.over_target
+    )

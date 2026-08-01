@@ -141,4 +141,21 @@ def test_legacy_taxonomy_manifest_projects_to_nothing():
 
 def test_computed_field_updates_only_carry_computed_facts():
     stories = (PlannedStory(story_id="a", stack_mode="consumer", block=3),)
-    assert computed_field_updates(stories) == {"a": {"stack_mode": "consumer", "block": "3"}}
+    assert computed_field_updates(stories) == {
+        "a": {"stack_mode": "consumer", "block": "3", "size": None, "budget": None}
+    }
+
+
+def test_an_over_target_story_carries_the_marker():
+    stories = (PlannedStory(story_id="a", block=1, size_tokens=90_000, over_target=True),)
+    updates = computed_field_updates(stories)["a"]
+    assert updates["size"] == "90000"
+    assert updates["budget"] == "over-target"
+
+
+def test_rendered_block_carries_the_over_target_marker():
+    rendered = render_story_block(
+        PlannedStory(story_id="a", block=1, size_tokens=90_000, over_target=True), 1
+    )
+    assert "size:         90000" in rendered
+    assert "budget:       over-target" in rendered

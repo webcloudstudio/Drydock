@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V11 |
+| Version | 2026-08-01 V12 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 36 approved items |
-| Pending impl | 0 unimplemented sections |
+| Pending spec | 38 approved items |
+| Pending impl | 1 unimplemented section (Zone B declaration cutover) |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -693,7 +693,7 @@ result is a normal outcome and never gates planning.
 builder gets the full file, consumer gets the compact sibling when one exists and otherwise falls
 back to the full file.
 
-**Story sizing**
+**Story sizing — a target, not a gate**
 
 The ceiling is the existing `prompt_warn_tokens` configuration key — no new key was introduced.
 That key already means *the maximum assembled prompt cost of one build step*, which is the same
@@ -701,19 +701,38 @@ quantity measured here at plan time; a second key would be the same number under
 defaulting differently and drifting from it. §Story sizing's "one ceiling, one diagnosis, two
 altitudes" is therefore literal.
 
+**Nothing refuses, splits away, or downgrades work for exceeding it.** Some specifications are
+irreducible. CommonMark's definition is a single ~50,000-token file of normative text, not
+instructions, and it cannot be compacted; every story implementing against it is over target by
+construction and every one of them builds. Marina exceeds 100,000 tokens. The target exists so the
+Commander sees cost before spending it, and the Commander already knows which oversized work will
+build.
+
 `plan_stack.story_budget_tokens()` delegates to `build.resolve_warn_tokens()`, which resolves
 `prompt_warn_tokens` through `config` (file, then environment) and downgrades to
-`build.PROMPT_WARN_TOKENS` on an unusable setting rather than refusing to plan — sizing is a
-read-only costing pass. `plan_stack.DEFAULT_STORY_BUDGET_TOKENS` is an alias of
-`build.PROMPT_WARN_TOKENS` so plan-time and build-time sizing cannot disagree.
+`build.PROMPT_WARN_TOKENS` on an unusable setting rather than refusing to plan.
+`plan_stack.DEFAULT_STORY_BUDGET_TOKENS` is an alias of `build.PROMPT_WARN_TOKENS` so plan-time
+and build-time sizing cannot disagree. `plan_graph.DEFAULT_BLOCK_TARGET_TOKENS` mirrors
+`config.DEFAULT_PROMPT_WARN_TOKENS`; it is a standalone fallback so `plan_graph` stays free of
+Drydock imports.
 
-`story_pass_tokens(specification_tokens, stack, resolved, mode)` measures one story;
-`exceeds_build_pass(tokens, budget=None)` compares it to the ceiling. The same number is passed to
-`group_blocks` as `budget_tokens`, so the story ceiling and the block ceiling are one value.
+Measurement runs in `plan_graph.measure_stories`, called from `compute_plan` via a `size_fn`
+after stack modes are assigned — a consumer story costs the compact stack view and a builder story
+costs the full file, so sizing cannot precede mode assignment.
+`planning_session._apply_computed_schedule` supplies the real `size_fn`: the emitted (or on-disk)
+specification text plus the resolved Rigging stack files, through `plan_stack.story_pass_tokens`.
 
-`plan_graph.DEFAULT_BLOCK_BUDGET_TOKENS` mirrors `config.DEFAULT_PROMPT_WARN_TOKENS` as a
-standalone fallback; it exists only so `plan_graph` can stay free of Drydock imports, and matters
-only to a direct caller that supplies no budget.
+**Packing rule.** `group_blocks` ends the current block when the *next* story would push it past
+the target **and that story could plausibly start a smaller block**. A story already over target
+on its own is packed regardless: splitting around it achieves nothing, and isolating every such
+story would destroy the amortization blocks exist for — exactly backwards for a project whose
+specifications are large by nature. Only phase, topology type, and stack set are hard partitions.
+
+**Markers.** An over-target story carries `size:` and `budget: over-target` in its Manifest block;
+an over-target block raises a non-fatal `over-target-block` warning. Defect codes
+`over-target-story` and `over-target-block` are both non-fatal. `ManifestNode.size_tokens` and
+`ManifestNode.over_target` read the markers back. A `target_tokens` of `0` disables grouping and
+marking entirely.
 
 **Shape conformance**
 
@@ -758,12 +777,79 @@ order and `_outside_text_is_waiver_eligible` already requires a terminal `MANIFE
 
 **Not carried across**
 
-`plan_topology.TOPOLOGY_BLOCK`, `parse_topology`, `parse_topology_strict`, and `render_manifest`
-are implemented and tested but not yet on the `plan create` path: the model still emits
-`MANIFEST.md` directly and Zone C projects it back through `stories_from_manifest`. Moving Zone B
-to a pure declaration block is a prompt change, not a code change, and is deferred so the
-restructure lands without a simultaneous output-format cutover. Zone D (`conform_specs`) remains
-unreviewed — see Open Question 4.
+Zone D (`conform_specs`) remains unreviewed — see Open Question 4. The Zone B declaration cutover
+is specified in its own section below.
+
+---
+
+### RESUME HERE — Zone B topology declaration cutover
+`2026-08-01` · `spec:approved` · `impl:unimplemented`
+
+**Status: designed, half-built, not wired.** Everything below is the outstanding work. Start here.
+
+**What is already done.** `src/drydock/plan_topology.py` contains a complete, tested declaration
+parser and Manifest serializer:
+
+- `TOPOLOGY_BLOCK = "TOPOLOGY.md"` — the reserved artifact name. **Nothing writes or reads it
+  today.** It is a constant, not a live artifact.
+- `parse_topology(text) -> (stories, defects)` — parses `## story <id>` headings plus
+  `field: value` lines into `PlannedStory` objects. Non-fatal on unknown `type`/`kind` (falls back
+  to `service`/`capability`) and non-integer `phase` (falls back to `1`).
+- `parse_topology_strict(text)` — same, raising `SpecificationError` on any defect.
+- `render_story_block(story, number)` and `render_manifest(project, stories, blocks)` — serialize
+  the *computed* plan. Verified to round-trip through `DrydockManifest.parse`.
+- `tests/test_plan_topology.py` covers all of the above.
+
+**What Zone C does instead, today.** The model still emits `MANIFEST.md` directly. Zone C reads it
+back through `plan_topology.stories_from_manifest(plan.blocks)`, which participates only for nodes
+carrying `type:`, then computes and stamps the schedule fields in place. The declaration path and
+the Manifest path therefore both exist; only the Manifest path is live.
+
+**Why it was deferred.** Landing the restructure and an output-format cutover in the same change
+would have made a regression impossible to attribute. The restructure is proven with the existing
+output format; the cutover is a separable, smaller change.
+
+**The remaining work, in order.**
+
+1. **Prompt.** In `prompts/plan_create.md` step 7, replace "Emit `MANIFEST.md`" with "Emit
+   `TOPOLOGY.md`" and give the declaration grammar: one `## story <id>` heading per governed
+   specification, then `summary`, `type`, `kind`, `phase`, `implements`, `depends`, `provides`,
+   `consumes`, `stack`, `acceptance`, and the passthrough fields
+   (`covers`, `accepts`, `context`, `rules`). No `id:` line — the heading carries it. No `block:`,
+   no `stack_mode:`, no `state:`, no ordering. The instruction "do not sort, do not group" already
+   in the prompt becomes literally enforceable, because a declaration has nowhere to express order.
+2. **Output contract.** In `planning_session.PLAN_OUTPUT_CONTRACT`, change
+   `required=("MANIFEST.md",)` to `required=(TOPOLOGY_BLOCK,)`. Add `TOPOLOGY.md` to
+   `_RESERVED_BLOCKS` so it is never written to `blueprint/`. `PLAN_SHAPE_ADVISORY.untyped`
+   already lists it.
+3. **Zone C entry.** In `create_plan`, replace the `_validate_plan_output` Manifest parse with:
+   `parse_topology(blocks[TOPOLOGY_BLOCK])` → `compute_plan(..., size_fn=...)` →
+   `render_manifest(...)` → `DrydockManifest.parse` for validation → the existing
+   `_prepare_manifest_in_memory` merge path. `_apply_computed_schedule` collapses into this: it
+   exists only to re-derive from a Manifest the model wrote.
+4. **Instructions field.** `render_story_block` does not yet emit `instructions:`, which the build
+   engine requires. Add it to `_PASSTHROUGH_FIELDS` and to the renderer, and handle the scalar
+   block form (`instructions: |`) in `parse_topology` — the current field parser is single-line
+   only. **This is the one real gap; the rest is wiring.**
+5. **Preamble.** `render_manifest` emits only `# MANIFEST:`, `updated:`, and `blocks:`. It must
+   also carry `plan_hash`, `state`, `applied_specs`, and `planning_feedback`, which
+   `_prepare_manifest_in_memory` currently sets on a parsed plan. Decide whether the renderer
+   takes them or the merge path keeps setting them afterward — the latter is less code.
+6. **Reserved-block modes.** `PLAN_CREATE_BLOCKED.txt` and `PLAN_CREATE_ERROR.txt` are unchanged;
+   `check_plan_shape`'s deferred-mode branch keys on `set(blocks) <= _RESERVED_BLOCKS`, which keeps
+   working once `TOPOLOGY.md` joins that set — verify the `and "MANIFEST.md" not in blocks` guard
+   is retargeted.
+7. **Legacy path.** Decide whether `plan_reuse.md` and `plan_create_speckit.md` also cut over or
+   keep emitting `MANIFEST.md`. They currently share `_validate_plan_output`. Keeping them on the
+   Manifest path is fine — `stories_from_manifest` already handles it — but the branch must be
+   explicit rather than incidental.
+
+**Why bother.** Two reasons, both from §Authorship versus verification. First, a declaration has
+no way to express a position, so the model cannot assert an order it has not computed even by
+accident — today the instruction is prose the model may ignore. Second, the declaration is small:
+a Second Pass over a malformed declaration re-sends almost nothing, whereas re-emitting a
+thirty-file `MANIFEST.md` re-sends the entire plan. That is the staging argument in §Shape
+conformance, and it only pays off once the declaration is the artifact.
 
 ### Diagnostic — the Marina plan failure was not a capacity limit
 `2026-08-01` · `spec:na` · `impl:n/a`
@@ -907,9 +993,8 @@ Editing the canonical specification. Detailed Shipyard Crew execution mechanics 
 story-local decision-record contract. Story-too-big splitting is retired by §Story sizing; the
 story count cap is retired by §Story count is not capped and removed from the code.
 
-Remaining implementation work: moving Zone B to a pure `TOPOLOGY.md` declaration block (the parser
-and serializer exist and are tested; only the prompt and the block-name wiring are outstanding),
-and the Zone D review in Open Question 4.
+Remaining implementation work: §RESUME HERE — Zone B topology declaration cutover, and the Zone D
+review in Open Question 4.
 
 `BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
 artifacts that never existed in implementation. They are removed from these notes and from

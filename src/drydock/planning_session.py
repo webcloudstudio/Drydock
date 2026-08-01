@@ -57,6 +57,7 @@ from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
     contextual_markdown_parts,
+    estimate_tokens,
     lines_part,
     part,
     section_heading_part,
@@ -2423,29 +2424,62 @@ def _prepare_manifest_in_memory(
         if updates:
             plan.set_fields(block.block_id, **updates)
 
-    warnings.extend(_apply_computed_schedule(plan))
+    warnings.extend(
+        _apply_computed_schedule(plan, blueprint_dir=blueprint_dir, emitted_files=emitted_files)
+    )
     plan.validate()
     return tuple(warnings)
 
 
-def _apply_computed_schedule(plan: BuildPlan) -> list[str]:
+def _apply_computed_schedule(
+    plan: BuildPlan,
+    *,
+    blueprint_dir: Path,
+    emitted_files: dict[str, str],
+) -> list[str]:
     """Compute and stamp the schedule fields the model must never author.
 
-    Block grouping, stack-mode assignment, and ordering are Python's job. The model states what
-    each story requires and provides; Zone C derives everything positional from that. Deriving
+    Block grouping, stack-mode assignment, ordering, and sizing are Python's job. The model states
+    what each story requires and provides; Zone C derives everything positional from that. Deriving
     builder/consumer mode here rather than at build time makes it visible in the QuarterDeck cost
     preview, auditable before anything runs, and independent of working-tree state.
+
+    Sizing is a **target**, not a gate: a story or block over the single-build-pass target is
+    marked and planned as-is. Some specifications are irreducible, so over-target work is a fact
+    the Commander reads off the Manifest, not a reason to refuse a plan.
 
     A Manifest still using the legacy block taxonomy carries no ``type:`` and is left untouched.
     """
     from drydock.plan_graph import compute_plan
-    from drydock.plan_stack import story_budget_tokens
+    from drydock.plan_stack import (
+        resolve_stack_set,
+        story_budget_tokens,
+        story_pass_tokens,
+    )
     from drydock.plan_topology import computed_field_updates, stories_from_manifest
 
     declared = stories_from_manifest(plan.blocks)
     if not declared:
         return []
-    computation = compute_plan(declared, budget_tokens=story_budget_tokens())
+
+    resolved = resolve_stack_set(name for story in declared for name in story.stack)
+
+    def specification_tokens(name: str) -> int:
+        text = emitted_files.get(name)
+        if text is None:
+            path = blueprint_dir / name
+            text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        return estimate_tokens(len(text.encode("utf-8")))
+
+    def size_fn(story) -> int:
+        return story_pass_tokens(
+            specification_tokens=specification_tokens(story.implements),
+            stack=story.stack,
+            resolved=resolved,
+            mode=story.stack_mode or "builder",
+        )
+
+    computation = compute_plan(declared, target_tokens=story_budget_tokens(), size_fn=size_fn)
     if computation.fatal:
         return [defect.rendered() for defect in computation.fatal]
     for story_id, updates in computed_field_updates(computation.stories).items():

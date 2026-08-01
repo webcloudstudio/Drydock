@@ -57,7 +57,16 @@ STORY_TYPES = ("foundational", "service", "feature")
 
 #: Story fields computed by Zone C. They describe the *schedule*, not the artifact, so they live
 #: only in the Manifest and are regenerated wholly by every plan run.
-_SCHEDULE_FIELDS = ("type", "kind", "phase", "block", "stack_mode", "acceptance")
+_SCHEDULE_FIELDS = (
+    "type",
+    "kind",
+    "phase",
+    "block",
+    "stack_mode",
+    "size",
+    "budget",
+    "acceptance",
+)
 _SCALAR_MARKERS = frozenset({"|", "|-", "|+", ">", ">-", ">+"})
 _CANONICAL_FIELDS = {
     "feature": ("id", "summary", "state"),
@@ -75,6 +84,8 @@ _CANONICAL_FIELDS = {
         "context",
         "stack",
         "stack_mode",
+        "size",
+        "budget",
         "provides",
         "consumes",
         "rules",
@@ -265,6 +276,24 @@ class ManifestNode:
             return int(self._scalar("block"))
         except ValueError:
             return 0
+
+    @property
+    def size_tokens(self) -> int:
+        """Measured single-build-pass cost in tokens; 0 when unmeasured."""
+        try:
+            return int(self._scalar("size"))
+        except ValueError:
+            return 0
+
+    @property
+    def over_target(self) -> bool:
+        """Whether this story exceeds the single-build-pass target.
+
+        A marker, never a gate. Some specifications are irreducible — a language definition that
+        is normative text rather than instructions makes every story implementing against it
+        over target by construction, and those stories build.
+        """
+        return self._scalar("budget").lower() == "over-target"
 
     @property
     def has_acceptance_contract(self) -> bool:

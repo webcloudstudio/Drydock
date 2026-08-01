@@ -5,12 +5,13 @@ from __future__ import annotations
 import pytest
 
 from drydock.plan_graph import (
-    DEFAULT_BLOCK_BUDGET_TOKENS,
+    DEFAULT_BLOCK_TARGET_TOKENS,
     PlannedStory,
     assign_stack_modes,
     compute_plan,
     find_cycle,
     group_blocks,
+    measure_stories,
     order_stories,
     verify_graph,
     verify_two_topologies,
@@ -220,22 +221,72 @@ def test_same_key_stories_amortize_one_block():
     assert {s.block for s in stamped} == {1}
 
 
-def test_block_splits_when_the_build_pass_budget_is_exceeded():
+def test_block_ends_when_the_next_divisible_story_would_pass_the_target():
     ordered = tuple(story(f"s{i}", size_tokens=400) for i in range(3))
-    _, blocks = group_blocks(ordered, budget_tokens=1000)
+    _, blocks = group_blocks(ordered, target_tokens=1000)
     assert [b.story_ids for b in blocks] == [("s0", "s1"), ("s2",)]
+    assert [b.over_target for b in blocks] == [False, False]
+
+
+def test_an_irreducible_story_is_packed_not_isolated():
+    """Splitting around a story that is over target on its own achieves nothing.
+
+    A language definition that is 50,000 tokens of normative text is one indivisible input:
+    isolating every story implementing against it would destroy the amortization blocks exist
+    for. They pack, and the block is marked.
+    """
+    ordered = tuple(story(f"s{i}", size_tokens=2000) for i in range(3))
+    _, blocks = group_blocks(ordered, target_tokens=1000)
+    assert len(blocks) == 1
+    assert blocks[0].story_ids == ("s0", "s1", "s2")
+    assert blocks[0].over_target is True
 
 
 def test_a_single_oversize_story_still_gets_its_own_block():
     ordered = (story("huge", size_tokens=999_999),)
-    _, blocks = group_blocks(ordered, budget_tokens=1000)
+    _, blocks = group_blocks(ordered, target_tokens=1000)
     assert len(blocks) == 1
+    assert blocks[0].over_target is True
 
 
-def test_zero_budget_disables_size_splitting():
+def test_zero_target_disables_size_grouping_and_marking():
     ordered = tuple(story(f"s{i}", size_tokens=10**6) for i in range(3))
-    _, blocks = group_blocks(ordered, budget_tokens=0)
+    _, blocks = group_blocks(ordered, target_tokens=0)
     assert len(blocks) == 1
+    assert blocks[0].over_target is False
+
+
+def test_over_target_is_a_warning_never_a_refusal():
+    """The target is a warning and a target, not a guardrail."""
+    stories = [
+        story("foundation", story_type="foundational"),
+        story("catalog", depends=("foundation",)),
+    ]
+    result = compute_plan(stories, target_tokens=100, size_fn=lambda _: 5000)
+    assert result.fatal == ()
+    assert len(result.blocks) == 2
+    assert all(s.over_target for s in result.stories)
+    assert {d.code for d in result.warnings} == {"over-target-story", "over-target-block"}
+
+
+def test_measured_sizes_are_stamped_onto_the_stories():
+    ordered = (story("a", story_type="foundational"),)
+    measured, defects = measure_stories(ordered, lambda _: 30, target_tokens=100)
+    assert measured[0].size_tokens == 30
+    assert measured[0].over_target is False
+    assert defects == ()
+
+
+def test_a_negative_measurement_floors_at_zero():
+    measured, _ = measure_stories((story("a"),), lambda _: -5)
+    assert measured[0].size_tokens == 0
+
+
+def test_unmeasured_plans_carry_no_size_markers():
+    result = compute_plan([story("a", story_type="foundational")])
+    assert result.stories[0].size_tokens == 0
+    assert result.stories[0].over_target is False
+    assert result.warnings == ()
 
 
 # ── Pipeline ────────────────────────────────────────────────────────────────────────
@@ -265,8 +316,8 @@ def test_compute_plan_surfaces_non_fatal_stack_warnings():
     assert "unfounded-stack" in codes(result.warnings)
 
 
-def test_default_block_budget_is_a_single_build_pass():
-    assert DEFAULT_BLOCK_BUDGET_TOKENS > 0
+def test_default_block_target_is_a_single_build_pass():
+    assert DEFAULT_BLOCK_TARGET_TOKENS > 0
 
 
 def test_story_count_is_not_capped():

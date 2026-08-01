@@ -216,12 +216,27 @@ def stories_from_manifest(blocks: Sequence[object]) -> tuple[PlannedStory, ...]:
     return tuple(stories)
 
 
+#: Marker written into an over-target story's Manifest block. Over-target work is planned and
+#: built; the marker is how the Commander sees the cost before spending it.
+OVER_TARGET_MARKER = "over-target"
+
+
 def computed_field_updates(
     stories: Sequence[PlannedStory],
 ) -> dict[str, dict[str, str | None]]:
-    """Return the per-story Manifest updates carrying Zone C's computed schedule fields."""
+    """Return the per-story Manifest updates carrying Zone C's computed schedule fields.
+
+    ``size`` is the measured single-build-pass cost in tokens and ``budget`` carries
+    ``over-target`` when that cost exceeds the target. Both are markers: nothing downstream
+    refuses a story for either value.
+    """
     return {
-        story.story_id: {"stack_mode": story.stack_mode or None, "block": str(story.block)}
+        story.story_id: {
+            "stack_mode": story.stack_mode or None,
+            "block": str(story.block),
+            "size": str(story.size_tokens) if story.size_tokens else None,
+            "budget": OVER_TARGET_MARKER if story.over_target else None,
+        }
         for story in stories
     }
 
@@ -255,6 +270,10 @@ def render_story_block(story: PlannedStory, number: int) -> str:
         lines.append(f"stack:        {_render_list(story.stack)}")
     if story.stack_mode:
         lines.append(f"stack_mode:   {story.stack_mode}")
+    if story.size_tokens:
+        lines.append(f"size:         {story.size_tokens}")
+    if story.over_target:
+        lines.append(f"budget:       {OVER_TARGET_MARKER}")
     if story.provides:
         lines.append(f"provides:     {_render_list(story.provides)}")
     if story.consumes:
