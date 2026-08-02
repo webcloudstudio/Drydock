@@ -2827,6 +2827,39 @@ def _conflict_challenge_assembly(
     return PromptAssembly(parts=(*prompt_assembly.parts, challenge))
 
 
+def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int) -> PromptAssembly:
+    """Build a small repair prompt for a valid artifact batch with an invalid work graph."""
+    repair = lines_part(
+        "Plan topology repair",
+        [
+            "# Plan Topology Repair",
+            "",
+            "Drydock accepted the Blueprint artifact batch but rejected its transient work graph.",
+            "Repair only the deterministic defect reported below. Preserve every story ID,",
+            "implements assignment, story field, and planning-feedback line that does not need",
+            "to change. Dependencies must name exact story IDs declared in this topology.",
+            "",
+            "Emit exactly one fully paired TOPOLOGY.md block and no other text or artifact.",
+            "",
+            f"Repair pass: {pass_number}",
+            "",
+            "Deterministic validation defect:",
+            defect.strip(),
+            "",
+            "Original TOPOLOGY.md body:",
+            "<original-topology>",
+            declaration.strip(),
+            "</original-topology>",
+        ],
+        kind="repair",
+    )
+    return PromptAssembly(parts=(repair,))
+
+
+def _is_repairable_topology_defect(exc: Exception) -> bool:
+    return str(exc).startswith("Plan generation failed: the declared work graph is inconsistent.")
+
+
 def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[str]:
     """Artifacts whose delimiters prove the response was cut, by name.
 
@@ -3728,24 +3761,103 @@ def create_plan(
                         )
         try:
             declared_topology = TOPOLOGY_BLOCK in blocks
+            candidate_blocks = dict(blocks)
             plan, warnings = _validate_plan_output(
-                blocks, blueprint_dir, result, source_text=blocks_text, project=target
+                candidate_blocks,
+                blueprint_dir,
+                result,
+                source_text=blocks_text,
+                project=target,
             )
+            blocks = candidate_blocks
         except Exception as exc:
-            record = write_error_record(
-                target_dir,
-                command="plan",
-                phase="post-output validation",
-                classification="plan output validation failed",
-                detail=f"{exc}\n  No files were changed.",
-                execution_id=exec_id,
-                evidence=log_dir,
-                recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
-            )
-            from drydock.quarterdeck_state import refresh_commanders_chair
+            repair_exc = exc
+            repair_succeeded = False
+            if (
+                allow_diagnostic_recovery
+                and continue_attempts > 0
+                and TOPOLOGY_BLOCK in blocks
+                and _is_repairable_topology_defect(exc)
+            ):
+                declaration = blocks[TOPOLOGY_BLOCK]
+                for repair_pass in range(1, continue_attempts + 1):
+                    if on_text is not None:
+                        on_text(f"[plan] topology repair pass {repair_pass}/{continue_attempts}\n")
+                    repair_assembly = _topology_repair_assembly(
+                        declaration=declaration,
+                        defect=str(repair_exc),
+                        pass_number=repair_pass,
+                    )
+                    try:
+                        repair_result = cast(
+                            CompletedRun,
+                            run(
+                                repair_assembly.rendered_text,
+                                target_dir,
+                                llm=llm_provider,
+                                model=model or prompt.model,
+                                command_name="plan",
+                                parameters={
+                                    "target": target,
+                                    "topology_repair_pass": repair_pass,
+                                    "initial_execution_id": exec_id or "",
+                                },
+                                log_dir=log_dir,
+                                target=target,
+                                on_text=on_text,
+                                prompt_assembly=repair_assembly,
+                            ),
+                        )
+                        if not repair_result.ok or not repair_result.text.strip():
+                            break
+                        repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
+                        if set(repair_blocks) != {TOPOLOGY_BLOCK}:
+                            break
+                        repaired_declaration = repair_blocks[TOPOLOGY_BLOCK]
+                        if repaired_declaration == declaration:
+                            break
+                        declaration = repaired_declaration
+                        repaired_blocks = dict(blocks)
+                        repaired_blocks[TOPOLOGY_BLOCK] = declaration
+                        candidate_blocks = dict(repaired_blocks)
+                        try:
+                            plan, warnings = _validate_plan_output(
+                                candidate_blocks,
+                                blueprint_dir,
+                                repair_result,
+                                source_text=None,
+                                project=target,
+                            )
+                        except Exception as next_exc:
+                            repair_exc = next_exc
+                            if not _is_repairable_topology_defect(next_exc):
+                                break
+                            continue
+                        blocks = candidate_blocks
+                        result = repair_result
+                        exec_id = getattr(repair_result, "execution_id", None)
+                        blocks_text = None
+                        repair_succeeded = True
+                        break
+                    except Exception as next_exc:
+                        repair_exc = next_exc
+                        break
+            if not repair_succeeded:
+                exc = repair_exc
+                record = write_error_record(
+                    target_dir,
+                    command="plan",
+                    phase="post-output validation",
+                    classification="plan output validation failed",
+                    detail=f"{exc}\n  No files were changed.",
+                    execution_id=exec_id,
+                    evidence=log_dir,
+                    recovery=f"Correct the plan input or model artifact, then run: drydock plan {target}",
+                )
+                from drydock.quarterdeck_state import refresh_commanders_chair
 
-            refresh_commanders_chair(target_dir)
-            raise RecordedError(record) from exc
+                refresh_commanders_chair(target_dir)
+                raise RecordedError(record) from exc
     else:
         plan, warnings = validated_plan, validated_warnings
 

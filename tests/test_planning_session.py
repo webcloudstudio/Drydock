@@ -3436,6 +3436,30 @@ def test_a_declaration_with_an_unknown_edge_is_refused(tmp_path):
     assert not (target_dir / "MANIFEST.md").is_file()
 
 
+def test_an_unknown_topology_edge_is_repaired_without_regenerating_specs(tmp_path):
+    target_dir = _make_target(tmp_path)
+    dangling = _TOPOLOGY_DECLARATION.replace(
+        "depends:      story-foundation", "depends:      foundation"
+    )
+    repaired = _TOPOLOGY_DECLARATION
+    runner = _sequence_runner(_topology_output(dangling), _declaration_block(repaired))
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+    )
+
+    assert len(runner.calls) == 2
+    assert "Plan Topology Repair" in runner.calls[1]
+    assert "depends on unknown id 'foundation'" in runner.calls[1]
+    assert "Original TOPOLOGY.md body" in runner.calls[1]
+    assert sorted(result.plan.by_id()) == ["story-foundation", "story-status"]
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
 def test_an_empty_declaration_is_refused(tmp_path):
     target_dir = _make_target(tmp_path)
     runner = _fake(_topology_output("planning_feedback: |\n  nothing declared\n"))
