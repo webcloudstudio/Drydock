@@ -3458,3 +3458,189 @@ def test_fatal_shape_check_requires_the_topology_artifact():
     assert [
         defect.code for defect in check_plan_shape({"ARCHITECTURE.md": "x"}, PLAN_TOPOLOGY_CONTRACT)
     ] == ["missing-artifact"]
+
+
+# ── continuation: a short response is resumed, never discarded ───────────────────────
+#
+# The provider caps output tokens, and that cap includes reasoning. A planning response that runs
+# out mid-emission used to discard every valid artifact it had already produced. `TOPOLOGY.md` is
+# emitted first precisely so the count of what should exist survives the cut; these tests cover the
+# loop that spends that ruler.
+
+
+def _arch_block() -> str:
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    return f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+
+
+def _feature_block() -> str:
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    )
+    return f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+
+
+def _declaration_block(declaration: str = _TOPOLOGY_DECLARATION) -> str:
+    return f"=== TOPOLOGY.md ===\n{declaration}\n=== END TOPOLOGY.md ===\n"
+
+
+def _short_output() -> str:
+    """Declaration plus one of its two declared specs: the polite short stop."""
+    return _declaration_block() + _arch_block()
+
+
+def _truncated_output() -> str:
+    """The hard cut: the final artifact opens and the response ends mid-body."""
+    return _short_output() + "=== FEATURE-Status.md ===\n# FEATURE: Sta"
+
+
+def _sequence_runner(*responses: str):
+    """Fake runner returning each response in turn, repeating the last one thereafter."""
+    calls: list[str] = []
+
+    def runner(prompt_text, *a, **k):
+        calls.append(prompt_text)
+        index = min(len(calls) - 1, len(responses) - 1)
+        return FakeRun(text=responses[index], execution_id=f"exec-{len(calls)}")
+
+    runner.calls = calls  # type: ignore[attr-defined]
+    return runner
+
+
+def test_a_short_response_is_continued_and_completes(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(_short_output(), _feature_block())
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert sorted(block.block_id for block in result.plan.blocks) == [
+        "story-foundation",
+        "story-status",
+    ]
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
+def test_a_truncated_trailing_artifact_is_replaced_rather_than_frozen(tmp_path):
+    """A cut artifact parses as present. Accepting it would freeze the damage onto disk."""
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(_truncated_output(), _feature_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    feature = (target_dir / "blueprint" / "FEATURE-Status.md").read_text(encoding="utf-8")
+    assert "# FEATURE: Sta\n" not in feature
+    assert "Status command exits successfully." in feature
+
+
+def test_the_continuation_prompt_reuses_the_original_prefix_and_carries_the_ledger(tmp_path):
+    """Byte-identical prefix or the cached input is re-billed; the appended block is the gap."""
+    _make_target(tmp_path)
+    runner = _sequence_runner(_short_output(), _feature_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    first, second = runner.calls
+    assert second.startswith(first)
+    appended = second[len(first) :]
+    assert "story-status -> FEATURE-Status.md" in appended
+    assert "ARCHITECTURE.md" in appended
+    assert "do not re-emit" in appended
+
+
+def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
+    target_dir = _make_target(tmp_path)
+    # Every continuation pass returns the same already-accepted artifact: no progress, ever.
+    runner = _sequence_runner(_short_output(), _arch_block())
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    record = excinfo.value.record
+    assert record.classification == "plan generation stalled"
+    assert "specs: 1 / 2 accepted" in record.detail
+    assert "story-status -> FEATURE-Status.md" in record.detail
+    assert "exec-1" in record.detail and "exec-2" in record.detail
+    # All-or-nothing survives: a stall writes nothing.
+    assert not (target_dir / "MANIFEST.md").is_file()
+    assert not (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
+def test_continuation_stops_at_the_attempt_cap(tmp_path):
+    """Bounded like the build repair loop, even while each pass still makes progress."""
+    _make_target(tmp_path)
+    runner = _sequence_runner(_short_output(), _arch_block())
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner, continue_attempts=2)
+
+    # Stalls on pass 1 rather than exhausting the cap; the cap is the outer bound, not the trigger.
+    assert len(runner.calls) == 2
+
+
+def test_a_junk_continuation_pass_does_not_corrupt_accepted_artifacts(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(_short_output(), "no delimiters here at all")
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert "specs: 1 / 2 accepted" in excinfo.value.record.detail
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def test_continuation_never_fires_on_a_complete_response(tmp_path):
+    _make_target(tmp_path)
+    runner = _sequence_runner(_declaration_block() + _arch_block() + _feature_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 1
+
+
+def test_zero_attempts_disables_continuation(tmp_path):
+    _make_target(tmp_path)
+    runner = _sequence_runner(_short_output(), _feature_block())
+
+    with pytest.raises(RecordedError):
+        create_plan("Example", "Example", tmp_path, runner=runner, continue_attempts=0)
+
+    assert len(runner.calls) == 1
+
+
+def test_a_continuation_pass_may_split_a_pending_story(tmp_path):
+    """Authoring discovers size. The ruler may grow; accepted work may not move."""
+    target_dir = _make_target(tmp_path)
+    split_declaration = _TOPOLOGY_DECLARATION.replace(
+        "## story story-status\n", "## story story-status-api\n"
+    ).replace("implements:   FEATURE-Status.md", "implements:   FEATURE-Status-Api.md")
+    api = _SPEC_HEADER.format(ftype="FEATURE", name="Status Api", ac="API exits successfully.")
+    runner = _sequence_runner(
+        _short_output(),
+        _declaration_block(split_declaration)
+        + f"=== FEATURE-Status-Api.md ===\n{api}\n=== END FEATURE-Status-Api.md ===\n",
+    )
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert sorted(block.block_id for block in result.plan.blocks) == [
+        "story-foundation",
+        "story-status-api",
+    ]
+    assert (target_dir / "blueprint" / "FEATURE-Status-Api.md").is_file()
+
+
+def test_an_amendment_that_touches_an_accepted_story_is_rejected(tmp_path):
+    target_dir = _make_target(tmp_path)
+    tampered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE-Renamed.md"
+    )
+    runner = _sequence_runner(_short_output(), _declaration_block(tampered) + _feature_block())
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert "specs: 1 / 2 accepted" in excinfo.value.record.detail
+    assert not (target_dir / "MANIFEST.md").is_file()

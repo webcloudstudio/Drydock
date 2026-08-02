@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V16 |
+| Version | 2026-08-02 V17 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
 | Pending spec | 2 approved items |
-| Pending impl | 1 unimplemented section |
+| Pending impl | 0 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -215,7 +215,25 @@ in `prompts/plan_create.md`):
   questionnaire prompt don't duplicate/diverge it.
 
 ### Continuation — resume, never discard
-`2026-08-02` · `spec:approved` · `impl:unimplemented`
+`2026-08-02` · `spec:approved` · `impl:implemented`
+
+**Built 2026-08-02.** `src/drydock/plan_score.py` (`PlanScore`, `score_plan`, `artifact_defect`;
+deterministic, no I/O). `plan_topology.merge_declaration` enforces the accepted-story-frozen
+invariant. `planning_session._continue_short_plan` runs the loop, with
+`_unpaired_artifact_names`, `_render_ledger`, and `_continuation_assembly` (appends to the
+unchanged `PromptAssembly`, mirroring `_conflict_challenge_assembly`). `prompts/plan_continue.md`
+V1. `plan_shape.has_typed_heading` made public. `create_plan(continue_attempts=3)`, exposed as
+`drydock plan --continue-attempts`. Tests: `tests/test_plan_score.py` (14) and 10 continuation
+integration tests in `tests/test_planning_session.py`, including a byte-identical-prefix assertion.
+
+**Divergence from the approved plan:** the typed-heading check does **not** gate acceptance
+(`require_typed_heading=False` by default). It is repairable by `conform_specs` and advisory in
+`PLAN_SHAPE_ADVISORY`, and it is a poor truncation detector — the heading is a specification's
+first line, so a cut tail never removes it. Gating on it would spend a continuation pass
+re-authoring complete work. Truncation is detected by delimiter evidence instead.
+
+**Also as-built:** the stall record's `detail` is whitespace-normalized by `write_error_record`, so
+the rendered score arrives as one line rather than the three-line block. The numbers survive.
 
 **Design settled 2026-08-02.** The failure mode is **output-token exhaustion** (provider default
 64K output, 128K max, inclusive of reasoning) — not process death. Everything stays in memory

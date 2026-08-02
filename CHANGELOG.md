@@ -10,6 +10,14 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-02: `drydock plan` resumes a planning response that ran out of output budget instead of
+  discarding it. A deterministic score measures the artifacts returned against the run's own
+  `TOPOLOGY.md` declaration, and continuation passes append a bounded instruction to the unchanged
+  prompt prefix so the cached input is not re-billed. The loop stops when the accepted count stops
+  increasing or the attempt cap is reached, and reports the score as numbers. Accepted stories are
+  frozen; a continuation pass may still split a pending one. `--continue-attempts <n>` (default 3,
+  `0` disables).
+
 - 2026-08-01: `drydock score spec <Target>` independently inventories imported raw sources,
   extracts only cited Markdown facts in bounded subscription-authenticated LLM passes, and writes
   an advisory deterministic conformance report to `SPECIFICATION_SCORECARD.md` before Analyze.

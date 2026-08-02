@@ -20,9 +20,9 @@ Progress is measured on **accepted**, never on remaining. A ratio against the de
 the moment a pending story splits and the denominator moves; a strictly increasing accepted count
 is immune to that and needs no special case for splits.
 
-Acceptance is deliberately **shape-level, not delimiter-level**. A cut landing just after a prior
-artifact's closing delimiter leaves a truncated story that still parses as a paired block, and
-acceptance freezes an artifact irreversibly — so a paired delimiter alone is not enough to admit one.
+Acceptance freezes an artifact irreversibly, so what admits one is deliberately narrow: it must be
+declared, non-empty, and carry delimiter evidence that it was not cut. Content quality is not
+judged here, and a repairable defect does not block — see :func:`artifact_defect`.
 """
 
 from __future__ import annotations
