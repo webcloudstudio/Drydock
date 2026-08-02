@@ -622,8 +622,8 @@ followed immediately by the next `=== <name> ===` delimiter, or end the response
 
 ### Success Mode
 
-Use Success Mode only when you can produce a complete, internally consistent Blueprint and
-Manifest.
+Use Success Mode whenever the product basis is sufficient to declare an internally consistent
+Blueprint and Manifest, even when emitting all declared artifacts requires continuation passes.
 
 Emit the single `TOPOLOGY.md` block **first**, before any Blueprint spec file, then one block for
 every authored Blueprint spec file it declares.
@@ -634,10 +634,11 @@ prose, and it lets Drydock resume a response that ends early instead of discardi
 whose declaration never arrives is unrecoverable no matter how many spec files precede it.
 
 Every `implements:` filename in `TOPOLOGY.md` must exactly match one Blueprint file block emitted
-after it in this response, or an existing Blueprint spec file from the input context. If
+after it across this response and its continuation passes, or an existing Blueprint spec file from
+the input context. If
 `TOPOLOGY.md` names `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, or
-`UI-GENERAL.md`, that file must exist as an emitted file block in the same response unless it
-already exists in the input Blueprint.
+`UI-GENERAL.md`, emit that file in the initial response if it fits; otherwise Drydock requests it
+in a continuation pass. It need not fit in the same response as `TOPOLOGY.md`.
 
 Wrap **every** emitted file — including `TOPOLOGY.md` — in a matching open/END delimiter pair:
 
@@ -697,14 +698,13 @@ Required action:
 
 ### Error Mode
 
-Use Error Mode only when you cannot produce a complete, internally consistent Success Mode
-response, and only for an unresolvable **product** question — one the Precedence order above cannot
-settle and no reasonable assumption can bridge. Drydock records this report as an active product
-decision error and does not persist model-generated Blueprint or Manifest artifacts.
+Use Error Mode only for an unresolvable **product** question — one the Precedence order above
+cannot settle and no reasonable assumption can bridge. Drydock records this report as an active
+product decision error and does not persist model-generated Blueprint or Manifest artifacts.
 
 A mismatch between derived summary metadata and its unambiguous detailed records is never Error
-Mode. Recompute the derived value from the detailed records and emit the complete Success Mode
-artifact batch.
+Mode. Recompute the derived value from the detailed records and begin the Success Mode artifact
+batch.
 
 Available response length is never Error Mode. Emit `TOPOLOGY.md` first, then as many complete
 declared Blueprint artifacts as fit. Drydock measures the batch and requests the remaining
