@@ -1317,6 +1317,15 @@ def test_missing_manifest_raises(tmp_path):
         build_target("Demo", target_dir, build_dir=tmp_path / "build", runner=make_runner())
 
 
+def test_build_does_not_gate_on_human_edited_compass_guardrail(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "COMPASS.md").write_text("Commander-owned direction.\n", encoding="utf-8")
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert result.exit_code() == 0
+
+
 def test_text_without_file_delta_marks_failed(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     result = build_target(
