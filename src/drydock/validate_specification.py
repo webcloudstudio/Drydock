@@ -377,7 +377,13 @@ def validate_specification(
     for md_file in sorted(spec_dir.glob("*.md")):
         if "_compact." in md_file.name or md_file.name in _GENERATED_FILES:
             continue
-        for check in parse_programmatic_acceptance(md_file):
+        try:
+            checks = parse_programmatic_acceptance(md_file)
+        except ValueError as exc:
+            f(section, str(exc))
+            snippet_defects += 1
+            continue
+        for check in checks:
             for defect in analyze_literals(check.code):
                 f(section, f"{md_file.name} [{check.check_id}]: {defect.message}")
                 snippet_defects += 1

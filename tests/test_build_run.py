@@ -21,6 +21,7 @@ from drydock.build_run import (
 )
 from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError, write_error_record
+from drydock.questions import parse_questions
 
 _TWO_STORIES = """# MANIFEST: Demo
 state: draft
@@ -2848,3 +2849,116 @@ def test_malformed_invocation_blocks_the_build_before_the_agent_runs(tmp_path):
     assert "DATABASE.md [scoped-number]" in message
     assert "the intended command never runs" in message
     assert runner.calls == []
+
+
+def test_undeclared_runtime_prerequisite_blocks_without_repair_and_preserves_work(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """# DATABASE: Demo
+
+## Questions
+
+- None.
+
+## Programmatic Acceptance
+
+### health-route
+The health route returns OK.
+
+```python
+from target_app import health
+assert health() == "ok"
+```
+
+## User Acceptance
+
+- None.
+
+## Guardrails
+
+- None.
+""",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs["parameters"]["attempt"])
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "target_app.py").write_text(
+            "import surprise_transport\n\ndef health():\n    return 'ok'\n",
+            encoding="utf-8",
+        )
+        return FakeResult(text=_success_report(changed=("target_app.py",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        repair_attempts=3,
+    )
+
+    assert calls == [0]
+    assert result.steps[0].status == "blocked"
+    assert _state(target_dir, "foundation") == "blocked/questions"
+    assert (build_dir / "target_app.py").is_file()
+    question = parse_questions(
+        (target_dir / "blueprint" / "DATABASE.md").read_text(encoding="utf-8")
+    )[0]
+    assert question.origin == "build"
+    assert "python-package=surprise_transport" in question.question
+    evidence = result.steps[0].evidence_path.read_text(encoding="utf-8")
+    assert "acceptance prerequisite requires authorization" in evidence
+
+
+def test_active_commander_guidance_is_injected_into_build_prompt(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """# DATABASE: Demo
+
+## Questions
+
+### Q-harness: Authorize test harnesses
+
+- Origin: plan
+- Severity: Blocking
+- Status: answered
+
+#### Question
+
+Authorize test harness tooling?
+
+#### Answer
+
+Approve all test harnesses
+
+## Programmatic Acceptance
+
+- None.
+
+## User Acceptance
+
+- None.
+
+## Guardrails
+
+- None.
+""",
+        encoding="utf-8",
+    )
+    prompts = []
+
+    def runner(prompt, working_directory, **kwargs):
+        prompts.append(prompt)
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "notes.txt").write_text("done\n", encoding="utf-8")
+        return FakeResult(text=_success_report(changed=("notes.txt",)))
+
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert len(prompts) == 1
+    assert "# Active Commander guidance" in prompts[0]
+    assert "Decision: Approve all test harnesses" in prompts[0]

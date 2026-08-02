@@ -152,6 +152,11 @@ the typed metadata table, then ends with:
 Use `- None.` only when that section is truly empty. Do not emit placeholder phrases like `TBD` or
 `to be determined`; unresolved Spec Kit content belongs under `## Questions`.
 
+For every external package or executable used directly or indirectly by Programmatic Acceptance,
+emit repeated `Requires: python-package=<name>; scope=<runtime|test>` or
+`Requires: executable=<name>; scope=<runtime|test>` lines under the check heading. Include
+framework test-client transport dependencies. Never silently assume or install undeclared tooling.
+
 Default decomposition by `SYSTEM_SHAPE` follows the same table as standard `drydock plan create`:
 `ARCHITECTURE.md` always; one `FEATURE-*.md` per Spec Kit feature directory (splitting further
 only when a feature directory covers more than one durable capability boundary); `SCREEN-*.md` for

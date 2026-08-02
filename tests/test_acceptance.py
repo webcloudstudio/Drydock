@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from drydock.acceptance import (
     SUITE_TIMEOUT_SECONDS,
     TIMEOUT_FAILURE_PREFIX,
     TIMEOUT_SECONDS,
+    AcceptanceRequirement,
     ProgrammaticAcceptance,
     parse_programmatic_acceptance,
     run_programmatic_acceptance,
@@ -100,6 +102,101 @@ def test_marker_lines_do_not_leak_into_the_stated_intent(tmp_path):
     assert checks["suite-full"].intent == "Every normative example converts correctly."
     assert "Suite:" not in checks["suite-full"].intent
     assert "Suite:" not in checks["suite-scoped"].intent
+
+
+def test_repeated_requirements_are_typed_and_excluded_from_intent(tmp_path):
+    path = tmp_path / "FEATURE-Health.md"
+    path.write_text(
+        """# FEATURE: Health
+
+## Programmatic Acceptance
+
+### health-route
+Requires: python-package=httpx; scope=test
+Requires: executable=curl; scope=test
+
+The health route responds successfully.
+
+```python
+assert True
+```
+""",
+        encoding="utf-8",
+    )
+
+    check = parse_programmatic_acceptance(path)[0]
+
+    assert check.requirements == (
+        AcceptanceRequirement("python-package", "httpx", "test"),
+        AcceptanceRequirement("executable", "curl", "test"),
+    )
+    assert check.intent == "The health route responds successfully."
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Requires: package=httpx; scope=test",
+        "Requires: python-package=httpx; scope=build",
+        "Requires: python-package=httpx",
+    ],
+)
+def test_malformed_requirements_are_rejected(tmp_path, declaration):
+    path = tmp_path / "FEATURE-Health.md"
+    path.write_text(
+        "# FEATURE: Health\n\n## Programmatic Acceptance\n\n### health\n"
+        + declaration
+        + "\n\n```python\nassert True\n```\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Requires"):
+        parse_programmatic_acceptance(path)
+
+
+def test_strict_target_execution_does_not_fall_back_to_drydock_python(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='target'\nversion='0'\n")
+    check = ProgrammaticAcceptance("strict", "FEATURE-X.md", "Strict.", "assert True")
+
+    result = run_programmatic_acceptance(
+        (check,),
+        build_dir=tmp_path,
+        target_dir=tmp_path,
+        blueprint_dir=tmp_path,
+        strict_target=True,
+    )[0]
+
+    assert not result.passed
+    assert result.interpreter == ""
+    assert result.error == "acceptance environment unavailable: Target Python project has no .venv"
+
+
+def test_target_venv_cannot_import_a_package_available_only_on_drydock_pythonpath(
+    tmp_path, monkeypatch
+):
+    leak = tmp_path / "drydock-only"
+    leak.mkdir()
+    (leak / "drydock_only_package.py").write_text("VALUE = 1\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(leak))
+    subprocess.run(["python3", "-m", "venv", str(tmp_path / ".venv")], check=True)
+    check = ProgrammaticAcceptance(
+        "isolated",
+        "FEATURE-X.md",
+        "Target isolation.",
+        "import drydock_only_package\nassert drydock_only_package.VALUE == 1",
+    )
+
+    result = run_programmatic_acceptance(
+        (check,),
+        build_dir=tmp_path,
+        target_dir=tmp_path,
+        blueprint_dir=tmp_path,
+        strict_target=True,
+    )[0]
+
+    assert not result.passed
+    assert "No module named 'drydock_only_package'" in result.stderr
+    assert ".venv" in result.interpreter
 
 
 def test_sea_trial_references_still_parse_alongside_the_suite_marker(tmp_path):

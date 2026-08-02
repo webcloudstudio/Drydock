@@ -159,6 +159,17 @@ Every authored Specification file ends with these sections, using `- None.` when
 `### {check-id}` heading, a short intent sentence, and one fenced `python` block that can run from
 the build directory after the story implementing the file completes.
 
+Every external tool used directly or indirectly by a check is declared immediately after its
+heading with one or more machine-readable lines:
+
+```markdown
+Requires: python-package=httpx; scope=test
+Requires: executable=node; scope=test
+```
+
+V1 kinds are `python-package` and `executable`; scopes are `runtime` and `test`. Framework test
+clients include their transport dependencies. `Requires:` metadata is not acceptance intent.
+
 Every assertion must be satisfiable by a correct implementation. An expectation no implementation
 can meet is a defect, not a red baseline. String literals are the usual source of one: inside a raw
 literal, `\n` and `\r` are a backslash followed by a letter, not a control character, so
@@ -209,7 +220,7 @@ import subprocess
 import sys
 
 result = subprocess.run(
-    ["python3", "tests/run_suite.py", "--sections", "headings,lists"],
+    [sys.executable, "tests/run_suite.py", "--sections", "headings,lists"],
     capture_output=True, text=True,
 )
 print(result.stdout)

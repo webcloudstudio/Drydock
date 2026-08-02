@@ -10,6 +10,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-02: Plan and Build now govern external Programmatic Acceptance tooling through typed
+  `Requires:` declarations and story-local Commander authorization questions. Commander answers
+  become durable Target guidance, undeclared build-time prerequisites block without spending a
+  repair attempt, and Python/uv acceptance executes through the Target `.venv` with locked uv
+  provisioning instead of Drydock's interpreter.
+
 - 2026-08-02: `drydock plan` resumes a planning response that ran out of output budget instead of
   discarding it. A deterministic score measures the artifacts returned against the run's own
   `TOPOLOGY.md` declaration, and continuation passes append a bounded instruction to the unchanged

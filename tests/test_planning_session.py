@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from drydock import technology_stack
+from drydock.acceptance import parse_programmatic_acceptance
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.planning_session import (
@@ -2224,9 +2225,9 @@ def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
         "### harness-smoke\n"
         "The staged conformance harness runs one selected example.\n\n"
         "```python\n"
-        "import subprocess\n"
+        "import subprocess, sys\n"
         "result = subprocess.run(\n"
-        '    ["python3", "sources/spec_tests.py", "--number", "1"],\n'
+        '    [sys.executable, "sources/spec_tests.py", "--number", "1"],\n'
         "    capture_output=True,\n"
         "    text=True,\n"
         ")\n"
@@ -3497,6 +3498,39 @@ def test_a_cited_blueprint_validation_defect_repairs_only_that_artifact(tmp_path
     assert "SCREEN-Welcome.md" in runner.calls[1]
     assert "ARCHITECTURE.md body" not in runner.calls[1]
     assert result.plan.by_id()["story-status"].fields["implements"] == ("SCREEN-Welcome.md",)
+
+
+def test_undeclared_external_acceptance_usage_gets_bounded_artifact_repair(tmp_path):
+    _make_target(tmp_path)
+    initial = _screen_output(
+        _pa_code(
+            "import httpx\nassert httpx.get('http://localhost/welcome')",
+            "assert client.get('/api/welcome-summary').status_code == 200",
+        ),
+        consumes="GET /api/welcome-summary",
+    )
+    repaired_screen = _parse_blocks(initial)["SCREEN-Welcome.md"].replace(
+        "### check-1\n",
+        "### check-1\nRequires: python-package=httpx; scope=test\n",
+        1,
+    )
+    runner = _sequence_runner(
+        initial,
+        f'<artifact name="SCREEN-Welcome.md">\n{repaired_screen}\n</artifact>\n',
+    )
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+    )
+
+    assert len(runner.calls) == 2
+    assert "undeclared python-package=httpx" in runner.calls[1]
+    check = parse_programmatic_acceptance(result.target_dir / "blueprint" / "SCREEN-Welcome.md")[0]
+    assert check.requirements[0].name == "httpx"
 
 
 def test_artifact_repair_maps_story_cited_defect_to_its_implemented_spec():

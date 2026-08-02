@@ -258,6 +258,11 @@ def answer_question(path: Path, question_id: str, answer: str) -> MarkdownQuesti
         handle.write(rendered)
         temporary = Path(handle.name)
     temporary.replace(path)
+    if path.parent.name == "blueprint" or path.name == "SEA_TRIALS.md":
+        from drydock.plan_feedback import harvest_answered_questions
+
+        target_dir = path.parent.parent if path.parent.name == "blueprint" else path.parent
+        harvest_answered_questions(target_dir)
     return updated
 
 

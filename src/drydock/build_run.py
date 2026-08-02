@@ -32,11 +32,18 @@ from drydock.acceptance import (
     MEMORY_FAILURE_PREFIX,
     TIMEOUT_FAILURE_PREFIX,
     AcceptanceObservation,
+    AcceptanceRequirement,
     AcceptanceRunResult,
     ProgrammaticAcceptance,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
+)
+from drydock.acceptance_requirements import (
+    append_requirement_question,
+    authorization_for,
+    discover_missing_requirement,
+    requirement_available,
 )
 from drydock.build import (
     StepAssembly,
@@ -64,6 +71,7 @@ from drydock.config import blueprint_dir_for, build_dir_for, get_sandbox_mem_lim
 from drydock.dependency_gate import (
     DependencyGateResult,
     RegistryClient,
+    canonicalize_package_name,
     check_python_dependency_manifests,
 )
 from drydock.errors import SpecificationError, clear_error_record, write_error_record
@@ -71,6 +79,7 @@ from drydock.llm import format_token_summary, render_rate_limit_error_block, run
 from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
+from drydock.plan_feedback import harvest_answered_questions, render_feedback_prompt
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_invocation, analyze_literals, analyze_structure
@@ -81,6 +90,7 @@ from drydock.source_roles import (
     stage_build_assets,
     verify_staged_assets,
 )
+from drydock.target_environment import provision_uv_environment
 
 BUILD_FAILURE_HINT = (
     "rerun drydock build to continue this step (repairs in place); "
@@ -1432,6 +1442,9 @@ def _write_evidence(
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
             if check.intent:
                 lines.append(f"  intent: {check.intent}")
+            if check.interpreter:
+                lines.append(f"  target interpreter: {check.interpreter}")
+            lines.append(f"  provisioning: {check.provisioning_result}")
             if check.return_code is not None:
                 lines.append(f"  return code: {check.return_code}")
             if check.error:
@@ -1465,6 +1478,8 @@ def _write_group_evidence(
     agent_report: tuple[str, str] | None = None,
     attempts: tuple[AttemptRecord, ...] = (),
     reusable_compacts: tuple[str, ...] = (),
+    dependency_overrides: tuple[str, ...] = (),
+    requirement_evidence: tuple[str, ...] = (),
 ) -> None:
     lines = [
         f"# Evidence: {unit.name} ({unit.block_id})",
@@ -1479,6 +1494,14 @@ def _write_group_evidence(
     ]
     lines.extend(f"- {step.name} ({step.block_id}) [{step.block_type}]" for step in group.steps)
     lines.append("")
+    if dependency_overrides:
+        lines.append("## Commander dependency overrides")
+        lines.extend(f"- {item}" for item in dependency_overrides)
+        lines.append("")
+    if requirement_evidence:
+        lines.append("## Acceptance tooling authorization")
+        lines.extend(f"- {item}" for item in requirement_evidence)
+        lines.append("")
     if reusable_compacts:
         lines.append("## Reusable compacts")
         lines.extend(f"- {name}" for name in reusable_compacts)
@@ -1534,6 +1557,9 @@ def _write_group_evidence(
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
             if check.intent:
                 lines.append(f"  intent: {check.intent}")
+            if check.interpreter:
+                lines.append(f"  target interpreter: {check.interpreter}")
+            lines.append(f"  provisioning: {check.provisioning_result}")
             if check.return_code is not None:
                 lines.append(f"  return code: {check.return_code}")
             if check.error:
@@ -1581,8 +1607,10 @@ def _write_group_evidence(
             lines.append("- detail:")
             lines.extend(f"    {line}" for line in agent_detail.strip().splitlines())
         lines.append("")
-    if state.endswith("failed") and (failure_summary or failure_detail):
-        lines.append("## Failure")
+    if (state.endswith("failed") or state == "blocked/questions") and (
+        failure_summary or failure_detail
+    ):
+        lines.append("## Failure" if state.endswith("failed") else "## Prerequisite authorization")
         if failure_summary:
             lines.append(f"- summary: {failure_summary}")
         if failure_detail:
@@ -1902,6 +1930,18 @@ def build_target(
                 today=today,
                 reusable_compacts=reusable_compact_sources,
             )
+        commander_guidance = render_feedback_prompt(harvest_answered_questions(target_dir))
+        if commander_guidance:
+            prompt_assembly = PromptAssembly(
+                parts=(
+                    *prompt_assembly.parts,
+                    part(
+                        "Active Commander guidance",
+                        "# Active Commander guidance\n\n" + commander_guidance + "\n",
+                        kind="commander-guidance",
+                    ),
+                )
+            )
         if dry_run:
             _emit(on_text, "-" * _RULE_WIDTH)
             _emit_dry_run_file_list(on_text, group)
@@ -1938,19 +1978,90 @@ def build_target(
                     on_step(step_result)
             break
         story_by_check: dict[str, PlanBlock] = {}
+        story_by_source_check: dict[tuple[str, str], PlanBlock] = {}
         gathered_checks: list[ProgrammaticAcceptance] = []
         graded_blocks = (*unit.steps, *unit.already_verified)
         for block in graded_blocks:
             for check in programmatic_acceptance_for_step(block, blueprint_dir):
                 gathered_checks.append(check)
                 story_by_check[check.check_id] = block
+                story_by_source_check[(check.source, check.check_id)] = block
         checks = tuple(gathered_checks)
         _reject_unsatisfiable_acceptance(checks)
-        pre_acceptance = observe_programmatic_acceptance(
-            checks,
-            build_dir=resolved_build_dir,
-            target_dir=target_dir,
-            blueprint_dir=blueprint_dir,
+        unauthorized = []
+        authorized_missing = []
+        requirement_evidence: list[str] = []
+        for check in checks:
+            owner = story_by_source_check.get((check.source, check.check_id))
+            current_approval = bool(
+                owner and str(owner.fields.get("questions_approved", "")).lower() == "true"
+            )
+            for requirement in check.requirements:
+                if requirement_available(requirement, resolved_build_dir):
+                    requirement_evidence.append(
+                        f"{check.source}#{check.check_id}: {requirement.kind}={requirement.name}; "
+                        f"scope={requirement.scope}; authorization=existing Target environment"
+                    )
+                    continue
+                authorization = authorization_for(
+                    requirement,
+                    target_dir=target_dir,
+                    build_dir=resolved_build_dir,
+                    current_manifest_approved=current_approval,
+                )
+                if authorization.authorized:
+                    authorized_missing.append((check, requirement, authorization))
+                    commander = (
+                        f"; Commander text={authorization.commander_text}"
+                        if authorization.commander_text
+                        else ""
+                    )
+                    requirement_evidence.append(
+                        f"{check.source}#{check.check_id}: {requirement.kind}={requirement.name}; "
+                        f"scope={requirement.scope}; authorization={authorization.source}{commander}"
+                    )
+                else:
+                    unauthorized.append((check, requirement))
+        if unauthorized:
+            for check, requirement in unauthorized:
+                blueprint_path = blueprint_dir / check.source
+                if blueprint_path.is_file():
+                    append_requirement_question(blueprint_path, check, requirement, origin="build")
+            synchronize_manifest_question_gates(manifest_path, blueprint_dir, persist=not dry_run)
+            _emit(
+                on_text,
+                "blocked/questions: acceptance prerequisite requires authorization — "
+                + ", ".join(f"{r.kind}={r.name}" for _, r in unauthorized),
+            )
+            continue
+        if authorized_missing:
+            _emit(
+                on_text,
+                "authorized acceptance prerequisites pending Target provisioning: "
+                + ", ".join(f"{r.kind}={r.name}" for _, r, _ in authorized_missing),
+            )
+        pre_acceptance = (
+            tuple(
+                AcceptanceObservation(
+                    check_id=check.check_id,
+                    source=check.source,
+                    intent=check.intent,
+                    passed=False,
+                    return_code=None,
+                    stdout="",
+                    stderr="",
+                    error="baseline unavailable: authorized Target tooling is not provisioned",
+                )
+                for check in checks
+            )
+            if authorized_missing
+            else observe_programmatic_acceptance(
+                checks,
+                build_dir=resolved_build_dir,
+                target_dir=target_dir,
+                blueprint_dir=blueprint_dir,
+                strict_target=True,
+            )
         )
         # A baseline observation that died inside its own snippet is not a red baseline. Static
         # analysis catches most of these above; this catches the rest — a mis-typed attribute,
@@ -2005,6 +2116,7 @@ def build_target(
         result: object | None = None
         feedback_checks: tuple[AcceptanceRunResult, ...] = ()
         seed_feedback: str | None = None
+        dependency_overrides: tuple[str, ...] = ()
         if unit.resume:
             # A resumed step keeps its prior partial work in the build directory. Re-run its
             # acceptance live so the first pass is seeded with the real, current failure — the
@@ -2016,6 +2128,7 @@ def build_target(
                 build_dir=resolved_build_dir,
                 target_dir=target_dir,
                 blueprint_dir=blueprint_dir,
+                strict_target=True,
             )
             resume_failed = tuple(check for check in resume_live if not check.passed)
             if not resume_failed:
@@ -2218,6 +2331,45 @@ def build_target(
                     failure_detail = str(exc)
                 else:
                     if dependency_gate.blocked:
+                        remaining_issues = []
+                        overrides = []
+                        for issue in dependency_gate.issues:
+                            declared = next(
+                                (
+                                    requirement
+                                    for check in checks
+                                    for requirement in check.requirements
+                                    if requirement.kind == "python-package"
+                                    and canonicalize_package_name(requirement.name)
+                                    == issue.normalized_name
+                                ),
+                                None,
+                            )
+                            requirement = declared or AcceptanceRequirement(
+                                "python-package", issue.package_name, "runtime"
+                            )
+                            authorization = authorization_for(
+                                requirement,
+                                target_dir=target_dir,
+                                build_dir=resolved_build_dir,
+                            )
+                            if authorization.authorized and authorization.commander_text:
+                                overrides.append(
+                                    f"{issue.package_name}: {issue.verdict}; overridden by "
+                                    f"{authorization.source}: {authorization.commander_text}"
+                                )
+                            else:
+                                remaining_issues.append(issue)
+                        dependency_overrides = tuple(overrides)
+                        if dependency_overrides:
+                            for override in dependency_overrides:
+                                _emit(on_text, "dependency override: " + override)
+                        dependency_gate = DependencyGateResult(
+                            dependency_gate.scanned_files,
+                            dependency_gate.checked_dependencies,
+                            tuple(remaining_issues),
+                        )
+                    if dependency_gate.blocked:
                         state, status = "closed/failed", "failed"
                         error, failure_detail = _dependency_gate_failure(dependency_gate)
                         _emit(
@@ -2225,29 +2377,122 @@ def build_target(
                             f"dependency gate failed — {len(dependency_gate.issues)} issue(s)",
                         )
                     else:
-                        acceptance = run_programmatic_acceptance(
-                            checks,
-                            build_dir=resolved_build_dir,
-                            target_dir=target_dir,
-                            blueprint_dir=blueprint_dir,
+                        provisioning_result = "not required"
+                        missing_after_build = [
+                            requirement
+                            for check in checks
+                            for requirement in check.requirements
+                            if not requirement_available(requirement, resolved_build_dir)
+                        ]
+                        if any(item.kind == "python-package" for item in missing_after_build):
+                            provisioned = provision_uv_environment(resolved_build_dir)
+                            if provisioned.interpreter is None:
+                                state, status = "closed/failed", "failed"
+                                error = "acceptance environment provisioning failed"
+                                failure_detail = provisioned.detail
+                            else:
+                                provisioning_result = provisioned.provisioning_result
+                                _emit(
+                                    on_text,
+                                    f"acceptance environment: {provisioned.provisioning_result}",
+                                )
+                        unavailable_after_provision = [
+                            item
+                            for item in missing_after_build
+                            if not requirement_available(item, resolved_build_dir)
+                        ]
+                        if unavailable_after_provision and status != "failed":
+                            state, status = "closed/failed", "failed"
+                            error = "authorized acceptance prerequisite unavailable"
+                            failure_detail = ", ".join(
+                                f"{item.kind}={item.name}" for item in unavailable_after_provision
+                            )
+                        acceptance = (
+                            run_programmatic_acceptance(
+                                checks,
+                                build_dir=resolved_build_dir,
+                                target_dir=target_dir,
+                                blueprint_dir=blueprint_dir,
+                                strict_target=True,
+                            )
+                            if status != "failed"
+                            else ()
                         )
+                        if acceptance:
+                            acceptance = tuple(
+                                replace(item, provisioning_result=provisioning_result)
+                                for item in acceptance
+                            )
                         failed_checks = tuple(check for check in acceptance if not check.passed)
                         if failed_checks:
-                            state, status = "closed/failed", "failed"
+                            undeclared = next(
+                                (
+                                    (check, requirement)
+                                    for check in failed_checks
+                                    if (requirement := discover_missing_requirement(check.stderr))
+                                    is not None
+                                    and all(
+                                        declared.kind != requirement.kind
+                                        or declared.name != requirement.name
+                                        for declared in next(
+                                            item
+                                            for item in checks
+                                            if item.check_id == check.check_id
+                                        ).requirements
+                                    )
+                                ),
+                                None,
+                            )
+                            if undeclared is not None:
+                                failed_result, requirement = undeclared
+                                declared_check = next(
+                                    item
+                                    for item in checks
+                                    if item.check_id == failed_result.check_id
+                                )
+                                append_requirement_question(
+                                    blueprint_dir / declared_check.source,
+                                    declared_check,
+                                    requirement,
+                                    origin="build",
+                                )
+                                owner = story_by_source_check.get((
+                                    declared_check.source,
+                                    declared_check.check_id,
+                                ))
+                                if owner is not None and "questions_approved" in owner.fields:
+                                    batch_set_block_fields(
+                                        manifest_path,
+                                        {owner.block_id: {"questions_approved": None}},
+                                    )
+                                synchronize_manifest_question_gates(
+                                    manifest_path, blueprint_dir, persist=True
+                                )
+                                state, status = "blocked/questions", "blocked"
+                                error = "acceptance prerequisite requires authorization"
+                                failure_detail = (
+                                    f"Undeclared {requirement.kind}={requirement.name} was "
+                                    "discovered during acceptance. Partial work is preserved; "
+                                    "answer the build-origin Blueprint question to resume this story."
+                                )
+                                _emit(on_text, "blocked/questions: " + failure_detail)
+                            else:
+                                state, status = "closed/failed", "failed"
                             # Keep the repairable prefix — a resource kill is still driven
                             # green by another informed pass — but name the category so the
                             # manifest finding does not read as an ordinary missed assertion.
-                            category = (
-                                " (resource exhaustion)"
-                                if any(_resource_verdict(check) for check in failed_checks)
-                                else ""
-                            )
-                            error = f"programmatic acceptance failed{category}: " + ", ".join(
-                                check.check_id for check in failed_checks
-                            )
-                            failure_detail = _render_ac_failure_chain(
-                                unit, failed_checks, story_by_check
-                            )
+                            if status != "blocked":
+                                category = (
+                                    " (resource exhaustion)"
+                                    if any(_resource_verdict(check) for check in failed_checks)
+                                    else ""
+                                )
+                                error = f"programmatic acceptance failed{category}: " + ", ".join(
+                                    check.check_id for check in failed_checks
+                                )
+                                failure_detail = _render_ac_failure_chain(
+                                    unit, failed_checks, story_by_check
+                                )
                         else:
                             state, status, error = "closed/verified", "built", None
                             failure_detail = ""
@@ -2373,7 +2618,7 @@ def build_target(
             break
 
         written_reusable_compacts: tuple[str, ...] = ()
-        if status != "failed" and reusable_compact_sources:
+        if status not in {"failed", "blocked"} and reusable_compact_sources:
             written_reusable_compacts = _persist_reusable_compacts(
                 summary,
                 reusable_compact_sources,
@@ -2384,7 +2629,7 @@ def build_target(
                 _emit(on_text, "reusable compacts: " + ", ".join(written_reusable_compacts))
 
         written_decisions: tuple[Path, ...] = ()
-        if status != "failed":
+        if status not in {"failed", "blocked"}:
             allowed_specs = frozenset(
                 str(name)
                 for block in unit.steps
@@ -2423,6 +2668,8 @@ def build_target(
             agent_report=agent_report,
             attempts=tuple(attempt_records),
             reusable_compacts=written_reusable_compacts,
+            dependency_overrides=dependency_overrides,
+            requirement_evidence=tuple(requirement_evidence),
         )
         finding = _failure_finding(status, error, result, acceptance)
         if status == "failed":
@@ -2530,7 +2777,7 @@ def build_target(
             if finding is not None:
                 feature_fields["finding"] = finding
             manifest_updates[unit.block_id] = feature_fields
-        if unit.is_group and status != "failed":
+        if unit.is_group and status not in {"failed", "blocked"}:
             children = plan.children(unit.block_id)
             executable_children = tuple(
                 child for child in children if child.block_type in {"story", "spike"}
@@ -2545,7 +2792,7 @@ def build_target(
                     "evidence": _rel(evidence_path, target_dir),
                 }
         batch_set_block_fields(manifest_path, manifest_updates)
-        if status != "failed" and stack_head is not None:
+        if status not in {"failed", "blocked"} and stack_head is not None:
             updated_registry = dict(plan.applied_registry)
             changed = False
             for block in unit.steps:
@@ -2557,7 +2804,7 @@ def build_target(
                             changed = True
             if changed:
                 set_applied_registry(manifest_path, updated_registry)
-        if status != "failed":
+        if status not in {"failed", "blocked"}:
             applied_specs = dict(parse_build_plan(manifest_path).applied_specs)
             applied_at = datetime.now(UTC).isoformat(timespec="seconds")
             changed = False
@@ -2605,6 +2852,9 @@ def build_target(
                 on_text,
                 f"result: FAILED — {error or 'build failed'} · {block_elapsed}",
             )
+        elif status == "blocked":
+            _emit(on_text, f"result: BLOCKED/QUESTIONS — {error} · {block_elapsed}")
+            _emit(on_text, f"evidence: {_rel(evidence_path, target_dir)}")
         else:
             _emit(on_text, f"result: {status} · {state} · {block_elapsed}")
             _emit(on_text, f"evidence: {_rel(evidence_path, target_dir)}")

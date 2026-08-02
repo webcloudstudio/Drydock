@@ -6,7 +6,6 @@ import os
 import re
 import signal
 import subprocess
-import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,10 +14,12 @@ from pathlib import Path
 from drydock.build_plan import BuildPlan, PlanBlock
 from drydock.config import get_sandbox_mem_limit_mb
 from drydock.proof_integrity import analyze_proof
+from drydock.target_environment import resolve_target_environment
 
 SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
 PYTHON_FENCE_RE = re.compile(r"```python\s*\n(?P<code>.*?)\n```", re.DOTALL)
 HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
+REQUIRES_RE = re.compile(r"^Requires:\s*(?P<value>.+?)\s*$", re.MULTILINE | re.IGNORECASE)
 TIMEOUT_SECONDS = 60
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
@@ -159,6 +160,13 @@ def _scrub_script_path(text: str, script: Path) -> str:
 
 
 @dataclass(frozen=True)
+class AcceptanceRequirement:
+    kind: str
+    name: str
+    scope: str
+
+
+@dataclass(frozen=True)
 class ProgrammaticAcceptance:
     check_id: str
     source: str
@@ -166,6 +174,7 @@ class ProgrammaticAcceptance:
     code: str
     sea_trials: tuple[str, ...] = ()
     full_suite: bool = False
+    requirements: tuple[AcceptanceRequirement, ...] = ()
 
     @property
     def timeout_seconds(self) -> int:
@@ -183,6 +192,8 @@ class AcceptanceRunResult:
     stdout: str
     stderr: str
     error: str | None = None
+    interpreter: str = ""
+    provisioning_result: str = "not requested"
 
 
 @dataclass(frozen=True)
@@ -237,7 +248,7 @@ def _intent(prefix: str, title: str | None) -> str:
         line = raw.strip()
         if not line or line.startswith("###"):
             continue
-        if re.match(r"(Sea Trials|Suite):", line, re.I):
+        if re.match(r"(Sea Trials|Suite|Requires):", line, re.I):
             continue
         lines.append(line)
     if lines:
@@ -263,9 +274,42 @@ def _sea_trials(prefix: str) -> tuple[str, ...]:
     return tuple(value.lower() for raw in match.group(1).split(",") if (value := raw.strip()))
 
 
+def _requirements(prefix: str, *, source: str, check_id: str) -> tuple[AcceptanceRequirement, ...]:
+    requirements: list[AcceptanceRequirement] = []
+    for match in REQUIRES_RE.finditer(prefix):
+        fields: dict[str, str] = {}
+        for raw in match.group("value").split(";"):
+            if "=" not in raw:
+                raise ValueError(
+                    f"{source} [{check_id}] malformed Requires declaration {match.group('value')!r}"
+                )
+            key, value = raw.split("=", 1)
+            fields[key.strip().lower()] = value.strip()
+        kinds = [kind for kind in ("python-package", "executable") if kind in fields]
+        if len(kinds) != 1 or set(fields) != {kinds[0], "scope"}:
+            raise ValueError(
+                f"{source} [{check_id}] Requires must declare exactly one of "
+                "python-package/executable and scope"
+            )
+        scope = fields["scope"].lower()
+        name = fields[kinds[0]]
+        if scope not in {"runtime", "test"} or not name:
+            raise ValueError(
+                f"{source} [{check_id}] Requires scope must be runtime or test and name non-empty"
+            )
+        requirements.append(AcceptanceRequirement(kinds[0], name, scope))
+    return tuple(requirements)
+
+
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:
     """Return Python acceptance snippets from one Blueprint spec file."""
-    text = path.read_text(encoding="utf-8")
+    return parse_programmatic_acceptance_text(path.read_text(encoding="utf-8"), source=path.name)
+
+
+def parse_programmatic_acceptance_text(
+    text: str, *, source: str
+) -> tuple[ProgrammaticAcceptance, ...]:
+    """Return Python acceptance snippets from in-memory Blueprint text."""
     section = _sections(text).get("programmatic acceptance", "")
     if not section or section.strip() == "- None.":
         return ()
@@ -275,16 +319,17 @@ def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, .
     for index, match in enumerate(PYTHON_FENCE_RE.finditer(section), start=1):
         prefix = section[previous_end : match.start()]
         title = _last_heading(prefix)
-        check_id = _slugify(title or f"{path.stem}-{index}")
+        check_id = _slugify(title or f"{Path(source).stem}-{index}")
         code = match.group("code").strip()
         checks.append(
             ProgrammaticAcceptance(
                 check_id=check_id,
-                source=path.name,
+                source=source,
                 intent=_intent(prefix, title),
                 code=code,
                 sea_trials=_sea_trials(prefix),
                 full_suite=_full_suite(prefix),
+                requirements=_requirements(prefix, source=source, check_id=check_id),
             )
         )
         previous_end = match.end()
@@ -425,11 +470,33 @@ def run_programmatic_acceptance(
     build_dir: Path,
     target_dir: Path,
     blueprint_dir: Path,
+    strict_target: bool = False,
 ) -> tuple[AcceptanceRunResult, ...]:
     """Execute Python acceptance snippets from the build directory."""
     results: list[AcceptanceRunResult] = []
+    environment = resolve_target_environment(build_dir)
+    if environment.interpreter is None:
+        return tuple(
+            AcceptanceRunResult(
+                check_id=check.check_id,
+                source=check.source,
+                intent=check.intent,
+                passed=False,
+                return_code=None,
+                stdout="",
+                stderr="",
+                error=f"acceptance environment unavailable: {environment.detail}",
+                provisioning_result=environment.provisioning_result,
+            )
+            for check in checks
+        )
     pythonpath = os.pathsep.join(
-        part for part in (str(build_dir), os.environ.get("PYTHONPATH", "")) if part
+        part
+        for part in (
+            str(build_dir),
+            "" if strict_target else os.environ.get("PYTHONPATH", ""),
+        )
+        if part
     )
     env = {
         **os.environ,
@@ -451,7 +518,7 @@ def run_programmatic_acceptance(
             # Own session so the timeout can reap the whole tree, and a bounded address
             # space so a runaway is stopped by the kernel long before the timeout.
             process = subprocess.Popen(
-                [sys.executable, str(script)],
+                [str(environment.interpreter), str(script)],
                 cwd=build_dir,
                 env=env,
                 stdout=subprocess.PIPE,
@@ -480,6 +547,8 @@ def run_programmatic_acceptance(
                             f"non-terminating loop or unbounded work in the code under test, "
                             f"not a missed expectation."
                         ),
+                        interpreter=str(environment.interpreter),
+                        provisioning_result=environment.provisioning_result,
                     )
                 )
                 continue
@@ -498,6 +567,8 @@ def run_programmatic_acceptance(
                 stdout=stdout,
                 stderr=scrubbed,
                 error=verdict,
+                interpreter=str(environment.interpreter),
+                provisioning_result=environment.provisioning_result,
             )
         )
     return tuple(results)
@@ -509,12 +580,17 @@ def observe_programmatic_acceptance(
     build_dir: Path,
     target_dir: Path,
     blueprint_dir: Path,
+    strict_target: bool = False,
 ) -> tuple[AcceptanceObservation, ...]:
     """Execute checks and annotate whether a passing proof is integrity-valid or vacuous."""
     if not checks:
         return ()
     runtime = run_programmatic_acceptance(
-        checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
+        checks,
+        build_dir=build_dir,
+        target_dir=target_dir,
+        blueprint_dir=blueprint_dir,
+        strict_target=strict_target,
     )
     observations: list[AcceptanceObservation] = []
     for check, result in zip(checks, runtime, strict=True):

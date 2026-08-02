@@ -66,6 +66,10 @@ This is the point of the conform pass. Treat it as writing the failing tests fir
   `Provides` entry, a route, an interface, a read, or a write) carries **several** concrete
   executable assertions — generally one per distinct observable behavior, route, invariant, or
   error mode the spec describes. A single assertion for a multi-behavior spec is insufficient.
+- Declare every external package or executable used directly or indirectly by a check with repeated
+  `Requires: python-package=<name>; scope=<runtime|test>` or
+  `Requires: executable=<name>; scope=<runtime|test>` lines. Include framework test-client
+  transport dependencies. Never silently assume or install undeclared tooling.
 - Cover the ordinary "the thing exists and responds" checks explicitly. For a route, assert it is
   reachable and returns the expected status; for a record, that it is written with the expected
   keys; for an invariant, that it holds; for a guardrail, that it rejects; for an error path, that

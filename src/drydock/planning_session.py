@@ -26,7 +26,11 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from drydock import technology_stack
-from drydock.acceptance import PYTHON_FENCE_RE
+from drydock.acceptance import PYTHON_FENCE_RE, parse_programmatic_acceptance_text
+from drydock.acceptance_requirements import (
+    project_plan_requirement_questions,
+    validate_declared_external_usage,
+)
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -34,6 +38,7 @@ from drydock.build_plan import (
     parse_build_plan,
     set_applied_specs,
 )
+from drydock.config import build_dir_for
 from drydock.decisions import (
     ARCHITECTURE_BLUEPRINT,
     DECISIONS_BLOCK,
@@ -2519,6 +2524,16 @@ def _validate_plan_output(
         )
 
     emitted_files = {name: text for name, text in blocks.items() if name not in _RESERVED_BLOCKS}
+    declared_checks = tuple(
+        check
+        for name, text in emitted_files.items()
+        if name.lower().endswith(".md")
+        for check in parse_programmatic_acceptance_text(text, source=name)
+    )
+    try:
+        validate_declared_external_usage(declared_checks)
+    except ValueError as exc:
+        raise SpecificationError(str(exc)) from exc
     # Removals lead the warning list: they changed the artifact the author is about to read,
     # so they must not be buried under advisory graph notes.
     warnings = (
@@ -4013,6 +4028,15 @@ def create_plan(
                 raise RecordedError(record) from exc
     else:
         plan, warnings = validated_plan, validated_warnings
+
+    requirement_questions = project_plan_requirement_questions(
+        blocks, target_dir=target_dir, build_dir=build_dir_for(target)
+    )
+    if requirement_questions:
+        warnings = (
+            *warnings,
+            "Acceptance tooling authorization required: " + ", ".join(requirement_questions),
+        )
 
     # A fresh import may preserve reusable specs. A replan has full authority over every Plan-owned
     # output, including specifications previously used by Build.

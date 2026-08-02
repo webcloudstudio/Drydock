@@ -246,6 +246,20 @@ from the unread-table warning.
 and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes
 `SCORECARD.md`.
 
+Programmatic Acceptance checks declare external tooling with repeated machine-readable lines such
+as `Requires: python-package=httpx; scope=test`. Plan rejects visible undeclared imports and
+subprocess executables. An unavailable requirement that is not already authorized becomes a
+blocking, story-local Blueprint question; unrelated frontier stories remain buildable. Commander
+answers are retained verbatim as durable Target guidance, including broad instructions such as
+"approve all test harnesses". The QuarterDeck's **Approve for this Manifest** action remains a
+current-Manifest authorization of the exact open request.
+
+Build never improvises an undeclared acceptance dependency. A newly discovered package or
+executable creates a build-origin blocking question, preserves partial work, and consumes no repair
+attempt. Python/uv Target acceptance runs through the Target `.venv`; `uv sync --locked` provisions
+only an authorized declared environment. Provisioning failure is an operational prerequisite
+failure, not failed application acceptance.
+
 `drydock score drydock` takes no Target. It runs an adversarial self-assessment of Drydock itself —
 the specification, every prompt contract, and the command process — against Agile decomposition,
 Test Driven Development, context economy, and governance, and writes ranked feature files with

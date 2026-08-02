@@ -22,12 +22,14 @@ from pathlib import Path
 
 from drydock.acceptance import (
     AcceptanceObservation,
+    ProgrammaticAcceptance,
     all_programmatic_acceptance,
     observe_programmatic_acceptance,
     parse_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
 )
+from drydock.acceptance_requirements import authorization_for, requirement_available
 from drydock.build_plan import BuildPlan, parse_build_plan, stale_applied_specs
 from drydock.build_score import (
     DIMENSIONS,
@@ -62,6 +64,7 @@ from drydock.standard_artifacts import (
     Sounding,
     render_soundings,
 )
+from drydock.target_environment import provision_uv_environment
 
 PASS = "PASS"
 FAIL = "FAIL"
@@ -177,6 +180,37 @@ def _blueprint_owners(plan: BuildPlan) -> dict[str, tuple[str, str]]:
     return owners
 
 
+def _provision_authorized_environment(
+    checks: tuple[ProgrammaticAcceptance, ...],
+    plan: BuildPlan,
+    target_dir: Path,
+    build_dir: Path,
+) -> None:
+    """Use the same authorization and uv provisioning contract as Build."""
+    owners = _blueprint_owners(plan)
+    missing = []
+    for check in checks:
+        owner_id = owners.get(check.source, ("", ""))[0]
+        owner = plan.by_id().get(owner_id)
+        current_approval = bool(
+            owner and str(owner.fields.get("questions_approved", "")).lower() == "true"
+        )
+        for requirement in check.requirements:
+            if requirement_available(requirement, build_dir):
+                continue
+            authorization = authorization_for(
+                requirement,
+                target_dir=target_dir,
+                build_dir=build_dir,
+                current_manifest_approved=current_approval,
+            )
+            if not authorization.authorized:
+                return
+            missing.append(requirement)
+    if any(requirement.kind == "python-package" for requirement in missing):
+        provision_uv_environment(build_dir)
+
+
 def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> AcReport:
     """Verify Blueprint acceptance assertions deterministically.
 
@@ -199,8 +233,13 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
     else:
         scope_block = _resolve_scope_block(plan, step_id)
         checks = _scoped_checks(plan, blueprint_dir, scope_block)
+    _provision_authorized_environment(checks, plan, target_dir, build_dir)
     observations = observe_programmatic_acceptance(
-        checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
+        checks,
+        build_dir=build_dir,
+        target_dir=target_dir,
+        blueprint_dir=blueprint_dir,
+        strict_target=True,
     )
 
     owners = _blueprint_owners(plan)
@@ -298,8 +337,13 @@ def score_release(
         for path in sorted(blueprint_dir.glob("*.md"))
         for check in parse_programmatic_acceptance(path)
     )
+    _provision_authorized_environment(checks, plan, target_dir, build_dir)
     acceptance = run_programmatic_acceptance(
-        checks, build_dir=build_dir, target_dir=target_dir, blueprint_dir=blueprint_dir
+        checks,
+        build_dir=build_dir,
+        target_dir=target_dir,
+        blueprint_dir=blueprint_dir,
+        strict_target=True,
     )
     proof_integrity = tuple(analyze_proof(check.code) for check in checks)
     failed_acceptance = [check.check_id for check in acceptance if not check.passed]

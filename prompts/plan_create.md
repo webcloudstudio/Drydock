@@ -463,6 +463,11 @@ Additional body guidance:
   reachability/existence checks. This is the test-driven contract the build must satisfy. Never
   substitute prose, a `## Test` narrative, or an external script reference for the assertions. Emit
   `- None.` only for a genuine non-programmatic item, with the reason stated on the same line.
+- Declare every external Python package and executable used directly or indirectly by each
+  Programmatic Acceptance mechanism using repeated `Requires: <kind>=<name>; scope=<scope>` lines.
+  Include framework test-client dependencies such as `httpx`. Never install or silently assume an
+  undeclared tool. Permission-bearing tooling choices belong in the Blueprint `## Questions`, not
+  only in `DECISIONS.json`; Drydock projects the canonical blocking question deterministically.
 - `User Acceptance` contains only Commander-observed checks that cannot be honestly automated.
 ---
 
@@ -517,10 +522,10 @@ Derive the Manifest from the authored specs, not directly from the imported sour
 **Decisions**
 - Where the Blueprint, guardrails, or stack declaration are silent on a needed decision, decide:
   pick the option that most reduces rework risk, proceed as if it were chosen, and disclose it as a
-  `DECISIONS.json` item (see Significant Design Decisions below). Never emit a decision into a
-  Blueprint `## Questions` section; `DECISIONS.json` is the sole disclosure surface. Assign `low`,
-  `material`, or `blocking` severity. Plan never hard-blocks on an unresolved choice regardless of
-  severity.
+  `DECISIONS.json` item (see Significant Design Decisions below). Ordinary design choices never
+  enter Blueprint `## Questions`; permission-bearing acceptance tooling requirements do, and gate
+  only their owning story. Assign `low`, `material`, or `blocking` severity. Ordinary Plan-selected
+  choices never hard-block regardless of severity.
 - Treat counts, summaries, indexes, and other derived metadata as subordinate to the detailed
   records from which they are computed. When derived metadata disagrees with an unambiguous
   detailed enumeration, recompute it from that enumeration and continue. This is neither a product
@@ -600,7 +605,8 @@ include `commander_direction`, `override_text`, `status`, `origin`, or `archived
 Commander/QuarterDeck-owned and never emitted by Plan.
 
 `DECISIONS.json` never gates Build regardless of severity, and it is never a Blueprint
-`## Questions` record — `DECISIONS.json` is the sole disclosure surface for these decisions.
+`## Questions` record. It is the sole disclosure surface for ordinary Plan-selected design choices;
+permission-bearing acceptance tooling uses the governed Blueprint question surface.
 
 ---
 
