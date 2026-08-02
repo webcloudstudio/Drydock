@@ -706,6 +706,10 @@ A mismatch between derived summary metadata and its unambiguous detailed records
 Mode. Recompute the derived value from the detailed records and emit the complete Success Mode
 artifact batch.
 
+Available response length is never Error Mode. Emit `TOPOLOGY.md` first, then as many complete
+declared Blueprint artifacts as fit. Drydock measures the batch and requests the remaining
+artifacts in bounded continuation passes.
+
 A technology-stack disagreement is never Error Mode. Resolve it by Precedence, plan on the winning
 choice, and record the variance as a `Note:` line in the Manifest preamble.
 
