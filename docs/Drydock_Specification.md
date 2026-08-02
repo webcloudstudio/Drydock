@@ -354,9 +354,10 @@ drydock status <Target> --check   # 0 complete, 2 blocked
 The Analyze phase turns imported source material into an Analysis for review, then into an executable Manifest for build.
 
 1. `drydock import` brings source material under Drydock control.
-2. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions
-3. `drydock run quarterdeck` lets the product owner review, approve, and answer questions
-4. `drydock plan` consumes the analysis and creates Blueprint files and the Manifest.
+2. `drydock score spec` optionally diagnoses potential errors in the imported specifications.
+3. `drydock analyze` reads the imported sources and derives stories, acceptance milestones, blockers, questions
+4. `drydock run quarterdeck` lets the product owner review, approve, and answer questions
+5. `drydock plan` consumes the analysis and creates Blueprint files and the Manifest.
 
 > **Definition — Compass Files**
 >
@@ -371,6 +372,7 @@ The Analyze phase turns imported source material into an Analysis for review, th
 
 ```text
 drydock import <Target> <Source> --format <auto|markdown|source|speckit|compass> [--force]
+drydock score spec <Target>
 drydock analyze <Target>
 drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 drydock plan [--overwrite] [--no-conform] <Target>
@@ -412,6 +414,11 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 `drydock import <Target> <Source> --format compass` normalizes the source into the canonical
 `COMPASS.md` format and writes it to the Target root. An existing `COMPASS.md` is preserved unless
 `--force` is given.
+
+### drydock score spec
+
+`drydock score spec <Target>` diagnoses potential errors in the specification. Feed the output to your
+LLM to update your specifications for likely errors. False positives may not require repair.
 
 ### drydock analyze
 
