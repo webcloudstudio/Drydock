@@ -2868,6 +2868,12 @@ def _is_repairable_topology_defect(exc: Exception) -> bool:
 def _repairable_artifact_names(blocks: Mapping[str, str], defect: str) -> tuple[str, ...]:
     """Return emitted Blueprint artifacts explicitly cited by a validation defect."""
     cited = set(re.findall(r"\b[A-Z][A-Za-z0-9_-]*\.md\b", defect))
+    declaration = blocks.get(TOPOLOGY_BLOCK)
+    if declaration:
+        stories, _ = parse_topology(declaration)
+        for story in stories:
+            if re.search(rf"(?m)^\s*{re.escape(story.story_id)}:", defect):
+                cited.add(story.implements)
     return tuple(sorted(name for name in cited if name in blocks and name not in _RESERVED_BLOCKS))
 
 
@@ -2881,6 +2887,9 @@ def _artifact_repair_assembly(
         "Drydock accepted the Plan response shape but rejected the emitted Blueprint artifact(s)",
         "below. Repair only the deterministic defect. Preserve all unrelated content, contracts,",
         "headings, decisions, and acceptance assertions byte-for-byte where possible.",
+        "Do not remove or weaken a valid assertion while adding a missing one. Every artifact with",
+        "a programmatic surface retains at least two concrete Python acceptance assertions. Every",
+        "## Questions section retains `- None.` unless it contains canonical Q-records.",
         "",
         "Emit exactly one fully paired artifact block for each supplied filename and no other",
         "text or artifact.",

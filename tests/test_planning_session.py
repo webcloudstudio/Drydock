@@ -26,6 +26,7 @@ from drydock.planning_session import (
     _parse_blocks,
     _parse_strict_blocks,
     _repair_missing_leading_delimiter,
+    _repairable_artifact_names,
     _spec_is_conformant,
     _spec_is_dirty,
     advisory_plan_shape,
@@ -3496,6 +3497,16 @@ def test_a_cited_blueprint_validation_defect_repairs_only_that_artifact(tmp_path
     assert "SCREEN-Welcome.md" in runner.calls[1]
     assert "ARCHITECTURE.md body" not in runner.calls[1]
     assert result.plan.by_id()["story-status"].fields["implements"] == ("SCREEN-Welcome.md",)
+
+
+def test_artifact_repair_maps_story_cited_defect_to_its_implemented_spec():
+    blocks = _parse_blocks(_topology_output())
+    names = _repairable_artifact_names(
+        blocks,
+        "story-status: 1 Programmatic Acceptance assertion; author several concrete assertions",
+    )
+
+    assert names == ("FEATURE-Status.md",)
 
 
 def test_an_empty_declaration_is_refused(tmp_path):
