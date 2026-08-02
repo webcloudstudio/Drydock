@@ -228,6 +228,10 @@ Markdown source in bounded LLM passes, applies deterministic conformance rules, 
 `SPECIFICATION_SCORECARD.md`. Non-Markdown sources are inventoried without content ingestion. The
 assessment is advisory: findings do not gate `drydock analyze`.
 
+Findings report contradictions and dangling references — a cited thing that nothing defines, or two
+sources that disagree. A specification is not faulted for leaving a consumer unstated, and a
+relation the extraction never captured anywhere is treated as unobserved rather than missing.
+
 `drydock score ac <Target>` deterministically verifies each Programmatic Acceptance assertion
 and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes
 `SCORECARD.md`.

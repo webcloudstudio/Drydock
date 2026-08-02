@@ -76,6 +76,7 @@ FACT_TYPES = frozenset({
     "scheduler",
     "state",
     "state_consumer",
+    "guardrail",
 })
 
 
@@ -178,6 +179,7 @@ _ENTITY_TYPES = FACT_TYPES - {
     "library_consumer",
     "event_consumer",
     "state_consumer",
+    "guardrail",
 }
 
 
@@ -273,8 +275,8 @@ def assemble_extraction_prompt(body: str, chunks: tuple[SourceChunk, ...]) -> Pr
         "facts": [
             {
                 "type": "one allowed fact type",
-                "identifier": "explicit identifier",
-                "value": "explicit value or target identifier",
+                "identifier": "the named subject of the fact",
+                "value": "the stated value or the target identifier",
                 "source_path": "relative path exactly as supplied",
                 "line": 1,
             }
@@ -283,7 +285,15 @@ def assemble_extraction_prompt(body: str, chunks: tuple[SourceChunk, ...]) -> Pr
     parts = [body.rstrip(), "\n\n# Extraction Job\n\n", "Allowed fact types:\n"]
     parts.append(", ".join(sorted(FACT_TYPES)))
     parts.extend([
-        "\n\nReturn one JSON object with this shape:\n",
+        "\n\nType usage that is otherwise easy to get wrong:\n",
+        "- `table` and `field` describe persistent datastore structure only. A document, "
+        "configuration file, marker, or concept is never a `table`, and its properties are "
+        "never `field` facts.\n",
+        "- `guardrail` records a stated prohibition, limit, or invariant. The identifier is the "
+        "constrained subject and the value is the constraint.\n",
+        "- `state` records a named status value. Its identifier is the status and its value is "
+        "the thing that carries it.\n",
+        "\nReturn one JSON object with this shape:\n",
         json.dumps(schema, indent=2),
         "\n\nEvery fact carries exactly these five keys and no others. `line` is a bare JSON "
         "integer inside the cited chunk range, never a string. Facts using any other type, "
@@ -428,39 +438,23 @@ def normalize_facts(facts: Iterable[Fact]) -> tuple[Fact, ...]:
 
 
 def activate_profiles(facts: Iterable[Fact]) -> tuple[str, ...]:
+    """Activate a profile only on its anchor surface.
+
+    Relation types alone do not activate a profile: a `feature` or `target` fact in a web
+    specification is not evidence of a data-science system, and activating on it produces a
+    profile list that misdescribes the specification.
+    """
     types = {fact.type for fact in facts}
     profiles: list[str] = []
     catalogs = (
-        ("web", {"web_surface", "route", "navigation", "navigation_order", "action", "api"}),
-        ("service", {"service", "service_consumer"}),
-        (
-            "database",
-            {
-                "table",
-                "field",
-                "data_origin",
-                "data_producer",
-                "data_source",
-                "data_consumer",
-                "initial_condition",
-            },
-        ),
-        ("pipeline", {"pipeline", "trigger", "stage", "input", "output", "sink", "checkpoint"}),
-        (
-            "data-science",
-            {
-                "dataset",
-                "feature",
-                "target",
-                "training",
-                "evaluation",
-                "artifact",
-                "inference_consumer",
-            },
-        ),
+        ("web", {"web_surface", "route", "api"}),
+        ("service", {"service"}),
+        ("database", {"table", "field"}),
+        ("pipeline", {"pipeline"}),
+        ("data-science", {"dataset"}),
         ("cli", {"cli"}),
-        ("library", {"library", "library_consumer"}),
-        ("event-driven", {"event", "event_consumer"}),
+        ("library", {"library"}),
+        ("event-driven", {"event"}),
         ("batch", {"batch"}),
         ("scheduler", {"scheduler"}),
     )
@@ -472,32 +466,20 @@ def activate_profiles(facts: Iterable[Fact]) -> tuple[str, ...]:
 
 _SEVERITY = {
     "SIDEFX001": "Critical",
-    "EXTRACT001": "Low",
+    "EXTRACT001": "Medium",
     "REF001": "High",
-    "DEF001": "Low",
     "CONS001": "Medium",
-    "ENTRY001": "Medium",
-    "HELP001": "Low",
-    "INIT001": "Medium",
-    "OWN001": "Medium",
-    "SCOPE001": "Medium",
-    "INV001": "Low",
     "ROUTE001": "High",
-    "ROUTE002": "Low",
     "NAV001": "High",
     "NAV002": "High",
     "NAV003": "High",
     "ACT001": "High",
     "API001": "High",
-    "API002": "Medium",
     "SRV001": "High",
-    "SRV002": "Medium",
     "DATA001": "High",
     "DATA002": "High",
-    "DATA003": "Medium",
     "DATA004": "High",
     "DATA005": "Medium",
-    "DATA006": "Medium",
     "PIPE001": "High",
     "PIPE002": "High",
     "PIPE003": "High",
@@ -515,14 +497,14 @@ _SEVERITY = {
     "DS007": "High",
     "CLI001": "High",
     "CLI002": "Medium",
-    "LIB001": "Medium",
     "EVT001": "High",
     "EVT002": "Medium",
     "BATCH001": "High",
     "SCHED001": "High",
     "STATE001": "High",
-    "STATE002": "Medium",
 }
+
+_SEVERITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2}
 
 
 def _fact_map(facts: Iterable[Fact]) -> dict[str, list[Fact]]:
@@ -562,71 +544,35 @@ def evaluate_facts(
         )
 
     definitions = {f.identifier for f in facts if f.type in _ENTITY_TYPES or f.type == "definition"}
-    usages = by["reference"] + by["consumer"]
     for fact in by["reference"]:
         if fact.identifier not in definitions:
-            add("REF001", (fact,), f"reference '{fact.identifier}' has no explicit definition")
+            add("REF001", (fact,), f"reference '{fact.identifier}' has no definition")
     for fact in by["consumer"]:
         if fact.identifier not in definitions:
-            add(
-                "CONS001",
-                (fact,),
-                f"consumer target '{fact.identifier}' has no explicit definition",
-            )
-    used = {f.identifier for f in usages}
-    for fact in by["definition"]:
-        if fact.identifier not in used:
-            add("DEF001", (fact,), f"definition '{fact.identifier}' has no explicit reference")
-    application_profiles = set(profiles) - {"data-science"}
-    all_markdown = tuple(record.path for record in inventory if record.markdown)
-    if application_profiles and not by["entry_point"]:
-        add("ENTRY001", all_markdown, "activated application surfaces have no explicit entry point")
-    if ({"web", "cli"} & set(profiles)) and not by["help"]:
-        add("HELP001", all_markdown, "interactive surface has no explicit help behavior")
-    if application_profiles and not by["initialization"]:
-        add(
-            "INIT001",
-            all_markdown,
-            "activated application surfaces have no initialization contract",
-        )
-    if by["scope"] and not by["ownership"]:
-        add("OWN001", by["scope"], "scope is explicit but ownership is not")
-    if by["ownership"] and not by["scope"]:
-        add("SCOPE001", by["ownership"], "ownership is explicit but scope is not")
-    for record in inventory:
-        if record.markdown and record.headings == 0:
-            add("INV001", (record.path,), "Markdown source has no explicit heading structure")
+            add("CONS001", (fact,), f"consumer target '{fact.identifier}' has no definition")
+
+    def demonstrated(relation: str, owners: Iterable[str]) -> bool:
+        """Report a missing relation only where the extraction proved it can capture one.
+
+        An absence in the fact set means either the specification omitted the relation or the
+        extraction never captured that relation type. Those are indistinguishable, so a relation
+        the extraction attached to no owner anywhere is treated as unobserved rather than absent.
+        """
+        names = set(owners)
+        return any(fact.identifier in names for fact in by[relation])
 
     def undefined(ref_type: str, entity_type: str, code: str, label: str) -> None:
         declared = {f.identifier for f in by[entity_type]}
         for fact in by[ref_type]:
             if fact.value not in declared:
-                add(
-                    code,
-                    (fact,),
-                    f"{label} '{fact.value}' has no explicit {entity_type} definition",
-                )
-
-    def unused(entity_type: str, ref_types: tuple[str, ...], code: str, label: str) -> None:
-        referenced = {f.value for kind in ref_types for f in by[kind]}
-        for fact in by[entity_type]:
-            if fact.identifier not in referenced:
-                add(code, (fact,), f"{label} '{fact.identifier}' has no explicit consumer")
+                add(code, (fact,), f"{label} '{fact.value}' has no {entity_type} definition")
 
     if "web" in profiles:
         undefined("navigation", "route", "NAV001", "navigation destination")
         undefined("action", "route", "ACT001", "action destination")
-        route_refs = {f.value for kind in ("navigation", "action") for f in by[kind]}
         for fact in by["reference"]:
             if fact.value == "route" and fact.identifier not in {f.identifier for f in by["route"]}:
                 add("ROUTE001", (fact,), f"route '{fact.identifier}' is referenced but undefined")
-        for fact in by["route"]:
-            if fact.identifier not in route_refs:
-                add(
-                    "ROUTE002",
-                    (fact,),
-                    f"route '{fact.identifier}' has no navigation or action consumer",
-                )
         for kind, code, label in (
             ("navigation", "NAV002", "membership"),
             ("navigation_order", "NAV003", "order"),
@@ -642,11 +588,9 @@ def evaluate_facts(
                         f"navigation {label} for '{identifier}' conflicts across sources",
                     )
         undefined("api_consumer", "api", "API001", "API consumer target")
-        unused("api", ("api_consumer",), "API002", "API")
 
     if "service" in profiles:
         undefined("service_consumer", "service", "SRV001", "service consumer target")
-        unused("service", ("service_consumer",), "SRV002", "service")
 
     if "database" in profiles:
         tables = {f.identifier: f for f in by["table"]}
@@ -658,44 +602,41 @@ def evaluate_facts(
             "data_consumer",
             "initial_condition",
         )
-        for kind in table_relations:
-            for fact in by[kind]:
-                if fact.identifier not in tables:
-                    add("DATA001", (fact,), f"table '{fact.identifier}' is used but not defined")
+        # Only a stated column implies a table. Origin, producer, source, and consumer relations
+        # routinely name documents, screens, and concepts, so an unrecognized subject there is a
+        # mistyped relation rather than evidence of an undeclared table.
+        for fact in by["field"]:
+            if fact.identifier not in tables and fact.identifier not in definitions:
+                add("DATA001", (fact,), f"table '{fact.identifier}' is used but not defined")
+        populates = ("data_producer", "data_source", "data_origin")
         for name, table in tables.items():
             related = {
                 kind: [f for f in by[kind] if f.identifier == name] for kind in table_relations
             }
-            if not related["field"]:
-                add("DATA002", (table,), f"table '{name}' has no explicit fields")
-            if not related["data_origin"]:
-                add("DATA003", (table,), f"table '{name}' has no explicit origin")
+            if not related["field"] and demonstrated("field", tables):
+                add("DATA002", (table,), f"table '{name}' declares no fields")
             if not (
                 related["data_producer"]
                 or related["data_source"]
                 or any("external" in f.value for f in related["data_origin"])
-            ):
-                add(
-                    "DATA004",
-                    (table,),
-                    f"table '{name}' has no producer, source, or external origin",
-                )
-            if not related["data_consumer"]:
-                add("DATA005", (table,), f"table '{name}' has no explicit consumer")
-            if not related["initial_condition"]:
-                add("DATA006", (table,), f"table '{name}' has no explicit initial condition")
+            ) and any(demonstrated(kind, tables) for kind in populates):
+                add("DATA004", (table,), f"table '{name}' is never populated")
+            if not related["data_consumer"] and demonstrated("data_consumer", tables):
+                add("DATA005", (table,), f"table '{name}' is never read")
 
     def require_each(
         profile: str, owner_type: str, requirements: tuple[tuple[str, str, str], ...]
     ) -> None:
         if profile not in profiles:
             return
+        owners = {owner.identifier for owner in by[owner_type]}
         for owner in by[owner_type]:
             for fact_type, code, label in requirements:
-                if not any(f.identifier == owner.identifier for f in by[fact_type]):
-                    add(
-                        code, (owner,), f"{owner_type} '{owner.identifier}' has no explicit {label}"
-                    )
+                if any(f.identifier == owner.identifier for f in by[fact_type]):
+                    continue
+                if not demonstrated(fact_type, owners):
+                    continue
+                add(code, (owner,), f"{owner_type} '{owner.identifier}' has no {label}")
 
     require_each(
         "pipeline",
@@ -729,7 +670,6 @@ def evaluate_facts(
         "cli",
         (("entry_point", "CLI001", "entry point"), ("help", "CLI002", "help behavior")),
     )
-    require_each("library", "library", (("library_consumer", "LIB001", "consumer"),))
     require_each(
         "event-driven",
         "event",
@@ -742,10 +682,6 @@ def evaluate_facts(
     for fact in by["state_consumer"]:
         if fact.value not in declared_states:
             add("STATE001", (fact,), f"state '{fact.value}' is consumed but undefined")
-    used_states = {f.value for f in by["state_consumer"]}
-    for fact in by["state"]:
-        if fact.identifier not in used_states:
-            add("STATE002", (fact,), f"state '{fact.identifier}' has no explicit consumer")
 
     return tuple(findings)
 
@@ -799,16 +735,36 @@ def render_report(
             lines.append(
                 f"  - `{record.path}` — {record.bytes} bytes; inventoried without content ingestion"
             )
+    counts = Counter(finding.severity for finding in findings)
+    tally = ", ".join(
+        f"{count} {severity}"
+        for severity, count in sorted(counts.items(), key=lambda item: _SEVERITY_ORDER[item[0]])
+    )
     lines.extend([
+        f"- Findings: {len(findings)}" + (f" ({tally})" if tally else ""),
         "",
-        "| Severity | Affected Sources | Conflict Discovered |",
-        "|---|---|---|",
+        "| Code | Severity | Conflict Discovered | Affected Sources |",
+        "|---|---|---|---|",
     ])
-    for finding in findings:
-        source_text = ", ".join(f"`{path}`" for path in finding.sources) or "—"
+
+    def rank(finding: Finding) -> tuple[int, str, str]:
+        return (_SEVERITY_ORDER[finding.severity], finding.code, finding.message)
+
+    for finding in sorted(findings, key=rank):
         message = finding.message.replace("|", "\\|").replace("\n", " ")
-        lines.append(f"| {finding.severity} | {source_text} | {finding.code}: {message} |")
+        lines.append(
+            f"| {finding.code} | {finding.severity} | {message} | {_source_text(finding.sources)} |"
+        )
     return "\n".join(lines) + "\n"
+
+
+def _source_text(sources: tuple[str, ...], limit: int = 4) -> str:
+    """Keep a row readable when a finding spans the whole corpus."""
+    if not sources:
+        return "—"
+    shown = ", ".join(f"`{path}`" for path in sources[:limit])
+    remainder = len(sources) - limit
+    return shown if remainder <= 0 else f"{shown} +{remainder} more"
 
 
 def _atomic_write(path: Path, text: str) -> None:
