@@ -119,6 +119,19 @@ def test_render_leads_with_numbers_and_names_what_is_missing():
     assert "manifest:  0" in rendered
 
 
+def test_progress_block_names_each_created_artifact_class():
+    declared = _declared(("s1", "FEATURE-A.md"), ("s2", "FEATURE-B.md"))
+    score = score_plan(declared, {"FEATURE-A.md": _BODY})
+
+    rendered = score.progress_block(stage="STAGE 2 · BLUEPRINT BATCH 1", result="Accepted 1")
+
+    assert "Topology Created:  True" in rendered
+    assert "Blueprints Created: 1 / 2" in rendered
+    assert "Manifest Created:  False" in rendered
+    assert "Blueprints Remaining: 1" in rendered
+    assert "Batch Result:       Accepted 1" in rendered
+
+
 # ── the amendment merge ─────────────────────────────────────────────────────────────
 
 

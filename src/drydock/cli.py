@@ -683,7 +683,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     def _progress(text: str) -> None:
         # Only surface plan's own mode/status notices; suppress the raw streamed
         # LLM response text, which for a full-rewrite plan can be very large.
-        if getattr(args, "debug", False) and text.startswith("[plan]"):
+        if text.startswith("[plan-score]"):
+            print(text.removeprefix("[plan-score]"), end="", flush=True)
+        elif getattr(args, "debug", False) and text.startswith("[plan]"):
             print(text, end="")
 
     model = get_model(getattr(args, "model", None))

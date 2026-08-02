@@ -3695,15 +3695,23 @@ def test_a_short_response_is_continued_and_completes(tmp_path):
 
 def test_topology_stage_completes_before_blueprint_authoring_starts(tmp_path):
     target_dir = _make_target(tmp_path)
+    progress: list[str] = []
     stage_one = _declaration_block() + ("=== DECISIONS.json ===\n[]\n=== END DECISIONS.json ===\n")
     runner = _sequence_runner(stage_one, _arch_block() + _feature_block())
 
-    create_plan("Example", "Example", tmp_path, runner=runner)
+    create_plan("Example", "Example", tmp_path, runner=runner, on_text=progress.append)
 
     assert len(runner.calls) == 2
     assert "Stage 1 is complete" in runner.calls[1]
     assert (target_dir / "blueprint" / "ARCHITECTURE.md").is_file()
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+    visible_scores = "".join(item for item in progress if item.startswith("[plan-score]"))
+    assert "STAGE 1 · TOPOLOGY" in visible_scores
+    assert "Blueprints Created: 0 / 2" in visible_scores
+    assert "STAGE 2 · BLUEPRINT BATCH 1" in visible_scores
+    assert "Blueprints Created: 2 / 2" in visible_scores
+    assert "STAGE 3 · MANIFEST" in visible_scores
+    assert "Manifest Created:  True" in visible_scores
 
 
 def test_a_truncated_trailing_artifact_is_replaced_rather_than_frozen(tmp_path):

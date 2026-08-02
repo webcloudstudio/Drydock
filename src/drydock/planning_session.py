@@ -1,10 +1,10 @@
 """``drydock plan create`` — LLM-driven authoring of the Blueprint and executable Manifest.
 
-`plan create` implements the reviewed analysis. In one LLM call it rewrites the imported source
-material into typed Blueprint specification files and the executable ``MANIFEST.md`` — all as
-delimited ``=== NAME ===`` blocks. The Manifest is the single work graph: it carries build order,
-grouping, and per-step prompt-assembly fields, so no separate build-ordering file is emitted.
-The module parses the blocks, runs a deterministic integrity gate, and writes the files.
+`plan create` implements the reviewed analysis in stages: one LLM call declares and freezes the
+topology, bounded LLM batches author its typed Blueprint specifications, and Python serializes the
+executable ``MANIFEST.md``. The Manifest is the single work graph: it carries build order, grouping,
+and per-step prompt-assembly fields, so no separate build-ordering file is emitted. The module
+parses the blocks, runs a deterministic integrity gate, and writes the files.
 
 When a prior MANIFEST.md exists, Planning runs as an authoritative rewrite. Build provenance and
 closed states survive only for specification files whose regenerated content has the recorded
@@ -18,7 +18,7 @@ import json
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from fnmatch import fnmatch
 from hashlib import sha256 as _sha256
@@ -3132,6 +3132,11 @@ def _continue_short_plan(
     accumulated = {name: body for name, body in blocks.items() if name not in damaged}
     current = tuple(declared)
     score = score_plan(current, accumulated)
+    if on_text is not None:
+        on_text(
+            "[plan-score]"
+            + score.progress_block(stage="STAGE 1 · TOPOLOGY", result="Topology accepted")
+        )
     execution_ids = [initial_execution_id or ""]
     passes = 0
     stalled_passes = 0
@@ -3174,6 +3179,14 @@ def _continue_short_plan(
             break
         execution_ids.append(getattr(result, "execution_id", "") or "")
         if not result.ok or not result.text.strip():
+            if on_text is not None:
+                on_text(
+                    "[plan-score]"
+                    + score.progress_block(
+                        stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                        result="Rejected: empty or failed model response",
+                    )
+                )
             break
 
         try:
@@ -3181,11 +3194,27 @@ def _continue_short_plan(
         except OutsideArtifactTextError as exc:
             pass_blocks = exc.blocks
         except SpecificationError:
+            if on_text is not None:
+                on_text(
+                    "[plan-score]"
+                    + score.progress_block(
+                        stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                        result="Rejected: malformed artifact response",
+                    )
+                )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
             continue
         if not pass_blocks:
+            if on_text is not None:
+                on_text(
+                    "[plan-score]"
+                    + score.progress_block(
+                        stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                        result="Rejected: no Blueprint artifacts",
+                    )
+                )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
@@ -3222,6 +3251,14 @@ def _continue_short_plan(
                 continue
             accumulated[name] = body
         if conflicted:
+            if on_text is not None:
+                on_text(
+                    "[plan-score]"
+                    + score.progress_block(
+                        stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                        result="Rejected: output changed frozen or deferred work",
+                    )
+                )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
@@ -3230,11 +3267,28 @@ def _continue_short_plan(
         advanced = score_plan(current, accumulated)
         if not advanced.improved_on(score):
             score = advanced
+            if on_text is not None:
+                on_text(
+                    "[plan-score]"
+                    + score.progress_block(
+                        stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                        result="No complete Blueprint accepted",
+                    )
+                )
             stalled_passes += 1
             if stalled_passes >= attempts:
                 break
             continue
+        accepted_count = len(advanced.accepted) - len(score.accepted)
         score = advanced
+        if on_text is not None:
+            on_text(
+                "[plan-score]"
+                + score.progress_block(
+                    stage=f"STAGE 2 · BLUEPRINT BATCH {passes}",
+                    result=f"Accepted {accepted_count} Blueprint(s)",
+                )
+            )
         stalled_passes = 0
 
     return _Continuation(
@@ -3722,6 +3776,7 @@ def create_plan(
     # Whether the plan was serialized from a topology declaration, in which case the schedule is
     # already computed and the merge path must not re-derive it.
     declared_topology = False
+    latest_plan_score: PlanScore | None = None
     waiver_execution_id: str | None = None
     waiver_warning: str | None = None
     # The delimited response the blocks came from, tracked so the pairing check measures the
@@ -3938,6 +3993,7 @@ def create_plan(
                     attempts=continue_attempts,
                     initial_execution_id=exec_id,
                 )
+                latest_plan_score = continuation.score
                 if continuation.passes:
                     blocks = continuation.blocks
                     # The merged set spans several responses and can no longer be pairing-checked
@@ -4135,6 +4191,15 @@ def create_plan(
                 raise RecordedError(record) from exc
     else:
         plan, warnings = validated_plan, validated_warnings
+
+    if declared_topology and latest_plan_score is not None and on_text is not None:
+        on_text(
+            "[plan-score]"
+            + replace(latest_plan_score, manifest_serialized=True).progress_block(
+                stage="STAGE 3 · MANIFEST",
+                result="Manifest validated and serialized",
+            )
+        )
 
     requirement_questions = project_plan_requirement_questions(
         blocks, target_dir=target_dir, build_dir=build_dir_for(target)

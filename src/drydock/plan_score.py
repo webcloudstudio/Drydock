@@ -139,6 +139,22 @@ class PlanScore:
             f"manifest {int(self.manifest_serialized)}"
         )
 
+    def progress_block(self, *, stage: str, result: str) -> str:
+        """Render the user-facing score after one planning stage or LLM batch."""
+        width = 72
+        return "\n".join((
+            "=" * width,
+            f"PLAN PROGRESS  ·  {stage}",
+            "=" * width,
+            f"Topology Created:  {self.topology_parsed}",
+            f"Blueprints Created: {len(self.accepted)} / {self.expected}",
+            f"Manifest Created:  {self.manifest_serialized}",
+            f"Blueprints Remaining: {len(self.missing)}",
+            f"Batch Result:       {result}",
+            "=" * width,
+            "",
+        ))
+
 
 def _labelled(label: str, items: Sequence[str]) -> list[str]:
     """One label, one item per line, values aligned in the shared column."""

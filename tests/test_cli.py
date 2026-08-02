@@ -926,6 +926,7 @@ class TestLlmOverrideFlags:
 
         def fake_create_plan(blueprint, target, target_directory, **kwargs):
             seen["kwargs"] = kwargs
+            kwargs["on_text"]("[plan-score]Topology Created:  True\nBlueprints Created: 5 / 10\n")
             return SimpleNamespace(
                 plan=SimpleNamespace(
                     project="Proj",
@@ -963,6 +964,8 @@ class TestLlmOverrideFlags:
         assert seen["kwargs"]["model"] == "gpt-5.4"
         assert callable(seen["kwargs"]["on_text"])
         assert seen["kwargs"]["on_text"] is not print
+        assert "Topology Created:  True" in out
+        assert "Blueprints Created: 5 / 10" in out
         # Conform pass is on by default and suppressed by --no-conform.
         assert seen["kwargs"]["conform"] is True
 
