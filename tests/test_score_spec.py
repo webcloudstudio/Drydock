@@ -274,46 +274,112 @@ def test_parse_extraction_rejects_uncited_or_extra_fields() -> None:
         parse_extraction(json.dumps(bad), chunks)
 
 
-def test_unknown_fact_type_is_discarded_not_fatal() -> None:
+def _chunk():
     from drydock.score_spec import SourceChunk
 
-    chunks = (SourceChunk("SPEC.md:1-2", "SPEC.md", 1, 2, "# S\ntext\n"),)
+    return (SourceChunk("SPEC.md:1-2", "SPEC.md", 1, 2, "# S\ntext\n"),)
+
+
+@pytest.mark.parametrize(
+    ("bad", "reason"),
+    (
+        ({"type": "guardrail"}, "unknown type 'guardrail'"),
+        ({"type": ""}, "type is empty or not a string"),
+        ({"identifier": "  "}, "identifier, value, or source_path is empty or not a string"),
+        ({"line": 0}, "line is not a positive integer"),
+        ({"line": True}, "line is not a positive integer"),
+        ({"line": "later"}, "line is not a positive integer"),
+        ({"line": 99}, "path or line falls outside this extraction pass"),
+        ({"source_path": "OTHER.md"}, "path or line falls outside this extraction pass"),
+    ),
+)
+def test_malformed_fact_is_discarded_not_fatal(bad: dict, reason: str) -> None:
     payload = {
         "covered": ["SPEC.md:1-2"],
         "facts": [
             _fact("definition", "x", "thing", line=1),
-            {
-                "type": "guardrail",
-                "identifier": "y",
-                "value": "invented",
-                "source_path": "SPEC.md",
-                "line": 2,
-            },
+            {**_fact("definition", "y", "other", line=2), **bad},
         ],
     }
     discarded: list[str] = []
-    facts = parse_extraction(json.dumps(payload), chunks, discarded=discarded)
+    facts = parse_extraction(json.dumps(payload), _chunk(), discarded=discarded)
 
-    assert [fact.type for fact in facts] == ["definition"]
-    assert discarded == ["guardrail"]
+    assert [fact.identifier for fact in facts] == ["x"]
+    assert discarded == [reason]
 
 
-def test_discarded_fact_types_are_reported_in_the_scorecard(tmp_path: Path) -> None:
+@pytest.mark.parametrize("line", (2, "2", 2.0))
+def test_line_accepts_integer_string_and_integral_float(line: object) -> None:
+    payload = {
+        "covered": ["SPEC.md:1-2"],
+        "facts": [{**_fact("definition", "x", "thing"), "line": line}],
+    }
+    discarded: list[str] = []
+    facts = parse_extraction(json.dumps(payload), _chunk(), discarded=discarded)
+
+    assert discarded == []
+    assert facts[0].line == 2
+
+
+def test_envelope_survives_fences_and_reordered_coverage() -> None:
+    from drydock.score_spec import SourceChunk
+
+    chunks = (
+        SourceChunk("SPEC.md:1-2", "SPEC.md", 1, 2, "# S\ntext\n"),
+        SourceChunk("SPEC.md:3-4", "SPEC.md", 3, 4, "more\ntext\n"),
+    )
+    payload = {
+        "covered": ["SPEC.md:3-4", "SPEC.md:1-2"],
+        "facts": [_fact("definition", "x", "thing", line=1)],
+    }
+    wrapped = "Here is the result:\n```json\n" + json.dumps(payload) + "\n```\n"
+
+    assert parse_extraction(wrapped, chunks)[0].identifier == "x"
+
+
+def test_missing_coverage_remains_fatal() -> None:
+    from drydock.score_spec import SourceChunk
+
+    chunks = (
+        SourceChunk("SPEC.md:1-2", "SPEC.md", 1, 2, "# S\ntext\n"),
+        SourceChunk("SPEC.md:3-4", "SPEC.md", 3, 4, "more\ntext\n"),
+    )
+    payload = {"covered": ["SPEC.md:1-2"], "facts": []}
+
+    with pytest.raises(SpecificationError, match="exact source-chunk coverage"):
+        parse_extraction(json.dumps(payload), chunks)
+
+
+def test_missing_field_is_discarded_but_extra_field_stays_fatal() -> None:
+    short = {"covered": ["SPEC.md:1-2"], "facts": [{"type": "definition", "identifier": "x"}]}
+    discarded: list[str] = []
+
+    assert parse_extraction(json.dumps(short), _chunk(), discarded=discarded) == ()
+    assert discarded == ["record is missing required fields"]
+
+    judged = {
+        "covered": ["SPEC.md:1-2"],
+        "facts": [{**_fact("definition", "x", "thing", line=1), "judgment": "good"}],
+    }
+    with pytest.raises(SpecificationError, match="invalid record shape"):
+        parse_extraction(json.dumps(judged), _chunk())
+
+
+def test_discards_are_counted_and_reported_in_the_scorecard(tmp_path: Path) -> None:
     target, _ = _target(tmp_path, {"SPEC.md": "# Specification\nbody\n"})
-    runner = ExtractionRunner([
-        {
-            "type": "guardrail",
-            "identifier": "y",
-            "value": "invented",
-            "source_path": "SPEC.md",
-            "line": 2,
-        }
-    ])
+    invented = {
+        "type": "guardrail",
+        "identifier": "y",
+        "value": "invented",
+        "source_path": "SPEC.md",
+        "line": 2,
+    }
+    runner = ExtractionRunner([invented, {**invented, "identifier": "z"}])
     result = score_spec("Demo", target, runner=runner, log_dir=tmp_path / "logs")
 
     assert result.exit_code() == 0
     assert "EXTRACT001" in _codes(result.findings)
-    assert "'guardrail'" in result.report
+    assert "unknown type 'guardrail' (2)" in result.report
 
 
 def test_report_has_exactly_one_table_and_codes_prefix_messages() -> None:

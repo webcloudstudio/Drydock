@@ -11,7 +11,7 @@ import json
 import os
 import re
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -147,6 +147,7 @@ class _TreeStamp:
 
 
 _HEADING = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
+_FENCE = re.compile(r"\A```[A-Za-z0-9_-]*\n|\n?```\Z")
 _ENTITY_TYPES = FACT_TYPES - {
     "reference",
     "consumer",
@@ -275,7 +276,7 @@ def assemble_extraction_prompt(body: str, chunks: tuple[SourceChunk, ...]) -> Pr
                 "identifier": "explicit identifier",
                 "value": "explicit value or target identifier",
                 "source_path": "relative path exactly as supplied",
-                "line": "positive source line number",
+                "line": 1,
             }
         ],
     }
@@ -284,7 +285,9 @@ def assemble_extraction_prompt(body: str, chunks: tuple[SourceChunk, ...]) -> Pr
     parts.extend([
         "\n\nReturn one JSON object with this shape:\n",
         json.dumps(schema, indent=2),
-        "\n",
+        "\n\nEvery fact carries exactly these five keys and no others. `line` is a bare JSON "
+        "integer inside the cited chunk range, never a string. Facts using any other type, "
+        "shape, or citation are discarded.\n",
     ])
     for chunk in chunks:
         parts.extend([
@@ -299,13 +302,19 @@ def assemble_extraction_prompt(body: str, chunks: tuple[SourceChunk, ...]) -> Pr
 
 
 def _json_object(text: str) -> dict[str, object]:
-    stripped = text.strip()
-    if stripped.startswith("```json") and stripped.endswith("```"):
-        stripped = stripped[7:-3].strip()
+    stripped = _FENCE.sub("", text.strip()).strip()
     try:
         payload = json.loads(stripped)
     except json.JSONDecodeError as exc:
-        raise SpecificationError(f"score spec extraction returned invalid JSON: {exc}") from exc
+        # Tolerate a model that wraps the object in commentary; the object itself must still parse.
+        invalid = SpecificationError(f"score spec extraction returned invalid JSON: {exc}")
+        start, end = stripped.find("{"), stripped.rfind("}")
+        if start == -1 or end <= start:
+            raise invalid from exc
+        try:
+            payload = json.loads(stripped[start : end + 1])
+        except json.JSONDecodeError:
+            raise invalid from exc
     if not isinstance(payload, dict) or set(payload) != {"covered", "facts"}:
         raise SpecificationError("score spec extraction must contain exactly 'covered' and 'facts'")
     return payload
@@ -317,10 +326,17 @@ def parse_extraction(
     *,
     discarded: list[str] | None = None,
 ) -> tuple[Fact, ...]:
-    """Parse one extraction pass. Facts outside the taxonomy are discarded, not fatal."""
+    """Parse one extraction pass.
+
+    Payload-level contract violations are fatal: they mean the pass as a whole is untrustworthy.
+    An individual malformed fact is discarded with a recorded reason so one bad record cannot
+    destroy an otherwise complete extraction.
+    """
     payload = _json_object(text)
-    expected_coverage = [chunk.chunk_id for chunk in chunks]
-    if payload["covered"] != expected_coverage:
+    covered = payload["covered"]
+    expected_coverage = {chunk.chunk_id for chunk in chunks}
+    # Membership is the contract; ordering of the acknowledgement carries no meaning.
+    if not isinstance(covered, list) or set(covered) != expected_coverage:
         raise SpecificationError(
             "score spec extraction did not confirm exact source-chunk coverage"
         )
@@ -332,34 +348,69 @@ def parse_extraction(
         ranges[chunk.source_path].append((chunk.start_line, chunk.end_line))
     facts: list[Fact] = []
     required = {"type", "identifier", "value", "source_path", "line"}
+
+    def drop(reason: str) -> None:
+        if discarded is not None:
+            discarded.append(reason)
+
     for index, raw in enumerate(raw_facts):
-        if not isinstance(raw, dict) or set(raw) != required:
+        if not isinstance(raw, dict):
+            drop("record is not an object")
+            continue
+        if set(raw) - required:
+            # Extra keys mean the model added judgment or commentary the contract prohibits.
             raise SpecificationError(f"score spec fact {index} has an invalid record shape")
+        if set(raw) != required:
+            drop("record is missing required fields")
+            continue
         fact_type = raw["type"]
         identifier = raw["identifier"]
         value = raw["value"]
         source_path = raw["source_path"]
-        line = raw["line"]
+        line = _coerce_line(raw["line"])
         if not isinstance(fact_type, str) or not fact_type.strip():
-            raise SpecificationError(f"score spec fact {index} has an empty or non-string field")
+            drop("type is empty or not a string")
+            continue
         if fact_type not in FACT_TYPES:
-            if discarded is not None:
-                discarded.append(fact_type)
+            drop(f"unknown type {fact_type.strip().lower()!r}")
             continue
         if not all(
             isinstance(item, str) and item.strip() for item in (identifier, value, source_path)
         ):
-            raise SpecificationError(f"score spec fact {index} has an empty or non-string field")
-        if isinstance(line, bool) or not isinstance(line, int) or line < 1:
-            raise SpecificationError(f"score spec fact {index} has an invalid line")
+            drop("identifier, value, or source_path is empty or not a string")
+            continue
+        if line is None:
+            drop("line is not a positive integer")
+            continue
         if source_path not in ranges or not any(
             start <= line <= end for start, end in ranges[source_path]
         ):
-            raise SpecificationError(
-                f"score spec fact {index} cites a path or line outside this pass"
-            )
+            drop("path or line falls outside this extraction pass")
+            continue
         facts.append(Fact(fact_type, identifier.strip(), value.strip(), source_path, line))
     return tuple(facts)
+
+
+def _coerce_line(value: object) -> int | None:
+    """Accept a positive line number as an integer, an integral float, or a numeric string."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 1 else None
+    if isinstance(value, float):
+        return int(value) if value.is_integer() and value >= 1 else None
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            number = int(text)
+            return number if number >= 1 else None
+    return None
+
+
+def summarize_discards(reasons: Iterable[str]) -> tuple[str, ...]:
+    """Collapse per-fact discard reasons into stable, counted labels."""
+    counts = Counter(reasons)
+    return tuple(f"{reason} ({count})" for reason, count in sorted(counts.items()))
 
 
 def normalize_facts(facts: Iterable[Fact]) -> tuple[Fact, ...]:
@@ -489,7 +540,7 @@ def evaluate_facts(
     inventory: tuple[SourceRecord, ...],
     facts: tuple[Fact, ...],
     side_effects: tuple[str, ...] = (),
-    discarded_types: tuple[str, ...] = (),
+    discards: tuple[str, ...] = (),
 ) -> tuple[Finding, ...]:
     """Run fixed rule catalogs over normalized facts."""
     by = _fact_map(facts)
@@ -503,12 +554,11 @@ def evaluate_facts(
 
     if side_effects:
         add("SIDEFX001", side_effects, "the extraction runner modified the guarded Target tree")
-    if discarded_types:
-        listed = ", ".join(f"'{name}'" for name in discarded_types)
+    if discards:
         add(
             "EXTRACT001",
             (),
-            f"extraction emitted facts outside the taxonomy and they were discarded: {listed}",
+            "extraction emitted malformed facts and they were discarded: " + "; ".join(discards),
         )
 
     definitions = {f.identifier for f in facts if f.type in _ENTITY_TYPES or f.type == "definition"}
@@ -827,10 +877,7 @@ def score_spec(
     normalized = normalize_facts(facts)
     profiles = activate_profiles(normalized)
     findings = evaluate_facts(
-        inventory,
-        normalized,
-        tuple(sorted(side_effects)),
-        tuple(sorted({name.strip().lower() for name in discarded})),
+        inventory, normalized, tuple(sorted(side_effects)), summarize_discards(discarded)
     )
     report = render_report(inventory, findings, profiles, len(batches))
     report_path = target_dir / REPORT_NAME
