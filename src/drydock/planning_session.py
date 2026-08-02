@@ -2900,6 +2900,28 @@ def _artifact_repair_assembly(
     return PromptAssembly(parts=(lines_part("Plan artifact repair", lines, kind="repair"),))
 
 
+_REPAIR_ARTIFACT_RE = re.compile(
+    r'<artifact name="(?P<name>[^"\n]+)">\s*\n(?P<body>.*?)\n?</artifact>', re.DOTALL
+)
+
+
+def _parse_repair_artifact_envelopes(text: str) -> dict[str, str]:
+    """Parse the exact XML envelope models sometimes copy from the repair input tags."""
+    blocks: dict[str, str] = {}
+    cursor = 0
+    for match in _REPAIR_ARTIFACT_RE.finditer(text):
+        if text[cursor : match.start()].strip():
+            return {}
+        name = match.group("name").strip()
+        if not name or name in blocks:
+            return {}
+        blocks[name] = match.group("body").strip()
+        cursor = match.end()
+    if text[cursor:].strip():
+        return {}
+    return blocks
+
+
 def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[str]:
     """Artifacts whose delimiters prove the response was cut, by name.
 
@@ -3850,7 +3872,10 @@ def create_plan(
                         )
                         if not repair_result.ok or not repair_result.text.strip():
                             break
-                        repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
+                        try:
+                            repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
+                        except OutsideArtifactTextError:
+                            repair_blocks = _parse_repair_artifact_envelopes(repair_result.text)
                         if set(repair_blocks) != {TOPOLOGY_BLOCK}:
                             break
                         repaired_declaration = repair_blocks[TOPOLOGY_BLOCK]
@@ -3922,7 +3947,10 @@ def create_plan(
                         )
                         if not repair_result.ok or not repair_result.text.strip():
                             break
-                        repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
+                        try:
+                            repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
+                        except OutsideArtifactTextError:
+                            repair_blocks = _parse_repair_artifact_envelopes(repair_result.text)
                         if set(repair_blocks) != set(names):
                             break
                         if all(repair_blocks[name] == repaired_blocks[name] for name in names):

@@ -3480,7 +3480,7 @@ def test_a_cited_blueprint_validation_defect_repairs_only_that_artifact(tmp_path
     repaired_screen = _parse_blocks(valid)["SCREEN-Welcome.md"]
     runner = _sequence_runner(
         invalid,
-        f"=== SCREEN-Welcome.md ===\n{repaired_screen}\n=== END SCREEN-Welcome.md ===\n",
+        f'<artifact name="SCREEN-Welcome.md">\n{repaired_screen}\n</artifact>\n',
     )
 
     result = create_plan(
