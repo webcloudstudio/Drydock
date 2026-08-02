@@ -311,7 +311,13 @@ def _json_object(text: str) -> dict[str, object]:
     return payload
 
 
-def parse_extraction(text: str, chunks: tuple[SourceChunk, ...]) -> tuple[Fact, ...]:
+def parse_extraction(
+    text: str,
+    chunks: tuple[SourceChunk, ...],
+    *,
+    discarded: list[str] | None = None,
+) -> tuple[Fact, ...]:
+    """Parse one extraction pass. Facts outside the taxonomy are discarded, not fatal."""
     payload = _json_object(text)
     expected_coverage = [chunk.chunk_id for chunk in chunks]
     if payload["covered"] != expected_coverage:
@@ -334,8 +340,12 @@ def parse_extraction(text: str, chunks: tuple[SourceChunk, ...]) -> tuple[Fact, 
         value = raw["value"]
         source_path = raw["source_path"]
         line = raw["line"]
+        if not isinstance(fact_type, str) or not fact_type.strip():
+            raise SpecificationError(f"score spec fact {index} has an empty or non-string field")
         if fact_type not in FACT_TYPES:
-            raise SpecificationError(f"score spec fact {index} has unknown type {fact_type!r}")
+            if discarded is not None:
+                discarded.append(fact_type)
+            continue
         if not all(
             isinstance(item, str) and item.strip() for item in (identifier, value, source_path)
         ):
@@ -411,6 +421,7 @@ def activate_profiles(facts: Iterable[Fact]) -> tuple[str, ...]:
 
 _SEVERITY = {
     "SIDEFX001": "Critical",
+    "EXTRACT001": "Low",
     "REF001": "High",
     "DEF001": "Low",
     "CONS001": "Medium",
@@ -475,7 +486,10 @@ def _sources(items: Iterable[Fact]) -> tuple[str, ...]:
 
 
 def evaluate_facts(
-    inventory: tuple[SourceRecord, ...], facts: tuple[Fact, ...], side_effects: tuple[str, ...] = ()
+    inventory: tuple[SourceRecord, ...],
+    facts: tuple[Fact, ...],
+    side_effects: tuple[str, ...] = (),
+    discarded_types: tuple[str, ...] = (),
 ) -> tuple[Finding, ...]:
     """Run fixed rule catalogs over normalized facts."""
     by = _fact_map(facts)
@@ -489,6 +503,13 @@ def evaluate_facts(
 
     if side_effects:
         add("SIDEFX001", side_effects, "the extraction runner modified the guarded Target tree")
+    if discarded_types:
+        listed = ", ".join(f"'{name}'" for name in discarded_types)
+        add(
+            "EXTRACT001",
+            (),
+            f"extraction emitted facts outside the taxonomy and they were discarded: {listed}",
+        )
 
     definitions = {f.identifier for f in facts if f.type in _ENTITY_TYPES or f.type == "definition"}
     usages = by["reference"] + by["consumer"]
@@ -778,6 +799,7 @@ def score_spec(
     run = runner if runner is not None else run_prompt
     facts: list[Fact] = []
     side_effects: set[str] = set()
+    discarded: list[str] = []
     for pass_number, batch in enumerate(batches, start=1):
         assembly = assemble_extraction_prompt(prompt.body, batch)
         before = _tree_snapshot(target_dir)
@@ -801,10 +823,15 @@ def score_spec(
             raise SpecificationError(
                 f"score spec extraction pass {pass_number} failed or returned no output"
             )
-        facts.extend(parse_extraction(result.text, batch))
+        facts.extend(parse_extraction(result.text, batch, discarded=discarded))
     normalized = normalize_facts(facts)
     profiles = activate_profiles(normalized)
-    findings = evaluate_facts(inventory, normalized, tuple(sorted(side_effects)))
+    findings = evaluate_facts(
+        inventory,
+        normalized,
+        tuple(sorted(side_effects)),
+        tuple(sorted({name.strip().lower() for name in discarded})),
+    )
     report = render_report(inventory, findings, profiles, len(batches))
     report_path = target_dir / REPORT_NAME
     _atomic_write(report_path, report)

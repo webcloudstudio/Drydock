@@ -274,6 +274,48 @@ def test_parse_extraction_rejects_uncited_or_extra_fields() -> None:
         parse_extraction(json.dumps(bad), chunks)
 
 
+def test_unknown_fact_type_is_discarded_not_fatal() -> None:
+    from drydock.score_spec import SourceChunk
+
+    chunks = (SourceChunk("SPEC.md:1-2", "SPEC.md", 1, 2, "# S\ntext\n"),)
+    payload = {
+        "covered": ["SPEC.md:1-2"],
+        "facts": [
+            _fact("definition", "x", "thing", line=1),
+            {
+                "type": "guardrail",
+                "identifier": "y",
+                "value": "invented",
+                "source_path": "SPEC.md",
+                "line": 2,
+            },
+        ],
+    }
+    discarded: list[str] = []
+    facts = parse_extraction(json.dumps(payload), chunks, discarded=discarded)
+
+    assert [fact.type for fact in facts] == ["definition"]
+    assert discarded == ["guardrail"]
+
+
+def test_discarded_fact_types_are_reported_in_the_scorecard(tmp_path: Path) -> None:
+    target, _ = _target(tmp_path, {"SPEC.md": "# Specification\nbody\n"})
+    runner = ExtractionRunner([
+        {
+            "type": "guardrail",
+            "identifier": "y",
+            "value": "invented",
+            "source_path": "SPEC.md",
+            "line": 2,
+        }
+    ])
+    result = score_spec("Demo", target, runner=runner, log_dir=tmp_path / "logs")
+
+    assert result.exit_code() == 0
+    assert "EXTRACT001" in _codes(result.findings)
+    assert "'guardrail'" in result.report
+
+
 def test_report_has_exactly_one_table_and_codes_prefix_messages() -> None:
     finding = Finding("REF001", "High", ("SPEC.md",), "missing definition")
     report = render_report(_inventory(), (finding,), (), 1)
