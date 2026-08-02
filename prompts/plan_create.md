@@ -1,12 +1,12 @@
 ---
 name: plan_create
-description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a TOPOLOGY.md declaration that Drydock verifies, orders, blocks, and serializes into MANIFEST.md.
-version: 20260801 V31
+description: Stage 1 planning synthesis — declare the complete TOPOLOGY.md work graph before Drydock begins bounded Blueprint authoring.
+version: 20260802 V32
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
 inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
-output: Blueprint specification files, TOPOLOGY.md, DECISIONS.json
+output: TOPOLOGY.md, DECISIONS.json
 ---
 
 # Agent for: planning session synthesis
@@ -22,7 +22,8 @@ a count derived from authoritative suite data or an explicitly declared authorit
 
 `accepts:` is traceability metadata, not a child acceptance command. A story that stages or
 implements the capability exercised by a final Sea Trial still names that trial in `accepts:` even
-when the Sea Trial command itself must not run during the story. `TOPOLOGY.md` is emitted first, so
+when the Sea Trial command itself must not run during the story. `TOPOLOGY.md` is emitted in
+Stage 1 before any Blueprint, so
 settle the complete story set and its acceptance before emitting anything, and while doing so
 perform an exhaustive traceability audit: every required `technical` or `behavioral` ID in the
 injected `SEA_TRIALS.md` is carried by at least one story's `accepts:` field or by a Blueprint
@@ -318,8 +319,10 @@ Rules:
 - *Consumes:* the authored spec set and its declared relationships.
 - *Emits:* `TOPOLOGY.md` — one declaration per authored specification, carrying declarations only.
 
-These seven jobs are the order you *think* in, not the order you *emit* in. Settle all seven
-first; then write `TOPOLOGY.md` as the first block of the response and the spec files after it.
+These seven jobs are the order you *think* in, not the order you *emit* in. Settle all seven first.
+Stage 1 then emits the complete `TOPOLOGY.md` declaration and `DECISIONS.json` only. Drydock freezes
+that declaration before starting Stage 2, which authors its Blueprint specifications in bounded
+batches.
 
 You author judgment. Drydock computes everything positional. **Do not emit `MANIFEST.md`. Do not
 sort the stories, do not group them, do not assign `block:` or `stack_mode:`, and do not reason
@@ -629,24 +632,20 @@ followed immediately by the next `=== <name> ===` delimiter, or end the response
 ### Success Mode
 
 Use Success Mode whenever the product basis is sufficient to declare an internally consistent
-Blueprint and Manifest, even when emitting all declared artifacts requires continuation passes.
+Blueprint and Manifest.
 
-Emit the single `TOPOLOGY.md` block **first**, before any Blueprint spec file, then one block for
-every authored Blueprint spec file it declares.
+Stage 1 emits exactly two blocks: the complete `TOPOLOGY.md` first and `DECISIONS.json` second.
+Do not emit any Blueprint specification in this response. Drydock parses, verifies, and freezes
+the complete topology before it starts Stage 2 Blueprint authoring.
 
 Declaring first is a hard requirement, not a stylistic one. `TOPOLOGY.md` is the plan; the spec
-files implement it. Emitting it first commits you to the story set before you spend effort on
-prose, and it lets Drydock resume a response that ends early instead of discarding it. A response
-whose declaration never arrives is unrecoverable no matter how many spec files precede it.
+files implement it. Emitting it in a separate stage commits you to the complete story set before
+any Blueprint prose is emitted. A response whose declaration never arrives is unrecoverable.
 
-Every `implements:` filename in `TOPOLOGY.md` must exactly match one Blueprint file block emitted
-after it across this response and its continuation passes, or an existing Blueprint spec file from
-the input context. If
-`TOPOLOGY.md` names `ARCHITECTURE.md`, `DATABASE.md`, `FEATURE-*.md`, `SCREEN-*.md`, or
-`UI-GENERAL.md`, emit that file in the initial response if it fits; otherwise Drydock requests it
-in a continuation pass. It need not fit in the same response as `TOPOLOGY.md`.
+Every `implements:` filename in `TOPOLOGY.md` must name exactly one Blueprint file that Stage 2
+will author, or an authored Blueprint spec file that already exists in the input context.
 
-Wrap **every** emitted file — including `TOPOLOGY.md` — in a matching open/END delimiter pair:
+Wrap both Stage 1 files in matching open/END delimiter pairs:
 
 ```text
 === relative/path/from/blueprint/or/target ===
@@ -662,29 +661,20 @@ and the closing delimiter carries it. Never open a file with `=== END NAME ===`,
 with `=== NAME ===`, and never emit two consecutive `=== END ... ===` lines. Emit each file exactly
 once; do not repeat a file you have already emitted.
 
-Every file type is wrapped the same way. `TOPOLOGY.md` leads; the spec files it declares follow:
+The complete Stage 1 response is:
 
 ```text
 === TOPOLOGY.md ===
 {the story declarations}
 === END TOPOLOGY.md ===
-=== ARCHITECTURE.md ===
-{full file contents}
-=== END ARCHITECTURE.md ===
-=== FEATURE-Catalog.md ===
-{full file contents}
-=== END FEATURE-Catalog.md ===
-=== SCREEN-Catalog.md ===
-{full file contents}
-=== END SCREEN-Catalog.md ===
 === DECISIONS.json ===
 []
 === END DECISIONS.json ===
 ```
 
-The same applies to `DATABASE.md`, `UI-GENERAL.md`, and every other authored Blueprint file.
-`DECISIONS.json` is emitted last, after every Blueprint spec file, once — per §Significant Design
-Decisions. Emit `[]` when there are no decisions to disclose.
+`DECISIONS.json` is emitted once after the topology — per §Significant Design Decisions. Emit `[]`
+when there are no decisions to disclose. Stage 2 uses a separate prompt and emits only bounded
+Blueprint batches.
 
 Never emit a `MANIFEST.md` block. Drydock serializes the Manifest from your declaration.
 
@@ -712,13 +702,8 @@ A mismatch between derived summary metadata and its unambiguous detailed records
 Mode. Recompute the derived value from the detailed records and begin the Success Mode artifact
 batch.
 
-Available response length is never Error Mode. Emit `TOPOLOGY.md` first, then as many complete
-declared Blueprint artifacts as fit. Drydock measures the batch and requests the remaining
-artifacts in bounded continuation passes.
-
-Use the available output budget aggressively. After closing each artifact, immediately begin the
-next declared artifact. Do not voluntarily stop after a small batch, reserve output for
-commentary, or preemptively choose Error Mode because the complete set may require continuation.
+Available response length is never Error Mode. Stage 1 emits only the complete topology and
+decisions. Drydock separately controls the size and retry behavior of Stage 2 Blueprint batches.
 
 A technology-stack disagreement is never Error Mode. Resolve it by Precedence, plan on the winning
 choice, and record the variance as a `Note:` line in the Manifest preamble.
@@ -742,19 +727,20 @@ Required action:
 
 - Nothing outside the required output blocks — no preamble, no summary, no prose, no tool calls, no `<invoke>` or `<function_calls>` XML.
 - Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`.
-- In Success Mode `TOPOLOGY.md` is the **first** block of the response; every spec file follows it.
+- In Success Mode `TOPOLOGY.md` is the first block, `DECISIONS.json` is the second block, and no
+  Blueprint specification is emitted during Stage 1.
 - Never emit `TOPOLOGY.md` in Error Mode or Blocked Mode.
 - Never emit partial Blueprint files in Error Mode or Blocked Mode.
 - Do not emit a file that violates `BLUEPRINTS_CONTRACT.md` or `MANIFEST_CONTRACT.md`.
-- Every `implements:` entry in `TOPOLOGY.md` names a real emitted authored spec file or an authored
-  spec file that already exists in the input Blueprint.
+- Every `implements:` entry in `TOPOLOGY.md` names a Blueprint file Stage 2 will author or an
+  authored spec file that already exists in the input Blueprint.
 - Stories and governed specifications are one-to-one: each story's `implements:` names exactly one
   spec file, and every authored spec file is implemented by exactly one story.
 - Never emit `AGENTS.md`. AGENTS.md is not a Blueprint file and is distributed with rigging at build time.
 - Every emitted authored spec file except `METADATA.md` and `README.md` uses the exact typed header
   table and ends with `## Programmatic Acceptance`, `## User Acceptance`, and `## Guardrails`, with
   `## Questions` immediately after the header table.
-- Emit `DECISIONS.json` once, in Success Mode only, last, after every Blueprint spec file. Never
+- Emit `DECISIONS.json` once, in Success Mode only, immediately after `TOPOLOGY.md`. Never
   put a Plan decision in a Blueprint `## Questions` section.
 - `Phase` is never a Blueprint header field; declare it in `TOPOLOGY.md` only.
 - Never emit `block:` or `stack_mode:`; both are computed by Drydock.

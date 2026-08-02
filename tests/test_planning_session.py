@@ -16,6 +16,8 @@ from drydock import technology_stack
 from drydock.acceptance import parse_programmatic_acceptance
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
+from drydock.plan_graph import PlannedStory
+from drydock.plan_score import score_plan
 from drydock.planning_session import (
     PLAN_TOPOLOGY_CONTRACT,
     PlanDeferredResult,
@@ -26,6 +28,7 @@ from drydock.planning_session import (
     _normalize_existing_specs,
     _parse_blocks,
     _parse_strict_blocks,
+    _render_ledger,
     _repair_missing_leading_delimiter,
     _repairable_artifact_names,
     _spec_is_conformant,
@@ -77,7 +80,8 @@ def test_plan_prompt_declares_strict_artifact_contract():
     assert "=== PLAN_CREATE_ERROR.txt ===" in prompt
     assert "Never emit `TOPOLOGY.md` in Error Mode or Blocked Mode" in prompt
     assert "Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`." in prompt
-    assert "Every `implements:` filename in `TOPOLOGY.md` must exactly match" in prompt
+    assert "Every `implements:` filename in `TOPOLOGY.md` must name exactly one" in prompt
+    assert "Do not emit any Blueprint specification in this response" in prompt
     assert "Never emit `AGENTS.md`." in prompt
     assert "The response is processed by a deterministic parser." in prompt
     assert "Now the Manifest." in prompt
@@ -86,6 +90,40 @@ def test_plan_prompt_declares_strict_artifact_contract():
     # all of it against the declared output contract after the response.
     assert "Do not audit your own output for delimiter balance" in prompt
     assert "Before responding, verify:" not in prompt
+
+
+def test_plan_continue_prompt_requires_closed_sequential_blueprints():
+    prompt = (Path(__file__).parents[1] / "prompts" / "plan_continue.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Stage 1 is complete" in prompt
+    assert "Do not emit or amend `TOPOLOGY.md`" in prompt
+    assert re.search(r"Only after the closing delimiter is\s+written", prompt)
+    assert "Never pre-emit opening delimiters" in prompt
+
+
+def test_stage_two_ledger_exposes_only_one_bounded_blueprint_batch():
+    stories = tuple(
+        PlannedStory(
+            story_id=f"story-{index}",
+            name=f"Story {index}",
+            story_type="feature",
+            phase=1,
+            delivery_kind="capability",
+            acceptance_contract=True,
+            implements=f"FEATURE-{index}.md",
+        )
+        for index in range(1, 8)
+    )
+
+    ledger = _render_ledger(score_plan(stories, {"TOPOLOGY.md": "complete"}))
+
+    assert "Current batch (5)" in ledger
+    assert "Deferred (2)" in ledger
+    assert "FEATURE-5.md" in ledger
+    assert "FEATURE-6.md" not in ledger
+    assert "FEATURE-7.md" not in ledger
 
 
 def test_plan_prompt_separates_final_sea_trial_traceability_from_story_execution():
@@ -3655,6 +3693,19 @@ def test_a_short_response_is_continued_and_completes(tmp_path):
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
 
 
+def test_topology_stage_completes_before_blueprint_authoring_starts(tmp_path):
+    target_dir = _make_target(tmp_path)
+    stage_one = _declaration_block() + ("=== DECISIONS.json ===\n[]\n=== END DECISIONS.json ===\n")
+    runner = _sequence_runner(stage_one, _arch_block() + _feature_block())
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    assert "Stage 1 is complete" in runner.calls[1]
+    assert (target_dir / "blueprint" / "ARCHITECTURE.md").is_file()
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
+
+
 def test_a_truncated_trailing_artifact_is_replaced_rather_than_frozen(tmp_path):
     """A cut artifact parses as present. Accepting it would freeze the damage onto disk."""
     target_dir = _make_target(tmp_path)
@@ -3666,6 +3717,24 @@ def test_a_truncated_trailing_artifact_is_replaced_rather_than_frozen(tmp_path):
     feature = (target_dir / "blueprint" / "FEATURE-Status.md").read_text(encoding="utf-8")
     assert "# FEATURE: Sta\n" not in feature
     assert "Status command exits successfully." in feature
+
+
+def test_a_malformed_stage_two_batch_retries_the_same_blueprint_tranche(tmp_path):
+    target_dir = _make_target(tmp_path)
+    runner = _sequence_runner(
+        _short_output(),
+        "=== FEATURE-Status.md ===\n# FEATURE: truncated",
+        _feature_block(),
+    )
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 3
+    second_ledger = runner.calls[1][len(runner.calls[0]) :]
+    third_ledger = runner.calls[2][len(runner.calls[0]) :]
+    assert "story-status -> FEATURE-Status.md" in second_ledger
+    assert "story-status -> FEATURE-Status.md" in third_ledger
+    assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
 
 
 def test_a_redundant_final_end_delimiter_preserves_completed_continuation_artifacts(tmp_path):
@@ -3693,6 +3762,8 @@ def test_the_continuation_prompt_reuses_the_original_prefix_and_carries_the_ledg
     assert "story-status -> FEATURE-Status.md" in appended
     assert "ARCHITECTURE.md" in appended
     assert "do not re-emit" in appended
+    assert "# Frozen Stage 1 Output" in appended
+    assert "## story story-status" in appended
 
 
 def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
@@ -3714,15 +3785,14 @@ def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
 
 
 def test_continuation_stops_at_the_attempt_cap(tmp_path):
-    """Bounded like the build repair loop, even while each pass still makes progress."""
+    """The retry allowance bounds consecutive Stage 2 calls that make no progress."""
     _make_target(tmp_path)
     runner = _sequence_runner(_short_output(), _arch_block())
 
     with pytest.raises(RecordedError):
         create_plan("Example", "Example", tmp_path, runner=runner, continue_attempts=2)
 
-    # Stalls on pass 1 rather than exhausting the cap; the cap is the outer bound, not the trigger.
-    assert len(runner.calls) == 2
+    assert len(runner.calls) == 3
 
 
 def test_a_junk_continuation_pass_does_not_corrupt_accepted_artifacts(tmp_path):
@@ -3755,8 +3825,7 @@ def test_zero_attempts_disables_continuation(tmp_path):
     assert len(runner.calls) == 1
 
 
-def test_a_continuation_pass_may_split_a_pending_story(tmp_path):
-    """Authoring discovers size. The ruler may grow; accepted work may not move."""
+def test_stage_two_cannot_amend_the_frozen_topology(tmp_path):
     target_dir = _make_target(tmp_path)
     split_declaration = _TOPOLOGY_DECLARATION.replace(
         "## story story-status\n", "## story story-status-api\n"
@@ -3768,13 +3837,13 @@ def test_a_continuation_pass_may_split_a_pending_story(tmp_path):
         + f"=== FEATURE-Status-Api.md ===\n{api}\n=== END FEATURE-Status-Api.md ===\n",
     )
 
-    result = create_plan("Example", "Example", tmp_path, runner=runner)
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
 
-    assert sorted(block.block_id for block in result.plan.blocks) == [
-        "story-foundation",
-        "story-status-api",
-    ]
-    assert (target_dir / "blueprint" / "FEATURE-Status-Api.md").is_file()
+    assert "Blueprint generation stalled after TOPOLOGY.md was accepted and frozen" in str(
+        excinfo.value.record.detail
+    )
+    assert not (target_dir / "MANIFEST.md").is_file()
 
 
 def test_an_amendment_that_touches_an_accepted_story_is_rejected(tmp_path):

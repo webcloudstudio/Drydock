@@ -2489,8 +2489,8 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         metavar="<n>",
-        help="Continuation passes when a response stops short of its TOPOLOGY.md declaration "
-        "(0 disables; default 3).",
+        help="Consecutive retry allowance for malformed or no-progress Blueprint batches after "
+        "TOPOLOGY.md is frozen (0 disables Stage 2; default 3).",
     )
     p_plan.add_argument("Target", metavar="<Target>")
 

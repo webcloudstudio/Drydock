@@ -72,7 +72,7 @@ from drydock.plan_feedback import (
 from drydock.plan_graph import PlanComputation, PlannedStory
 from drydock.plan_score import PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
-from drydock.plan_topology import TOPOLOGY_BLOCK, merge_declaration, parse_topology
+from drydock.plan_topology import TOPOLOGY_BLOCK, parse_topology
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -123,6 +123,10 @@ _RESERVED_BLOCKS = frozenset({
 _NON_BLUEPRINT_ARTIFACTS = frozenset({"AGENTS.md"})
 
 _CONTRACT_FILES = ("MANIFEST_CONTRACT.md", "BLUEPRINTS_CONTRACT.md")
+
+# Stage 2 gives the planning agent a small, exact work queue.  A bounded tranche prevents a large
+# topology from inducing dozens of simultaneously opened artifact envelopes near the output limit.
+_PLAN_BLUEPRINT_BATCH_SIZE = 5
 
 # Story count is not capped. The ~100-story cap was a proxy for over-decomposition, but story
 # sizing is now "one build pass" (see drydock.plan_stack), which has no opinion about how many
@@ -3019,25 +3023,43 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     return frozenset(unpaired)
 
 
+def _blueprint_tranche(score: PlanScore) -> tuple[str, ...]:
+    """The exact Stage 2 filenames the next model call is authorized to emit."""
+    return tuple(item.filename for item in score.missing[:_PLAN_BLUEPRINT_BATCH_SIZE])
+
+
 def _render_ledger(score: PlanScore) -> str:
-    """The score's inverse: what the continuation pass must produce, and nothing else."""
+    """Render one bounded Stage 2 work queue, never the complete remaining topology."""
+    tranche = frozenset(_blueprint_tranche(score))
     lines = [f"Accepted ({len(score.accepted)}) — already held, do not re-emit:"]
     lines.extend(f"  {name}" for name in sorted(score.accepted))
     if not score.accepted:
         lines.append("  (none)")
     lines.append("")
-    lines.append(f"Missing ({len(score.missing)}) — emit these:")
-    lines.extend(f"  {item.rendered()}" for item in score.missing)
-    if not score.missing:
+    lines.append(f"Current batch ({len(tranche)}) — emit exactly these, in this order:")
+    lines.extend(f"  {item.rendered()}" for item in score.missing if item.filename in tranche)
+    if not tranche:
         lines.append("  (none)")
-    if score.invalid:
+    deferred = len(score.missing) - len(tranche)
+    lines.append("")
+    lines.append(
+        f"Deferred ({deferred}) — Drydock will provide later batches; do not emit them now."
+    )
+    invalid = tuple(item for item in score.invalid if item.filename in tranche)
+    if invalid:
         lines.append("")
-        lines.append(f"Defective ({len(score.invalid)}) — emit these again, in full, corrected:")
-        lines.extend(f"  {item.rendered()}" for item in score.invalid)
+        lines.append(f"Defective ({len(invalid)}) — emit these again, in full, corrected:")
+        lines.extend(f"  {item.rendered()}" for item in invalid)
     return "\n".join(lines)
 
 
-def _continuation_assembly(prompt_assembly: PromptAssembly, *, ledger: str) -> PromptAssembly:
+def _continuation_assembly(
+    prompt_assembly: PromptAssembly,
+    *,
+    topology: str,
+    decisions: str,
+    ledger: str,
+) -> PromptAssembly:
     """Append the bounded continuation instruction to the *unchanged* original context.
 
     The prefix must stay byte-identical: the whole economy of continuing rather than restarting
@@ -3045,12 +3067,30 @@ def _continuation_assembly(prompt_assembly: PromptAssembly, *, ledger: str) -> P
     which is why this mirrors :func:`_conflict_challenge_assembly` rather than rebuilding.
     """
     body = load_prompt("plan_continue").body.strip()
-    part = lines_part(
+    frozen = lines_part(
+        "Frozen Stage 1 output",
+        [
+            "# Frozen Stage 1 Output",
+            "",
+            "The following topology and decisions are the exact accepted Stage 1 output.",
+            "Author the current Blueprint batch from them; do not reconstruct or amend them.",
+            "",
+            "## TOPOLOGY.md",
+            "",
+            topology.strip(),
+            "",
+            "## DECISIONS.json",
+            "",
+            decisions.strip() or "[]",
+        ],
+        kind="frozen-stage",
+    )
+    instruction = lines_part(
         "Plan continuation",
         [body, "", "## Ledger", "", ledger],
         kind="continuation",
     )
-    return PromptAssembly(parts=(*prompt_assembly.parts, part))
+    return PromptAssembly(parts=(*prompt_assembly.parts, frozen, instruction))
 
 
 @dataclass(frozen=True)
@@ -3081,11 +3121,9 @@ def _continue_short_plan(
 ) -> _Continuation:
     """Resume a response that stopped short of its own declaration.
 
-    The loop stops on the same two conditions the build repair loop uses: no progress, and an
-    attempt cap. Progress is a strictly increasing count of *accepted* artifacts — never a ratio
-    against the declared count, which a split would move underneath us. A pass that only
-    re-declares the topology therefore scores no progress and ends the loop, which is correct: a
-    split that authors nothing has not advanced the plan.
+    Stage 1 has frozen the complete topology before this loop starts. Stage 2 exposes at most five
+    declared artifacts per call and accepts only that tranche. ``attempts`` is the consecutive
+    no-progress retry allowance; successful tranches continue until the declaration is complete.
 
     Nothing accepted is ever discarded. A junk pass, a rejected amendment, or a conflicting
     re-emission ends the loop with the accumulator intact rather than corrupting it.
@@ -3096,12 +3134,22 @@ def _continue_short_plan(
     score = score_plan(current, accumulated)
     execution_ids = [initial_execution_id or ""]
     passes = 0
+    stalled_passes = 0
 
-    while passes < attempts and not score.is_complete:
+    # One successful artifact per call is the slowest legitimate forward motion.  The additional
+    # retry allowance bounds malformed/no-progress calls without capping a large valid topology at
+    # three batches.
+    max_passes = len(current) + attempts
+    while attempts > 0 and passes < max_passes and not score.is_complete:
         passes += 1
         if on_text is not None:
             on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
-        assembly = _continuation_assembly(prompt_assembly, ledger=_render_ledger(score))
+        assembly = _continuation_assembly(
+            prompt_assembly,
+            topology=accumulated[TOPOLOGY_BLOCK],
+            decisions=accumulated.get(DECISIONS_BLOCK, "[]"),
+            ledger=_render_ledger(score),
+        )
         try:
             result = cast(
                 CompletedRun,
@@ -3133,29 +3181,36 @@ def _continue_short_plan(
         except OutsideArtifactTextError as exc:
             pass_blocks = exc.blocks
         except SpecificationError:
-            break
+            stalled_passes += 1
+            if stalled_passes >= attempts:
+                break
+            continue
         if not pass_blocks:
-            break
+            stalled_passes += 1
+            if stalled_passes >= attempts:
+                break
+            continue
 
         # Each pass is pairing-checked against its own response, before anything it produced is
         # allowed near the accumulator. The merged set spans several responses and can no longer
         # be checked as one text, so this is the only point at which that check is possible.
         pass_damaged = _unpaired_artifact_names(result.text, pass_blocks)
 
-        if TOPOLOGY_BLOCK in pass_blocks:
-            amended, amend_defects = parse_topology(pass_blocks[TOPOLOGY_BLOCK])
-            merged, merge_defects = merge_declaration(
-                current, amended, accepted=frozenset(score.accepted)
-            )
-            if amend_defects or merge_defects:
-                break
-            current = merged
-            accumulated[TOPOLOGY_BLOCK] = pass_blocks[TOPOLOGY_BLOCK]
-
+        tranche = frozenset(_blueprint_tranche(score))
         accepted_now = frozenset(score.accepted)
         conflicted = False
         for name, body in pass_blocks.items():
-            if name == TOPOLOGY_BLOCK or name in pass_damaged:
+            if name in {TOPOLOGY_BLOCK, DECISIONS_BLOCK}:
+                # Stage 1 artifacts are frozen. A byte-identical repeat is tolerated for provider
+                # compatibility but ignored; a revision invalidates the whole Stage 2 pass.
+                if accumulated.get(name) != body:
+                    conflicted = True
+                    break
+                continue
+            if name not in tranche:
+                conflicted = True
+                break
+            if name in pass_damaged:
                 continue
             if name in accepted_now:
                 # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
@@ -3167,13 +3222,20 @@ def _continue_short_plan(
                 continue
             accumulated[name] = body
         if conflicted:
-            break
+            stalled_passes += 1
+            if stalled_passes >= attempts:
+                break
+            continue
 
         advanced = score_plan(current, accumulated)
         if not advanced.improved_on(score):
             score = advanced
-            break
+            stalled_passes += 1
+            if stalled_passes >= attempts:
+                break
+            continue
         score = advanced
+        stalled_passes = 0
 
     return _Continuation(
         blocks=accumulated,
@@ -3855,9 +3917,9 @@ def create_plan(
                     challenge_execution_id=record.challenge_execution_id or None,
                     plan_mode=plan_mode,
                 )
-        # A response that stopped inside its own declaration is resumed, not discarded. Only a
-        # delimited response carries the evidence needed to tell a cut artifact from a whole one,
-        # so write-call recovery (which produces no delimiters) keeps the original behavior.
+            # Stage 1 freezes the declaration. Stage 2 then authors its Blueprint files in bounded
+            # batches. Only a delimited response carries the evidence needed to distinguish a cut
+            # artifact from a complete one, so write-call recovery keeps the original behavior.
         if continue_attempts > 0 and blocks_text is not None and TOPOLOGY_BLOCK in blocks:
             declared_stories, _ = parse_topology(blocks[TOPOLOGY_BLOCK])
             if declared_stories:
@@ -3886,9 +3948,9 @@ def create_plan(
                             target_dir,
                             classification="plan generation stalled",
                             detail=(
-                                "Plan generation stopped short of its own TOPOLOGY.md "
-                                f"declaration after {continuation.passes} continuation "
-                                f"pass(es).\n{continuation.score.render()}\n"
+                                "Blueprint generation stalled after TOPOLOGY.md was accepted "
+                                f"and frozen, after {continuation.passes} Stage 2 pass(es).\n"
+                                f"{continuation.score.render()}\n"
                                 "  execution ids: "
                                 + ", ".join(continuation.execution_ids)
                                 + "\n  No Blueprint or Manifest artifacts were written."
@@ -3896,8 +3958,7 @@ def create_plan(
                             execution_id=exec_id,
                             log_dir=log_dir,
                             recovery=(
-                                "Rerun with a larger output budget or a stronger model, then run: "
-                                f"drydock plan {target}"
+                                f"Inspect the failed Stage 2 batch, then run: drydock plan {target}"
                             ),
                         )
         try:
