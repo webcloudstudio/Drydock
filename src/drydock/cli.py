@@ -2511,7 +2511,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock score build <Target>             — post-build report: acceptance, repairs, tokens,\n"
             "                                            cache hit rate (deterministic; reads logs only)\n"
             "drydock score release <Target>           — LLM release gate over Sea Trials; writes SCORECARD.md\n"
-            "drydock score drydock [--effort <level>] — adversarial self-assessment of Drydock; writes\n"
+            "drydock score drydock                    — adversarial self-assessment of Drydock; writes\n"
             "                                            ranked feature files to docs/drydock_planning/\n\n"
             "--step <id> is accepted only with score ac.\n"
             "--effort <low|medium|high|xhigh|max> applies to any LLM-assisted command."

@@ -645,12 +645,19 @@ drydock build status <Target>   # print per-block state and current runnable fro
 ```
 ### drydock score
 
-`drydock score` rates the build and can run in two modes. 
+`drydock score` audits specifications, reports build evidence, verifies acceptance, and evaluates release readiness.
 
 ```text
+drydock score spec <Target>
 drydock score ac <Target> [--step <id>]
+drydock score build <Target>
 drydock score release <Target>
+drydock score drydock
 ```
+
+It writes `SPECIFICATION_SCORECARD.md` atomically and prints identical content to the terminal.
+Findings are advisory. The command does not modify imported sources, create Blueprints, ask product
+questions, gate Analyze, or evaluate files outside `blueprint/sources/`.
 
 The Commander scans checkmarks in the QuarterDeck instead of granting approvals.
 
@@ -664,6 +671,10 @@ Criteria with vacuous proof — an empty body, a constant assertion, or a self-c
 `drydock score release` is an LLM pass to evaluates the project-level criteria in `SEA_TRIALS.md`. 
 `SEA_TRIALS.md` contains criteria are expressed in EARS notation. The LLM  judges the project and reports the release verdict. 
 
+`drydock score build` reads build evidence and LLM usage logs and prints a deterministic post-build report.
+
+`drydock score drydock` performs an advisory assessment of Drydock and writes ranked feature files to `docs/drydock_planning/`.
+
 A `measurement` criterion carries `Command:`, a literal argv run from the build directory, and is
 compared against `Target:` using `Operator:`. `Extract:` supplies a regular expression whose first
 capture group reads the measured value from the command's standard output; without it the command
@@ -675,6 +686,10 @@ is rejected.
 
 | Artifact | Location | Purpose |
 |---|---|---|
+| `blueprint/sources/**/*` | Target Blueprint | Raw imported sources (`score spec` reads Markdown content and inventories non-Markdown paths) |
+| `evidence/*.md` | Target root | Build and repair evidence (`score build`) |
+| `logs/llm.jsonl` | Workspace | LLM usage records (`score build`) |
+| Drydock specification, prompts, implementation, and Rigging | Drydock repository | Methodology assessment inputs (`score drydock`) |
 | `MANIFEST.md` | Target root | Acceptance-criterion blocks and their parent stories |
 | `SEA_TRIALS.md` | Target root | Project criteria, measurement contracts, and guardrails |
 | `blueprint/*.md` | Target Blueprint | Programmatic Acceptance proofs |
@@ -684,6 +699,9 @@ is rejected.
 
 | Artifact | Location | Purpose |
 |---|---|---|
+| `SPECIFICATION_SCORECARD.md` | Target root | Advisory raw-specification findings (`score spec`) |
+| Terminal report | Terminal | Deterministic post-build evidence and usage report (`score build`) |
+| `docs/drydock_planning/` | Drydock repository | Ranked methodology feature files (`score drydock`) |
 | `SOUNDINGS.md` | Target root | Per-criterion verified status, evidence, and timestamp (whole-target `score ac`; a `--step` run leaves it unchanged) |
 | `SCORECARD.md` | Target root | Release scoring results, verdicts, and blockers (`score release`) |
 
@@ -691,8 +709,8 @@ is rejected.
 
 | Code | Meaning |
 |---:|---|
-| `0` | Scoring completes successfully |
-| `1` | Scoring cannot complete or the Target does not satisfy the evaluated gate |
+| `0` | Scoring completes; `score spec` and `score drydock` findings remain advisory |
+| `1` | Scoring cannot complete or the Target does not satisfy the evaluated build, acceptance, or release state |
 | `2` | Command syntax is invalid |
 
 ### drydock document
