@@ -215,7 +215,56 @@ in `prompts/plan_create.md`):
   questionnaire prompt don't duplicate/diverge it.
 
 ### Continuation — resume, never discard
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-02` · `spec:approved` · `impl:unimplemented`
+
+**Design settled 2026-08-02.** The failure mode is **output-token exhaustion** (provider default
+64K output, 128K max, inclusive of reasoning) — not process death. Everything stays in memory
+within one `plan create` invocation and the all-or-nothing write contract is unchanged.
+
+Two of the three mechanisms already exist: the ruler (`prompts/plan_create.md:624` makes leading
+`TOPOLOGY.md` a hard requirement; `PLAN_SHAPE_ADVISORY` states leading placement exists precisely
+to make a short run resumable) and truncation detection (`_artifact_delimiters_are_complete`).
+Only the score and the loop are missing.
+
+Refinements over the original 8-step plan below:
+
+- **The score is a value object.** Deterministic, LLM-free: `(topology_parsed, len(accepted),
+  manifest_serialized)`, plus `missing` and `invalid` detail. It has three consumers, all
+  renderings of the same object — console progress, the appended continuation block (the score's
+  inverse), and the failure message. Failure text stops being hand-written prose ("No Blueprint or
+  Manifest artifacts were written") and becomes `score.render()`, so a stall reports `8/10` and
+  names the two missing stories.
+- **Progress is measured on `accepted`, never on `remaining`.** A ratio against `expected` breaks
+  when a split moves the denominator; strictly increasing `accepted` is immune and needs no
+  special case for splits.
+- **Topology invariants replace "frozen topology."** (1) An accepted story is frozen — never
+  renamed, re-scoped, or removed. (2) A pending story may be refined into children covering it.
+  (3) Total declared scope never shrinks.
+- **Lazy amendment.** Continuation omits `TOPOLOGY.md` by default; the model re-emits it only to
+  split a pending story. Python diffs against the merged declaration and rejects any delta
+  touching an accepted story. An amendment must carry complete child declarations (full
+  `_PASSTHROUGH_FIELDS` plus `depends`/`provides`/`consumes`) — Python cannot synthesize edges.
+- **No final re-emission.** `TOPOLOGY.md` is transient; its only consumer is
+  `_manifest_from_declaration` at the end. Python already holds the merged declaration, so it *is*
+  the final topology. A closing re-emit would spend front-of-budget output, risk truncating the one
+  artifact everything depends on at the point of least slack, and re-open frozen declarations.
+- **Acceptance is shape-level, not delimiter-level.** `planning_session.py:2404` already warns a
+  cut landing after a prior closing delimiter can leave a truncated story parsing clean. Since
+  acceptance freezes irreversibly, an artifact is accepted only on declared-story match, paired
+  delimiters, typed-spec shape, and no conflict with an accepted artifact.
+- **Two stop conditions, mirroring the build repair loop** (`build_run.py`: `stalled` plus
+  `repair_attempts: int = 3`): no progress, and an attempt cap of 3 continuations (4 total passes),
+  exposed as `--continue-attempts`.
+- **Step 0 — measure first.** The `cached 305,407 (100% hit)` was observed *within* one
+  invocation. Whether the adapter preserves the prefix and the cache stays warm across a second
+  `run_prompt` call is unverified. Confirm before building; if it misses, the loop still works but
+  costs full input per pass.
+- **Known residual:** continuation makes failure cheaper and its diagnostic numeric; it does not
+  make failure partial. A stall at 8/10 still writes nothing, because a target holding 8 specs, no
+  manifest, and a stale prior blueprint is neither runnable by Build nor cleanly reconcilable by
+  the next `plan create`. Accepted deliberately.
+- **Unexamined:** Zone D (`conform_specs`) may rewrite authored content and could mutate artifacts
+  the loop has frozen. Remains Open Question 4, out of scope.
 
 A run that stops one artifact short must not throw away twelve minutes and $2.70 of valid work.
 Model the existing build loop, which succeeds by exactly this method: append a bounded instruction

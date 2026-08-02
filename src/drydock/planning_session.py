@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from fnmatch import fnmatch
@@ -63,8 +63,9 @@ from drydock.plan_feedback import (
     render_feedback_prompt,
 )
 from drydock.plan_graph import PlanComputation, PlannedStory
+from drydock.plan_score import PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
-from drydock.plan_topology import TOPOLOGY_BLOCK
+from drydock.plan_topology import TOPOLOGY_BLOCK, merge_declaration, parse_topology
 from drydock.prompt_assembly import (
     PromptAssembly,
     contextual_fenced_parts,
@@ -2823,6 +2824,188 @@ def _conflict_challenge_assembly(
     return PromptAssembly(parts=(*prompt_assembly.parts, challenge))
 
 
+def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[str]:
+    """Artifacts whose delimiters prove the response was cut, by name.
+
+    Two structural signatures, both of which survive parsing. A block with no matching
+    ``=== END ===`` is the tail the budget cut off — :func:`_parse_strict_blocks_by_line` records
+    it anyway, so it is *present but incomplete*. A block whose body holds another artifact header
+    is a cut that the model then restarted, absorbing the truncated attempt.
+
+    Named rather than described, because the continuation loop has to drop exactly these and ask
+    for them again. :func:`_artifact_delimiter_defects` renders the same two facts as prose for a
+    refusal; this returns them as identifiers.
+    """
+    ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(text))
+    unpaired = {name for name in blocks if ends[name] != 1}
+    unpaired |= {name for name, body in blocks.items() if _HEADER_ANYWHERE_RE.search(body)}
+    return frozenset(unpaired)
+
+
+def _render_ledger(score: PlanScore) -> str:
+    """The score's inverse: what the continuation pass must produce, and nothing else."""
+    lines = [f"Accepted ({len(score.accepted)}) — already held, do not re-emit:"]
+    lines.extend(f"  {name}" for name in sorted(score.accepted))
+    if not score.accepted:
+        lines.append("  (none)")
+    lines.append("")
+    lines.append(f"Missing ({len(score.missing)}) — emit these:")
+    lines.extend(f"  {item.rendered()}" for item in score.missing)
+    if not score.missing:
+        lines.append("  (none)")
+    if score.invalid:
+        lines.append("")
+        lines.append(f"Defective ({len(score.invalid)}) — emit these again, in full, corrected:")
+        lines.extend(f"  {item.rendered()}" for item in score.invalid)
+    return "\n".join(lines)
+
+
+def _continuation_assembly(prompt_assembly: PromptAssembly, *, ledger: str) -> PromptAssembly:
+    """Append the bounded continuation instruction to the *unchanged* original context.
+
+    The prefix must stay byte-identical: the whole economy of continuing rather than restarting
+    rests on the provider's prompt cache recognising it. Appending is the only permitted edit,
+    which is why this mirrors :func:`_conflict_challenge_assembly` rather than rebuilding.
+    """
+    body = load_prompt("plan_continue").body.strip()
+    part = lines_part(
+        "Plan continuation",
+        [body, "", "## Ledger", "", ledger],
+        kind="continuation",
+    )
+    return PromptAssembly(parts=(*prompt_assembly.parts, part))
+
+
+@dataclass(frozen=True)
+class _Continuation:
+    """What the continuation loop accumulated, and how it ended."""
+
+    blocks: dict[str, str]
+    score: PlanScore
+    execution_ids: tuple[str, ...]
+    passes: int
+
+
+def _continue_short_plan(
+    blocks: dict[str, str],
+    *,
+    blocks_text: str,
+    prompt_assembly: PromptAssembly,
+    declared: Sequence[PlannedStory],
+    target: str,
+    target_dir: Path,
+    llm_provider: str | None,
+    model: str | None,
+    log_dir: Path | None,
+    runner: Callable[..., object],
+    on_text: Callable[[str], None] | None,
+    attempts: int,
+    initial_execution_id: str | None,
+) -> _Continuation:
+    """Resume a response that stopped short of its own declaration.
+
+    The loop stops on the same two conditions the build repair loop uses: no progress, and an
+    attempt cap. Progress is a strictly increasing count of *accepted* artifacts — never a ratio
+    against the declared count, which a split would move underneath us. A pass that only
+    re-declares the topology therefore scores no progress and ends the loop, which is correct: a
+    split that authors nothing has not advanced the plan.
+
+    Nothing accepted is ever discarded. A junk pass, a rejected amendment, or a conflicting
+    re-emission ends the loop with the accumulator intact rather than corrupting it.
+    """
+    damaged = _unpaired_artifact_names(blocks_text, blocks)
+    accumulated = {name: body for name, body in blocks.items() if name not in damaged}
+    current = tuple(declared)
+    score = score_plan(current, accumulated)
+    execution_ids = [initial_execution_id or ""]
+    passes = 0
+
+    while passes < attempts and not score.is_complete:
+        passes += 1
+        if on_text is not None:
+            on_text(f"[plan] continuation pass {passes}/{attempts} · {score.progress_line()}\n")
+        assembly = _continuation_assembly(prompt_assembly, ledger=_render_ledger(score))
+        try:
+            result = cast(
+                CompletedRun,
+                runner(
+                    assembly.rendered_text,
+                    target_dir,
+                    llm=llm_provider,
+                    model=model,
+                    command_name="plan",
+                    parameters={
+                        "target": target,
+                        "continuation_pass": passes,
+                        "initial_execution_id": initial_execution_id or "",
+                    },
+                    log_dir=log_dir,
+                    target=target,
+                    on_text=on_text,
+                    prompt_assembly=assembly,
+                ),
+            )
+        except Exception:
+            break
+        execution_ids.append(getattr(result, "execution_id", "") or "")
+        if not result.ok or not result.text.strip():
+            break
+
+        try:
+            pass_blocks = _parse_strict_blocks(result.text, result)
+        except OutsideArtifactTextError as exc:
+            pass_blocks = exc.blocks
+        except SpecificationError:
+            break
+        if not pass_blocks:
+            break
+
+        # Each pass is pairing-checked against its own response, before anything it produced is
+        # allowed near the accumulator. The merged set spans several responses and can no longer
+        # be checked as one text, so this is the only point at which that check is possible.
+        pass_damaged = _unpaired_artifact_names(result.text, pass_blocks)
+
+        if TOPOLOGY_BLOCK in pass_blocks:
+            amended, amend_defects = parse_topology(pass_blocks[TOPOLOGY_BLOCK])
+            merged, merge_defects = merge_declaration(
+                current, amended, accepted=frozenset(score.accepted)
+            )
+            if amend_defects or merge_defects:
+                break
+            current = merged
+            accumulated[TOPOLOGY_BLOCK] = pass_blocks[TOPOLOGY_BLOCK]
+
+        accepted_now = frozenset(score.accepted)
+        conflicted = False
+        for name, body in pass_blocks.items():
+            if name == TOPOLOGY_BLOCK or name in pass_damaged:
+                continue
+            if name in accepted_now:
+                # An accepted artifact is frozen. A byte-identical repeat costs nothing; a
+                # differing one means this pass disagrees with work already paid for, and the
+                # pass is dropped whole rather than resolved by guesswork.
+                if accumulated.get(name) != body:
+                    conflicted = True
+                    break
+                continue
+            accumulated[name] = body
+        if conflicted:
+            break
+
+        advanced = score_plan(current, accumulated)
+        if not advanced.improved_on(score):
+            score = advanced
+            break
+        score = advanced
+
+    return _Continuation(
+        blocks=accumulated,
+        score=score,
+        execution_ids=tuple(item for item in execution_ids if item),
+        passes=passes,
+    )
+
+
 def _required_action_from_declaration(declaration: str) -> str:
     """Return the model's complete Required action body, without inventing a decision."""
     marker = re.search(r"(?im)^Required action:\s*$", declaration)
@@ -3048,6 +3231,7 @@ def create_plan(
     llm_provider: str | None = None,
     log_dir: Path | None = None,
     allow_diagnostic_recovery: bool = False,
+    continue_attempts: int = 3,
 ) -> PlanCreateResult | PlanDeferredResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
@@ -3494,6 +3678,51 @@ def create_plan(
                     challenge_execution_id=record.challenge_execution_id or None,
                     plan_mode=plan_mode,
                 )
+        # A response that stopped inside its own declaration is resumed, not discarded. Only a
+        # delimited response carries the evidence needed to tell a cut artifact from a whole one,
+        # so write-call recovery (which produces no delimiters) keeps the original behavior.
+        if continue_attempts > 0 and blocks_text is not None and TOPOLOGY_BLOCK in blocks:
+            declared_stories, _ = parse_topology(blocks[TOPOLOGY_BLOCK])
+            if declared_stories:
+                continuation = _continue_short_plan(
+                    blocks,
+                    blocks_text=blocks_text,
+                    prompt_assembly=prompt_assembly,
+                    declared=declared_stories,
+                    target=target,
+                    target_dir=target_dir,
+                    llm_provider=llm_provider,
+                    model=model or prompt.model,
+                    log_dir=log_dir,
+                    runner=run,
+                    on_text=on_text,
+                    attempts=continue_attempts,
+                    initial_execution_id=exec_id,
+                )
+                if continuation.passes:
+                    blocks = continuation.blocks
+                    # The merged set spans several responses and can no longer be pairing-checked
+                    # as one text; each contribution was already checked against its own response.
+                    blocks_text = None
+                    if not continuation.score.is_complete:
+                        raise _record_plan_error(
+                            target_dir,
+                            classification="plan generation stalled",
+                            detail=(
+                                "Plan generation stopped short of its own TOPOLOGY.md "
+                                f"declaration after {continuation.passes} continuation "
+                                f"pass(es).\n{continuation.score.render()}\n"
+                                "  execution ids: "
+                                + ", ".join(continuation.execution_ids)
+                                + "\n  No Blueprint or Manifest artifacts were written."
+                            ),
+                            execution_id=exec_id,
+                            log_dir=log_dir,
+                            recovery=(
+                                "Rerun with a larger output budget or a stronger model, then run: "
+                                f"drydock plan {target}"
+                            ),
+                        )
         try:
             declared_topology = TOPOLOGY_BLOCK in blocks
             plan, warnings = _validate_plan_output(

@@ -25,7 +25,7 @@ one home and removes the duplication of the same fact in both files.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from drydock.errors import SpecificationError
@@ -254,6 +254,60 @@ def parse_topology_strict(text: str) -> tuple[PlannedStory, ...]:
             + "\n  ".join(defect.rendered() for defect in defects)
         )
     return stories
+
+
+def merge_declaration(
+    current: Sequence[PlannedStory],
+    amendment: Sequence[PlannedStory],
+    *,
+    accepted: Collection[str],
+) -> tuple[tuple[PlannedStory, ...], tuple[TopologyDefect, ...]]:
+    """Fold a continuation pass's re-declared topology into the one the loop is measuring against.
+
+    A continuation pass omits ``TOPOLOGY.md`` unless it must **split a pending story** — the one
+    revision the original declaration cannot anticipate, because a story's true size is discovered
+    while authoring it. When the pass does re-emit, it re-emits the whole declaration, and this
+    function decides whether the revision is legitimate.
+
+    Exactly one invariant is enforced here: **an accepted story is frozen.** Its artifact has
+    already been admitted to the accumulator and will never be re-authored, so renaming it,
+    re-scoping it, or dropping it would invalidate work the loop has already paid for. Pending
+    stories are unconstrained — splitting one is the whole point.
+
+    ``accepted`` holds artifact filenames, not story IDs: acceptance is a property of the artifact
+    that came back, and the declaration is what maps it to a story.
+    """
+    if not amendment:
+        return tuple(current), ()
+
+    amended_by_id = {story.story_id: story for story in amendment}
+    accepted_files = frozenset(accepted)
+    defects: list[TopologyDefect] = []
+
+    for story in current:
+        if story.implements.strip() not in accepted_files:
+            continue
+        revised = amended_by_id.get(story.story_id)
+        if revised is None:
+            defects.append(
+                TopologyDefect(
+                    story.story_id,
+                    f"accepted story was dropped from the amended declaration "
+                    f"(its artifact {story.implements} is already accepted)",
+                )
+            )
+        elif revised != story:
+            defects.append(
+                TopologyDefect(
+                    story.story_id,
+                    "accepted story was modified by the amended declaration; an accepted "
+                    "story is frozen",
+                )
+            )
+
+    if defects:
+        return tuple(current), tuple(defects)
+    return tuple(amendment), ()
 
 
 # ── Manifest serialization ──────────────────────────────────────────────────────────

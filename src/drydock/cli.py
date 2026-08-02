@@ -691,6 +691,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     log_dir = get_workspace() / "logs"
     target_directory = get_target_directory()
     target_dir = require_target_dir(args.Target)
+    continue_attempts = int(getattr(args, "continue_attempts", 3) or 0)
+    if continue_attempts < 0:
+        raise UsageError("--continue-attempts must be zero or greater.")
     plan_started = time.monotonic()
     with commanders_chair_command(target_dir, f"drydock plan {args.Target}"):
         result = create_plan(
@@ -706,6 +709,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
             allow_diagnostic_recovery=(
                 get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
             ),
+            continue_attempts=continue_attempts,
         )
     if isinstance(result, PlanDeferredResult):
         print()

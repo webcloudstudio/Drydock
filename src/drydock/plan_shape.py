@@ -63,6 +63,11 @@ class OutputContract:
     forbid_outside_text: bool = True
 
 
+def has_typed_heading(body: str) -> bool:
+    """Whether a Markdown artifact carries a typed ``# Kind: Name`` heading."""
+    return bool(_TYPED_HEADING_RE.search(body))
+
+
 def check_delimiters(text: str) -> tuple[ShapeDefect, ...]:
     """Verify every artifact appears in exactly one paired open/END delimiter set."""
     defects: list[ShapeDefect] = []
