@@ -9,6 +9,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from drydock.source_files import iter_source_files
+
 logger = logging.getLogger(__name__)
 
 _QUALITY_RE = re.compile(r"^Quality:\s*(\S+)", re.MULTILINE)
@@ -78,19 +80,12 @@ class StatusResult:
 
 
 def _has_blueprint_content(blueprint_dir: Path) -> bool:
-    """True if blueprint/ contains any authored file beyond skeleton .gitkeep entries."""
-    if not blueprint_dir.is_dir():
-        return False
-    for path in blueprint_dir.rglob("*"):
-        if path.is_file() and path.name != ".gitkeep":
-            return True
-    return False
+    """True if blueprint/ contains any authored file beyond hidden skeleton entries."""
+    return any(iter_source_files(blueprint_dir))
 
 
 def _count_authored_files(root: Path) -> int:
-    if not root.is_dir():
-        return 0
-    return sum(1 for path in root.rglob("*") if path.is_file() and path.name != ".gitkeep")
+    return sum(1 for _ in iter_source_files(root))
 
 
 def _count_imported_sources(blueprint_dir: Path) -> int:

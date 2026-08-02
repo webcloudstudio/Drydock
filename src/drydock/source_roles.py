@@ -11,13 +11,11 @@ from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
 from drydock.errors import SpecificationError
+from drydock.source_files import iter_source_files
 
 # Build-directory subdirectory holding staged build assets. A fixed Drydock constant, never a
 # reproduction of the Manifest path, so no `blueprint/` prefix can reach the deliverable.
 BUILD_ASSET_DIR = "sources"
-
-# Import bookkeeping files that are never promoted and never staged.
-_IMPORT_MARKERS = {".gitkeep", ".drydock-import"}
 
 
 @dataclass(frozen=True)
@@ -92,10 +90,8 @@ def promote_imported_sources(
     if not sources_dir.is_dir():
         return []
     promoted: list[Path] = []
-    for source in sorted(path for path in sources_dir.rglob("*") if path.is_file()):
+    for source in sorted(iter_source_files(sources_dir)):
         rel = source.relative_to(sources_dir).as_posix()
-        if source.name in _IMPORT_MARKERS:
-            continue
         role = source_role_for(rel, roles)
         if role is not None and role.plan_disposition == "compass":
             _append_compass(target_dir / "COMPASS.md", source)
@@ -161,9 +157,7 @@ def declared_build_assets(
     if not sources_dir.is_dir():
         return ()
     assets: list[StagedAsset] = []
-    for source in sorted(path for path in sources_dir.rglob("*") if path.is_file()):
-        if source.name in _IMPORT_MARKERS:
-            continue
+    for source in sorted(iter_source_files(sources_dir)):
         rel = source.relative_to(sources_dir).as_posix()
         role = source_role_for(rel, roles)
         if role is None or role.build_disposition != "stage":

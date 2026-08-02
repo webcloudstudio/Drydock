@@ -124,6 +124,18 @@ def test_forty_markdown_files_are_all_inventoried(tmp_path: Path) -> None:
     assert "`S-00.md`" in result.report and "`S-39.md`" in result.report
 
 
+def test_hidden_import_bookkeeping_is_neither_inventoried_nor_injected(tmp_path: Path) -> None:
+    target, sources = _target(tmp_path, {"SPEC.md": "# Specification\n"})
+    (sources / ".gitkeep").write_text("", encoding="utf-8")
+    (sources / ".drydock-import").write_text("source: /elsewhere\nformat: source\n", "utf-8")
+    runner = ExtractionRunner()
+
+    result = score_spec("Demo", target, runner=runner, log_dir=tmp_path / "logs")
+
+    assert [record.path for record in result.inventory] == ["SPEC.md"]
+    assert all(".drydock-import" not in call["prompt"] for call in runner.calls)
+
+
 def test_extraction_is_bounded_without_dropping_content() -> None:
     markdown = {f"S-{index}.md": "# H\n" + ("x" * 60) + "\n" for index in range(6)}
     passes = extraction_passes(markdown, limit=100)

@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.source_files import iter_source_files
+
 _MAX_FILE_CHARS = 48_000
 _CHUNK_CHARS = 12_000
 #: Minification is a *line-structure* property: a generated file packs its content into one or a few
@@ -89,9 +91,7 @@ def discover_source_material(
     if not sources.is_dir():
         return []
     result: list[SourceMaterialFile] = []
-    for path in sorted(
-        (item for item in sources.rglob("*") if item.is_file()), key=lambda item: item.as_posix()
-    ):
+    for path in sorted(iter_source_files(sources), key=lambda item: item.as_posix()):
         if path.name in excluded_filenames:
             continue
         relative = path.relative_to(blueprint_dir).as_posix()

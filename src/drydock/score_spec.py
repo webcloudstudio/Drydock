@@ -21,6 +21,7 @@ from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
+from drydock.source_files import iter_source_files
 
 PROMPT_NAME = "score_spec"
 REPORT_NAME = "SPECIFICATION_SCORECARD.md"
@@ -194,7 +195,7 @@ def inventory_sources(sources_dir: Path) -> tuple[tuple[SourceRecord, ...], dict
     records: list[SourceRecord] = []
     markdown: dict[str, str] = {}
     paths = sorted(
-        (path for path in sources_dir.rglob("*") if path.is_file()),
+        iter_source_files(sources_dir),
         key=lambda path: (
             path.relative_to(sources_dir).as_posix().casefold(),
             path.relative_to(sources_dir).as_posix(),
