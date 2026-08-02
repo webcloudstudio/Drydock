@@ -3598,6 +3598,18 @@ def test_a_truncated_trailing_artifact_is_replaced_rather_than_frozen(tmp_path):
     assert "Status command exits successfully." in feature
 
 
+def test_a_redundant_final_end_delimiter_preserves_completed_continuation_artifacts(tmp_path):
+    target_dir = _make_target(tmp_path)
+    redundant_end = _feature_block() + "=== END FEATURE-Status.md ===\n"
+    runner = _sequence_runner(_short_output(), redundant_end)
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    feature = (target_dir / "blueprint" / "FEATURE-Status.md").read_text(encoding="utf-8")
+    assert "Status command exits successfully." in feature
+
+
 def test_the_continuation_prompt_reuses_the_original_prefix_and_carries_the_ledger(tmp_path):
     """Byte-identical prefix or the cached input is re-billed; the appended block is the gap."""
     _make_target(tmp_path)

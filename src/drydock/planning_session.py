@@ -428,6 +428,7 @@ def _parse_strict_blocks_by_line(
                 opening_name = open_match.group("name").strip()
             elif (
                 end_match
+                and end_match.group("name").strip() != previous_name
                 and not _contains_delimiter_line(outside)
                 and _is_orphan_artifact_opener(
                     lines, index=index, name=end_match.group("name").strip()
@@ -2934,7 +2935,15 @@ def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[
     for them again. :func:`_artifact_delimiter_defects` renders the same two facts as prose for a
     refusal; this returns them as identifiers.
     """
-    ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(text))
+    lines = text.splitlines()
+    normalized = "\n".join(
+        line
+        for index, line in enumerate(lines)
+        if index == 0
+        or line.strip() != lines[index - 1].strip()
+        or not _END_BLOCK_LINE_RE.match(line)
+    )
+    ends = Counter(match.group("name").strip() for match in _END_BLOCK_LINE_RE.finditer(normalized))
     unpaired = {name for name in blocks if ends[name] != 1}
     unpaired |= {name for name, body in blocks.items() if _HEADER_ANYWHERE_RE.search(body)}
     return frozenset(unpaired)
