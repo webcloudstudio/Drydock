@@ -102,12 +102,14 @@ def _codes(findings: tuple[Finding, ...]) -> set[str]:
 
 def test_short_markdown_produces_scorecard_and_identical_report(tmp_path: Path) -> None:
     target, _ = _target(tmp_path, {"STANDARD.md": "# Standard\n\nNormative text.\n"})
-    result = score_spec("Demo", target, runner=ExtractionRunner(), log_dir=tmp_path / "logs")
+    runner = ExtractionRunner()
+    result = score_spec("Demo", target, runner=runner, log_dir=tmp_path / "logs")
 
     assert result.exit_code() == 0
     assert result.findings == ()
     assert result.report_path.read_text(encoding="utf-8") == result.report
     assert result.report.count("| Severity | Affected Sources | Conflict Discovered |") == 1
+    assert "codex_sandbox" not in runner.calls[0]
 
 
 def test_forty_markdown_files_are_all_inventoried(tmp_path: Path) -> None:

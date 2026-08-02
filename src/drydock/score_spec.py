@@ -793,7 +793,6 @@ def score_spec(
             target=target,
             on_text=on_text,
             announce=False,
-            codex_sandbox="read-only",
             prompt_assembly=assembly,
         )
         after = _tree_snapshot(target_dir)
