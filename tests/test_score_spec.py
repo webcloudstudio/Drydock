@@ -316,7 +316,8 @@ def test_a_record_keeping_table_needs_no_stated_reader(name: str) -> None:
     assert evaluate_facts(_inventory(), facts) == ()
 
 
-def test_a_table_declaring_no_columns_is_a_warning_once_columns_are_observed() -> None:
+def test_a_table_declaring_no_columns_is_an_error_once_columns_are_observed() -> None:
+    """No columns means no CREATE TABLE; the build fails on it."""
     facts = _facts(
         ("table", "orders", "persistent orders"),
         ("field", "orders", "total"),
@@ -324,13 +325,34 @@ def test_a_table_declaring_no_columns_is_a_warning_once_columns_are_observed() -
     )
     findings = {(f.code, f.severity, f.message) for f in evaluate_facts(_inventory(), facts)}
 
-    assert ("DATA002", "Warning", "table 'settings' declares no columns") in findings
+    assert ("DATA002", "Error", "table 'settings' declares no columns") in findings
     assert not [
         message for code, _, message in findings if code == "SHAPE001" and "field" in message
     ]
 
 
-def test_dangling_references_are_errors_and_completeness_gaps_are_warnings() -> None:
+@pytest.mark.parametrize(
+    ("code", "severity"),
+    (
+        ("CLI001", "Error"),  # no entry point, no command to run
+        ("CLI002", "Warning"),  # missing help text still builds
+        ("PIPE002", "Error"),  # a pipeline with no stage does nothing
+        ("PIPE008", "Warning"),  # nothing consuming the output is the author's call
+        ("DS002", "Error"),  # no target, no model
+        ("DS006", "Warning"),  # no inference consumer still trains
+        ("EVT001", "Error"),  # an event nothing raises cannot fire
+        ("EVT002", "Warning"),  # an event nothing handles still builds
+    ),
+)
+def test_a_missing_essential_part_is_an_error_and_an_unused_one_is_a_warning(
+    code: str, severity: str
+) -> None:
+    from drydock.score_spec import _SEVERITY
+
+    assert _SEVERITY[code] == severity
+
+
+def test_severity_follows_whether_a_build_would_fail() -> None:
     facts = _facts(
         ("web_surface", "console", "operator console"),
         ("consumer", "missing_service", "console"),
@@ -342,8 +364,10 @@ def test_dangling_references_are_errors_and_completeness_gaps_are_warnings() -> 
     )
     severities = {f.code: f.severity for f in evaluate_facts(_inventory(), facts)}
 
+    # Cited but undefined, and declared without a part it cannot be generated without.
     assert severities["CONS001"] == "Error"
-    assert severities["DATA002"] == "Warning"
+    assert severities["DATA002"] == "Error"
+    # Defined but unused; the build succeeds and the author may have meant it.
     assert severities["DATA004"] == "Warning"
     assert severities["DATA005"] == "Warning"
 

@@ -228,15 +228,19 @@ Markdown source in bounded LLM passes, applies deterministic conformance rules, 
 `SPECIFICATION_SCORECARD.md`. Non-Markdown sources are inventoried without content ingestion. The
 assessment is advisory: findings do not gate `drydock analyze`.
 
-Findings carry one of three severities. `Critical` marks a violated guarantee of the run itself.
-`Error` marks a contradiction or a dangling reference — a screen consuming a service nothing
-defines, a table used but never declared, two sources that disagree. `Warning` marks a completeness
-gap the author may accept: a table that declares no columns, is never populated, or is never read.
+Findings carry one of three severities, ranked by whether a build would fail on them. `Critical`
+marks a violated guarantee of the scoring run itself. `Error` marks something a build would
+probably fail on: a screen consuming a service nothing defines, a column declared for a table
+nothing declares, a table with no columns, a CLI with no entry point, or two sources giving
+contradictory instructions. `Warning` marks a defined thing nothing uses, or a refinement whose
+absence still builds: a table never populated or never read, a missing help text, an unconsumed
+event.
 
 A specification is not faulted for leaving a consumer unstated, so a defined route or service that
-nothing uses is not a finding. A relation the extraction never captured against any owner is
-reported once as unobserved rather than charged against every owner. Audit, log, history, journal,
-and archive tables are exempt from the unread-table warning.
+nothing uses is not a finding at all. A relation the extraction never captured against any owner is
+reported once as unobserved rather than charged against every owner. A column cited as
+`table.column` belongs to its table. Audit, log, history, journal, and archive tables are exempt
+from the unread-table warning.
 
 `drydock score ac <Target>` deterministically verifies each Programmatic Acceptance assertion
 and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes

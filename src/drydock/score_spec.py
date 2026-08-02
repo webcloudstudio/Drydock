@@ -464,47 +464,53 @@ def activate_profiles(facts: Iterable[Fact]) -> tuple[str, ...]:
     return tuple(profiles)
 
 
-# Errors are contradictions and dangling references: a cited thing nothing defines, or two
-# sources that disagree. Warnings are completeness gaps the author may legitimately accept.
+# An Error is something a build would probably fail on: a cited thing nothing defines, an owner
+# missing a part it cannot be generated without, or two sources giving contradictory instructions.
+# A Warning is a defined thing nothing uses, or a refinement whose absence still builds.
 _SEVERITY = {
     "SIDEFX001": "Critical",
+    # Cited but undefined.
     "REF001": "Error",
     "CONS001": "Error",
     "ROUTE001": "Error",
     "NAV001": "Error",
-    "NAV002": "Error",
-    "NAV003": "Error",
     "ACT001": "Error",
     "API001": "Error",
     "SRV001": "Error",
     "STATE001": "Error",
     "DATA001": "Error",
-    "DATA002": "Warning",
+    # Contradictory instructions; the builder has to guess, so half of its guesses are wrong.
+    "NAV002": "Error",
+    "NAV003": "Error",
+    # Declared without a part it cannot be generated without.
+    "DATA002": "Error",
+    "PIPE002": "Error",
+    "PIPE003": "Error",
+    "PIPE004": "Error",
+    "DS001": "Error",
+    "DS002": "Error",
+    "DS003": "Error",
+    "DS007": "Error",
+    "CLI001": "Error",
+    "EVT001": "Error",
+    "BATCH001": "Error",
+    "SCHED001": "Error",
+    # Defined but unused, or a refinement whose absence still builds.
     "DATA004": "Warning",
     "DATA005": "Warning",
-    "SHAPE001": "Warning",
-    "EXTRACT001": "Warning",
     "PIPE001": "Warning",
-    "PIPE002": "Warning",
-    "PIPE003": "Warning",
-    "PIPE004": "Warning",
     "PIPE005": "Warning",
     "PIPE006": "Warning",
     "PIPE007": "Warning",
     "PIPE008": "Warning",
-    "DS001": "Warning",
-    "DS002": "Warning",
-    "DS003": "Warning",
     "DS004": "Warning",
     "DS005": "Warning",
     "DS006": "Warning",
-    "DS007": "Warning",
-    "CLI001": "Warning",
     "CLI002": "Warning",
-    "EVT001": "Warning",
     "EVT002": "Warning",
-    "BATCH001": "Warning",
-    "SCHED001": "Warning",
+    # Audit of the scoring run itself.
+    "SHAPE001": "Warning",
+    "EXTRACT001": "Warning",
 }
 
 _SEVERITY_ORDER = {"Critical": 0, "Error": 1, "Warning": 2}
