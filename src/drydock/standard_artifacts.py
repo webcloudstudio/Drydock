@@ -116,6 +116,10 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     scorecard_help = (
         "Technical quality and project acceptance completion gate for the current build identity."
     )
+    specification_scorecard_help = (
+        "Specification quality and coverage report. Run "
+        f"`drydock score specification {target}` to refresh this artifact."
+    )
     decisions_help = (
         "Significant design decisions Plan made where the Blueprint, guardrails, or stack "
         "declaration were silent. Plan never hard-blocks on these; review and redirect any of "
@@ -149,6 +153,7 @@ items:
   - {{ id: technology_stack, label: "Technology Stack", section: analyze, type: technology_stack, path: ../TECHNOLOGY_STACK.md, order: 3, help_text: {json.dumps(tech_stack.help_text)}, prompt_text: {json.dumps(tech_stack.prompt_text)} }}
   - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 4, help_text: {json.dumps(sea_trials_help)} }}
   - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 5, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
+  - {{ id: specification_scorecard, label: "Specification Scorecard", section: analyze, type: markdown, path: ../SPECIFICATION_SCORECARD.md, order: 6, help_text: {json.dumps(specification_scorecard_help)} }}
   - {{ id: board, label: "Kanban Board", section: implement, type: kanban, path: ../MANIFEST.md, order: 2 }}
   - {{ id: decisions, label: "Decisions", section: implement, type: decisions, path: ../DECISIONS.json, order: 3, help_text: {json.dumps(decisions_help)} }}
   - {{ id: scorecard, label: "Build Score", section: implement, type: markdown, path: ../SCORECARD.md, order: 4, help_text: {json.dumps(scorecard_help)} }}

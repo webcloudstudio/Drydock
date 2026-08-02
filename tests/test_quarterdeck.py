@@ -527,6 +527,49 @@ def test_legacy_drydock_console_surfaces_blockers_on_refresh_without_rewrite(tmp
     assert "ns-done" in quarterdeck.render_nav()
 
 
+def test_legacy_drydock_console_surfaces_specification_scorecard_with_target_command(
+    tmp_path, monkeypatch
+):
+    quarterdeck = _load_quarterdeck()
+    target_dir = tmp_path / "Example"
+    base_dir = target_dir / "QuarterDeck"
+    base_dir.mkdir(parents=True)
+    (target_dir / "METADATA.md").write_text("name: Example\n", encoding="utf-8")
+    console_text = (
+        "sections:\n"
+        "  - { id: setup, label: Setup }\n"
+        "  - { id: analyze, label: Analysis }\n"
+        "items: []\n"
+        "sources: []\n"
+    )
+    (base_dir / "console.yaml").write_text(console_text, encoding="utf-8")
+
+    config, error = quarterdeck.load_config(base_dir=base_dir, project_root=target_dir)
+    assert error is None
+    scorecard = next(item for item in config["items"] if item["id"] == "specification_scorecard")
+    assert scorecard["label"] == "Specification Scorecard"
+    assert "drydock score specification Example" in scorecard["help_text"]
+
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", base_dir)
+    monkeypatch.setattr(quarterdeck, "PROJECT_ROOT", target_dir)
+    monkeypatch.setattr(quarterdeck, "CONFIG", config)
+    monkeypatch.setattr(quarterdeck, "CONFIG_ERROR", None)
+    assert all(
+        item["id"] != "specification_scorecard"
+        for section in quarterdeck.nav_model()
+        for item in section["items"]
+    )
+
+    (target_dir / "SPECIFICATION_SCORECARD.md").write_text(
+        "# Specification Scorecard\n\n| Result | Value |\n|---|---|\n| Score | 9 |\n",
+        encoding="utf-8",
+    )
+    assert "Specification Scorecard" in quarterdeck.render_nav()
+    rendered = quarterdeck.render_item(scorecard)
+    assert "Specification quality and coverage report." in rendered
+    assert "Score" in rendered
+
+
 def test_big_errors_is_pending_while_error_record_exists(tmp_path, monkeypatch):
     from drydock.errors import write_error_record
     from drydock.standard_artifacts import render_console

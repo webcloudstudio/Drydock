@@ -128,6 +128,9 @@ def test_render_console_groups_artifacts_by_phase():
     assert items["commanders_chair"]["section"] == "setup"
     assert items["sea_trials"]["section"] == "analyze"
     assert items["soundings"]["section"] == "analyze"
+    assert items["specification_scorecard"]["label"] == "Specification Scorecard"
+    assert items["specification_scorecard"]["path"] == "../SPECIFICATION_SCORECARD.md"
+    assert "drydock score specification Example" in items["specification_scorecard"]["help_text"]
     assert items["board"]["section"] == "implement"
     assert items["plan_compass"]["section"] == "analyze"
     assert items["refit_status"]["section"] == "refit"

@@ -331,6 +331,21 @@ def _add_drydock_runtime_items(config: dict[str, Any], *, project_root: Path) ->
             "order": 3,
             "help_text": "Technologies this target uses and the Rigging file governing each.",
         })
+    if "analyze" in section_ids and not any(
+        item.get("id") == "specification_scorecard" for item in items
+    ):
+        items.append({
+            "id": "specification_scorecard",
+            "label": "Specification Scorecard",
+            "section": "analyze",
+            "type": "markdown",
+            "path": "../SPECIFICATION_SCORECARD.md",
+            "order": 6,
+            "help_text": (
+                "Specification quality and coverage report. Run "
+                f"`drydock score specification {project_root.name}` to refresh this artifact."
+            ),
+        })
 
 
 def _expand_sources(
