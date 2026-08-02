@@ -22,6 +22,7 @@ prompts here; deferred commands have no prompts yet.
 |---|---|---|
 | `drydock rigging compact` | `rigging_compact_contracts.md`, `rigging_compact_architecture.md`, `rigging_compact_database.md` | Implemented |
 | `drydock prompt review` | `prompt_review.md` | Implemented |
+| `drydock score spec` | `score_spec.md` | Implemented |
 | `drydock score drydock` | `score_drydock.md` | Implemented |
 | `drydock analyze` | `analyze.md` | Implemented |
 | `drydock plan create` | `plan_create.md` | Implemented |

@@ -1913,6 +1913,35 @@ def cmd_score_release(target: str) -> int:
     return result.exit_code()
 
 
+def cmd_score_spec(
+    target: str,
+    model: str | None = None,
+    llm_provider: str | None = None,
+    effort: str | None = None,
+) -> int:
+    """Audit imported raw specifications and print the atomically written report."""
+    from drydock.config import (
+        get_effort,
+        get_llm_provider,
+        get_model,
+        get_workspace,
+        require_target_dir,
+    )
+    from drydock.score_spec import score_spec
+
+    target_dir = require_target_dir(target)
+    result = score_spec(
+        target,
+        target_dir,
+        model=get_model(model),
+        effort=get_effort(effort),
+        llm_provider=get_llm_provider(llm_provider),
+        log_dir=get_workspace() / "logs",
+    )
+    sys.stdout.write(result.report)
+    return result.exit_code()
+
+
 def cmd_score_drydock(
     model: str | None = None,
     llm_provider: str | None = None,
@@ -2468,12 +2497,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── score ─────────────────────────────────────────────────────────────────
-    # Handles: score ac <Target> (deterministic), score release <Target> (LLM-assisted),
+    # Handles: score spec <Target> (advisory), score ac <Target> (deterministic),
+    # score release <Target> (LLM-assisted),
     # score drydock (LLM-assisted self-assessment of Drydock itself; no Target).
     p_score = sub.add_parser(
         "score",
-        help="Verify acceptance criteria (deterministic) and judge the release gate (LLM).",
+        help="Audit specifications, verify acceptance, and judge release readiness.",
         description=(
+            "drydock score spec <Target>             — audit imported raw specifications; writes\n"
+            "                                            SPECIFICATION_SCORECARD.md\n"
             "drydock score ac <Target> [--step <id>]  — verify acceptance criteria (whole target,\n"
             "                                            or scoped to one feature/story), update Soundings\n"
             "drydock score build <Target>             — post-build report: acceptance, repairs, tokens,\n"
@@ -2487,7 +2519,7 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_score.add_argument(
-        "args", nargs=argparse.REMAINDER, metavar="<ac|build|release|drydock> [<Target>]"
+        "args", nargs=argparse.REMAINDER, metavar="<spec|ac|build|release|drydock> [<Target>]"
     )
 
     # ── refit ─────────────────────────────────────────────────────────────────
@@ -2789,6 +2821,18 @@ def _dispatch_score(args: argparse.Namespace) -> int:
             llm_provider=getattr(args, "llm_provider", None),
             effort=getattr(args, "effort", None),
         )
+    if first == "spec" and len(tokens) == 2:
+        target = tokens[1]
+        rc = cmd_score_spec(
+            target,
+            model=getattr(args, "model", None),
+            llm_provider=getattr(args, "llm_provider", None),
+            effort=getattr(args, "effort", None),
+        )
+        from drydock.config import record_activity
+
+        record_activity("score spec", target, target)
+        return rc
     if first == "ac":
         target, step = _parse_score_ac_args(tokens[1:])
         rc = cmd_score_ac(target, step=step)
@@ -2808,7 +2852,9 @@ def _dispatch_score(args: argparse.Namespace) -> int:
 
         record_activity("score release", tokens[1], tokens[1])
         return rc
-    raise UsageError("Usage: drydock score <ac|build|release> <Target> | drydock score drydock")
+    raise UsageError(
+        "Usage: drydock score <spec|ac|build|release> <Target> | drydock score drydock"
+    )
 
 
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

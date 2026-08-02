@@ -221,6 +221,12 @@ command surface and Typed Specification contracts remain unstable during the `0.
 - Target documentation generation and assembly.
 - Deterministic Markdown publishing to HTML and optional PDF.
 - Deterministic acceptance verification and release-gate evaluation.
+- Advisory raw-specification conformance scoring before analysis.
+
+`drydock score spec <Target>` inventories `blueprint/sources/`, extracts cited facts from every
+Markdown source in bounded LLM passes, applies deterministic conformance rules, and writes
+`SPECIFICATION_SCORECARD.md`. Non-Markdown sources are inventoried without content ingestion. The
+assessment is advisory: findings do not gate `drydock analyze`.
 
 `drydock score ac <Target>` deterministically verifies each Programmatic Acceptance assertion
 and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes
@@ -262,6 +268,7 @@ drydock plan [--overwrite] [--no-conform] <Target> [--model <model>] [--llm-prov
 
 drydock build <Target> [--step <step-id>] [--force] [--build-dir <path>] [--reset-failed] [--normalize-order] [--dry-run] [--show-prompt]
 drydock build status <Target>
+drydock score spec <Target>
 drydock score ac <Target>
 drydock score release <Target>
 drydock score drydock [--model <model>] [--llm-provider <claude|codex>]

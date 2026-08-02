@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-01: `drydock score spec <Target>` independently inventories imported raw sources,
+  extracts only cited Markdown facts in bounded subscription-authenticated LLM passes, and writes
+  an advisory deterministic conformance report to `SPECIFICATION_SCORECARD.md` before Analyze.
+
 - 2026-08-01: `drydock plan` recovers artifact responses whose opening delimiters were transposed
   onto the `=== END NAME ===` line, and accepts a byte-identical repeat of an artifact instead of
   discarding the run. Duplicate blocks with conflicting content, and delimiters appearing inside a
