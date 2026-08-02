@@ -2472,6 +2472,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="In reuse mode, skip the LLM conform pass that authors Programmatic Acceptance "
         "assertions for imported specs whose acceptance is empty.",
     )
+    p_plan.add_argument(
+        "--continue-attempts",
+        dest="continue_attempts",
+        type=int,
+        default=3,
+        metavar="<n>",
+        help="Continuation passes when a response stops short of its TOPOLOGY.md declaration "
+        "(0 disables; default 3).",
+    )
     p_plan.add_argument("Target", metavar="<Target>")
 
     # ── build ─────────────────────────────────────────────────────────────────
