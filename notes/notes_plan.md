@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-02 V17 |
+| Version | 2026-08-02 V18 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
-| Pending spec | 2 approved items |
-| Pending impl | 0 unimplemented sections |
+| Pending spec | 4 approved items |
+| Pending impl | 2 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -347,6 +347,51 @@ never fires; a pass returning junk → does not corrupt accumulated artifacts; i
 remains replaceable; conflicting valid artifact → fails; no accepted artifact discarded; no files
 written until the merged set passes whole-plan validation.
 
+### Computed blocks are executable build units
+`2026-08-02` · `spec:approved` · `impl:unimplemented`
+
+The topology cutover correctly made `TOPOLOGY.md` a flat LLM-authored declaration and made Drydock
+compute ordering, type-safe block grouping, and numeric `block:` membership mechanically. The
+Build consumer was not cut over with it: Build still recognizes a group only through the legacy
+`feature` node plus child `parent:` relationship, ignores numeric `block:`, labels every new-
+taxonomy story `Ungrouped`, and executes one story at a time.
+
+Numeric `block:` is the sole normal Build batching relationship for a Plan- or replan-generated
+Manifest. `depends:` remains the LLM-authored prerequisite relationship. `parent:` is not added to
+the new taxonomy; legacy feature/parent Manifests remain a compatibility path only.
+
+Every Plan/replan story belongs to exactly one valid computed block. A block containing one story
+is still a group. `Ungrouped` in a new-taxonomy Manifest is a fatal Manifest defect: the computed
+execution tree is absent or damaged, not an executable fallback category. Validation requires a
+positive block number on every story, consistent membership, and a preamble `blocks:` count that
+matches the distinct computed blocks.
+
+Build forms one executable unit from all stories sharing the selected block number. Pending
+members execute together in Manifest order. Verified members are supplied as regression context.
+Dependencies within the block are internal sequencing and do not split or block the unit. Every
+dependency outside the block must be `closed/verified`, otherwise the entire block is blocked.
+`--story` remains the explicit single-story override.
+
+Build status, QuarterDeck presentation, grouped prompt assembly, block selection, and readiness
+checks consume this same block contract. No new-taxonomy story is rendered as `Ungrouped`.
+
+### Replan preserves built work across topology-only changes
+`2026-08-02` · `spec:approved` · `impl:unimplemented`
+
+Replanning may freely change dependency relationships, type-safe block membership, and block
+numbers without resetting otherwise unchanged built work. State preservation keys on stable story
+identity plus build-relevant specification content; block-number changes never affect state.
+
+Whole-file byte equality is too broad as the only preservation test. Relationship-only metadata
+changes introduced by Plan/refit — specifically `Depends On` / `Is Dependent On` refactoring — do
+not dirty an otherwise unchanged built story or force a rebuild. The preservation decision uses a
+normalized build-relevant fingerprint that excludes those relationship-only fields while retaining
+the existing full-file applied-spec provenance.
+
+A materially changed story may reset to `pending`. Its previously verified dependents do not
+automatically reset in this implementation. Contract-sensitive downstream invalidation remains an
+open design item.
+
 ---
 
 ## Acceptance Criteria
@@ -367,6 +412,12 @@ written until the merged set passes whole-plan validation.
 13. Plan and Build decisions surface via `DECISIONS.json`, visible, non-duplicated, and never
     hard-block regardless of severity.
 14. Running the next command implies approval when no blocker prevents that stage.
+15. Every generated story belongs to one valid numeric block; a one-story block is grouped and a
+    new-taxonomy `Ungrouped` story is a fatal Manifest defect.
+16. Build executes all pending stories in the selected numeric block together, permits internal
+    dependency sequencing, and blocks the unit on any unverified external dependency.
+17. Replan preserves unchanged built stories across block renumbering and relationship-only
+    metadata changes.
 
 ## Guardrails
 
@@ -390,6 +441,11 @@ written until the merged set passes whole-plan validation.
 4. **Zone D review** — dependent and deferred. `conform_specs` is unreviewed and may rewrite
    authored content. Determine whether it stays, and what its firing rate says about Zone B, only
    after its dependency and actual behavior are understood. No implementation decision is made.
+5. **Contract-sensitive downstream invalidation** — determine whether a dependent story becomes
+   dirty from a change to the upstream surface it actually consumes. Do not propagate dirty state
+   merely because any upstream specification byte or story changed. The likely discriminator is a
+   changed consumed contract or compact projection. Until this is designed, replanning resets the
+   changed story only and leaves previously verified dependents unchanged.
 
 *Closed 2026-08-01:* `ac` as node or field (§Programmatic Acceptance is not a node); deterministic
 and model phase grouping (§Plan command workflow); TDD phase placement (§Content and acceptance are
@@ -403,9 +459,9 @@ Editing the canonical specification. Detailed Shipyard Crew execution mechanics 
 story-local decision-record contract. Story-too-big splitting is retired by §Story sizing; the
 story count cap is retired by §Story count is not capped and removed from the code.
 
-Remaining implementation work: §Significant decisions surface as DECISIONS.json and §Continuation —
-resume, never discard. Zone D remains a dependent, deferred review in Open Question 4, not an
-implementation item.
+Remaining implementation work: §Computed blocks are executable build units and §Replan preserves
+built work across topology-only changes. Zone D and contract-sensitive downstream invalidation
+remain deferred reviews in Open Questions 4 and 5, not implementation items.
 
 `BUILD_PLAN_COMPASS.md`, `MANUAL_BUILD_ORDER`, and PO hand-authored build ordering are prototype
 artifacts that never existed in implementation. They are removed from these notes and from
