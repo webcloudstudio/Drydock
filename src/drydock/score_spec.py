@@ -803,15 +803,40 @@ def render_report(
         "|---|---|---|---|",
     ])
 
-    def rank(finding: Finding) -> tuple[int, str, str]:
-        return (_SEVERITY_ORDER[finding.severity], finding.code, finding.message)
-
-    for finding in sorted(findings, key=rank):
+    for finding in sorted(findings, key=_finding_rank):
         message = finding.message.replace("|", "\\|").replace("\n", " ")
         lines.append(
             f"| {finding.code} | {finding.severity} | {message} | {_source_text(finding.sources)} |"
         )
     return "\n".join(lines) + "\n"
+
+
+def render_console_report(
+    inventory: tuple[SourceRecord, ...], findings: tuple[Finding, ...]
+) -> str:
+    """Render the operator-facing digest: one inventory line and the findings table.
+
+    The full report keeps the coverage, profile, and pass detail; the console shows what an
+    operator acts on. ``--debug`` prints the full report instead.
+    """
+    markdown_count = sum(record.markdown for record in inventory)
+    lines = [
+        f"Inventory: {len(inventory)} files "
+        f"({markdown_count} Markdown, {len(inventory) - markdown_count} non-Markdown)",
+        "",
+        "| Code | Severity | Finding | Affected Sources |",
+        "|---|---|---|---|",
+    ]
+    for finding in sorted(findings, key=_finding_rank):
+        message = finding.message.replace("|", "\\|").replace("\n", " ")
+        lines.append(
+            f"| {finding.code} | {finding.severity} | {message} | {_source_text(finding.sources)} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _finding_rank(finding: Finding) -> tuple[int, str, str]:
+    return (_SEVERITY_ORDER[finding.severity], finding.code, finding.message)
 
 
 def _source_text(sources: tuple[str, ...], limit: int = 4) -> str:
@@ -852,6 +877,7 @@ def score_spec(
     llm_provider: str | None = None,
     log_dir: Path | None = None,
     on_text: Callable[[str], None] | None = None,
+    debug: bool = False,
 ) -> ScoreSpecResult:
     """Extract raw-source facts, evaluate them, and atomically write the advisory report."""
     sources_dir = target_dir / "blueprint" / "sources"
@@ -878,6 +904,7 @@ def score_spec(
             on_text=on_text,
             announce=False,
             prompt_assembly=assembly,
+            debug=debug,
         )
         after = _tree_snapshot(target_dir)
         side_effects.update(_changed_paths(before, after))

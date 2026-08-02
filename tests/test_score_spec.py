@@ -629,22 +629,27 @@ def test_prompt_is_registered_and_prohibits_judgment() -> None:
     assert "Do not make quality judgments" in prompt.body
 
 
-def test_cli_prints_exactly_the_written_report(tmp_path: Path, monkeypatch, capsys) -> None:
+def _stub_score_spec_cli(tmp_path: Path, monkeypatch) -> tuple[Path, str, list[dict]]:
+    """Wire cmd_score_spec to a fake scoring pass and return the target, report, and calls."""
     import drydock.config as config
     import drydock.score_spec as module
-    from drydock import cli
 
     target = tmp_path / "targets" / "Demo"
     target.mkdir(parents=True)
-    report_text = (
-        "# Report\n\n| Severity | Affected Sources | Conflict Discovered |\n|---|---|---|\n"
-    )
-    report_path = target / "SPECIFICATION_SCORECARD.md"
+    findings = (Finding("REF001", "Error", ("SPEC.md",), "missing definition"),)
+    report_text = render_report(_inventory(), findings, (), 1)
+    (target / "SPECIFICATION_SCORECARD.md").write_text(report_text, encoding="utf-8")
+    calls: list[dict] = []
 
     def fake_score(target_name: str, target_dir: Path, **kwargs):
         assert target_name == "Demo"
-        report_path.write_text(report_text, encoding="utf-8")
-        return SimpleNamespace(report=report_text, exit_code=lambda: 0)
+        calls.append(kwargs)
+        return SimpleNamespace(
+            report=report_text,
+            inventory=_inventory(),
+            findings=findings,
+            exit_code=lambda: 0,
+        )
 
     monkeypatch.setattr(config, "require_target_dir", lambda target_name: target)
     monkeypatch.setattr(config, "get_workspace", lambda: tmp_path)
@@ -652,9 +657,47 @@ def test_cli_prints_exactly_the_written_report(tmp_path: Path, monkeypatch, caps
     monkeypatch.setattr(config, "get_effort", lambda value=None: value)
     monkeypatch.setattr(config, "get_llm_provider", lambda value=None: value or "claude")
     monkeypatch.setattr(module, "score_spec", fake_score)
+    return target, report_text, calls
+
+
+def test_cli_prints_only_the_inventory_line_and_findings_table(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from drydock import cli
+
+    _, _, calls = _stub_score_spec_cli(tmp_path, monkeypatch)
 
     assert cli.cmd_score_spec("Demo") == 0
-    assert capsys.readouterr().out == report_path.read_text(encoding="utf-8")
+    out = capsys.readouterr().out
+    assert out == (
+        "Inventory: 1 files (1 Markdown, 0 non-Markdown)\n"
+        "\n"
+        "| Code | Severity | Finding | Affected Sources |\n"
+        "|---|---|---|---|\n"
+        "| REF001 | Error | missing definition | `SPEC.md` |\n"
+    )
+    assert calls == [
+        {
+            "model": "sonnet",
+            "effort": None,
+            "llm_provider": "claude",
+            "log_dir": tmp_path / "logs",
+            "debug": False,
+        }
+    ]
+
+
+def test_cli_debug_prints_the_full_written_report(tmp_path: Path, monkeypatch, capsys) -> None:
+    from drydock import cli
+
+    target, report_text, calls = _stub_score_spec_cli(tmp_path, monkeypatch)
+
+    assert cli.cmd_score_spec("Demo", debug=True) == 0
+    assert capsys.readouterr().out == (target / "SPECIFICATION_SCORECARD.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- Markdown coverage:" in report_text
+    assert calls[0]["debug"] is True
 
 
 def test_score_spec_dispatch_forwards_invocation_overrides(monkeypatch) -> None:
@@ -670,7 +713,11 @@ def test_score_spec_dispatch_forwards_invocation_overrides(monkeypatch) -> None:
     monkeypatch.setattr(cli, "cmd_score_spec", fake)
     monkeypatch.setattr(config, "record_activity", lambda *args: None)
     args = SimpleNamespace(
-        args=["spec", "Demo"], model="model-x", llm_provider="codex", effort="high"
+        args=["spec", "Demo"],
+        model="model-x",
+        llm_provider="codex",
+        effort="high",
+        debug=True,
     )
 
     assert cli._dispatch_score(args) == 0
@@ -679,4 +726,5 @@ def test_score_spec_dispatch_forwards_invocation_overrides(monkeypatch) -> None:
         "model": "model-x",
         "llm_provider": "codex",
         "effort": "high",
+        "debug": True,
     }

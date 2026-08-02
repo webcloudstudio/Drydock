@@ -1922,8 +1922,13 @@ def cmd_score_spec(
     model: str | None = None,
     llm_provider: str | None = None,
     effort: str | None = None,
+    debug: bool = False,
 ) -> int:
-    """Audit imported raw specifications and print the atomically written report."""
+    """Audit imported raw specifications and print the report the operator acts on.
+
+    Normal output is the inventory line and the findings table; ``--debug`` prints the full
+    scorecard. Either way the complete report is written to the Target.
+    """
     from drydock.config import (
         get_effort,
         get_llm_provider,
@@ -1931,7 +1936,7 @@ def cmd_score_spec(
         get_workspace,
         require_target_dir,
     )
-    from drydock.score_spec import score_spec
+    from drydock.score_spec import render_console_report, score_spec
 
     target_dir = require_target_dir(target)
     result = score_spec(
@@ -1941,8 +1946,12 @@ def cmd_score_spec(
         effort=get_effort(effort),
         llm_provider=get_llm_provider(llm_provider),
         log_dir=get_workspace() / "logs",
+        debug=debug,
     )
-    sys.stdout.write(result.report)
+    if debug:
+        sys.stdout.write(result.report)
+    else:
+        sys.stdout.write(render_console_report(result.inventory, result.findings))
     return result.exit_code()
 
 
@@ -2841,6 +2850,7 @@ def _dispatch_score(args: argparse.Namespace) -> int:
             model=getattr(args, "model", None),
             llm_provider=getattr(args, "llm_provider", None),
             effort=getattr(args, "effort", None),
+            debug=bool(getattr(args, "debug", False)),
         )
         from drydock.config import record_activity
 
