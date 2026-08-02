@@ -21,9 +21,8 @@ step. Everything you need is stacked into this prompt under role headings:
 
 Operating contract:
 
-1. Write all application files into the build working directory named in the build
-   job block. Do not modify the Blueprint, the Manifest, or any file outside the
-   build working directory.
+1. Follow the write authorization and protected paths in the stacked `COMPASS.md` exactly.
+   That persisted guardrail is the sole authority for paths this build may modify.
 2. Start by inspecting the build working directory. Preserve existing application
    files unless this step's specifications require a change.
    Its `sources/` subdirectory holds staged build assets — imported test corpora,

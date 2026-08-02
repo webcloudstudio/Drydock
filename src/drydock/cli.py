@@ -1449,10 +1449,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         require_target_dir,
     )
     from drydock.manifest_edit import (
-        normalize_order,
-        render_manifest,
-        split_manifest,
-        write_manifest,
+        optimize_build_blocks,
     )
 
     target_dir = require_target_dir(args.Target)
@@ -1552,20 +1549,19 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"reset: {reset_scope}")
     if getattr(args, "normalize_order", False):
         manifest_path = target_dir / "MANIFEST.md"
-        doc = split_manifest(manifest_path)
-        before = render_manifest(doc)
-        normalize_order(doc)
-        after = render_manifest(doc)
-        changed = before != after
+        changed = optimize_build_blocks(
+            manifest_path, persist=not bool(getattr(args, "dry_run", False))
+        )
         if getattr(args, "dry_run", False):
             print(
                 "normalize order dry run: would "
                 f"{'update' if changed else 'leave unchanged'} MANIFEST.md"
             )
         else:
-            if changed:
-                write_manifest(doc)
-            print(f"normalize order: {'updated' if changed else 'already normalized'} MANIFEST.md")
+            print(
+                "optimize build blocks: "
+                f"{'updated' if changed else 'already optimized'} MANIFEST.md"
+            )
     if getattr(args, "dry_run", False):
         print("mode: DRY RUN — no LLM call, writes, evidence, state, README, or git commit")
         if getattr(args, "show_prompt", False):

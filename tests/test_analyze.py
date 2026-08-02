@@ -1517,7 +1517,9 @@ Which representative workload defines the measurement?
         result = analyze("MyTarget", target_dir, runner=runner)
 
         assert result.ok
-        assert (target_dir / "COMPASS.md").read_text(encoding="utf-8") == _COMPASS_CONTENT + "\n"
+        compass_text = (target_dir / "COMPASS.md").read_text(encoding="utf-8")
+        assert compass_text.startswith(_COMPASS_CONTENT + "\n")
+        assert compass_text.count("## Build Write Guardrail") == 1
         assert result.compass_path == target_dir / "COMPASS.md"
         assert not compass_import_pending(target_dir)
         assert "COMPASS_EXISTS: true" in received_prompts[0]

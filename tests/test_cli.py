@@ -1026,6 +1026,12 @@ class TestLlmOverrideFlags:
 
 
 class TestPlanInspection:
+    @pytest.fixture(autouse=True)
+    def _guardrail_is_not_the_subject_of_plan_inspection(self, monkeypatch):
+        monkeypatch.setattr(
+            "drydock.compass_guardrail.validate_guardrail", lambda *args, **kwargs: None
+        )
+
     PLAN = """# MANIFEST: Example
 updated: 2026-06-11T12:00:00
 plan_hash: abc123
@@ -1647,7 +1653,7 @@ state: pending
         )
 
         assert rc == 0, out + err
-        assert "normalize order: updated MANIFEST.md" in out
+        assert "optimize build blocks: updated MANIFEST.md" in out
         assert "built: feature-core — closed/verified · execution exec-fake" in out
         text = (target / "MANIFEST.md").read_text(encoding="utf-8")
         assert text.index("id: feature-core") < text.index("id: screen-setup")

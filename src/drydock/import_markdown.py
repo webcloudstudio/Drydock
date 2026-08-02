@@ -204,7 +204,11 @@ def import_intent(
     if not compass_text:
         raise SpecificationError("Compass normalization failed: no COMPASS.md block in LLM output")
 
-    dest.write_text(compass_text + "\n", encoding="utf-8", newline="\n")
+    from drydock.compass_guardrail import apply_guardrail
+
+    dest.write_text(
+        apply_guardrail(compass_text, target, target_dir), encoding="utf-8", newline="\n"
+    )
     # The file is normalized and final at import time — no analyze pass is pending.
     clear_compass_import_pending(target_dir)
 

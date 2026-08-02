@@ -560,6 +560,27 @@ def normalize_order(doc: ManifestDoc) -> None:
     doc.blocks[:] = _flatten(doc, order_dependencies=True)
 
 
+def optimize_build_blocks(path: Path, *, persist: bool = True) -> bool:
+    """Run the shared Python optimizer for computed manifests; retain legacy normalization."""
+    from drydock.build_plan import parse_build_plan
+
+    plan = parse_build_plan(path)
+    before = path.read_text(encoding="utf-8")
+    if plan.uses_computed_blocks:
+        from drydock.planning_session import _apply_computed_schedule
+
+        _apply_computed_schedule(plan, blueprint_dir=path.parent / "blueprint", emitted_files={})
+        after = plan.render()
+    else:
+        doc = split_manifest(path)
+        normalize_order(doc)
+        after = render_manifest(doc)
+    changed = before != after
+    if changed and persist:
+        path.write_text(after, encoding="utf-8", newline="\n")
+    return changed
+
+
 _WORK_KIND_LABELS = {
     "foundation": "Foundation",
     "data": "Data",
@@ -977,6 +998,16 @@ def apply_edit(path: Path, kind: str, *, block_id: str = "", name: str = "") -> 
     into canonical layer-band order). Raises SpecificationError (without writing)
     if the edit is illegal.
     """
+    from drydock.build_plan import parse_build_plan
+
+    computed = parse_build_plan(path).uses_computed_blocks
+    if computed:
+        if kind != "normalize":
+            raise SpecificationError(
+                "Computed Manifests are Python-owned; use Optimize build blocks."
+            )
+        return {"changed": optimize_build_blocks(path)}
+
     doc = split_manifest(path)
     result: dict[str, object] = {}
     if kind == "rename":

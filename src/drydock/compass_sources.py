@@ -113,6 +113,9 @@ def seed_compass_from_sources(
         return None
 
     compass_path.parent.mkdir(parents=True, exist_ok=True)
-    compass_path.write_text("\n\n".join(chunks) + "\n", encoding="utf-8", newline="\n")
+    from drydock.compass_guardrail import apply_guardrail
+
+    content = apply_guardrail("\n\n".join(chunks), target_dir.name, target_dir)
+    compass_path.write_text(content, encoding="utf-8", newline="\n")
     mark_compass_imported(target_dir, sources[0])
     return compass_path

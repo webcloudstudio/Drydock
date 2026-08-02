@@ -467,7 +467,7 @@ class TestState:
         _setup(quarterdeck, tmp_path, monkeypatch)
         out = quarterdeck.render_compass(_ITEM)
         # The header rolls up one count per story state plus total cost.
-        assert "1 group</span>" in out
+        assert "1 Build Block</span>" in out
         assert "1 story</span>" in out
         assert "built</span>" in out
         assert "ready to build</span>" in out
@@ -485,8 +485,43 @@ class TestState:
         out = quarterdeck.render_compass(_ITEM)
         toolbar = out.split("<div class='cmp-toolbar'>", 1)[1].split("</div>", 1)[0]
         assert "steps" not in toolbar
-        assert "Normalize order" in toolbar
+        assert "Optimize build blocks" in toolbar
         assert "New group" in toolbar
+
+    def test_computed_manifest_uses_build_block_controls_and_accessible_signals(
+        self, tmp_path, monkeypatch
+    ):
+        quarterdeck = _load_quarterdeck()
+        manifest = """# MANIFEST: Demo
+state: approved
+blocks: 2
+
+## story 1: Foundation
+id: foundation
+type: foundational
+phase: 1
+block: 1
+implements: ARCHITECTURE.md
+state: pending
+
+## story 2: Service
+id: service
+type: service
+phase: 1
+block: 2
+implements: FEATURE-SERVICE.md
+depends: foundation
+state: pending
+"""
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+
+        out = quarterdeck.render_compass(_ITEM)
+
+        assert "Optimize build blocks" in out
+        assert "New group" not in out
+        assert ">BUILD BLOCK</span>" in out
+        assert "aria-label='Build Block has runnable work'" in out
+        assert "aria-label='Build Block is blocked'" in out
 
     def test_buildable_step_shows_chip(self, tmp_path, monkeypatch):
         # `core` is pending with no unmet depends, so it is ready to build.

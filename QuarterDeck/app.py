@@ -1822,6 +1822,8 @@ def render_compass(item: dict[str, Any]) -> str:
         ]
 
     def step_controls(step, group_step_count: int) -> str:
+        if plan.uses_computed_blocks:
+            return ""
         # Story order within a group is irrelevant (the group is built as a unit),
         # so a story exposes change-group controls plus a rename button.
         bid = html.escape(step.block_id)
@@ -1844,6 +1846,8 @@ def render_compass(item: dict[str, Any]) -> str:
         )
 
     def feature_controls(feature_id: str | None, step_count: int = 0) -> str:
+        if plan.uses_computed_blocks:
+            return ""
         if not feature_id:
             return ""
         fid = html.escape(feature_id)
@@ -1902,7 +1906,7 @@ def render_compass(item: dict[str, Any]) -> str:
     header = (
         "<div class='cmp-hdr'>"
         "<div class='cmp-hdr-counts'>"
-        f"<span class='cmp-count'>{count_label(len(groups), 'group', 'groups')}</span>"
+        f"<span class='cmp-count'>{count_label(len(groups), 'Build Block', 'Build Blocks')}</span>"
         f"<span class='cmp-count'>{count_label(story_n, 'story', 'stories')}</span>"
         f"{spike_html}"
         f"<span class='cmp-count cmp-count-built'>"
@@ -1916,17 +1920,21 @@ def render_compass(item: dict[str, Any]) -> str:
         f"</div></div>"
     )
 
+    new_group_control = (
+        ""
+        if plan.uses_computed_blocks
+        else f"<button class='cmp-newgroup' onclick=\"compassAddFeature('{item_id}')\">"
+        "<span class='cmp-btn-ico'>+</span> New group</button>"
+    )
     parts = [
         header,
         _render_plan_feedback(),
         "<div class='cmp-toolbar'>"
         f"<span class='cmp-total'>{warn_html}</span>"
-        f"<button class='cmp-normalize' title='Reorder groups into canonical "
-        f"layer-band order' onclick=\"compassNormalize('{item_id}')\">"
-        "<span class='cmp-btn-ico'>⇅</span> Normalize order</button>"
-        f"<button class='cmp-newgroup' onclick=\"compassAddFeature('{item_id}')\">"
-        "<span class='cmp-btn-ico'>+</span> New group</button>"
-        "</div>",
+        f"<button class='cmp-normalize' title='Run the deterministic build-block optimizer' "
+        f"onclick=\"compassNormalize('{item_id}')\">"
+        "<span class='cmp-btn-ico'>⇅</span> Optimize build blocks</button>"
+        f"{new_group_control}</div>",
     ]
 
     from drydock.build import group_duplicate_flags, step_incremental_story_points
@@ -1940,6 +1948,9 @@ def render_compass(item: dict[str, Any]) -> str:
             for s in group.steps
             if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
         )
+        group_kinds = [_story_kind(s.block_id) for s in group.steps]
+        group_all_built = bool(group_kinds) and all(kind == "built" for kind in group_kinds)
+        group_runnable = any(kind == "ready" for kind in group_kinds)
         for step_index, step in enumerate(group.steps):
             step_flags = group_flags[step_index]
             incremental_sp = step_incremental_story_points(step, step_flags)
@@ -2028,6 +2039,25 @@ def render_compass(item: dict[str, Any]) -> str:
             done_check = (
                 "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
             )
+            block_signal = ""
+            if plan.uses_computed_blocks and step_index == 0:
+                if group_all_built:
+                    block_signal = (
+                        "<span class='bp-check cmp-block-signal' title='Build Block complete' "
+                        "aria-label='Build Block complete'>&#10003;</span>"
+                    )
+                elif group_runnable:
+                    block_signal = (
+                        "<span class='cmp-block-signal cmp-signal-green' "
+                        "title='Build Block has runnable work' "
+                        "aria-label='Build Block has runnable work'>● Runnable</span>"
+                    )
+                else:
+                    block_signal = (
+                        "<span class='cmp-block-signal cmp-signal-red' "
+                        "title='Build Block is blocked' "
+                        "aria-label='Build Block is blocked'>● Blocked</span>"
+                    )
             step_type_tag = (
                 f"<span class='cmp-stype cmp-stype-{html.escape(step.block_type)}'>"
                 f"{html.escape(step.block_type.upper())}</span>"
@@ -2046,6 +2076,7 @@ def render_compass(item: dict[str, Any]) -> str:
             step_cards.append(
                 f"<div class='cmp-step{step_cls}'>"
                 "<div class='cmp-shead'>"
+                f"{block_signal}"
                 f"{done_check}"
                 f"{_KIND_CHIP[kind]}"
                 f"{step_type_tag}"
@@ -2085,7 +2116,7 @@ def render_compass(item: dict[str, Any]) -> str:
             )
         else:
             title_html = f"<span class='cmp-gname'>{html.escape(gname)}</span>"
-        block_tag = "<span class='cmp-stype cmp-stype-block'>BLOCK</span>"
+        block_tag = "<span class='cmp-stype cmp-stype-block'>BUILD BLOCK</span>"
         group_summary = (
             str(by_id[group.feature_id].fields.get("summary") or "")
             if group.feature_id and group.feature_id in by_id
@@ -3826,6 +3857,9 @@ _STYLE = """
   .cmp-stype { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
   .cmp-stype-story { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#7c2d12; background:#fff7ed; border-color:#fdba74; transform:rotate(-2deg); box-shadow:1px 1px 0 #fed7aa; }
   .cmp-stype-block { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#334155; background:#f8fafc; border-color:#94a3b8; transform:rotate(-2deg); box-shadow:1px 1px 0 #cbd5e1; }
+  .cmp-block-signal { display:inline-block; font-size:11px; font-weight:800; margin-right:4px; white-space:nowrap; }
+  .cmp-signal-green { color:#166534; }
+  .cmp-signal-red { color:#b91c1c; }
   .cmp-stack-tag { display:inline-block; font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; padding:1px 6px; border:1px solid; border-radius:3px; transform:rotate(-2deg); white-space:nowrap; }
   .cmp-stack-feature { color:#5b21b6; background:#f5f3ff; border-color:#c4b5fd; box-shadow:1px 1px 0 #ddd6fe; }
   .cmp-stack-screen { color:#1e40af; background:#eff6ff; border-color:#93c5fd; box-shadow:1px 1px 0 #bfdbfe; }

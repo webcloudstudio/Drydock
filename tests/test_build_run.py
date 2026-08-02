@@ -194,14 +194,20 @@ def _finding(target_dir, block_id):
 
 
 def _setup(tmp_path, manifest=_TWO_STORIES):
+    from drydock.compass_guardrail import apply_guardrail
+
     target_dir = tmp_path / "target"
+    build_dir = tmp_path / "build"
     blueprint = target_dir / "blueprint"
     blueprint.mkdir(parents=True)
     (target_dir / "MANIFEST.md").write_text(manifest, encoding="utf-8")
-    (target_dir / "COMPASS.md").write_text("COMPASS INTENT CONTENT\n", encoding="utf-8")
+    (target_dir / "COMPASS.md").write_text(
+        apply_guardrail("COMPASS INTENT CONTENT", "Demo", target_dir, build_dir=build_dir),
+        encoding="utf-8",
+    )
     (blueprint / "DATABASE.md").write_text("DB SPEC CONTENT\n", encoding="utf-8")
     (blueprint / "SERVICE.md").write_text("SVC SPEC CONTENT\n", encoding="utf-8")
-    return target_dir, tmp_path / "build"
+    return target_dir, build_dir
 
 
 def _state(target_dir, block_id):
@@ -964,6 +970,9 @@ def test_prompt_stacks_spec_content_and_instructions(tmp_path):
     assert "Build the database." in first
     assert 'filename="COMPASS.md"' in first
     assert "COMPASS INTENT CONTENT" in first
+    assert first.count("## Build Write Guardrail") == 1
+    assert "TARGET_DIRECTORY:" not in first
+    assert "WRITE_BOUNDARY:" not in first
     assert "COMPASS.md" in first
     assert first.index("## COMPASS - Target Orientation") < first.index(
         "## IMPLEMENTS - Authoritative Step Specifications"
@@ -1742,6 +1751,8 @@ class TestDirtyGuard:
 
 class TestAppliedRegistryIntegration:
     def _manifest_with_stack(self, tmp_path, applied=""):
+        from drydock.compass_guardrail import apply_guardrail
+
         preamble = "# MANIFEST: Demo\nstate: draft\n"
         if applied:
             preamble += f"applied: {applied}\n"
@@ -1757,12 +1768,16 @@ state: pending
 """
         )
         target_dir = tmp_path / "target"
+        build_dir = tmp_path / "build"
         blueprint = target_dir / "blueprint"
         blueprint.mkdir(parents=True)
         (target_dir / "MANIFEST.md").write_text(body, encoding="utf-8")
-        (target_dir / "COMPASS.md").write_text("Compass.\n", encoding="utf-8")
+        (target_dir / "COMPASS.md").write_text(
+            apply_guardrail("Compass.", "Demo", target_dir, build_dir=build_dir),
+            encoding="utf-8",
+        )
         (blueprint / "DATABASE.md").write_text("DB SPEC\n", encoding="utf-8")
-        return target_dir, tmp_path / "build"
+        return target_dir, build_dir
 
     def test_applied_registry_written_after_successful_step(self, tmp_path, monkeypatch):
         import drydock.build_run as br

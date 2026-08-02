@@ -387,6 +387,7 @@ DEFAULT_BLOCK_TARGET_TOKENS = 50_000
 #: Retained spelling of the same value. The old name implied a budget that could be exceeded only
 #: by overspending; it is a target.
 DEFAULT_BLOCK_BUDGET_TOKENS = DEFAULT_BLOCK_TARGET_TOKENS
+DEFAULT_BLOCK_LIMIT_TOKENS = 120_000
 
 
 @dataclass(frozen=True)
@@ -397,16 +398,12 @@ class Block:
     every run, and computed here. UI stories group together whether or not they belong to the
     same Agile feature. Context economy comes from blocks, not from feature grouping.
 
-    - **Hard:** one topology type per block; never cross a phase boundary; never violate the edges
+    - **Hard:** one topology type, phase, and screen/non-screen work kind per block; dependency
+      correctness; the configured absolute assembled-cost limit
     - **Soft:** aim to amortize stack-file cost across the stories that fit one build pass
 
-    Only the first three are guardrails. The size target is advisory: a block that exceeds it is
-    marked ``over_target`` and built anyway.
-
-    The mechanism behind the no-cross-stack guardrail is stack creep from Rigging: mixing
-    topology types in one block forces every stack file each type needs into the block, so it
-    pays for context neither half uses and the build agent reads instructions for work it is not
-    doing.
+    The preferred target is advisory only for an irreducible single story. Compatible stories
+    share the union of their stack and context files, each counted once.
     """
 
     number: int
@@ -415,77 +412,114 @@ class Block:
     stack: tuple[str, ...]
     story_ids: tuple[str, ...]
     size_tokens: int = 0
-    #: Whether this block exceeds the single-build-pass target. A marker, never a refusal.
+    #: Whether an irreducible single-story block exceeds the preferred target.
     over_target: bool = False
 
 
-def _partition_key(story: PlannedStory) -> tuple[int, str, tuple[str, ...]]:
-    return (story.phase, story.story_type, story.stack_signature)
+def _work_kind(story: PlannedStory) -> str:
+    return "screen" if story.implements.startswith("SCREEN-") else "non-screen"
+
+
+def _partition_key(story: PlannedStory) -> tuple[int, str, str]:
+    return (story.phase, story.story_type, _work_kind(story))
 
 
 def group_blocks(
     ordered: Sequence[PlannedStory],
     *,
     target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
+    limit_tokens: int = DEFAULT_BLOCK_LIMIT_TOKENS,
+    block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
 ) -> tuple[tuple[PlannedStory, ...], tuple[Block, ...]]:
-    """Pack the computed order into blocks and stamp each story's block number.
+    """Optimize blocks from the dependency frontier using deduplicated assembled cost.
 
-    Every input is known at plan time — types, stacks, phases, edges, story size. Because the
-    input is already in topological order, contiguous grouping cannot violate an edge, so the
-    packer enforces only the partition key (phase, topology type, stack set) and then aims at the
-    size target.
-
-    **The target never refuses work.** It ends the current block when the *next* story would push
-    it past the target and that story could plausibly start a smaller one. A story that already
-    exceeds the target on its own is placed regardless: splitting around it achieves nothing —
-    the story is irreducible — and isolating every such story would destroy the amortization
-    blocks exist for, which is precisely the case for a project whose specifications are large by
-    nature. Blocks that end up over target are marked, not rejected.
+    Phase, topology type, and screen/non-screen work kind are hard boundaries. Stack sets are
+    deliberately not: a block receives their union and pays for shared files once. Selection is
+    deterministic by shared-context savings, incremental cost, then declaration order.
     """
+    if block_size_fn is None:
+
+        def sum_story_sizes(stories: Sequence[PlannedStory]) -> int:
+            return sum(story.size_tokens for story in stories)
+
+        block_size_fn = sum_story_sizes
+
+    declaration = {story.story_id: index for index, story in enumerate(ordered)}
+    known = _index(ordered)
+    remaining = set(known)
+    completed: set[str] = set()
     blocks: list[Block] = []
     stamped: list[PlannedStory] = []
-    current: list[PlannedStory] = []
-    current_key: tuple[int, str, tuple[str, ...]] | None = None
-    current_size = 0
 
-    def flush() -> None:
-        nonlocal current, current_key, current_size
-        if not current:
-            return
+    while remaining:
+        ready = [
+            known[sid]
+            for sid in remaining
+            if all(dep in completed or dep not in known for dep in known[sid].depends)
+        ]
+        if not ready:
+            raise ValueError("plan graph has no ready dependency frontier")
+        seed = min(ready, key=lambda story: (story.phase, declaration[story.story_id]))
+        current = [seed]
+        current_ids = {seed.story_id}
+        key = _partition_key(seed)
+        current_size = max(0, block_size_fn(current))
+        if limit_tokens and current_size > limit_tokens:
+            raise ValueError(
+                f"{seed.story_id}: irreducible build block costs about {current_size:,} tokens "
+                f"against the {limit_tokens:,}-token absolute limit"
+            )
+
+        while True:
+            active_done = completed | current_ids
+            candidates = [
+                known[sid]
+                for sid in remaining - current_ids
+                if _partition_key(known[sid]) == key
+                and all(dep in active_done or dep not in known for dep in known[sid].depends)
+            ]
+            ranked: list[tuple[int, int, int, PlannedStory, int]] = []
+            for candidate in candidates:
+                combined = max(0, block_size_fn((*current, candidate)))
+                if limit_tokens and combined > limit_tokens:
+                    continue
+                alone = max(0, block_size_fn((candidate,)))
+                incremental = combined - current_size
+                savings = current_size + alone - combined
+                ranked.append((
+                    -savings,
+                    incremental,
+                    declaration[candidate.story_id],
+                    candidate,
+                    combined,
+                ))
+            if not ranked:
+                break
+            _, _, _, candidate, combined = min(ranked, key=lambda item: item[:3])
+            # A multi-story block remains at the preferred target. An irreducible seed between
+            # target and limit is valid but cannot absorb additional stories.
+            if target_tokens and combined > target_tokens:
+                break
+            current.append(candidate)
+            current_ids.add(candidate.story_id)
+            current_size = combined
+
         number = len(blocks) + 1
+        union_stack = tuple(dict.fromkeys(name for story in current for name in story.stack))
         blocks.append(
             Block(
                 number=number,
                 story_type=current[0].story_type,
                 phase=current[0].phase,
-                stack=current[0].stack_signature,
+                stack=union_stack,
                 story_ids=tuple(story.story_id for story in current),
                 size_tokens=current_size,
                 over_target=bool(target_tokens) and current_size > target_tokens,
             )
         )
         stamped.extend(replace(story, block=number) for story in current)
-        current = []
-        current_key = None
-        current_size = 0
-
-    for story in ordered:
-        key = _partition_key(story)
-        # Splitting only helps when the incoming story could actually fit a fresh block. When it
-        # is over target by itself, a new block would be over target too, so pack and mark.
-        divisible = bool(target_tokens) and story.size_tokens <= target_tokens
-        over_target = (
-            bool(target_tokens)
-            and bool(current)
-            and divisible
-            and current_size + story.size_tokens > target_tokens
-        )
-        if current_key is not None and (key != current_key or over_target):
-            flush()
-        current.append(story)
-        current_key = key
-        current_size += story.size_tokens
-    flush()
+        remaining.difference_update(current_ids)
+        completed.update(current_ids)
     return tuple(stamped), tuple(blocks)
 
 
@@ -513,7 +547,9 @@ def compute_plan(
     stories: Iterable[PlannedStory],
     *,
     target_tokens: int = DEFAULT_BLOCK_TARGET_TOKENS,
+    limit_tokens: int = DEFAULT_BLOCK_LIMIT_TOKENS,
     size_fn: Callable[[PlannedStory], int] | None = None,
+    block_size_fn: Callable[[Sequence[PlannedStory]], int] | None = None,
 ) -> PlanComputation:
     """Verify, order, assign stack modes, size, and block a declared plan.
 
@@ -533,7 +569,22 @@ def compute_plan(
     size_defects: tuple[GraphDefect, ...] = ()
     if size_fn is not None:
         ordered, size_defects = measure_stories(ordered, size_fn, target_tokens=target_tokens)
-    stamped, blocks = group_blocks(ordered, target_tokens=target_tokens)
+    try:
+        stamped, blocks = group_blocks(
+            ordered,
+            target_tokens=target_tokens,
+            limit_tokens=limit_tokens,
+            block_size_fn=block_size_fn,
+        )
+    except ValueError as exc:
+        return PlanComputation(
+            stories=ordered,
+            blocks=(),
+            defects=defects
+            + mode_defects
+            + size_defects
+            + (GraphDefect("block-limit", "", str(exc)),),
+        )
     return PlanComputation(
         stories=stamped,
         blocks=blocks,

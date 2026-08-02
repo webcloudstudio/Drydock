@@ -843,10 +843,11 @@ def _merge_prior_state(
         if isinstance(implements, str):
             implements = (implements,)
 
-        dirty = any(
-            _spec_is_dirty(str(spec), blueprint_dir, prior_applied_specs)
-            for spec in implements
-            if spec
+        governed = tuple(str(spec) for spec in implements if spec)
+        dirty = not governed or any(
+            spec not in prior_applied_specs
+            or _spec_is_dirty(spec, blueprint_dir, prior_applied_specs)
+            for spec in governed
         )
 
         block_updates: dict[str, str | None] = {}
@@ -1392,6 +1393,7 @@ def _assemble_prompt_assembly(
     excluded_filenames: frozenset[str] = frozenset(),
     typed_spec_paths: list[Path] | None = None,
     source_evidence: list[SourceMaterialFile] | None = None,
+    built_ledger: tuple[str, ...] = (),
 ) -> PromptAssembly:
     if input_tokens is None:
         input_tokens = load_prompt(PROMPT_NAME).input_tokens
@@ -1415,6 +1417,22 @@ def _assemble_prompt_assembly(
             kind="job",
         ),
     ]
+    if built_ledger:
+        prompt_parts.append(
+            lines_part(
+                "Built work ledger",
+                [
+                    "## Built Work Ledger (read-only)",
+                    "",
+                    "Preserve these completed story identities and governed specification owners. "
+                    "Semantic dependency changes remain allowed.",
+                    "",
+                    *[f"- {entry}" for entry in built_ledger],
+                    "",
+                ],
+                kind="built-ledger",
+            )
+        )
 
     def compass_parts() -> list:
         path = target_dir / "COMPASS.md"
@@ -2277,12 +2295,13 @@ def _compute_schedule(
 ) -> PlanComputation:
     """Verify a declared graph and compute everything positional about it.
 
-    Sizing is measured against the specification the story implements plus the Rigging stack files
-    it builds with, in the mode assigned to it — so it runs after stack modes are known, never
-    before. The result is a target, not a gate.
+    Sizing uses the deduplicated files assembled for a build block: Compass, governed
+    specifications, context, stack, rules, and instructions. The preferred threshold guides
+    grouping; the configured error threshold is an absolute gate.
     """
+    from drydock.config import get_prompt_error_tokens
     from drydock.plan_graph import compute_plan
-    from drydock.plan_stack import block_target_tokens, resolve_stack_set, story_pass_tokens
+    from drydock.plan_stack import block_target_tokens, resolve_stack_set
 
     resolved = resolve_stack_set(name for story in declared for name in story.stack)
 
@@ -2293,15 +2312,80 @@ def _compute_schedule(
             text = path.read_text(encoding="utf-8") if path.is_file() else ""
         return estimate_tokens(len(text.encode("utf-8")))
 
-    def size_fn(story: PlannedStory) -> int:
-        return story_pass_tokens(
-            specification_tokens=specification_tokens(story.implements),
-            stack=story.stack,
-            resolved=resolved,
-            mode=story.stack_mode or "builder",
-        )
+    compass_path = blueprint_dir.parent / "COMPASS.md"
+    compass_tokens = estimate_tokens(compass_path.stat().st_size) if compass_path.is_file() else 0
 
-    return compute_plan(declared, target_tokens=block_target_tokens(), size_fn=size_fn)
+    def named_file_tokens(name: str, key: str) -> int:
+        names = [name]
+        if name.endswith("_compact.md"):
+            names.append(name.replace("_compact.md", ".md"))
+        candidates = [
+            root / candidate
+            for candidate in names
+            for root in (blueprint_dir, blueprint_dir.parent)
+        ]
+        if key == "rules":
+            try:
+                from drydock.paths import get_rigging_root
+
+                rigging = get_rigging_root()
+                candidates[0:0] = [rigging / candidate for candidate in names]
+            except Exception:
+                pass
+        emitted = emitted_files.get(name)
+        if emitted is not None:
+            return estimate_tokens(len(emitted.encode()))
+        for path in candidates:
+            try:
+                return estimate_tokens(path.stat().st_size)
+            except OSError:
+                continue
+        return 0
+
+    def field_names(story: PlannedStory, key: str) -> tuple[str, ...]:
+        value = str(story.fields.get(key, ""))
+        return tuple(part.strip() for part in value.split(",") if part.strip())
+
+    def block_size_fn(stories: Sequence[PlannedStory]) -> int:
+        total = compass_tokens
+        seen_files: set[str] = set()
+        stack_modes: dict[str, str] = {}
+        for story in stories:
+            if story.implements not in seen_files:
+                seen_files.add(story.implements)
+                total += specification_tokens(story.implements)
+            for key in ("context", "rules"):
+                names = list(field_names(story, key))
+                if key == "context" and story.implements.startswith(("FEATURE-", "SCREEN-")):
+                    for managed in ("ARCHITECTURE.md", "DATABASE.md"):
+                        if managed in emitted_files or (blueprint_dir / managed).is_file():
+                            names.append(managed.replace(".md", "_compact.md"))
+                for name in names:
+                    canonical = name.replace("_compact.md", ".md")
+                    if canonical not in seen_files:
+                        seen_files.add(canonical)
+                        total += named_file_tokens(name, key)
+            total += estimate_tokens(len(str(story.fields.get("instructions", "")).encode()))
+            for name in story.stack:
+                mode = story.stack_mode or "builder"
+                if stack_modes.get(name) == "builder" or mode == "builder":
+                    stack_modes[name] = "builder"
+                else:
+                    stack_modes[name] = "consumer"
+        total += sum(
+            resolved[name].tokens_for(mode)
+            for name, mode in stack_modes.items()
+            if name in resolved
+        )
+        return total
+
+    return compute_plan(
+        declared,
+        target_tokens=block_target_tokens(),
+        limit_tokens=get_prompt_error_tokens(),
+        size_fn=lambda story: block_size_fn((story,)),
+        block_size_fn=block_size_fn,
+    )
 
 
 def _manifest_from_declaration(
@@ -2737,7 +2821,8 @@ def _prepare_manifest_in_memory(
             for name in (str(item) for item in names if item):
                 record = prior_applied_specs.get(name)
                 if record is None:
-                    continue
+                    dirty = True
+                    break
                 if name in emitted_files:
                     digest = _sha256(emitted_files[name].encode("utf-8")).hexdigest()
                     build_digest = build_relevant_text_sha256(emitted_files[name])
@@ -3575,6 +3660,25 @@ def create_plan(
     if overwrite:
         prior_applied_specs = {}
 
+    built_ledger: tuple[str, ...] = ()
+    if replanning and not overwrite:
+        prior_plan = parse_build_plan(plan_path)
+        ledger: list[str] = []
+        for block in prior_plan.blocks:
+            if block.state not in {"closed/verified", "implemented"}:
+                continue
+            implements = block.fields.get("implements", ())
+            names = implements if isinstance(implements, tuple) else (implements,)
+            for name in (str(value) for value in names if value):
+                record = prior_applied_specs.get(name)
+                if record is None:
+                    continue
+                ledger.append(
+                    f"story_id={block.block_id}; specification={name}; "
+                    f"applied_sha256={record.sha256}; build_sha256={record.build_sha256 or '-'}"
+                )
+        built_ledger = tuple(ledger)
+
     # Capture durable answers before unbuilt Blueprint files are discarded for regeneration.
     harvest_answered_questions(target_dir)
 
@@ -3722,6 +3826,7 @@ def create_plan(
         source_evidence=_source_evidence_bundle(
             blueprint_dir, analysis_text, excluded_filenames=excluded_filenames
         ),
+        built_ledger=built_ledger,
     )
 
     try:

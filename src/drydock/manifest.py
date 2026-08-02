@@ -1020,21 +1020,27 @@ class DrydockManifest:
                         seen_numbers.add(node.block)
                         order.append(node.block)
                     previous = node.block
-                raw_stack = node.fields.get("stack", ())
-                stack_names = (
-                    tuple(sorted(str(item) for item in raw_stack))
-                    if isinstance(raw_stack, tuple)
+                raw_implements = node.fields.get("implements", ())
+                implementation_names = (
+                    tuple(str(item) for item in raw_implements)
+                    if isinstance(raw_implements, tuple)
                     else ()
                 )
-                signature = (node.story_type, node.phase, stack_names)
+                work_kind = (
+                    "screen"
+                    if implementation_names
+                    and all(name.startswith("SCREEN-") for name in implementation_names)
+                    else "non-screen"
+                )
+                signature = (node.story_type, node.phase, work_kind)
                 prior = signatures.setdefault(node.block, signature)
                 if prior != signature:
                     add(
                         node,
-                        f"computed block {node.block} mixes type, phase, or stack",
+                        f"computed block {node.block} mixes type, phase, or work kind",
                         field="block",
                         received=str(node.block),
-                        expected="one type, phase, and stack signature per block",
+                        expected="one type, phase, and screen/non-screen work kind per block",
                         hint="Regenerate MANIFEST.md with drydock plan.",
                     )
 

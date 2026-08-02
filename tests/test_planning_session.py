@@ -24,6 +24,7 @@ from drydock.planning_session import (
     _answered_discovery,
     _artifact_delimiter_defects,
     _assemble_prompt,
+    _assemble_prompt_assembly,
     _load_prior_plan_state,
     _normalize_existing_specs,
     _parse_blocks,
@@ -90,6 +91,28 @@ def test_plan_prompt_declares_strict_artifact_contract():
     # all of it against the declared output contract after the response.
     assert "Do not audit your own output for delimiter balance" in prompt
     assert "Before responding, verify:" not in prompt
+
+
+def test_stage_one_prompt_includes_read_only_built_work_ledger(tmp_path):
+    target = tmp_path / "Demo"
+    blueprint = target / "blueprint"
+    blueprint.mkdir(parents=True)
+
+    assembly = _assemble_prompt_assembly(
+        "Plan.",
+        target,
+        blueprint,
+        "System Shape: service\nQuality: Ready\n",
+        "2026-08-02",
+        input_tokens=(),
+        built_ledger=(
+            "story_id=core; specification=FEATURE-CORE.md; applied_sha256=abc; build_sha256=def",
+        ),
+    )
+
+    text = assembly.rendered_text
+    assert "## Built Work Ledger (read-only)" in text
+    assert "story_id=core; specification=FEATURE-CORE.md" in text
 
 
 def test_plan_continue_prompt_requires_closed_sequential_blueprints():

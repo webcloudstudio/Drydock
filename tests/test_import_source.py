@@ -122,9 +122,9 @@ class TestImportSource:
 
         import_source("Proj", "Tgt", src, td)
 
-        assert (td / "Tgt" / "COMPASS.md").read_text(encoding="utf-8") == (
-            "# Intent\n\nUse local backend first.\n"
-        )
+        compass = (td / "Tgt" / "COMPASS.md").read_text(encoding="utf-8")
+        assert compass.startswith("# Intent\n\nUse local backend first.\n")
+        assert compass.count("## Build Write Guardrail") == 1
 
     def test_excluded_dirs_skipped(self, tmp_path):
         src = self._make_source(tmp_path)

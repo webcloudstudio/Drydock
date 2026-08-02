@@ -1854,6 +1854,9 @@ def build_target(
         )
 
     resolved_build_dir = build_dir or build_dir_for(target)
+    from drydock.compass_guardrail import validate_guardrail
+
+    validate_guardrail(target_dir / "COMPASS.md", target, target_dir, build_dir=resolved_build_dir)
 
     # Full reset (``--reset`` with no selector): a clean slate. Reset every block to pending
     # and wipe the build directory before anything is staged or observed, so the rebuild

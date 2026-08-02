@@ -61,7 +61,9 @@ def test_seed_compass_from_single_source_copies_content(tmp_path):
     result = seed_compass_from_sources(tmp_path, [source], overwrite_unpopulated=True)
 
     assert result == tmp_path / "COMPASS.md"
-    assert result.read_text(encoding="utf-8") == "# Intent\n\nExact text.\n"
+    text = result.read_text(encoding="utf-8")
+    assert text.startswith("# Intent\n\nExact text.\n")
+    assert text.count("## Build Write Guardrail") == 1
     assert compass_import_pending(tmp_path)
 
 

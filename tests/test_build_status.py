@@ -82,7 +82,7 @@ state: pending
     report = _report(tmp_path, manifest=manifest)
 
     assert [(group.group_id, group.name) for group in report.groups] == [
-        ("block-1", "Block 1 · Service")
+        ("block-1", "Build Block 1 · Service")
     ]
     assert report.buildable_ids == ("block-1",)
     assert [step.block.block_id for step in report.groups[0].steps] == [

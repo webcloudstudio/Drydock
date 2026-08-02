@@ -207,10 +207,11 @@ def test_block_never_crosses_a_phase_boundary():
     assert [b.phase for b in blocks] == [1, 2]
 
 
-def test_block_never_crosses_stacks():
+def test_block_combines_unequal_stacks_as_a_union():
     ordered = (story("api", stack=("fastapi.md",)), story("ui", stack=("bootstrap5.md",)))
     _, blocks = group_blocks(ordered)
-    assert len(blocks) == 2
+    assert len(blocks) == 1
+    assert blocks[0].stack == ("fastapi.md", "bootstrap5.md")
 
 
 def test_same_key_stories_amortize_one_block():
@@ -228,7 +229,40 @@ def test_block_ends_when_the_next_divisible_story_would_pass_the_target():
     assert [b.over_target for b in blocks] == [False, False]
 
 
-def test_an_irreducible_story_is_packed_not_isolated():
+def test_optimizer_prefers_shared_context_and_unlocks_dependents_inside_block():
+    ordered = (
+        story("seed", stack=("common.md",)),
+        story("unrelated", stack=("other.md",)),
+        story("dependent", stack=("common.md", "api.md"), depends=("seed",)),
+    )
+
+    def cost(stories):
+        files = {name for item in stories for name in item.stack}
+        return len(stories) * 10 + len(files) * 100
+
+    _, blocks = group_blocks(ordered, target_tokens=1000, block_size_fn=cost)
+
+    assert blocks[0].story_ids == ("seed", "dependent", "unrelated")
+    assert blocks[0].size_tokens == 330
+
+
+def test_optimizer_never_mixes_screen_and_non_screen_work():
+    ordered = (story("api"), story("screen", implements="SCREEN-HOME.md"))
+    _, blocks = group_blocks(ordered)
+    assert [block.story_ids for block in blocks] == [("api",), ("screen",)]
+
+
+def test_irreducible_story_above_absolute_limit_is_rejected():
+    result = compute_plan(
+        [story("huge")],
+        target_tokens=50_000,
+        limit_tokens=120_000,
+        size_fn=lambda _: 120_001,
+    )
+    assert "block-limit" in codes(result.fatal)
+
+
+def test_irreducible_stories_each_form_a_valid_over_target_block():
     """Splitting around a story that is over target on its own achieves nothing.
 
     A language definition that is 50,000 tokens of normative text is one indivisible input:
@@ -237,13 +271,12 @@ def test_an_irreducible_story_is_packed_not_isolated():
     """
     ordered = tuple(story(f"s{i}", size_tokens=2000) for i in range(3))
     _, blocks = group_blocks(ordered, target_tokens=1000)
-    assert len(blocks) == 1
-    assert blocks[0].story_ids == ("s0", "s1", "s2")
-    assert blocks[0].over_target is True
+    assert [block.story_ids for block in blocks] == [("s0",), ("s1",), ("s2",)]
+    assert all(block.over_target for block in blocks)
 
 
 def test_a_single_oversize_story_still_gets_its_own_block():
-    ordered = (story("huge", size_tokens=999_999),)
+    ordered = (story("huge", size_tokens=50_000),)
     _, blocks = group_blocks(ordered, target_tokens=1000)
     assert len(blocks) == 1
     assert blocks[0].over_target is True
@@ -251,7 +284,7 @@ def test_a_single_oversize_story_still_gets_its_own_block():
 
 def test_zero_target_disables_size_grouping_and_marking():
     ordered = tuple(story(f"s{i}", size_tokens=10**6) for i in range(3))
-    _, blocks = group_blocks(ordered, target_tokens=0)
+    _, blocks = group_blocks(ordered, target_tokens=0, limit_tokens=0)
     assert len(blocks) == 1
     assert blocks[0].over_target is False
 

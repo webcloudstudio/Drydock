@@ -116,7 +116,7 @@ def build_status(plan: BuildPlan) -> BuildStatus:
                 FeatureStatus(
                     feature=None,
                     group_id=f"block-{number}",
-                    name=f"Block {number} · {block_steps[0].story_type.title()}",
+                    name=f"Build Block {number} · {block_steps[0].story_type.title()}",
                     feature_acs=(),
                     steps=tuple(
                         StepStatus(

@@ -195,7 +195,7 @@ state: pending
 """,
     )
 
-    with pytest.raises(SpecificationError, match="mixes type, phase, or stack"):
+    with pytest.raises(SpecificationError, match="mixes type, phase, or work kind"):
         parse_build_plan(path)
 
 

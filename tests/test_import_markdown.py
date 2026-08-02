@@ -128,9 +128,9 @@ class TestImportMarkdownInitialization:
 
         import_markdown("Proj", "Tgt", source, td)
 
-        assert (td / "Tgt" / "COMPASS.md").read_text(encoding="utf-8") == (
-            "# Intent\n\nLocal-first path.\n"
-        )
+        compass = (td / "Tgt" / "COMPASS.md").read_text(encoding="utf-8")
+        assert compass.startswith("# Intent\n\nLocal-first path.\n")
+        assert compass.count("## Build Write Guardrail") == 1
 
     def test_existing_compass_is_not_overwritten_by_imported_intent(self, tmp_path):
         source = tmp_path / "INTENT.md"

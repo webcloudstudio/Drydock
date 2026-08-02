@@ -931,6 +931,10 @@ def analyze(
     compass_content = (
         compass_target.read_text(encoding="utf-8") if compass_target.is_file() else None
     )
+    if compass_pending and compass_content:
+        from drydock.compass_guardrail import strip_guardrail
+
+        compass_content = strip_guardrail(compass_content)
 
     # Inject prior blocker answers if the Commander has filled in BLOCKERS.md.
     blockers_md_path = target_dir / "BLOCKERS.md"
@@ -1081,9 +1085,20 @@ def analyze(
 
     written_compass: Path | None = None
     if compass_text and (not compass_exists or compass_pending):
-        compass_target.write_text(compass_text + "\n", encoding="utf-8", newline="\n")
+        from drydock.compass_guardrail import apply_guardrail
+
+        compass_target.write_text(
+            apply_guardrail(compass_text, target, target_dir), encoding="utf-8", newline="\n"
+        )
         clear_compass_import_pending(target_dir)
         written_compass = compass_target
+
+    # The section is Drydock-owned and is normalized mechanically even when Analyze preserves
+    # the Commander's existing Compass body.
+    if compass_target.is_file():
+        from drydock.compass_guardrail import write_guardrail
+
+        write_guardrail(compass_target, target, target_dir)
 
     discovery_paths: list[Path] = []
     for name, data in discoveries.items():
