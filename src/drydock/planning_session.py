@@ -34,6 +34,16 @@ from drydock.build_plan import (
     parse_build_plan,
     set_applied_specs,
 )
+from drydock.decisions import (
+    ARCHITECTURE_BLUEPRINT,
+    DECISIONS_BLOCK,
+    DECISIONS_FILENAME,
+    load_decisions,
+    parse_plan_decisions,
+    reconcile_decisions,
+    validate_decision_blueprints,
+    write_decisions,
+)
 from drydock.errors import (
     ErrorRecord,
     RecordedError,
@@ -100,6 +110,7 @@ _RESERVED_BLOCKS = frozenset({
     TOPOLOGY_BLOCK,
     "PLAN_CREATE_BLOCKED.txt",
     "PLAN_CREATE_ERROR.txt",
+    DECISIONS_BLOCK,
 })
 _NON_BLUEPRINT_ARTIFACTS = frozenset({"AGENTS.md"})
 
@@ -3545,6 +3556,18 @@ def create_plan(
     # into Blueprint paths and routes author intent into the persistent Compass.
     promote_imported_sources(blueprint_dir, source_roles, target_dir)
 
+    # 1.5. Reconcile significant design decisions Plan disclosed against retained
+    # Commander-authored answers, and persist DECISIONS.json — the sole persistence target for
+    # these disclosures (see notes/notes_plan.md §Significant decisions surface as DECISIONS.json).
+    fresh_decisions = parse_plan_decisions(blocks.get(DECISIONS_BLOCK, "[]"))
+    allowed_blueprints = frozenset(emitted_blueprints) | {ARCHITECTURE_BLUEPRINT}
+    fresh_decisions, decision_warnings = validate_decision_blueprints(
+        fresh_decisions, allowed_blueprints
+    )
+    decisions_path = target_dir / DECISIONS_FILENAME
+    merged_decisions = reconcile_decisions(fresh_decisions, load_decisions(decisions_path))
+    write_decisions(decisions_path, merged_decisions)
+
     # 2. Persist the already merged, normalized, fully validated executable graph once.
     plan.save(plan_path)
     from drydock.question_gates import synchronize_manifest_question_gates
@@ -3584,6 +3607,7 @@ def create_plan(
             *conform_warnings,
             *warnings,
             *context_warnings,
+            *decision_warnings,
         ]),
         execution_id=exec_id,
         waiver_execution_id=waiver_execution_id,

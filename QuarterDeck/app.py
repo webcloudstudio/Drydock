@@ -16,6 +16,8 @@ Page types (one Python renderer each, in TYPES):
   - document      render md/html/pdf variants as tabs (path_md / path_html / path_pdf)
   - jsonl         render append-only JSON records as a read-only table
   - kanban        render MANIFEST.md as a board (read-only work tracking)
+  - decisions     render DECISIONS.json — Plan/Build significant-decision disclosures; Commander
+                  reviews, selects a direction, or archives
   - questionnaire render a questionnaire JSON as a form; persist answers
   - link          a hyperlink (external URL or a local file served raw)
   - command_status derive acceptance readiness and consistency from configured Core Docs
@@ -2495,6 +2497,96 @@ def _render_question_controls(data: dict[str, Any]) -> list[str]:
     return rows
 
 
+_DECISION_SEVERITY_STYLE: dict[str, tuple[str, str]] = {
+    "blocking": ("🔴", "#dc2626"),
+    "material": ("🟠", "#d97706"),
+    "low": ("⚪", "#94a3b8"),
+}
+_DECISION_SEVERITY_ORDER = {"blocking": 0, "material": 1, "low": 2}
+
+
+def render_decisions(item: dict[str, Any]) -> str:
+    """Render DECISIONS.json — Plan/Build significant-decision disclosures.
+
+    Domain-blind at the console-index level; all Decisions intelligence lives in this one
+    purpose-built renderer, per the generic-index-plus-purpose-built-renderer pattern already
+    used for ``compass`` and ``kanban``.
+    """
+    from drydock.decisions import load_decisions
+
+    path_value = item["path"]
+    try:
+        path = resolve_path(path_value)
+        decisions = load_decisions(path)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            decisions = ()
+        else:
+            raise
+
+    item_id = html.escape(item["id"])
+    active = sorted(
+        (d for d in decisions if not d.archived),
+        key=lambda d: (_DECISION_SEVERITY_ORDER.get(d.severity, 9), d.title),
+    )
+    archived = [d for d in decisions if d.archived]
+
+    def _card(d) -> str:
+        icon, color = _DECISION_SEVERITY_STYLE.get(d.severity, ("⚪", "#94a3b8"))
+        did = html.escape(d.id)
+        answered = bool(d.commander_direction or d.override_text)
+        status_mark = " ✓" if answered else ""
+        header = (
+            f"<h3><span style='color:{color}'>{icon}</span> {html.escape(d.title)}{status_mark}"
+            f"<code class='dec-blueprint'>{html.escape(d.blueprint)}</code></h3>"
+        )
+        body = f"<p>{html.escape(d.description)}</p>"
+        if d.type == "choice":
+            selected = d.commander_direction or d.system_choice
+            options = "".join(
+                f"<label class='dec-option'><input type='radio' name='dec-{did}' "
+                f"value='{html.escape(o.value)}'{' checked' if o.value == selected else ''}> "
+                f"{html.escape(o.label)}"
+                f"{' <em>(system pick)</em>' if o.value == d.system_choice else ''}</label>"
+                for o in d.options
+            )
+            control = f"<div class='dec-options' id='dec-input-{did}'>{options}</div>"
+        else:
+            value = html.escape(d.override_text or d.system_choice)
+            control = f"<textarea id='dec-input-{did}' rows='3'>{value}</textarea>"
+        archive_label = "Unarchive" if d.archived else "Archive"
+        actions = (
+            f"<div class='dec-actions'>"
+            f"<button onclick=\"saveDecision('{item_id}','{did}','{d.type}')\">Save direction</button>"
+            f"<button onclick=\"archiveDecision('{item_id}','{did}',{str(not d.archived).lower()})\">"
+            f"{archive_label}</button></div>"
+        )
+        return f"<section class='dec-card' data-severity='{d.severity}'>{header}{body}{control}{actions}</section>"
+
+    filters = "".join(
+        f"<button class='dec-filter' data-severity='{sev}' onclick=\"filterDecisions('{item_id}','{sev}')\">"
+        f"{_DECISION_SEVERITY_STYLE[sev][0]} {sev}</button>"
+        for sev in ("blocking", "material", "low")
+    )
+    filters += f"<button class='dec-filter' data-severity='' onclick=\"filterDecisions('{item_id}','')\">all</button>"
+
+    body = (
+        f"<h1>{html.escape(item.get('label', 'Decisions'))}</h1>"
+        f"<p class='subtle'>{len(active)} open, {len(archived)} archived</p>"
+        f"<div class='dec-filters' id='dec-filters-{item_id}'>{filters}</div>"
+        f"<div id='dec-list-{item_id}'>"
+        + ("".join(_card(d) for d in active) or "<p class='subtle'>No decisions disclosed.</p>")
+        + "</div>"
+    )
+    if archived:
+        body += (
+            f"<details class='dec-archived'><summary>{len(archived)} archived</summary>"
+            + "".join(_card(d) for d in archived)
+            + "</details>"
+        )
+    return body
+
+
 def render_questionnaire(item: dict[str, Any]) -> str:
     data = json.loads(resolve_path(item["path"]).read_text(encoding="utf-8"))
     is_discovery = item.get("template") == "discovery"
@@ -2791,6 +2883,7 @@ TYPES: dict[str, TypeDef] = {
     "editable_markdown": TypeDef(("path",), render_editable_markdown),
     "jsonl": TypeDef(("path",), render_jsonl_item),
     "kanban": TypeDef(("path",), render_kanban),
+    "decisions": TypeDef(("path",), render_decisions),
     "questionnaire": TypeDef(("path",), render_questionnaire),
     "link": TypeDef(("href",), render_link_item),
     "command_status": TypeDef((), render_command_status),
@@ -3034,6 +3127,14 @@ class PlanFeedbackUpdate(BaseModel):
     answer: str
 
 
+class DecisionDirection(BaseModel):
+    item_id: str
+    decision_id: str
+    commander_direction: str = ""
+    override_text: str = ""
+    archived: bool | None = None
+
+
 # ── API ─────────────────────────────────────────────────────────────────────────
 
 
@@ -3259,6 +3360,46 @@ def api_update_plan_feedback(update: PlanFeedbackUpdate, request: Request = None
             update_feedback_answer(_current_project_root(), update.decision_id, update.answer)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
+
+@app.post("/api/decisions/direct")
+def api_set_decision_direction(update: DecisionDirection, request: Request = None):
+    """Record a Commander direction or override against one DECISIONS.json item.
+
+    ``item_id`` names the console item (its ``path`` resolves the file); the item stays
+    domain-blind at the console-index level per the generic-index-plus-purpose-built-renderer
+    pattern — all Decisions intelligence lives here.
+    """
+    from dataclasses import replace
+
+    from drydock.decisions import load_decisions, write_decisions
+
+    with _request_context(request):
+        item = find_item(update.item_id)
+        if item.get("type") != "decisions" or "path" not in item:
+            raise HTTPException(status_code=400, detail="Not a decisions item")
+        path = resolve_write_path(item["path"])
+        decisions = load_decisions(path)
+        found = False
+        updated = []
+        for entry in decisions:
+            if entry.id != update.decision_id:
+                updated.append(entry)
+                continue
+            found = True
+            fields: dict[str, Any] = {"status": "answered"}
+            if update.commander_direction:
+                fields["commander_direction"] = update.commander_direction
+            if update.override_text:
+                fields["override_text"] = update.override_text
+            if update.archived is not None:
+                fields["archived"] = update.archived
+                fields["status"] = entry.status if update.archived else fields["status"]
+            updated.append(replace(entry, **fields))
+        if not found:
+            raise HTTPException(status_code=404, detail="Unknown decision id")
+        write_decisions(path, tuple(updated))
         return {"ok": True}
 
 
@@ -3780,6 +3921,17 @@ _STYLE = """
   .tk-kind-task    { background:#f0fdf4; color:#166534; }
   .tk-kind-bug     { background:#fee2e2; color:#991b1b; }
   .tk-kind-other   { background:#f1f5f9; color:#475569; }
+  .dec-filters { display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap; }
+  .dec-filter { font-size:12px; padding:3px 10px; border-radius:10px; border:1px solid #dce3ec;
+                background:#fff; cursor:pointer; }
+  .dec-filter.active { background:#eef2f7; font-weight:700; }
+  .dec-card { border:1px solid #d7dde5; border-radius:8px; padding:12px 16px; margin:0 0 12px; background:#fff; }
+  .dec-card h3 { margin:0 0 6px; font-size:14px; }
+  .dec-blueprint { float:right; font-size:11px; color:#64748b; background:#f1f5f9; padding:1px 8px; border-radius:8px; }
+  .dec-option { display:block; font-size:13px; margin:3px 0; }
+  .dec-options textarea, .dec-card textarea { width:100%; box-sizing:border-box; }
+  .dec-actions { display:flex; gap:8px; margin-top:8px; }
+  .dec-archived summary { cursor:pointer; font-size:13px; color:#64748b; margin:8px 0; }
   .refit-clear { background:#e9f7f0; border:1px solid #9fd8bd; color:#166534; padding:12px 16px;
                  border-radius:8px; font-size:14px; font-weight:600; margin:4px 0 12px; }
   .refit-callout { background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:12px 16px;
@@ -3977,6 +4129,43 @@ def index(request: Request = None) -> str:
       }});
       if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save feedback'); return; }}
       location.reload();
+    }}
+    async function saveDecision(itemId, decisionId, kind) {{
+      const input = document.getElementById(`dec-input-${{decisionId}}`);
+      const payload = {{item_id: itemId, decision_id: decisionId}};
+      if (kind === 'choice') {{
+        const checked = input ? input.querySelector('input[type=radio]:checked') : null;
+        if (!checked) {{ alert('Select a direction.'); return; }}
+        payload.commander_direction = checked.value;
+      }} else {{
+        const text = input ? input.value.trim() : '';
+        if (!text) {{ alert('A direction is required.'); return; }}
+        payload.override_text = text;
+      }}
+      const r = await fetch('/api/decisions/direct', {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify(payload)
+      }});
+      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save direction'); return; }}
+      await loadDoc(itemId);
+    }}
+    async function archiveDecision(itemId, decisionId, archived) {{
+      const r = await fetch('/api/decisions/direct', {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{item_id: itemId, decision_id: decisionId, archived}})
+      }});
+      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to update decision'); return; }}
+      await loadDoc(itemId);
+    }}
+    function filterDecisions(itemId, severity) {{
+      const list = document.getElementById(`dec-list-${{itemId}}`);
+      if (!list) return;
+      list.querySelectorAll('.dec-card').forEach(card => {{
+        card.style.display = (!severity || card.dataset.severity === severity) ? '' : 'none';
+      }});
+      const bar = document.getElementById(`dec-filters-${{itemId}}`);
+      if (bar) bar.querySelectorAll('.dec-filter').forEach(b =>
+        b.classList.toggle('active', b.dataset.severity === severity));
     }}
     function compassRename(itemId, blockId, current) {{
       const name = prompt('Rename to:', current);

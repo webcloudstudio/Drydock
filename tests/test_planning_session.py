@@ -568,6 +568,94 @@ def test_authors_specs_compass_and_manifest(tmp_path):
     assert "Approve the complete plan" not in planning
 
 
+_DECISION_BLOCK = json.dumps([
+    {
+        "id": "Q-001",
+        "type": "choice",
+        "severity": "material",
+        "blueprint": "ARCHITECTURE.md",
+        "story": None,
+        "title": "Pick a queue backend",
+        "description": "The Blueprint is silent on which queue technology to use.",
+        "options": [{"value": "sqs", "label": "AWS SQS"}, {"value": "redis", "label": "Redis"}],
+        "system_choice": "sqs",
+    }
+])
+
+
+def test_plan_writes_decisions_json_from_llm_disclosure(tmp_path):
+    target_dir = _make_target(tmp_path)
+    text = (
+        _llm_output() + f"=== DECISIONS.json ===\n{_DECISION_BLOCK}\n=== END DECISIONS.json ===\n"
+    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(text))
+
+    decisions_path = target_dir / "DECISIONS.json"
+    assert decisions_path.is_file()
+    written = json.loads(decisions_path.read_text(encoding="utf-8"))
+    assert [d["id"] for d in written] == ["Q-001"]
+    assert written[0]["origin"] == "plan"
+    assert written[0]["status"] == "recommended"
+    # DECISIONS.json is not a Blueprint spec file.
+    assert {p.name for p in result.authored_files} == {"ARCHITECTURE.md", "FEATURE-Status.md"}
+    assert not (target_dir / "blueprint" / "DECISIONS.json").exists()
+
+
+def test_plan_emits_no_decisions_json_content_when_llm_discloses_none(tmp_path):
+    target_dir = _make_target(tmp_path)
+    create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+    assert json.loads((target_dir / "DECISIONS.json").read_text(encoding="utf-8")) == []
+
+
+def test_replan_retains_only_commander_directed_decision(tmp_path):
+    target_dir = _make_target(tmp_path)
+    decisions_path = target_dir / "DECISIONS.json"
+    decisions_path.parent.mkdir(parents=True, exist_ok=True)
+    decisions_path.write_text(
+        json.dumps([
+            {
+                "id": "Q-001",
+                "type": "choice",
+                "severity": "material",
+                "origin": "plan",
+                "blueprint": "ARCHITECTURE.md",
+                "story": None,
+                "status": "answered",
+                "archived": False,
+                "title": "Pick a queue backend",
+                "description": "stale",
+                "options": [
+                    {"value": "sqs", "label": "AWS SQS"},
+                    {"value": "redis", "label": "Redis"},
+                ],
+                "system_choice": "sqs",
+                "commander_direction": "redis",
+            },
+            {
+                "id": "Q-999",
+                "type": "text",
+                "severity": "low",
+                "origin": "plan",
+                "blueprint": "ARCHITECTURE.md",
+                "story": None,
+                "status": "recommended",
+                "archived": False,
+                "title": "Never touched by a Commander",
+                "description": "stale",
+                "options": [],
+                "system_choice": "stale",
+            },
+        ]),
+        encoding="utf-8",
+    )
+    text = _llm_output() + "=== DECISIONS.json ===\n[]\n=== END DECISIONS.json ===\n"
+    create_plan("Example", "Example", tmp_path, runner=_fake(text))
+
+    written = json.loads(decisions_path.read_text(encoding="utf-8"))
+    assert [d["id"] for d in written] == ["Q-001"]
+    assert written[0]["commander_direction"] == "redis"
+
+
 def test_reuse_mode_preserves_existing_spec_bodies_and_plans_from_them(tmp_path):
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"

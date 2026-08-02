@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
 | Pending spec | 2 approved items |
-| Pending impl | 2 unimplemented sections |
+| Pending impl | 1 unimplemented section |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -99,69 +99,31 @@ methodology to `plan create` and finalizes its prompt injection stack.
 Session goal: build `plan` the correct way. The driver was three consecutive Marina plan failures.
 The diagnostic is recorded below; the restructure is the design response.
 
-### Diagnostic — the Marina plan failure was not a capacity limit
-`2026-08-01` · `spec:na` · `impl:n/a`
-
-Recorded so the analysis is not repeated.
-
-| Run | Prompt | Output tokens | Text | Files | MANIFEST |
-|---|---|---|---|---|---|
-| CommonMark 07-27 | 313 KB | 132,692 | 107 KB | 30 | yes |
-| CommonMark 07-27 | 314 KB | 134,592 | 106 KB | 31 | yes |
-| Marina 08-01 | 373 KB | 69,657 | 65 KB | 13 | no |
-| Marina 08-01 | 374 KB | 69,052 | 35 KB | 8 | no |
-| Marina 08-01 | 374 KB | 70,077 | 35 KB | 8 | no |
-
-All five runs used `claude-sonnet-5` on the same code path and ended with `stop_reason: end_turn`.
-Sonnet emitted 132,692 output tokens and a complete thirty-file plan five days before the failures,
-so there is no ceiling near 70,000.
-
-`drydock plan CommonMark` passes under the current prompt, so `plan_create.md` V26 and the
-accumulated guardrails are exonerated. The three Marina runs terminating within 1.5% of each other
-indicates a consistent stopping condition rather than model variance.
-
-**Amended `2026-08-01` after a fourth Marina run (41 files).** The headline holds and is now proven
-rather than inferred: **capacity is not the discriminator.** The premise "the runs were not
-truncated" does not hold, and the per-message evidence identifies the real signal.
-
-Every `claude` run — failures *and* successes — carries a `max_tokens` message end. Crossing the
-64,000-token per-message output cap is routine and `claude -p` transparently continues past it.
-
-| Run | msg 1 | msg 2 | msg 3 | Files | MANIFEST |
-|---|---|---|---|---|---|
-| CommonMark 07-27 | cap 64k (63,999 thinking) | cap 64k (25,955 thinking) | end_turn 4,692 | 30 | yes |
-| CommonMark 07-27 | cap 64k (64,000 thinking) | cap 64k (27,886 thinking) | end_turn 6,592 | 31 | yes |
-| Marina 08-01 a/b/c | cap 64k | end_turn 5–6k | — | 8–13 | no |
-| Marina 08-01 d | cap 64k (39,249 thinking) | end_turn 18,420 | — | 41 | no |
-
-**The successes truncate more than the failures.** The discriminator is message count: CommonMark
-continues into a third message and lands the Manifest there; Marina's second message ends
-voluntarily, one artifact short. The model is not being cut off at the end — it is stopping.
-
-Why it stops is still unidentified: thinking text is not persisted, only token counts. One untested
-observation — CommonMark spent its entire first message thinking (63,999 of 64,000) and then wrote
-cleanly, while Marina interleaves, so its cap lands mid-artifact and the resumption must recover
-from a broken tail.
-
-Two corrections to the record:
-
-- **Granularity was never the problem.** `targets/Marina/ANALYSIS.md` holds 63 stories and 43 Story
-  Realization Map entries against 46 source files — close to the one-story-per-source expectation,
-  at defensible Agile granularity (`HARNESS-001 Typed settings model and resolution order`). A
-  "99 candidate stories" figure reported by a second agent is not in the file. Verify counts before
-  acting on them.
-- **Some output was damaged, and silently.** Marina run *d* was cut inside
-  `FEATURE-Reconciliation.md` and the continuation restarted that artifact, leaving the truncated
-  attempt and its retry fused into one block that still pairs 1:1. Run *b* has the same shape
-  (`DATABASE.md (continued)` inside `DATABASE.md`). A CommonMark codex run lost
-  `FEATURE-Autolinks.md` entirely to an opener with no `END`. All three now fail loudly — see
-  §Artifact delimiter guardrail.
-
-The trajectory across the four Marina runs is 8 → 8 → 13 → 41 files. The restructure is converging;
-run *d* authored a near-complete Blueprint and failed only on its final artifact.
-
 ### Significant decisions surface as DECISIONS.json
-`2026-08-01` · `spec:approved` · `impl:unimplemented`
+`2026-08-01` · `spec:approved` · `impl:implemented`
+
+**Built 2026-08-01.** `src/drydock/decisions.py` (parse Plan's `=== DECISIONS.json ===` block,
+validate blueprint attachment against the run's emitted specs plus `ARCHITECTURE.md`, load/write
+the persisted file, `reconcile_decisions` retains only Commander-directed prior items). Wired into
+`planning_session.create_plan`: `DECISIONS.json` added to `_RESERVED_BLOCKS`, parsed and merged
+after Blueprint specs are authored, written to `<Target>/DECISIONS.json`. `plan_create.md` V31
+carries the exact prompt language (new `## Significant Design Decisions` section) and no longer
+directs Plan to record decisions in a Blueprint `## Questions` section — Precedence input #2 now
+reads Commander-directed `DECISIONS.json` items instead of Blueprint `## Questions` answers.
+`console.yaml` gains a `decisions`-type item (order 3, implement section); `QuarterDeck/app.py`
+gains the `decisions` renderer (severity-ranked cards, radio buttons for `choice`, textarea for
+`text`, archive toggle, severity filter bar) and `POST /api/decisions/direct` to persist
+`commander_direction` / `override_text` / `archived`. Tests: `tests/test_decisions.py` (module),
+`tests/test_planning_session.py` (three `create_plan` integration tests covering disclosure,
+empty-disclosure, and Commander-directed retention across a replan).
+
+**Deliberately not touched (residual):** the structural `## Questions` section requirement in
+`BLUEPRINTS_CONTRACT.md` / typed spec format is unchanged — `build_decisions.py` (Shipyard Crew
+decision reporting, AC13's other half) still appends there via `questions.py`, and retiring that
+machinery repo-wide was out of this item's scope. `DECISIONS.json` is Plan's disclosure surface
+only; Build's decisions are a separate, unstarted migration. §Significant decisions surface as
+DECISIONS.json's DOC item (spec:approved) is still open — reconciling this into
+`Drydock_Specification.md` was not selected.
 
 Replaces the prior "questions" design in full. The `## Questions` Markdown section embedded in
 Blueprint files, and the `questions.py` `QUESTIONS_HEADING` / `QUESTIONS:` parsing contract, are

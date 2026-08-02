@@ -133,6 +133,7 @@ class TestInputTokens:
             "SOUNDINGS.md",
             "BLOCKERS.md",
             "QUESTIONNAIRES",
+            "DECISIONS.json",
             "MANIFEST_CONTRACT.md",
             "BLUEPRINTS_CONTRACT.md",
             "TYPED_SPEC",

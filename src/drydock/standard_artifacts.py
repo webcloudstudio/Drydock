@@ -116,6 +116,11 @@ def render_console(target: str, *, plan_path: Path | None = None) -> str:
     scorecard_help = (
         "Technical quality and project acceptance completion gate for the current build identity."
     )
+    decisions_help = (
+        "Significant design decisions Plan made where the Blueprint, guardrails, or stack "
+        "declaration were silent. Plan never hard-blocks on these; review and redirect any of "
+        "them here."
+    )
     return f"""console:
   name: {target} QuarterDeck
   default_item: compass_edit
@@ -145,6 +150,7 @@ items:
   - {{ id: sea_trials, label: "Sea Trials", section: analyze, type: markdown, path: ../SEA_TRIALS.md, order: 4, help_text: {json.dumps(sea_trials_help)} }}
   - {{ id: soundings, label: "Soundings", section: analyze, type: markdown, path: ../SOUNDINGS.md, order: 5, help_text: {json.dumps(soundings_doc.help_text if soundings_doc else "")} }}
   - {{ id: board, label: "Kanban Board", section: implement, type: kanban, path: ../MANIFEST.md, order: 2 }}
+  - {{ id: decisions, label: "Decisions", section: implement, type: decisions, path: ../DECISIONS.json, order: 3, help_text: {json.dumps(decisions_help)} }}
   - {{ id: scorecard, label: "Build Score", section: implement, type: markdown, path: ../SCORECARD.md, order: 4, help_text: {json.dumps(scorecard_help)} }}
   - {{ id: refit_status, label: "Refit", section: refit, type: refit, order: 1, help_text: "Blueprints that changed since they were applied to the Manifest, plus waiting change tickets. Run drydock refit to fold them in. Never-built blueprints are build items, not refit items." }}
 {build_compass_item}

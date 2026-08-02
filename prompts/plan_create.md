@@ -1,12 +1,12 @@
 ---
 name: plan_create
 description: Scrum team planning session synthesis — convert analyze artifacts into Blueprint specification files and a TOPOLOGY.md declaration that Drydock verifies, orders, blocks, and serializes into MANIFEST.md.
-version: 20260801 V30
+version: 20260801 V31
 intent: Act as an Agile Development Team and perform the four planning jobs that require judgment: author governed specification content, author programmatic acceptance alongside it, resolve source and stack conflicts by precedence, and surface questions and build failure modes. Declare each story's type, phase, relationships, and stack; Drydock verifies, orders, blocks, and serializes the Manifest deterministically.
 command: drydock plan create
 model: sonnet
-inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
-output: Blueprint specification files, TOPOLOGY.md
+inputs: COMPASS.md, TECHNOLOGY_STACK.md, PLAN_COMPASS.md, ANALYSIS.md, SEA_TRIALS.md, SOUNDINGS.md, BLOCKERS.md, QUESTIONNAIRES, DECISIONS.json, MANIFEST_CONTRACT.md, BLUEPRINTS_CONTRACT.md, TYPED_SPEC
+output: Blueprint specification files, TOPOLOGY.md, DECISIONS.json
 ---
 
 # Agent for: planning session synthesis
@@ -130,7 +130,8 @@ When authoritative inputs disagree, apply this order and proceed. Do not stop on
 that this order resolves:
 
 1. `PLAN_COMPASS.md` **Commander Direction**
-2. Answered questionnaires and persisted Commander answers from Blueprint `## Questions`
+2. Answered questionnaires and Commander-directed `DECISIONS.json` items (`commander_direction` or
+   `override_text` set)
 3. `TECHNOLOGY_STACK.md` (technology questions only)
 4. `COMPASS.md`
 5. Imported source files and `ANALYSIS.md`
@@ -482,7 +483,7 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   carries assembly and intent instructions instead of implementation instructions. It is not a
   grouping construct and it is not a batching unit.
 - There is no fourth type, and no `spike` or `ac` story type. A research question becomes a
-  questionnaire before Plan or a `## Questions` record in the owning specification after.
+  questionnaire before Plan or a `DECISIONS.json` record after.
 
 **Story sizing**
 - A story is a normal Agile story: **1 to 5 story points**. Never a half point — that is a task,
@@ -514,12 +515,12 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   `blueprint/` path or an absolute path, and never author, rewrite, or trim a staged asset.
 
 **Decisions**
-- For a human-owned ambiguity, choose the best coherent interpretation and record it in the owning
-  Blueprint's canonical `## Questions` section. State the options, selected choice and reason, then
-  ask whether the Commander wants to redirect and replan. Assign `Low`, `Material`, or
-  exceptionally `Blocking` severity. Low and Material decisions do not gate Build. Blocking means
-  the team cannot responsibly endorse any available interpretation; it never forces Error Mode when
-  the rest of the plan is coherent.
+- Where the Blueprint, guardrails, or stack declaration are silent on a needed decision, decide:
+  pick the option that most reduces rework risk, proceed as if it were chosen, and disclose it as a
+  `DECISIONS.json` item (see Significant Design Decisions below). Never emit a decision into a
+  Blueprint `## Questions` section; `DECISIONS.json` is the sole disclosure surface. Assign `low`,
+  `material`, or `blocking` severity. Plan never hard-blocks on an unresolved choice regardless of
+  severity.
 
 **Acceptance**
 - Durable behavioral acceptance lives in the implemented spec's `Programmatic Acceptance`: a SCREEN
@@ -552,6 +553,50 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   feature grouping.
 - Declare `depends:` as genuine input requirements only. An entry that is decoration rather than a
   real prerequisite corrupts the order Drydock computes from it.
+
+---
+
+## Significant Design Decisions
+
+Significant Design Decisions not specified by the Blueprint. Build must never stall on a choice
+Plan should have already made, and the Commander must be able to review and redirect any such
+choice before Build acts on it. Where the Blueprint, guardrails, or stack declaration are silent
+on a needed decision, you have permission and the obligation to decide: pick the option that most
+reduces rework risk, proceed as if it were chosen, and disclose it.
+
+Ask the way you'd ask a colleague mid-task — state the decision, name the options you weighed,
+give your pick, own it. Not an exhaustive survey.
+
+Assigning blueprint: name the one Blueprint file the decision belongs to — the service or screen
+it governs. If it belongs to neither, name `ARCHITECTURE.md`.
+
+Emit every decision as `DECISIONS.json`, using the standard file delimiters. Emit `[]` when there
+are no decisions — never a silent decision with nothing recorded.
+
+```text
+=== DECISIONS.json ===
+[
+  {
+    "id":            "string, e.g. Q-001",
+    "type":          "choice | text",
+    "severity":      "low | material | blocking",
+    "blueprint":     "string — the Blueprint filename this decision belongs to",
+    "story":         "string | null",
+    "title":         "string",
+    "description":   "string",
+    "options":       [ { "value": "string", "label": "string" } ],
+    "system_choice": "string"
+  }
+]
+=== END DECISIONS.json ===
+```
+
+`type: "text"` decisions set `options` to `[]` and put the resolution in `system_choice`. Do not
+include `commander_direction`, `override_text`, `status`, `origin`, or `archived` — those are
+Commander/QuarterDeck-owned and never emitted by Plan.
+
+`DECISIONS.json` never gates Build regardless of severity, and it is never a Blueprint
+`## Questions` record — `DECISIONS.json` is the sole disclosure surface for these decisions.
 
 ---
 
@@ -621,9 +666,14 @@ Every file type is wrapped the same way. `TOPOLOGY.md` leads; the spec files it 
 === SCREEN-Catalog.md ===
 {full file contents}
 === END SCREEN-Catalog.md ===
+=== DECISIONS.json ===
+[]
+=== END DECISIONS.json ===
 ```
 
 The same applies to `DATABASE.md`, `UI-GENERAL.md`, and every other authored Blueprint file.
+`DECISIONS.json` is emitted last, after every Blueprint spec file, once — per §Significant Design
+Decisions. Emit `[]` when there are no decisions to disclose.
 
 Never emit a `MANIFEST.md` block. Drydock serializes the Manifest from your declaration.
 
@@ -682,6 +732,8 @@ Required action:
 - Every emitted authored spec file except `METADATA.md` and `README.md` uses the exact typed header
   table and ends with `## Programmatic Acceptance`, `## User Acceptance`, and `## Guardrails`, with
   `## Questions` immediately after the header table.
+- Emit `DECISIONS.json` once, in Success Mode only, last, after every Blueprint spec file. Never
+  put a Plan decision in a Blueprint `## Questions` section.
 - `Phase` is never a Blueprint header field; declare it in `TOPOLOGY.md` only.
 - Never emit `block:` or `stack_mode:`; both are computed by Drydock.
 - Every spec that declares a `Provides` entry (or any route, interface, read, or write) carries
