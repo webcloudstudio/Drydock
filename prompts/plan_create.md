@@ -710,6 +710,10 @@ Available response length is never Error Mode. Emit `TOPOLOGY.md` first, then as
 declared Blueprint artifacts as fit. Drydock measures the batch and requests the remaining
 artifacts in bounded continuation passes.
 
+Use the available output budget aggressively. After closing each artifact, immediately begin the
+next declared artifact. Do not voluntarily stop after a small batch, reserve output for
+commentary, or preemptively choose Error Mode because the complete set may require continuation.
+
 A technology-stack disagreement is never Error Mode. Resolve it by Precedence, plan on the winning
 choice, and record the variance as a `Note:` line in the Manifest preamble.
 

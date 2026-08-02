@@ -33,10 +33,15 @@ Emit **only** the artifacts named as missing or defective. Nothing else.
 
 ## Budget
 
-You stopped because you ran out of output budget. Prefer completing fewer artifacts fully over
-starting all of them. A whole artifact is progress; a truncated one is not, and will be rejected.
-If you cannot finish everything remaining, emit as many complete artifacts as fit and stop cleanly
-at an artifact boundary — you will be asked to continue again.
+Use the available output budget aggressively. After closing each artifact, immediately begin the
+next missing artifact and continue until either the ledger is complete or the provider stops the
+response. Do not voluntarily stop after a small batch and do not reserve output for commentary or
+self-review.
+
+A whole artifact is progress; a truncated one is not. Keep each artifact concise and contract
+complete. When approaching the output limit, close the current artifact before beginning another.
+If everything cannot fit, stop only at that artifact boundary — Drydock requests another bounded
+continuation pass.
 
 ## Splitting a story
 
