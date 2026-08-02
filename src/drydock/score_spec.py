@@ -464,47 +464,71 @@ def activate_profiles(facts: Iterable[Fact]) -> tuple[str, ...]:
     return tuple(profiles)
 
 
+# Errors are contradictions and dangling references: a cited thing nothing defines, or two
+# sources that disagree. Warnings are completeness gaps the author may legitimately accept.
 _SEVERITY = {
     "SIDEFX001": "Critical",
-    "EXTRACT001": "Medium",
-    "REF001": "High",
-    "CONS001": "Medium",
-    "ROUTE001": "High",
-    "NAV001": "High",
-    "NAV002": "High",
-    "NAV003": "High",
-    "ACT001": "High",
-    "API001": "High",
-    "SRV001": "High",
-    "DATA001": "High",
-    "DATA002": "High",
-    "DATA004": "High",
-    "DATA005": "Medium",
-    "PIPE001": "High",
-    "PIPE002": "High",
-    "PIPE003": "High",
-    "PIPE004": "High",
-    "PIPE005": "High",
-    "PIPE006": "Medium",
-    "PIPE007": "Medium",
-    "PIPE008": "Medium",
-    "DS001": "High",
-    "DS002": "High",
-    "DS003": "High",
-    "DS004": "High",
-    "DS005": "Medium",
-    "DS006": "High",
-    "DS007": "High",
-    "CLI001": "High",
-    "CLI002": "Medium",
-    "EVT001": "High",
-    "EVT002": "Medium",
-    "BATCH001": "High",
-    "SCHED001": "High",
-    "STATE001": "High",
+    "REF001": "Error",
+    "CONS001": "Error",
+    "ROUTE001": "Error",
+    "NAV001": "Error",
+    "NAV002": "Error",
+    "NAV003": "Error",
+    "ACT001": "Error",
+    "API001": "Error",
+    "SRV001": "Error",
+    "STATE001": "Error",
+    "DATA001": "Error",
+    "DATA002": "Warning",
+    "DATA004": "Warning",
+    "DATA005": "Warning",
+    "SHAPE001": "Warning",
+    "EXTRACT001": "Warning",
+    "PIPE001": "Warning",
+    "PIPE002": "Warning",
+    "PIPE003": "Warning",
+    "PIPE004": "Warning",
+    "PIPE005": "Warning",
+    "PIPE006": "Warning",
+    "PIPE007": "Warning",
+    "PIPE008": "Warning",
+    "DS001": "Warning",
+    "DS002": "Warning",
+    "DS003": "Warning",
+    "DS004": "Warning",
+    "DS005": "Warning",
+    "DS006": "Warning",
+    "DS007": "Warning",
+    "CLI001": "Warning",
+    "CLI002": "Warning",
+    "EVT001": "Warning",
+    "EVT002": "Warning",
+    "BATCH001": "Warning",
+    "SCHED001": "Warning",
 }
 
-_SEVERITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2}
+_SEVERITY_ORDER = {"Critical": 0, "Error": 1, "Warning": 2}
+
+
+_RECORD_KEEPING = frozenset({
+    "archive",
+    "audit",
+    "history",
+    "journal",
+    "log",
+    "trail",
+})
+
+
+def _record_keeping(name: str) -> bool:
+    """Report a table as unread only where being read is the point of holding the data.
+
+    Audit, log, and history tables exist so a person can reconstruct events after the fact. They
+    are written continuously and read only during an investigation, so a specification that names
+    no reader for one is complete as written.
+    """
+    words = re.split(r"[^a-z0-9]+", re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).casefold())
+    return any(word in _RECORD_KEEPING or word.rstrip("s") in _RECORD_KEEPING for word in words)
 
 
 def _fact_map(facts: Iterable[Fact]) -> dict[str, list[Fact]]:
@@ -602,25 +626,51 @@ def evaluate_facts(
             "data_consumer",
             "initial_condition",
         )
+        # A column is commonly cited as `table.column`. Attribute it to its table so the qualifier
+        # is not mistaken for a table name of its own.
+        columns: dict[str, list[Fact]] = defaultdict(list)
+        for fact in by["field"]:
+            prefix, dot, _ = fact.identifier.partition(".")
+            known = fact.identifier in tables or fact.identifier in definitions
+            columns[prefix if dot and not known else fact.identifier].append(fact)
         # Only a stated column implies a table. Origin, producer, source, and consumer relations
         # routinely name documents, screens, and concepts, so an unrecognized subject there is a
         # mistyped relation rather than evidence of an undeclared table.
-        for fact in by["field"]:
-            if fact.identifier not in tables and fact.identifier not in definitions:
-                add("DATA001", (fact,), f"table '{fact.identifier}' is used but not defined")
+        for owner, items in columns.items():
+            if owner not in tables and owner not in definitions:
+                add("DATA001", items, f"columns are declared for '{owner}' but no table defines it")
         populates = ("data_producer", "data_source", "data_origin")
+        # A relation the extraction never captured against any table is unobserved, so its rule
+        # cannot run. Say so once instead of either faulting every table or staying silent.
+        for relation, label in (
+            ("field", "declares a column"),
+            ("data_consumer", "names a reader"),
+        ):
+            observed = (
+                any(columns[name] for name in tables)
+                if relation == "field"
+                else demonstrated(relation, tables)
+            )
+            if tables and not observed:
+                add(
+                    "SHAPE001",
+                    tables.values(),
+                    f"no table {label} anywhere in the sources, so '{relation}' rules did not run",
+                )
         for name, table in tables.items():
             related = {
                 kind: [f for f in by[kind] if f.identifier == name] for kind in table_relations
             }
-            if not related["field"] and demonstrated("field", tables):
-                add("DATA002", (table,), f"table '{name}' declares no fields")
+            if not columns[name] and any(columns[other] for other in tables):
+                add("DATA002", (table,), f"table '{name}' declares no columns")
             if not (
                 related["data_producer"]
                 or related["data_source"]
                 or any("external" in f.value for f in related["data_origin"])
             ) and any(demonstrated(kind, tables) for kind in populates):
                 add("DATA004", (table,), f"table '{name}' is never populated")
+            if _record_keeping(name):
+                continue
             if not related["data_consumer"] and demonstrated("data_consumer", tables):
                 add("DATA005", (table,), f"table '{name}' is never read")
 
@@ -743,7 +793,7 @@ def render_report(
     lines.extend([
         f"- Findings: {len(findings)}" + (f" ({tally})" if tally else ""),
         "",
-        "| Code | Severity | Conflict Discovered | Affected Sources |",
+        "| Code | Severity | Finding | Affected Sources |",
         "|---|---|---|---|",
     ])
 

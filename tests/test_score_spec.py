@@ -108,7 +108,7 @@ def test_short_markdown_produces_scorecard_and_identical_report(tmp_path: Path) 
     assert result.exit_code() == 0
     assert result.findings == ()
     assert result.report_path.read_text(encoding="utf-8") == result.report
-    assert result.report.count("| Code | Severity | Conflict Discovered | Affected Sources |") == 1
+    assert result.report.count("| Code | Severity | Finding | Affected Sources |") == 1
     assert "codex_sandbox" not in runner.calls[0]
 
 
@@ -257,9 +257,95 @@ def test_a_relation_no_table_ever_carries_is_unobserved_rather_than_missing() ->
         ("table", "orders", "persistent orders"),
         ("table", "settings", "persistent settings"),
     )
-    codes = _codes(evaluate_facts(_inventory(), facts))
+    findings = evaluate_facts(_inventory(), facts)
 
-    assert not ({"DATA002", "DATA004", "DATA005"} & codes)
+    assert not ({"DATA002", "DATA004", "DATA005"} & _codes(findings))
+    shape = [f for f in findings if f.code == "SHAPE001"]
+    assert [f.severity for f in shape] == ["Warning", "Warning"]
+    assert "no table declares a column anywhere in the sources" in shape[0].message
+
+
+def test_a_qualified_column_belongs_to_its_table() -> None:
+    """`settings.app_theme` cites a column of `settings`, not a table named `settings.app_theme`."""
+    facts = _facts(
+        ("table", "settings", "SQLite table for user preferences"),
+        ("field", "settings.app_theme", "LIGHT / DARK / SYSTEM"),
+        ("field", "Marina.port", "8080"),
+        ("field", "Marina.stack", "python/fastapi"),
+    )
+    findings = evaluate_facts(_inventory(), facts)
+
+    assert [f.message for f in findings if f.code == "DATA001"] == [
+        "columns are declared for 'Marina' but no table defines it"
+    ]
+
+
+def test_an_operations_table_nothing_reads_is_a_warning() -> None:
+    """A table holding live operational data earns a consumer; nothing reading it is a gap."""
+    facts = _facts(
+        ("table", "server_health_data", "persistent health samples"),
+        ("field", "server_health_data", "cpu_percent"),
+        ("data_producer", "server_health_data", "collector"),
+        ("table", "orders", "persistent orders"),
+        ("field", "orders", "total"),
+        ("data_producer", "orders", "checkout"),
+        ("data_consumer", "orders", "orders_screen"),
+    )
+    findings = evaluate_facts(_inventory(), facts)
+
+    assert [(f.code, f.severity, f.message) for f in findings] == [
+        ("DATA005", "Warning", "table 'server_health_data' is never read")
+    ]
+
+
+@pytest.mark.parametrize(
+    "name", ["audit_log", "request_log", "change_history", "AuditTrail", "order_archive"]
+)
+def test_a_record_keeping_table_needs_no_stated_reader(name: str) -> None:
+    """Audit and log tables are written continuously and read only during an investigation."""
+    facts = _facts(
+        ("table", name, "persistent records"),
+        ("field", name, "recorded_at"),
+        ("data_producer", name, "writer"),
+        ("table", "orders", "persistent orders"),
+        ("field", "orders", "total"),
+        ("data_producer", "orders", "checkout"),
+        ("data_consumer", "orders", "orders_screen"),
+    )
+
+    assert evaluate_facts(_inventory(), facts) == ()
+
+
+def test_a_table_declaring_no_columns_is_a_warning_once_columns_are_observed() -> None:
+    facts = _facts(
+        ("table", "orders", "persistent orders"),
+        ("field", "orders", "total"),
+        ("table", "settings", "persistent settings"),
+    )
+    findings = {(f.code, f.severity, f.message) for f in evaluate_facts(_inventory(), facts)}
+
+    assert ("DATA002", "Warning", "table 'settings' declares no columns") in findings
+    assert not [
+        message for code, _, message in findings if code == "SHAPE001" and "field" in message
+    ]
+
+
+def test_dangling_references_are_errors_and_completeness_gaps_are_warnings() -> None:
+    facts = _facts(
+        ("web_surface", "console", "operator console"),
+        ("consumer", "missing_service", "console"),
+        ("table", "orders", "persistent orders"),
+        ("field", "orders", "total"),
+        ("data_producer", "orders", "checkout"),
+        ("data_consumer", "orders", "orders_screen"),
+        ("table", "settings", "persistent settings"),
+    )
+    severities = {f.code: f.severity for f in evaluate_facts(_inventory(), facts)}
+
+    assert severities["CONS001"] == "Error"
+    assert severities["DATA002"] == "Warning"
+    assert severities["DATA004"] == "Warning"
+    assert severities["DATA005"] == "Warning"
 
 
 def test_an_audit_column_never_read_is_not_reported() -> None:
@@ -475,26 +561,26 @@ def test_discards_are_counted_and_reported_in_the_scorecard(tmp_path: Path) -> N
 
 def test_report_leads_each_row_with_its_code_and_orders_by_severity() -> None:
     findings = (
-        Finding("DATA005", "Medium", ("DATABASE.md",), "table 'orders' is never read"),
-        Finding("REF001", "High", ("SPEC.md",), "missing definition"),
+        Finding("DATA005", "Warning", ("DATABASE.md",), "table 'orders' is never read"),
+        Finding("REF001", "Error", ("SPEC.md",), "missing definition"),
         Finding("SIDEFX001", "Critical", ("SPEC.md",), "tree modified"),
     )
     report = render_report(_inventory(), findings, (), 1)
     rows = [line for line in report.splitlines() if line.startswith("| ")]
 
-    assert report.count("| Code | Severity | Conflict Discovered | Affected Sources |") == 1
+    assert report.count("| Code | Severity | Finding | Affected Sources |") == 1
     assert [row.split(" | ")[0].lstrip("| ") for row in rows[1:]] == [
         "SIDEFX001",
         "REF001",
         "DATA005",
     ]
-    assert "| REF001 | High | missing definition | `SPEC.md` |" in report
-    assert "- Findings: 3 (1 Critical, 1 High, 1 Medium)" in report
+    assert "| REF001 | Error | missing definition | `SPEC.md` |" in report
+    assert "- Findings: 3 (1 Critical, 1 Error, 1 Warning)" in report
 
 
 def test_report_caps_a_corpus_wide_source_list() -> None:
     sources = tuple(f"S-{index:02d}.md" for index in range(27))
-    finding = Finding("INIT001", "Medium", sources, "no initialization contract")
+    finding = Finding("DATA005", "Warning", sources, "table 'orders' is never read")
     report = render_report(_inventory(), (finding,), (), 1)
 
     assert "`S-00.md`, `S-01.md`, `S-02.md`, `S-03.md` +23 more" in report

@@ -228,9 +228,15 @@ Markdown source in bounded LLM passes, applies deterministic conformance rules, 
 `SPECIFICATION_SCORECARD.md`. Non-Markdown sources are inventoried without content ingestion. The
 assessment is advisory: findings do not gate `drydock analyze`.
 
-Findings report contradictions and dangling references — a cited thing that nothing defines, or two
-sources that disagree. A specification is not faulted for leaving a consumer unstated, and a
-relation the extraction never captured anywhere is treated as unobserved rather than missing.
+Findings carry one of three severities. `Critical` marks a violated guarantee of the run itself.
+`Error` marks a contradiction or a dangling reference — a screen consuming a service nothing
+defines, a table used but never declared, two sources that disagree. `Warning` marks a completeness
+gap the author may accept: a table that declares no columns, is never populated, or is never read.
+
+A specification is not faulted for leaving a consumer unstated, so a defined route or service that
+nothing uses is not a finding. A relation the extraction never captured against any owner is
+reported once as unobserved rather than charged against every owner. Audit, log, history, journal,
+and archive tables are exempt from the unread-table warning.
 
 `drydock score ac <Target>` deterministically verifies each Programmatic Acceptance assertion
 and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes
