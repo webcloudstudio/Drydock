@@ -488,7 +488,7 @@ class TestState:
         assert "Optimize build blocks" in toolbar
         assert "New group" in toolbar
 
-    def test_computed_manifest_uses_build_block_controls_and_accessible_signals(
+    def test_computed_manifest_uses_build_block_controls_and_traffic_lights(
         self, tmp_path, monkeypatch
     ):
         quarterdeck = _load_quarterdeck()
@@ -520,8 +520,12 @@ state: pending
         assert "Optimize build blocks" in out
         assert "New group" not in out
         assert ">BUILD BLOCK</span>" in out
-        assert "aria-label='Build Block has runnable work'" in out
-        assert "aria-label='Build Block is blocked'" in out
+        assert "cmp-traffic-light-green" in out
+        assert "aria-label='Build Block ready to build or built'" in out
+        assert "cmp-traffic-light-red" in out
+        assert "aria-label='Build Block blocked'" in out
+        assert "Runnable" not in out
+        assert "● Blocked" not in out
 
     def test_buildable_step_shows_chip(self, tmp_path, monkeypatch):
         # `core` is pending with no unmet depends, so it is ready to build.
@@ -530,6 +534,14 @@ state: pending
         out = quarterdeck.render_compass(_ITEM)
         assert "cmp-buildable" in out
         assert "Ready To Build" in out
+
+    def test_questions_group_uses_yellow_traffic_light(self, tmp_path, monkeypatch):
+        quarterdeck = _load_quarterdeck()
+        manifest = _MANIFEST.replace("state: pending", "state: blocked/questions", 2)
+        _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+        out = quarterdeck.render_compass(_ITEM)
+        assert "cmp-traffic-light-yellow" in out
+        assert "aria-label='Build Block has unanswered questions'" in out
 
     def test_step_shows_story_points_with_overhead(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
@@ -658,7 +670,7 @@ depends: core""",
         _setup(quarterdeck, tmp_path, monkeypatch, manifest=_MANIFEST_FAILED)
         out = quarterdeck.render_compass(_ITEM)
         assert (
-            out.index("bp-state bp-failed")
+            out.index("cmp-traffic-light-red")
             < out.index("cmp-stype cmp-stype-block")
             < out.index("cmp-gname cmp-gname-edit")
         )

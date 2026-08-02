@@ -1627,6 +1627,33 @@ _KIND_GROUP_CLS = {
 _KIND_SEVERITY = {"built": 0, "ready": 1, "blocked": 2, "questions": 2, "failed": 3}
 
 
+def _traffic_light_kind(kinds: list[str]) -> str:
+    """Return the block-header traffic-light state for its stories."""
+    if "failed" in kinds or "blocked" in kinds:
+        return "red"
+    if "questions" in kinds:
+        return "yellow"
+    return "green"
+
+
+def _traffic_light(kind: str) -> str:
+    """Render a compact, accessible red/yellow/green block status icon."""
+    labels = {
+        "red": "Build Block blocked",
+        "yellow": "Build Block has unanswered questions",
+        "green": "Build Block ready to build or built",
+    }
+    lamps = "".join(
+        f"<span class='cmp-traffic-lamp cmp-traffic-{color}'></span>"
+        for color in ("red", "yellow", "green")
+    )
+    label = html.escape(labels[kind], quote=True)
+    return (
+        f"<span class='cmp-traffic-light cmp-traffic-light-{kind}' role='img' "
+        f"aria-label='{label}' title='{label}'>{lamps}</span>"
+    )
+
+
 def _render_build_questions(
     documents: tuple[tuple[str, Path, str], ...],
 ) -> str:
@@ -1948,9 +1975,6 @@ def render_compass(item: dict[str, Any]) -> str:
             for s in group.steps
             if by_id.get(s.block_id) and by_id[s.block_id].state == "closed/verified"
         )
-        group_kinds = [_story_kind(s.block_id) for s in group.steps]
-        group_all_built = bool(group_kinds) and all(kind == "built" for kind in group_kinds)
-        group_runnable = any(kind == "ready" for kind in group_kinds)
         for step_index, step in enumerate(group.steps):
             step_flags = group_flags[step_index]
             incremental_sp = step_incremental_story_points(step, step_flags)
@@ -2039,25 +2063,6 @@ def render_compass(item: dict[str, Any]) -> str:
             done_check = (
                 "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
             )
-            block_signal = ""
-            if plan.uses_computed_blocks and step_index == 0:
-                if group_all_built:
-                    block_signal = (
-                        "<span class='bp-check cmp-block-signal' title='Build Block complete' "
-                        "aria-label='Build Block complete'>&#10003;</span>"
-                    )
-                elif group_runnable:
-                    block_signal = (
-                        "<span class='cmp-block-signal cmp-signal-green' "
-                        "title='Build Block has runnable work' "
-                        "aria-label='Build Block has runnable work'>● Runnable</span>"
-                    )
-                else:
-                    block_signal = (
-                        "<span class='cmp-block-signal cmp-signal-red' "
-                        "title='Build Block is blocked' "
-                        "aria-label='Build Block is blocked'>● Blocked</span>"
-                    )
             step_type_tag = (
                 f"<span class='cmp-stype cmp-stype-{html.escape(step.block_type)}'>"
                 f"{html.escape(step.block_type.upper())}</span>"
@@ -2076,7 +2081,6 @@ def render_compass(item: dict[str, Any]) -> str:
             step_cards.append(
                 f"<div class='cmp-step{step_cls}'>"
                 "<div class='cmp-shead'>"
-                f"{block_signal}"
                 f"{done_check}"
                 f"{_KIND_CHIP[kind]}"
                 f"{step_type_tag}"
@@ -2102,11 +2106,7 @@ def render_compass(item: dict[str, Any]) -> str:
         kinds = [_story_kind(s.block_id) for s in group.steps]
         worst = max(kinds, key=lambda k: _KIND_SEVERITY[k]) if kinds else "built"
         gdone_cls = _KIND_GROUP_CLS.get(worst, "")
-        gcheck = (
-            "<span class='bp-check' title='Group complete'>&#10003;</span>"
-            if worst == "built"
-            else _KIND_CHIP[worst]
-        )
+        gtraffic = _traffic_light(_traffic_light_kind(kinds))
         if group.feature_id:
             fid = html.escape(group.feature_id)
             fname = html.escape(gname, quote=True)
@@ -2130,7 +2130,7 @@ def render_compass(item: dict[str, Any]) -> str:
         parts.append(
             f"<div class='cmp-group{gdone_cls}'>"
             "<div class='cmp-ghead'>"
-            f"{gcheck}{block_tag}{title_html}"
+            f"{gtraffic}{block_tag}{title_html}"
             f"<span class='cmp-gsp'>Combined Story Points = {group.total_story_points:,}</span>"
             f"<span class='cmp-gsp'>Story Point Savings = {group.story_point_savings:,}</span>"
             f"<span class='cmp-gsp'>{group_verified}/{group_total} verified</span>"
@@ -3838,6 +3838,14 @@ _STYLE = """
   .cmp-total { font-size:14px; font-weight:700; margin:0 0 14px; padding:8px 12px; background:#eef2f7; border-radius:4px; }
   .cmp-group { border:1px solid #d7dde5; border-radius:5px; margin:0 0 12px; overflow:hidden; }
   .cmp-ghead { display:flex; align-items:center; gap:12px; padding:8px 12px; background:#f8fafc; border:2px solid #94a3b8; }
+  .cmp-traffic-light { display:inline-flex; flex-direction:column; justify-content:space-between; gap:2px;
+    flex:none; width:16px; height:38px; padding:3px; box-sizing:border-box; border-radius:9px;
+    background:#1f2937; border:1px solid #111827; box-shadow:0 1px 2px rgba(15,23,42,.25); }
+  .cmp-traffic-lamp { display:block; width:8px; height:8px; margin:auto; border-radius:50%;
+    background:#475569; box-shadow:inset 0 1px 1px rgba(255,255,255,.25); }
+  .cmp-traffic-light-red .cmp-traffic-red { background:#ef4444; box-shadow:0 0 5px #ef4444; }
+  .cmp-traffic-light-yellow .cmp-traffic-yellow { background:#facc15; box-shadow:0 0 5px #facc15; }
+  .cmp-traffic-light-green .cmp-traffic-green { background:#22c55e; box-shadow:0 0 5px #22c55e; }
   .cmp-gname { font-weight:700; font-family:ui-monospace,Consolas,monospace; color:#4338ca; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 9px; border-radius:4px; }
   .cmp-gsp { font-size:12px; color:#475569; font-weight:600; }
   .cmp-files { list-style:none; margin:0; padding:4px 12px 8px; }
@@ -3857,9 +3865,6 @@ _STYLE = """
   .cmp-stype { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:#475569; border:1px solid #cbd5e1; padding:1px 6px; border-radius:3px; }
   .cmp-stype-story { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#7c2d12; background:#fff7ed; border-color:#fdba74; transform:rotate(-2deg); box-shadow:1px 1px 0 #fed7aa; }
   .cmp-stype-block { font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; color:#334155; background:#f8fafc; border-color:#94a3b8; transform:rotate(-2deg); box-shadow:1px 1px 0 #cbd5e1; }
-  .cmp-block-signal { display:inline-block; font-size:11px; font-weight:800; margin-right:4px; white-space:nowrap; }
-  .cmp-signal-green { color:#166534; }
-  .cmp-signal-red { color:#b91c1c; }
   .cmp-stack-tag { display:inline-block; font-family:Georgia, 'Times New Roman', serif; font-size:12px; font-style:italic; font-weight:900; letter-spacing:0; padding:1px 6px; border:1px solid; border-radius:3px; transform:rotate(-2deg); white-space:nowrap; }
   .cmp-stack-feature { color:#5b21b6; background:#f5f3ff; border-color:#c4b5fd; box-shadow:1px 1px 0 #ddd6fe; }
   .cmp-stack-screen { color:#1e40af; background:#eff6ff; border-color:#93c5fd; box-shadow:1px 1px 0 #bfdbfe; }
