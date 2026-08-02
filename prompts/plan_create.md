@@ -521,6 +521,10 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   Blueprint `## Questions` section; `DECISIONS.json` is the sole disclosure surface. Assign `low`,
   `material`, or `blocking` severity. Plan never hard-blocks on an unresolved choice regardless of
   severity.
+- Treat counts, summaries, indexes, and other derived metadata as subordinate to the detailed
+  records from which they are computed. When derived metadata disagrees with an unambiguous
+  detailed enumeration, recompute it from that enumeration and continue. This is neither a product
+  question nor Error Mode. Do not require the Commander to correct a stale derived total.
 
 **Acceptance**
 - Durable behavioral acceptance lives in the implemented spec's `Programmatic Acceptance`: a SCREEN
@@ -697,6 +701,10 @@ Use Error Mode only when you cannot produce a complete, internally consistent Su
 response, and only for an unresolvable **product** question — one the Precedence order above cannot
 settle and no reasonable assumption can bridge. Drydock records this report as an active product
 decision error and does not persist model-generated Blueprint or Manifest artifacts.
+
+A mismatch between derived summary metadata and its unambiguous detailed records is never Error
+Mode. Recompute the derived value from the detailed records and emit the complete Success Mode
+artifact batch.
 
 A technology-stack disagreement is never Error Mode. Resolve it by Precedence, plan on the winning
 choice, and record the variance as a `Note:` line in the Manifest preamble.

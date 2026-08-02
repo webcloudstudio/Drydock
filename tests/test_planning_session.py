@@ -1602,6 +1602,7 @@ def test_false_conflict_challenge_recovers_complete_plan(tmp_path):
     assert "Plan Conflict Challenge" in calls[1][0]
     assert "Initial execution ID: initial-exec" in calls[1][0]
     assert "repository-write guardrail applies only" in calls[1][0]
+    assert "stale derived total is not a product decision" in calls[1][0]
     assert not (target_dir / "ERRORS.md").exists()
     assert compass.read_text(encoding="utf-8") == before
 
