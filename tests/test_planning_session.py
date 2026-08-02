@@ -3460,6 +3460,43 @@ def test_an_unknown_topology_edge_is_repaired_without_regenerating_specs(tmp_pat
     assert (target_dir / "blueprint" / "FEATURE-Status.md").is_file()
 
 
+def test_a_cited_blueprint_validation_defect_repairs_only_that_artifact(tmp_path):
+    _make_target(tmp_path)
+    invalid = _screen_output(
+        _pa_code(
+            "assert client.get('/welcome').status_code == 200",
+            "assert 'Welcome' in client.get('/welcome').text",
+        ),
+        consumes="GET /api/welcome-summary",
+    )
+    valid = _screen_output(
+        _pa_code(
+            "assert client.get('/welcome').status_code == 200",
+            "assert client.get('/api/welcome-summary').status_code == 200",
+        ),
+        consumes="GET /api/welcome-summary",
+    )
+    repaired_screen = _parse_blocks(valid)["SCREEN-Welcome.md"]
+    runner = _sequence_runner(
+        invalid,
+        f"=== SCREEN-Welcome.md ===\n{repaired_screen}\n=== END SCREEN-Welcome.md ===\n",
+    )
+
+    result = create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=runner,
+        allow_diagnostic_recovery=True,
+    )
+
+    assert len(runner.calls) == 2
+    assert "Plan Artifact Repair" in runner.calls[1]
+    assert "SCREEN-Welcome.md" in runner.calls[1]
+    assert "ARCHITECTURE.md body" not in runner.calls[1]
+    assert result.plan.by_id()["story-status"].fields["implements"] == ("SCREEN-Welcome.md",)
+
+
 def test_an_empty_declaration_is_refused(tmp_path):
     target_dir = _make_target(tmp_path)
     runner = _fake(_topology_output("planning_feedback: |\n  nothing declared\n"))

@@ -2860,6 +2860,42 @@ def _is_repairable_topology_defect(exc: Exception) -> bool:
     return str(exc).startswith("Plan generation failed: the declared work graph is inconsistent.")
 
 
+def _repairable_artifact_names(blocks: Mapping[str, str], defect: str) -> tuple[str, ...]:
+    """Return emitted Blueprint artifacts explicitly cited by a validation defect."""
+    cited = set(re.findall(r"\b[A-Z][A-Za-z0-9_-]*\.md\b", defect))
+    return tuple(sorted(name for name in cited if name in blocks and name not in _RESERVED_BLOCKS))
+
+
+def _artifact_repair_assembly(
+    *, blocks: Mapping[str, str], names: tuple[str, ...], defect: str, pass_number: int
+) -> PromptAssembly:
+    """Build a small repair prompt containing only artifacts named by the validator."""
+    lines = [
+        "# Plan Artifact Repair",
+        "",
+        "Drydock accepted the Plan response shape but rejected the emitted Blueprint artifact(s)",
+        "below. Repair only the deterministic defect. Preserve all unrelated content, contracts,",
+        "headings, decisions, and acceptance assertions byte-for-byte where possible.",
+        "",
+        "Emit exactly one fully paired artifact block for each supplied filename and no other",
+        "text or artifact.",
+        "",
+        f"Repair pass: {pass_number}",
+        "",
+        "Deterministic validation defect:",
+        defect.strip(),
+    ]
+    for name in names:
+        lines.extend([
+            "",
+            f"Original {name} body:",
+            f"<original-artifact name={json.dumps(name)}>",
+            blocks[name].strip(),
+            "</original-artifact>",
+        ])
+    return PromptAssembly(parts=(lines_part("Plan artifact repair", lines, kind="repair"),))
+
+
 def _unpaired_artifact_names(text: str, blocks: Mapping[str, str]) -> frozenset[str]:
     """Artifacts whose delimiters prove the response was cut, by name.
 
@@ -3832,6 +3868,73 @@ def create_plan(
                             repair_exc = next_exc
                             if not _is_repairable_topology_defect(next_exc):
                                 break
+                            continue
+                        blocks = candidate_blocks
+                        result = repair_result
+                        exec_id = getattr(repair_result, "execution_id", None)
+                        blocks_text = None
+                        repair_succeeded = True
+                        break
+                    except Exception as next_exc:
+                        repair_exc = next_exc
+                        break
+            if allow_diagnostic_recovery and continue_attempts > 0 and not repair_succeeded:
+                repaired_blocks = dict(blocks)
+                for repair_pass in range(1, continue_attempts + 1):
+                    names = _repairable_artifact_names(repaired_blocks, str(repair_exc))
+                    if not names:
+                        break
+                    if on_text is not None:
+                        on_text(
+                            f"[plan] artifact repair pass {repair_pass}/{continue_attempts} · "
+                            f"{', '.join(names)}\n"
+                        )
+                    repair_assembly = _artifact_repair_assembly(
+                        blocks=repaired_blocks,
+                        names=names,
+                        defect=str(repair_exc),
+                        pass_number=repair_pass,
+                    )
+                    try:
+                        repair_result = cast(
+                            CompletedRun,
+                            run(
+                                repair_assembly.rendered_text,
+                                target_dir,
+                                llm=llm_provider,
+                                model=model or prompt.model,
+                                command_name="plan",
+                                parameters={
+                                    "target": target,
+                                    "artifact_repair_pass": repair_pass,
+                                    "initial_execution_id": exec_id or "",
+                                    "artifacts": ",".join(names),
+                                },
+                                log_dir=log_dir,
+                                target=target,
+                                on_text=on_text,
+                                prompt_assembly=repair_assembly,
+                            ),
+                        )
+                        if not repair_result.ok or not repair_result.text.strip():
+                            break
+                        repair_blocks = _parse_strict_blocks(repair_result.text, repair_result)
+                        if set(repair_blocks) != set(names):
+                            break
+                        if all(repair_blocks[name] == repaired_blocks[name] for name in names):
+                            break
+                        repaired_blocks.update(repair_blocks)
+                        candidate_blocks = dict(repaired_blocks)
+                        try:
+                            plan, warnings = _validate_plan_output(
+                                candidate_blocks,
+                                blueprint_dir,
+                                repair_result,
+                                source_text=None,
+                                project=target,
+                            )
+                        except Exception as next_exc:
+                            repair_exc = next_exc
                             continue
                         blocks = candidate_blocks
                         result = repair_result
