@@ -91,6 +91,19 @@ def test_canonical_question_contract_and_first_section_normalization():
     assert normalized.index("## Questions") < normalized.index("## Behavior")
 
 
+def test_questions_normalization_keeps_consecutive_header_tables_before_questions():
+    text = _blueprint(body="## Behavior\n\nDo it.\n")
+    empty_questions = "## Questions\n\n- None.\n\n"
+    text = text[: text.index("## Questions")] + empty_questions + text[text.index("## Behavior") :]
+    second_table = "| Route | /items |\n| Parent | Items |\n\n"
+    moved = text.replace("## Behavior", second_table + "## Behavior")
+
+    normalized = normalize_questions_first(moved)
+
+    assert normalized.index("| Route | /items |") < normalized.index("## Questions")
+    validate_questions_document(normalized, require_first_section=True)
+
+
 @pytest.mark.parametrize("heading", ["## Open Questions", "## Question", "QUESTIONS:"])
 def test_alternate_question_headings_are_rejected(heading):
     with pytest.raises(SpecificationError, match="non-canonical"):

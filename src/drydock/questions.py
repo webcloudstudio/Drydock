@@ -189,10 +189,30 @@ def replace_questions_section(text: str, questions: tuple[MarkdownQuestion, ...]
 
 def normalize_questions_first(text: str, *, source: str = "<memory>") -> str:
     """Move an existing canonical Questions section after the typed metadata table."""
-    parse_questions(text, source=source)
     section = _SECTION_RE.search(text)
     if section is None:
         raise SpecificationError(f"{source} missing required '## Questions' section")
+    body_lines = section.group("body").strip().splitlines()
+    trailing_lines = body_lines[1:] if body_lines else []
+    if (
+        body_lines
+        and " ".join(body_lines[0].split()).rstrip(".").lower() == "- none"
+        and any(line.strip() for line in trailing_lines)
+        and all(not line.strip() or line.lstrip().startswith("|") for line in trailing_lines)
+    ):
+        # Some SCREEN emitters place their route/navigation table after an already empty Questions
+        # section. The section parser correctly sees that table as non-question content. Move this
+        # narrowly recognized table back into the metadata header before validating and ordering.
+        trailing_table = "\n".join(trailing_lines).strip()
+        text = (
+            text[: section.start()]
+            + trailing_table
+            + "\n\n## Questions\n\n- None.\n\n"
+            + text[section.end() :].lstrip("\n")
+        )
+        section = _SECTION_RE.search(text)
+        assert section is not None
+    parse_questions(text, source=source)
     stripped = text[: section.start()] + text[section.end() :].lstrip("\n")
     lines = stripped.splitlines()
     insert_at = 1
@@ -201,6 +221,10 @@ def normalize_questions_first(text: str, *, source: str = "<memory>") -> str:
         if line.lstrip().startswith("|"):
             table_started = True
             insert_at = index + 1
+            continue
+        if table_started and not line.strip():
+            # A SCREEN header may contain a second route/navigation table separated from the
+            # typed metadata table by one blank line. Questions belongs after both tables.
             continue
         if table_started:
             break
