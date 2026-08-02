@@ -56,6 +56,42 @@ def test_groups_steps_under_their_feature_in_order(tmp_path):
     assert [s.block.block_id for s in core.steps] == ["foundation", "service"]
 
 
+def test_groups_new_taxonomy_by_computed_block_without_ungrouped(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: approved
+blocks: 1
+
+## story 1: Foundation
+id: foundation
+type: service
+phase: 1
+block: 1
+stack: python.md
+state: closed/verified
+
+## story 2: Service
+id: service
+type: service
+phase: 1
+block: 1
+stack: python.md
+depends: foundation
+state: pending
+"""
+
+    report = _report(tmp_path, manifest=manifest)
+
+    assert [(group.group_id, group.name) for group in report.groups] == [
+        ("block-1", "Block 1 · Service")
+    ]
+    assert report.buildable_ids == ("block-1",)
+    assert [step.block.block_id for step in report.groups[0].steps] == [
+        "foundation",
+        "service",
+    ]
+    assert [step.buildable for step in report.groups[0].steps] == [False, True]
+
+
 def test_acs_fold_under_their_parent_step(tmp_path):
     report = _report(tmp_path)
     service = report.groups[0].steps[1]

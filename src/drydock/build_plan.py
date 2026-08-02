@@ -21,6 +21,7 @@ FOUNDATIONAL_SPECS = frozenset({"ARCHITECTURE.md", "DATABASE.md", "UI-GENERAL.md
 STATES = ("pending", "blocked/questions", "implemented", "closed/verified", "closed/failed")
 PLAN_STATES = ("draft", "approved", "closed")
 SCOPES = ("blueprint", "target", "both")
+STORY_TYPES = ("foundational", "service", "feature")
 
 _HEADER_RE = re.compile(r"^##\s+(feature|story|spike|ac)\s+(\d+):\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$")
@@ -45,6 +46,20 @@ class PlanBlock:
     scope: str | None = None
     fields: dict[str, str | tuple[str, ...]] = field(default_factory=dict)
 
+    @property
+    def story_type(self) -> str:
+        value = self.fields.get("type", "")
+        return str(value).strip().lower() if isinstance(value, str) else ""
+
+    @property
+    def computed_block(self) -> int | None:
+        value = self.fields.get("block", "")
+        try:
+            number = int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
 
 @dataclass(frozen=True)
 class AppliedSpecRecord:
@@ -53,6 +68,7 @@ class AppliedSpecRecord:
     commit: str
     applied_by: str
     applied_at: str
+    build_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,7 +88,35 @@ class BuildPlan:
     def state_counts(self) -> Counter[str]:
         return Counter(block.state for block in self.blocks)
 
+    @property
+    def uses_computed_blocks(self) -> bool:
+        return any(
+            block.block_type in {"story", "spike"} and block.story_type in STORY_TYPES
+            for block in self.blocks
+        )
+
+    def computed_groups(self) -> tuple[tuple[int, tuple[PlanBlock, ...]], ...]:
+        """Return Plan-generated numeric blocks in Manifest order."""
+        if not self.uses_computed_blocks:
+            return ()
+        order: list[int] = []
+        members: dict[int, list[PlanBlock]] = {}
+        for block in self.blocks:
+            if block.block_type not in {"story", "spike"}:
+                continue
+            number = block.computed_block
+            if number is None:
+                continue  # parse validation reports this before a BuildPlan is returned
+            if number not in members:
+                order.append(number)
+                members[number] = []
+            members[number].append(block)
+        return tuple((number, tuple(members[number])) for number in order)
+
     def runnable_frontier(self) -> tuple[PlanBlock, ...]:
+        if self.uses_computed_blocks:
+            return self.buildable_steps()
+
         by_id = self.by_id()
 
         def verified(block_id: str) -> bool:
@@ -117,6 +161,25 @@ class BuildPlan:
         def verified(block_id: str) -> bool:
             dependency = by_id.get(block_id)
             return dependency is not None and dependency.state == "closed/verified"
+
+        if self.uses_computed_blocks:
+            for _, executable in self.computed_groups():
+                pending = tuple(block for block in executable if block.state == "pending")
+                if not pending:
+                    continue
+                available = {
+                    block.block_id
+                    for block in executable
+                    if block.state in {"pending", "closed/verified"}
+                }
+                if any(
+                    dep not in available and not verified(dep)
+                    for block in pending
+                    for dep in block.depends
+                ):
+                    return ()
+                return pending
+            return ()
 
         grouped_children: set[str] = set()
         buildable: list[PlanBlock] = []
@@ -221,6 +284,7 @@ def _parse_applied_specs(text: str) -> dict[str, AppliedSpecRecord]:
             commit=values.get("commit", "-") or "-",
             applied_by=applied_by,
             applied_at=applied_at,
+            build_sha256=values.get("build_sha256", ""),
         )
     return records
 
@@ -233,6 +297,7 @@ def _format_applied_specs(records: dict[str, AppliedSpecRecord]) -> str:
         lines.append(
             f"{record.path} sha256={record.sha256} commit={record.commit or '-'} "
             f"applied_by={record.applied_by} applied_at={record.applied_at}"
+            + (f" build_sha256={record.build_sha256}" if record.build_sha256 else "")
         )
     return "\n".join(lines)
 
@@ -401,6 +466,75 @@ def _normalize_story_depends(blocks: tuple[PlanBlock, ...]) -> tuple[PlanBlock, 
                 block = replace(block, depends=tuple(deps))
         normalized.append(block)
     return tuple(normalized)
+
+
+def _validate_computed_blocks(
+    blocks: tuple[PlanBlock, ...], metadata: dict[str, str], path: Path
+) -> None:
+    """Validate the executable block tree emitted by deterministic Plan assembly.
+
+    A story ``type:`` marks the new flat taxonomy. In that taxonomy every executable story is
+    assigned to one positive numeric block; there is no ungrouped fallback. Blocks are contiguous
+    Manifest runs with one phase, topology type, and stack signature.
+    """
+    executable = tuple(block for block in blocks if block.block_type in {"story", "spike"})
+    if not any(block.story_type in STORY_TYPES for block in executable):
+        return
+
+    order: list[int] = []
+    seen_numbers: set[int] = set()
+    signatures: dict[int, tuple[str, str, tuple[str, ...]]] = {}
+    previous: int | None = None
+    for block in executable:
+        if block.story_type not in STORY_TYPES:
+            raise SpecificationError(
+                f"Ungrouped generated story {block.block_id!r} in {path}: "
+                "every Plan/replan story requires type: foundational|service|feature and a "
+                "positive block: number"
+            )
+        number = block.computed_block
+        if number is None:
+            raise SpecificationError(
+                f"Ungrouped generated story {block.block_id!r} in {path}: "
+                "missing or invalid positive block: number"
+            )
+        if number != previous:
+            if number in seen_numbers:
+                raise SpecificationError(
+                    f"Computed block {number} is not contiguous in {path}; "
+                    "a generated block must be one Manifest run"
+                )
+            seen_numbers.add(number)
+            order.append(number)
+            previous = number
+
+        phase = str(block.fields.get("phase", "")).strip()
+        raw_stack = block.fields.get("stack", ())
+        stack = tuple(str(item) for item in raw_stack) if isinstance(raw_stack, tuple) else ()
+        signature = (block.story_type, phase, tuple(sorted(stack)))
+        prior = signatures.setdefault(number, signature)
+        if signature != prior:
+            raise SpecificationError(
+                f"Computed block {number} mixes type, phase, or stack in {path}; "
+                f"story {block.block_id!r} does not match the block partition"
+            )
+
+    expected_order = list(range(1, len(order) + 1))
+    if order != expected_order:
+        raise SpecificationError(
+            f"Computed block numbers in {path} must be contiguous from 1; found {order}"
+        )
+    try:
+        declared_count = int(metadata.get("blocks", ""))
+    except ValueError as exc:
+        raise SpecificationError(
+            f"Missing or invalid blocks: count for generated Manifest {path}"
+        ) from exc
+    if declared_count != len(order):
+        raise SpecificationError(
+            f"Generated Manifest {path} declares blocks: {declared_count}, "
+            f"but contains {len(order)} computed blocks"
+        )
 
 
 @dataclass
@@ -634,6 +768,7 @@ def parse_build_plan(path: Path) -> BuildPlan:
         seen.add(block.block_id)
 
     blocks = _normalize_story_depends(blocks)
+    _validate_computed_blocks(blocks, metadata, path)
 
     return BuildPlan(
         path=path,
@@ -714,6 +849,40 @@ def foundational_source(rel_path: str) -> str | None:
     return name if name in FOUNDATIONAL_SPECS else None
 
 
+_NON_BUILD_RELATIONSHIP_FIELDS = frozenset({"depends on", "is dependent on"})
+
+
+def normalize_build_relevant_spec(text: str) -> str:
+    """Remove relationship-only Typed Specification rows from a preservation fingerprint.
+
+    Plan owns these graph projections and may refactor them during a replan. Their movement must
+    not claim that already-built implementation content changed. Every other byte remains part of
+    the fingerprint so this exception cannot mask behavioral edits.
+    """
+    kept: list[str] = []
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cells = [cell.strip().lower() for cell in stripped.strip("|").split("|")]
+            if cells and cells[0] in _NON_BUILD_RELATIONSHIP_FIELDS:
+                continue
+        kept.append(line)
+    return "".join(kept)
+
+
+def build_relevant_text_sha256(text: str) -> str:
+    """Hash normalized spec text in the newline form Plan writes to disk."""
+    normalized = normalize_build_relevant_spec(text)
+    if normalized and not normalized.endswith("\n"):
+        normalized += "\n"
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def build_relevant_sha256(path: Path) -> str:
+    """Hash a Blueprint specification excluding relationship-only table rows."""
+    return build_relevant_text_sha256(path.read_text(encoding="utf-8"))
+
+
 @dataclass(frozen=True)
 class StaleSpec:
     """One applied Blueprint file whose current content no longer matches its record."""
@@ -744,6 +913,8 @@ def stale_applied_specs(plan: BuildPlan, blueprint_dir: Path) -> tuple[StaleSpec
             continue
         current = hashlib.sha256(source.read_bytes()).hexdigest()
         if current != record.sha256:
+            if record.build_sha256 and build_relevant_sha256(source) == record.build_sha256:
+                continue
             stale.append(
                 StaleSpec(
                     rel_path=rel_path, record=record, reason="changed", current_sha256=current

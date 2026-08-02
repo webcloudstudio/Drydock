@@ -2040,9 +2040,11 @@ def cmd_build_status(blueprint: str, target: str) -> int:
     if not report.groups:
         print("  No build steps in the plan.")
     for group in report.groups:
-        feature_id = group.feature.block_id if group.feature else "ungrouped"
+        group_kind = (
+            "Feature" if group.feature is not None or group.group_id == "ungrouped" else "Block"
+        )
         print(
-            f"\nFeature: {group.name}  [{feature_id}]"
+            f"\n{group_kind}: {group.name}  [{group.group_id}]"
             f"   — {group.verified}/{group.total} stories done"
         )
         for step in group.steps:

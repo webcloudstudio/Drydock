@@ -61,6 +61,7 @@ from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
     PlanBlock,
+    build_relevant_sha256,
     foundational_source,
     parse_build_plan,
     set_applied_registry,
@@ -260,6 +261,10 @@ class BuildUnit:
 
     @property
     def is_group(self) -> bool:
+        return self.block_type in {"feature", "block"}
+
+    @property
+    def has_manifest_container(self) -> bool:
         return self.block_type == "feature"
 
     @property
@@ -419,6 +424,59 @@ def _feature_build_unit(plan: BuildPlan, feature: PlanBlock) -> BuildUnit | None
     )
 
 
+def _computed_block_label(number: int, steps: tuple[PlanBlock, ...]) -> str:
+    story_type = steps[0].story_type.title() if steps else "Stories"
+    return f"Block {number} · {story_type}"
+
+
+def _computed_block_parts(
+    plan: BuildPlan, number: int
+) -> tuple[tuple[PlanBlock, ...], tuple[PlanBlock, ...], tuple[str, ...]]:
+    by_id = plan.by_id()
+    executable = next((steps for group, steps in plan.computed_groups() if group == number), ())
+    pending = tuple(block for block in executable if block.state in SELECTABLE_STATES)
+    verified = tuple(block for block in executable if block.state == "closed/verified")
+    available = {block.block_id for block in (*pending, *verified)}
+    blockers = tuple(
+        dict.fromkeys(
+            dep
+            for block in pending
+            for dep in block.depends
+            if dep not in available and not _verified_dependency(dep, by_id)
+        )
+    )
+    return pending, verified, blockers
+
+
+def _computed_build_unit(plan: BuildPlan, number: int) -> BuildUnit | None:
+    pending, verified, blockers = _computed_block_parts(plan, number)
+    if not pending or blockers:
+        return None
+    all_steps = next(steps for group, steps in plan.computed_groups() if group == number)
+    return BuildUnit(
+        block_id=f"block-{number}",
+        name=_computed_block_label(number, all_steps),
+        block_type="block",
+        steps=pending,
+        already_verified=verified,
+    )
+
+
+def _blocked_computed_block_message(plan: BuildPlan, number: int, target: str) -> str:
+    pending, _, blockers = _computed_block_parts(plan, number)
+    by_id = plan.by_id()
+    label = f"Block {number}"
+    if blockers:
+        return (
+            f"Build block {label} is blocked by unverified external dependencies: "
+            + _dependency_labels(blockers, by_id)
+            + _blocked_dependency_details(blockers, by_id)
+            + _blocked_options(blockers, by_id, target)
+        )
+    states = ", ".join(f"{block.block_id}={block.state}" for block in pending) or "no pending work"
+    return f"Build block {label} is not buildable; {states}"
+
+
 def _blocked_block_message(plan: BuildPlan, feature: PlanBlock, target: str) -> str:
     by_id = plan.by_id()
     executable = tuple(
@@ -460,6 +518,16 @@ def _resolve_step_selector(plan: BuildPlan, selector: str) -> str:
     if selector in by_id:
         return selector
     lowered = selector.strip().lower()
+    if plan.uses_computed_blocks:
+        computed_ids = {f"block-{number}" for number, _ in plan.computed_groups()}
+        if lowered in computed_ids:
+            return lowered
+        computed_names = {
+            _computed_block_label(number, steps).lower(): f"block-{number}"
+            for number, steps in plan.computed_groups()
+        }
+        if lowered in computed_names:
+            return computed_names[lowered]
     selectable = [b for b in plan.blocks if b.block_type in {"feature", "story", "spike"}]
     for block in selectable:
         if block.block_id.lower() == lowered:
@@ -501,6 +569,18 @@ def _select_build_unit(
             steps=(block,),
         )
     if step_id is not None:
+        if plan.uses_computed_blocks:
+            if step_id.startswith("block-") and step_id.removeprefix("block-").isdigit():
+                number = int(step_id.removeprefix("block-"))
+            else:
+                selected = by_id.get(step_id)
+                if selected is None or selected.computed_block is None:
+                    raise SpecificationError(f"Build step {step_id!r} not found in MANIFEST.md")
+                number = selected.computed_block
+            unit = _computed_build_unit(plan, number)
+            if unit is None:
+                raise SpecificationError(_blocked_computed_block_message(plan, number, target))
+            return unit
         block = by_id.get(step_id)
         if block is None:
             raise SpecificationError(f"Build step {step_id!r} not found in MANIFEST.md")
@@ -526,6 +606,16 @@ def _select_build_unit(
             block_type=block.block_type,
             steps=(block,),
         )
+
+    if plan.uses_computed_blocks:
+        for number, executable in plan.computed_groups():
+            if not any(block.state in SELECTABLE_STATES for block in executable):
+                continue
+            unit = _computed_build_unit(plan, number)
+            if unit is None:
+                raise SpecificationError(_blocked_computed_block_message(plan, number, target))
+            return unit
+        return None
 
     for block in plan.blocks:
         if block.block_type == "feature":
@@ -2769,7 +2859,7 @@ def build_target(
                         own_checks,
                     ),
                 }
-        if unit.is_group and status == "failed":
+        if unit.has_manifest_container and status == "failed":
             feature_fields: dict[str, str | None] = {
                 "state": "closed/failed",
                 "evidence": _rel(evidence_path, target_dir),
@@ -2777,7 +2867,7 @@ def build_target(
             if finding is not None:
                 feature_fields["finding"] = finding
             manifest_updates[unit.block_id] = feature_fields
-        if unit.is_group and status not in {"failed", "blocked"}:
+        if unit.has_manifest_container and status not in {"failed", "blocked"}:
             children = plan.children(unit.block_id)
             executable_children = tuple(
                 child for child in children if child.block_type in {"story", "spike"}
@@ -2816,6 +2906,7 @@ def build_target(
                         commit=_git_file_commit(source),
                         applied_by=unit.block_id,
                         applied_at=applied_at,
+                        build_sha256=build_relevant_sha256(source),
                     )
                     changed = True
             if changed:

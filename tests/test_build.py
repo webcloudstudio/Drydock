@@ -367,6 +367,28 @@ state: closed/verified
 
 
 class TestGroupSteps:
+    def test_groups_new_taxonomy_steps_by_computed_block(self, tmp_path):
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(
+            "# MANIFEST: D\nstate: approved\nblocks: 1\n\n"
+            "## story 1: API\nid: api\ntype: service\nphase: 1\nblock: 1\n"
+            "implements: FEATURE-API.md\nstack: python.md\nstate: pending\n\n"
+            "## story 2: Worker\nid: worker\ntype: service\nphase: 1\nblock: 1\n"
+            "implements: FEATURE-Worker.md\nstack: python.md\nstate: pending\n",
+            encoding="utf-8",
+        )
+        roots = _roots(tmp_path)
+        (roots.blueprint_dir / "FEATURE-API.md").write_text("api", encoding="utf-8")
+        (roots.blueprint_dir / "FEATURE-Worker.md").write_text("worker", encoding="utf-8")
+        plan = parse_build_plan(path)
+
+        groups = group_steps(plan, assemble_steps(plan, roots))
+
+        assert len(groups) == 1
+        assert groups[0].feature_id == "block-1"
+        assert groups[0].name == "Block 1 · Service"
+        assert [step.block_id for step in groups[0].steps] == ["api", "worker"]
+
     def test_groups_under_feature(self, tmp_path):
         plan = _plan(tmp_path)
         steps = assemble_steps(plan, _roots(tmp_path))

@@ -7,7 +7,7 @@
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
 | Pending spec | 4 approved items |
-| Pending impl | 2 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 Read `notes_analyze.md` §Shared Model before this file — the work graph, source-of-truth model,
 roles, and node header format are authoritative there and not reproduced here.
 
@@ -348,7 +348,7 @@ remains replaceable; conflicting valid artifact → fails; no accepted artifact 
 written until the merged set passes whole-plan validation.
 
 ### Computed blocks are executable build units
-`2026-08-02` · `spec:approved` · `impl:unimplemented`
+`2026-08-02` · `spec:approved` · `impl:implemented`
 
 The topology cutover correctly made `TOPOLOGY.md` a flat LLM-authored declaration and made Drydock
 compute ordering, type-safe block grouping, and numeric `block:` membership mechanically. The
@@ -376,7 +376,7 @@ Build status, QuarterDeck presentation, grouped prompt assembly, block selection
 checks consume this same block contract. No new-taxonomy story is rendered as `Ungrouped`.
 
 ### Replan preserves built work across topology-only changes
-`2026-08-02` · `spec:approved` · `impl:unimplemented`
+`2026-08-02` · `spec:approved` · `impl:implemented`
 
 Replanning may freely change dependency relationships, type-safe block membership, and block
 numbers without resetting otherwise unchanged built work. State preservation keys on stable story

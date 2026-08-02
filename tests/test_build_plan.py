@@ -12,11 +12,13 @@ from drydock.build_plan import (
     CompactRecommendation,
     _format_applied_registry,
     _parse_applied_registry,
+    build_relevant_sha256,
     cascade_reset_ids,
     compact_recommendations,
     compact_source,
     disambiguate_manifest_ids,
     foundational_source,
+    normalize_build_relevant_spec,
     parse_build_plan,
     set_applied_registry,
     set_applied_specs,
@@ -144,6 +146,57 @@ state: pending
     assert story.fields["covers"] == ("PARSER-001", "PARSER-002")
     assert story.parent == "feat-parser"
     assert story.depends == ()
+
+
+def test_generated_story_without_computed_block_is_fatal(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: approved
+blocks: 1
+
+## story 1: Service
+id: service
+type: service
+phase: 1
+implements: FEATURE-Service.md
+state: pending
+""",
+    )
+
+    with pytest.raises(SpecificationError, match="Ungrouped generated story"):
+        parse_build_plan(path)
+
+
+def test_generated_block_count_and_partition_are_validated(tmp_path: Path):
+    path = write_plan(
+        tmp_path / "MANIFEST.md",
+        """# MANIFEST: Example
+state: approved
+blocks: 1
+
+## story 1: Service
+id: service
+type: service
+phase: 1
+block: 1
+stack: python.md
+implements: FEATURE-Service.md
+state: pending
+
+## story 2: Screen
+id: screen
+type: feature
+phase: 1
+block: 1
+stack: python.md
+implements: SCREEN-Service.md
+state: pending
+""",
+    )
+
+    with pytest.raises(SpecificationError, match="mixes type, phase, or stack"):
+        parse_build_plan(path)
 
 
 def test_ac_cross_story_depends_are_dropped(tmp_path: Path):
@@ -771,6 +824,45 @@ class TestStaleAndCascade:
     def test_stale_applied_specs_clean_when_content_matches(self, tmp_path):
         plan, blueprint = self._plan(tmp_path)
         assert stale_applied_specs(plan, blueprint) == ()
+
+    def test_relationship_only_metadata_change_is_not_stale(self, tmp_path):
+        blueprint = tmp_path / "blueprint"
+        blueprint.mkdir()
+        spec = blueprint / "FEATURE-A.md"
+        original = (
+            "# FEATURE: A\n\n| Field | Value |\n|---|---|\n"
+            "| Depends On | FEATURE-Old.md |\n| Provides | GET /a |\n"
+        )
+        spec.write_text(original, encoding="utf-8")
+        import hashlib
+
+        full_digest = hashlib.sha256(spec.read_bytes()).hexdigest()
+        build_digest = build_relevant_sha256(spec)
+        spec.write_text(original.replace("FEATURE-Old.md", "FEATURE-New.md"), encoding="utf-8")
+        manifest = f"""# MANIFEST: Example
+state: approved
+applied_specs: |
+  FEATURE-A.md sha256={full_digest} commit=- applied_by=a applied_at=2026-08-02 build_sha256={build_digest}
+
+## story 1: A
+id: a
+implements: FEATURE-A.md
+state: closed/verified
+"""
+        path = tmp_path / "MANIFEST.md"
+        path.write_text(manifest, encoding="utf-8")
+
+        assert stale_applied_specs(parse_build_plan(path), blueprint) == ()
+
+    def test_build_relevant_normalization_removes_only_relationship_rows(self):
+        text = (
+            "| Depends On | A.md |\n"
+            "| Is Dependent On | B.md |\n"
+            "| Provides | GET /a |\n"
+            "Behavior remains.\n"
+        )
+
+        assert normalize_build_relevant_spec(text) == "| Provides | GET /a |\nBehavior remains.\n"
 
     def test_stale_applied_specs_reports_changed_and_missing(self, tmp_path):
         plan, blueprint = self._plan(tmp_path, db_content="db changed\n")

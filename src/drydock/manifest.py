@@ -132,6 +132,7 @@ class AppliedSpecRecord:
     commit: str
     applied_by: str
     applied_at: str
+    build_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -278,6 +279,10 @@ class ManifestNode:
             return 0
 
     @property
+    def computed_block(self) -> int | None:
+        return self.block if self.block > 0 else None
+
+    @property
     def size_tokens(self) -> int:
         """Measured single-build-pass cost in tokens; 0 when unmeasured."""
         try:
@@ -354,6 +359,7 @@ def _parse_applied_specs(text: str) -> dict[str, AppliedSpecRecord]:
             commit=values.get("commit", "-") or "-",
             applied_by=values["applied_by"],
             applied_at=values["applied_at"],
+            build_sha256=values.get("build_sha256", ""),
         )
     return result
 
@@ -749,7 +755,33 @@ class DrydockManifest:
     def state_counts(self) -> Counter[str]:
         return Counter(node.state for node in self.blocks)
 
+    @property
+    def uses_computed_blocks(self) -> bool:
+        return any(
+            node.block_type in {"story", "spike"}
+            and node.story_type in {"foundational", "service", "feature"}
+            for node in self.blocks
+        )
+
+    def computed_groups(self) -> tuple[tuple[int, tuple[ManifestNode, ...]], ...]:
+        """Return Plan-generated numeric blocks in Manifest order."""
+        if not self.uses_computed_blocks:
+            return ()
+        order: list[int] = []
+        members: dict[int, list[ManifestNode]] = {}
+        for node in self.blocks:
+            if node.block_type not in {"story", "spike"} or node.block <= 0:
+                continue
+            if node.block not in members:
+                order.append(node.block)
+                members[node.block] = []
+            members[node.block].append(node)
+        return tuple((number, tuple(members[number])) for number in order)
+
     def runnable_frontier(self) -> tuple[ManifestNode, ...]:
+        if self.uses_computed_blocks:
+            return self.buildable_steps()
+
         by_id = self.by_id()
 
         def verified(node_id: str) -> bool:
@@ -785,6 +817,23 @@ class DrydockManifest:
         def verified(node_id: str) -> bool:
             target = by_id.get(node_id)
             return target is not None and target.state == "closed/verified"
+
+        if self.uses_computed_blocks:
+            for _, work in self.computed_groups():
+                pending = tuple(node for node in work if node.state == "pending")
+                if not pending:
+                    continue
+                available = {
+                    node.block_id for node in work if node.state in {"pending", "closed/verified"}
+                }
+                if any(
+                    dependency not in available and not verified(dependency)
+                    for node in pending
+                    for dependency in node.depends
+                ):
+                    return ()
+                return pending
+            return ()
 
         grouped: set[str] = set()
         result: list[ManifestNode] = []
@@ -922,6 +971,96 @@ class DrydockManifest:
                     received=node.scope,
                     expected=f"one of: {', '.join(SCOPES)}",
                     hint="Correct or remove the scope field.",
+                )
+
+        executable = tuple(node for node in self.blocks if node.block_type in {"story", "spike"})
+        # A Manifest carrier emitted by the planning model declares story types before Zone C
+        # computes the schedule.  ``blocks:`` is stamped by that deterministic scheduler and marks
+        # the taxonomy as complete; only completed/persisted taxonomies enforce block integrity.
+        computed_taxonomy = "blocks" in self.metadata.fields and any(
+            node.story_type in {"foundational", "service", "feature"} for node in executable
+        )
+        if computed_taxonomy:
+            order: list[int] = []
+            seen_numbers: set[int] = set()
+            signatures: dict[int, tuple[str, int, tuple[str, ...]]] = {}
+            previous: int | None = None
+            for node in executable:
+                if node.story_type not in {"foundational", "service", "feature"}:
+                    add(
+                        node,
+                        "Ungrouped generated story: missing valid type and computed block",
+                        field="type",
+                        received=node.story_type,
+                        expected="foundational, service, or feature",
+                        hint="Regenerate MANIFEST.md with drydock plan.",
+                    )
+                    continue
+                if node.block <= 0:
+                    add(
+                        node,
+                        "Ungrouped generated story: missing or invalid computed block",
+                        field="block",
+                        received=node._scalar("block"),
+                        expected="a positive numeric block",
+                        hint="Regenerate MANIFEST.md with drydock plan.",
+                    )
+                    continue
+                if node.block != previous:
+                    if node.block in seen_numbers:
+                        add(
+                            node,
+                            f"computed block {node.block} is not contiguous",
+                            field="block",
+                            received=str(node.block),
+                            expected="one contiguous Manifest run per computed block",
+                            hint="Regenerate MANIFEST.md with drydock plan.",
+                        )
+                    else:
+                        seen_numbers.add(node.block)
+                        order.append(node.block)
+                    previous = node.block
+                raw_stack = node.fields.get("stack", ())
+                stack_names = (
+                    tuple(sorted(str(item) for item in raw_stack))
+                    if isinstance(raw_stack, tuple)
+                    else ()
+                )
+                signature = (node.story_type, node.phase, stack_names)
+                prior = signatures.setdefault(node.block, signature)
+                if prior != signature:
+                    add(
+                        node,
+                        f"computed block {node.block} mixes type, phase, or stack",
+                        field="block",
+                        received=str(node.block),
+                        expected="one type, phase, and stack signature per block",
+                        hint="Regenerate MANIFEST.md with drydock plan.",
+                    )
+
+            expected_order = list(range(1, len(order) + 1))
+            if order != expected_order:
+                add(
+                    None,
+                    "computed block numbers are not contiguous from 1",
+                    field="blocks",
+                    received=str(order),
+                    expected=str(expected_order),
+                    hint="Regenerate MANIFEST.md with drydock plan.",
+                )
+            raw_count = self.metadata.fields.get("blocks", "")
+            try:
+                declared_count = int(raw_count)
+            except ValueError:
+                declared_count = -1
+            if declared_count != len(order):
+                add(
+                    None,
+                    "Manifest blocks count does not match computed blocks",
+                    field="blocks",
+                    received=raw_count or "(missing)",
+                    expected=str(len(order)),
+                    hint="Regenerate MANIFEST.md with drydock plan.",
                 )
 
         for node in self.blocks:
@@ -1236,6 +1375,7 @@ class DrydockManifest:
         lines = [
             f"{record.path} sha256={record.sha256} commit={record.commit or '-'} "
             f"applied_by={record.applied_by} applied_at={record.applied_at}"
+            + (f" build_sha256={record.build_sha256}" if record.build_sha256 else "")
             for _, record in sorted(records.items())
         ]
         self.applied_specs = dict(records)

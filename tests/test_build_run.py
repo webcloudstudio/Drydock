@@ -105,6 +105,34 @@ instructions: |
 state: pending
 """
 
+_COMPUTED_BLOCK_MANIFEST = """# MANIFEST: Demo
+state: approved
+blocks: 1
+
+## story 1: Foundation
+id: foundation
+type: service
+phase: 1
+block: 1
+implements: DATABASE.md
+stack: python.md
+instructions: |
+  Preserve the verified foundation.
+state: closed/verified
+
+## story 2: Service
+id: service
+type: service
+phase: 1
+block: 1
+implements: SERVICE.md
+stack: python.md
+depends: foundation
+instructions: |
+  Build the service.
+state: pending
+"""
+
 
 class FakeResult:
     def __init__(
@@ -366,6 +394,55 @@ def test_chained_feature_builds_self_dependent_block_in_one_call(tmp_path):
     assert runner.calls[0]["parameters"]["step"] == "feature-catalog"
     assert runner.calls[0]["parameters"]["step_type"] == "feature"
     assert runner.calls[0]["parameters"]["steps"] == ("foundation", "service")
+
+
+def test_computed_block_builds_pending_members_and_preserves_verified_members(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_COMPUTED_BLOCK_MANIFEST)
+    runner = make_runner()
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    assert [step.block_id for step in result.steps] == ["service"]
+    assert len(runner.calls) == 1
+    assert runner.calls[0]["parameters"]["step"] == "block-1"
+    assert runner.calls[0]["parameters"]["step_type"] == "block"
+    assert runner.calls[0]["parameters"]["steps"] == ("service",)
+    assert "Verified Sibling Specifications" in runner.calls[0]["prompt"]
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "service") == "closed/verified"
+
+
+def test_computed_block_with_unverified_external_dependency_is_blocked(tmp_path):
+    manifest = """# MANIFEST: Demo
+state: approved
+blocks: 2
+
+## story 1: Foundation
+id: foundation
+type: foundational
+phase: 1
+block: 1
+implements: DATABASE.md
+stack: python.md
+state: pending
+
+## story 2: Service
+id: service
+type: service
+phase: 1
+block: 2
+implements: SERVICE.md
+stack: python.md
+depends: foundation
+state: pending
+"""
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError, match="unverified external dependencies"):
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="service")
+
+    assert runner.calls == []
 
 
 def test_child_step_selection_builds_containing_block(tmp_path):
@@ -1754,6 +1831,7 @@ class TestAppliedSpecProvenance:
         assert record.commit == "speccommit"
         assert record.applied_by == "foundation"
         assert len(record.sha256) == 64
+        assert len(record.build_sha256) == 64
 
     def test_successful_step_records_blueprint_context_but_not_target_context(
         self, tmp_path, monkeypatch

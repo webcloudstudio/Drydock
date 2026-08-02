@@ -34,6 +34,8 @@ from drydock.acceptance_requirements import (
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
+    build_relevant_sha256,
+    build_relevant_text_sha256,
     disambiguate_manifest_ids,
     parse_build_plan,
     set_applied_specs,
@@ -762,7 +764,22 @@ def _load_prior_plan_state(
             if not finding:
                 finding = None
         block_states[block.block_id] = (block.state, finding)
-    return dict(prior.applied_specs), block_states
+    blueprint_dir = plan_path.parent / "blueprint"
+    applied_specs: dict[str, AppliedSpecRecord] = {}
+    for name, record in prior.applied_specs.items():
+        build_digest = record.build_sha256
+        spec_path = blueprint_dir / name
+        if not build_digest and spec_path.is_file() and _file_sha256(spec_path) == record.sha256:
+            build_digest = build_relevant_sha256(spec_path)
+        applied_specs[name] = AppliedSpecRecord(
+            path=record.path,
+            sha256=record.sha256,
+            commit=record.commit,
+            applied_by=record.applied_by,
+            applied_at=record.applied_at,
+            build_sha256=build_digest,
+        )
+    return applied_specs, block_states
 
 
 def _spec_is_dirty(
@@ -781,7 +798,9 @@ def _spec_is_dirty(
     spec_path = blueprint_dir / spec_name
     if not spec_path.is_file():
         return True
-    return _file_sha256(spec_path) != record.sha256
+    if _file_sha256(spec_path) == record.sha256:
+        return False
+    return not (record.build_sha256 and build_relevant_sha256(spec_path) == record.build_sha256)
 
 
 def _merge_prior_state(
@@ -795,7 +814,7 @@ def _merge_prior_state(
     Rules applied in order:
     - ``applied_specs`` is restored verbatim — the graph database is never regenerated.
     - A block whose prior state is ``pending`` receives no update.
-    - A block whose implements: files are all clean (sha256 unchanged) carries its prior
+    - A block whose implements: files are all build-relevantly clean carries its prior
       state and, for spikes, its prior ``finding``.
     - A block with any dirty implements: file is left at ``pending``; the LLM will re-apply it.
     """
@@ -2667,10 +2686,12 @@ def _prepare_manifest_in_memory(
     for name, record in prior_applied_specs.items():
         if name in emitted_files:
             digest = _sha256(emitted_files[name].encode("utf-8")).hexdigest()
+            build_digest = build_relevant_text_sha256(emitted_files[name])
         else:
             path = blueprint_dir / name
             digest = _file_sha256(path) if path.is_file() else ""
-        if digest == record.sha256:
+            build_digest = build_relevant_sha256(path) if path.is_file() else ""
+        if digest == record.sha256 or (record.build_sha256 and build_digest == record.build_sha256):
             retained_applied_specs[name] = record
     if retained_applied_specs:
         plan.set_metadata(applied_specs=_format_applied_specs(retained_applied_specs))
@@ -2715,10 +2736,14 @@ def _prepare_manifest_in_memory(
                     continue
                 if name in emitted_files:
                     digest = _sha256(emitted_files[name].encode("utf-8")).hexdigest()
+                    build_digest = build_relevant_text_sha256(emitted_files[name])
                 else:
                     path = blueprint_dir / name
                     digest = _file_sha256(path) if path.is_file() else ""
-                if digest != record.sha256:
+                    build_digest = build_relevant_sha256(path) if path.is_file() else ""
+                if digest != record.sha256 and not (
+                    record.build_sha256 and build_digest == record.build_sha256
+                ):
                     dirty = True
                     break
             if not dirty:
@@ -2766,8 +2791,29 @@ def _apply_computed_schedule(
     )
     if computation.fatal:
         return [defect.rendered() for defect in computation.fatal]
+    computed_ids = {story.story_id for story in computation.stories}
+    computed_nodes = {node.block_id: node for node in plan.blocks if node.block_id in computed_ids}
+    ordered_nodes = [computed_nodes[story.story_id] for story in computation.stories]
+    ordered = iter(ordered_nodes)
+    plan.blocks[:] = [
+        next(ordered) if node.block_id in computed_ids else node for node in plan.blocks
+    ]
+    story_number = 0
+    spike_number = 0
+    for node in plan.blocks:
+        if node.block_type == "story":
+            story_number += 1
+            if node.number != story_number:
+                node.number = story_number
+                node.dirty = True
+        elif node.block_type == "spike":
+            spike_number += 1
+            if node.number != spike_number:
+                node.number = spike_number
+                node.dirty = True
     for story_id, updates in computed_field_updates(computation.stories).items():
         plan.set_fields(story_id, **updates)
+    plan.set_metadata(blocks=str(len(computation.blocks)))
     return [defect.rendered() for defect in computation.warnings]
 
 

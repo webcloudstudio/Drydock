@@ -1313,6 +1313,31 @@ def test_spec_is_dirty_false_when_hash_matches(tmp_path):
     assert not _spec_is_dirty("FEATURE.md", tmp_path, {"FEATURE.md": record})
 
 
+def test_replan_preserves_closed_story_when_only_relationship_metadata_changes(tmp_path):
+    from drydock.questions import normalize_questions_first
+
+    target_dir = _make_target(tmp_path)
+    blueprint_dir = target_dir / "blueprint"
+    output = _llm_output(_manifest(story_state="pending"))
+    regenerated = _parse_blocks(output)["FEATURE-Status.md"]
+    prior = normalize_questions_first(regenerated, source="FEATURE-Status.md").replace(
+        "| Depends On  | |", "| Depends On  | ARCHITECTURE.md |"
+    )
+    assert prior != regenerated
+    (blueprint_dir / "FEATURE-Status.md").write_text(prior, encoding="utf-8")
+    _mark_built(
+        target_dir,
+        "FEATURE-Status.md",
+        manifest=_manifest(story_state="closed/verified"),
+    )
+
+    create_plan("Example", "Example", tmp_path, runner=_fake(output))
+
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    assert plan.by_id()["story-status"].state == "closed/verified"
+    assert len(plan.applied_specs["FEATURE-Status.md"].build_sha256) == 64
+
+
 def test_blocked_quality_refuses_before_llm(tmp_path):
     blocked = _ANALYSIS.replace("Quality: Questions", "Quality: Blocked")
     _make_target(tmp_path, analysis=blocked)

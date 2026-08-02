@@ -1117,6 +1117,26 @@ def group_steps(plan: BuildPlan, steps: tuple[StepAssembly, ...]) -> tuple[StepG
     work never share a prompt even when they have the same feature parent.
     """
     by_id = plan.by_id()
+    if plan.uses_computed_blocks:
+        assembly_by_id = {step.block_id: step for step in steps}
+        groups: list[StepGroup] = []
+        for number, block_steps in plan.computed_groups():
+            members = tuple(
+                assembly_by_id[block.block_id]
+                for block in block_steps
+                if block.block_id in assembly_by_id
+            )
+            if not members:
+                continue
+            groups.append(
+                make_step_group(
+                    feature_id=f"block-{number}",
+                    name=f"Block {number} · {block_steps[0].story_type.title()}",
+                    steps=members,
+                )
+            )
+        return tuple(groups)
+
     order: list[tuple[str | None, str]] = []
     members: dict[tuple[str | None, str], list[StepAssembly]] = {}
     for step in steps:

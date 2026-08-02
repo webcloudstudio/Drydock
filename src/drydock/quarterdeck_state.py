@@ -317,6 +317,24 @@ def _list_html(items: list[str], *, empty: str) -> str:
 
 def _manifest_story_list(plan) -> str:
     """Render manifest stories grouped by feature with [pending] badges."""
+    if plan.uses_computed_blocks:
+        parts: list[str] = ['<div class="story-list">']
+        for number, stories in plan.computed_groups():
+            story_type = stories[0].story_type.title()
+            parts.append(
+                f'<div class="story-feature">{escape(f"Block {number} · {story_type}")}</div>'
+            )
+            for story in stories:
+                css, label = _STATE_BADGE.get(story.state, ("badge-pending", story.state))
+                parts.append(
+                    f'<div class="story-row">'
+                    f'<span class="story-name">{escape(story.name)}</span>'
+                    f' <span class="badge {css}">{escape(label)}</span>'
+                    f"</div>"
+                )
+        parts.append("</div>")
+        return "\n".join(parts)
+
     by_feature: dict[str | None, list] = {}
     feature_names: dict[str, str] = {}
     for block in plan.blocks:

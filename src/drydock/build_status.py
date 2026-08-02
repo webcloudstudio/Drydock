@@ -33,6 +33,7 @@ class FeatureStatus:
     """A feature grouping of steps, with feature-level acs and a rollup."""
 
     feature: PlanBlock | None
+    group_id: str
     name: str
     feature_acs: tuple[PlanBlock, ...]
     steps: tuple[StepStatus, ...]
@@ -108,6 +109,31 @@ def build_status(plan: BuildPlan) -> BuildStatus:
         if block.block_type == "ac" and block.parent:
             acs_by_parent.setdefault(block.parent, []).append(block)
 
+    if plan.uses_computed_blocks:
+        groups = []
+        for number, block_steps in plan.computed_groups():
+            groups.append(
+                FeatureStatus(
+                    feature=None,
+                    group_id=f"block-{number}",
+                    name=f"Block {number} · {block_steps[0].story_type.title()}",
+                    feature_acs=(),
+                    steps=tuple(
+                        StepStatus(
+                            block=block,
+                            acs=tuple(acs_by_parent.get(block.block_id, ())),
+                            buildable=block.block_id in buildable,
+                        )
+                        for block in block_steps
+                    ),
+                )
+            )
+        return BuildStatus(
+            project=plan.project,
+            groups=tuple(groups),
+            buildable_ids=buildable_ids,
+        )
+
     order: list[str | None] = []
     members: dict[str | None, list[StepStatus]] = {}
     for block in plan.blocks:
@@ -137,6 +163,7 @@ def build_status(plan: BuildPlan) -> BuildStatus:
         groups.append(
             FeatureStatus(
                 feature=feature,
+                group_id=feature.block_id if feature is not None else "ungrouped",
                 name=name,
                 feature_acs=tuple(acs_by_parent.get(key or "", ())),
                 steps=tuple(members[key]),
@@ -165,6 +192,27 @@ def _buildable_blocks(plan: BuildPlan) -> tuple[tuple[str, ...], tuple[str, ...]
     work is verified, failed/retried, or reordered by the operator.
     """
     by_id = plan.by_id()
+    if plan.uses_computed_blocks:
+        for number, executable in plan.computed_groups():
+            pending = tuple(block for block in executable if block.state in SELECTABLE_STATES)
+            if not pending:
+                continue
+            available = {
+                block.block_id
+                for block in executable
+                if block.state in SELECTABLE_STATES or block.state == "closed/verified"
+            }
+            external_deps = tuple(
+                dep
+                for block in pending
+                for dep in block.depends
+                if dep not in available and not _verified(dep, by_id)
+            )
+            if external_deps:
+                return (), ()
+            return (f"block-{number}",), tuple(block.block_id for block in pending)
+        return (), ()
+
     grouped_children = {
         child.block_id
         for block in plan.blocks
