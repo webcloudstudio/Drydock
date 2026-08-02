@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-01 V15 |
+| Version | 2026-08-01 V16 |
 | Route | plan |
 | Status | Working notes — not canonical specification |
 | Description | Plan team authority, source-to-Blueprint translation, decomposition, Commander-decision preservation, ordering, and downstream build handoff. |
@@ -160,33 +160,97 @@ Two corrections to the record:
 The trajectory across the four Marina runs is 8 → 8 → 13 → 41 files. The restructure is converging;
 run *d* authored a near-complete Blueprint and failed only on its final artifact.
 
-### Constraints surface as questions
+### Significant decisions surface as DECISIONS.json
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
 
-Red and yellow lights are raised as **questions, not refusals**, through machinery that already
-exists — `questions.py` defines `QUESTION_ORIGINS = {plan, build, analyze-questionnaire}`,
-`QUESTION_SEVERITIES`, and the `## Questions` / `QUESTIONS:` contract.
+Replaces the prior "questions" design in full. The `## Questions` Markdown section embedded in
+Blueprint files, and the `questions.py` `QUESTIONS_HEADING` / `QUESTIONS:` parsing contract, are
+**retired for Plan — never emitted again.** `questions.py`'s vocabulary
+(`QUESTION_ORIGINS = {plan, build, analyze-questionnaire}`, `QUESTION_SEVERITIES = {low, material,
+blocking}`) carries forward as JSON enum values only; its Markdown parsing machinery does not.
 
-- **Analyze — story count.** Above 80 stories, emit one `discovery-story-count.json` asking the
-  Commander to confirm granularity, quoting the real count and offering to take a target NUMBER for
-  a replan. `required_before_plan: false` — the plan is usable either way. Never drop, merge, or
-  withhold stories to get under the number, and never cap the list. *(Prompt-side: implemented.)*
-- **Plan — error threshold.** Raised as a `QUESTION:` block in a Blueprint rather than a hard
-  failure. The question belongs to the block; it does not require a foundational specification or
-  architecture context. Its deterministic carrier is the specification implemented by the first
-  story in computed block order. *(Unimplemented.)*
+**Scope widened.** Not just error-threshold overflows — every significant design decision Plan
+makes where the Blueprint, guardrails, or stack declaration are silent (e.g. Commander selected
+Flask/Django/FastAPI all three in the stack and Plan must pick one for a given service) is
+recorded. Plan never hard-blocks on an unresolved choice regardless of severity; it decides,
+proceeds as if chosen, and discloses.
 
-**Implementation of the plan side.** After `compute_plan` returns, compare each block's measured
-cost against `build.resolve_error_tokens()` (default 120,000; `resolve_warn_tokens()` stays the
-advisory marker already written as `size:` / `budget: over-target`). For each block over the error
-threshold, append a question through the existing `questions.py` contract — `origin: plan`,
-`severity: material`, `status: open`, id `Q-BLOCK-<n>` — to the specification implemented by the
-first story in computed block order, naming the block, its measured cost, the threshold, and its
-complete member-story list. Do not inject an
-architecture specification or `architecture_compact.md`, change block membership, invalidate the
-block, or change its execution eligibility merely to carry the question. Emit the plan; do not
-refuse it. `normalize_questions_first` already runs over emitted specs in `_validate_plan_output`,
-so the section lands in the right place. Test with a fake runner and a deliberately huge spec.
+**New artifact: `DECISIONS.json`**, Target-root, same tier as `MANIFEST.md` / `ANALYSIS.md`. Single
+format, JSON only. Written by the Plan module from LLM-emitted JSON (per the LLM-Assisted Command
+Pattern — the model emits delimited text, the module parses and writes the file). Read back by
+QuarterDeck via a new `decisions`-type `console.yaml` item, following the same
+generic-index-plus-purpose-built-renderer pattern already used for `compass` and `kanban`: severity
+icon = worst severity present, archive/hide toggle, top filters, choice items rendered as radio
+buttons for instant Commander select. QuarterDeck's core stays domain-blind — all Decisions
+intelligence lives in that one renderer, per its existing "index only, renderer per type" design.
+
+**Item schema** (shared with Analyze's questionnaire via `origin`; physical location of the shared
+fragment TBD — open item):
+```
+id, type (choice|text), severity (low|material|blocking), origin (plan|build|analyze-questionnaire),
+blueprint (owning Blueprint file: the service or screen it governs; else ARCHITECTURE.md), story,
+status (open|recommended|answered), archived,
+title, description, options ([{value,label}], choice only), system_choice,
+commander_direction (choice, Commander-set), override_text (text answer, or annotation on choice)
+```
+`commander_direction` / `override_text` are QuarterDeck/Commander-owned; Plan never emits them.
+
+**Persistence and re-decision contract.** `DECISIONS.json` is the sole persistence target — Plan
+never writes a decision back into a Blueprint file; `blueprint` is attribution only. On each run,
+Plan adds `DECISIONS.json` (if present) to its inputs and keeps **only human-authored items**
+(`commander_direction` or `override_text` set) as fixed constraints, not reconsidered. Every other
+item — LLM-only `system_choice`, never Commander-touched — is **discarded outright**, not carried
+forward stale; Plan re-decides it fresh if the underlying gap still exists. Plan emits the full set
+(retained human items + freshly decided ones) each run; the module writes it wholesale.
+
+**Blueprint attachment rule.** Local to a service or screen/UI → that file. Everything else →
+`ARCHITECTURE.md`. Two buckets only.
+
+**Prompt language** (Plan prompt; uses the codebase's real, existing delimiter convention, verified
+in `prompts/plan_create.md`):
+
+> Significant Design Decisions not specified by the Blueprint. Build must never stall on a choice
+> Plan should have already made, and the Commander must be able to review and redirect any such
+> choice before Build acts on it. Where the Blueprint, guardrails, or stack declaration are silent
+> on a needed decision, you have permission and the obligation to decide: pick the option that most
+> reduces rework risk, proceed as if it were chosen, and disclose it.
+>
+> Ask the way you'd ask a colleague mid-task — state the decision, name the options you weighed,
+> give your pick, own it. Not an exhaustive survey.
+>
+> Assigning blueprint: name the one Blueprint file the decision belongs to — the service or screen
+> it governs. If it belongs to neither, name ARCHITECTURE.md.
+>
+> Emit every decision as DECISIONS.json, using the standard file delimiters. Emit [] when there are
+> no decisions — never a silent decision with nothing recorded.
+>
+> ```
+> === DECISIONS.json ===
+> [
+>   {
+>     "id":            "string, e.g. Q-001",
+>     "type":          "choice | text",
+>     "severity":      "low | material | blocking",
+>     "blueprint":     "string — the Blueprint filename this decision belongs to",
+>     "story":         "string | null",
+>     "title":         "string",
+>     "description":   "string",
+>     "options":       [ { "value": "string", "label": "string" } ],
+>     "system_choice": "string"
+>   }
+> ]
+> === END DECISIONS.json ===
+> ```
+>
+> type: "text" decisions set options to [] and put the resolution in system_choice. Do not include
+> commander_direction, override_text, status, or archived — those are Commander/QuarterDeck-owned
+> and never emitted by Plan.
+
+**Open items:**
+- Stable `id` guarantee for undirected items across re-decision runs, so QuarterDeck references
+  don't rot.
+- Physical location of the shared `Item` schema fragment, so Plan's prompt and Analyze's
+  questionnaire prompt don't duplicate/diverge it.
 
 ### Continuation — resume, never discard
 `2026-08-01` · `spec:approved` · `impl:unimplemented`
@@ -270,9 +334,9 @@ written until the merged set passes whole-plan validation.
 9. Analyze hands Plan a Commander-reviewed, expectation-complete epic and a proposed story map.
 10. Plan receives all readable immutable sources and may revise the proposed decomposition.
 11. Markdown becomes governed specifications; non-Markdown assets are projected byte-for-byte.
-12. Commander questionnaires and Blueprint question edits survive every replan.
-13. Plan and Build decisions remain story-local, visible, non-duplicated, and non-blocking unless
-    explicitly classified `Blocking`.
+12. Commander questionnaires and human-authored `DECISIONS.json` items survive every replan.
+13. Plan and Build decisions surface via `DECISIONS.json`, visible, non-duplicated, and never
+    hard-block regardless of severity.
 14. Running the next command implies approval when no blocker prevents that stage.
 
 ## Guardrails
@@ -310,7 +374,7 @@ Editing the canonical specification. Detailed Shipyard Crew execution mechanics 
 story-local decision-record contract. Story-too-big splitting is retired by §Story sizing; the
 story count cap is retired by §Story count is not capped and removed from the code.
 
-Remaining implementation work: §Constraints surface as questions (plan side) and §Continuation —
+Remaining implementation work: §Significant decisions surface as DECISIONS.json and §Continuation —
 resume, never discard. Zone D remains a dependent, deferred review in Open Question 4, not an
 implementation item.
 
