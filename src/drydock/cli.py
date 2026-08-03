@@ -3368,9 +3368,7 @@ def _render_build_failures(
                 if tally is not None:
                     lines.append(f"      Result tally: {tally[0]} passed, {tally[1]} failed")
             lines.append("    Recovery")
-            lines.append("      Review the evidence, correct the failure, then run:")
-            lines.append(f"        drydock build {target} --step {step.block_id}")
-            lines.append("      Use --reset to discard preserved work and rebuild from scratch.")
+            lines.append(f"      Use: drydock build {target} --ungate")
         if step.agent_blockers:
             lines += [
                 "    agent blockers:",
@@ -3388,9 +3386,16 @@ def _render_build_failures(
             lines.append(f"    execution: {step.execution_id}")
         if step.evidence_path is not None:
             lines.append(f"    evidence: {step.evidence_path}")
+    acceptance_failed = any(
+        any(not check.passed for check in (step.owned_acceptance or step.acceptance))
+        for step in steps
+    )
     lines += ["", "  Next"]
-    lines += textwrap.wrap(hint, width=width - 4, initial_indent="    ", subsequent_indent="    ")
-    if story_recovery:
+    next_hint = f"Use: drydock build {target} --ungate" if acceptance_failed else hint
+    lines += textwrap.wrap(
+        next_hint, width=width - 4, initial_indent="    ", subsequent_indent="    "
+    )
+    if story_recovery and not acceptance_failed:
         lines += ["", "  Story recovery (dependency order)"]
         lines += [
             f"    {index}. {command}" for index, command in enumerate(story_recovery, start=1)

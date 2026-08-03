@@ -2950,6 +2950,12 @@ def build_target(
             # place, seeding the first pass with the live failure. Name the exact continue command
             # so recovery is one copy-paste; ``--reset`` discards its work instead of continuing.
             rebuild_cmd = f"drydock build {target} --step {unit.block_id}"
+            acceptance_recovery = (
+                f"Use: drydock build {target} --ungate"
+                if failure_state == "Failed"
+                and (error or "").startswith("programmatic acceptance failed")
+                else None
+            )
             write_error_record(
                 target_dir,
                 command="build",
@@ -2959,7 +2965,8 @@ def build_target(
                 execution_id=execution_id,
                 evidence=evidence_path,
                 recovery=(
-                    f"Review the evidence, correct the failure, then run: {rebuild_cmd}"
+                    acceptance_recovery
+                    or f"Review the evidence, correct the failure, then run: {rebuild_cmd}"
                     if failure_state == "Failed"
                     else f"Inspect the execution evidence, correct the execution issue, then run: {rebuild_cmd}"
                 ),

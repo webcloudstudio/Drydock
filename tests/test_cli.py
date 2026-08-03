@@ -87,7 +87,8 @@ def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
     assert "Process exit code: 1" in rendered
     assert "Error: AssertionError" in rendered
     assert "Recovery" in rendered
-    assert "drydock build commonmark --step inlines" in rendered
+    assert "drydock build commonmark --ungate" in rendered
+    assert "--step inlines" not in rendered
     assert "Nested emphasis remains nonconformant." in rendered
 
 

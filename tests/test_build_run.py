@@ -1184,9 +1184,9 @@ def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
     assert result.exit_code() == 1
 
 
-def test_failure_recovery_names_the_specific_rebuild_step_command(tmp_path):
-    # A failed block is left closed/failed and resumes in place. The recorded recovery must
-    # name the exact --step continue command that resumes this step.
+def test_acceptance_failure_recovery_offers_ungate_without_step(tmp_path):
+    # An acceptance failure is bypassed explicitly with --ungate; it does not prescribe a
+    # step-scoped rerun.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "DB SPEC CONTENT\n\n"
@@ -1202,7 +1202,8 @@ def test_failure_recovery_names_the_specific_rebuild_step_command(tmp_path):
     build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
     error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
-    assert "drydock build Demo --step foundation" in error_text
+    assert "drydock build Demo --ungate" in error_text
+    assert "--step foundation" not in error_text
     assert "--step foundation --force" not in error_text
 
 
