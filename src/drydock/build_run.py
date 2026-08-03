@@ -1101,7 +1101,20 @@ def _render_ac_failure_chain(
         for result in by_story[key]:
             intent = result.intent.strip() or result.check_id
             lines.append(f"    - AC {result.check_id} — {intent}")
-            lines.append(f"        {_assertion_summary(result)}")
+            lines.append(f"        assertion: {_assertion_summary(result)}")
+            if result.return_code is not None:
+                lines.append(f"        process exit code: {result.return_code}")
+            if result.stderr.strip():
+                exception = next(
+                    (
+                        line.strip()
+                        for line in reversed(result.stderr.splitlines())
+                        if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception)\b", line.strip())
+                    ),
+                    "",
+                )
+                if exception:
+                    lines.append(f"        error: {exception}")
     return "\n".join(lines)
 
 

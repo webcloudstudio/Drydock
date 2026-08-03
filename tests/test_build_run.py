@@ -1229,8 +1229,12 @@ def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
     assert 'Block "Catalog" [feature-catalog] failed its acceptance criteria.' in detail
     assert 'Story "Service" [service] does not meet its own acceptance criteria:' in detail
     assert "AC service-adds — Service must add two numbers." in detail
-    assert "assert 1 + 1 == 3" in detail
+    assert "assertion: assert 1 + 1 == 3 → AssertionError" in detail
+    assert "process exit code: 1" in detail
     assert "AssertionError" in detail
+    error_text = (target_dir / "ERRORS.md").read_text(encoding="utf-8")
+    assert '## Diagnostic\n\nBlock "Catalog" [feature-catalog]' in error_text
+    assert "process exit code: 1" in error_text
 
 
 def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):

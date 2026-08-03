@@ -28,6 +28,33 @@ def test_record_round_trips_without_a_diagnosis(tmp_path):
     assert record.diagnosis == ""
 
 
+def test_diagnostic_preserves_structured_markdown_lines(tmp_path):
+    detail = (
+        "Failure\n"
+        "  Provenance\n"
+        "    Block: Catalog [feature-catalog]\n"
+        "    Story: Service [service]\n"
+        "  Assertion\n"
+        "    Code: assert result.repositories\n"
+        "  Result\n"
+        "    Process exit code: 1\n"
+        "    Error: AssertionError"
+    )
+    write_error_record(
+        tmp_path,
+        command="build",
+        phase="build step",
+        classification="programmatic acceptance failed: scanner-evidence",
+        detail=detail,
+        recovery="Run: drydock build Marina --step service",
+    )
+
+    record = read_error_record(tmp_path)
+    assert record is not None
+    assert record.detail == detail
+    assert "## Diagnostic\n\nFailure\n  Provenance" in errors_path(tmp_path).read_text()
+
+
 def test_appended_diagnosis_round_trips_and_preserves_recovery(tmp_path):
     _write(tmp_path)
     assert append_diagnosis(tmp_path, DIAGNOSIS) is True

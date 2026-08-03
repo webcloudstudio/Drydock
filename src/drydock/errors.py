@@ -73,6 +73,14 @@ def _safe(text: str, limit: int | None = 800) -> str:
     return text[: limit - 1].rstrip() + "…"
 
 
+def _safe_detail(text: str, limit: int | None = 800) -> str:
+    """Bound a diagnostic without destroying its Markdown line structure."""
+    text = text.strip()
+    if limit is None or len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
 def write_error_record(
     target_dir: Path,
     *,
@@ -93,7 +101,7 @@ def write_error_record(
         phase=phase,
         timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
         classification=_safe(classification, 240),
-        detail=_safe(detail, detail_limit) or "No additional safe diagnostic was available.",
+        detail=_safe_detail(detail, detail_limit) or "No additional safe diagnostic was available.",
         recovery=recovery,
         execution_id=execution_id or "",
         challenge_execution_id=challenge_execution_id or "",
