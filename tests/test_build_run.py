@@ -2001,6 +2001,7 @@ state: pending
         assert "build continues" in message
         assert "DATABASE.md changed" in message
         assert "Existing compact derivatives are not regenerated" in message
+        assert "existing compact derivatives are used" in message
         assert "SCREEN-A.md" in message
 
 

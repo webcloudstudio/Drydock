@@ -634,7 +634,7 @@ class TestContextCompactSubstitution:
         assert c_file.name == "FEATURE-C.md"
         assert c_file.compact_substituted is False
 
-    def test_context_falls_through_to_full_file_when_sibling_is_stale(self, tmp_path):
+    def test_context_uses_existing_sibling_when_source_changed(self, tmp_path):
         roots = self._roots(tmp_path)
         (roots.blueprint_dir / "FEATURE-B_compact.md").write_text(
             "<!-- Compacted from FEATURE-B.md sha256=" + "0" * 64 + " on stale -->\n\nold",
@@ -644,8 +644,8 @@ class TestContextCompactSubstitution:
         step = assemble_step(self._plan(tmp_path).by_id()["s1"], roots)
 
         b_file = next(f for f in step.files if f.role == "context" and "FEATURE-B" in f.name)
-        assert b_file.name == "FEATURE-B.md"
-        assert b_file.compact_substituted is False
+        assert b_file.name == "FEATURE-B_compact.md"
+        assert b_file.compact_substituted is True
 
     def test_context_entry_dropped_when_source_is_in_implements(self, tmp_path):
         # s2 implements FEATURE-B.md; both FEATURE-B.md and FEATURE-B_compact.md

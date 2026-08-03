@@ -786,12 +786,12 @@ def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> tuple
     for name in foundational:
         lines.append(
             f"WARNING: {name} changed. Existing compact derivatives are not regenerated; "
-            "the current full specification is used."
+            "existing compact derivatives are used."
         )
     if any(foundational_source(spec.rel_path) is None for spec in stale):
         lines.append(
             "WARNING: non-foundational Blueprint specifications changed. Existing compact "
-            "derivatives are not regenerated; the current full specifications are used."
+            "derivatives are not regenerated; existing compact derivatives are used."
         )
     lines.extend(f"  - {detail}" for detail in _stale_applied_specs(plan_path, blueprint_dir))
     return tuple(lines)
@@ -929,12 +929,14 @@ def _persist_reusable_compacts(
         if source is None or filename in seen or not body or body.startswith("COMPACT_ERROR:"):
             continue
         seen.add(filename)
+        compact = source.with_name(f"{source.stem}_compact.md")
+        if compact.is_file():
+            continue
         digest = sha256(source.read_bytes()).hexdigest()
         provenance = (
             f"<!-- Compacted from {source.relative_to(blueprint_dir).as_posix()} sha256={digest} "
             f"on {today} by drydock build agent -->"
         )
-        compact = source.with_name(f"{source.stem}_compact.md")
         compact.write_text(f"{provenance}\n\n{body}\n", encoding="utf-8", newline="\n")
         written.append(compact.name)
     return tuple(written)

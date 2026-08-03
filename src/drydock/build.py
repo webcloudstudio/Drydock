@@ -422,8 +422,10 @@ def reusable_build_compact_sources(
 ) -> tuple[Path, ...]:
     """Return current Blueprint inputs that a later Manifest block consumes as context.
 
-    A build agent may create these compacts in its existing response.  The current build
-    unit never counts as a later consumer, including sibling stories grouped under a feature.
+    A build agent may create these compacts in its existing response when no derivative exists.
+    An existing derivative is never regenerated, even when its source has changed. The current
+    build unit never counts as a later consumer, including sibling stories grouped under a
+    feature.
     """
     if not current_steps:
         return ()
@@ -448,7 +450,9 @@ def reusable_build_compact_sources(
     return tuple(
         source
         for source in current_sources
-        if source.name in later_context and not has_fresh_compact(source)
+        if source.name in later_context
+        and not compact_path_for(source).is_file()
+        and not source.with_name(f"{source.stem}_compact.skip.md").is_file()
     )
 
 
@@ -456,13 +460,12 @@ def _measure_compact(
     canonical: str,
     role: str,
     roots: tuple[Path, ...],
-    *,
-    require_fresh_blueprint_compact: bool = False,
 ) -> StepFile:
     """Resolve a file, preferring the ``*_compact.md`` sibling when it exists on disk.
 
-    Falls through to the full file when no compact sibling is found. Compass files are
-    never substituted: they are never compacted.
+    Falls through to the full file when no compact sibling is found. An existing compact is
+    used regardless of its provenance header; compaction is an explicit, separate operation.
+    Compass files are never substituted: they are never compacted.
     """
     if is_compass_file(canonical):
         return _measure(canonical, role, roots)
@@ -470,13 +473,6 @@ def _measure_compact(
     if compact != canonical:
         for root in roots:
             candidate = root / compact
-            source = root / canonical
-            if (
-                require_fresh_blueprint_compact
-                and source.is_file()
-                and not has_fresh_compact(source)
-            ):
-                continue
             byte_count = _file_size(candidate)
             if byte_count is None:
                 continue
@@ -575,7 +571,6 @@ def assemble_step(
                     name,
                     role,
                     roots.roots_for(role),
-                    require_fresh_blueprint_compact=True,
                 )
                 files.append(
                     replace(measured, prompt_role=_context_roles(block).get(name, "context"))
