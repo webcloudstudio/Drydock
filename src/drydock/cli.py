@@ -1572,7 +1572,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     if not getattr(args, "dry_run", False):
         from drydock.quarterdeck_state import commanders_chair_command
 
-        chair_context = commanders_chair_command(target_dir, f"drydock build {args.Target}")
+        chair_context = commanders_chair_command(target_dir, _build_running_command(args))
     with chair_context:
         result = build_target(
             args.Target,
@@ -1641,6 +1641,35 @@ def cmd_build(args: argparse.Namespace) -> int:
             print(_render_recorded_error(record))
             _standoff_diagnosis(args, None, record=record)
     return result.exit_code()
+
+
+def _build_running_command(args: argparse.Namespace) -> str:
+    """Render the command and non-default build options for the Chair."""
+    command = ["drydock", "build", args.Target]
+    options: tuple[tuple[str, str, object], ...] = (
+        ("--build-dir", "value", getattr(args, "build_dir", None)),
+        ("--step", "value", getattr(args, "step", None)),
+        ("--story", "value", getattr(args, "story", None)),
+        ("--continue", "flag", getattr(args, "continue_", False)),
+        ("--reset", "flag", getattr(args, "reset", False)),
+        ("--ungate", "flag", getattr(args, "ungate", False)),
+        ("--normalize-order", "flag", getattr(args, "normalize_order", False)),
+        ("--dry-run", "flag", getattr(args, "dry_run", False)),
+        ("--show-prompt", "flag", getattr(args, "show_prompt", False)),
+        ("--repair-attempts", "value", getattr(args, "repair_attempts", 3)),
+        ("--escalate-model", "value", getattr(args, "escalate_model", None)),
+        ("--model", "value", getattr(args, "model", None)),
+        ("--llm-provider", "value", getattr(args, "llm_provider", None)),
+        ("--effort", "value", getattr(args, "effort", None)),
+    )
+    for option, kind, value in options:
+        if kind == "flag" and value:
+            command.append(option)
+        elif kind == "value" and value is not None:
+            if option == "--repair-attempts" and value == 3:
+                continue
+            command.extend((option, str(value)))
+    return " ".join(command)
 
 
 def _reviewable_build_steps(target_dir: Path) -> list[tuple[str, str]]:

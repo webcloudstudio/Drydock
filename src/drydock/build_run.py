@@ -1981,6 +1981,11 @@ def build_target(
             f"MANIFEST.md not found: {manifest_path}\n  Run: drydock plan {target}"
         )
 
+    # A build owns the current Target error record. Remove the prior run's recovery signal before
+    # any new run is observed; a new terminal failure writes a fresh record below.
+    if not dry_run:
+        clear_error_record(target_dir)
+
     resolved_build_dir = build_dir or build_dir_for(target)
 
     # Full reset (``--reset`` with no selector): a clean slate. Reset every block to pending
@@ -2334,9 +2339,8 @@ def build_target(
             if remaining_weak:
                 _emit(on_text, "prepassed: " + ", ".join(remaining_weak))
         # Snapshot once before the first attempt so ``changed_files`` reflects everything
-        # the block wrote across all passes, then retire any prior current error.
+        # the block wrote across all passes.
         before_files = _snapshot_files(resolved_build_dir)
-        clear_error_record(target_dir)
 
         base_model = model or prompt.model
         max_attempt = max(0, repair_attempts)

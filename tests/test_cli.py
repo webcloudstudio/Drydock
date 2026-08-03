@@ -13,6 +13,7 @@ from drydock import __copyright__, __version__
 from drydock.acceptance import AcceptanceObservation, AcceptanceRunResult
 from drydock.build_run import BuildStepResult
 from drydock.cli import (
+    _build_running_command,
     _print_dimensions,
     _render_build_failures,
     _stream_build,
@@ -21,6 +22,30 @@ from drydock.cli import (
     _stream_stdout,
     main,
 )
+
+
+def test_build_running_command_includes_explicit_flags():
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(
+        Target="Marina",
+        build_dir=None,
+        step=None,
+        story=None,
+        continue_=False,
+        reset=False,
+        ungate=True,
+        normalize_order=False,
+        dry_run=False,
+        show_prompt=False,
+        repair_attempts=3,
+        escalate_model=None,
+        model=None,
+        llm_provider=None,
+        effort=None,
+    )
+
+    assert _build_running_command(args) == "drydock build Marina --ungate"
 
 
 def run_cli(*args: str) -> tuple[int, str, str]:
