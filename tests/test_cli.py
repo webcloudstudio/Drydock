@@ -678,6 +678,41 @@ class TestAnalyzeCommand:
         assert "--reset-failed" not in out
         assert "--force" not in out
 
+    @pytest.mark.parametrize(
+        "argv",
+        [("build", "Marina", "--help"), ("build", "--help", "Marina")],
+    )
+    def test_build_help_is_handled_before_build_dispatch(self, monkeypatch, argv):
+        def fail_if_called(_args):
+            pytest.fail("build execution must not start for --help")
+
+        monkeypatch.setattr("drydock.cli.cmd_build", fail_if_called)
+
+        rc, out, err = run_cli(*argv)
+
+        assert rc == 0, err
+        assert "Build or inspect build state." in out
+        assert "--ungate" in out
+
+    @pytest.mark.parametrize(
+        "argv",
+        [("build", "Marina", "--ungate"), ("build", "--ungate", "Marina")],
+    )
+    def test_build_flags_are_applied_in_either_operand_order(self, monkeypatch, argv):
+        seen = {}
+
+        def fake_build(build_args):
+            seen.update(vars(build_args))
+            return 0
+
+        monkeypatch.setattr("drydock.cli.cmd_build", fake_build)
+
+        rc, _out, err = run_cli(*argv)
+
+        assert rc == 0, err
+        assert seen["Target"] == "Marina"
+        assert seen["ungate"] is True
+
     def test_document_and_score_help_list_dispatcher_only_options(self):
         rc, document_help, _ = run_cli("document", "--help")
         assert rc == 0

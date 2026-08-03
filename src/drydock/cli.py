@@ -2131,6 +2131,11 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
     accepted build option can silently disappear from ``drydock build --help``.
     """
     parser.add_argument("Target", metavar="<Target>")
+    _add_build_options(parser)
+
+
+def _add_build_options(parser: argparse.ArgumentParser) -> None:
+    """Add build flags shared by the top-level dispatcher and operand parser."""
     parser.add_argument(
         "--build-dir",
         dest="build_dir",
@@ -2212,10 +2217,20 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
     _add_llm_override_flags(parser)
 
 
+def _build_operand_parser() -> argparse.ArgumentParser:
+    """Return the parser for the operands of ``drydock build <Target>``."""
+    parser = DrydockArgumentParser(
+        prog="drydock build",
+        description="Build or inspect build state.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_build_arguments(parser)
+    return parser
+
+
 def _build_help_details() -> str:
     """Return the build operand help rendered from its actual parser."""
-    parser = DrydockArgumentParser(prog="drydock build", add_help=False)
-    _add_build_arguments(parser)
+    parser = _build_operand_parser()
     return parser.format_help().partition("\n\n")[2].rstrip()
 
 
@@ -2526,7 +2541,10 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog="Build operands:\n" + _build_help_details(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    _add_llm_override_flags(p_build)
+    # Declare build options on the dispatcher as well as in the REMAINDER operand parser. This
+    # lets argparse consume a flag before the Target (``build --ungate Marina``); flags after the
+    # Target remain in ``args`` and are parsed by ``_parse_build_args``.
+    _add_build_options(p_build)
     p_build.add_argument("args", nargs=argparse.REMAINDER, metavar="[status|score] <Target>")
 
     # ── score ─────────────────────────────────────────────────────────────────
@@ -2733,10 +2751,7 @@ def _dispatch_document(args: argparse.Namespace) -> int:
 
 def _parse_build_args(tokens: list[str]) -> argparse.Namespace:
     """Parse Target and optional flags for ``drydock build <Target>``."""
-    p = DrydockArgumentParser(prog="drydock build", add_help=False)
-    _add_build_arguments(p)
-    parsed, _ = p.parse_known_args(tokens)
-    return parsed
+    return _build_operand_parser().parse_args(tokens)
 
 
 def _dispatch_build(args: argparse.Namespace) -> int:
@@ -2744,6 +2759,15 @@ def _dispatch_build(args: argparse.Namespace) -> int:
     if not tokens:
         not_implemented("build")
         raise AssertionError("unreachable")
+
+    # ``build`` uses REMAINDER so its operands can select the state subcommands. That means
+    # argparse cannot see ``--help`` once it occurs after ``build``. Handle help explicitly before
+    # interpreting the first operand, making all of these equivalent:
+    # ``drydock build --help``, ``drydock build Marina --help``, and ``drydock build --help Marina``.
+    if "--help" in tokens or "-h" in tokens:
+        _build_operand_parser().print_help()
+        return 0
+
     first = tokens[0] if tokens else ""
     if first == "status":
         if len(tokens) != 2:
@@ -2790,11 +2814,35 @@ def _dispatch_build(args: argparse.Namespace) -> int:
         return rc
     else:
         build_args = _parse_build_args(tokens)
-        # Invocation-wide --model/--llm-provider are stripped from argv before the
-        # build sub-parser runs, so carry them across unless a token set them here.
-        for key in ("model", "llm_provider", "effort"):
-            if getattr(build_args, key, None) is None:
-                setattr(build_args, key, getattr(args, key, None))
+        # Options before the Target are consumed by the dispatcher; options after it are parsed
+        # above. Preserve the latter when both forms are present, while carrying the former into
+        # the build namespace.
+        option_names = {
+            "build_dir": ("--build-dir",),
+            "step": ("--step",),
+            "story": ("--story",),
+            "continue_": ("--continue",),
+            "reset": ("--reset",),
+            "ungate": ("--ungate",),
+            "normalize_order": ("--normalize-order", "--normalize_order"),
+            "dry_run": ("--dry-run",),
+            "show_prompt": ("--show-prompt",),
+            "repair_attempts": ("--repair-attempts",),
+            "escalate_model": ("--escalate-model",),
+            "model": ("--model",),
+            "llm_provider": ("--llm-provider",),
+            "effort": ("--effort",),
+        }
+        for key, names in option_names.items():
+            if any(
+                token == name or token.startswith(name + "=") for token in tokens for name in names
+            ):
+                continue
+            value = getattr(args, key, None)
+            if isinstance(value, bool):
+                setattr(build_args, key, getattr(build_args, key, False) or value)
+            elif value is not None:
+                setattr(build_args, key, value)
         rc = cmd_build(build_args)
         if rc == 0:
             from drydock.config import record_activity
