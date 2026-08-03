@@ -2728,6 +2728,17 @@ def test_ungate_releases_acceptance_failure_and_unblocks_next_step(tmp_path):
         "id: ac-foundation\nparent: foundation\nkind: assertion\nstate: pending\n\n## story 2",
     )
     target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    (target_dir / "blueprint" / "SERVICE.md").write_text(
+        "SVC SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### service-file\n"
+        "Service writes its output marker.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "assert Path('service.txt').read_text(encoding='utf-8') == 'built service\\n'\n"
+        "```\n",
+        encoding="utf-8",
+    )
     runner = make_runner()
     messages: list[str] = []
 
@@ -2737,10 +2748,13 @@ def test_ungate_releases_acceptance_failure_and_unblocks_next_step(tmp_path):
 
     assert [step.block_id for step in result.steps] == ["service"]
     assert _state(target_dir, "foundation") == "closed/verified"
-    assert _state(target_dir, "ac-foundation") == "closed/verified"
+    assert _state(target_dir, "ac-foundation") == "pending"
+    assert _finding(target_dir, "ac-foundation") is None
     assert _finding(target_dir, "foundation").startswith("UNVERIFIED:")
     assert _state(target_dir, "service") == "closed/verified"
-    assert any("ungate: released 2 acceptance node(s) as UNVERIFIED" in line for line in messages)
+    assert result.steps[0].acceptance[0].check_id == "service-file"
+    assert result.steps[0].acceptance[0].passed is True
+    assert any("ungate: released 1 acceptance node(s) as UNVERIFIED" in line for line in messages)
 
 
 def test_ungate_does_not_release_non_acceptance_failure(tmp_path):
@@ -2754,6 +2768,27 @@ def test_ungate_does_not_release_non_acceptance_failure(tmp_path):
 
     assert changed == 0
     assert plan.by_id()["foundation"].state == "closed/failed"
+
+
+def test_ungate_changes_only_the_failed_story(tmp_path):
+    manifest = _FEATURE_GROUP_MANIFEST.replace(
+        "implements: DATABASE.md\ninstructions: |\n  Build the database.\nstate: pending",
+        "implements: DATABASE.md\ninstructions: |\n  Build the database.\n"
+        "state: closed/failed\n"
+        "finding: programmatic acceptance failed: foundation-file",
+        1,
+    )
+    target_dir, _ = _setup(tmp_path, manifest=manifest)
+    before = parse_build_plan(target_dir / "MANIFEST.md").by_id()
+
+    plan, changed = _ungate_acceptance_plan(parse_build_plan(target_dir / "MANIFEST.md"))
+
+    assert changed == 1
+    after = plan.by_id()
+    assert after["foundation"].state == "closed/verified"
+    assert after["foundation"].fields["finding"] == "UNVERIFIED: acceptance bypassed by --ungate"
+    assert after["feature-catalog"].state == before["feature-catalog"].state == "pending"
+    assert after["service"].state == before["service"].state == "pending"
 
 
 def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):

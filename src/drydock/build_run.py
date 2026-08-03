@@ -300,19 +300,6 @@ def _child_ac_ids(blocks: tuple[PlanBlock, ...], block_id: str) -> tuple[str, ..
     return tuple(b.block_id for b in blocks if b.block_type == "ac" and b.parent == block_id)
 
 
-def _ungated_check_ids(block: PlanBlock, ac_ids: tuple[str, ...]) -> tuple[str, ...]:
-    """Return AC ids named by an acceptance failure finding.
-
-    Acceptance failures are recorded on the owning story rather than on the child AC node.
-    Restricting the transition to the ids in that finding avoids approving a sibling AC that
-    was never part of the failed run. Older manifests without a detailed finding fall back to
-    all child ACs, since the story's failed state is still the durable evidence of the gate.
-    """
-    finding = str(block.fields.get("finding", ""))
-    named = tuple(ac_id for ac_id in ac_ids if ac_id in finding)
-    return named or ac_ids
-
-
 def _ungate_acceptance_plan(plan: BuildPlan) -> tuple[BuildPlan, int]:
     """Return a plan with acceptance-only failures explicitly marked unverified.
 
@@ -330,37 +317,12 @@ def _ungate_acceptance_plan(plan: BuildPlan) -> tuple[BuildPlan, int]:
         finding = str(story.fields.get("finding", ""))
         if not finding.lower().startswith("programmatic acceptance failed"):
             continue
-        child_ids = _child_ac_ids(tuple(blocks), story.block_id)
-        selected_ids = _ungated_check_ids(story, child_ids)
-        selected = set(selected_ids)
         for index, block in enumerate(blocks):
             if block.block_id == story.block_id:
                 fields = dict(block.fields)
                 fields["finding"] = marker
                 blocks[index] = replace(block, state="closed/verified", fields=fields)
                 changed += 1
-            elif block.block_id in selected:
-                fields = dict(block.fields)
-                fields["finding"] = marker
-                blocks[index] = replace(block, state="closed/verified", fields=fields)
-                changed += 1
-
-    # Release a feature only after every executable child is verified. A feature with an
-    # unrelated failed child remains gated and therefore cannot be skipped accidentally.
-    for feature in tuple(blocks):
-        if feature.block_type != "feature" or feature.state != "closed/failed":
-            continue
-        children = tuple(
-            child
-            for child in blocks
-            if child.parent == feature.block_id and child.block_type in {"story", "spike"}
-        )
-        if children and all(child.state == "closed/verified" for child in children):
-            fields = dict(feature.fields)
-            fields["finding"] = marker
-            index = next(i for i, block in enumerate(blocks) if block.block_id == feature.block_id)
-            blocks[index] = replace(feature, state="closed/verified", fields=fields)
-            changed += 1
 
     return replace(plan, blocks=tuple(blocks)), changed
 
