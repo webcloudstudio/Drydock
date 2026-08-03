@@ -3170,6 +3170,28 @@ def _failure_check_lines(check) -> list[str]:
     return lines
 
 
+def _failure_assertion(check) -> str:
+    """Return the assertion statement captured from a failed acceptance run."""
+    lines = [line.strip() for line in (check.stderr or "").splitlines() if line.strip()]
+    return next(
+        (line for line in reversed(lines) if line.startswith("assert ")),
+        "(assertion not captured)",
+    )
+
+
+def _failure_exception(check) -> str:
+    """Return the final exception line captured from a failed acceptance run."""
+    lines = [line.strip() for line in (check.stderr or "").splitlines() if line.strip()]
+    return next(
+        (
+            line
+            for line in reversed(lines)
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception)\b", line)
+        ),
+        "(exception not captured)",
+    )
+
+
 def _failure_stop_lines(step) -> list[str]:
     """Explain a repair loop that ended below its call budget.
 
@@ -3244,11 +3266,12 @@ def _render_build_failures(
         if step.block_id in seen:
             continue
         seen.add(step.block_id)
-        lines += [
-            "",
-            f"  Story {step.name} [{step.block_id}]",
-            f"    cause: {step.error or 'build failed'}",
-        ]
+        block_id = getattr(step, "container_block_id", None) or step.block_id
+        block_name = getattr(step, "container_name", None) or step.name
+        lines += ["", "  Failure", "    Provenance", f"      Target: {target}"]
+        lines.append(f"      Block: {block_name} [{block_id}]")
+        lines.append(f"      Story: {step.name} [{step.block_id}]")
+        lines.append(f"    Cause: {step.error or 'build failed'}")
         if step.agent_summary:
             lines += [
                 "    agent summary:",
@@ -3265,9 +3288,32 @@ def _render_build_failures(
             check for check in (step.owned_acceptance or step.acceptance) if not check.passed
         )
         if failed_checks:
-            lines.append("    remaining acceptance:")
+            lines.append("    Assertion")
+            lines.append("      Acceptance checks:")
             for check in failed_checks:
-                lines.extend(_failure_check_lines(check))
+                lines += [
+                    f"      Acceptance: {check.check_id}",
+                    f"      Intent: {check.intent or check.check_id}",
+                    f"      Source: {check.source}",
+                    f"      Code: {_failure_assertion(check)}",
+                    "    Result",
+                    "      Process exit code: "
+                    f"{check.return_code if check.return_code is not None else '(not reported)'}",
+                    f"      Error: {_failure_exception(check)}",
+                ]
+                if check.stderr.strip():
+                    lines.append("      Stderr:")
+                    lines.extend(
+                        f"        {line}" for line in check.stderr.strip().splitlines()[-4:]
+                    )
+                # Retain the compact suite tally used by existing operators and scripts.
+                tally = _suite_tally(check)
+                if tally is not None:
+                    lines.append(f"      Result tally: {tally[0]} passed, {tally[1]} failed")
+            lines.append("    Recovery")
+            lines.append("      Review the evidence, correct the failure, then run:")
+            lines.append(f"        drydock build {target} --step {step.block_id}")
+            lines.append("      Use --reset to discard preserved work and rebuild from scratch.")
         if step.agent_blockers:
             lines += [
                 "    agent blockers:",

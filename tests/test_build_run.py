@@ -1223,6 +1223,8 @@ def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
     assert [s.block_id for s in result.steps] == ["foundation", "service"]
     assert all(s.status == "failed" for s in result.steps)
     assert result.steps[0].error == "programmatic acceptance failed: service-adds"
+    assert result.steps[0].container_block_id == "feature-catalog"
+    assert result.steps[0].container_name == "Catalog"
     detail = result.steps[0].failure_detail
     assert 'Block "Catalog" [feature-catalog] failed its acceptance criteria.' in detail
     assert 'Story "Service" [service] does not meet its own acceptance criteria:' in detail

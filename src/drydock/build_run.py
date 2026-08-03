@@ -214,6 +214,11 @@ class BuildStepResult:
     status: str  # built | implemented | failed | dry-run
     state: str  # resulting manifest block state
     story_points: int
+    # The build unit may be a feature/block containing one or more stories. Keep the
+    # container provenance on each emitted story result so terminal diagnostics can name
+    # both identities without parsing the evidence prose.
+    container_block_id: str | None = None
+    container_name: str | None = None
     execution_id: str | None = None
     evidence_path: Path | None = None
     error: str | None = None
@@ -3025,6 +3030,8 @@ def build_target(
                 block_id=block.block_id,
                 name=block.name,
                 block_type=block.block_type,
+                container_block_id=unit.block_id,
+                container_name=unit.name,
                 status=status,
                 state=state,
                 story_points=assembly.total_story_points,

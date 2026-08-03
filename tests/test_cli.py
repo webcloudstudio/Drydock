@@ -76,10 +76,18 @@ def test_failure_renderer_shows_agent_summary_story_acceptance_and_progress():
 
     rendered = _render_build_failures("commonmark", [step], hint="continue", story_recovery=())
 
-    assert "Story Inline Parsing [inlines]" in rendered
+    assert "Provenance" in rendered
+    assert "Block: Inline Parsing [inlines]" in rendered
+    assert "Story: Inline Parsing [inlines]" in rendered
     assert "Fixed parsing and rendering behavior." in rendered
     assert "inline-suite: 271 passed, 64 failed · change +71 passed, -71 failed" in rendered
-    assert "remaining acceptance:" in rendered
+    assert "Acceptance checks:" in rendered
+    assert "Assertion" in rendered
+    assert "Code: assert result.returncode == 0" in rendered
+    assert "Process exit code: 1" in rendered
+    assert "Error: AssertionError" in rendered
+    assert "Recovery" in rendered
+    assert "drydock build commonmark --step inlines" in rendered
     assert "Nested emphasis remains nonconformant." in rendered
 
 
