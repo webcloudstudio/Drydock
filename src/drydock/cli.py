@@ -1594,6 +1594,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             show_prompt=bool(getattr(args, "show_prompt", False)),
             repair_attempts=repair_attempts,
             escalate_model=escalate_model,
+            ungate=bool(getattr(args, "ungate", False)),
         )
     print()
     label = "dry-run result" if result.dry_run else "result"
@@ -2167,6 +2168,13 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
         "with no selector resets every block and wipes the build directory.",
     )
     parser.add_argument(
+        "--ungate",
+        dest="ungate",
+        action="store_true",
+        help="Release prior acceptance-only failures as UNVERIFIED, then continue with the "
+        "next buildable step.",
+    )
+    parser.add_argument(
         "--normalize-order",
         "--normalize_order",
         dest="normalize_order",
@@ -2506,6 +2514,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock build <Target> --continue      — explicit alias for the default resume behavior\n"
             "drydock build <Target> --step <id>     — build/resume only that block\n"
             "drydock build <Target> --story <id>    — build/resume exactly one story, even in a feature\n"
+            "drydock build <Target> --ungate         — release acceptance-only failures as UNVERIFIED\n"
             "drydock build <Target> --reset         — reset all blocks + wipe build dir, then rebuild\n"
             "drydock build <Target> --step <id> --reset  — reset that block, then rebuild clean\n"
             "drydock build <Target> --normalize-order  — normalize MANIFEST order, then build\n"

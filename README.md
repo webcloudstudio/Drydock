@@ -294,7 +294,7 @@ drydock import <Target> <Source> [--format <auto|markdown|source|speckit|compass
 drydock analyze <Target> [--model <model>] [--llm-provider <claude|codex>]
 drydock plan [--overwrite] [--no-conform] [--continue-attempts <n>] <Target> [--model <model>] [--llm-provider <claude|codex>]
 
-drydock build <Target> [--step <step-id>] [--force] [--build-dir <path>] [--reset-failed] [--normalize-order] [--dry-run] [--show-prompt]
+drydock build <Target> [--step <step-id>] [--ungate] [--force] [--build-dir <path>] [--reset-failed] [--normalize-order] [--dry-run] [--show-prompt]
 drydock build status <Target>
 drydock score spec <Target>
 drydock score ac <Target>

@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-03: `drydock build --ungate` releases prior programmatic acceptance failures as
+  explicitly `UNVERIFIED` Manifest nodes and continues with the next buildable step; execution,
+  dependency, and provider failures remain gated.
+
 - 2026-08-02: Retired Blueprint and Sea Trials Markdown question sections. Plan, Build,
   acceptance authorization, and QuarterDeck Commander review now use `DECISIONS.json`; unanswered
   blocking decisions gate only their affected stories.

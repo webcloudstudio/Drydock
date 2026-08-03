@@ -98,6 +98,8 @@ BUILD_FAILURE_HINT = (
     "add --reset to discard its work and rebuild from scratch"
 )
 
+UNGATED_FINDING_PREFIX = "UNVERIFIED: acceptance bypassed by --ungate"
+
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
 TextCallback = Callable[[str], None]
@@ -296,6 +298,87 @@ def _has_child_acs(blocks: tuple[PlanBlock, ...], block_id: str) -> bool:
 
 def _child_ac_ids(blocks: tuple[PlanBlock, ...], block_id: str) -> tuple[str, ...]:
     return tuple(b.block_id for b in blocks if b.block_type == "ac" and b.parent == block_id)
+
+
+def _ungated_check_ids(block: PlanBlock, ac_ids: tuple[str, ...]) -> tuple[str, ...]:
+    """Return AC ids named by an acceptance failure finding.
+
+    Acceptance failures are recorded on the owning story rather than on the child AC node.
+    Restricting the transition to the ids in that finding avoids approving a sibling AC that
+    was never part of the failed run. Older manifests without a detailed finding fall back to
+    all child ACs, since the story's failed state is still the durable evidence of the gate.
+    """
+    finding = str(block.fields.get("finding", ""))
+    named = tuple(ac_id for ac_id in ac_ids if ac_id in finding)
+    return named or ac_ids
+
+
+def _ungate_acceptance_plan(plan: BuildPlan) -> tuple[BuildPlan, int]:
+    """Return a plan with acceptance-only failures explicitly marked unverified.
+
+    ``--ungate`` is deliberately narrower than resetting failed work: it releases only stories
+    whose persisted finding says programmatic acceptance failed, and it never releases provider,
+    dependency, environment, or agent execution failures.
+    """
+    blocks = list(plan.blocks)
+    changed = 0
+    marker = UNGATED_FINDING_PREFIX
+
+    for story in tuple(blocks):
+        if story.block_type not in {"story", "spike"} or story.state != "closed/failed":
+            continue
+        finding = str(story.fields.get("finding", ""))
+        if not finding.lower().startswith("programmatic acceptance failed"):
+            continue
+        child_ids = _child_ac_ids(tuple(blocks), story.block_id)
+        selected_ids = _ungated_check_ids(story, child_ids)
+        selected = set(selected_ids)
+        for index, block in enumerate(blocks):
+            if block.block_id == story.block_id:
+                fields = dict(block.fields)
+                fields["finding"] = marker
+                blocks[index] = replace(block, state="closed/verified", fields=fields)
+                changed += 1
+            elif block.block_id in selected:
+                fields = dict(block.fields)
+                fields["finding"] = marker
+                blocks[index] = replace(block, state="closed/verified", fields=fields)
+                changed += 1
+
+    # Release a feature only after every executable child is verified. A feature with an
+    # unrelated failed child remains gated and therefore cannot be skipped accidentally.
+    for feature in tuple(blocks):
+        if feature.block_type != "feature" or feature.state != "closed/failed":
+            continue
+        children = tuple(
+            child
+            for child in blocks
+            if child.parent == feature.block_id and child.block_type in {"story", "spike"}
+        )
+        if children and all(child.state == "closed/verified" for child in children):
+            fields = dict(feature.fields)
+            fields["finding"] = marker
+            index = next(i for i, block in enumerate(blocks) if block.block_id == feature.block_id)
+            blocks[index] = replace(feature, state="closed/verified", fields=fields)
+            changed += 1
+
+    return replace(plan, blocks=tuple(blocks)), changed
+
+
+def _ungate_acceptance_failures(manifest_path: Path) -> int:
+    """Persist the explicit ``--ungate`` transition and return changed node count."""
+    plan, changed = _ungate_acceptance_plan(parse_build_plan(manifest_path))
+    if not changed:
+        return 0
+    original = parse_build_plan(manifest_path).by_id()
+    updates: dict[str, dict[str, str | None]] = {}
+    for block in plan.blocks:
+        before = original.get(block.block_id)
+        if before is None or before.state == block.state and before.fields == block.fields:
+            continue
+        updates[block.block_id] = {"state": block.state, "finding": block.fields.get("finding")}
+    batch_set_block_fields(manifest_path, updates)
+    return changed
 
 
 # A step is a selection candidate when it is unbuilt (``pending``) or when it failed a
@@ -1882,6 +1965,7 @@ def build_target(
     repair_attempts: int = 3,
     escalate_model: str | None = None,
     dependency_registry_client: RegistryClient | None = None,
+    ungate: bool = False,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates.
 
@@ -1935,6 +2019,20 @@ def build_target(
     synchronized_plan = synchronize_manifest_question_gates(
         manifest_path, blueprint_dir, persist=not dry_run
     )
+    if ungate:
+        if dry_run:
+            synchronized_plan, ungated_count = _ungate_acceptance_plan(synchronized_plan)
+        else:
+            ungated_count = _ungate_acceptance_failures(manifest_path)
+            synchronized_plan = parse_build_plan(manifest_path)
+        _emit(
+            on_text,
+            (
+                f"ungate: released {ungated_count} acceptance node(s) as UNVERIFIED"
+                if ungated_count
+                else "ungate: no acceptance-only failure found"
+            ),
+        )
 
     # Place the imported build assets the Analysis marked `stage` before anything observes the
     # build directory. Acceptance checks run with the build directory as their working

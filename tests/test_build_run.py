@@ -18,6 +18,7 @@ from drydock.build_run import (
     _render_repair_feedback,
     _resolve_step_selector,
     _select_build_unit,
+    _ungate_acceptance_plan,
     build_target,
 )
 from drydock.dependency_gate import RegistryPackageInfo
@@ -2717,6 +2718,41 @@ def test_select_build_unit_rejects_failed_step_with_unverified_dependency(tmp_pa
 
     with pytest.raises(SpecificationError, match="not buildable"):
         _select_build_unit(plan, "service", "Demo")
+
+
+def test_ungate_releases_acceptance_failure_and_unblocks_next_step(tmp_path):
+    manifest = _FAILED_STORY_WITH_AC.replace(
+        "state: closed/failed\n\n## story 2",
+        "state: closed/failed\n\n## ac 3: Foundation check\n"
+        "id: ac-foundation\nparent: foundation\nkind: assertion\nstate: pending\n\n## story 2",
+    )
+    target_dir, build_dir = _setup(tmp_path, manifest=manifest)
+    runner = make_runner()
+    messages: list[str] = []
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=runner, on_text=messages.append, ungate=True
+    )
+
+    assert [step.block_id for step in result.steps] == ["service"]
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _state(target_dir, "ac-foundation") == "closed/verified"
+    assert _finding(target_dir, "foundation").startswith("UNVERIFIED:")
+    assert _state(target_dir, "service") == "closed/verified"
+    assert any("ungate: released 2 acceptance node(s) as UNVERIFIED" in line for line in messages)
+
+
+def test_ungate_does_not_release_non_acceptance_failure(tmp_path):
+    manifest = _TWO_STORIES.replace(
+        "state: pending\n\n## story 2",
+        "state: closed/failed\nfinding: LLM execution failed\n\n## story 2",
+        1,
+    )
+    target_dir, _ = _setup(tmp_path, manifest=manifest)
+    plan, changed = _ungate_acceptance_plan(parse_build_plan(target_dir / "MANIFEST.md"))
+
+    assert changed == 0
+    assert plan.by_id()["foundation"].state == "closed/failed"
 
 
 def test_resume_seeds_attempt_zero_with_live_failure(tmp_path):
