@@ -757,25 +757,44 @@ def _stale_applied_specs(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...
     return tuple(details)
 
 
-def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> None:
+def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> tuple[str, ...]:
+    """Report changed applied specs without blocking; reject specs that disappeared.
+
+    A Blueprint edit is an authoring event, not a request for Drydock to rewrite its
+    compact derivative or silently run ``refit``.  The build therefore continues against
+    the current full source and leaves any existing compact derivative untouched.  A
+    missing applied source remains fatal because the build no longer has the declared input.
+    """
     plan = parse_build_plan(plan_path)
     stale = stale_applied_specs(plan, blueprint_dir)
     if not stale:
-        return
+        return ()
+    missing = [spec for spec in stale if spec.reason == "missing"]
+    if missing:
+        lines = ["Build blocked: previously applied Blueprint specifications are missing."]
+        lines.extend(
+            f"  - {spec.rel_path}: missing (applied_by={spec.record.applied_by}, "
+            f"recorded_commit={spec.record.commit})"
+            for spec in missing
+        )
+        raise SpecificationError("\n".join(lines))
+
     foundational = sorted({
         name for spec in stale if (name := foundational_source(spec.rel_path)) is not None
     })
-    lines = ["Build blocked: previously applied Blueprint specifications changed."]
+    lines = ["WARNING: Previously applied Blueprint specifications changed; build continues."]
     for name in foundational:
         lines.append(
-            f"{name} is a sealed foundational specification. Create a change ticket in "
-            f"blueprint/changes/ (Amends: {name}) and run 'drydock refit'. Foundational "
-            "changes rebuild all dependent blocks."
+            f"WARNING: {name} changed. Existing compact derivatives are not regenerated; "
+            "the current full specification is used."
         )
     if any(foundational_source(spec.rel_path) is None for spec in stale):
-        lines.append("Run 'drydock refit' to reset the affected blocks for rebuild.")
+        lines.append(
+            "WARNING: non-foundational Blueprint specifications changed. Existing compact "
+            "derivatives are not regenerated; the current full specifications are used."
+        )
     lines.extend(f"  - {detail}" for detail in _stale_applied_specs(plan_path, blueprint_dir))
-    raise SpecificationError("\n".join(lines))
+    return tuple(lines)
 
 
 def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...]) -> None:
@@ -1936,7 +1955,8 @@ def build_target(
             )
     if dry_run:
         _emit(on_text, "dry run: no reusable compacts are written")
-    _ensure_applied_specs_current(manifest_path, blueprint_dir)
+    for warning in _ensure_applied_specs_current(manifest_path, blueprint_dir):
+        _emit(on_text, warning)
 
     prompt = load_prompt(PROMPT_NAME)
     today = date.today().isoformat()

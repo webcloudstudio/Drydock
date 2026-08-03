@@ -1921,9 +1921,7 @@ state: pending
         assert "ARCHITECTURE.md" in plan.applied_specs
         assert "README.md" not in plan.applied_specs
 
-    def test_changed_previously_applied_spec_blocks_before_runner(self, tmp_path):
-        from drydock.errors import SpecificationError
-
+    def test_changed_previously_applied_spec_warns_and_builds(self, tmp_path):
         target_dir, build_dir = _setup(tmp_path)
         runner = make_runner()
         build_target("Demo", target_dir, build_dir=build_dir, runner=runner, step_id="foundation")
@@ -1932,10 +1930,10 @@ state: pending
         )
 
         second_runner = make_runner()
-        with pytest.raises(SpecificationError, match="previously applied Blueprint specifications"):
-            build_target("Demo", target_dir, build_dir=build_dir, runner=second_runner)
+        result = build_target("Demo", target_dir, build_dir=build_dir, runner=second_runner)
 
-        assert len(second_runner.calls) == 0
+        assert result.exit_code() == 0
+        assert len(second_runner.calls) == 1
 
     def test_full_reset_clears_applied_specs_and_rebuilds(self, tmp_path):
         target_dir, build_dir = _setup(tmp_path)
@@ -1971,11 +1969,10 @@ state: pending
 
         assert len(runner.calls) == 0
 
-    def test_drift_error_message_distinguishes_foundational_and_ordinary(self, tmp_path):
+    def test_drift_warning_distinguishes_foundational_and_ordinary(self, tmp_path):
         import hashlib
 
         from drydock.build_run import _ensure_applied_specs_current
-        from drydock.errors import SpecificationError
 
         blueprint = tmp_path / "blueprint"
         blueprint.mkdir()
@@ -1998,13 +1995,12 @@ state: pending
             encoding="utf-8",
         )
 
-        with pytest.raises(SpecificationError) as excinfo:
-            _ensure_applied_specs_current(manifest, blueprint)
+        warnings = _ensure_applied_specs_current(manifest, blueprint)
 
-        message = str(excinfo.value)
-        assert "sealed foundational specification" in message
-        assert "Amends: DATABASE.md" in message
-        assert "drydock refit" in message
+        message = "\n".join(warnings)
+        assert "build continues" in message
+        assert "DATABASE.md changed" in message
+        assert "Existing compact derivatives are not regenerated" in message
         assert "SCREEN-A.md" in message
 
 

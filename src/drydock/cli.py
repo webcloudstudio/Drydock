@@ -112,6 +112,8 @@ def _stream_build_summary(text: str) -> None:
         _stream_build(text)
     elif text.startswith("acceptance:"):
         _stream_build(text)
+    elif text.startswith("WARNING:"):
+        _stream_build(text)
     # A repair loop that stops below its budget must say why here. Hiding the reason behind
     # --debug leaves an operator reading "call 2 of up to 4" with no account of the shortfall.
     # ``repair: attempt`` stays hidden — the ``call:`` line already carries that count.
