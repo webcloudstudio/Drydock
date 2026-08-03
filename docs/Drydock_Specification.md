@@ -527,6 +527,7 @@ Implement the Blueprint using the Manifest
 
 ```text
 drydock build <Target> [--continue] [--repair-attempts <n>] [--escalate-model <model>] [--build-dir <path>]
+drydock build <Target> [--step <id|name>] [--story <id|name>] [--ungate] [--reset] [--dry-run] [--show-prompt] [--normalize-order] [--build-dir <path>] [--repair-attempts <n>] [--escalate-model <model>]
 drydock build <Target> --step <STEP> [--reset] [--build-dir <path>]
 drydock build <Target> --story <STORY> [--reset] [--build-dir <path>]
 drydock build <Target> --reset [--build-dir <path>]
@@ -637,6 +638,8 @@ restored; `drydock score` reports a modified staged asset as a release blocker.
   `--dry-run` previews the next build step without invoking the LLM or writing files.
   `--show-prompt` prints the full assembled prompt only when combined with `--dry-run`.
 ```
+
+`--ungate` marks prior programmatic acceptance failures as UNVERIFIED, closes their owning build steps as verified, and continues with the next buildable step; execution and dependency failures remain gated.
 
 Before executing work, `drydock build` checks previously applied Blueprint files for drift. If they have changed, the build stops and directs the Commander to run `drydock refit`. Foundational specifications such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit 
 change tickets to modify.
