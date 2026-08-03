@@ -14,7 +14,7 @@ The discriminator for where a fact lives: **does the fact describe the artifact 
 | Story ``type`` | Manifest | Computed, machine-focused |
 | ``Phase`` | Manifest | Describes when the file is built, not the file |
 | Programmatic Acceptance | Manifest | Machine-focused; nobody should hand-edit it |
-| User Acceptance, ``## Questions`` | Blueprint | Human intent |
+| User Acceptance, ``DECISIONS.json`` | Target | Human intent and planning disclosures |
 
 ``Phase`` never touches disk in the Blueprint. Programmatic Acceptance is executable assertions
 carrying pass/fail state and is regenerated wholly by every plan run; User Acceptance is

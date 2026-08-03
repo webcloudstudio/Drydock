@@ -7,10 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from drydock.errors import SpecificationError
 from drydock.metadata import BUILD_STATE_LADDER, get_field, parse_metadata
 from drydock.paths import get_stack_dir
-from drydock.questions import validate_questions_document
 
 
 class Severity(Enum):
@@ -93,7 +91,6 @@ _TERMINAL_SECTIONS_REQUIRED = {
     "Programmatic Acceptance",
     "User Acceptance",
     "Guardrails",
-    "Questions",
 }
 _COMPASS_EXTRA_SECTIONS = {"Compass", "Constraints", "Success Criteria"}
 
@@ -327,18 +324,6 @@ def validate_specification(
 
         is_example = fname in _EXAMPLE_FILES
         text = md_file.read_text(encoding="utf-8")
-
-        try:
-            validate_questions_document(
-                text,
-                source=fname,
-                require_first_section=True,
-            )
-        except SpecificationError as exc:
-            if is_example:
-                w(section, str(exc))
-            else:
-                f(section, str(exc))
 
         for heading in _TERMINAL_SECTIONS_REQUIRED:
             if _has_section(text, heading):

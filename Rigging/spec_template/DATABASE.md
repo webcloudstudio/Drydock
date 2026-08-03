@@ -8,10 +8,6 @@
 | Provides | |
 | Build Order | |
 
-## Questions
-
-- None.
-
 <!-- Store interfaces first. Schema details follow the public persistence boundary. -->
 <!-- Delete this file if the project has no database. -->
 

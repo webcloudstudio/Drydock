@@ -11,14 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.acceptance import AcceptanceRequirement, ProgrammaticAcceptance
+from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.dependency_gate import canonicalize_package_name
-from drydock.plan_feedback import PlanningDecision, load_feedback
-from drydock.questions import (
-    MarkdownQuestion,
-    append_question,
-    parse_questions,
-    replace_questions_section,
-)
 from drydock.target_environment import resolve_target_environment
 
 _MISSING_MODULE_RE = re.compile(
@@ -176,13 +170,13 @@ def requirement_available(requirement: AcceptanceRequirement, build_dir: Path) -
     return False
 
 
-def _decision_authorizes(requirement: AcceptanceRequirement, decision: PlanningDecision) -> bool:
+def _decision_authorizes(requirement: AcceptanceRequirement, decision: Decision) -> bool:
     answer = decision.answer.lower()
     if not any(word in answer for word in ("approve", "authorize", "allowed", "permit")):
         return False
     if "all test harness" in answer and requirement.scope == "test":
         return True
-    corpus = f"{decision.subject} {decision.question} {decision.answer}".lower()
+    corpus = f"{decision.title} {decision.description} {decision.answer}".lower()
     return requirement.name.lower() in corpus and requirement.scope in corpus
 
 
@@ -202,23 +196,23 @@ def authorization_for(
     stack = target_dir / "TECHNOLOGY_STACK.md"
     if stack.is_file() and requirement.name.lower() in stack.read_text(encoding="utf-8").lower():
         return RequirementAuthorization(requirement, True, "Commander technology stack")
-    for decision in load_feedback(target_dir):
-        if decision.status == "active" and _decision_authorizes(requirement, decision):
+    for decision in load_decisions(target_dir / "DECISIONS.json"):
+        if not decision.archived and _decision_authorizes(requirement, decision):
             return RequirementAuthorization(
-                requirement, True, f"Commander guidance {decision.decision_id}", decision.answer
+                requirement, True, f"Commander decision {decision.id}", decision.answer
             )
     if current_manifest_approved:
         return RequirementAuthorization(requirement, True, "current Manifest approval")
     return RequirementAuthorization(requirement, False)
 
 
-def tooling_question(
+def tooling_decision(
     check: ProgrammaticAcceptance,
     requirement: AcceptanceRequirement,
     *,
     origin: str,
     multiple: bool = False,
-) -> MarkdownQuestion:
+) -> Decision:
     suffix = (
         "" if not multiple else f"-{requirement.kind}-{canonicalize_package_name(requirement.name)}"
     )
@@ -227,52 +221,37 @@ def tooling_question(
         if requirement.kind == "python-package"
         else f"provision executable {requirement.name} outside Drydock"
     )
-    return MarkdownQuestion(
-        question_id=f"Q-{check.check_id}-tooling{suffix}",
-        name=f"Authorize {check.check_id} {requirement.scope} tooling",
-        origin=origin,
+    return Decision(
+        id=f"acceptance-{check.check_id}-tooling{suffix}",
+        type="text",
         severity="blocking",
+        origin=origin,
+        blueprint=check.source,
+        story=None,
         status="open",
-        question=(
-            f"Authorize `{requirement.kind}={requirement.name}` for {requirement.scope} scope. "
-            f"Purpose: execute `{check.check_id}` ({check.intent}). Planned installation: "
-            f"`{mechanism}`. Affected acceptance criterion: `{check.source}#{check.check_id}`."
+        archived=False,
+        title=f"Authorize {check.check_id} {requirement.scope} tooling",
+        description=(
+            f"Authorize {requirement.kind}={requirement.name} for {requirement.scope} scope. "
+            f"Planned installation: {mechanism}. Affected acceptance check: "
+            f"{check.source}#{check.check_id} ({check.intent})."
         ),
-        answer="",
+        options=(),
+        system_choice="not authorized",
     )
 
 
-def append_requirement_question(
-    blueprint_path: Path,
-    check: ProgrammaticAcceptance,
-    requirement: AcceptanceRequirement,
-    *,
-    origin: str,
-) -> bool:
-    existing = parse_questions(
-        blueprint_path.read_text(encoding="utf-8"), source=str(blueprint_path)
-    )
-    base = tooling_question(check, requirement, origin=origin)
-    multiple = any(item.question_id == base.question_id for item in existing)
-    return append_question(
-        blueprint_path,
-        tooling_question(check, requirement, origin=origin, multiple=multiple),
-    )
-
-
-def project_plan_requirement_questions(
+def project_plan_requirement_decisions(
     blocks: dict[str, str], *, target_dir: Path, build_dir: Path
-) -> tuple[str, ...]:
-    """Add deterministic Plan-origin gates for unavailable, unauthorized requirements."""
-    added: list[str] = []
+) -> tuple[Decision, ...]:
+    """Return deterministic blocking decisions for unavailable tooling."""
+    added: list[Decision] = []
     for source, text in tuple(blocks.items()):
-        if not source.lower().endswith(".md") or "## Questions" not in text:
+        if not source.lower().endswith(".md"):
             continue
         from drydock.acceptance import parse_programmatic_acceptance_text
 
         checks = parse_programmatic_acceptance_text(text, source=source)
-        questions = list(parse_questions(text, source=source))
-        known = {item.question_id for item in questions}
         for check in checks:
             missing = [
                 requirement
@@ -282,17 +261,44 @@ def project_plan_requirement_questions(
                 ).authorized
             ]
             for requirement in missing:
-                question = tooling_question(
+                decision = tooling_decision(
                     check, requirement, origin="plan", multiple=len(check.requirements) > 1
                 )
-                if question.question_id in known:
-                    continue
-                questions.append(question)
-                known.add(question.question_id)
-                added.append(f"{source}#{question.question_id}")
-        if questions != list(parse_questions(text, source=source)):
-            blocks[source] = replace_questions_section(text, tuple(questions))
+                added.append(decision)
     return tuple(added)
+
+
+def project_plan_requirement_questions(
+    blocks: dict[str, str], *, target_dir: Path, build_dir: Path
+) -> tuple[str, ...]:
+    """Compatibility shim; acceptance authorization is persisted as decisions."""
+    return tuple(
+        item.id
+        for item in project_plan_requirement_decisions(
+            blocks, target_dir=target_dir, build_dir=build_dir
+        )
+    )
+
+
+def record_requirement_decision(
+    target_dir: Path,
+    check: ProgrammaticAcceptance,
+    requirement: AcceptanceRequirement,
+    *,
+    origin: str = "build",
+    story: str | None = None,
+) -> Decision:
+    """Persist one unanswered acceptance authorization in DECISIONS.json."""
+    item = tooling_decision(check, requirement, origin=origin)
+    if story:
+        item = Decision(**{**item.__dict__, "story": story})
+    path = target_dir / "DECISIONS.json"
+    prior = {record.id: record for record in load_decisions(path)}
+    prior[item.id] = (
+        item if item.id not in prior or not prior[item.id].is_human_authored else prior[item.id]
+    )
+    write_decisions(path, tuple(sorted(prior.values(), key=lambda record: record.id)))
+    return prior[item.id]
 
 
 def discover_missing_requirement(result_stderr: str) -> AcceptanceRequirement | None:

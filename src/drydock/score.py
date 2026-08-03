@@ -187,14 +187,9 @@ def _provision_authorized_environment(
     build_dir: Path,
 ) -> None:
     """Use the same authorization and uv provisioning contract as Build."""
-    owners = _blueprint_owners(plan)
     missing = []
     for check in checks:
-        owner_id = owners.get(check.source, ("", ""))[0]
-        owner = plan.by_id().get(owner_id)
-        current_approval = bool(
-            owner and str(owner.fields.get("questions_approved", "")).lower() == "true"
-        )
+        current_approval = False
         for requirement in check.requirements:
             if requirement_available(requirement, build_dir):
                 continue

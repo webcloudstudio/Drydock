@@ -8,10 +8,6 @@
 | Provides | |
 | Build Order | |
 
-## Questions
-
-- None.
-
 <!-- One file per cross-cutting behavior. Rename to describe capability: FEATURE-Scan.md -->
 <!-- Delete this template after creating real feature files. -->
 

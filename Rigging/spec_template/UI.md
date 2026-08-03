@@ -8,10 +8,6 @@
 | Provides | |
 | Build Order | |
 
-## Questions
-
-- None.
-
 <!-- Shared visual patterns referenced by SCREEN-* files. -->
 <!-- Delete this file if the project has no UI. -->
 

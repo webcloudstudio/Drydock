@@ -16,4 +16,4 @@ messages_directory: ../Messages
 
 ## Agent Instructions
 
-When working on a Typed Blueprint, put unresolved questions in its first `## Questions` section after the title and metadata table.
+When working on a Typed Blueprint, put unresolved product decisions in the Target's `DECISIONS.json`.

@@ -10,6 +10,10 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-02: Retired Blueprint and Sea Trials Markdown question sections. Plan, Build,
+  acceptance authorization, and QuarterDeck Commander review now use `DECISIONS.json`; unanswered
+  blocking decisions gate only their affected stories.
+
 - 2026-08-02: `drydock build` no longer gates on the managed Build Write Guardrail in the
   human-editable `COMPASS.md`; Analyze and Compass creation continue to inject the guardrail.
 

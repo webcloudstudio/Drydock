@@ -40,9 +40,9 @@ from drydock.acceptance import (
     run_programmatic_acceptance,
 )
 from drydock.acceptance_requirements import (
-    append_requirement_question,
     authorization_for,
     discover_missing_requirement,
+    record_requirement_decision,
     requirement_available,
 )
 from drydock.build import (
@@ -69,6 +69,7 @@ from drydock.build_plan import (
     stale_applied_specs,
 )
 from drydock.config import blueprint_dir_for, build_dir_for, get_sandbox_mem_limit_mb
+from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.dependency_gate import (
     DependencyGateResult,
     RegistryClient,
@@ -80,7 +81,6 @@ from drydock.llm import format_token_summary, render_rate_limit_error_block, run
 from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
-from drydock.plan_feedback import harvest_answered_questions, render_feedback_prompt
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_invocation, analyze_literals, analyze_structure
@@ -2020,7 +2020,9 @@ def build_target(
                 today=today,
                 reusable_compacts=reusable_compact_sources,
             )
-        commander_guidance = render_feedback_prompt(harvest_answered_questions(target_dir))
+        commander_guidance = render_commander_guidance(
+            load_decisions(target_dir / "DECISIONS.json")
+        )
         if commander_guidance:
             prompt_assembly = PromptAssembly(
                 parts=(
@@ -2083,9 +2085,7 @@ def build_target(
         requirement_evidence: list[str] = []
         for check in checks:
             owner = story_by_source_check.get((check.source, check.check_id))
-            current_approval = bool(
-                owner and str(owner.fields.get("questions_approved", "")).lower() == "true"
-            )
+            current_approval = False
             for requirement in check.requirements:
                 if requirement_available(requirement, resolved_build_dir):
                     requirement_evidence.append(
@@ -2116,7 +2116,12 @@ def build_target(
             for check, requirement in unauthorized:
                 blueprint_path = blueprint_dir / check.source
                 if blueprint_path.is_file():
-                    append_requirement_question(blueprint_path, check, requirement, origin="build")
+                    record_requirement_decision(
+                        target_dir,
+                        check,
+                        requirement,
+                        story=owner.block_id if owner is not None else None,
+                    )
             synchronize_manifest_question_gates(manifest_path, blueprint_dir, persist=not dry_run)
             _emit(
                 on_text,
@@ -2540,21 +2545,16 @@ def build_target(
                                     for item in checks
                                     if item.check_id == failed_result.check_id
                                 )
-                                append_requirement_question(
-                                    blueprint_dir / declared_check.source,
-                                    declared_check,
-                                    requirement,
-                                    origin="build",
-                                )
                                 owner = story_by_source_check.get((
                                     declared_check.source,
                                     declared_check.check_id,
                                 ))
-                                if owner is not None and "questions_approved" in owner.fields:
-                                    batch_set_block_fields(
-                                        manifest_path,
-                                        {owner.block_id: {"questions_approved": None}},
-                                    )
+                                record_requirement_decision(
+                                    target_dir,
+                                    declared_check,
+                                    requirement,
+                                    story=owner.block_id if owner is not None else None,
+                                )
                                 synchronize_manifest_question_gates(
                                     manifest_path, blueprint_dir, persist=True
                                 )
@@ -2563,7 +2563,7 @@ def build_target(
                                 failure_detail = (
                                     f"Undeclared {requirement.kind}={requirement.name} was "
                                     "discovered during acceptance. Partial work is preserved; "
-                                    "answer the build-origin Blueprint question to resume this story."
+                                    "answer the blocking DECISIONS.json authorization to resume this story."
                                 )
                                 _emit(on_text, "blocked/questions: " + failure_detail)
                             else:
@@ -2734,6 +2734,7 @@ def build_target(
                 summary,
                 blueprint_dir=blueprint_dir,
                 allowed_specs=allowed_specs,
+                target_dir=target_dir,
             )
             if written_decisions:
                 _emit(

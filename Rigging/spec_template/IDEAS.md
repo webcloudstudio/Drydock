@@ -26,7 +26,3 @@ Process with the command: "process ideas" in an interactive session.
 ## Guardrails
 
 - None.
-
-## Questions
-
-- None.

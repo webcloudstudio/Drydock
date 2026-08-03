@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.errors import SpecificationError
-from drydock.questions import parse_questions, render_questions
 
 TRIAL_TYPES = frozenset({"technical", "behavioral", "qualitative", "outcome", "guardrail"})
 VERIFICATION_TYPES = frozenset({"proof", "measurement", "evidence", "llm"})
@@ -218,11 +217,6 @@ implementation/proof coverage.
 
 Guardrails are exempt from `accepts:` coverage. No story builds a prohibition.
 
-### Questions
-
-The canonical `## Questions` section lists measurement facts only a human can supply — unknown
-baselines, targets, workloads, or business measures. QuarterDeck writes answers directly into
-this artifact. An unanswered question leaves its criterion `INCONCLUSIVE` at scoring time.\
 """
 
 
@@ -303,12 +297,7 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
     project = first.partition(":")[2].strip() if first.startswith("# Sea Trials:") else ""
     lines = text.splitlines()
     trials: list[SeaTrial] = []
-    markdown_questions = parse_questions(text, source="SEA_TRIALS.md")
-    questions = [
-        SeaTrialQuestion(item.question_id.lower(), item.question, item.status, item.answer)
-        for item in markdown_questions
-        if not is_stack_selection_question(item.question_id, item.question)
-    ]
+    questions: list[SeaTrialQuestion] = []
     seen: set[str] = set()
     index = 0
     while index < len(lines):
@@ -474,12 +463,7 @@ def _format_trial_fields(text: str) -> str:
 
 
 def normalize_sea_trials_text(text: str) -> str:
-    """Return canonical Questions first, followed by documentation and criteria."""
-    questions = tuple(
-        item
-        for item in parse_questions(text, source="SEA_TRIALS.md")
-        if not is_stack_selection_question(item.question_id, item.question)
-    )
+    """Return canonical Sea Trials content without the retired Questions section."""
     without_questions = re.sub(
         r"^## Questions\s*$\n.*?(?=^##\s+|\Z)",
         "",
@@ -500,11 +484,7 @@ def normalize_sea_trials_text(text: str) -> str:
     if body and not re.search(r"^##\s+", body, re.MULTILINE):
         body = "## Trials\n\n" + body
     reader_guide = "## Reader Guide\n\n" + SEA_TRIALS_DOC
-    sections = [
-        section
-        for section in (title, render_questions(questions).strip(), body, reader_guide)
-        if section
-    ]
+    sections = [section for section in (title, body, reader_guide) if section]
     return "\n\n".join(sections) + "\n"
 
 
@@ -515,48 +495,6 @@ def load_sea_trials(path: Path) -> SeaTrialsDocument:
 
 
 def project_questions(document: SeaTrialsDocument, path: Path) -> Path | None:
-    """Write the normal QuarterDeck JSON projection for unresolved Markdown questions.
-
-    Commander input is never destroyed by a rerun: prior answers are carried across by question
-    ID, the Commander's ``resolution`` and ``additional_notes`` are preserved, and an answered
-    questionnaire survives even when the regenerated SEA_TRIALS.md no longer asks its questions.
-    """
-    existing: dict = {}
-    if path.is_file():
-        try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            existing = {}
-    answers = {
-        str(item.get("id", "")): str(item.get("answer", ""))
-        for item in existing.get("questions", [])
-        if isinstance(item, dict)
-    }
-    if not document.questions:
-        if path.is_file() and not any(value.strip() for value in answers.values()):
-            path.unlink()
-            return None
-        return path if path.is_file() else None
-    payload = {
-        "id": "discovery-sea-trials",
-        "title": "Sea Trials Measurement Questions",
-        "purpose": "Complete project-level acceptance measurements before final scoring.",
-        "state": "open",
-        "questions": [
-            {
-                "id": question.question_id,
-                "label": question.text,
-                "input": "textarea",
-                "answer": question.answer or answers.get(question.question_id, ""),
-            }
-            for question in document.questions
-        ],
-    }
-    for field in ("resolution", "additional_notes"):
-        if str(existing.get(field, "")).strip():
-            payload[field] = existing[field]
-    if payload["questions"] and all(str(q["answer"]).strip() for q in payload["questions"]):
-        payload["state"] = "answered"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
-    return path
+    """Sea Trials has no question projection; decisions are persisted in DECISIONS.json."""
+    del document, path
+    return None

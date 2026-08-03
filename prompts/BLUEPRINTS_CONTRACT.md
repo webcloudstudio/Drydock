@@ -33,9 +33,9 @@ project is, what it must do, and how it is built.
 | `*-AC.md` / `AC-*.md` / `*-AC-*.md` | Acceptance criteria — any file where `AC` is a whole word in the filename | As needed |
 | `changes/TICKET-NNN-{Name}.md` | Post-baseline change, defect, or spike request | As needed |
 
-Every authored Specification file places `## Questions` immediately after its title and typed
-metadata table. It ends with `## Programmatic Acceptance`, `## User Acceptance`, and
-`## Guardrails`. Use `- None.` when no entries apply.
+Every authored Specification file ends with `## Programmatic Acceptance`, `## User Acceptance`,
+and `## Guardrails`. Use `- None.` when no entries apply. Planning disclosures and Commander
+responses are records in the target's `DECISIONS.json`.
 
 `ARCHITECTURE_compact.md` is a compact derivative of `ARCHITECTURE.md` produced by
 `drydock rigging compact`. Drydock uses filename-selected compaction algorithms rather than
@@ -103,40 +103,10 @@ are not authored Specification files.
 
 ## Common Authored Specification Sections
 
-Every authored Specification file places this section immediately after its typed metadata table:
-
-```markdown
-## Questions
-
-- None.
-```
-
-When Plan discovers a human-owned unknown while authoring a story, replace `- None.` with one or
-more deterministic records:
-
-```markdown
-### Q-state-model: State Changer
-
-- Origin: plan
-- Severity: Material
-- Status: open
-
-#### Question
-
-Which state model governs this workflow?
-
-#### Answer
-```
-
-An Analyze questionnaire answer uses `Origin: analyze-questionnaire`, `Status: answered`, and a
-non-empty Answer. An answered decision is applied to normal specification content on later plans
-and is not recreated as a question.
-
-Severity is `Low`, `Material`, or `Blocking`. Low and Material records document a decision and do
-not gate the owning story. Blocking is exceptional and gates only the owning story. A Plan decision
-normally states the considered options, selected option and reason, then asks whether the Commander
-wants to redirect and replan. `Origin: build` records a Shipyard Crew implementation decision in
-the owning specification; it never initiates a questionnaire or blocks completed work.
+Plan and Build disclosures use the existing `DECISIONS.json` schema. `severity: blocking` is the
+only decision gate and blocks only the attached story while its Commander response is absent.
+Analyze questionnaire answers are converted to `origin: analyze-questionnaire` records. Commander
+responses remain in the same records across replans.
 
 Every authored Specification file ends with these sections, using `- None.` when no entries apply:
 
@@ -379,7 +349,7 @@ scanner to group related repositories under a named service.
 
 ## Authoring Conventions
 
-**Authoring phase:** all unresolved questions go in `## Questions` sections. Do not create
+**Authoring phase:** all unresolved product decisions go in `DECISIONS.json`. Do not create
 `MANIFEST.md` or numbered ticket files while authoring.
 
 **Build phase:** run `drydock plan create` once the specification is ready. Use `drydock status`

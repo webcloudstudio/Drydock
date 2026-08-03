@@ -1780,44 +1780,8 @@ def _render_build_questions(
 
 
 def _render_plan_feedback() -> str:
-    """Render the filename-independent planning-decision continuity store."""
-    from drydock.plan_feedback import authoritative_artifact, load_feedback
-
-    target = _current_project_root()
-    decisions = load_feedback(target)
-    if not decisions:
-        return ""
-    rows = []
-    for item in decisions:
-        authority = authoritative_artifact(target, item)
-        source_kind = (
-            "Analyze questionnaire"
-            if authority is not None and authority.suffix.lower() == ".json"
-            else "Blueprint"
-        )
-        control = (
-            f"<span class='subtle'>Edit in authoritative {source_kind}</span>"
-            if authority is not None
-            else (
-                f"<textarea id='feedback-{html.escape(item.decision_id)}' rows='2'>"
-                f"{html.escape(item.answer)}</textarea>"
-                f"<button onclick=\"savePlanFeedback('{html.escape(item.decision_id)}')\">"
-                "Save feedback</button>"
-            )
-        )
-        rows.append(
-            "<div class='cmp-review-section'>"
-            f"<strong>{html.escape(item.decision_id)}</strong>"
-            f"<div>{html.escape(item.question)}</div>"
-            f"<div><strong>Decision:</strong> {html.escape(item.answer)}</div>"
-            f"<div class='subtle'>{html.escape(item.disposition)} · "
-            f"{html.escape(item.source_blueprint)}</div>{control}</div>"
-        )
-    return (
-        "<details class='cmp-detail cmp-plan'><summary>Persistent Plan Feedback</summary>"
-        + "".join(rows)
-        + "</details>"
-    )
+    """Compatibility placeholder; Commander review uses DECISIONS.json."""
+    return ""
 
 
 def render_compass(item: dict[str, Any]) -> str:
@@ -2108,19 +2072,9 @@ def render_compass(item: dict[str, Any]) -> str:
                 else ""
             )
             if kind == "questions":
-                approved = str(block.fields.get("questions_approved", "")).lower() == "true"
                 blocked_html = (
-                    "<div class='cmp-blocked-by'><strong>Unanswered Questions Exist.</strong> "
-                    f"{html.escape(str(block.fields.get('questions') or ''))}"
-                    + (
-                        ""
-                        if approved
-                        else (
-                            f" <button onclick=\"approveBlueprintQuestions('{item_id}',"
-                            f"'{html.escape(step.block_id)}')\">Approve for this Manifest</button>"
-                        )
-                    )
-                    + "</div>"
+                    "<div class='cmp-blocked-by'><strong>Unanswered blocking decision exists.</strong> "
+                    "Answer the affected DECISIONS.json record in the Decisions panel.</div>"
                 )
             done_check = (
                 "<span class='bp-check' title='Built'>&#10003;</span>" if kind == "built" else ""
@@ -3378,28 +3332,10 @@ def api_compass_edit(item_id: str, edit: CompassEdit, request: Request = None) -
 
 @app.post("/api/build-question/answer")
 def api_answer_build_question(update: BlueprintQuestionUpdate, request: Request = None):
-    from drydock.errors import SpecificationError
-    from drydock.plan_feedback import harvest_answered_questions
-    from drydock.question_gates import synchronize_manifest_question_gates
-    from drydock.questions import answer_question
-
-    with _request_context(request):
-        root = _current_project_root().resolve()
-        path = (root / update.path).resolve()
-        allowed = path == root / "SEA_TRIALS.md" or root / "blueprint" in path.parents
-        if not allowed:
-            raise HTTPException(
-                status_code=400, detail="Question path is outside governed artifacts"
-            )
-        try:
-            answer_question(path, update.question_id, update.answer)
-            harvest_answered_questions(root)
-            manifest = root / "MANIFEST.md"
-            if manifest.is_file():
-                synchronize_manifest_question_gates(manifest, root / "blueprint")
-        except (OSError, UnicodeError, SpecificationError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"ok": True}
+    del update, request
+    raise HTTPException(
+        status_code=410, detail="Blueprint questions were retired; use DECISIONS.json"
+    )
 
 
 @app.post("/api/build-question/approve/{story_id}")
@@ -3418,9 +3354,7 @@ def api_approve_build_question(story_id: str, request: Request = None):
 @app.post("/api/build-question/source")
 def api_update_blueprint_source(update: BlueprintSourceUpdate, request: Request = None):
     from drydock.errors import SpecificationError
-    from drydock.plan_feedback import harvest_answered_questions
     from drydock.question_gates import synchronize_manifest_question_gates
-    from drydock.questions import validate_questions_document
 
     with _request_context(request):
         root = _current_project_root().resolve()
@@ -3432,13 +3366,7 @@ def api_update_blueprint_source(update: BlueprintSourceUpdate, request: Request 
         ):
             raise HTTPException(status_code=400, detail="Blueprint path is outside blueprint/")
         try:
-            validate_questions_document(
-                update.content,
-                source=str(path),
-                require_first_section=True,
-            )
             _atomic_write_text(path, update.content.rstrip() + "\n")
-            harvest_answered_questions(root)
             manifest = root / "MANIFEST.md"
             if manifest.is_file():
                 synchronize_manifest_question_gates(manifest, root / "blueprint")
@@ -3449,14 +3377,10 @@ def api_update_blueprint_source(update: BlueprintSourceUpdate, request: Request 
 
 @app.post("/api/plan-feedback")
 def api_update_plan_feedback(update: PlanFeedbackUpdate, request: Request = None):
-    from drydock.plan_feedback import update_feedback_answer
-
-    with _request_context(request):
-        try:
-            update_feedback_answer(_current_project_root(), update.decision_id, update.answer)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"ok": True}
+    del update, request
+    raise HTTPException(
+        status_code=410, detail="planning-feedback.json was retired; use DECISIONS.json"
+    )
 
 
 @app.post("/api/decisions/direct")

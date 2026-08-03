@@ -8,10 +8,6 @@
 | Provides | |
 | Build Order | |
 
-## Questions
-
-- None.
-
 <!-- Code organization: modules, entry point, routes, directory layout. -->
 
 ## Modules

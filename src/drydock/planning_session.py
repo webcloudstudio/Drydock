@@ -28,7 +28,7 @@ from typing import Protocol, cast
 from drydock import technology_stack
 from drydock.acceptance import PYTHON_FENCE_RE, parse_programmatic_acceptance_text
 from drydock.acceptance_requirements import (
-    project_plan_requirement_questions,
+    project_plan_requirement_decisions,
     validate_declared_external_usage,
 )
 from drydock.build_plan import (
@@ -47,7 +47,9 @@ from drydock.decisions import (
     DECISIONS_FILENAME,
     load_decisions,
     parse_plan_decisions,
+    questionnaire_decisions,
     reconcile_decisions,
+    render_commander_guidance,
     validate_decision_blueprints,
     write_decisions,
 )
@@ -64,11 +66,6 @@ from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
 from drydock.paths import get_prompts_root
-from drydock.plan_feedback import (
-    apply_manifest_dispositions,
-    harvest_answered_questions,
-    render_feedback_prompt,
-)
 from drydock.plan_graph import PlanComputation, PlannedStory
 from drydock.plan_score import PlanScore, score_plan
 from drydock.plan_shape import OutputContract, ShapeDefect, check_contract, render_defects
@@ -86,7 +83,6 @@ from drydock.prompt_assembly import (
 from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
-from drydock.questions import normalize_questions_first, validate_questions_document
 from drydock.sea_trials import parse_sea_trials_text
 from drydock.source_material import SourceMaterialFile, discover_source_material
 from drydock.source_roles import parse_source_roles, promote_imported_sources
@@ -154,7 +150,6 @@ _PLAN_MODE_LABELS = {
 _SPECKIT_PROMPT_NAME = "plan_create_speckit"
 _CONFORM_PROMPT_NAME = "plan_conform"
 _TERMINAL_SECTIONS = (
-    "Questions",
     "Programmatic Acceptance",
     "User Acceptance",
     "Guardrails",
@@ -162,7 +157,7 @@ _TERMINAL_SECTIONS = (
 _TYPED_HEADING_RE = re.compile(r"^#\s+(?P<kind>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*(?P<name>.+?)\s*$")
 _HEADER_ROW_RE = re.compile(r"^\|\s*(?P<field>[^|]+?)\s*\|\s*(?P<value>.*?)\s*\|$")
 _TERMINAL_SECTION_RE = re.compile(
-    r"^## (?P<heading>Questions|Programmatic Acceptance|User Acceptance|Guardrails)\s*$"
+    r"^## (?P<heading>Programmatic Acceptance|User Acceptance|Guardrails)\s*$"
     r".*?(?=^## |\Z)",
     re.MULTILINE | re.DOTALL,
 )
@@ -1128,6 +1123,16 @@ def _strip_terminal_sections(text: str) -> str:
     return _TERMINAL_SECTION_RE.sub("", text).strip()
 
 
+def _strip_retired_questions(text: str) -> str:
+    """Remove legacy Blueprint Questions without touching acceptance sections."""
+    return re.sub(
+        r"^## Questions\s*$.*?(?=^## |\Z)",
+        "",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    ).strip()
+
+
 def _render_normalized_spec(spec: ExistingSpec, *, today: str, ui_general_exists: bool) -> str:
     fields = dict(spec.header_fields)
     fields["Version"] = _normalize_version(fields.get("Version", ""), today)
@@ -1162,10 +1167,9 @@ def _render_normalized_spec(spec: ExistingSpec, *, today: str, ui_general_exists
         heading: _extract_terminal_section(spec.body, heading) for heading in _TERMINAL_SECTIONS
     }
     rendered = "\n".join(header_lines).rstrip()
-    rendered += "\n\n" + _render_terminal_section("Questions", sections["Questions"]).rstrip()
     if body:
         rendered += "\n\n" + body.strip()
-    for heading in _TERMINAL_SECTIONS[1:]:
+    for heading in _TERMINAL_SECTIONS:
         rendered += "\n\n" + _render_terminal_section(heading, sections[heading]).rstrip()
     return rendered.rstrip() + "\n"
 
@@ -1534,7 +1538,7 @@ def _assemble_prompt_assembly(
         return parts_list
 
     def persistent_feedback_parts() -> list:
-        rendered = render_feedback_prompt(harvest_answered_questions(target_dir))
+        rendered = render_commander_guidance(questionnaire_decisions(target_dir))
         if not rendered:
             return []
         return [lines_part("Persistent Plan feedback", rendered.splitlines(), kind="feedback")]
@@ -2007,19 +2011,6 @@ def _integrity_check(
             if name and name not in available_specs and not (blueprint_dir / name).is_file():
                 fatal.append(f"{block.block_id}: implements missing spec file {name!r}")
             text = spec_text(str(name)) if name else None
-            if (
-                text is not None
-                and str(name).lower().endswith(".md")
-                and str(name) in emitted_files
-            ):
-                try:
-                    validate_questions_document(
-                        text,
-                        source=str(name),
-                        require_first_section=True,
-                    )
-                except SpecificationError as exc:
-                    fatal.append(f"{block.block_id}: {exc}")
         # Test-driven acceptance is Blueprint-first. A story whose implemented
         # specs declare a programmatic surface
         # must carry several concrete Python assertions unless an inline-justified
@@ -2586,7 +2577,7 @@ def _validate_plan_output(
             and name.lower().endswith(".md")
             and name not in _NON_BLUEPRINT_ARTIFACTS
         ):
-            blocks[name] = normalize_questions_first(blocks[name], source=name)
+            blocks[name] = _strip_retired_questions(blocks[name]) + "\n"
     # A criterion that no implementation can satisfy is not a specification, it is a build the
     # graph guarantees will fail. Strip it here, before the Manifest is validated or written,
     # so the emitted plan is one that can actually be built. Removals are reported, and the
@@ -2991,7 +2982,7 @@ def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int
             "",
             "Drydock accepted the Blueprint artifact batch but rejected its transient work graph.",
             "Repair only the deterministic defect reported below. Preserve every story ID,",
-            "implements assignment, story field, and planning-feedback line that does not need",
+            "implements assignment and story fields that do not need",
             "to change. Dependencies must name exact story IDs declared in this topology.",
             "",
             "Emit exactly one fully paired TOPOLOGY.md block and no other text or artifact.",
@@ -3039,7 +3030,7 @@ def _artifact_repair_assembly(
         "headings, decisions, and acceptance assertions byte-for-byte where possible.",
         "Do not remove or weaken a valid assertion while adding a missing one. Every artifact with",
         "a programmatic surface retains at least two concrete Python acceptance assertions. Every",
-        "## Questions section retains `- None.` unless it contains canonical Q-records.",
+        "DECISIONS.json is the sole decision disclosure surface; do not emit Markdown question sections.",
         "",
         "Emit exactly one fully paired artifact block for each supplied filename and no other",
         "text or artifact.",
@@ -3680,7 +3671,7 @@ def create_plan(
         built_ledger = tuple(ledger)
 
     # Capture durable answers before unbuilt Blueprint files are discarded for regeneration.
-    harvest_answered_questions(target_dir)
+    questionnaire_decisions(target_dir)
 
     # Standing-directive feedback file — created if absent, never overwritten, injected when the
     # user has edited it beyond the default placeholder.
@@ -4306,13 +4297,14 @@ def create_plan(
             )
         )
 
-    requirement_questions = project_plan_requirement_questions(
+    requirement_decisions = project_plan_requirement_decisions(
         blocks, target_dir=target_dir, build_dir=build_dir_for(target)
     )
-    if requirement_questions:
+    if requirement_decisions:
         warnings = (
             *warnings,
-            "Acceptance tooling authorization required: " + ", ".join(requirement_questions),
+            "Acceptance tooling authorization required: "
+            + ", ".join(item.id for item in requirement_decisions),
         )
 
     # A fresh import may preserve reusable specs. A replan has full authority over every Plan-owned
@@ -4357,7 +4349,25 @@ def create_plan(
     # 1.5. Reconcile significant design decisions Plan disclosed against retained
     # Commander-authored answers, and persist DECISIONS.json — the sole persistence target for
     # these disclosures (see notes/notes_plan.md §Significant decisions surface as DECISIONS.json).
-    fresh_decisions = parse_plan_decisions(blocks.get(DECISIONS_BLOCK, "[]"))
+    fresh_decisions = (
+        *parse_plan_decisions(blocks.get(DECISIONS_BLOCK, "[]")),
+        *requirement_decisions,
+    )
+    story_for_spec = {
+        str(name): block.block_id
+        for block in plan.blocks
+        if block.block_type == "story"
+        for name in (
+            block.fields.get("implements", ())
+            if isinstance(block.fields.get("implements", ()), tuple)
+            else (block.fields.get("implements", ""),)
+        )
+        if name
+    }
+    fresh_decisions = tuple(
+        replace(item, story=story_for_spec.get(item.blueprint, item.story))
+        for item in fresh_decisions
+    )
     allowed_blueprints = frozenset(emitted_blueprints) | {ARCHITECTURE_BLUEPRINT}
     fresh_decisions, decision_warnings = validate_decision_blueprints(
         fresh_decisions, allowed_blueprints
@@ -4371,10 +4381,6 @@ def create_plan(
     from drydock.question_gates import synchronize_manifest_question_gates
 
     plan = synchronize_manifest_question_gates(plan_path, blueprint_dir)
-    apply_manifest_dispositions(
-        target_dir,
-        plan.metadata.fields.get("planning_feedback", ""),
-    )
     _clear_plan_compass_blockers(target_dir)
 
     # 4. The in-memory graph now reflects the target path and persisted artifact.

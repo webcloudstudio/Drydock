@@ -61,6 +61,11 @@ class Decision:
         """
         return bool(self.commander_direction) or bool(self.override_text)
 
+    @property
+    def answer(self) -> str:
+        """Return the Commander response, regardless of response form."""
+        return (self.override_text or self.commander_direction or "").strip()
+
 
 def _options_from_raw(raw: object) -> tuple[DecisionOption, ...]:
     if not isinstance(raw, list):
@@ -239,3 +244,74 @@ def reconcile_decisions(
     retained_ids = {item.id for item in retained}
     fresh = tuple(item for item in freshly_decided if item.id not in retained_ids)
     return retained + fresh
+
+
+def questionnaire_decisions(target_dir: Path) -> tuple[Decision, ...]:
+    """Convert answered Analyze questionnaires into the decision store.
+
+    Questionnaire JSON remains an input compatibility format for Analyze. It is never a
+    planning-feedback store and is not written by this function.
+    """
+    path = target_dir / DECISIONS_FILENAME
+    existing = {item.id: item for item in load_decisions(path)}
+    questionnaire_dir = target_dir / "QuarterDeck" / "questionnaires"
+    for questionnaire in sorted(questionnaire_dir.glob("discovery-*.json")):
+        try:
+            payload = json.loads(questionnaire.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for raw in payload.get("questions", []):
+            if not isinstance(raw, dict):
+                continue
+            answer = str(raw.get("answer", "")).strip()
+            question_id = str(raw.get("id", "")).strip()
+            prompt = str(raw.get("prompt") or raw.get("label") or "").strip()
+            if not answer or not question_id or not prompt:
+                continue
+            record_id = f"analyze-{question_id}"
+            prior = existing.get(record_id)
+            existing[record_id] = Decision(
+                id=record_id,
+                type="text",
+                severity="material",
+                origin="analyze-questionnaire",
+                blueprint=str(prior.blueprint if prior else "ARCHITECTURE.md"),
+                story=prior.story if prior else None,
+                status="answered",
+                archived=False,
+                title=str(raw.get("label") or question_id).strip(),
+                description=prompt,
+                options=(),
+                system_choice=answer,
+                commander_direction=answer,
+                override_text=prior.override_text if prior else None,
+            )
+    decisions = tuple(sorted(existing.values(), key=lambda item: item.id))
+    if decisions != load_decisions(path):
+        write_decisions(path, decisions)
+    return decisions
+
+
+def render_commander_guidance(decisions: tuple[Decision, ...]) -> str:
+    """Render active decisions for Plan/Build prompt context."""
+    active = [item for item in decisions if not item.archived and item.answer]
+    if not active:
+        return ""
+    lines = [
+        "## Commander decisions",
+        "",
+        "Apply these decisions as constraints; do not recreate them as questions.",
+        "",
+    ]
+    for item in active:
+        lines.extend([
+            f"### {item.id}",
+            f"- Title: {item.title}",
+            f"- Decision: {item.answer}",
+            f"- Severity: {item.severity}",
+            f"- Blueprint: {item.blueprint}",
+            "",
+        ])
+    return "\n".join(lines)

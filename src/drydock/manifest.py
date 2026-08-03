@@ -49,8 +49,8 @@ _INTERFACE_FIELDS = frozenset({"provides", "consumes"})
 
 #: Story types. The Manifest is a list of stories; ``type`` is the only variation. See
 #: :mod:`drydock.plan_graph` for the authoritative definitions. ``spike`` is retired as a node
-#: type: research questions are handled by questionnaires before Plan and by the owning story's
-#: ``## Questions`` section after. ``ac`` is not a node type — Programmatic Acceptance is
+#: type: research questions are handled by decisions and questionnaires before Plan. ``ac`` is
+#: not a node type — Programmatic Acceptance is
 #: verification the build runs to prove a story is complete, so it is a field the story owns and
 #: passing is part of the story's own state transition.
 STORY_TYPES = ("foundational", "service", "feature")
@@ -93,8 +93,6 @@ _CANONICAL_FIELDS = {
         "instructions",
         "acceptance",
         "depends",
-        "questions",
-        "questions_approved",
         "feedback",
         "state",
         "evidence",
