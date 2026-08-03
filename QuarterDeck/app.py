@@ -308,10 +308,8 @@ def _add_drydock_runtime_items(config: dict[str, Any], *, project_root: Path) ->
     if not (project_root / "METADATA.md").is_file():
         return
     section_ids = {str(section.get("id", "")) for section in config.get("sections", [])}
-    if "setup" not in section_ids:
-        return
     items = config.setdefault("items", [])
-    if not any(item.get("id") == "blockers_doc" for item in items):
+    if "setup" in section_ids and not any(item.get("id") == "blockers_doc" for item in items):
         items.append({
             "id": "blockers_doc",
             "label": "⛔ Blockers",
@@ -346,6 +344,25 @@ def _add_drydock_runtime_items(config: dict[str, Any], *, project_root: Path) ->
                 f"`drydock score specification {project_root.name}` to refresh this artifact."
             ),
         })
+    build_section = next(
+        (sid for sid in ("implement", "build", "plan") if sid in section_ids), None
+    )
+    if build_section:
+        for directory, item_id, label in (
+            ("evidence", "evidence_directory", "Evidence"),
+            ("blueprint", "blueprint_directory", "Blueprints"),
+        ):
+            if (project_root / directory).is_dir() and not any(
+                item.get("id") == item_id for item in items
+            ):
+                items.append({
+                    "id": item_id,
+                    "label": label,
+                    "section": build_section,
+                    "type": "markdown_directory",
+                    "path": f"../{directory}",
+                    "order": 9999,
+                })
 
 
 def _expand_sources(
@@ -807,6 +824,38 @@ def render_editable_markdown(item: dict[str, Any]) -> str:
         f"<button class='save-btn' onclick=\"saveDoc('{item_id}')\">Save</button>"
         f"<button class='cancel-btn' onclick=\"cancelDoc('{item_id}')\">Cancel</button></div>"
         f"</div></div>"
+    )
+
+
+def render_markdown_directory(item: dict[str, Any]) -> str:
+    """Render a directory of Markdown files with an initially empty selector."""
+    directory = resolve_path(item["path"])
+    if not directory.is_dir():
+        raise HTTPException(status_code=404, detail=f"Missing directory: {item['path']}")
+    files = sorted(
+        path.relative_to(directory).as_posix()
+        for path in directory.rglob("*.md")
+        if path.is_file()
+    )
+    item_id = html.escape(item["id"], quote=True)
+    options = ["<option value=''>Select a filename…</option>"] + [
+        f"<option value='{html.escape(name, quote=True)}'>{html.escape(name)}</option>"
+        for name in files
+    ]
+    selected = str(item.get("selected_file", ""))
+    body = "<p class='empty'>Select a filename to view it.</p>"
+    if selected:
+        candidate = (directory / selected).resolve()
+        if directory not in candidate.parents or candidate.suffix.lower() != ".md":
+            raise HTTPException(status_code=400, detail="Invalid Markdown filename")
+        if not candidate.is_file():
+            raise HTTPException(status_code=404, detail=f"Missing file: {selected}")
+        body = _md(_strip_leading_h1(_strip_frontmatter(candidate.read_text(encoding="utf-8"))))
+    return (
+        f"<h1>{html.escape(item.get('label', 'Documents'))}</h1>"
+        f"<label class='directory-selector' for='directory-file-{item_id}'>Filename</label>"
+        f"<select id='directory-file-{item_id}' onchange=\"loadDirectory('{item_id}', this.value)\">"
+        f"{''.join(options)}</select><div class='directory-document'>{body}</div>"
     )
 
 
@@ -2936,6 +2985,7 @@ TYPES: dict[str, TypeDef] = {
     "compass": TypeDef(("path",), render_compass),
     "refit": TypeDef((), render_refit),
     "technology_stack": TypeDef(("path",), render_technology_stack),
+    "markdown_directory": TypeDef(("path",), render_markdown_directory),
 }
 
 
@@ -3206,6 +3256,8 @@ def api_nav(request: Request = None) -> dict[str, str]:
 def api_document(item_id: str, request: Request = None) -> dict[str, Any]:
     with _request_context(request):
         item = find_item(item_id)
+        if item.get("type") == "markdown_directory":
+            item = {**item, "selected_file": request.query_params.get("file", "")}
         return {"item": item, "type": item.get("type"), "html": render_item(item)}
 
 
@@ -4102,6 +4154,14 @@ def index(request: Request = None) -> str:
       if (form) wireAutosave(form);
       const stack = contentEl.querySelector('.ts-editor');
       if (stack) wireTechnologyStack(stack);
+    }}
+    async function loadDirectory(itemId, filename) {{
+      setActive(itemId);
+      const res = await fetch(`/api/document/${{itemId}}?file=${{encodeURIComponent(filename)}}`);
+      const data = await res.json();
+      if (!res.ok) {{ contentEl.innerHTML = `<p style="color:#991b1b">${{data.detail || 'Error'}}</p>`; return; }}
+      localStorage.setItem(lastItemKey, itemId);
+      contentEl.innerHTML = data.html;
     }}
     async function loadTicket(itemId, ticketId) {{
       const res = await fetch(`/api/ticket/${{itemId}}/${{ticketId}}`);

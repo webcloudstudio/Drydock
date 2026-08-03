@@ -22,6 +22,7 @@ structure edits.
 | Artifact | Page type | Used for |
 |----------|-----------|----------|
 | Markdown document | `markdown` | Analyses, reviews, demo write-ups, release notes; `tabs: true` splits `##` headings into tabs |
+| Markdown directory | `markdown_directory` | A filename selector for Markdown files in a directory; the page starts with no file selected |
 | Editable document | `editable_markdown` | Steering docs the human and agent co-edit (`COMPASS.md`, `BLOCKERS.md`, per-command compasses) |
 | Multi-format document | `document` | One artifact with `path_md` / `path_html` / `path_pdf` variants; best available format wins |
 | Questionnaire | `questionnaire` | Asking the human structured questions; answers are saved into the JSON and read back |

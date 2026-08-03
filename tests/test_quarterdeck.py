@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 
@@ -53,6 +54,39 @@ def test_jsonl_renderer_sorts_fields_and_isolates_invalid_lines(tmp_path, monkey
     assert rendered.index("Newer") < rendered.index("Older")
     assert "2 record(s)" in rendered
     assert "line 2" in rendered
+
+
+def test_markdown_directory_starts_empty_and_renders_selected_file(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    directory = tmp_path / "evidence"
+    directory.mkdir()
+    (directory / "runtime-application.md").write_text(
+        "# Runtime Application\n\n**Implemented.**", encoding="utf-8"
+    )
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: directory)
+
+    item = {"id": "evidence", "label": "Evidence", "path": "../evidence"}
+    empty = quarterdeck.render_markdown_directory(item)
+    assert "Select a filename to view it." in empty
+    assert "runtime-application.md" in empty
+    assert "Implemented." not in empty
+
+    selected = quarterdeck.render_markdown_directory({**item, "selected_file": "runtime-application.md"})
+    assert "Implemented." in selected
+    assert "<strong>Implemented.</strong>" in selected
+
+
+def test_markdown_directory_rejects_path_traversal(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    directory = tmp_path / "blueprint"
+    directory.mkdir()
+    monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: directory)
+
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.render_markdown_directory(
+            {"id": "blueprints", "label": "Blueprints", "path": "../blueprint", "selected_file": "../secret.md"}
+        )
+    assert exc.value.status_code == 400
 
 
 def test_drydock_console_has_three_configured_sections():
