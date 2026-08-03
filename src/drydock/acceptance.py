@@ -27,6 +27,7 @@ SUITE_TIMEOUT_SECONDS = 900
 # an expectation. Consumers use these to gate a repair pass on the resource fact.
 MEMORY_FAILURE_PREFIX = "exhausted memory"
 TIMEOUT_FAILURE_PREFIX = "timed out"
+SKIPPED_FAILURE_PREFIX = "skipped acceptance"
 # A check that died inside its own snippet rather than inside the code under test. No
 # implementation can turn it green, so a repair pass on it is wasted.
 MALFORMED_FAILURE_PREFIX = "malformed check"
@@ -43,6 +44,9 @@ _MALFORMED_EXCEPTIONS = frozenset({
 })
 _TRACEBACK_FILE_RE = re.compile(r'^\s*File "([^"]+)", line ', re.MULTILINE)
 _EXCEPTION_LINE_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception))\b:?(.*)$")
+_FIXTURE_PATH_RE = re.compile(
+    r"(?:Path|open)\(\s*[\"'](?P<path>(?:tests/)?[^\"']*fixture[^\"']*)[\"']"
+)
 
 
 def _timeout_output_text(value: bytes | str | None) -> str:
@@ -150,6 +154,31 @@ def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str |
     return None
 
 
+def _missing_fixture_failure(
+    return_code: int, stderr: str, code: str, build_dir: Path
+) -> str | None:
+    """Classify an acceptance that cannot run because its declared fixture is absent.
+
+    A missing fixture is a defect in the generated acceptance setup, not evidence that the
+    implementation failed. Keep this deliberately narrow: only a path containing ``fixture``
+    that is referenced by the acceptance code, absent from the build directory, and named by
+    a missing-file diagnostic is skipped. Other filesystem failures remain implementation
+    failures.
+    """
+    if return_code == 0 or "No such file or directory" not in stderr:
+        return None
+    for match in _FIXTURE_PATH_RE.finditer(code):
+        relative = match.group("path")
+        candidate = Path(relative)
+        if not candidate.is_absolute() and not (build_dir / candidate).exists():
+            return (
+                f"{SKIPPED_FAILURE_PREFIX}: acceptance references missing fixture "
+                f"{relative!r}. The check is untested; provide the fixture or revise the "
+                "acceptance before relying on its result."
+            )
+    return None
+
+
 def _scrub_script_path(text: str, script: Path) -> str:
     """Replace the throwaway script's absolute path with its stable check name.
 
@@ -192,6 +221,7 @@ class AcceptanceRunResult:
     stdout: str
     stderr: str
     error: str | None = None
+    skipped: bool = False
     interpreter: str = ""
     provisioning_result: str = "not requested"
 
@@ -206,11 +236,14 @@ class AcceptanceObservation:
     stdout: str
     stderr: str
     error: str | None = None
+    skipped: bool = False
     integrity_ok: bool = True
     integrity_reasons: tuple[str, ...] = ()
 
     @property
     def status(self) -> str:
+        if self.skipped:
+            return "skipped"
         if not self.passed:
             return "baseline-red"
         return "green" if self.integrity_ok else "green-vacuous"
@@ -554,9 +587,12 @@ def run_programmatic_acceptance(
                 continue
             return_code = process.returncode
             scrubbed = _scrub_script_path(stderr, script)
-            verdict = _resource_failure(return_code, stderr, limit_mb) or _malformed_failure(
-                return_code, scrubbed, script.name
+            verdict = (
+                _resource_failure(return_code, stderr, limit_mb)
+                or _malformed_failure(return_code, scrubbed, script.name)
+                or _missing_fixture_failure(return_code, scrubbed, check.code, build_dir)
             )
+            skipped = bool(verdict and verdict.startswith(SKIPPED_FAILURE_PREFIX))
         results.append(
             AcceptanceRunResult(
                 check_id=check.check_id,
@@ -567,6 +603,7 @@ def run_programmatic_acceptance(
                 stdout=stdout,
                 stderr=scrubbed,
                 error=verdict,
+                skipped=skipped,
                 interpreter=str(environment.interpreter),
                 provisioning_result=environment.provisioning_result,
             )
@@ -605,6 +642,7 @@ def observe_programmatic_acceptance(
                 stdout=result.stdout,
                 stderr=result.stderr,
                 error=result.error,
+                skipped=result.skipped,
                 integrity_ok=integrity.ok,
                 integrity_reasons=integrity.reasons,
             )

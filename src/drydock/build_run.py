@@ -56,7 +56,7 @@ from drydock.build import (
     reusable_build_compact_sources,
     work_kind_of,
 )
-from drydock.build_decisions import record_build_decisions
+from drydock.build_decisions import record_build_decisions, record_skipped_acceptance_decisions
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -1305,8 +1305,11 @@ def _attempt_acceptance_summary(
 ) -> str:
     """Render one concise, operator-facing acceptance summary for an LLM attempt."""
     passed = sum(1 for result in acceptance if result.passed)
-    failed = tuple(result for result in acceptance if not result.passed)
+    skipped = tuple(result for result in acceptance if result.skipped)
+    failed = tuple(result for result in acceptance if not result.passed and not result.skipped)
     line = f"acceptance: call {attempt + 1} · {passed}/{len(acceptance)} AC passed"
+    if skipped:
+        line += " · skipped: " + ", ".join(result.check_id for result in skipped)
     if not failed:
         return line
     return line + " · failed: " + _acceptance_failure_details(failed)
@@ -1528,7 +1531,7 @@ def _write_evidence(
     if acceptance:
         lines.append("## Post-build programmatic acceptance")
         for check in acceptance:
-            mark = "PASS" if check.passed else "FAIL"
+            mark = "SKIPPED" if check.skipped else ("PASS" if check.passed else "FAIL")
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
             if check.intent:
                 lines.append(f"  intent: {check.intent}")
@@ -1643,7 +1646,7 @@ def _write_group_evidence(
     if acceptance:
         lines.append("## Post-build programmatic acceptance")
         for check in acceptance:
-            mark = "PASS" if check.passed else "FAIL"
+            mark = "SKIPPED" if check.skipped else ("PASS" if check.passed else "FAIL")
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
             if check.intent:
                 lines.append(f"  intent: {check.intent}")
@@ -1713,6 +1716,8 @@ def _write_group_evidence(
 
 
 def _observation_mark(check: AcceptanceObservation) -> str:
+    if check.skipped:
+        return "SKIPPED"
     if not check.passed:
         return "RED"
     if not check.integrity_ok:
@@ -2518,7 +2523,36 @@ def build_target(
                                 replace(item, provisioning_result=provisioning_result)
                                 for item in acceptance
                             )
-                        failed_checks = tuple(check for check in acceptance if not check.passed)
+                        skipped_checks = tuple(check for check in acceptance if check.skipped)
+                        if skipped_checks:
+                            record_skipped_acceptance_decisions(
+                                tuple(
+                                    (
+                                        check,
+                                        next(
+                                            item
+                                            for item in checks
+                                            if item.check_id == check.check_id
+                                        ),
+                                        (
+                                            owner.block_id
+                                            if (
+                                                owner := story_by_source_check.get((
+                                                    check.source,
+                                                    check.check_id,
+                                                ))
+                                            )
+                                            is not None
+                                            else None
+                                        ),
+                                    )
+                                    for check in skipped_checks
+                                ),
+                                target_dir=target_dir,
+                            )
+                        failed_checks = tuple(
+                            check for check in acceptance if not check.passed and not check.skipped
+                        )
                         if failed_checks:
                             undeclared = next(
                                 (

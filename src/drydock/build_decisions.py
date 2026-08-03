@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.acceptance import AcceptanceRunResult, ProgrammaticAcceptance
 from drydock.decisions import Decision, load_decisions, write_decisions
 
 _PAYLOAD_RE = re.compile(
@@ -94,3 +95,47 @@ def record_build_decisions(
         write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
         return (path,)
     return ()
+
+
+def record_skipped_acceptance_decisions(
+    skipped: tuple[tuple[AcceptanceRunResult, ProgrammaticAcceptance, str | None], ...],
+    *,
+    target_dir: Path,
+) -> tuple[Path, ...]:
+    """Persist a reviewable decision for each acceptance skipped as invalid setup.
+
+    Skipping keeps a defective generated check from blocking implementation, but it never
+    silently turns the check green. The decision remains recommended until the Blueprint
+    acceptance or its test setup is repaired.
+    """
+    if not skipped:
+        return ()
+    path = target_dir / "DECISIONS.json"
+    current = {item.id: item for item in load_decisions(path)}
+    for result, _check, story in skipped:
+        check_id = str(getattr(result, "check_id"))
+        source = str(getattr(result, "source"))
+        reason = str(getattr(result, "error") or "acceptance setup was unavailable")
+        record_id = f"build-skip-{source}-{check_id}".lower().replace(" ", "-")
+        current.setdefault(
+            record_id,
+            Decision(
+                id=record_id,
+                type="text",
+                severity="low",
+                origin="build",
+                blueprint=source,
+                story=story,
+                status="recommended",
+                archived=False,
+                title=f"Acceptance skipped: {check_id}",
+                description=reason,
+                options=(),
+                system_choice=(
+                    f"Leave {check_id} untested until its acceptance setup is repaired; "
+                    "do not treat it as passed."
+                ),
+            ),
+        )
+    write_decisions(path, tuple(sorted(current.values(), key=lambda record: record.id)))
+    return (path,)

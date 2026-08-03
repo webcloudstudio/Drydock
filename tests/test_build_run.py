@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from datetime import UTC, datetime
@@ -1059,6 +1060,40 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
     assert "PASS: foundation-file" in evidence
     assert "acceptance: call 1 · 1/1 AC passed" in messages
     assert not any("Unit Tests" in message for message in messages)
+
+
+def test_missing_acceptance_fixture_is_skipped_and_recorded_as_decision(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-fixture\n"
+        "The generated fixture is required for this initial test.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        'Path("tests/fixtures/repository").read_text(encoding="utf-8")\n'
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+    )
+
+    step = result.steps[0]
+    assert step.status == "built"
+    assert step.acceptance[0].passed is False
+    assert step.acceptance[0].skipped is True
+    assert "SKIPPED: foundation-fixture" in (target_dir / "evidence" / "foundation.md").read_text(
+        encoding="utf-8"
+    )
+    decisions = json.loads((target_dir / "DECISIONS.json").read_text(encoding="utf-8"))
+    assert decisions[0]["title"] == "Acceptance skipped: foundation-fixture"
+    assert decisions[0]["status"] == "recommended"
 
 
 def test_blueprint_programmatic_prepass_is_informational(tmp_path):
