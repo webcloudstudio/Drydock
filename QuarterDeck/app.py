@@ -451,7 +451,7 @@ _NO_STORE_HEADERS = {"Cache-Control": "no-store, must-revalidate", "Vary": "Cook
 @app.middleware("http")
 async def _no_store_target_scoped_responses(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path != "/logo.png":
+    if request.url.path not in {"/logo.png", "/favicon.ico", "/favicon.svg"}:
         response.headers.update(_NO_STORE_HEADERS)
     return response
 
@@ -833,9 +833,7 @@ def render_markdown_directory(item: dict[str, Any]) -> str:
     if not directory.is_dir():
         raise HTTPException(status_code=404, detail=f"Missing directory: {item['path']}")
     files = sorted(
-        path.relative_to(directory).as_posix()
-        for path in directory.rglob("*.md")
-        if path.is_file()
+        path.relative_to(directory).as_posix() for path in directory.rglob("*.md") if path.is_file()
     )
     item_id = html.escape(item["id"], quote=True)
     options = ["<option value=''>Select a filename…</option>"] + [
@@ -3530,6 +3528,15 @@ def logo():
     return FileResponse(path)
 
 
+@app.get("/favicon.ico")
+@app.get("/favicon.svg")
+def favicon():
+    path = _RUNTIME_DIR / "static" / "favicon.svg"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Favicon asset not installed")
+    return FileResponse(path, media_type="image/svg+xml")
+
+
 @app.get("/switch-target/{target}")
 def switch_target(target: str, request: Request = None):
     with _request_context(request):
@@ -4099,6 +4106,8 @@ def index(request: Request = None) -> str:
 
         return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" type="image/svg+xml">
 <title>{html.escape(project_name)}</title><style>{_STYLE}</style></head>
 <body>
   <header>{brand}<div class="header-right">

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Drydock QuarterDeck</title>
+  <rect width="64" height="64" rx="14" fill="#10201a"/>
+  <path d="M11 39h42l-5 8H17z" fill="#2cb67d"/>
+  <path d="M16 48c6 4 26 4 32 0" fill="none" stroke="#8fb3a2" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M29 15h3v24h-3z" fill="#d7eadf"/>
+  <path d="M31 16 47 29H31z" fill="#2cb67d" stroke="#d7eadf" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M29 20 19 31h10z" fill="#8fb3a2" stroke="#d7eadf" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M12 39h40" stroke="#d7eadf" stroke-width="2" stroke-linecap="round"/>
+</svg>

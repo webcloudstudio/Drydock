@@ -71,7 +71,10 @@ def test_markdown_directory_starts_empty_and_renders_selected_file(tmp_path, mon
     assert "runtime-application.md" in empty
     assert "Implemented." not in empty
 
-    selected = quarterdeck.render_markdown_directory({**item, "selected_file": "runtime-application.md"})
+    selected = quarterdeck.render_markdown_directory({
+        **item,
+        "selected_file": "runtime-application.md",
+    })
     assert "Implemented." in selected
     assert "<strong>Implemented.</strong>" in selected
 
@@ -83,9 +86,12 @@ def test_markdown_directory_rejects_path_traversal(tmp_path, monkeypatch):
     monkeypatch.setattr(quarterdeck, "resolve_path", lambda _path: directory)
 
     with pytest.raises(quarterdeck.HTTPException) as exc:
-        quarterdeck.render_markdown_directory(
-            {"id": "blueprints", "label": "Blueprints", "path": "../blueprint", "selected_file": "../secret.md"}
-        )
+        quarterdeck.render_markdown_directory({
+            "id": "blueprints",
+            "label": "Blueprints",
+            "path": "../blueprint",
+            "selected_file": "../secret.md",
+        })
     assert exc.value.status_code == 400
 
 
@@ -1471,6 +1477,18 @@ def test_index_uses_project_title_copyright_and_help_button(tmp_path, monkeypatc
     assert (
         'href="https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.html"' in html
     )
+    assert '<link rel="icon" href="/favicon.svg" type="image/svg+xml">' in html
+    assert '<link rel="alternate icon" href="/favicon.ico" type="image/svg+xml">' in html
+
+
+def test_favicon_serves_the_green_nautical_asset():
+    quarterdeck = _load_quarterdeck()
+
+    response = quarterdeck.favicon()
+
+    assert response.media_type == "image/svg+xml"
+    assert response.path.name == "favicon.svg"
+    assert response.path.read_text(encoding="utf-8").startswith("<svg")
 
 
 def test_target_identity_uses_slug_not_project_name(tmp_path, monkeypatch):

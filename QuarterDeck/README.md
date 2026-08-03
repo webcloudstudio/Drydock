@@ -361,6 +361,7 @@ served through `/raw/{item_id}`.
 | `GET` | `/health` | Health check → `{"status":"ok"}` (503 if config missing) |
 | `GET` | `/help` | Serves the configured `app_help_file_location` HTML |
 | `GET` | `/logo.png` | Drydock logo asset for the header |
+| `GET` | `/favicon.ico`, `/favicon.svg` | Green nautical Drydock favicon |
 | `GET` | `/api/config` | Full loaded config (sources expanded) |
 | `GET` | `/api/items` | Flat item list |
 | `GET` | `/api/nav` | Rendered sidebar HTML (re-fetched after saves) |
