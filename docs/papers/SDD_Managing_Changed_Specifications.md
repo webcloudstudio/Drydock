@@ -1,5 +1,5 @@
 ---
-title: "SDD: Optimal Path to Managing Changed Specifications"
+title: "SDD: Managing Changed Specifications"
 title_sub:
 eyebrow: Drydock White Paper Series
 subtitle: Why a changed specification must not rebuild the product, and what a source-driven refit does instead.
