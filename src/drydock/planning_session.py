@@ -4378,6 +4378,9 @@ def create_plan(
 
     # 2. Persist the already merged, normalized, fully validated executable graph once.
     plan.save(plan_path)
+    from drydock.source_refit import persist_source_lineage
+
+    persist_source_lineage(plan_path, blueprint_dir)
     from drydock.question_gates import synchronize_manifest_question_gates
 
     plan = synchronize_manifest_question_gates(plan_path, blueprint_dir)

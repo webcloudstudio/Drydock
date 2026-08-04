@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-04 V3 |
+| Version | 2026-08-04 V4 |
 | Route | `drydock refit --sources` |
 | Status | Working notes — not canonical specification |
 | Description | Source-driven refit that converts imported source changes into ordered, per-Blueprint refit tickets built as Manifest stories, leaving Blueprints immutable. |
 | Pending spec | 17 approved items |
-| Pending impl | 17 unimplemented sections |
+| Pending impl | 0 unimplemented sections |
 
 ## Goal
 
@@ -28,7 +28,7 @@ edit authoring source
 ## Decisions
 
 ### Target repositories are independent Git repositories
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Each Drydock Target is its own Git repository. The Target repository is the unit of change
 detection and rollback for Blueprints, imported sources, Manifest state, and refit tickets.
@@ -52,7 +52,7 @@ Drydock repository's `git add -A` convention does not recurse into a nested Targ
 Target commits are the command's responsibility and cannot be delegated to the parent.
 
 ### Imported source snapshot is the Drydock source item
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Drydock operates on the imported snapshot under:
 
@@ -68,7 +68,7 @@ imported snapshot is Drydock's working copy of it. Import metadata continues to 
 original source root and import format.
 
 ### `import --update` refresh scope, Compass immutability, and deletion detection
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 The import command gains an `--update` option. It refreshes files previously imported as ordinary
 Markdown, source, Spec Kit, or other non-Compass material.
@@ -106,7 +106,7 @@ it. The choice is recorded in the resulting refit ticket. Drydock never deletes 
 automatically.
 
 ### Lineage is stored in an isolated JSON block in the Manifest
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 The Manifest remains the graph database and owns the semantic source lineage. A second
 `SOURCE_MAP.json` graph is not created because it could drift from the Manifest's story-to-Blueprint
@@ -132,7 +132,7 @@ Manifest output does not author or reproduce it.
 Lineage is mandatory. Without it, `refit --sources` has no candidate set.
 
 ### Planning persists lineage; no bootstrap capability is built
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 `drydock plan` persists source lineage while authoring Blueprint files. Lineage is derived from the
 analyzed source citations, relationship model, source roles, and Story Realization Map, then
@@ -146,7 +146,7 @@ existed. Those Targets are replanned once, as an operator action, **after** `pla
 Replanning earlier produces no lineage and is wasted work.
 
 ### Blueprints are immutable
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 A Blueprint, once planned, is never modified — foundational Blueprints included. `drydock plan` is
 the only path that changes a Blueprint, and it does so by regenerating it.
@@ -154,7 +154,7 @@ the only path that changes a Blueprint, and it does so by regenerating it.
 Source-driven refit therefore never edits Blueprint files. It appends refit tickets.
 
 ### Refit tickets are Manifest stories chained per Blueprint
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 A refit ticket is a Manifest story with state. Blueprints and stories are effectively the same node
 class, so a ticket requires no new node type and inherits existing build, review, and scoring
@@ -175,7 +175,7 @@ multiple tickets for the same Blueprint in a single run.
 Every ticket is associated with exactly one Blueprint. No ticket spans Blueprints.
 
 ### Refit ticket shape and conflict authority
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 A refit ticket declares its identity and authority in its header: that it is change ticket `NNN` for
 Blueprint `XYZ`, that it supersedes that Blueprint's specification and all preceding tickets in the
@@ -192,7 +192,7 @@ Each `refit --sources` run reconciles against the Blueprint plus its prior ticke
 specification is the Blueprint read together with its chain in order.
 
 ### Source refit authors tickets and requires its own prompt
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 `drydock refit <Target> --sources` reads the source delta since the recorded hashes, resolves
 lineage to the affected Blueprints, and authors one ticket per affected Blueprint. It does not
@@ -205,7 +205,7 @@ Drydock validates and writes the result. The LLM emits ticket content only; node
 dependency edges, numbering, and hashes are Python.
 
 ### Refit is an atomic transaction
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 A refit either commits fully or rolls back. There is no partial-success path, because a partially
 applied refit is a corrupt build graph.
@@ -215,7 +215,7 @@ rerun reproduces the full transaction rather than allocating orphan ticket numbe
 repository is the rollback mechanism.
 
 ### One source feeding many Blueprints is partitioned
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 When a changed source file maps to several Blueprints, refit partitions the change so that each
 resulting ticket is associated with exactly one Blueprint.
@@ -225,7 +225,7 @@ every changed source region lands in exactly one ticket, and no ticket cites a B
 the lineage-derived candidate set.
 
 ### Compact derivatives remain non-authoritative
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Compact Blueprint files are derived context and are never independent product specifications.
 Compact output differences never independently reset a story and are never used as a contract hash.
@@ -234,7 +234,7 @@ stale. Compact provenance may record the source hash, prompt version, model, and
 diagnostics only.
 
 ### Build is the approval boundary and respects chain order
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Source refit requires no separate Commander approval step. `drydock build <Target>` is the approval
 and execution boundary.
@@ -258,7 +258,7 @@ drydock build <Target>
 ```
 
 ### No merge story; reimport and replan is reconsolidation
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Refit tickets are not merged back into Blueprints. Merging is harder and less reliable than
 regenerating: the authoritative external source can be reimported and the Target replanned to
@@ -268,14 +268,14 @@ The ticket chain is therefore a disposable convenience layer. The reset is alway
 cheap.
 
 ### No chain-depth signalling in MVP
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Drydock does not warn on ticket chain depth and does not prompt the Commander to replan. Because
 the external source is authoritative and regeneration is cheap, chain sprawl is self-limiting and
 does not warrant a mechanism in the minimum viable product.
 
 ### Refit ticket filename and location
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 Refit tickets live in the Target's existing `blueprint/` directory. Each ticket is named using the
 Blueprint name, the `_refit_` separator, a sequential per-Blueprint ticket number, and the `.md`
@@ -286,7 +286,7 @@ extension:
 ```
 
 ### Refit ticket body is the exact change specification
-`2026-08-04` · `spec:approved` · `impl:unimplemented`
+`2026-08-04` · `spec:approved` · `impl:implemented`
 
 The refit ticket body is the exact specification of the required change produced by the `refit`
 command. It is the implementation specification consumed by `build`, not an explanation,

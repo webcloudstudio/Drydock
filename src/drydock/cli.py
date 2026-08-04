@@ -494,6 +494,23 @@ def cmd_refit(args: argparse.Namespace) -> int:
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
+    if getattr(args, "sources", False):
+        from drydock.source_refit import commit_target, source_refit_target
+
+        result = source_refit_target(
+            target_dir,
+            log_dir=log_dir,
+            model=model,
+            llm_provider=llm_provider,
+        )
+        commit_target(target_dir, "Author source-driven refit tickets")
+        for item in result.items:
+            print(f"  [ticket]          {item.ticket.relative_to(target_dir)}")
+        if not result.items:
+            print("  No source changes mapped to Blueprint lineage.")
+        print(f"RESULT: {len(result.items)} refit ticket(s) authored")
+        return 0
+
     def report(item: RefitItem) -> None:
         name = item.ticket.name
         if item.status == "conformed":
@@ -867,7 +884,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     source = Path(args.Source)
     fmt = args.format
     if fmt == "auto":
-        if source.expanduser().is_dir():
+        if source.expanduser().is_dir() and not getattr(args, "update", False):
             raise UsageError(
                 "--format auto requires a file; specify --format markdown, source, or speckit for a directory"
             )
@@ -885,15 +902,39 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     if fmt == "markdown":
         from drydock.import_markdown import import_markdown
+        from drydock.source_refit import commit_target
 
+        if getattr(args, "update", False):
+            from drydock.source_refit import commit_target, update_import
+
+            result = update_import(td / args.Target)
+            commit_target(td / args.Target, "Refresh imported source snapshot")
+            print(
+                f"Source update: {len(result.added)} added, {len(result.changed)} changed, "
+                f"{len(result.deleted)} deleted, {len(result.unchanged)} unchanged"
+            )
+            return 0
         result = import_markdown(args.Target, args.Target, source, td)
+        commit_target(td / args.Target, "Import source snapshot")
         print_import_result(result.source, result.imported, result.blueprint_dir / "sources")
         return 0
 
     if fmt == "source":
         from drydock.import_source import import_source
+        from drydock.source_refit import commit_target
 
+        if getattr(args, "update", False):
+            from drydock.source_refit import commit_target, update_import
+
+            result = update_import(td / args.Target)
+            commit_target(td / args.Target, "Refresh imported source snapshot")
+            print(
+                f"Source update: {len(result.added)} added, {len(result.changed)} changed, "
+                f"{len(result.deleted)} deleted, {len(result.unchanged)} unchanged"
+            )
+            return 0
         source_result = import_source(args.Target, args.Target, source, td)
+        commit_target(td / args.Target, "Import source snapshot")
         print_import_result(
             source_result.source, source_result.imported, source_result.blueprint_dir / "sources"
         )
@@ -901,8 +942,20 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     if fmt == "speckit":
         from drydock.import_speckit import import_speckit
+        from drydock.source_refit import commit_target
 
+        if getattr(args, "update", False):
+            from drydock.source_refit import commit_target, update_import
+
+            result = update_import(td / args.Target)
+            commit_target(td / args.Target, "Refresh imported source snapshot")
+            print(
+                f"Source update: {len(result.added)} added, {len(result.changed)} changed, "
+                f"{len(result.deleted)} deleted, {len(result.unchanged)} unchanged"
+            )
+            return 0
         speckit_result = import_speckit(args.Target, args.Target, source, td)
+        commit_target(td / args.Target, "Import source snapshot")
         print_import_result(
             speckit_result.source, speckit_result.imported, speckit_result.blueprint_dir / "sources"
         )
@@ -911,6 +964,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     if fmt in {"compass", "intent"}:
         from drydock.config import get_llm_provider, get_model, get_workspace
         from drydock.import_markdown import import_intent
+        from drydock.source_refit import commit_target
 
         result = import_intent(
             args.Target,
@@ -921,6 +975,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             llm_provider=get_llm_provider(getattr(args, "llm_provider", None)),
             log_dir=get_workspace() / "logs",
         )
+        commit_target(td / args.Target, "Import Compass source")
         print_import_result(result.source, result.imported, result.blueprint_dir)
         print("normalized")
         return 0
@@ -2609,6 +2664,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_llm_override_flags(p_iter)
     p_iter.add_argument("Target", metavar="<Target>")
+    p_iter.add_argument(
+        "--sources",
+        action="store_true",
+        help="Author ordered refit tickets from imported source changes.",
+    )
 
     # ── analyze ───────────────────────────────────────────────────────────────
     p_analyze = sub.add_parser(
@@ -2703,6 +2763,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Compass imports: overwrite an existing COMPASS.md (normalized by LLM at import).",
+    )
+    p_import.add_argument(
+        "--update",
+        action="store_true",
+        help="Refresh the previously imported source snapshot.",
     )
 
     return parser

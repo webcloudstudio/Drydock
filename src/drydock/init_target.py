@@ -129,4 +129,41 @@ def init_target(
     except OSError as exc:
         raise DrydockError(f"Cannot initialize target {target_dir}: {exc}") from exc
 
+    _initialize_target_repository(target_directory, target_dir, result)
+
     return result
+
+
+def _initialize_target_repository(
+    targets_root: Path, target_dir: Path, result: InitTargetResult
+) -> None:
+    """Create a nested Target repository only when the workspace ignores targets/."""
+    workspace = targets_root.parent
+    try:
+        root = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if root.returncode != 0 or Path(root.stdout.strip()).resolve() != workspace.resolve():
+            return
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "targets/"],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+        if ignored.returncode != 0:
+            return
+        if (target_dir / ".git").exists():
+            return
+        subprocess.run(["git", "init", "-q", str(target_dir)], check=True, timeout=10)
+        result.created.append(target_dir / ".git")
+    except (OSError, subprocess.SubprocessError):
+        # Git ownership is an explicit safety feature; a failed probe does not make
+        # initialization fail for filesystems that do not provide Git.
+        return

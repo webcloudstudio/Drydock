@@ -8,6 +8,7 @@ and atomically saved once.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -362,6 +363,17 @@ def _parse_applied_specs(text: str) -> dict[str, AppliedSpecRecord]:
     return result
 
 
+def _parse_source_lineage(text: str) -> dict[str, object]:
+    """Parse the isolated JSON source-lineage registry, tolerating old Manifests."""
+    if not text.strip():
+        return {}
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def _field_value(lines: list[str], key: str) -> str | None:
     for line in lines[1:]:
         match = _FIELD_RE.match(line)
@@ -380,6 +392,7 @@ class DrydockManifest:
     preamble: list[str]
     applied_registry: dict[str, str] = field(default_factory=dict)
     applied_specs: dict[str, AppliedSpecRecord] = field(default_factory=dict)
+    source_lineage: dict[str, object] = field(default_factory=dict)
     _trailing_newline: bool = True
     _compatibility: bool = False
 
@@ -616,6 +629,7 @@ class DrydockManifest:
             preamble=lines[:first_block],
             applied_registry=_parse_applied_registry(metadata_fields.get("applied", "")),
             applied_specs=_parse_applied_specs(metadata_fields.get("applied_specs", "")),
+            source_lineage=_parse_source_lineage(metadata_fields.get("source_lineage", "")),
             _trailing_newline=text.endswith("\n"),
             _compatibility=compatibility,
         )
@@ -1384,6 +1398,13 @@ class DrydockManifest:
         ]
         self.applied_specs = dict(records)
         self.set_metadata(applied_specs="\n".join(lines))
+
+    def set_source_lineage(self, lineage: Mapping[str, object]) -> None:
+        """Replace the isolated source-to-Blueprint lineage registry."""
+        self.source_lineage = dict(lineage)
+        self.set_metadata(
+            source_lineage=json.dumps(self.source_lineage, sort_keys=True, separators=(",", ":"))
+        )
 
     def _sync_preamble(self) -> None:
         existing = list(self.preamble)
