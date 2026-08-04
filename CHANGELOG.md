@@ -8,6 +8,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-08-04: `drydock import <Target> --update` now runs. `<Source>` is optional and rejected
+  outright with `--update`, which refreshes from the root recorded in
+  `blueprint/sources/.drydock-import`. Importers no longer narrow that recorded root: importing a
+  single file out of a directory that was already imported keeps the directory as the refresh
+  root, so `--update` stops reporting every sibling as a deletion. Snapshot comparison now uses
+  the shared visible-source enumeration, so `.gitkeep` and other hidden bookkeeping never register
+  as an added or deleted source.
+
 ### Changed
 
 - 2026-08-03: `drydock build --ungate` releases prior programmatic acceptance failures as

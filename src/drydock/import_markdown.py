@@ -14,6 +14,7 @@ from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
 from drydock.llm import run_prompt
 from drydock.prompts import load_prompt
+from drydock.source_refit import record_import_root
 
 _COMPASS_PROMPT_NAME = "import_compass"
 
@@ -108,9 +109,7 @@ def import_markdown(
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-    (sources_dir / ".drydock-import").write_text(
-        f"source: {source}\nformat: markdown\n", encoding="utf-8"
-    )
+    record_import_root(sources_dir, source, "markdown")
     imported: list[Path] = []
     for source_path, relative in _import_files(source):
         destination = sources_dir / relative

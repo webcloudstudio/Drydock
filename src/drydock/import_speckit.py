@@ -16,6 +16,7 @@ from pathlib import Path
 
 from drydock.errors import SpecificationError
 from drydock.init_specification import init_specification
+from drydock.source_refit import record_import_root
 
 # Spec Kit directories that contain the project specification.
 _SPECKIT_SUBDIRS: tuple[str, ...] = (".specify", "specs")
@@ -132,9 +133,7 @@ def import_speckit(
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-    (sources_dir / ".drydock-import").write_text(
-        f"source: {source}\nformat: speckit\n", encoding="utf-8"
-    )
+    record_import_root(sources_dir, source, "speckit")
 
     imported: list[Path] = []
     for subdir_name in _SPECKIT_SUBDIRS:

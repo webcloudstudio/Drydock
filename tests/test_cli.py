@@ -1947,6 +1947,63 @@ class TestImport:
         assert "--format auto requires a file" in err
         assert not (tmp_target_root / "Tgt").exists()
 
+    def test_import_update_needs_no_source_argument(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        src_dir = tmp_path / "docs"
+        src_dir.mkdir()
+        (src_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+        assert run_cli("import", "Tgt", str(src_dir), "--format", "markdown")[0] == 0
+        (src_dir / "spec.md").write_text("# Spec revised\n", encoding="utf-8")
+        (src_dir / "extra.md").write_text("# Extra\n", encoding="utf-8")
+
+        rc, out, err = run_cli("import", "Tgt", "--update")
+
+        assert rc == 0, err
+        assert "1 added, 1 changed, 0 deleted, 0 unchanged" in out
+        sources = tmp_target_root / "Tgt" / "blueprint" / "sources"
+        assert (sources / "spec.md").read_text(encoding="utf-8") == "# Spec revised\n"
+        assert (sources / "extra.md").is_file()
+
+    def test_import_update_rejects_source_argument(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+
+        rc, out, err = run_cli("import", "Tgt", str(tmp_path), "--update")
+
+        assert rc == 2
+        assert "do not pass <Source>" in err
+
+    def test_import_without_source_or_update_is_usage_error(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+
+        rc, out, err = run_cli("import", "Tgt")
+
+        assert rc == 2
+        assert "requires <Source>" in err
+
+    def test_import_single_file_keeps_prior_directory_root(
+        self, tmp_path, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._configure(tmp_target_root, monkeypatch)
+        src_dir = tmp_path / "docs"
+        src_dir.mkdir()
+        (src_dir / "a.md").write_text("# A\n", encoding="utf-8")
+        (src_dir / "b.md").write_text("# B\n", encoding="utf-8")
+        assert run_cli("import", "Tgt", str(src_dir), "--format", "markdown")[0] == 0
+
+        # Re-importing one member file must not narrow the recorded root to that file.
+        assert run_cli("import", "Tgt", str(src_dir / "b.md"), "--format", "markdown")[0] == 0
+
+        rc, out, err = run_cli("import", "Tgt", "--update")
+
+        assert rc == 0, err
+        assert "0 deleted" in out
+
     def test_import_missing_source_returns_1(
         self, tmp_path, tmp_target_root, isolated_config, monkeypatch
     ):

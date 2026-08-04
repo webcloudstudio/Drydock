@@ -7,6 +7,7 @@ import pytest
 
 from drydock.source_refit import (
     SourceDeletionDecision,
+    record_import_root,
     source_refit_target,
     update_import,
 )
@@ -67,6 +68,38 @@ def test_update_import_blocks_deleted_files(tmp_path):
 
     with pytest.raises(SourceDeletionDecision, match="removed.md"):
         update_import(target)
+
+
+def test_record_import_root_keeps_wider_directory_root(tmp_path):
+    root = tmp_path / "authoring"
+    root.mkdir()
+    member = root / "one.md"
+    member.write_text("x\n", encoding="utf-8")
+    sources = tmp_path / "sources"
+    sources.mkdir()
+
+    record_import_root(sources, root, "markdown")
+    record_import_root(sources, member, "markdown")
+
+    assert (sources / ".drydock-import").read_text(encoding="utf-8") == (
+        f"source: {root}\nformat: markdown\n"
+    )
+
+
+def test_record_import_root_replaces_unrelated_root(tmp_path):
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    sources = tmp_path / "sources"
+    sources.mkdir()
+
+    record_import_root(sources, first, "markdown")
+    record_import_root(sources, second, "source")
+
+    assert (sources / ".drydock-import").read_text(encoding="utf-8") == (
+        f"source: {second}\nformat: source\n"
+    )
 
 
 def test_source_refit_writes_ordered_ticket_and_manifest_story(tmp_path):

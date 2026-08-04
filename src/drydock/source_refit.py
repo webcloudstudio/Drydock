@@ -21,6 +21,7 @@ from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.manifest import DrydockManifest, StoryNode
 from drydock.prompts import load_prompt
+from drydock.source_files import iter_source_files
 
 
 @dataclass(frozen=True)
@@ -58,15 +59,16 @@ def _sha256(path: Path) -> str:
 
 
 def _source_files(root: Path) -> dict[str, Path]:
+    """Visible files under ``root``, keyed by import-relative path.
+
+    Hidden entries are excluded on both sides of the comparison so Drydock's own bookkeeping
+    (``.drydock-import``, ``.gitkeep``) never registers as an added or deleted source.
+    """
     if root.is_file():
         return {root.name: root}
     if not root.is_dir():
         raise SpecificationError(f"Import source directory not found: {root}")
-    return {
-        path.relative_to(root).as_posix(): path
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-    }
+    return {path.relative_to(root).as_posix(): path for path in sorted(iter_source_files(root))}
 
 
 def _import_metadata(sources_dir: Path) -> tuple[Path, str]:
@@ -84,17 +86,30 @@ def _import_metadata(sources_dir: Path) -> tuple[Path, str]:
     return source, values.get("format", "")
 
 
+def record_import_root(sources_dir: Path, source: Path, import_format: str) -> None:
+    """Record the source root ``--update`` refreshes from, never narrowing a wider prior root.
+
+    Importing a single file out of a directory that was already imported must not rewrite the
+    recorded root to that one file; ``--update`` would then report every sibling as deleted.
+    """
+    metadata = sources_dir / ".drydock-import"
+    if metadata.is_file():
+        try:
+            recorded, recorded_format = _import_metadata(sources_dir)
+        except SpecificationError:
+            recorded, recorded_format = None, ""
+        if recorded is not None and recorded.is_dir() and recorded in source.resolve().parents:
+            source, import_format = recorded, recorded_format or import_format
+    metadata.write_text(f"source: {source}\nformat: {import_format}\n", encoding="utf-8")
+
+
 def update_import(target_dir: Path) -> SourceUpdateResult:
     """Refresh an ordinary imported directory and record per-file hashes in the Manifest."""
     blueprint_dir = target_dir / "blueprint"
     sources_dir = blueprint_dir / "sources"
     source_root, _format = _import_metadata(sources_dir)
     incoming = _source_files(source_root)
-    existing = {
-        path.relative_to(sources_dir).as_posix(): path
-        for path in sorted(sources_dir.rglob("*"))
-        if path.is_file() and path.name != ".drydock-import"
-    }
+    existing = _source_files(sources_dir) if sources_dir.is_dir() else {}
     manifest_path = target_dir / "MANIFEST.md"
     manifest = (
         DrydockManifest.load(manifest_path, compatibility=True) if manifest_path.is_file() else None
