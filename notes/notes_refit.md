@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-04 V2 |
+| Version | 2026-08-04 V3 |
 | Route | `drydock refit --sources` |
 | Status | Working notes — not canonical specification |
 | Description | Source-driven refit that converts imported source changes into ordered, per-Blueprint refit tickets built as Manifest stories, leaving Blueprints immutable. |
-| Pending spec | 15 approved items |
-| Pending impl | 15 unimplemented sections |
+| Pending spec | 17 approved items |
+| Pending impl | 17 unimplemented sections |
 
 ## Goal
 
@@ -274,6 +274,24 @@ Drydock does not warn on ticket chain depth and does not prompt the Commander to
 the external source is authoritative and regeneration is cheap, chain sprawl is self-limiting and
 does not warrant a mechanism in the minimum viable product.
 
+### Refit ticket filename and location
+`2026-08-04` · `spec:approved` · `impl:unimplemented`
+
+Refit tickets live in the Target's existing `blueprint/` directory. Each ticket is named using the
+Blueprint name, the `_refit_` separator, a sequential per-Blueprint ticket number, and the `.md`
+extension:
+
+```text
+<Blueprint-name>_refit_<number>.md
+```
+
+### Refit ticket body is the exact change specification
+`2026-08-04` · `spec:approved` · `impl:unimplemented`
+
+The refit ticket body is the exact specification of the required change produced by the `refit`
+command. It is the implementation specification consumed by `build`, not an explanation,
+summary, or audit record. The body describes only the change required by the source update.
+
 ## Acceptance Criteria
 
 - A newly initialized Target has an independent Git repository when and only when the workspace
@@ -290,6 +308,10 @@ does not warrant a mechanism in the minimum viable product.
 - `drydock refit --sources` creates at most one refit ticket per affected Blueprint per run.
 - Refit tickets are Manifest stories, numbered per Blueprint, chained linearly onto the Blueprint
   node with deterministically inherited edges.
+- Refit tickets live in `blueprint/` and use the `<Blueprint-name>_refit_<number>.md` filename
+  pattern.
+- A refit ticket body contains the exact specification of the required source-driven change for
+  `build` to implement.
 - Refit tickets declare the Blueprint and preceding tickets they supersede and the conflict rule.
 - `drydock refit --sources` never modifies a Blueprint file.
 - A failed refit leaves no tickets on disk and no advanced source hash.
@@ -318,10 +340,7 @@ does not warrant a mechanism in the minimum viable product.
 
 ## Open Questions
 
-- Exact on-disk filename pattern and directory for refit tickets. Working example
-  `blueprint_refit_001.md`; the per-Blueprint qualifier and containing directory are unresolved.
-- The detailed body contract for a refit ticket beyond the header and authority statement, to be
-  specified when `prompts/refit_sources.md` is authored.
+-
 
 ## Future work
 
