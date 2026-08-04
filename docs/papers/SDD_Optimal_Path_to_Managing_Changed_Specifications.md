@@ -100,14 +100,16 @@ flowchart LR
 
 *You edit the spec. Import copies it. Refit writes the ticket. Build applies it.*
 
-## What Gets Built
+## Ordering the Changes
 
-Only the tickets. The blueprints were already built, reviewed, and scored. That work stands.
+The blueprints were already built, reviewed, and tested. That work stands. Only the tickets get
+built.
 
-Each blueprint carries a list of its tickets in order. Ticket 1 runs after the blueprint. Ticket 2
-runs after ticket 1. A ticket may contradict the blueprint or an earlier ticket, and the later
-ticket wins. That is how the user changes their mind in week three without going back to edit
-week one.
+Each blueprint keeps its own numbered list of tickets. Ticket 1 runs after the blueprint. Ticket 2
+runs after ticket 1. A ticket may contradict the blueprint or an earlier ticket, and the later one
+wins.
+
+That is how the user changes their mind in week three without editing anything from week one.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -129,22 +131,22 @@ flowchart LR
   BP --> T1 --> T2 --> T3 --> BLD --> PROD
 ```
 
-*The blueprint plus its tickets, in order, is the current spec. Nothing is edited.*
+*The blueprint plus its tickets, in order, is the current specification.*
 
 A ticket is just another story in the graph. It has a state, dependencies, and acceptance criteria,
-so it builds, reviews, and scores like everything else. No new machinery is needed.
+so it builds, reviews, and scores like every other story. Nothing new had to be written to run it.
 
-## Knowing Which Blueprint to Change
+## Finding the Right Blueprint
 
-The build has to know which blueprints came from which part of the specification. Otherwise a change
-is a search problem, and search means guessing.
+A change to one paragraph of the specification does not touch every blueprint. The build has to know
+which ones it does touch, or it is back to rebuilding everything.
 
-So the mapping is recorded when the blueprints are planned. Planning already knows this: it read the
-specification and decided what each blueprint covers. Writing that link down at plan time costs
-nothing and turns "what did I just break" into a lookup.
+So the link is written down when the blueprints are planned. Planning already knows it — it read the
+specification and decided what each blueprint covers. Recording that link costs nothing at plan time
+and turns "what did I just break" into a lookup.
 
-One paragraph of specification can feed several blueprints. When it does, the change is split so
-each ticket belongs to exactly one blueprint. A ticket never spans two.
+One paragraph can feed two blueprints. When it does, the change is split, and each ticket belongs to
+exactly one blueprint. A ticket never spans two.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -168,9 +170,9 @@ flowchart LR
   MAP --> BP2 --> T2
 ```
 
-*One edit, two blueprints, two tickets. The map is written at plan time, not guessed at change time.*
+*The map is written at plan time, not worked out at change time.*
 
-## What the Model Writes and What the Code Writes
+## Who Writes What
 
 The model writes prose. The code writes structure. Mixing the two is where these systems fail.
 
@@ -179,67 +181,59 @@ The model writes prose. The code writes structure. Mixing the two is where these
 | Say what changed and what must now be true | Model |
 | Pick the ticket number and filename | Code |
 | Attach the ticket to the right blueprint | Code |
-| Record what the spec looked like at the time | Code |
+| Record what the specification looked like at the time | Code |
 | Check the ticket names a blueprint the map allows | Code |
 | Decide to apply it | The user, by running the build |
 
 A model that picks its own numbers will collide. A model that draws its own dependencies will draw
-the wrong ones. A model that decides which blueprint a change belongs to will pick a plausible one.
-Give it the one thing it is good at — writing the change down clearly — and check its answer against
-the map.
+the wrong ones. Give it the one job it is good at — writing the change down clearly — and check its
+answer against the map.
 
-## The Rules That Keep It Honest
+## The Rules
 
-**All or nothing.** A refit either finishes or leaves no trace. Half a set of tickets is a broken
-build, and the next run would skip numbers. On failure, nothing is written and nothing is marked as
-seen, so running it again does the whole job.
+**All or nothing.** A refit either finishes or leaves nothing behind. Half a set of tickets is a
+broken build. On failure nothing is written and nothing is marked as seen, so running it again does
+the whole job.
 
-**Foundation changes are not refits.** Some specifications are context for everything — the
-architecture, the data model, the platform rules. A change there really does invalidate the whole
-build, and a ticket cannot express it. That case stops and says so, by name, and asks for a replan.
-Pretending a foundation change is a small edit is the one failure this method must not allow.
+**Foundation changes are not refits.** Architecture, the data model, and platform rules are context
+for every blueprint. A change there really does invalidate the build, and no ticket can express it.
+That case stops, names the file, and asks for a replan.
 
-**A deletion is a question, not an answer.** If a section disappears from the specification, that
-might mean the feature is gone, or it might mean the user only sent part of the file. The build
-never guesses and never deletes on its own. It asks, and records the answer in the ticket.
+**A deletion is a question.** A section that disappears might mean the feature is gone, or it might
+mean the user sent part of the file. The build asks and records the answer. It never deletes on its
+own.
 
-**Old tickets still run.** A later ticket may make an earlier one pointless. There is no reliable
-way to detect that, so the earlier one is applied anyway. Some wasted work is cheaper than a wrong
-skip.
+**Old tickets still run.** A later ticket can make an earlier one pointless. There is no reliable
+way to detect that, so the earlier one is applied anyway. Wasted work is cheaper than a wrong skip.
 
-## Starting Over Is Cheap
+## Starting Over
 
 Tickets are never merged back into the blueprint. Merging is harder than planning and less reliable.
 
-When the chain gets long, or when it is simply time, re-import the specification and plan it again.
-The result is clean blueprints and no tickets. That is the reset, it is always available, and it is
-the same command that made the blueprints the first time.
+When the chain gets long, re-import the specification and plan it again. The result is clean
+blueprints and no tickets. It is the same command that made the blueprints the first time, so the
+reset is always available and always cheap.
 
-Because the reset is cheap, the tickets are disposable. Nothing warns about how many there are and
-nothing nags the user to clean up. It sorts itself out.
+That is why nothing warns about ticket count and nothing nags the user to clean up. One rule keeps
+the reset safe:
 
-One rule makes the reset safe:
+> Every decision goes back into the user's specification. Nothing lives only in a blueprint or a
+> ticket.
 
-> Every decision goes back into the user's own specification. Nothing lives only in a blueprint or
-> a ticket.
-
-Break that and the reset destroys work, because replanning would drop decisions written nowhere
-else. Keep it and the whole ticket chain can be thrown away at any moment.
+Break that rule and replanning throws away work.
 
 ## Result
 
 | | Before | After |
 |---|---|---|
-| A one-line spec change | Full rebuild | One ticket |
+| A one-line specification change | Full rebuild | One ticket |
 | Blueprints | Rewritten on every change | Written once |
 | Finding the impact | Read everything and guess | Look it up |
 | Foundation change | Looks like a typo | Stops and asks for a replan |
-| A failed run | Half-built | Nothing written |
 | Cleaning up | Merge tickets back | Re-import and plan again |
 
-The specification is still the source of truth. The change to the method is small: a change to the
-specification no longer rebuilds the product. It adds a numbered ticket to a frozen blueprint, and
-the build applies the tickets in order.
+**Best practice:** freeze the build artifacts, keep the user in their own specification, and turn
+every edit into a numbered ticket attached to the blueprint it changes. Build the tickets in order.
 
 ## References
 
