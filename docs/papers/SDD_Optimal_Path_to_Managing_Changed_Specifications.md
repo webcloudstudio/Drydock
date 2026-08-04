@@ -16,100 +16,95 @@ copyright: Copyright © 2026 Web Cloud Studio. Licensed under CC BY 4.0 for this
 In specification-driven development the specification is the source of truth and the product is
 generated from it.
 
-This paper investigates initial build modifications.  These tend to result in a full rebuild of the
-application from specifications and our goal is to manage costs and context for new projects.
+This paper investigates the best process to modify applications after they are initially built.  Stable applications require change tickets but newly built applications require
+significant testing and minor iteration of the specifications.
 
-New build are never quite correct.  There are numerous minor changes the developer will want at the
-beginning of the project that do not require a complete change ticket cycle.
+The user should not expect to perform a full rebuild of specification -> application for minor
+changes like workflows and cosmetics and ui layouts.  New applications from specifications will require multiple change passes.
 
-This paper solves the problem precisely and documents the solution Drydock implements.
+This paper investigates the optimal path to solve this problem.
 
-**Keywords:** specification-driven development, source-driven refit, immutable blueprints, change
-tickets, lineage, dependency graph
+**Keywords:** specification-driven development, change tickets, dependency graph, contracts, incremental build, blueprints, git
 
 ## The Problem
 
-Drydock imports specifications into a workspace.  `drydock analyze` decomposes to stories and `drydock plan` builds blueprints and a graph database around those stories.  Each blueprint is a story (or feature) with dependencies and acceptance criteria and other information needed to build.
+In drydock, user authored specifications go through a process.  `drydock import` copies specifications into a workspace.  `drydock analyze` (agile story decomposition) and `drydock plan` (agile grooming) build them into typed blueprints and create a graph database mapping metadata and dependencies. Every agile story is created as a blueprint file containing build information like description and definition of done/acceptance criteria.
 
-The user should not edit files which are generated or can be regenerated programatically.  The user will probably feel most comfortable with their initial specification.  After an initial build, the original specifications authored by the user should be rebuilt with any textual changes the user has made.
+These files are internal to the system and for mature systems should be considered canonical but for new systems they can be transitory.  The system could well be rebuilt from scratch.
+The user should therefore only edit their source files. This has significant implications.
 
-A solution needs to handle the following
+Any solution needs to handle the following workflow
 
-  **1) Edits to The Users Specifications**
-  **2) Updates of those specifications to our buildable blueprints and graph database**
-  **3) Rebuilding from that update**
-
-## What Does Not Work
-
-**Rebuild everything.** This is rejected on cost. A full rebuild also discards working, reviewed, scored
-code and reproduces it in a non deterministic manner requiring a full retest.
-
-**Edit the Blueprint in place.** This makes the Blueprint, which is a build artifact, the source of truth and the authored
-specifications a stale copy. It also destroys the property that matters most: that the product can be
-regenerated from the authoritative source at any time.
-
-**Mine the change out of the session.** Reading the LLM transcript for what changed produces slop.
-A working session is exploration, dead ends, and thinking. See *Managing Changes in Specification-
-Driven Development* [1] for that experiment and its failure.
-
-## The Solution — Refit
-
-Define Source of Truth - In the drydock system this is the specifications
-Keep the specification the user wrote. Freeze the blueprints the build made from it. When the
-specification changes, write down the change and build only the change.
-
-Four rules do the whole job.
-
-**1. The user edits their own file.** Nothing else is editable. The build copies the specification
-when it imports it, and works from the copy. The original stays in the user's hands.
-
-**2. Nothing moves until the user says so.** Editing the specification does not start a build. The
-user re-imports when the edit is ready. That is the save button, and it is the line between drafting
-and committing.
-
-**3. Blueprints are frozen.** A blueprint is build output. It is never edited, not by hand and not
-by a model. The only way to change one is to plan it again from the specification.
-
-**4. The change becomes a numbered ticket.** Re-import compares the new specification to the old
-copy, finds what moved, and writes one ticket per affected blueprint. The ticket says what the
-change is and what must now be true. The build reads the blueprint plus its tickets, in number
-order, and that is the current specification.
-
-Rule 4 is the whole trick. Nothing gets rewritten. Things get appended.
+  **1) The user Edits their Specifications**
+  **2) The user reimports their Specifications into the workspace**
+  **3) The system then analyzes the changes**
+  **4) The system then implements the changes**
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
   classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
   classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  SRC(["your spec"]):::dir
+  SPEC(["your spec"]):::dir
   IMP["import"]:::script
-  COPY(["spec copy"]):::dir
-  REF["refit"]:::script
-  TIX{{"change ticket"}}:::md
+  ANA["analyze"]:::script
+  PLN["plan"]:::script
+  BP(["blueprints + graph"]):::output
   BLD["build"]:::script
-  PROD(["working software"]):::output
+  SW(["software"]):::web
 
-  SRC --> IMP --> COPY --> REF --> TIX --> BLD --> PROD
+  SPEC --> IMP --> ANA --> PLN --> BP --> BLD --> SW
 ```
 
-*You edit the spec. Import copies it. Refit writes the ticket. Build applies it.*
+*The first pass. Everything right of the edit is produced, and on the second pass it is all
+produced again.*
 
-## Ordering the Changes
+## 1. Your Specification Is the Source of Truth
 
-The blueprints were already built, reviewed, and tested. That work stands. Only the tickets get
-built.
+### 1.1 The user edits one file, and it is theirs
 
-Each blueprint keeps its own numbered list of tickets. Ticket 1 runs after the blueprint. Ticket 2
-runs after ticket 1. A ticket may contradict the blueprint or an earlier ticket, and the later one
-wins.
+The user writes the specification. The blueprints, the graph, and the code are all made from it.
 
-That is how the user changes their mind in week three without editing anything from week one.
+Every other rule here exists to keep that true. The moment a user edits a blueprint there are two
+specifications and no way to say which one the software came from.
+
+### 1.2 The system works from a copy
+
+Import copies the specification into the workspace and the build works from the copy. The original
+stays where the user keeps it. The copy is what "before" means; without it there is nothing to
+compare the next edit against.
+
+Editing the specification starts nothing. The user re-imports when the edit is ready. That is the
+save button, and the line between drafting and committing.
+
+### 1.3 Rejected — Amend the Blueprint
+
+The first design had the change edit the blueprint. The paragraph moved, so the blueprint written
+from that paragraph moved to match. It is the obvious answer.
+
+A blueprint is build output. A model wrote it, the build implemented it, a review passed it, tests
+were written against it. Take a small application: one foundation, one database, twelve routes,
+twelve screens. Twenty-six blueprints. Change one route and amend its blueprint. The file now
+describes a route that was never built, and the screen above it was tested against wording that is
+gone, overwritten, with nothing left to say it was ever the built version.
+
+Repeat that daily and nobody can say which of the twenty-six match the running code.
+
+**Editing a built artifact throws away the evidence that it was built.**
+
+### 1.4 Solution — Append via a Refit Ticket
+
+A refit ticket is a numbered story attached to one blueprint. It says what changed and what must
+now be true. It does not restate the blueprint.
+
+The blueprint is frozen. Nothing edits it, not a hand and not a model. Change is appended. The
+current specification is the blueprint read with its tickets, in number order. Ticket three may
+contradict ticket one, or the blueprint, and the later one wins.
+
+That is how the user changes their mind in week three without touching anything from week one.
 
 ```mermaid
 %%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
@@ -117,62 +112,149 @@ flowchart LR
   classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
   classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
   classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
-  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
   classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
 
-  BP(["blueprint"]):::dir
-  T1{{"ticket 1"}}:::md
-  T2{{"ticket 2"}}:::md
-  T3{{"ticket 3"}}:::md
-  BLD["build in order"]:::script
-  PROD(["current software"]):::output
+  EDIT(["edited spec"]):::dir
+  IMP["import"]:::script
+  REF["refit"]:::script
+  TIX{{"refit ticket"}}:::md
+  BLD["build"]:::script
+  SW(["software"]):::web
 
-  BP --> T1 --> T2 --> T3 --> BLD --> PROD
+  EDIT --> IMP --> REF --> TIX --> BLD --> SW
 ```
 
-*The blueprint plus its tickets, in order, is the current specification.*
+*The second pass. Analyze, plan, and the blueprints are not in it.*
 
-A ticket is just another story in the graph. It has a state, dependencies, and acceptance criteria,
-so it builds, reviews, and scores like every other story. Nothing new had to be written to run it.
+### 1.5 Solution — Stop Only When a Contract Changes
 
-## Finding the Right Blueprint
+Some changes cannot be a ticket, but fewer than it first appears. An edit to the foundation is not
+automatically a rebuild. Rename a configuration value, add an index, raise a timeout, change a log
+level — nothing was built against any of them.
 
-A change to one paragraph of the specification does not touch every blueprint. The build has to know
-which ones it does touch, or it is back to rebuilding everything.
+A contract is what one blueprint promised another: the shape of a route, the columns of a table,
+the arguments of a function. Move a contract and everything built on it is wrong, and no ticket can
+carry that, because it would have to be written against every dependent at once. So the test is not
+whether the foundation changed. It is whether a contract moved. If one did, stop, name the file,
+and plan again.
 
-So the link is written down when the blueprints are planned. Planning already knows it — it read the
-specification and decided what each blueprint covers. Recording that link costs nothing at plan time
+**The contract is the dependency boundary, not the file.**
+
+### 1.6 Solution — A Deletion Is Transitive, and Gated
+
+An addition is local. Add a route and nothing else needs to know. Delete a route and the screen
+that calls it, the link that reaches it, and the test that exercises it all break — and none of
+those files changed. The map from specification to blueprint is not enough. The graph has to be
+walked.
+
+Walking it is mechanical. The edges already exist and a removed contract always reaches its
+dependents, so no judgment is involved. A removal ticket lands on the owning blueprint and one
+lands on each dependent the graph names. The blueprint itself is never deleted; it is the record of
+what was built, and blueprint plus chain reads as: this route existed, then it did not.
+
+Two guards. A file missing from a partial import was not deleted, it was not sent, so removal is
+inferred only when the whole specification was compared. And when the deleted thing has users and
+is not created again elsewhere, the removal waits for a person to approve it.
+
+**Removal is the one change that walks the graph.**
+
+### 1.7 Cutover to Blueprints
+
+The specification is the source of truth while the application is still being decided. That ends.
+When the application is stable the blueprints become the source of truth, and analyze and plan are
+never run again.
+
+This is a one-way door. Before cutover, a decision that lives only in a ticket is lost the next
+time the project is planned. After cutover there is no planning to lose it, and the chain is the
+history.
+
+**Cutover is the day regeneration stops being cheap, so it is chosen, not discovered.**
+
+## 2. Analysis, Planning and the Graph Must Be Preserved
+
+### 2.1 What planning produced
+
+Analysis breaks the specification into stories. Planning turns them into blueprints and a graph:
+blueprints are nodes, dependencies are edges, stored as plain text beside the specification. Then
+it is built and reviewed.
+
+That work is expensive and not reproducible. Run planning twice on one specification and both
+results are defensible and different. Preserving it is not an optimization; it is why a second pass
+is possible at all.
+
+### 2.2 Rejected — Ask the Model What Broke
+
+The design before this one asked the model to rule on every story downstream of a change:
+invalidate or retain, with a reason.
+
+It reads well and cannot be checked. A wrong *retain* ships stale code that passes its old tests. A
+wrong *invalidate* rebuilds working code for nothing. Neither is visible in the output, and both
+cost most on the largest projects, where the downstream list is longest.
+
+The ticket model has no such question in it. A ticket is a new story built in order, so nothing is
+invalidated and nothing needs a ruling.
+
+**The fix for an unanswerable question is a design that never asks it.**
+
+### 2.3 Rejected — Merge the Tickets Back
+
+Chains grow and folding them into the blueprint is tempting.
+
+Before cutover there is no reason to. Merging a chain into a document is harder than writing the
+document and less reliable. The specification is still authoritative, so re-import and plan again:
+clean blueprints, no chain, and the same command that made them the first time.
+
+After cutover there is nothing to plan from, so merging is not tidying up. It is rewriting the only
+record of the build by hand, which is 1.3 arriving late.
+
+**Cleanliness is the only argument for merging, and it is not enough.**
+
+### 2.4 Solution — Only Planning Creates the Graph
+
+The link from specification to blueprint is written down at plan time. Planning already knows it —
+it read the specification and decided what each blueprint covers. Recording it then costs nothing
 and turns "what did I just break" into a lookup.
 
-One paragraph can feed two blueprints. When it does, the change is split, and each ticket belongs to
-exactly one blueprint. A ticket never spans two.
+One paragraph can feed two blueprints. When it does the change is split, and each ticket belongs to
+exactly one blueprint. Nothing outside planning invents a node type or an edge; refit adds nodes to
+a graph it did not design, in positions the graph already implies.
 
-```mermaid
-%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart LR
-  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
-  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
-  classDef prompt fill:#c2410c,stroke:#ea580c,color:#fff,font-weight:bold
-  classDef output fill:#6d28d9,stroke:#8b5cf6,color:#fff,font-weight:bold
-  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
+### 2.5 Solution — A Ticket Is an Ordinary Node
 
-  CHG(["changed spec"]):::dir
-  MAP{{"spec-to-blueprint map"}}:::md
-  BP1(["blueprint A"]):::dir
-  BP2(["blueprint B"]):::dir
-  T1{{"ticket for A"}}:::md
-  T2{{"ticket for B"}}:::md
+A ticket is a story. It has a state, dependencies, and acceptance criteria, so it builds, reviews,
+and scores like every other story. Nothing new had to be written to run one.
 
-  CHG --> MAP
-  MAP --> BP1 --> T1
-  MAP --> BP2 --> T2
-```
+Its edges are inherited, not computed. A child takes its parent's dependencies, so a ticket sits
+where its blueprint sits and needs no wiring. Ticket one comes after the blueprint and after every
+story that implemented it; ticket two comes after ticket one. One chain per blueprint, never run in
+parallel. A later ticket can make an earlier one pointless, and there is no reliable way to detect
+that, so the earlier one is applied anyway.
 
-*The map is written at plan time, not worked out at change time.*
+**Wasted work is cheaper than a wrong skip.**
 
-## Who Writes What
+### 2.6 Solution — Two Sources of Tickets, One Attachment Rule
+
+Tickets come from two places. Refit writes them from a changed specification. After cutover a
+person writes them directly, the way any team writes a change request.
+
+They attach the same way. A ticket names one blueprint and joins that blueprint's chain: same node
+class, same ordering, same inherited edges. The only difference is the author.
+
+**Every node has a parent, so impact stays a lookup rather than a search.**
+
+### 2.7 Solution — The Ticket Carries Its Tests
+
+A change moves the contract. The tests written for that blueprint assert the old one, and they were
+passing — reviewed evidence that the software was correct yesterday. So the ticket owns them. It
+says which tests change and what they now assert, in the same document that says what the software
+now does.
+
+A test that fails after a change is evidence, not a verdict. It may have caught a defect, or it may
+be doing exactly what it was written to do: failing when the behavior it locked in was deliberately
+replaced. The user decides which, and can override the failure. A system without that override
+refuses every change to tested behavior.
+
+### 2.8 Solution — Give the Model One Job
 
 The model writes prose. The code writes structure. Mixing the two is where these systems fail.
 
@@ -185,55 +267,69 @@ The model writes prose. The code writes structure. Mixing the two is where these
 | Check the ticket names a blueprint the map allows | Code |
 | Decide to apply it | The user, by running the build |
 
-A model that picks its own numbers will collide. A model that draws its own dependencies will draw
-the wrong ones. Give it the one job it is good at — writing the change down clearly — and check its
-answer against the map.
+A model that picks its own numbers will collide. A model that draws its own edges will draw the
+wrong ones. Give it the one job it is good at and check its answer against the map.
 
-## The Rules
+## 3. Git History Discovers the Specification Diff
 
-**All or nothing.** A refit either finishes or leaves nothing behind. Half a set of tickets is a
-broken build. On failure nothing is written and nothing is marked as seen, so running it again does
-the whole job.
+### 3.1 Solution — The Import Is the Save Button
 
-**Foundation changes are not refits.** Architecture, the data model, and platform rules are context
-for every blueprint. A change there really does invalidate the build, and no ticket can express it.
-That case stops, names the file, and asks for a replan.
+The copy lives in git and the difference between two edits is a git diff. Nothing has to be mined
+out of a model and no separate change log has to be kept in step.
 
-**A deletion is a question.** A section that disappears might mean the feature is gone, or it might
-mean the user sent part of the file. The build asks and records the answer. It never deletes on its
-own.
+The copy must be its own repository, and that has to be verified rather than assumed. A copy inside
+a parent repository that also tracks it has two owners, and the diff you get depends on which one
+you ask. Check at setup and refuse to start otherwise. Detection against the wrong tree is worse
+than none.
 
-**Old tickets still run.** A later ticket can make an earlier one pointless. There is no reliable
-way to detect that, so the earlier one is applied anyway. Wasted work is cheaper than a wrong skip.
+### 3.2 Solution — Record the Commit ID and Checksum at Milestones
 
-## Starting Over
+Every imported file gets a checksum and every import and build gets a commit id. Those are the
+milestones: what the specification looked like when the copy was taken, and what it looked like
+when the software was built. The checksum is per file, not per project, because one file can feed
+several blueprints and each moves at its own pace.
 
-Tickets are never merged back into the blueprint. Merging is harder than planning and less reliable.
+**A checksum answers "has this changed" without reading anything.**
 
-When the chain gets long, re-import the specification and plan it again. The result is clean
-blueprints and no tickets. It is the same command that made the blueprints the first time, so the
-reset is always available and always cheap.
+### 3.3 Solution — All or Nothing; the Rollback Is the Commit
 
-That is why nothing warns about ticket count and nothing nags the user to clean up. One rule keeps
-the reset safe:
+A refit finishes or leaves nothing behind. Half a set of tickets is a broken graph with numbers
+allocated to work that does not exist.
 
-> Every decision goes back into the user's specification. Nothing lives only in a blueprint or a
-> ticket.
+So the checksum advances only when the whole run commits. A failed run leaves no tickets and no
+advanced checksum, and running it again does the entire job rather than the remainder. The commit
+is the rollback.
 
-Break that rule and replanning throws away work.
+## Solution
 
-## Result
+Freeze the blueprints. Keep the user in their own specification. Turn each edit into a numbered
+ticket attached to the blueprint it changes, and build the tickets in order.
 
-| | Before | After |
-|---|---|---|
-| A one-line specification change | Full rebuild | One ticket |
-| Blueprints | Rewritten on every change | Written once |
-| Finding the impact | Read everything and guess | Look it up |
-| Foundation change | Looks like a typo | Stops and asks for a replan |
-| Cleaning up | Merge tickets back | Re-import and plan again |
+> Every decision goes back into the user's specification — until cutover, after which the
+> blueprints hold it.
 
-**Best practice:** freeze the build artifacts, keep the user in their own specification, and turn
-every edit into a numbered ticket attached to the blueprint it changes. Build the tickets in order.
+```mermaid
+%%{init: {'theme': 'neutral', 'flowchart': {'curve': 'linear'}, 'themeVariables': {'fontSize': '14px'}}}%%
+flowchart LR
+  classDef dir    fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
+  classDef md     fill:#d4a017,stroke:#a07810,color:#111,font-weight:bold
+  classDef script fill:#1e40af,stroke:#3b5fc0,color:#fff,font-weight:bold
+  classDef web    fill:#be123c,stroke:#fb7185,color:#fff,font-weight:bold
+
+  EDIT(["edited spec"]):::dir
+  REF["refit"]:::script
+  TIX{{"refit ticket"}}:::md
+  PER(["a person"]):::web
+  CT{{"change ticket"}}:::md
+  CHAIN(["blueprint + its chain"]):::dir
+  BLD["build"]:::script
+
+  EDIT --> REF --> TIX --> CHAIN
+  PER --> CT --> CHAIN
+  CHAIN --> BLD
+```
+
+*Two sources of change, one chain, one build.*
 
 ## References
 
