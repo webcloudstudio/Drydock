@@ -2,11 +2,14 @@
 
 Drydock is a specification-driven software design and delivery methodology implemented as an installable Python CLI. It plans, builds, tests, reviews, and evolves software from Blueprints expressed as Typed Specifications.
 
-## Authority: Canonical Specification at `docs/Drydock_Specification.md`
+## Master User Facing Documentation at `docs/Drydock_Specification.md`
 
-IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO docs/Drydock_Specification.md unless specifically authorized by the user.  Each block edit must be approved individually.  There are no exceptions.  STOP OVERWRITING MY MAIN ARTIFACT AND SCREWING IT UP - YOU DO NOT UNDERSTAND MY VOICE. YOU ALSO SEEM TO **WANT** to give away my trade secrets.  STOP IT!!!
+IMPORTANT: NO LLM IS AUTHORIZED TO WRITE ANYTHING TO docs/Drydock_Specification.md unless specifically authorized by the user.  Each block edit must be approved individually.  There are no exceptions.
 
-`docs/Drydock_Specification.md` is the sole authoritative product specification and the target architecture. It defines intended behavior, scope, and contracts. Treat it as canonical. It is not a detailed documentation - it is a user facing - and it must be precise on syntax and high level activity.  It does not need to explain how.
+This is user facing documentation and it is expected to be
+syntactically correct but not to expose everything.
+
+This document is the specification and the target architecture. It defines intended behavior, scope, and contracts. It is user facing.  Is not a detailed documentation - it is a user facing - and it must be precise on syntax and high level activity.  It does not need to explain how.
 
 **Editing protocol** — Obtain the author's explicit approval before any edits.
 
