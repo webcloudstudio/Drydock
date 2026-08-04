@@ -29,15 +29,11 @@ tickets, lineage, dependency graph
 
 ## The Problem
 
-Drydock imports specifications into a workspace.  `drydock analyze` decomposes to stories and `drydock plan` builds
-blueprints and a graph database around those stories.  Each blueprint is a story (or feature) with dependencies and
-acceptance criteria and other information needed to build.
+Drydock imports specifications into a workspace.  `drydock analyze` decomposes to stories and `drydock plan` builds blueprints and a graph database around those stories.  Each blueprint is a story (or feature) with dependencies and acceptance criteria and other information needed to build.
 
-The user should not edit files which are generated or can be regenerated programatically.  The user will probably
-feel most comfortable with their initial specification.  After an initial build, the original specifications authored
-by the user should be rebuilt with any textual changes the user has made.
+The user should not edit files which are generated or can be regenerated programatically.  The user will probably feel most comfortable with their initial specification.  After an initial build, the original specifications authored by the user should be rebuilt with any textual changes the user has made.
 
-The solution needs to handle the following
+A solution needs to handle the following
 
   **1) Edits to The Users Specifications**
   **2) Updates of those specifications to our buildable blueprints and graph database**
@@ -58,6 +54,7 @@ Driven Development* [1] for that experiment and its failure.
 
 ## The Solution — Refit
 
+Define Source of Truth - In the drydock system this is the specifications
 Keep the specification the user wrote. Freeze the blueprints the build made from it. When the
 specification changes, write down the change and build only the change.
 
