@@ -189,7 +189,55 @@ Preferred implementation order:
 This is guidance, not authority. A user-requested capability can be implemented earlier when its dependencies are satisfied.
 
 # Changelog
-CHANGELOG.md is the only maintained project history artifact. Record major deliverables, release-level behavior changes, milestone accomplishments, and other high-value changes. Keep it short, simple, and datestamped. Do not record minor fixes, routine refactors, test-only churn, or implementation mechanics. When a release is cut, add a version heading. Releases are cut with `publish_pypi.sh` after the version is updated manually.
+`CHANGELOG.md` is the maintained high-level project history and a source for technically
+focused developer writing. Write for a technically experienced reader who understands the
+domain and wants to know what changed, why it matters to the system, and how the design or
+operator workflow now differs. Do not simplify technical concepts into marketing language.
+
+Record work that materially changes one or more of the following:
+
+- product behavior, command contracts, file formats, schemas, or public interfaces;
+- architecture, execution flow, planning or verification policy, or other governing design;
+- reliability, safety, determinism, performance, observability, or recovery behavior;
+- developer, operator, installation, packaging, or integration workflow;
+- a release, milestone, public demonstration, paper, or other project event that materially
+  changes what users or contributors can do or understand.
+
+Each entry is dated with the date the change became part of the repository history, not the date
+it was noticed. Describe the resulting capability or decision, not the commit sequence. Include
+the affected command, artifact, interface, or subsystem when that makes the technical scope
+clear. Explain the important consequence, constraint, or migration impact in one or two sentences
+when it is not obvious. Preserve precise names, flags, file names, data formats, state names, and
+failure behavior. Prefer concrete terms and measurable limits over adjectives.
+
+Group related commits into one coherent entry when they deliver one capability. Use separate
+entries when changes have different user impact, release significance, or technical themes. A
+large implementation effort may have several entries if its architectural, behavioral, and
+operational consequences are distinct. Summarize a material non-code deliverable when it advances
+the project, but identify it as documentation, research, presentation, release, or publishing
+work rather than presenting it as a software feature.
+
+Use the existing Keep-a-Changelog headings (`Added`, `Changed`, `Fixed`, `Removed`) and add a
+version heading when a release is cut. Release sections state the version, date, and the major
+capabilities, compatibility changes, and upgrade-relevant behavior shipped in that release.
+Keep unreleased work under `## [Unreleased]` until it is released. Keep related entries in reverse
+chronological order within a section and keep the section structure consistent; do not create
+duplicate category headings when an existing heading can contain the entry.
+
+Do not record individual commits, routine refactors, formatting, test-only churn, generated-file
+updates, intermediate debugging, private working notes, or implementation mechanics that do not
+change behavior or project understanding. Do not infer behavior from a commit subject alone:
+verify the diff, tests, documentation, and release metadata as needed. Do not claim that a change
+was released unless the repository's version and release evidence support that claim. Do not turn
+the changelog into a task list, design discussion, retrospective, or commit ledger.
+
+Keep the result concise enough to scan, but technically substantive enough to serve as source
+material for a developer blog. A good entry answers: what changed, where it changed, what problem
+or boundary it addresses, and what a developer or operator should now expect.
+
+Reconcile the changelog with tagged releases when maintaining it. Do not leave a shipped release
+represented only as `[Unreleased]`, and do not describe unreleased work as shipped. Releases are
+cut with `publish_pypi.sh` after the version is updated manually.
 
 # MODIFICATION RULES
 Editing files in these directories is pointless as it will be regenerated.
