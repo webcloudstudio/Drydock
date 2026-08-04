@@ -165,9 +165,7 @@ On halt:
 1. **Trigger Close Out** (above) as the final capture pass.
 2. Print a short closing summary: what is decided, what is open, current `Status` of the notes
    file. If any `spec:approved` items exist, remind the user they can run `/apply-refit` to implement them.
-3. If this is the Drydock repo and material product/process decisions were made, offer to record
-   them to the Ship's Log (`python bin/ships_log.py record …`) — only on the user's confirmation.
-4. Exit discussion mode.
+3. Exit discussion mode.
 
 ---
 

@@ -11,7 +11,7 @@ published development-log posts. Authoritative; not auto-distributed.
 
 ## Purpose
 
-Published development logs assembled from real project decision history (the Ship's Log).
+Published development logs assembled from real project decision history.
 The reader is an engineering peer or hiring manager. The post proves real, serious,
 well-governed engineering work by naming it precisely. Same calm, technical, confident
 brand as everything else; written to be skimmed quickly.

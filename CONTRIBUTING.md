@@ -33,8 +33,6 @@ Run `uv run pre-commit run --all-files` explicitly when needed.
   intents, and retry. Never restore, reset, delete, stage, or commit another writer's changes.
 - **Completion.** Add or update focused tests and keep repository documentation truthful before
   declaring a capability complete.
-- **Ship's Log.** Record material decisions and milestones through `python bin/ships_log.py record`,
-  then perform the required final capture review before completing the task.
 - **Rigging.** `Rigging/` is Drydock's own source of shared rules and templates. All rule and
   template changes go to `Rigging/`.
 - **Architecture.** Business logic lives in importable `src/drydock/` modules. `bin/` contains

@@ -28,8 +28,8 @@ CLI that you have already installed and authenticated:
 - `claude` — Anthropic Claude subscription CLI.
 - `codex` — OpenAI Codex subscription CLI.
 
-Deterministic commands (`status`, `validate`, `document assemble`, `publish`,
-`shipslog`) do not call an LLM and work without a provider CLI.
+Deterministic commands (`status`, `validate`, `document assemble`, `publish`)
+do not call an LLM and work without a provider CLI.
 
 ## 2. Install the command
 
