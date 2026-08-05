@@ -6,14 +6,19 @@
 
 **Your coding agent forgets. Drydock does not.**
 
-Drydock is the process layer specification-driven development skipped: a repeatable <strong><font color="#0a5c38">Agile</font></strong> and <strong><font color="#0a5c38">Test Driven Development</font></strong> pipeline that turns source material into a reviewed Blueprint, builds it one dependency-ordered step at a time with scoped context, and leaves durable evidence behind every claim.
+Drydock turns a written description of a software project into typed specifications,
+builds the software from those specifications with your Claude or Codex subscription,
+and records what happened.
+
+It keeps the specifications, build order, decisions, tests, and build results together
+so the software can be reviewed, rebuilt, and changed cleanly.
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-[Install](#install) · [The Whole Process](#the-whole-process) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
+[Install and set up](#install-and-set-up) · [How Drydock works](#how-drydock-works) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
 [Overview Deck](https://webcloudstudio.com/drydock/) · [White Paper](https://zenodo.org/records/21287574) · [10 Minute Overview](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4) · [User Installation Guide](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
 
 </div>
@@ -22,59 +27,58 @@ Drydock is the process layer specification-driven development skipped: a repeata
 
 ```bash
 uv tool install drydock-sdd
-drydock init MyApp
 ```
 
-Drydock runs on your existing Claude or Codex subscription CLI. It does not require
+Drydock uses your existing Claude or Codex subscription CLI. It does not require
 API keys or per-token API billing.
-
-> **You are the Commander** — the product owner. The LLM is your Agile delivery team.
-> Drydock makes that relationship explicit, reviewable, and repeatable.
 
 Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENSE](LICENSE).
 
-## The Whole Process
+## How Drydock works
 
-Every command Drydock has, in the order you use them. There is no hidden surface.
+Drydock follows five steps:
+
+1. Set up a workspace.
+2. Import your project notes.
+3. Review the specifications and build graph.
+4. Build working software.
+5. Change and maintain your working software.
+
+The Blueprint contains the typed specifications that define the product. The Manifest,
+stored in `MANIFEST.md`, is the executable build graph. It connects the Blueprint stories,
+tracks their dependencies, selects the work that can run next, and gives each build the
+context it needs.
 
 <div align="center">
-<img src="docs/drydock_process.png" alt="The complete Drydock command surface as a shell script: Set Up, Analyze, Implement, Loop." width="920" />
+<img src="docs/drydock_process.png" alt="Drydock setup, specification, planning, building, and maintenance commands." width="920" />
 </div>
-
-That loop creates a Target workspace, decomposes the source material, opens the
-Commander review surface, builds a dependency graph, executes each runnable
-frontier with persisted evidence, verifies programmatic acceptance, and evaluates the
-release gate. [Quick Start](#quick-start) has the copy-and-paste version.
 
 ## What Drydock Is
 
 Drydock is an installable Python command-line package. The PyPI distribution is
 `drydock-sdd`; the installed command is `drydock`.
 
-Drydock implements the SAIL methodology:
-
-| Phase | Purpose | Primary commands |
-|---|---|---|
-| Set Up | Install, configure, and initialize a Target workspace | `config`, `init`, `status` |
-| Analyze | Import material and decompose it into stories, blockers, and acceptance milestones | `import`, `analyze`, `run quarterdeck`, `plan` |
-| Implement | Build the Manifest frontier and verify evidence | `build`, `build status`, `score ac`, `score release`, `rigging`, `document` |
-| Loop | Manage change while preserving the Blueprint as source of truth | `refit`, `build`, `document` |
-
 The core idea is simple: reproducible LLM builds require a process. Drydock uses
 Agile structure, explicit product-owner review, durable evidence, and context-managed
 build prompts so generated software can be inspected, repeated, and iterated.
 
-## Subscription CLI Requirement
+## Install and set up
 
-Drydock is for subscription-authenticated CLI users.
+Python 3.11 or later is required.
 
-It does not use API-key-backed model calls and does not require per-token API billing.
-LLM-assisted commands execute through a locally authenticated provider CLI:
+```bash
+uv tool install drydock-sdd
+drydock --version
+drydock --help
+```
 
-- `claude` for Anthropic Claude subscription CLI users.
-- `codex` for OpenAI Codex subscription CLI users.
+Drydock needs one provider CLI for commands that analyze, plan, or build software.
+Install and sign in to one of these before using those commands:
 
-Set the provider with:
+- `claude`
+- `codex`
+
+Select the provider:
 
 ```bash
 drydock config set llm_provider claude
@@ -82,49 +86,33 @@ drydock config set llm_provider claude
 drydock config set llm_provider codex
 ```
 
-The provider CLI must already be installed, authenticated, and available on `PATH`.
-Deterministic commands such as `status`, `validate`, `document assemble`, and `publish`
-do not call an LLM.
-
-## Install
-
-Python 3.11 or later is required.
-
-Recommended:
+Choose a workspace directory and configure it:
 
 ```bash
-uv tool install drydock-sdd
+mkdir -p "$HOME/drydock"
+
+drydock config set drydock_workspace "$HOME/drydock"
+drydock config show
 ```
 
-Alternative:
+The workspace holds your projects and Drydock's records. The default build location is:
+
+```text
+$HOME/drydock/build/<Target>/
+```
+
+You can change the build location later if needed:
 
 ```bash
-pipx install drydock-sdd
+drydock config set drydock_build_directory "$HOME/projects"
 ```
 
-Virtual environment install:
-
-```bash
-python -m pip install drydock-sdd
-```
-
-Verify:
-
-```bash
-drydock --version
-drydock --help
-```
-
-PDF publishing (`drydock publish --pdf`) is optional and requires the `pdf` extra plus a
-local Chromium download:
+PDF publishing is optional:
 
 ```bash
 uv tool install "drydock-sdd[pdf]"
 playwright install chromium
 ```
-
-See the [User Installation Guide](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
-for the full installation guide.
 
 ### Workspace skills
 
@@ -135,24 +123,22 @@ for the full installation guide.
 [Drydock skills](https://github.com/webcloudstudio/Drydock/tree/main/Rigging/skills)
 for usage.
 
-## Quick Start
+## Quick start
 
-Create one projects directory, configure Drydock's workspace and build output root, and
-initialize a Target.
+The examples below use `MyApp` as the project name. Replace `MyApp` with the name
+of your own project when you run the commands.
+
+Create the project workspace:
 
 ```bash
-export PROJECTS="$HOME/projects"
-mkdir -p "$PROJECTS/drydock"
+drydock init MyApp \
+  --display-name "My App" \
+  --description "A working software product."
 
-drydock config set drydock_workspace "$PROJECTS/drydock"
-drydock config set drydock_build_directory "$PROJECTS"
-drydock config set llm_provider claude
-
-drydock init MyApp --display-name "My App" --description "A working software product."
 drydock status
 ```
 
-Import source material and run the planning loop:
+Import your project notes and create the Blueprint and Manifest:
 
 ```bash
 drydock import MyApp ./notes --format markdown
@@ -162,7 +148,7 @@ drydock plan MyApp
 drydock build status MyApp
 ```
 
-Build one frontier at a time, then score acceptance and release readiness:
+Build working software and check it:
 
 ```bash
 drydock build MyApp
@@ -171,42 +157,43 @@ drydock score ac MyApp
 drydock score release MyApp
 ```
 
-The Target workspace lives under:
+Change the Blueprint first. Then update the build graph and rebuild the affected work:
 
-```text
-$DRYDOCK_WORKSPACE/targets/<Target>/
+```bash
+drydock refit MyApp
+drydock build MyApp
+drydock score ac MyApp
+drydock document MyApp
 ```
 
-The generated application is written under:
+Your project workspace is:
 
 ```text
-$DRYDOCK_BUILD_DIRECTORY/<Target>/
+$HOME/drydock/targets/MyApp/
 ```
+
+The generated application is:
+
+```text
+$HOME/drydock/build/MyApp/
+```
+
+Run `drydock --help` for the complete command list.
 
 ## Why It Is Different
 
-Drydock is not a prompt collection and it is not a one-shot code generator. It is a
-delivery system with durable artifacts:
+Drydock is not a prompt collection and it is not a one-shot code generator. It keeps
+the typed specifications, executable build graph, review decisions, acceptance checks,
+and execution evidence with the project.
 
-- Blueprint: typed Markdown specifications that remain the source of truth.
-- Manifest: the executable dependency graph for build order, dependencies, and state.
-- QuarterDeck: the web review surface where the product owner answers questions,
-  reviews stories, and directs the process.
-- Compass files: persistent product-owner intent injected into the right command runs.
-- Soundings: acceptance checklist and implementation evidence.
-- Sea Trials: product-level objectives and proof-of-delivery criteria.
-- Rigging: shared branding, stack rules, templates, and compact context derivatives.
-- Execution logs: reproducible prompt, raw output, stderr, event, and result artifacts.
-
-The Commander is the product owner. The LLM is treated as an Agile delivery team.
-Drydock's job is to make that relationship explicit, reviewable, and repeatable.
+That record makes each build reviewable, repeatable, and easier to change.
 
 For how Drydock compares with other specification-driven tools, see the
 [Product Comparison Matrix](docs/Product_Comparison_Matrix.md).
 
 ## Current Release Status
 
-Drydock `0.1.5` is an beta release. The primary SAIL path is implemented, but the
+Drydock `0.1.5` is an alpha release. The primary SAIL path is implemented, but the
 command surface and Typed Specification contracts remain unstable during the `0.x` series:
 
 - Workspace configuration and Target initialization.
