@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
 from drydock.source_refit import (
-    SourceDeletionDecision,
     record_import_root,
     source_refit_target,
     update_import,
@@ -60,14 +57,18 @@ def test_update_import_copies_changed_files_and_records_pending_change(tmp_path)
     assert '"pending_change":true' in (target / "MANIFEST.md").read_text()
 
 
-def test_update_import_blocks_deleted_files(tmp_path):
+def test_update_import_marks_deleted_files_and_keeps_the_local_copy(tmp_path):
     source = tmp_path / "authoring"
     source.mkdir()
     target = _target(tmp_path, source)
-    (target / "blueprint" / "sources" / "removed.md").write_text("old\n", encoding="utf-8")
+    removed = target / "blueprint" / "sources" / "removed.md"
+    removed.write_text("old\n", encoding="utf-8")
 
-    with pytest.raises(SourceDeletionDecision, match="removed.md"):
-        update_import(target)
+    result = update_import(target)
+
+    assert result.deleted == ("removed.md",)
+    assert removed.is_file()
+    assert '"pending_delete":true' in (target / "MANIFEST.md").read_text()
 
 
 def test_record_import_root_keeps_wider_directory_root(tmp_path):

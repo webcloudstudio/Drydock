@@ -46,10 +46,6 @@ class SourceRefitResult:
     changed_sources: tuple[str, ...]
 
 
-class SourceDeletionDecision(SpecificationError):
-    """A full-root import found a source deletion requiring Commander direction."""
-
-
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -128,12 +124,18 @@ def update_import(target_dir: Path) -> SourceUpdateResult:
             + ", ".join(compass_changed)
         )
 
+    # A source removed upstream is a fact, not a blocked refresh. The local copy is retained so
+    # a refit ticket can still cite what was withdrawn; the lineage record carries the pending
+    # deletion until refit consumes it.
     deleted = sorted(set(existing) - set(incoming))
-    if deleted:
-        raise SourceDeletionDecision(
-            "Imported source deletion detected: " + ", ".join(deleted) + ". "
-            "Choose whether to keep or remove the affected feature, then rerun refit."
+    for name in deleted:
+        record = (
+            dict(file_records.get(name, {})) if isinstance(file_records.get(name), dict) else {}
         )
+        record["pending_delete"] = True
+        record.pop("pending_change", None)
+        record.pop("pending_hash", None)
+        file_records[name] = record
 
     added: list[str] = []
     changed: list[str] = []

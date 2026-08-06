@@ -12,16 +12,15 @@ _INTENT_FILENAMES = frozenset({"compass.md", "intent.md", "constitution.md"})
 # to extract from them, and COMPASS.md is injected into every build step whole.
 COMPASS_FILENAMES = frozenset({"COMPASS.md", "PLAN_COMPASS.md", "ANALYZE_COMPASS.md"})
 _COMPASS_STATE_FILENAME = ".drydock-compass"
-_SELF_IDENTIFY_RE = re.compile(
-    r"(?im)"
-    r"("
-    r"^#{1,6}\s*(?:compass|constitution|guardrails|author'?s?\s+intent)\b"
-    r"|"
-    r"\bthis\s+is\s+the\s+authors?\s+intent\b"
-    r"|"
-    r"\bauthor'?s?\s+intent\b"
-    r")"
+# A document is intent material when its *leading* heading declares it so. Every Typed
+# Specification template carries a ``## Guardrails`` section, so matching the marker anywhere
+# in the body classified ordinary Blueprint sources as Compass material and excluded them from
+# source lineage. Only the first heading identifies the document.
+_INTENT_HEADING_RE = re.compile(
+    r"(?i)^#{1,6}\s*(?:compass|constitution|guardrails|author'?s?\s+intent)\b"
 )
+_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S.*$")
+_SELF_IDENTIFY_RE = re.compile(r"(?i)\bthis\s+is\s+the\s+author'?s?\s+intent\b")
 
 
 def _state_path(target_dir: Path) -> Path:
@@ -69,7 +68,11 @@ def is_compass_source(path: Path) -> bool:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    return bool(_SELF_IDENTIFY_RE.search(text[:16000]))
+    head = text[:16000]
+    if _SELF_IDENTIFY_RE.search(head):
+        return True
+    first_heading = _HEADING_RE.search(head)
+    return bool(first_heading and _INTENT_HEADING_RE.match(first_heading.group(0)))
 
 
 def collect_compass_sources(source_files: list[Path]) -> list[Path]:

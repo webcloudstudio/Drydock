@@ -31,11 +31,30 @@ def test_author_intent_marker_is_compass_source(tmp_path):
     assert is_compass_source(path)
 
 
-def test_guardrails_heading_is_compass_source(tmp_path):
+def test_leading_guardrails_heading_is_compass_source(tmp_path):
     path = tmp_path / "constraints.md"
     path.write_text("# Guardrails\n\nNever mutate source repositories.\n", encoding="utf-8")
 
     assert is_compass_source(path)
+
+
+def test_guardrails_section_inside_a_specification_is_not_compass_source(tmp_path):
+    # Every Typed Specification template carries a ``## Guardrails`` section. Matching it
+    # anywhere in the body classified ordinary Blueprint sources as intent material.
+    path = tmp_path / "FEATURE-Scanner.md"
+    path.write_text(
+        "# FEATURE: Scanner\n\n## Behavior\n\nScans.\n\n## Guardrails\n\n- Never mutate.\n",
+        encoding="utf-8",
+    )
+
+    assert not is_compass_source(path)
+
+
+def test_author_intent_section_below_a_title_is_not_compass_source(tmp_path):
+    path = tmp_path / "SCREEN-Setup.md"
+    path.write_text("# SCREEN: Setup\n\n## Author's Intent\n\nKeep it plain.\n", encoding="utf-8")
+
+    assert not is_compass_source(path)
 
 
 def test_generic_readme_intent_section_is_not_compass_source(tmp_path):
