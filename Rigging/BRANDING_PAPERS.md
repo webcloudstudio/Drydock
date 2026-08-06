@@ -1,6 +1,6 @@
 # Branding — Papers
 
-**Version:** 20260804 V1
+**Version:** 20260804 V2
 **Category:** Branding
 **Description:** The author's voice and structure for the Drydock white paper series — what a paper
 is, how it is organized, and how it is written.
@@ -89,6 +89,11 @@ rewritten until its subject is a thing.
 derivation it is a bold claim followed by bullets. Never more than one per section, and never a
 paragraph that restates the section.
 
+**No sentence justifies another sentence.** If a fact needs a reason, the reason is a clause in
+the same sentence, not a sentence of its own. `Consequence:`, `This ensures`, `That is the entire
+mechanism`, `which is what keeps it cheap enough` are signals the sentence should be cut, not
+tightened.
+
 **Say it flat at the end.** The last line of an argument is a plain restatement, not a flourish.
 "Error stops compounding, context stops confusing, and the build repeats."
 
@@ -141,6 +146,11 @@ The paper is printed. No element takes a whole page.
 - Product advocacy. The paper reports a method; the reader decides.
 - Cleaning up the author's typing. Double spaces, occasional typos, and informal asides are the
   voice. Do not normalize them in an unrelated edit.
+- Substituting a project-specific term for a more generic one because it reads better. A word that
+  looks like it might be a defined artifact name (`manifest`, `blueprint`, a command name) is
+  verified against the codebase before it is changed, never swapped on style instinct.
+- An invented section title standing in for the argument itself — "Three Places the Ticket Model
+  Stops" is an essay heading wearing a number. See Prohibited, above.
 
 ---
 
@@ -149,6 +159,9 @@ The paper is printed. No element takes a whole page.
 The author writes the paper. An agent drafts structure, diagrams, tables, and mechanical
 corrections.
 
+**An agent must read this file in full before making any edit to a paper.** Rules here are not
+recovered from context; they are checked against, every time.
+
 **An agent may, without asking:** fix a broken mermaid block, correct a factual detail about a
 command, add a table the author asked for, and render the HTML and PDF.
 
@@ -156,5 +169,14 @@ command, add a table the author asked for, and render the HTML and PDF.
 shape. Approval for one section is not approval for the next.
 
 **An agent must never** replace author-written prose with its own draft of the same content, reflow
-paragraphs it was not asked to touch, or add sections the author did not request. When a draft is
-rejected, rewrite one section and stop, rather than delivering another full draft.
+paragraphs it was not asked to touch, add sections the author did not request, or rewrite the whole
+file to make a change that touches one line. Edit the specific line or paragraph named. When a
+draft is rejected, rewrite one section and stop, rather than delivering another full draft.
+
+**A correction is not scoped to where it was given.** If the author cuts a justification sentence
+in one section, that pattern is cut everywhere in the document and in every document after it —
+not regenerated the next time a different section is touched.
+
+**The document was iterated before the agent arrived.** Every rewrite the agent makes is a
+high-risk action on judgment the agent cannot see. Default to the smallest edit that satisfies the
+request; ask before doing more.

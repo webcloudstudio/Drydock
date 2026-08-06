@@ -1,165 +1,234 @@
-# Drydock Quick Start Guide
+---
+title: Drydock Quick Start
+title_sub: Build your first application
+eyebrow: From specification to working software
+subtitle: A short walkthrough of the SAIL workflow.
+logo: drydock_logo.png
+author: Ed Barlow
+studio: Web Cloud Studio
+year: August 2026
+header_title: Drydock
+copyright: Copyright © 2026 Web Cloud Studio.
+---
 
-This guide takes `MyApp` from project material to working software. Replace `MyApp` with your
-Target name and replace `YOUR_PROJECT_DIR` with the directory where you keep your projects.
+![Drydock](drydock_logo.png)
 
-## Prerequisites
+# Drydock Quick Start
 
-- [ ] Python 3.11 or newer.
-- [ ] `uv` or `pipx` for installing the Drydock command.
-- [ ] The `claude` or `codex` provider CLI installed and signed in.
-- [ ] A subscription for the provider CLI you selected.
+Drydock turns your project specifications into working, tested software. This guide builds a small
+reading-list application and shows where you review the work in the QuarterDeck.
 
-## 1. Install and configure Drydock
+The workflow is SAIL:
+
+```mermaid
+flowchart LR
+    S["Set Up"] --> A["Analyze & Plan"]
+    A --> I["Implement & Verify"]
+    I --> W["Working Software"]
+    W --> L["Loop"]
+    L -. change .-> I
+
+    classDef phase fill:#123b59,stroke:#2cb67d,color:#fff,font-weight:bold
+    classDef result fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
+    class S,A,I,L phase
+    class W result
+```
+
+You provide the product intent and approve the decisions. Drydock creates the Blueprint, builds its
+Manifest in dependency order, and verifies the result.
+
+## Before you begin
+
+This guide assumes Drydock and a supported subscription CLI are installed and authenticated. If
+`drydock` does not run, follow the [User Installation Guide](USER_INSTALLATION.md).
+
+Confirm the command and your saved configuration:
 
 ```bash
-uv tool install drydock-sdd                 # Install Drydock with uv.
-# pipx install drydock-sdd                  # Or install it with pipx.
-drydock --version                           # Confirm that the command is available.
-export YOUR_PROJECT_DIR="/path/to/projects" # Set this to your own project directory.
-mkdir -p "$YOUR_PROJECT_DIR/drydock"       # Create the Drydock workspace directory.
-drydock config set llm_provider claude      # Use codex here if you use Codex.
-drydock config set drydock_model sonnet     # Set the default model.
-drydock config set drydock_workspace "$YOUR_PROJECT_DIR/drydock" # Store Targets and logs here.
-drydock config set drydock_build_directory "$YOUR_PROJECT_DIR"   # Write generated apps here.
-drydock config show                         # Confirm the saved configuration.
+drydock --version
+drydock config show
 ```
 
-The provider CLI must be installed and signed in before you run `analyze`, `plan`, or `build`.
-The `llm_provider` setting tells Drydock which provider command to run. `sonnet` is the default
-model for the configured provider; set another model with `drydock config set drydock_model <model>`
-when required.
+The configuration names two locations:
 
-## 2. Initialize `MyApp`
+- the **workspace**, where Drydock keeps Targets, Blueprints, decisions, and evidence;
+- the **build directory**, where Drydock writes the applications it builds.
+
+## 1. Set up the Target
+
+A **Target** is one application managed by Drydock. Create one named `ReadingList`:
 
 ```bash
-drydock init MyApp --display-name "My App" --description "A software project." # Create the Target.
-drydock status MyApp                                                        # Confirm it exists.
+drydock init ReadingList \
+  --display-name "Reading List" \
+  --description "A small application for tracking books to read."
 ```
 
-`drydock init` creates the Target workspace and its initial directories:
-
-```text
-$YOUR_PROJECT_DIR/drydock/targets/MyApp/
-├── blueprint/sources/
-├── blueprint/changes/
-├── evidence/
-├── logs/
-├── QuarterDeck/data/
-└── METADATA.md
-```
-
-The generated application is written to `$YOUR_PROJECT_DIR/MyApp/`.
-
-## 3. Import project material
-
-Put the material that describes the project in Markdown files under `notes/`. Include the users,
-desired behavior, inputs, outputs, error behavior, and how the result will be tested.
+Use `drydock status` whenever you need orientation. It reports the current state and the next useful
+operation.
 
 ```bash
-mkdir -p notes                                      # Create a local source directory.
-drydock import MyApp ./notes --format markdown      # Copy the material into the Target.
+drydock status ReadingList
 ```
 
-For example:
+## 2. Give Drydock the product description
+
+Create a directory named `reading-list-notes` containing one Markdown file:
 
 ```markdown
 # Reading List
 
 A reader keeps a list of books to read.
 
-The reader can add a book by title and author and list saved books in the order added.
-An empty title is rejected with an error message.
+The reader can add a book with a title and author, view the books in the order added,
+and remove a book. An empty title or author is rejected with a clear error message.
 
-Done when:
-
-- adding a book works;
-- listing books works;
-- an empty title is rejected; and
-- automated tests cover these cases.
+The application includes automated tests for each behavior.
 ```
 
-## 4. Analyze the project
+Import the directory and analyze it:
 
 ```bash
-drydock analyze MyApp # Derive stories, acceptance milestones, questions, and blockers.
+drydock import ReadingList ./reading-list-notes --format markdown
+drydock analyze ReadingList
 ```
 
-Analyze creates `ANALYSIS.md`, `SEA_TRIALS.md`, and other planning artifacts in the Target. If
-`BLOCKERS.md` exists, answer the questions in it and run Analyze again:
+Analyze turns the source material into stories, acceptance criteria, questions, and blockers. It
+does not build the application.
+
+## 3. Review the analysis
+
+Open the QuarterDeck:
 
 ```bash
-drydock analyze MyApp # Re-run after answering blockers or changing Analyze guidance.
+drydock run quarterdeck ReadingList
 ```
 
-Use the QuarterDeck to answer questions, resolve blockers, and adjust project guidance:
+Review the proposed scope, answer open questions, and resolve blockers. Your answers become project
+guidance for the next command. Running `plan` is the approval to proceed.
+
+> **Recommended screenshot — Analyze:** show the QuarterDeck after `analyze`, with the project
+> summary, story list, and one visible question or blocker. Crop out browser chrome and use the
+> caption: *Review the stories and answer open questions before planning.*
+
+## 4. Create the Blueprint
+
+Create the specifications and executable build plan, then validate them:
 
 ```bash
-drydock run quarterdeck MyApp # Start the local planning console.
+drydock plan ReadingList
+drydock validate ReadingList
 ```
 
-## 5. Create and validate the Blueprint
+The **Blueprint** is the source of truth for the product. The **Manifest** is its dependency-aware
+build plan. Validation checks the Typed Specification structure without calling an LLM.
+
+Return to the QuarterDeck to review the planned work:
 
 ```bash
-drydock plan MyApp     # Create the Blueprint and dependency-aware MANIFEST.md.
-drydock validate MyApp  # Check Blueprint conformance without calling an LLM.
+drydock run quarterdeck ReadingList
 ```
 
-The Blueprint defines the product. `MANIFEST.md` defines the build order. There is no separate
-plan-review command; the human decision point is in Analyze and the QuarterDeck before `plan`.
+You should now see what Drydock plans to build and which work is ready first.
 
-## 6. Build and score the project
+## 5. Build the application
 
-Preview the next build when needed:
+Build advances one runnable Manifest step at a time. The loop stops when all planned work is complete
+or when a decision is needed.
 
 ```bash
-drydock build MyApp --dry-run --show-prompt # Show the next build without running it.
+while drydock status ReadingList --ready; do
+  drydock build ReadingList
+  drydock build status ReadingList
+done
 ```
 
-Build the runnable work and check its state:
+If the build stops before completion, open the QuarterDeck. It shows the failed or blocked work and
+the action required from you.
 
-```bash
-drydock build MyApp        # Execute the next available Manifest work.
-drydock build status MyApp  # Show completed, blocked, and remaining work.
-```
+> **Recommended screenshot — Implement:** show the QuarterDeck partway through the build, with
+> completed work, the current frontier, and remaining work visible together. Caption: *Drydock builds
+> the runnable frontier in dependency order.*
 
-Run the acceptance checks and the release assessment:
-
-```bash
-drydock score ac MyApp       # Verify programmatic acceptance criteria; writes SOUNDINGS.md.
-drydock score release MyApp   # Assess project-level release criteria; writes SCORECARD.md.
-```
-
-## 7. Change the project with Refit
-
-The Blueprint remains the source of truth. For a change, either edit the affected specification or
-add a ticket under `blueprint/changes/`. A ticket names its parent specification with `Amends:`:
+The finished application is under:
 
 ```text
-$YOUR_PROJECT_DIR/drydock/targets/MyApp/blueprint/changes/TICKET-001-reading-list.md
-Amends: FEATURE-Reading-List.md
+$DRYDOCK_BUILD_DIRECTORY/ReadingList/
 ```
 
-Then run the normal change loop:
+Run it using the project instructions generated in that directory.
+
+## 6. Verify release readiness
+
+Run the acceptance checks and the product-level release assessment:
 
 ```bash
-drydock refit MyApp        # Conform tickets, update MANIFEST.md, and reset affected work.
-drydock build MyApp         # Rebuild the changed work and its required dependencies.
-drydock score ac MyApp      # Verify the changed product.
+drydock score ac ReadingList
+drydock score release ReadingList
 ```
 
-`refit` maps the change into the Manifest and resets the changed specification's consumer blocks
-and their dependent work. The normal build and acceptance process then applies to the change.
+`score ac` executes the programmatic acceptance criteria. `score release` evaluates the completed
+application against its Sea Trials and writes the release scorecard.
 
-## First-run checklist
+Open the QuarterDeck one final time:
 
-- [ ] Drydock is installed and configured.
-- [ ] The provider CLI is installed and signed in.
-- [ ] `MyApp` is initialized.
-- [ ] Project material is imported.
-- [ ] Analyze has no unresolved blockers.
-- [ ] The Blueprint is validated.
-- [ ] The project is built and scored.
+```bash
+drydock run quarterdeck ReadingList
+```
 
-For installation details, see the [User Installation Guide](USER_INSTALLATION.md). For complete
-command contracts, see the [Drydock Specification](Drydock_Specification.md).
+Review failed checks before treating the application as complete.
+
+> **Recommended screenshot — Verify:** show the final acceptance results and release scorecard in
+> the QuarterDeck. Use a project with at least one meaningful criterion visible. Caption: *Acceptance
+> results and Sea Trials provide the final release decision.*
+
+## What you just built
+
+```mermaid
+flowchart LR
+    N["Your notes"] -->|import + analyze| R["Review"]
+    R -->|plan| B["Blueprint"]
+    B -->|build| C["Application"]
+    C -->|score| V["Verified release"]
+
+    classDef input fill:#d4a017,stroke:#a07810,color:#111
+    classDef review fill:#be123c,stroke:#fb7185,color:#fff
+    classDef governed fill:#1e40af,stroke:#3b5fc0,color:#fff
+    classDef output fill:#0a5c38,stroke:#2cb67d,color:#fff
+    class N input
+    class R review
+    class B governed
+    class C,V output
+```
+
+| You supplied | Drydock produced |
+|---|---|
+| Product description | Analyzed stories and acceptance criteria |
+| Answers and decisions | A Typed Specification Blueprint |
+| Approval to proceed | A dependency-aware Manifest |
+| Release judgment | Working software, evidence, and scores |
+
+## Make the next change
+
+The Blueprint remains the source of truth after the first release. Describe the change in a ticket
+under the Target's `blueprint/changes/` directory, then run:
+
+```bash
+drydock refit ReadingList
+drydock build ReadingList
+drydock score ac ReadingList
+```
+
+Drydock maps the change into the Manifest and rebuilds the affected work.
+
+## Keep these commands nearby
+
+```bash
+drydock status ReadingList                 # Where am I, and what is next?
+drydock run quarterdeck ReadingList        # What needs my review or decision?
+drydock build status ReadingList           # What is built, blocked, or ready?
+```
+
+For installation and configuration, see the [User Installation Guide](USER_INSTALLATION.md). For
+the complete command contracts and artifact definitions, see the
+[Drydock Specification](Drydock_Specification.html).
