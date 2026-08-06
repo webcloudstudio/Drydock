@@ -195,3 +195,41 @@ def test_rigging_groups_order_known_categories_first():
         ("flask.md", "Web Server"),
     ])
     assert [g["label"] for g in groups] == ["Web Server", "Persistence", "Unknown"]
+
+
+def test_an_unapproved_document_carries_no_approval_marker(tmp_path):
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md")])
+
+    text = technology_stack.load_text(tmp_path)
+    assert "**Approved:**" not in text
+    assert technology_stack.approved_on(tmp_path) is None
+    assert not technology_stack.is_approved(tmp_path)
+
+
+def test_approve_records_a_dated_marker_and_round_trips_the_rows(tmp_path):
+    entries = [
+        technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn"),
+        technology_stack.StackEntry("marina-library", None, ""),
+    ]
+    technology_stack.write(tmp_path, entries)
+
+    technology_stack.approve(tmp_path, "2026-08-06")
+
+    assert technology_stack.approved_on(tmp_path) == "2026-08-06"
+    assert technology_stack.is_approved(tmp_path)
+    assert technology_stack.load(tmp_path) == entries
+
+
+def test_approve_defaults_to_today_and_re_dates_an_approved_stack(tmp_path):
+    from datetime import date
+
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("Go")], "2020-01-01")
+
+    technology_stack.approve(tmp_path)
+
+    assert technology_stack.approved_on(tmp_path) == date.today().isoformat()
+    assert technology_stack.load_text(tmp_path).count("**Approved:**") == 1
+
+
+def test_is_approved_is_false_for_a_missing_document(tmp_path):
+    assert not technology_stack.is_approved(tmp_path / "absent")

@@ -8,6 +8,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-08-06: QuarterDeck items that require a Commander answer can now be approved as proposed.
+  Discovery questionnaires and the Technology Stack carry an `Approve` action in the page header;
+  approving a questionnaire sets its state to `approved` without requiring answers, and approving
+  the Technology Stack writes a dated `**Approved:**` marker into `TECHNOLOGY_STACK.md`. Editing
+  an approved item never revokes the approval, and `approved` counts as a closed questionnaire
+  state everywhere open questionnaires are counted (Analyze summary, Commanders Chair). The
+  Technology Stack now also flies the sidebar action icon — red `✗` until approved, green `✓`
+  after — so an unreviewed stack is as visible as an unanswered questionnaire.
+
 ### Fixed
 
 - 2026-08-04: `drydock import <Target> --update` now runs. `<Source>` is optional and rejected

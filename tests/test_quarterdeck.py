@@ -2166,3 +2166,150 @@ def test_technology_stack_is_a_registered_renderer_type():
     assert "technology_stack" in quarterdeck.TYPES
     assert quarterdeck.validate_item(_stack_item()) is None
     assert quarterdeck.validate_item({"id": "x", "type": "technology_stack"}) is not None
+
+
+# ── Commander approval (questionnaires and the Technology Stack) ──────────────
+
+
+def test_technology_stack_is_pending_until_it_is_approved(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(quarterdeck, "_current_base_dir", lambda: tmp_path)
+    item = {**_stack_item(), "path": "TECHNOLOGY_STACK.md"}
+
+    # An unwritten stack is an outstanding action, not a settled one.
+    assert quarterdeck.item_nav_status(item) == "pending"
+
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md")])
+    assert quarterdeck.item_pending(item)
+    assert quarterdeck.item_nav_status(item) == "pending"
+
+    technology_stack.approve(tmp_path, "2026-08-06")
+    assert not quarterdeck.item_pending(item)
+    assert quarterdeck.item_nav_status(item) == "done"
+
+
+def test_approving_the_technology_stack_records_the_marker_without_changing_rows(
+    tmp_path, monkeypatch
+):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    technology_stack.write(
+        tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn")]
+    )
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+
+    result = quarterdeck.api_approve_item("technology_stack", None)
+
+    assert result["ok"] is True
+    assert result["state"] == "approved"
+    assert technology_stack.is_approved(tmp_path)
+    assert technology_stack.load(tmp_path) == [
+        technology_stack.StackEntry("FastAPI", "fastapi.md", "Served by uvicorn")
+    ]
+
+
+def test_editing_the_technology_stack_preserves_an_existing_approval(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    target = tmp_path / "TECHNOLOGY_STACK.md"
+    technology_stack.write(
+        tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md")], "2026-08-06"
+    )
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: _stack_item())
+    monkeypatch.setattr(quarterdeck, "resolve_write_path", lambda _path: target)
+
+    quarterdeck.api_set_technology_stack(
+        "technology_stack",
+        quarterdeck.TechnologyStackUpdate(rows=[{"technology": "Go", "rigging": "", "notes": ""}]),
+        None,
+    )
+
+    assert technology_stack.approved_on(tmp_path) == "2026-08-06"
+    assert technology_stack.load(tmp_path) == [technology_stack.StackEntry("Go", None, "")]
+
+
+def test_approve_button_appears_only_until_the_item_is_approved(tmp_path, monkeypatch):
+    from drydock import technology_stack
+
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(quarterdeck, "_current_base_dir", lambda: tmp_path)
+    item = {**_stack_item(), "path": "TECHNOLOGY_STACK.md", "label": "Technology Stack"}
+    technology_stack.write(tmp_path, [technology_stack.StackEntry("FastAPI", "fastapi.md")])
+
+    page = quarterdeck._wrap_page(item, "<h1>Technology Stack</h1><p>body</p>")
+    assert "approveItem('technology_stack')" in page
+
+    technology_stack.approve(tmp_path, "2026-08-06")
+    approved_page = quarterdeck._wrap_page(item, "<h1>Technology Stack</h1><p>body</p>")
+    assert "approveItem(" not in approved_page
+    assert "Approved ✓" in approved_page
+
+
+def _approvable_questionnaire(tmp_path):
+    path = tmp_path / "discovery-identity.json"
+    path.write_text(
+        json.dumps({
+            "id": "discovery-identity",
+            "title": "Discovery — Identity",
+            "state": "open",
+            "questions": [{"id": "q1", "prompt": "Who?", "answer": ""}],
+        }),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_approving_a_questionnaire_closes_it_without_answers(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    path = _approvable_questionnaire(tmp_path)
+    item = {"id": "discovery_identity", "type": "questionnaire", "path": path.name}
+    monkeypatch.setattr(quarterdeck, "find_item", lambda _id: item)
+    monkeypatch.setattr(quarterdeck, "_q_path_for", lambda _id: path)
+    monkeypatch.setattr(quarterdeck, "_current_base_dir", lambda: tmp_path)
+
+    assert quarterdeck.item_nav_status(item) == "pending"
+
+    result = quarterdeck.api_approve_item("discovery_identity", None)
+
+    assert result["state"] == "approved"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["state"] == "approved"
+    assert data["questions"][0]["answer"] == ""
+    assert quarterdeck.item_nav_status(item) == "done"
+
+
+def test_answering_an_approved_questionnaire_does_not_reopen_it(tmp_path, monkeypatch):
+    quarterdeck = _load_quarterdeck()
+    path = _approvable_questionnaire(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["state"] = "approved"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    monkeypatch.setattr(quarterdeck, "_find_q_path_by_id", lambda _id: path)
+
+    quarterdeck._writeback_questionnaire(
+        "questionnaire.discovery-identity", "answered", {"__additional_notes": "context"}
+    )
+
+    updated = json.loads(path.read_text(encoding="utf-8"))
+    assert updated["state"] == "approved"
+    assert updated["additional_notes"] == "context"
+
+
+def test_approve_rejects_an_item_that_is_not_approvable(tmp_path, monkeypatch):
+    import pytest
+
+    quarterdeck = _load_quarterdeck()
+    monkeypatch.setattr(
+        quarterdeck, "find_item", lambda _id: {"id": "compass_edit", "type": "editable_markdown"}
+    )
+
+    with pytest.raises(quarterdeck.HTTPException) as exc:
+        quarterdeck.api_approve_item("compass_edit", None)
+    assert exc.value.status_code == 400

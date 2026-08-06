@@ -48,7 +48,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -95,7 +95,7 @@ TARGET_BUTTON_PALETTE = (
     ("#166534", "#86efac"),
 )
 
-_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
+_DONE_STATES = {"done", "answered", "approved", "complete", "verified", "promoted"}
 _DEFAULT_DOT = "#94a3b8"
 
 # International Code of Signals letter flags, drawn to a 16x12 viewBox. Flags are
@@ -2997,6 +2997,17 @@ def item_pending(item: dict[str, Any]) -> bool:
             return str(data.get("state", "open")) not in _DONE_STATES
         except Exception:
             return True
+    if t == "technology_stack":
+        from drydock import technology_stack
+
+        path = item.get("path")
+        if not path:
+            return True
+        try:
+            text = (_current_base_dir() / path).resolve().read_text(encoding="utf-8")
+        except OSError:
+            return True
+        return technology_stack.parse_approved(text) is None
     if item.get("id") == "blockers_doc":
         path = item.get("path")
         if not path:
@@ -3012,6 +3023,10 @@ def item_pending(item: dict[str, Any]) -> bool:
         )
         return not resolutions or any(not value.strip() or "<!--" in value for value in resolutions)
     return False
+
+
+#: Item types the Commander can accept as they stand, without editing them.
+_APPROVABLE_TYPES = frozenset({"questionnaire", "technology_stack"})
 
 
 # ── Page header (title row + action buttons + divider) ──────────────────────────
@@ -3039,6 +3054,17 @@ def _wrap_page(item: dict[str, Any], body: str) -> str:
     btns: list[str] = []
     if t == "editable_markdown":
         btns.append(f"<button class='ph-btn ph-edit' onclick=\"editDoc('{iid}')\">Edit</button>")
+    # Approvable items clear their own action icon. Editing them is one way to say
+    # "this is settled"; approving as proposed is the other, and neither is implied
+    # by the other — an unchanged Technology Stack still needs an explicit answer.
+    if t in _APPROVABLE_TYPES:
+        if item_pending(item):
+            btns.append(
+                f"<button class='ph-btn ph-approve' onclick=\"approveItem('{iid}')\">"
+                "Approve</button>"
+            )
+        else:
+            btns.append("<span class='ph-approved'>Approved ✓</span>")
 
     acts_html = f"<div class='ph-actions'>{''.join(btns)}</div>" if btns else ""
     body = _H1_RE.sub("", body, count=1)
@@ -3125,7 +3151,12 @@ def _writeback_questionnaire_locked(key: str, state: str, payload: dict[str, Any
     if state in ("answered", "open"):
         questions = data.get("questions", [])
         all_answered = bool(questions) and all(str(q.get("answer", "")).strip() for q in questions)
-        data["state"] = "answered" if all_answered else "open"
+        # An explicit approval outranks the answered-everything heuristic: refining an
+        # answer afterwards must not reopen a questionnaire the Commander closed.
+        if str(data.get("state", "")) == "approved":
+            data["state"] = "approved"
+        else:
+            data["state"] = "answered" if all_answered else "open"
     else:
         data["state"] = state
     data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 support
@@ -3283,8 +3314,59 @@ def api_set_technology_stack(
         ]
         path = resolve_write_path(item["path"])
         with _TS_WRITE_LOCK:
-            _atomic_write_text(path, technology_stack.render(entries))
+            # Editing a row is not an act of unapproval: carry the existing marker.
+            try:
+                approved = technology_stack.parse_approved(path.read_text(encoding="utf-8"))
+            except OSError:
+                approved = None
+            _atomic_write_text(path, technology_stack.render(entries, approved))
         return {"ok": True, "item_id": item_id, "rows": len(entries)}
+
+
+@app.post("/api/approve/{item_id}")
+def api_approve_item(item_id: str, request: Request = None) -> dict[str, Any]:
+    """Accept an approvable item as it stands, with no edit required.
+
+    A questionnaire takes the terminal ``approved`` state, preserving whatever
+    answers it already carries. A Technology Stack takes a dated approval marker
+    inside ``TECHNOLOGY_STACK.md``, so the decision travels with the artifact.
+    """
+    from drydock import technology_stack
+
+    with _request_context(request):
+        item = find_item(item_id)
+        item_type = item.get("type", "")
+        if item_type not in _APPROVABLE_TYPES:
+            raise HTTPException(
+                status_code=400, detail=f"Item {item_id!r} is not an approvable item"
+            )
+        if item_type == "questionnaire":
+            path = _q_path_for(item_id)
+            if path is None:
+                raise HTTPException(
+                    status_code=404, detail=f"No questionnaire file for {item_id!r}"
+                )
+            with _Q_WRITE_LOCK:
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise HTTPException(
+                        status_code=400, detail=f"Unreadable questionnaire: {exc}"
+                    ) from exc
+                data["state"] = "approved"
+                data["answered_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+                _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+            return {"ok": True, "item_id": item_id, "state": "approved"}
+
+        path = resolve_write_path(item["path"])
+        approved = date.today().isoformat()
+        with _TS_WRITE_LOCK:
+            try:
+                entries = technology_stack.parse(path.read_text(encoding="utf-8"))
+            except OSError:
+                entries = []
+            _atomic_write_text(path, technology_stack.render(entries, approved))
+        return {"ok": True, "item_id": item_id, "state": "approved", "approved": approved}
 
 
 @app.post("/api/compass/{item_id}/move")
@@ -3531,7 +3613,7 @@ def item_nav_status(item: dict[str, Any]) -> str | None:
     documents, boards, logs, links) are labels, not action items — flagging
     them all as done buries the few things that genuinely need attention.
     """
-    if item.get("type", "") == "questionnaire":
+    if item.get("type", "") in ("questionnaire", "technology_stack"):
         return "pending" if item_pending(item) else "done"
     if item.get("id") == "blockers_doc":
         return "pending" if item_pending(item) else "done"
@@ -3785,6 +3867,9 @@ _STYLE = """
   .ph-btn { padding:5px 14px; border-radius:3px; cursor:pointer; font-size:13px; font-weight:600; border:1px solid transparent; }
   .ph-edit { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
   .ph-edit:hover { background:#e2e8f0; }
+  .ph-approve { background:#dcfce7; color:#166534; border-color:#86efac; }
+  .ph-approve:hover { background:#bbf7d0; }
+  .ph-approved { font-size:13px; font-weight:600; color:#16a34a; }
   .ph-divider { border:none; border-top:1px solid #e2e8f0; margin:0 0 20px; }
   .nav-status { display:inline-flex; width:18px; height:18px; border-radius:3px; align-items:center;
                justify-content:center; font-weight:900; font-size:11px; flex:none; margin-right:6px; }
@@ -4109,6 +4194,12 @@ def index(request: Request = None) -> str:
       e.querySelector('.doc-edit').style.display = 'block';
     }}
     function cancelDoc(itemId) {{ loadDoc(itemId); }}
+    async function approveItem(itemId) {{
+      const r = await fetch(`/api/approve/${{itemId}}`, {{method: 'POST'}});
+      if (!r.ok) {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Approve failed'); return; }}
+      await loadDoc(itemId);
+      await refreshNav(itemId);
+    }}
     async function compassMove(itemId, kind, blockId, direction) {{
       const r = await fetch(`/api/compass/${{itemId}}/move`, {{
         method: 'POST', headers: {{'Content-Type': 'application/json'}},

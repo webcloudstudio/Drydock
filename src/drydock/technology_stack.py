@@ -16,6 +16,7 @@ import difflib
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from drydock.paths import get_rigging_root
@@ -29,6 +30,10 @@ NONE_CELL = "—"
 
 #: Cell values that mean "no Rigging guidance".
 _EMPTY_CELLS = frozenset({"", "-", "—", "--", "none", "n/a"})
+
+#: Marker line recording that the Commander accepted the stack as it stands.
+#: Its presence is the whole approval state; its value is the approval date.
+_APPROVED_RE = re.compile(r"^\*\*Approved:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 _DEFAULT_CATEGORY = "Technologies"
 _CATEGORY_ORDER = ["Web Server", "Persistence", "AWS", "Technologies", "Branding"]
@@ -145,9 +150,17 @@ def _split_row(line: str) -> list[str]:
     return [cell.strip().replace(r"\|", "|") for cell in re.split(r"(?<!\\)\|", line.strip("|"))]
 
 
-def render(entries: list[StackEntry]) -> str:
-    """Render entries as the canonical ``TECHNOLOGY_STACK.md`` document."""
-    lines = ["# Technology Stack", "", *_PREAMBLE, ""]
+def render(entries: list[StackEntry], approved: str | None = None) -> str:
+    """Render entries as the canonical ``TECHNOLOGY_STACK.md`` document.
+
+    ``approved`` is the approval date to record; ``None`` leaves the document
+    unapproved. Callers that rewrite an existing document must carry its current
+    approval value forward — editing a row is not an act of unapproval.
+    """
+    lines = ["# Technology Stack", ""]
+    if approved:
+        lines.extend([f"**Approved:** {approved}", ""])
+    lines.extend([*_PREAMBLE, ""])
     lines.append("| " + " | ".join(HEADER) + " |")
     lines.append("|" + "---|" * len(HEADER))
     lines.extend(
@@ -216,12 +229,44 @@ def load_text(target_dir: Path) -> str:
         return ""
 
 
-def write(target_dir: Path, entries: list[StackEntry]) -> Path:
+def write(target_dir: Path, entries: list[StackEntry], approved: str | None = None) -> Path:
     """Write the Technology Stack document, replacing any existing content."""
     path = path_for(target_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render(entries), encoding="utf-8")
+    path.write_text(render(entries, approved), encoding="utf-8")
     return path
+
+
+# ── Commander approval ──────────────────────────────────────────────────────────
+
+
+def parse_approved(text: str) -> str | None:
+    """Return the recorded approval date, or ``None`` when the document is unapproved."""
+    match = _APPROVED_RE.search(text)
+    return match.group(1) if match else None
+
+
+def approved_on(target_dir: Path) -> str | None:
+    """Return the target's Technology Stack approval date, or ``None``."""
+    return parse_approved(load_text(target_dir))
+
+
+def is_approved(target_dir: Path) -> bool:
+    """Return True when the Commander has accepted the target's Technology Stack.
+
+    An absent file is not approved: the stack is an outstanding action until the
+    Commander either edits and approves it or approves it as proposed.
+    """
+    return approved_on(target_dir) is not None
+
+
+def approve(target_dir: Path, when: str | None = None) -> Path:
+    """Record Commander approval of the target's Technology Stack.
+
+    Rewrites the document from its parsed rows so the marker is placed
+    canonically. Approving an already approved stack re-dates it.
+    """
+    return write(target_dir, load(target_dir), when or date.today().isoformat())
 
 
 def stack_files_from(entries: list[StackEntry]) -> list[str]:

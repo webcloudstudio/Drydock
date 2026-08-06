@@ -26,7 +26,7 @@ from drydock.paths import get_quarterdeck_template_dir
 # Constants shared with analyze.py (duplicated to avoid circular imports)
 # ---------------------------------------------------------------------------
 
-_QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
+_QUESTIONNAIRE_DONE_STATES = {"done", "answered", "approved", "complete", "verified", "promoted"}
 
 _QUALITY_META: dict[str, tuple[str, str, str]] = {
     "Ready": ("ready", "✓", "All blockers resolved. Ready for planning."),

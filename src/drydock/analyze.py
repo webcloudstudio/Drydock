@@ -103,7 +103,7 @@ _SUMMARY_COUNT_RE = re.compile(r"^  (blockers|questions):\s*.+?$", re.MULTILINE)
 _ANALYSIS_NOTES_HEADING_RE = re.compile(
     r"^## (?:Analysis notes|Notes)\s*$", re.MULTILINE | re.IGNORECASE
 )
-_QUESTIONNAIRE_DONE_STATES = {"done", "answered", "complete", "verified", "promoted"}
+_QUESTIONNAIRE_DONE_STATES = {"done", "answered", "approved", "complete", "verified", "promoted"}
 _SEA_TRIALS_BLOCKER_ID = "blocker-sea-trials"
 
 
