@@ -1,257 +1,167 @@
 # Drydock Quick Start Guide
 
-This guide shows you how to use Drydock to build a small software project.
+This guide takes a small project from an idea to a working build. Replace `MyApp` with your
+project name.
 
-The basic process is:
+The process is:
 
-1. Install Drydock.
-2. Create a project.
-3. Describe what you want to build.
-4. Review the plan.
-5. Build the project.
-6. Check that it works.
-
-The examples use `MyApp` as the project name. Replace it with the name of your project.
+```text
+install → configure → describe → review → plan → build → check
+```
 
 ## Before you begin
 
-You need:
+You need Python 3.11 or newer, Drydock, and one of these subscription-authenticated command-line
+programs:
 
-- Python 3.11 or newer;
-- Drydock;
-- either the `claude` or `codex` command-line program; and
-- an active subscription for the provider you choose.
+- `claude` from Anthropic; or
+- `codex` from OpenAI.
 
-Drydock uses your existing Claude or Codex subscription. It does not require an API key.
+Install and sign in to the provider you choose before running `analyze`, `plan`, or `build`.
+Drydock does not use API keys or per-token billing.
 
-## 1. Install Drydock
+## 1. Install and configure Drydock
 
-Install Drydock with `uv`:
+Install Drydock with `uv` or `pipx`:
 
 ```bash
 uv tool install drydock-sdd
+# Or: pipx install drydock-sdd
 drydock --version
 ```
 
-Install and sign in to either Claude or Codex. Then tell Drydock which one to use:
+Set the provider and directories in one step. `$PROJECTS` is the directory where you keep your
+projects; change it if you use a different location.
 
 ```bash
-drydock config set llm_provider claude
-```
+export PROJECTS="$HOME/projects"
+mkdir -p "$PROJECTS/drydock"
 
-Use this instead if you use Codex:
-
-```bash
-drydock config set llm_provider codex
-```
-
-## 2. Set up a workspace
-
-Drydock keeps each project in a workspace. The workspace contains your project description,
-planning files, build history, tests, and review results.
-
-```bash
-mkdir -p "$HOME/drydock"
-drydock config set drydock_workspace "$HOME/drydock"
-drydock config set drydock_build_directory "$HOME/drydock/build"
+drydock config set llm_provider claude       # use codex if that is your provider
+claude --version                             # use codex --version for Codex
+drydock config set drydock_workspace "$PROJECTS/drydock"
+drydock config set drydock_build_directory "$PROJECTS"
 drydock config show
 ```
 
-You can use a different directory if you prefer.
+This creates the following layout:
 
-## 3. Create your project
+```text
+$PROJECTS/
+├── drydock/              # Drydock workspace, Targets, and logs
+└── <Target>/             # Generated application
+```
 
-Create a project workspace called a Target:
+The provider command must be installed, signed in, and available on your `PATH`. If you use
+Codex, replace both instances of `claude` above with `codex`.
+
+## 2. Create a project
+
+Create a Target. A Target is Drydock's workspace for one project.
 
 ```bash
 drydock init MyApp \
   --display-name "My App" \
   --description "A small software project."
-```
-
-Check that it was created:
-
-```bash
 drydock status MyApp
 ```
 
-The project files are stored here:
+The Target is created at `$PROJECTS/drydock/targets/MyApp/`. The generated application will be
+written to `$PROJECTS/MyApp/`.
 
-```text
-$HOME/drydock/targets/MyApp/
-```
+## 3. Describe the first feature
 
-The application Drydock builds will be stored here:
+Write a short Markdown file describing one useful feature. Include:
 
-```text
-$HOME/drydock/build/MyApp/
-```
-
-## 4. Describe what you want to build
-
-Create a directory for your project notes:
-
-```bash
-mkdir -p notes
-```
-
-Add one or more Markdown files to that directory. Start with a short description. Explain:
-
-- who will use the software;
-- what problem it solves;
-- what the user should be able to do;
-- what information the software receives;
-- what it should produce; and
-- what should happen when something goes wrong.
+- who uses it;
+- what the user does;
+- what the software receives and produces;
+- what happens when input is invalid; and
+- how you will know it works.
 
 For example:
 
 ```markdown
 # Reading List
 
-The application helps a reader keep a list of books to read.
+A reader keeps a list of books to read.
 
-## Add a book
-
-The reader enters a book title and author. The application saves the book.
-
+The reader can add a book by title and author and list saved books in the order added.
 An empty title is rejected with an error message.
 
-## List books
+Done when:
 
-The reader can display all saved books in the order they were added.
-
-## Done when
-
-- A reader can add a book.
-- A reader can list saved books.
-- An empty title is rejected.
-- Automated tests cover these actions.
+- adding a book works;
+- listing books works;
+- an empty title is rejected; and
+- automated tests cover these cases.
 ```
 
-Keep the first project small. One or two useful actions are enough for your first build. You can
-add more features later.
-
-Import your notes into Drydock:
+Keep the first project small. One or two useful actions are enough. Put the file in `notes/` and
+import it:
 
 ```bash
+mkdir -p notes
 drydock import MyApp ./notes --format markdown
 ```
 
-Drydock copies the notes into the project workspace. It uses them as the starting point for the
-plan.
+## 4. Review the plan
 
-## 5. Let Drydock prepare a plan
-
-Run the analysis command:
+Ask Drydock to read your notes:
 
 ```bash
 drydock analyze MyApp
 ```
 
-Drydock reads your notes and writes a proposed list of features, questions, and tests. Review the
-result before building anything.
+Review `ANALYSIS.md`, `SEA_TRIALS.md`, and `COMPASS.md` in the Target. If `BLOCKERS.md` exists,
+answer the questions in it and run `drydock analyze MyApp` again. You can use the browser review
+console with `drydock run quarterdeck MyApp`.
 
-The most important files are:
-
-| File | What it contains |
-|---|---|
-| `ANALYSIS.md` | Drydock's understanding of your project |
-| `BLOCKERS.md` | Questions that must be answered before planning can continue |
-| `SEA_TRIALS.md` | The conditions the finished project must meet |
-| `COMPASS.md` | General instructions for this project |
-
-If `BLOCKERS.md` exists, answer the questions in it and run the analysis again:
-
-```bash
-drydock analyze MyApp
-```
-
-You can also review the files in a web browser:
-
-```bash
-drydock run quarterdeck MyApp
-```
-
-Review the plan carefully. Correct misunderstandings, remove features you do not need, and make
-sure the tests describe what you actually want.
-
-## 6. Create the build plan
-
-When the analysis looks right, create the Blueprint and Manifest:
+When the analysis is correct, create the build plan:
 
 ```bash
 drydock plan MyApp
-```
-
-The Blueprint is the set of files that describes what the product should do. The Manifest is the
-list of work items and the order in which Drydock should build them.
-
-Check the plan before starting the build:
-
-```bash
 drydock build status MyApp
 ```
 
-Make sure that:
+The Blueprint describes what the product should do. The Manifest lists the work and its order.
+Before building, check that the plan describes the right features, includes error cases, and has
+work items small enough to test.
 
-- each item describes one clear result;
-- the items are small enough to test;
-- normal and error cases are included; and
-- the order makes sense.
+## 5. Build the project
 
-If the plan is wrong, update your notes and run the appropriate command again. Fix the description
-of the project before asking Drydock to build it.
-
-## 7. Build the project
-
-You can preview the next build first:
+Preview the build if you want to see what will happen:
 
 ```bash
 drydock build MyApp --dry-run --show-prompt
 ```
 
-When you are ready, build the project:
+Build the project and check its progress:
 
 ```bash
 drydock build MyApp
-```
-
-Check the progress:
-
-```bash
 drydock build status MyApp
 ```
 
-Drydock builds the work in order. Run the build command again to continue with the next item.
-Build and review a small amount of work at a time so that problems are easy to find.
+Run the build again to continue with the next work item. Review the application and tests as the
+project grows so that problems are easy to find.
 
-## 8. Check the results
+## 6. Check the results
 
-Run the acceptance checks:
+Run the automated acceptance checks and the project review:
 
 ```bash
 drydock score ac MyApp
-```
-
-Run the project review:
-
-```bash
 drydock score release MyApp
 ```
 
-Review these files:
+Review `SOUNDINGS.md` for automated results and `SCORECARD.md` for the project review. A successful
+build command does not by itself prove that the project is complete; confirm that the results meet
+the goals in `SEA_TRIALS.md`.
 
-- `SOUNDINGS.md` contains the results of the automated acceptance checks.
-- `SCORECARD.md` contains the project review.
-- `SEA_TRIALS.md` contains the goals used for the review.
+## Making changes
 
-A successful build command does not automatically mean the project is complete. Check the results,
-run the tests, and make sure the project does what your notes describe.
-
-## 9. Make a change
-
-When you want to add or change a feature, update the project description first. Then run:
+Update the project description before changing the software. Then run:
 
 ```bash
 drydock refit MyApp
@@ -259,38 +169,17 @@ drydock build MyApp
 drydock score ac MyApp
 ```
 
-`refit` updates the plan to match the new description. Drydock then rebuilds the work affected by
-the change.
+This keeps the project description, build plan, and software in agreement.
 
-Keep this rule in mind:
+## First-project checklist
 
-> Describe the change first. Build the software second.
-
-## A good first project
-
-For your first Drydock project, choose something like:
-
-- a small command-line tool;
-- a simple web service;
-- a file conversion utility; or
-- a small data-processing script.
-
-Avoid starting with a large system that includes authentication, billing, deployment, several
-external services, and many different types of users. Start with one useful feature and add the
-rest after the first feature works.
-
-## Quick checklist
-
-- [ ] Drydock is installed.
-- [ ] Claude or Codex is installed and signed in.
-- [ ] Drydock has a configured workspace.
+- [ ] Drydock is installed and a provider CLI is signed in.
+- [ ] The workspace and build directory are configured.
 - [ ] A Target has been created.
-- [ ] Project notes explain the first useful feature.
-- [ ] The analysis has no unanswered blockers.
+- [ ] The first feature is described in a short Markdown file.
+- [ ] The analysis has no unresolved blockers.
 - [ ] The plan has been reviewed.
-- [ ] The project has been built.
-- [ ] Acceptance checks have been run.
-- [ ] The results have been reviewed.
+- [ ] The project has been built and checked.
 
-For the complete command reference, see the [Drydock Specification](Drydock_Specification.md).
-For installation options, see the [User Installation Guide](USER_INSTALLATION.md).
+For the full installation procedure, see the [User Installation Guide](USER_INSTALLATION.md).
+For complete command contracts, see the [Drydock Specification](Drydock_Specification.md).
