@@ -41,16 +41,24 @@ class Config:
             raise RuntimeError(f"Missing required env var: {e}") from e
 ```
 
+Commit `.env.example` listing every variable `Config` reads, with dummy values. The build creates the local `.env` from it; `.env` itself is never committed.
+
 ```bash
-# .env
-SECRET_KEY=your-secret-here
+# .env.example — committed; every variable Config reads, dummy values only
+SECRET_KEY=change-me
 DATABASE_PATH=data/app.db
 APP_PORT=5001
+APP_DEBUG=0
 ```
 
-**Why**: A single typed `Config` is the only env reader. Typed fields crash on a missing or malformed variable at startup, not at first use. The environment (`.env`) selects configuration — not a Python subclass.
+Rules:
+- `python-dotenv` is a runtime dependency in `pyproject.toml` — not a dev dependency. Nothing in the toolchain loads `.env` on its own: `python run.py`, `uv run`, and `pytest` all leave the environment untouched. The application loads its own configuration or it does not start.
+- `load_dotenv()` runs at import of `config.py`, before any `Config.load()` call, so every entry point — `run.py`, `bin/start.sh`, a management command, a worker — reads the same `.env`.
+- `.env.example` is committed and lists every variable `Config` reads, no more and no fewer. A variable missing from it never reaches the running application.
+- The startup error names the missing variable (`Missing required env var: 'SECRET_KEY'`). A generic message such as `Invalid application configuration` tells the operator nothing and is a defect.
+- The entry point must start on a clean shell with nothing exported by hand: `.env` plus the defaults in `Config` are the whole configuration.
 
-Secret hygiene and `.env.example` discipline: see `stack/env_variables_and_secrets.md`.
+**Why**: A single typed `Config` is the only env reader. Typed fields crash on a missing or malformed variable at startup, not at first use. The environment (`.env`) selects configuration — not a Python subclass. A `Config` that reads `os.environ` without loading `.env` passes every test that constructs the app with overrides, then fails on the operator's first real run.
 
 ---
 
