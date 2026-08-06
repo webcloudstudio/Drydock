@@ -18,7 +18,7 @@ so the software can be reviewed, rebuilt, and changed cleanly.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-[Install and set up](#install-and-set-up) · [How Drydock works](#how-drydock-works) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
+[Quick Start](docs/QUICK_START.md) · [Install and set up](#install-and-set-up) · [How Drydock works](#how-drydock-works) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
 [Overview Deck](https://webcloudstudio.com/drydock/) · [White Paper](https://zenodo.org/records/21287574) · [10 Minute Overview](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4) · [User Installation Guide](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
 
 </div>
