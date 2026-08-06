@@ -33,12 +33,32 @@ table encapsulation and satisfies §1 — do not add a second hand-written layer
 ## 1. Relational tables → typed Database class
 
 Each table gets a row dataclass and a CRUD class. One `Database` class composes them and owns
-the connection. Application code calls `db.<table>.method()` — never raw SQL.
+the connections. Application code calls `db.<table>.method()` — never raw SQL.
+
+**Caller contract**: `Database` presents single-threaded semantics. Callers construct one
+instance, share it freely, call methods synchronously, and never reason about threads,
+connections, or locking. Thread handling is internal to the class and may change without
+affecting any caller. Instance methods are safe to call concurrently; returned rows are plain
+dataclasses and carry no connection state. Everything below is how the class keeps that promise —
+a different implementation is acceptable only if it keeps it.
+
+**Connection lifetime rule**: `Database` owns **one connection per workflow**, opened on first use
+in that workflow. A connection is never stored on the instance and never handed to a table class;
+table classes receive a *connect provider* and call it on every operation.
+
+This is not concurrency. Queries stay sequential within a workflow — the rule only stops one
+connection from being shared across unrelated workflows. The mechanism is `threading.local()`
+because a web server is what defines a workflow: the application is constructed on the main
+thread and each request is dispatched on a worker thread, whether or not the application code
+ever uses threads itself. A `sqlite3.Connection` belongs to the thread that created it and raises
+`ProgrammingError` when used from another, so a single connection opened during construction is
+valid in no request at all.
 
 ```python
 # db.py
-import sqlite3
+import sqlite3, threading
 from dataclasses import dataclass
+from pathlib import Path
 
 @dataclass
 class Item:
@@ -48,27 +68,45 @@ class Item:
     created_at: str | None = None
 
 class ItemTable:
-    def __init__(self, conn): self._c = conn
+    def __init__(self, connect): self._connect = connect   # provider, not a connection
     def create(self, name: str, status: str = "active") -> int:
-        cur = self._c.execute(
+        c = self._connect()
+        cur = c.execute(
             "INSERT INTO items (name, status) VALUES (?, ?)", (name, status))
-        self._c.commit(); return cur.lastrowid
+        c.commit(); return cur.lastrowid
     def get(self, item_id: int) -> Item | None:
-        r = self._c.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+        r = self._connect().execute(
+            "SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
         return Item(**r) if r else None
     def list(self) -> list[Item]:
-        return [Item(**r) for r in self._c.execute("SELECT * FROM items").fetchall()]
+        return [Item(**r) for r in
+                self._connect().execute("SELECT * FROM items").fetchall()]
     def update(self, item_id: int, **fields) -> None: ...
     def delete(self, item_id: int) -> None: ...
 
 class Database:
     def __init__(self, path: str):
-        self._conn = sqlite3.connect(path)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self.items = ItemTable(self._conn)   # one attribute per table
+        self._path = path
+        self._local = threading.local()
+        self.items = ItemTable(self.connect)   # one attribute per table
+
+    def connect(self) -> sqlite3.Connection:
+        """The calling thread's connection, opened and configured on first use."""
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            if self._path != ":memory:":
+                Path(self._path).parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(self._path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            self._local.conn = conn
+        return conn
 ```
+
+Schema creation and migrations run through `self.connect()` like every other operation, on
+whichever thread starts the application. That startup connection is not the one request handlers
+use, and nothing needs to share it.
 
 PRAGMAs, JSON-column handling, and migrations (see `stack/sqlite.md`) live inside
 `Database`/the table classes, never in callers.
@@ -186,6 +224,8 @@ is the seam. Swapping the transport, or stubbing it in tests, changes one class.
 - [ ] No `open()`/`shutil` on application data outside FileStore
 - [ ] No cloud SDK import outside its service wrapper
 - [ ] Each table: row dataclass + CRUD class, composed in one Database class
+- [ ] No `sqlite3.Connection` stored on an instance or passed to a table class — one connection
+      per thread, table classes take a connect provider
 - [ ] One typed `Config`, ENV-driven, no Dev/Prod/Test subclasses
 - [ ] Service wrappers extend the `ServiceClient` base class
 - [ ] Downstream specs depend on the class interface, not the schema

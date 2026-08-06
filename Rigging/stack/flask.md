@@ -111,6 +111,7 @@ Rules:
 - Flask needs `SECRET_KEY` for sessions and flash messages. It is required configuration, read from the environment, never hardcoded and never defaulted in production code.
 - `create_app(overrides)` must not skip the real configuration load as a whole. A factory that reads `Config.load()` only when it receives no overrides is exercised solely by its test seam: the suite passes with hardcoded test values while the operator's `python run.py` is the only code path that ever touches the environment.
 - `run.py` is importable without starting a server: the module level builds the application, and only the `if __name__ == '__main__':` guard calls `application.run()`.
+- The development server and production WSGI workers are threaded. Anything constructed once inside `create_app()` and then used from a view is shared across request threads and must be thread-safe. A `sqlite3.Connection` is the common trap: it is bound to the thread that opened it, so one opened during `create_app()` passes every single-threaded test and raises `ProgrammingError` on the first request. See `stack/persistence.md` §1 for the required per-thread connection ownership.
 
 **Why**: Factory pattern enables creating multiple app instances with different configs — essential for testing. Deferred imports prevent circular dependencies. `run.py` as entry point keeps `app/` a clean package. Loading `.env` at the entry point is what makes a delivered application start with no setup step.
 

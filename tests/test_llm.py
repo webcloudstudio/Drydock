@@ -423,7 +423,14 @@ def test_run_codex_streams_agent_message_and_removes_api_environment(tmp_path, m
     monkeypatch.setenv("OPENAI_BASE_URL", "must-not-propagate")
     chunks = []
 
-    result = run_prompt("Work", tmp_path, llm="codex", command_name="build", on_text=chunks.append)
+    result = run_prompt(
+        "Work",
+        tmp_path,
+        llm="codex",
+        command_name="build",
+        allow_tools=True,
+        on_text=chunks.append,
+    )
 
     assert result.ok
     assert result.text == "CODEX READY"
@@ -455,7 +462,12 @@ def test_run_codex_sandbox_override_passes_through(tmp_path, monkeypatch):
     monkeypatch.setattr(drydock.llm.shutil, "which", lambda name: "/usr/bin/codex-linux-sandbox")
 
     result = run_prompt(
-        "Work", tmp_path, llm="codex", command_name="build", codex_sandbox="workspace-write"
+        "Work",
+        tmp_path,
+        llm="codex",
+        command_name="build",
+        allow_tools=True,
+        codex_sandbox="workspace-write",
     )
 
     assert result.command[result.command.index("--sandbox") + 1] == "workspace-write"
@@ -467,7 +479,12 @@ def test_run_codex_workspace_write_fails_fast_when_helper_missing(tmp_path, monk
 
     with pytest.raises(LlmConfigurationError) as excinfo:
         run_prompt(
-            "Work", tmp_path, llm="codex", command_name="build", codex_sandbox="workspace-write"
+            "Work",
+            tmp_path,
+            llm="codex",
+            command_name="build",
+            allow_tools=True,
+            codex_sandbox="workspace-write",
         )
 
     message = str(excinfo.value)
@@ -488,10 +505,65 @@ def test_run_codex_danger_full_access_skips_helper_preflight(tmp_path, monkeypat
     monkeypatch.setattr(drydock.llm.shutil, "which", lambda name: None)
 
     result = run_prompt(
-        "Work", tmp_path, llm="codex", command_name="build", codex_sandbox="danger-full-access"
+        "Work",
+        tmp_path,
+        llm="codex",
+        command_name="build",
+        allow_tools=True,
+        codex_sandbox="danger-full-access",
     )
 
     assert result.command[result.command.index("--sandbox") + 1] == "danger-full-access"
+
+
+def _codex_ok_popen(monkeypatch):
+    raw = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "OK"}})
+
+    def fake_popen(command, **kwargs):
+        Path(command[command.index("--output-last-message") + 1]).write_text("OK")
+        return FakePopen(command, stdout_text=raw + "\n", **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+
+def test_run_codex_without_tools_forces_read_only_sandbox(tmp_path, monkeypatch):
+    """Text-only commands must not get a writable codex.
+
+    codex exec always carries a shell tool, so the sandbox is the only lever. A writable
+    codex edits the target and returns a narrative summary, which the caller then writes
+    over the file the model just wrote.
+    """
+    _codex_ok_popen(monkeypatch)
+
+    result = run_prompt(
+        "Work",
+        tmp_path,
+        llm="codex",
+        command_name="rigging_compact",
+        codex_sandbox="danger-full-access",
+    )
+
+    assert result.command[result.command.index("--sandbox") + 1] == "read-only"
+
+
+def test_run_codex_without_tools_ignores_configured_sandbox(tmp_path, monkeypatch):
+    _codex_ok_popen(monkeypatch)
+    monkeypatch.setenv("DRYDOCK_CODEX_SANDBOX", "danger-full-access")
+
+    result = run_prompt("Work", tmp_path, llm="codex", command_name="rigging_compact")
+
+    assert result.command[result.command.index("--sandbox") + 1] == "read-only"
+
+
+def test_run_codex_without_tools_skips_helper_preflight(tmp_path, monkeypatch):
+    """The forced floor is Drydock's own, and codex enforces read-only natively."""
+    _codex_ok_popen(monkeypatch)
+    monkeypatch.setattr(drydock.llm.sys, "platform", "linux")
+    monkeypatch.setattr(drydock.llm.shutil, "which", lambda name: None)
+
+    result = run_prompt("Work", tmp_path, llm="codex", command_name="rigging_compact")
+
+    assert result.command[result.command.index("--sandbox") + 1] == "read-only"
 
 
 def _claude_result_raw(text: str = "READY") -> str:

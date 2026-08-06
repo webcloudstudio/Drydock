@@ -99,7 +99,10 @@ repository.
   the active task.
 - When constructing an agent prompt, include only the relevant specification sections. Do not inject the full specification unless the task is cross-cutting.
 - Test both source-tree and installed-wheel behavior when a change touches Rigging or packaging.
-- Never call an API-key-backed LLM provider. Use the subscription-authenticated `claude` CLI.
+- Never call an API-key-backed LLM provider. Use a subscription-authenticated CLI agent. Which
+  agent and model is configuration, not policy — selected by `--llm-provider` / `--model` or the
+  `LLM_PROVIDER` / `DRYDOCK_MODEL` environment and config settings. Do not treat any one vendor as
+  required.
 - Do not add Typer, Click, Rich, Pydantic, databases, or application frameworks without approval.
 - Exit codes: `0` success, `1` operational failure, `2` usage error or deferred command.
 

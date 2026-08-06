@@ -2,47 +2,28 @@
 
 # Persistence & Service Encapsulation — Contract Surface
 
-## Relational persistence
-
-### Item
-
-Represents a persisted item row.
-
-| Field | Type | Default |
-|---|---|---|
-| `id` | `int \| None` | required |
-| `name` | `str` | required |
-| `status` | `str` | `"active"` |
-| `created_at` | `str \| None` | `None` |
-
-### ItemTable.__init__
-
-Constructs typed item-table access from a connection provider.
-
-| Input | Type |
-|---|---|
-| `connect` | callable returning `sqlite3.Connection` |
+## Database
 
 ### ItemTable.create
 
-Creates an item and returns its generated identifier.
+Creates an item.
 
-| Input | Type | Default |
+| Input | Type | Required |
 |---|---|---|
-| `name` | `str` | required |
-| `status` | `str` | `"active"` |
+| `name` | `str` | Yes |
+| `status` | `str` | No; defaults to `"active"` |
 
-Returns: `int`.
+Returns: `int` item ID.
 
 ### ItemTable.get
 
-Retrieves an item by identifier.
+Retrieves an item by ID.
 
-| Input | Type |
-|---|---|
-| `item_id` | `int` |
+| Input | Type | Required |
+|---|---|---|
+| `item_id` | `int` | Yes |
 
-Returns: `Item \| None`.
+Returns: `Item | None`.
 
 ### ItemTable.list
 
@@ -54,10 +35,10 @@ Returns: `list[Item]`.
 
 Updates fields for an item.
 
-| Input | Type |
-|---|---|
-| `item_id` | `int` |
-| `**fields` | item fields |
+| Input | Type | Required |
+|---|---|---|
+| `item_id` | `int` | Yes |
+| `**fields` | field values | Yes |
 
 Returns: `None`.
 
@@ -65,83 +46,92 @@ Returns: `None`.
 
 Deletes an item.
 
-| Input | Type |
-|---|---|
-| `item_id` | `int` |
+| Input | Type | Required |
+|---|---|---|
+| `item_id` | `int` | Yes |
 
 Returns: `None`.
 
 ### Database.__init__
 
-Constructs database access and exposes one typed table attribute per relational table, such as `db.items`.
+Creates a database facade for the specified path.
 
-| Input | Type |
-|---|---|
-| `path` | `str` |
+| Input | Type | Required |
+|---|---|---|
+| `path` | `str` | Yes |
+
+Constraints: Exposes one table attribute per table, such as `items`; callers use table methods and never execute raw SQL.
 
 ### Database.connect
 
-Returns the calling workflow’s database connection, opening and configuring it on first use.
+Returns the calling workflow’s configured database connection.
 
 Returns: `sqlite3.Connection`.
 
-Constraints: The database provides one connection per workflow, instance methods are safe to call concurrently, returned rows are plain dataclasses without connection state, and table classes receive a connect provider rather than a connection.
+Constraints: One connection is maintained per workflow; callers use synchronous database methods and do not manage connections, threads, or locking.
+
+### Item
+
+Represents a database row.
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | `int | None` | Required |
+| `name` | `str` | Required |
+| `status` | `str` | `"active"` |
+| `created_at` | `str | None` | `None` |
 
 ## Configuration
 
-### Config
-
-Provides immutable, typed application configuration loaded from environment variables.
-
-| Field | Type | Source | Default |
-|---|---|---|---|
-| `secret_key` | `str` | `SECRET_KEY` | required |
-| `database_path` | `str` | `DATABASE_PATH` | `"data/app.db"` |
-| `port` | `int` | `APP_PORT` | `5001` |
-| `debug` | `bool` | `APP_DEBUG == "1"` | `False` |
-
 ### Config.load
 
-Loads and validates configuration at startup.
+Loads and validates environment-backed application configuration.
 
 Returns: `Config`.
 
-Constraints: Missing required variables or malformed typed values raise a startup error, and no code outside `Config` reads `os.environ`.
+| Field | Source | Type | Required |
+|---|---|---|---|
+| `secret_key` | `SECRET_KEY` | `str` | Yes |
+| `database_path` | `DATABASE_PATH` | `str` | No; defaults to `"data/app.db"` |
+| `port` | `APP_PORT` | `int` | No; defaults to `5001` |
+| `debug` | `APP_DEBUG` | `bool` | No; `True` only when value is `"1"` |
 
-## File storage
+Constraints: Missing required variables or malformed typed values fail during startup. Only `Config` reads environment variables.
+
+## File Storage
 
 ### FileStore.__init__
 
-Constructs file storage rooted at the supplied directory.
+Creates a file store rooted at the specified directory.
 
-| Input | Type |
-|---|---|
-| `root` | `str` |
+| Input | Type | Required |
+|---|---|---|
+| `root` | `str` | Yes |
 
 ### FileStore.read
 
-Reads an application file relative to the store root.
+Reads a UTF-8 application file by name.
 
-| Input | Type |
-|---|---|
-| `name` | `str` |
+| Input | Type | Required |
+|---|---|---|
+| `name` | `str` | Yes |
 
 Returns: `str`.
 
 ### FileStore.write
 
-Writes string data to an application file relative to the store root.
+Writes UTF-8 data to an application file, creating parent directories as needed.
 
-| Input | Type |
-|---|---|
-| `name` | `str` |
-| `data` | `str` |
+| Input | Type | Required |
+|---|---|---|
+| `name` | `str` | Yes |
+| `data` | `str` | Yes |
 
 Returns: `None`.
 
 ### FileStore.list
 
-Lists file names matching a pattern relative to the store root.
+Lists files matching a pattern.
 
 | Input | Type | Default |
 |---|---|---|
@@ -149,61 +139,63 @@ Lists file names matching a pattern relative to the store root.
 
 Returns: `list[str]`.
 
-Constraints: Path-traversal validation and atomic writes are enforced by `FileStore`; callers do not build paths or open or manipulate application files directly.
+Constraints: Path-traversal validation and atomic writes are enforced by `FileStore`; callers do not construct paths or call file APIs directly.
 
-## External services
+## External Services
 
 ### ServiceClient.__init__
 
-Constructs a service wrapper with a backend handle and named logger.
+Creates a service wrapper around a backend handle.
 
-| Input | Type | Default |
+| Input | Type | Required |
 |---|---|---|
-| `backend` | any | required |
-| `name` | `str \| None` | subclass name |
+| `backend` | backend handle | Yes |
+| `name` | `str | None` | No |
 
 ### ServiceClient._guard
 
-Executes a backend operation, logs failures, and re-raises exceptions.
+Executes a backend operation with uniform exception logging and re-raises failures.
 
-| Input | Type |
-|---|---|
-| `op` | callable |
-| `*args` | operation arguments |
-| `**kwargs` | operation keyword arguments |
+| Input | Type | Required |
+|---|---|---|
+| `op` | callable | Yes |
+| `*args` | operation arguments | No |
+| `**kwargs` | operation keyword arguments | No |
 
-Returns: The backend operation result.
+Returns: The operation result.
 
 ### MessageBus.publish
 
-Publishes a payload to a topic through the service wrapper.
+Publishes a payload to a topic.
 
-| Input | Type |
-|---|---|
-| `topic` | `str` |
-| `payload` | `dict` |
+| Input | Type | Required |
+|---|---|---|
+| `topic` | `str` | Yes |
+| `payload` | `dict` | Yes |
 
-Returns: `str`.
+Returns: `str` message identifier.
 
 ### MessageBus.subscribe
 
 Registers a handler for a topic.
 
-| Input | Type |
-|---|---|
-| `topic` | `str` |
-| `handler` | callable |
+| Input | Type | Required |
+|---|---|---|
+| `topic` | `str` | Yes |
+| `handler` | callable | Yes |
 
 Returns: `None`.
 
-### Rule: encapsulated-access
+### Rule: encapsulated-persistence
 
-All persistence and external-service access goes through typed encapsulation classes.
+All persistence and external-service access uses typed encapsulation classes.
 
-Constraints: Application code does not execute raw SQL, read `os.environ`, open application files directly, or import cloud SDKs. Service wrappers extend `ServiceClient` and do not expose SDK clients. ORM model classes may serve as table encapsulation without a second hand-written layer.
+Constraints: Application code must not execute raw SQL, read `os.environ`, open or manipulate application files directly, or import cloud SDKs outside their wrapper classes.
 
-### Rule: database-composition
+### Rule: typed-service-boundary
 
-Each relational table provides a row dataclass and CRUD class composed by one `Database` class.
+Service wrappers extend `ServiceClient` and expose typed methods without leaking SDK clients.
 
-Constraints: Schema creation, migrations, PRAGMAs, JSON-column handling, and connection management remain inside `Database` or table classes; downstream code depends on class interfaces rather than underlying schemas.
+### Rule: interface-dependency
+
+Downstream code depends on class interfaces rather than underlying schemas or service implementations.

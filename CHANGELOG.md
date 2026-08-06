@@ -21,6 +21,34 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-06: Text-only LLM-assisted commands no longer run with a writable codex sandbox.
+  `llm.run_prompt(allow_tools=False)` suppressed tools on the `claude` path only; the `codex`
+  branch never consulted the flag and ran with the configured sandbox, which defaults to
+  `danger-full-access`. Commands that are contractually text-in/text-out — `rigging compact` among
+  them — therefore had full filesystem and git write access to the invoking repository, and were
+  observed editing their own output file, committing the result, and returning a narrative summary
+  that the module then wrote over the file the model had just written. `allow_tools=False` now
+  forces `--sandbox read-only` for codex, overriding `DRYDOCK_CODEX_SANDBOX`, the configuration
+  file, and the `--codex-sandbox` flag, so the floor cannot be configured off. The forced path
+  skips `_preflight_codex_sandbox`, which rejects `read-only` on Linux hosts lacking
+  `codex-linux-sandbox`; codex enforces `read-only` natively and needs no helper. `drydock build`
+  is unaffected — it passes `allow_tools=True` and keeps its configured sandbox and preflight.
+
+- 2026-08-06: Corrected the SQLite connection-ownership pattern in the Rigging stack guidance.
+  `stack/persistence.md` §1 previously prescribed a `Database` that opened one
+  `sqlite3.Connection` in `__init__` and passed it to every table class. A `sqlite3.Connection`
+  is bound to its creating thread, so generated web applications built the connection on the main
+  thread during `create_app()` and raised
+  `sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same
+  thread` on the first request. Single-threaded unit suites never exercised the failure, so
+  affected builds completed green and 500'd on first use. The guidance now requires one
+  connection per thread held in a `threading.local()` and owned by `Database`; table classes
+  receive a connect provider rather than a connection. `stack/sqlite.md` gains a Threads section
+  naming `check_same_thread=False` as a non-fix, and `stack/flask.md` records that objects
+  constructed in `create_app()` are shared across request threads. Compacts regenerated.
+  Applications generated before this change need the same correction applied to their persistence
+  module.
+
 - 2026-08-04: `drydock import <Target> --update` now runs. `<Source>` is optional and rejected
   outright with `--update`, which refreshes from the root recorded in
   `blueprint/sources/.drydock-import`. Importers no longer narrow that recorded root: importing a

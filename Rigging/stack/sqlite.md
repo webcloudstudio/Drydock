@@ -18,6 +18,9 @@ Prerequisites: `stack/python.md`, `stack/persistence.md`
 
 **Rule**: Always enable WAL mode, foreign keys, and use Row factory.
 
+`get_db()` is the *configuration* helper. It opens and configures one connection; it does not
+decide who holds it. `Database.connect()` in `stack/persistence.md` §1 calls it once per thread.
+
 ```python
 import sqlite3
 import os
@@ -37,6 +40,41 @@ def get_db(db_path):
 |--------|-------|-----|
 | `journal_mode=WAL` | Write-Ahead Logging | Allows concurrent reads during writes |
 | `foreign_keys=ON` | Enforce FK constraints | SQLite disables FK enforcement by default |
+
+### Threads
+
+**Rule**: The result of `get_db()` belongs to the calling thread. Never cache it on an object
+that other threads reach.
+
+This rule is not about writing concurrent code. Application code stays sequential. A web server
+hands each request to a worker thread on its own, so an application acquires threads whether or
+not it ever uses them, and the only requirement is that each one gets its own connection.
+
+A `sqlite3.Connection` is bound to its creating thread. Using it elsewhere raises:
+
+```
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread.
+```
+
+This is the default failure mode for any threaded server. The application is constructed on the
+main thread; each request is handled on a worker thread. A connection opened during construction
+and cached on a module-level or instance attribute works in every single-threaded unit test and
+fails on the first HTTP request. Hold one connection per thread — see `stack/persistence.md` §1.
+
+WAL is what makes per-thread connections worth having: each thread's connection reads
+concurrently while another writes.
+
+`check_same_thread=False` is **not** the fix. It disables the safety check without making the
+connection safe, leaving cursor and transaction state shared across threads. If a single shared
+connection is genuinely required, it needs an explicit lock around every statement — which
+serializes reads and discards the benefit of WAL.
+
+Startup work — `initialize()`, `_run_migrations()`, seeding — runs on whichever thread starts the
+application, against that thread's own connection. That is correct and needs no special handling;
+it is simply not the connection request handlers use.
+
+Long-lived worker pools accumulate one connection per thread. That is acceptable at the
+single-server scale SQLite is recommended for below.
 
 ---
 

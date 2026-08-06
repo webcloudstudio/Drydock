@@ -1314,7 +1314,16 @@ def run_prompt(
 
     sandbox = get_codex_sandbox(codex_sandbox) if selected == "codex" else "danger-full-access"
     if selected == "codex":
-        _preflight_codex_sandbox(sandbox)
+        if not allow_tools:
+            # codex exec always carries a shell tool; there is no --tools "" equivalent,
+            # so the sandbox is the only lever. Text-only commands consume model text and
+            # write their own artifacts — a writable codex edits the target and returns a
+            # narrative summary, which the caller then writes over the file it just wrote.
+            # read-only is Drydock's floor for these commands and overrides any configured
+            # sandbox; codex enforces it natively, so the helper preflight does not apply.
+            sandbox = "read-only"
+        else:
+            _preflight_codex_sandbox(sandbox)
 
     assembly = prompt_assembly or PromptAssembly.single_prompt(prompt)
     prompt = assembly.rendered_text
