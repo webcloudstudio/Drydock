@@ -2,7 +2,7 @@
 title: Drydock Quick Start
 title_sub: Build your first application
 eyebrow: From specification to working software
-subtitle: A short walkthrough of the SAIL workflow.
+subtitle: A short walkthrough from source specification to scored application.
 logo: drydock_logo.png
 author: Ed Barlow
 studio: Web Cloud Studio
@@ -11,26 +11,20 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio.
 ---
 
-![Drydock](drydock_logo.png)
-
-# Drydock Quick Start
-
 Drydock turns your project specifications into working, tested software. This guide builds a small
 reading-list application and shows where you review the work in the QuarterDeck.
 
-The workflow is SAIL:
+The workflow follows the commands you run:
 
 ```mermaid
 flowchart LR
     S["Set Up"] --> A["Analyze & Plan"]
-    A --> I["Implement & Verify"]
+    A --> I["Build & Score"]
     I --> W["Working Software"]
-    W --> L["Loop"]
-    L -. change .-> I
 
     classDef phase fill:#123b59,stroke:#2cb67d,color:#fff,font-weight:bold
     classDef result fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-    class S,A,I,L phase
+    class S,A,I phase
     class W result
 ```
 
@@ -56,19 +50,14 @@ The configuration names two locations:
 
 ## 1. Set up the Target
 
-A **Target** is one application managed by Drydock. Create one named `ReadingList`:
+A **Target** is one application managed by Drydock. For this guide, the example Target is
+`ReadingList`, which builds to `$PROJECTS/ReadingList` with the installation guide's example
+configuration.
 
 ```bash
 drydock init ReadingList \
   --display-name "Reading List" \
   --description "A small application for tracking books to read."
-```
-
-Use `drydock status` whenever you need orientation. It reports the current state and the next useful
-operation.
-
-```bash
-drydock status ReadingList
 ```
 
 ## 2. Give Drydock the product description
@@ -86,15 +75,17 @@ and remove a book. An empty title or author is rejected with a clear error messa
 The application includes automated tests for each behavior.
 ```
 
-Import the directory and analyze it:
+Import the directory. An optional source score identifies gaps and contradictions before analysis:
 
 ```bash
 drydock import ReadingList ./reading-list-notes --format markdown
+drydock score spec ReadingList
 drydock analyze ReadingList
 ```
 
-Analyze turns the source material into stories, acceptance criteria, questions, and blockers. It
-does not build the application.
+`score spec` audits the imported source specifications and writes a scorecard. Analyze turns the
+source material into stories, acceptance criteria, questions, and blockers. Neither command builds
+the application.
 
 ## 3. Review the analysis
 
@@ -133,20 +124,16 @@ You should now see what Drydock plans to build and which work is ready first.
 
 ## 5. Build the application
 
-Build advances one runnable Manifest step at a time. The loop stops when all planned work is complete
-or when a decision is needed.
+Build executes the next runnable work in the Manifest:
 
 ```bash
-while drydock status ReadingList --ready; do
-  drydock build ReadingList
-  drydock build status ReadingList
-done
+drydock build ReadingList
 ```
 
-If the build stops before completion, open the QuarterDeck. It shows the failed or blocked work and
-the action required from you.
+Open the QuarterDeck after each build. It shows completed work, the next runnable work, and anything
+that needs your decision. Run `drydock build ReadingList` again while planned work remains.
 
-> **Recommended screenshot — Implement:** show the QuarterDeck partway through the build, with
+> **Recommended screenshot — Build:** show the QuarterDeck partway through the build, with
 > completed work, the current frontier, and remaining work visible together. Caption: *Drydock builds
 > the runnable frontier in dependency order.*
 
@@ -158,7 +145,7 @@ $DRYDOCK_BUILD_DIRECTORY/ReadingList/
 
 Run it using the project instructions generated in that directory.
 
-## 6. Verify release readiness
+## 6. Score release readiness
 
 Run the acceptance checks and the product-level release assessment:
 
@@ -178,7 +165,7 @@ drydock run quarterdeck ReadingList
 
 Review failed checks before treating the application as complete.
 
-> **Recommended screenshot — Verify:** show the final acceptance results and release scorecard in
+> **Recommended screenshot — Score:** show the final acceptance results and release scorecard in
 > the QuarterDeck. Use a project with at least one meaningful criterion visible. Caption: *Acceptance
 > results and Sea Trials provide the final release decision.*
 
@@ -186,10 +173,10 @@ Review failed checks before treating the application as complete.
 
 ```mermaid
 flowchart LR
-    N["Your notes"] -->|import + analyze| R["Review"]
-    R -->|plan| B["Blueprint"]
-    B -->|build| C["Application"]
-    C -->|score| V["Verified release"]
+    N["Your notes"] -->|drydock import + analyze| R["Review"]
+    R -->|drydock plan| B["Blueprint"]
+    B -->|drydock build| C["Application"]
+    C -->|drydock score| V["Scored release"]
 
     classDef input fill:#d4a017,stroke:#a07810,color:#111
     classDef review fill:#be123c,stroke:#fb7185,color:#fff
@@ -208,25 +195,29 @@ flowchart LR
 | Approval to proceed | A dependency-aware Manifest |
 | Release judgment | Working software, evidence, and scores |
 
-## Make the next change
+## Change the example application
 
-The Blueprint remains the source of truth after the first release. Describe the change in a ticket
-under the Target's `blueprint/changes/` directory, then run:
+Suppose the Reading List now needs a rating from one to five stars. Add that requirement to the
+original file in `reading-list-notes`, then refresh the imported source and create the corresponding
+refit work:
 
 ```bash
-drydock refit ReadingList
+drydock import ReadingList --update
+drydock refit ReadingList --sources
 drydock build ReadingList
 drydock score ac ReadingList
+drydock score release ReadingList
 ```
 
-Drydock maps the change into the Manifest and rebuilds the affected work.
+Drydock compares the refreshed source to the previous import, maps the change to the existing build
+graph, and rebuilds the affected work. Once the application becomes stable or enters production,
+approved change tickets replace direct edits to the original specification.
 
 ## Keep these commands nearby
 
 ```bash
-drydock status ReadingList                 # Where am I, and what is next?
-drydock run quarterdeck ReadingList        # What needs my review or decision?
-drydock build status ReadingList           # What is built, blocked, or ready?
+drydock run quarterdeck ReadingList        # What is complete, next, or awaiting my decision?
+drydock build ReadingList                  # Build the next runnable work.
 ```
 
 For installation and configuration, see the [User Installation Guide](USER_INSTALLATION.md). For
