@@ -6,7 +6,7 @@ project name.
 The command sequence is:
 
 ```text
-install → configure → init → import → analyze → plan → build → score
+install → configure → init → import → analyze → plan → validate → build → score
 ```
 
 ## Before you begin
@@ -130,7 +130,7 @@ mkdir -p notes
 drydock import MyApp ./notes --format markdown
 ```
 
-## 4. Analyze and review the notes
+## 4. Analyze the project
 
 Run `analyze` to have Drydock read the imported notes and produce a proposed set of features,
 questions, and acceptance criteria:
@@ -140,24 +140,31 @@ questions, and acceptance criteria:
 drydock analyze MyApp
 ```
 
-Review `ANALYSIS.md`, `SEA_TRIALS.md`, and `COMPASS.md` in the Target. If `BLOCKERS.md` exists,
-answer the questions in it and run `drydock analyze MyApp` again. You can use the browser review
-console with `drydock run quarterdeck MyApp`. Reviewing means reading the generated files,
-correcting misunderstandings, answering questions, and deciding whether the proposed work matches
-your project. It is a user action, not a separate planning command.
+`analyze` creates `ANALYSIS.md`, stories, acceptance milestones, questions, and project-level
+acceptance goals. If `BLOCKERS.md` exists, answer the questions in it and run `drydock analyze MyApp`
+again. You can answer questions and edit guidance in the QuarterDeck:
+
+```bash
+# Start the local planning console.
+drydock run quarterdeck MyApp
+```
+
+The QuarterDeck is the human decision point in Analyze. Use it to answer questions, resolve
+blockers, and adjust project guidance. The next command is `plan`; there is no separate command
+for reviewing a plan.
 
 When the analysis is correct, create the build plan:
 
 ```bash
-# Convert the reviewed analysis into Blueprint files and a Manifest.
+# Convert the analyzed project into Blueprint files and a Manifest.
 drydock plan MyApp
-# Show whether the Manifest has work ready to build.
-drydock build status MyApp
+# Check that the Blueprint satisfies the typed specification rules.
+drydock validate MyApp
 ```
 
-The Blueprint describes what the product should do. The Manifest lists the work and its order.
-Before building, check that the plan describes the right features, includes error cases, and has
-work items small enough to test.
+`plan` creates the Blueprint and `MANIFEST.md`. The Blueprint describes what the product should do;
+the Manifest records the dependency-aware build order. `validate` checks the Blueprint without
+calling an LLM.
 
 ## 5. Build the project
 
@@ -197,18 +204,28 @@ the goals in `SEA_TRIALS.md`.
 
 ## Making changes
 
-Update the project description before changing the software. Then run:
+When the product changes, change the Blueprint first. You can edit an existing specification or
+add a change ticket under `blueprint/changes/`. A change ticket names the specification it changes
+with an `Amends:` field. For example:
+
+```text
+$PROJECTS/drydock/targets/MyApp/blueprint/changes/TICKET-001-reading-list.md
+Amends: FEATURE-Reading-List.md
+```
+
+Then run:
 
 ```bash
-# Update the build plan after changing the project description.
+# Conform change tickets, update the Manifest, and reset affected work.
 drydock refit MyApp
-# Build the work affected by the change.
+# Rebuild the affected work in dependency order.
 drydock build MyApp
-# Run acceptance checks again.
+# Verify the changed product.
 drydock score ac MyApp
 ```
 
-This keeps the project description, build plan, and software in agreement.
+`refit` maps the change into the Manifest and resets the changed specification's consumer blocks
+and their dependent work. The normal build and acceptance process then applies to the change.
 
 ## First-project checklist
 
@@ -217,7 +234,7 @@ This keeps the project description, build plan, and software in agreement.
 - [ ] A Target has been created.
 - [ ] The first feature is described in a short Markdown file.
 - [ ] The analysis has no unresolved blockers.
-- [ ] The plan has been reviewed.
+- [ ] The Blueprint has been validated.
 - [ ] The project has been built and checked.
 
 For the full installation procedure, see the [User Installation Guide](USER_INSTALLATION.md).
