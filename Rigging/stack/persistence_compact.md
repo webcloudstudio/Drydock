@@ -1,163 +1,209 @@
-<!-- Compacted from persistence.md on 2026-06-22 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
+<!-- Compacted from Rigging/stack/persistence.md sha256=419a6a4324409bc5ad773f8714c74f6a5e97ec482b14beea654e1e1847c5d2d2 on 2026-08-06 by drydock rigging compact — regenerate with: drydock rigging compact --include-file {rel_source} -->
 
-# Persistence & Service Encapsulation — Usage Surface
+# Persistence & Service Encapsulation — Contract Surface
 
-## Database
+## Relational persistence
 
-### Database.__init__
-Constructs the database connection and exposes one attribute per table (e.g. `db.items`).
+### Item
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| path | str | yes | Filesystem path to the SQLite database file |
+Represents a persisted item row.
 
-Returns: `Database` — instance with table accessors as attributes (e.g. `db.items`)
+| Field | Type | Default |
+|---|---|---|
+| `id` | `int \| None` | required |
+| `name` | `str` | required |
+| `status` | `str` | `"active"` |
+| `created_at` | `str \| None` | `None` |
+
+### ItemTable.__init__
+
+Constructs typed item-table access from a connection provider.
+
+| Input | Type |
+|---|---|
+| `connect` | callable returning `sqlite3.Connection` |
 
 ### ItemTable.create
-Inserts a new item row and returns its generated ID.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| name | str | yes | Item name |
-| status | str | no | Item status; defaults to `"active"` |
+Creates an item and returns its generated identifier.
 
-Returns: `int` — the new row's primary key
+| Input | Type | Default |
+|---|---|---|
+| `name` | `str` | required |
+| `status` | `str` | `"active"` |
+
+Returns: `int`.
 
 ### ItemTable.get
-Fetches a single item by primary key.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| item_id | int | yes | Primary key of the item to retrieve |
+Retrieves an item by identifier.
 
-Returns: `Item | None` — the matching row dataclass, or `None` if not found
+| Input | Type |
+|---|---|
+| `item_id` | `int` |
+
+Returns: `Item \| None`.
 
 ### ItemTable.list
-Returns all item rows.
 
-Returns: `list[Item]` — every row as an `Item` dataclass
+Lists all items.
+
+Returns: `list[Item]`.
 
 ### ItemTable.update
-Updates one or more fields on an existing item.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| item_id | int | yes | Primary key of the item to update |
-| **fields | any | yes | Keyword arguments matching column names to update |
+Updates fields for an item.
 
-Returns: `None`
+| Input | Type |
+|---|---|
+| `item_id` | `int` |
+| `**fields` | item fields |
+
+Returns: `None`.
 
 ### ItemTable.delete
-Deletes an item by primary key.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| item_id | int | yes | Primary key of the item to delete |
+Deletes an item.
 
-Returns: `None`
+| Input | Type |
+|---|---|
+| `item_id` | `int` |
 
-## Config
+Returns: `None`.
 
-### config_key: SECRET_KEY
-Required. Application secret key.
+### Database.__init__
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| SECRET_KEY | str (env) | yes | Application secret key |
+Constructs database access and exposes one typed table attribute per relational table, such as `db.items`.
 
-### config_key: DATABASE_PATH
-Path to the SQLite database file.
+| Input | Type |
+|---|---|
+| `path` | `str` |
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| DATABASE_PATH | str (env) | no | Defaults to `"data/app.db"` |
+### Database.connect
 
-### config_key: APP_PORT
-Port the application listens on.
+Returns the calling workflow’s database connection, opening and configuring it on first use.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| APP_PORT | int (env) | no | Defaults to `5001` |
+Returns: `sqlite3.Connection`.
 
-### config_key: APP_DEBUG
-Enables debug mode when set to `"1"`.
+Constraints: The database provides one connection per workflow, instance methods are safe to call concurrently, returned rows are plain dataclasses without connection state, and table classes receive a connect provider rather than a connection.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| APP_DEBUG | str (env) | no | Set to `"1"` to enable; defaults to `False` |
+## Configuration
+
+### Config
+
+Provides immutable, typed application configuration loaded from environment variables.
+
+| Field | Type | Source | Default |
+|---|---|---|---|
+| `secret_key` | `str` | `SECRET_KEY` | required |
+| `database_path` | `str` | `DATABASE_PATH` | `"data/app.db"` |
+| `port` | `int` | `APP_PORT` | `5001` |
+| `debug` | `bool` | `APP_DEBUG == "1"` | `False` |
 
 ### Config.load
-Reads and validates all environment variables at startup; raises `RuntimeError` on missing required vars.
 
-Returns: `Config` — frozen dataclass with fields `secret_key`, `database_path`, `port`, `debug`
+Loads and validates configuration at startup.
 
-## FileStore
+Returns: `Config`.
+
+Constraints: Missing required variables or malformed typed values raise a startup error, and no code outside `Config` reads `os.environ`.
+
+## File storage
 
 ### FileStore.__init__
-Creates a file store rooted at the given directory.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| root | str | yes | Root directory for all managed files |
+Constructs file storage rooted at the supplied directory.
 
-Returns: `FileStore`
+| Input | Type |
+|---|---|
+| `root` | `str` |
 
 ### FileStore.read
-Reads a file by name relative to the store root.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| name | str | yes | Filename relative to root |
+Reads an application file relative to the store root.
 
-Returns: `str` — file contents as UTF-8 text
+| Input | Type |
+|---|---|
+| `name` | `str` |
+
+Returns: `str`.
 
 ### FileStore.write
-Writes text to a file relative to the store root, creating intermediate directories as needed.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| name | str | yes | Filename relative to root |
-| data | str | yes | UTF-8 text to write |
+Writes string data to an application file relative to the store root.
 
-Returns: `None`
+| Input | Type |
+|---|---|
+| `name` | `str` |
+| `data` | `str` |
+
+Returns: `None`.
 
 ### FileStore.list
-Globs files in the store root matching a pattern.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| pattern | str | no | Glob pattern; defaults to `"*"` |
+Lists file names matching a pattern relative to the store root.
 
-Returns: `list[str]` — matching filenames (not full paths)
+| Input | Type | Default |
+|---|---|---|
+| `pattern` | `str` | `"*"` |
 
-## Service Clients
+Returns: `list[str]`.
+
+Constraints: Path-traversal validation and atomic writes are enforced by `FileStore`; callers do not build paths or open or manipulate application files directly.
+
+## External services
 
 ### ServiceClient.__init__
-Base constructor shared by all external-service wrappers; wires the backend handle and logger.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| backend | any | yes | SDK or transport client instance |
-| name | str \| None | no | Logger name; defaults to the subclass name |
+Constructs a service wrapper with a backend handle and named logger.
 
-Returns: `ServiceClient`
+| Input | Type | Default |
+|---|---|---|
+| `backend` | any | required |
+| `name` | `str \| None` | subclass name |
+
+### ServiceClient._guard
+
+Executes a backend operation, logs failures, and re-raises exceptions.
+
+| Input | Type |
+|---|---|
+| `op` | callable |
+| `*args` | operation arguments |
+| `**kwargs` | operation keyword arguments |
+
+Returns: The backend operation result.
 
 ### MessageBus.publish
-Sends a payload to a named topic and returns a delivery receipt identifier.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| topic | str | yes | Destination topic name |
-| payload | dict | yes | Message body |
+Publishes a payload to a topic through the service wrapper.
 
-Returns: `str` — delivery receipt / message ID
+| Input | Type |
+|---|---|
+| `topic` | `str` |
+| `payload` | `dict` |
+
+Returns: `str`.
 
 ### MessageBus.subscribe
-Registers a handler to receive messages from a named topic.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| topic | str | yes | Topic to subscribe to |
-| handler | callable | yes | Callback invoked with each received message |
+Registers a handler for a topic.
 
-Returns: `None`
+| Input | Type |
+|---|---|
+| `topic` | `str` |
+| `handler` | callable |
+
+Returns: `None`.
+
+### Rule: encapsulated-access
+
+All persistence and external-service access goes through typed encapsulation classes.
+
+Constraints: Application code does not execute raw SQL, read `os.environ`, open application files directly, or import cloud SDKs. Service wrappers extend `ServiceClient` and do not expose SDK clients. ORM model classes may serve as table encapsulation without a second hand-written layer.
+
+### Rule: database-composition
+
+Each relational table provides a row dataclass and CRUD class composed by one `Database` class.
+
+Constraints: Schema creation, migrations, PRAGMAs, JSON-column handling, and connection management remain inside `Database` or table classes; downstream code depends on class interfaces rather than underlying schemas.
