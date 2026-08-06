@@ -51,10 +51,19 @@ The configuration names two locations:
 ## 1. Set up the Target
 
 A **Target** is one application managed by Drydock. For this guide, the example Target is
-`ReadingList`, which builds to `$PROJECTS/ReadingList` with the installation guide's example
-configuration.
+`ReadingList`, which builds to `$PROJECTS/ReadingList`.
+
+Initialize the project workspace using either form:
 
 ```bash
+# Initialize project workspace
+drydock init ReadingList
+```
+
+or include a display name and description:
+
+```bash
+# Initialize project workspace with descriptive metadata
 drydock init ReadingList \
   --display-name "Reading List" \
   --description "A small application for tracking books to read."
@@ -62,12 +71,12 @@ drydock init ReadingList \
 
 ## 2. Give Drydock the product description
 
-Create a directory named `reading-list-notes` containing one Markdown file:
+Create a Markdown file named `reading-list.md`:
 
 ```markdown
 # Reading List
 
-A reader keeps a list of books to read.
+The user wishes to build a web application that keeps a list of books to read.
 
 The reader can add a book with a title and author, view the books in the order added,
 and remove a book. An empty title or author is rejected with a clear error message.
@@ -78,9 +87,9 @@ The application includes automated tests for each behavior.
 Import the directory. An optional source score identifies gaps and contradictions before analysis:
 
 ```bash
-drydock import ReadingList ./reading-list-notes --format markdown
-drydock score spec ReadingList
-drydock analyze ReadingList
+drydock import ReadingList ./reading-list.md --format markdown  # Import the source specification.
+drydock score spec ReadingList                                 # Optional: audit the source for gaps.
+drydock analyze ReadingList                                    # Create stories, criteria, and questions.
 ```
 
 `score spec` audits the imported source specifications and writes a scorecard. Analyze turns the
@@ -107,8 +116,8 @@ guidance for the next command. Running `plan` is the approval to proceed.
 Create the specifications and executable build plan, then validate them:
 
 ```bash
-drydock plan ReadingList
-drydock validate ReadingList
+drydock plan ReadingList      # Create the Blueprint and Manifest.
+drydock validate ReadingList  # Check the Blueprint structure without an LLM.
 ```
 
 The **Blueprint** is the source of truth for the product. The **Manifest** is its dependency-aware
@@ -127,7 +136,7 @@ You should now see what Drydock plans to build and which work is ready first.
 Build executes the next runnable work in the Manifest:
 
 ```bash
-drydock build ReadingList
+drydock build ReadingList  # Build the next runnable Manifest work.
 ```
 
 Open the QuarterDeck after each build. It shows completed work, the next runnable work, and anything
@@ -150,8 +159,8 @@ Run it using the project instructions generated in that directory.
 Run the acceptance checks and the product-level release assessment:
 
 ```bash
-drydock score ac ReadingList
-drydock score release ReadingList
+drydock score ac ReadingList       # Run programmatic acceptance checks.
+drydock score release ReadingList  # Evaluate the Sea Trials release criteria.
 ```
 
 `score ac` executes the programmatic acceptance criteria. `score release` evaluates the completed
@@ -173,18 +182,21 @@ Review failed checks before treating the application as complete.
 
 ```mermaid
 flowchart LR
-    N["Your notes"] -->|drydock import + analyze| R["Review"]
-    R -->|drydock plan| B["Blueprint"]
-    B -->|drydock build| C["Application"]
-    C -->|drydock score| V["Scored release"]
+    N["reading-list.md"] --> IMP["drydock<br/>import"]
+    IMP --> PLUS(("+")) --> ANA["drydock<br/>analyze"]
+    ANA --> R["Review"] --> PLAN["drydock<br/>plan"]
+    PLAN --> B["Blueprint"] --> BUILD["drydock<br/>build"]
+    BUILD --> C["Application"] --> SCORE["drydock<br/>score"]
+    SCORE --> V["Scored release"]
 
     classDef input fill:#d4a017,stroke:#a07810,color:#111
     classDef review fill:#be123c,stroke:#fb7185,color:#fff
     classDef governed fill:#1e40af,stroke:#3b5fc0,color:#fff
     classDef output fill:#0a5c38,stroke:#2cb67d,color:#fff
     class N input
+    class IMP,ANA,PLAN,BUILD,SCORE governed
     class R review
-    class B governed
+    class PLUS governed
     class C,V output
 ```
 
@@ -197,29 +209,29 @@ flowchart LR
 
 ## Change the example application
 
-Suppose the Reading List now needs a rating from one to five stars. Add that requirement to the
-original file in `reading-list-notes`, then refresh the imported source and create the corresponding
-refit work:
+Suppose the Reading List now needs a command that marks a book as read. Add the following requirement
+to `reading-list.md`:
+
+```markdown
+The reader can mark a book as read and view whether each book is unread or read.
+```
+
+Refresh the imported source, create the corresponding refit work, and build the change:
 
 ```bash
-drydock import ReadingList --update
-drydock refit ReadingList --sources
-drydock build ReadingList
-drydock score ac ReadingList
-drydock score release ReadingList
+drydock import ReadingList --update  # Re-import the changed reading-list.md snapshot.
+drydock refit ReadingList --sources  # Convert the source difference into ordered refit work.
+drydock build ReadingList            # Build the affected work.
 ```
 
 Drydock compares the refreshed source to the previous import, maps the change to the existing build
 graph, and rebuilds the affected work. Once the application becomes stable or enters production,
 approved change tickets replace direct edits to the original specification.
 
-## Keep these commands nearby
-
-```bash
-drydock run quarterdeck ReadingList        # What is complete, next, or awaiting my decision?
-drydock build ReadingList                  # Build the next runnable work.
-```
-
 For installation and configuration, see the [User Installation Guide](USER_INSTALLATION.md). For
 the complete command contracts and artifact definitions, see the
 [Drydock Specification](Drydock_Specification.html).
+
+---
+
+Copyright © 2026 Web Cloud Studio.
