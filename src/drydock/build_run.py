@@ -57,6 +57,7 @@ from drydock.build import (
     work_kind_of,
 )
 from drydock.build_decisions import record_build_decisions, record_skipped_acceptance_decisions
+from drydock.build_environment import EnvMaterialization, materialize_env_file
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -247,6 +248,7 @@ class BuildResult:
     steps: list[BuildStepResult]
     readme_path: Path | None = None
     dry_run: bool = False
+    env_result: EnvMaterialization | None = None
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -3145,6 +3147,7 @@ def build_target(
     from drydock.quarterdeck_state import refresh_commanders_chair as _refresh_chair
 
     readme_path: Path | None = None
+    env_result: EnvMaterialization | None = None
     if (
         not dry_run
         and not build_failed
@@ -3155,6 +3158,9 @@ def build_target(
         stamp_last(target_dir, "built")
         from drydock.readme_generate import generate_readme
 
+        # The built project's .env is written before the README so the documented setup
+        # describes the configuration file that now exists.
+        env_result = materialize_env_file(resolved_build_dir)
         readme_path = generate_readme(target_dir, resolved_build_dir)
 
     if not dry_run:
@@ -3166,4 +3172,5 @@ def build_target(
         steps=steps,
         readme_path=readme_path,
         dry_run=dry_run,
+        env_result=env_result,
     )

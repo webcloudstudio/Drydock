@@ -3174,3 +3174,30 @@ Approve all test harnesses
     assert len(prompts) == 1
     assert "# Active Commander guidance" in prompts[0]
     assert "Decision: Approve all test harnesses" in prompts[0]
+
+
+def test_build_writes_env_from_example(tmp_path):
+    """A successful build leaves a .env the operator did not have to create."""
+    target_dir, build_dir = _setup(tmp_path)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    (build_dir / ".env.example").write_text(
+        "SECRET_KEY=change-me\nAPP_PORT=5001\n", encoding="utf-8"
+    )
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert result.env_result is not None
+    assert result.env_result.generated_keys == ("SECRET_KEY",)
+    written = (build_dir / ".env").read_text(encoding="utf-8")
+    assert "change-me" not in written
+    assert "APP_PORT=5001" in written
+
+
+def test_build_without_an_example_writes_no_env(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert result.env_result is not None
+    assert result.env_result.detail == "no .env.example"
+    assert not (build_dir / ".env").exists()
