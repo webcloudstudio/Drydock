@@ -1,6 +1,6 @@
 # Drydock Quick Start
 
-Build your first project as a small, reviewable slice. Drydock turns written project intent into a
+Build your first project as one small, complete, and testable workflow. Drydock turns written project intent into a
 Blueprint, turns the Blueprint into a dependency-aware Manifest, and builds the software one
 verified unit at a time.
 
@@ -182,7 +182,7 @@ If the plan is wrong, correct the source or Compass guidance and rerun the appro
 step. Do not begin by manually editing generated planning output unless the command contract
 explicitly assigns that file to the Commander.
 
-## 5. Build the first slice
+## 5. Build the first workflow
 
 Preview the next build when you want to inspect its scope:
 
