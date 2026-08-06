@@ -1,87 +1,46 @@
 # Drydock Quick Start Guide
 
-This guide takes a small project from an idea to a working build. Replace `MyApp` with your
-project name.
+This guide takes `MyApp` from project material to working software. Replace `MyApp` with your
+Target name and replace `YOUR_PROJECT_DIR` with the directory where you keep your projects.
 
-The command sequence is:
+## Prerequisites
 
-```text
-install → configure → init → import → analyze → plan → validate → build → score
-```
-
-## Before you begin
-
-You need Python 3.11 or newer, Drydock, and one of these subscription-authenticated command-line
-programs:
-
-- `claude` from Anthropic; or
-- `codex` from OpenAI.
-
-Install and sign in to the provider you choose before running `analyze`, `plan`, or `build`.
-Drydock does not use API keys or per-token billing.
+- [ ] Python 3.11 or newer.
+- [ ] `uv` or `pipx` for installing the Drydock command.
+- [ ] The `claude` or `codex` provider CLI installed and signed in.
+- [ ] A subscription for the provider CLI you selected.
 
 ## 1. Install and configure Drydock
 
-Install Drydock with `uv` or `pipx`:
-
 ```bash
-# Install the Drydock command.
-uv tool install drydock-sdd
-# Or: pipx install drydock-sdd
-drydock --version
+uv tool install drydock-sdd                 # Install Drydock with uv.
+# pipx install drydock-sdd                  # Or install it with pipx.
+drydock --version                           # Confirm that the command is available.
+export YOUR_PROJECT_DIR="/path/to/projects" # Set this to your own project directory.
+mkdir -p "$YOUR_PROJECT_DIR/drydock"       # Create the Drydock workspace directory.
+drydock config set llm_provider claude      # Use codex here if you use Codex.
+drydock config set drydock_model sonnet     # Set the default model.
+drydock config set drydock_workspace "$YOUR_PROJECT_DIR/drydock" # Store Targets and logs here.
+drydock config set drydock_build_directory "$YOUR_PROJECT_DIR"   # Write generated apps here.
+drydock config show                         # Confirm the saved configuration.
 ```
 
-Set the provider and directories in one step. `$PROJECTS` is the directory where you keep your
-projects; change it if you use a different location.
+The provider CLI must be installed and signed in before you run `analyze`, `plan`, or `build`.
+The `llm_provider` setting tells Drydock which provider command to run. `sonnet` is the default
+model for the configured provider; set another model with `drydock config set drydock_model <model>`
+when required.
+
+## 2. Initialize `MyApp`
 
 ```bash
-# Set the directory that contains your projects.
-export PROJECTS="$HOME/projects"
-# Create the Drydock workspace. `drydock init` creates the project directories later.
-mkdir -p "$PROJECTS/drydock"
-
-# Choose the provider CLI that you installed and signed in to.
-drydock config set llm_provider claude       # Use codex here if you use Codex.
-# Set the default model. `sonnet` is also Drydock's built-in default.
-drydock config set drydock_model sonnet
-# Store Targets and logs in the workspace.
-drydock config set drydock_workspace "$PROJECTS/drydock"
-# Store generated applications under the projects directory.
-drydock config set drydock_build_directory "$PROJECTS"
-# Display the saved configuration.
-drydock config show
+drydock init MyApp --display-name "My App" --description "A software project." # Create the Target.
+drydock status MyApp                                                        # Confirm it exists.
 ```
 
-This creates the following layout:
+`drydock init` creates the Target workspace and its initial directories:
 
 ```text
-$PROJECTS/
-├── drydock/              # Drydock workspace, Targets, and logs
-└── MyApp/                # Generated application after the build
-```
-
-The provider command must already be installed, signed in, and available on your `PATH`. The
-`llm_provider` setting tells Drydock which command to run. If you use Codex, change `claude` to
-`codex` in the configuration command.
-
-## 2. Create a project
-
-Create a Target. A Target is Drydock's workspace for one project.
-
-```bash
-# Create the Target and its initial directories and files.
-drydock init MyApp \
-  --display-name "My App" \
-  --description "A small software project."
-# Confirm that the Target exists.
-drydock status MyApp
-```
-
-`drydock init` creates the project layout. The Target is at
-`$PROJECTS/drydock/targets/MyApp/`:
-
-```text
-$PROJECTS/drydock/targets/MyApp/
+$YOUR_PROJECT_DIR/drydock/targets/MyApp/
 ├── blueprint/sources/
 ├── blueprint/changes/
 ├── evidence/
@@ -90,17 +49,17 @@ $PROJECTS/drydock/targets/MyApp/
 └── METADATA.md
 ```
 
-The generated application will be written to `$PROJECTS/MyApp/`.
+The generated application is written to `$YOUR_PROJECT_DIR/MyApp/`.
 
-## 3. Write the project notes
+## 3. Import project material
 
-Write a short Markdown file describing one useful feature. Include:
+Put the material that describes the project in Markdown files under `notes/`. Include the users,
+desired behavior, inputs, outputs, error behavior, and how the result will be tested.
 
-- who uses it;
-- what the user does;
-- what the software receives and produces;
-- what happens when input is invalid; and
-- how you will know it works.
+```bash
+mkdir -p notes                                      # Create a local source directory.
+drydock import MyApp ./notes --format markdown      # Copy the material into the Target.
+```
 
 For example:
 
@@ -120,122 +79,87 @@ Done when:
 - automated tests cover these cases.
 ```
 
-Keep the first project small. One or two useful actions are enough. Put the file in `notes/` and
-import it:
-
-```bash
-# Create a directory for the notes you will import.
-mkdir -p notes
-# Copy the notes into the Target as planning input.
-drydock import MyApp ./notes --format markdown
-```
-
 ## 4. Analyze the project
 
-Run `analyze` to have Drydock read the imported notes and produce a proposed set of features,
-questions, and acceptance criteria:
-
 ```bash
-# Read the imported notes and create the analysis files.
-drydock analyze MyApp
+drydock analyze MyApp # Derive stories, acceptance milestones, questions, and blockers.
 ```
 
-`analyze` creates `ANALYSIS.md`, stories, acceptance milestones, questions, and project-level
-acceptance goals. If `BLOCKERS.md` exists, answer the questions in it and run `drydock analyze MyApp`
-again. You can answer questions and edit guidance in the QuarterDeck:
+Analyze creates `ANALYSIS.md`, `SEA_TRIALS.md`, and other planning artifacts in the Target. If
+`BLOCKERS.md` exists, answer the questions in it and run Analyze again:
 
 ```bash
-# Start the local planning console.
-drydock run quarterdeck MyApp
+drydock analyze MyApp # Re-run after answering blockers or changing Analyze guidance.
 ```
 
-The QuarterDeck is the human decision point in Analyze. Use it to answer questions, resolve
-blockers, and adjust project guidance. The next command is `plan`; there is no separate command
-for reviewing a plan.
-
-When the analysis is correct, create the build plan:
+Use the QuarterDeck to answer questions, resolve blockers, and adjust project guidance:
 
 ```bash
-# Convert the analyzed project into Blueprint files and a Manifest.
-drydock plan MyApp
-# Check that the Blueprint satisfies the typed specification rules.
-drydock validate MyApp
+drydock run quarterdeck MyApp # Start the local planning console.
 ```
 
-`plan` creates the Blueprint and `MANIFEST.md`. The Blueprint describes what the product should do;
-the Manifest records the dependency-aware build order. `validate` checks the Blueprint without
-calling an LLM.
-
-## 5. Build the project
-
-Preview the build if you want to see what will happen:
+## 5. Create and validate the Blueprint
 
 ```bash
-# Show the prompt and work that the next build would use.
-drydock build MyApp --dry-run --show-prompt
+drydock plan MyApp     # Create the Blueprint and dependency-aware MANIFEST.md.
+drydock validate MyApp  # Check Blueprint conformance without calling an LLM.
 ```
 
-Build the project and check its progress:
+The Blueprint defines the product. `MANIFEST.md` defines the build order. There is no separate
+plan-review command; the human decision point is in Analyze and the QuarterDeck before `plan`.
+
+## 6. Build and score the project
+
+Preview the next build when needed:
 
 ```bash
-# Build the next available work.
-drydock build MyApp
-# Show completed, blocked, and remaining work.
-drydock build status MyApp
+drydock build MyApp --dry-run --show-prompt # Show the next build without running it.
 ```
 
-Run the build again to continue with the next work item. Review the application and tests as the
-project grows so that problems are easy to find.
-
-## 6. Check the results
-
-Run the automated acceptance checks and the project review:
+Build the runnable work and check its state:
 
 ```bash
-# Check each programmatic acceptance criterion.
-drydock score ac MyApp
-# Run the project-level release review.
-drydock score release MyApp
+drydock build MyApp        # Execute the next available Manifest work.
+drydock build status MyApp  # Show completed, blocked, and remaining work.
 ```
 
-Review `SOUNDINGS.md` for automated results and `SCORECARD.md` for the project review. A successful
-build command does not by itself prove that the project is complete; confirm that the results meet
-the goals in `SEA_TRIALS.md`.
+Run the acceptance checks and the release assessment:
 
-## Making changes
+```bash
+drydock score ac MyApp       # Verify programmatic acceptance criteria; writes SOUNDINGS.md.
+drydock score release MyApp   # Assess project-level release criteria; writes SCORECARD.md.
+```
 
-When the product changes, change the Blueprint first. You can edit an existing specification or
-add a change ticket under `blueprint/changes/`. A change ticket names the specification it changes
-with an `Amends:` field. For example:
+## 7. Change the project with Refit
+
+The Blueprint remains the source of truth. For a change, either edit the affected specification or
+add a ticket under `blueprint/changes/`. A ticket names its parent specification with `Amends:`:
 
 ```text
-$PROJECTS/drydock/targets/MyApp/blueprint/changes/TICKET-001-reading-list.md
+$YOUR_PROJECT_DIR/drydock/targets/MyApp/blueprint/changes/TICKET-001-reading-list.md
 Amends: FEATURE-Reading-List.md
 ```
 
-Then run:
+Then run the normal change loop:
 
 ```bash
-# Conform change tickets, update the Manifest, and reset affected work.
-drydock refit MyApp
-# Rebuild the affected work in dependency order.
-drydock build MyApp
-# Verify the changed product.
-drydock score ac MyApp
+drydock refit MyApp        # Conform tickets, update MANIFEST.md, and reset affected work.
+drydock build MyApp         # Rebuild the changed work and its required dependencies.
+drydock score ac MyApp      # Verify the changed product.
 ```
 
 `refit` maps the change into the Manifest and resets the changed specification's consumer blocks
 and their dependent work. The normal build and acceptance process then applies to the change.
 
-## First-project checklist
+## First-run checklist
 
-- [ ] Drydock is installed and a provider CLI is signed in.
-- [ ] The workspace and build directory are configured.
-- [ ] A Target has been created.
-- [ ] The first feature is described in a short Markdown file.
-- [ ] The analysis has no unresolved blockers.
-- [ ] The Blueprint has been validated.
-- [ ] The project has been built and checked.
+- [ ] Drydock is installed and configured.
+- [ ] The provider CLI is installed and signed in.
+- [ ] `MyApp` is initialized.
+- [ ] Project material is imported.
+- [ ] Analyze has no unresolved blockers.
+- [ ] The Blueprint is validated.
+- [ ] The project is built and scored.
 
-For the full installation procedure, see the [User Installation Guide](USER_INSTALLATION.md).
-For complete command contracts, see the [Drydock Specification](Drydock_Specification.md).
+For installation details, see the [User Installation Guide](USER_INSTALLATION.md). For complete
+command contracts, see the [Drydock Specification](Drydock_Specification.md).
