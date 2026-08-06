@@ -11,8 +11,7 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio.
 ---
 
-Drydock turns project specifications into working software. This guide builds a trivial
-application to demonstrate the process.
+Drydock turns project specifications into working software. This guide builds a trivial application to demonstrate the process.
 
 The workflow follows the commands you run:
 
@@ -33,8 +32,8 @@ Drydock copies your specification material into a workpace, analyzes to create s
 
 ## Before you begin
 
-1) Setup a cli based LLM provider such as claude or codex in your `PATH`
-2) Download drydock as per the [User Installation Guide](USER_INSTALLATION.md).
+1) Setup claude or codex cli in your `PATH`
+2) Install drydock ([User Installation Guide](USER_INSTALLATION.md)).
 
 ```bash
 # Recommended — isolated tool install:
@@ -43,11 +42,13 @@ uv tool install drydock-sdd
 #  Alternative with `pipx`:
 pipx install drydock-sdd
 
-# Or if you want to manually setup:
+# Or if you want to manually setup your path:
 python -m pip install drydock-sdd
 ```
 
 `uv tool` and `pipx` install Drydock in a dedicated environment and put a command wrapper on your `PATH`; they are the right choice for an interactive CLI. `pip` installs Drydock into whatever virtual environment is active and requires you to update your `PATH`.
+
+This example in this document uses uv to run the build.
 
 3) Review your setup with
 
@@ -71,7 +72,7 @@ A **Target** is the name of the application you wish to build in ```$drydock_bui
 drydock init ReadingList             # Initialize project workspace
 ```
 
-## 2. Give Drydock the product description
+## 2. Import Your Specification
 
 Create source specification material in a file (example: `reading-list.md`)
 
@@ -93,28 +94,25 @@ drydock import ReadingList ./reading-list.md
 drydock score spec ReadingList                    # Optional
 ```
 
-Perform an initial analysis on the material and review it.  Analyze turns the source material into stories, acceptance criteria, questions, and blockers.
+## 3. Analyze
+
+The analyze command performs an initial analysis of the source material.  Analyze turns the source material into stories, acceptance criteria, questions, and blockers.
 
 ```bash
-drydock analyze ReadingList                                    # Create stories, criteria, and questions.
-```
-
-## 3. Review the analysis
-
-```bash
+drydock analyze ReadingList
 drydock run quarterdeck ReadingList
 ```
 
-Navigate to the Quarterdeck - the start page is listed on the Quarterdeck command above ( http://127.0.0.1:8080)
+Navigate to the Quarterdeck web server - the start page is listed on the Quarterdeck command above ( http://127.0.0.1:8080)
 
-The quarterdeck contains several pages:
+The quarterdeck contains:
 
 * Commanders Chair - Overview of status
 * Compass - Your constitution
 * Analysis - The stories and input Analysis
-* Sea Trials - project acceptance criteria
-* Blockers - **questions you must answer**
-* Questionaires - like Discovery Identity and Stack Choices.
+* Sea Trials - Project acceptance criteria
+* Blockers - **If this exists, you must answer**
+* Questionaires - Discovery Identity and Stack Choices.
 
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="QuickStart_Analysis_Screen.png"
@@ -130,7 +128,9 @@ The quarterdeck contains several pages:
   <figcaption><em>The Analysis page shows the stories and high-level acceptance criteria created from the source material.</em></figcaption>
 </figure>
 
-## 4. Create Blueprint and Build Graph
+Add - Quickstart_TechStack.png
+
+## 4. Plan
 
 ```bash
 drydock plan ReadingList      # Create the Blueprint and Manifest.
@@ -157,10 +157,10 @@ From the quartedeck you can see the stages of the build and the details of each 
   <figcaption><em>The Manifest groups related stories into build blocks and shows which work is ready or blocked.</em></figcaption>
 </figure>
 
-## 5. Build the application
+## 5. Build
 
 ```bash
-drydock build ReadingList
+drydock build ReadingList       # Build the app
 ```
 
 The created application is in $drydock_build_directory/ReadingList/
@@ -194,16 +194,15 @@ flowchart LR
     class C,V output
 ```
 
-## Changing your example application
+Add - Quickstart_UVRUN.png
+
+## Changing the Application
 
 Add the following line to `reading-list.md`:
 
 ```markdown
-The reader can mark a book as read and view whether
-each book is unread or read.
+The reader can mark a book as read and view whether each book is unread or read.
 ```
-
-The development change process within drydock is as follow:
 
 ```bash
 drydock import ReadingList --update  # Re-import your specs
@@ -212,7 +211,7 @@ drydock refit ReadingList --sources  # Create Refit Tickets
 drydock build ReadingList            # Incremental Build
 ```
 
-The above is the development workflow and is designed for high velocity changes to your specifications.  Drydock compares updated source materials to previous versions, maps the change to the build graph, and rebuilds the affected work.
+The above is the development workflow and is designed for high velocity changes to your specifications.  Refit compares updated source materials to previous versions and maps the change to the build graph.  You build normally.
 
 # References
 
