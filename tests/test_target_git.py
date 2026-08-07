@@ -3,7 +3,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from drydock import source_refit
+from drydock.errors import SpecificationError
 from drydock.target_git import (
     commit_paths,
     commit_target,
@@ -48,19 +51,34 @@ def test_is_repo_and_head_commit_on_a_bare_directory(tmp_path):
     assert head_commit(plain) is None
 
 
-def test_commit_target_announces_the_git_commit(tmp_path, capsys):
+def test_commit_target_reports_one_line_checkpoint(tmp_path, capsys):
     target = _repo(tmp_path)
     _write(target, "a.md", "a\n")
     _write(target, "b.md", "b\n")
 
     sha = commit_target(target, "Refresh imported source snapshot")
 
-    out = capsys.readouterr().out
-    assert f"Git commit: {target}" in out
-    assert 'git add -A && git commit -m "Refresh imported source snapshot"' in out
-    assert "staging 2 pending Target file(s)" in out
-    assert "Refresh imported source snapshot" in out.splitlines()[-1]
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [
+        f"Git checkpoint: {sha} Refresh imported source snapshot (2 pending Target file(s))"
+    ]
     assert sha == head_commit(target)
+
+
+def test_commit_target_raises_when_git_commit_fails(tmp_path, monkeypatch):
+    target = _repo(tmp_path)
+    _write(target, "a.md", "a\n")
+    real_run = __import__("drydock.target_git", fromlist=["_run"])._run
+
+    def failing_run(target_dir, *args, timeout=30):
+        if args and args[0] == "commit":
+            return 1, "simulated commit failure"
+        return real_run(target_dir, *args, timeout=timeout)
+
+    monkeypatch.setattr("drydock.target_git._run", failing_run)
+
+    with pytest.raises(SpecificationError, match="simulated commit failure"):
+        commit_target(target, "Refresh imported source snapshot")
 
 
 def test_commit_target_is_silent_without_changes(tmp_path, capsys):

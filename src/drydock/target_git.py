@@ -20,6 +20,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock.errors import SpecificationError
+
 _TIMEOUT = 30
 
 
@@ -50,7 +52,8 @@ def _run(target_dir: Path, *args: str, timeout: int = _TIMEOUT) -> tuple[int, st
         )
     except (OSError, subprocess.SubprocessError):
         return 1, ""
-    return completed.returncode, completed.stdout
+    output = completed.stdout if completed.stdout.strip() else completed.stderr
+    return completed.returncode, output
 
 
 def head_commit(target_dir: Path) -> str | None:
@@ -67,26 +70,38 @@ def commit_target(target_dir: Path, message: str) -> str | None:
     """Commit a Target repository when one exists; never commit the parent workspace.
 
     The commit stages every pending change in the Target, not only the files the calling command
-    wrote, so the operation is announced explicitly with the file count and the resulting commit.
-    Returns the new short sha, or ``None`` when nothing was committed.
+    wrote. Success is reported in one line. A Git failure aborts the calling command rather than
+    allowing it to report success without the required checkpoint. Returns the new short sha, or
+    ``None`` when nothing was committed.
     """
     if not is_repo(target_dir):
         return None
     code, out = _run(target_dir, "status", "--short")
-    if code != 0 or not out.strip():
+    if code != 0:
+        raise SpecificationError(f"Cannot inspect Target Git status: {out.strip() or 'git failed'}")
+    if not out.strip():
         return None
     pending = len([line for line in out.splitlines() if line.strip()])
-    print(f"Git commit: {target_dir}")
-    print(f'  git add -A && git commit -m "{message}"')
-    print(f"  staging {pending} pending Target file(s), not only this command's output")
-    if _run(target_dir, "add", "-A", timeout=15)[0] != 0:
-        return None
-    if _run(target_dir, "commit", "-m", message)[0] != 0:
-        return None
+    code, out = _run(target_dir, "add", "-A", timeout=15)
+    if code != 0:
+        raise SpecificationError(
+            f"Cannot stage Target Git checkpoint: {out.strip() or 'git failed'}"
+        )
+    code, out = _run(target_dir, "commit", "-m", message)
+    if code != 0:
+        raise SpecificationError(
+            f"Cannot commit Target Git checkpoint: {out.strip() or 'git failed'}"
+        )
     code, out = _run(target_dir, "log", "-1", "--format=%h %s")
-    if code == 0 and out.strip():
-        print(f"  → {out.strip()}")
-    return head_commit(target_dir)
+    if code != 0 or not out.strip():
+        raise SpecificationError(
+            f"Cannot verify Target Git checkpoint: {out.strip() or 'git failed'}"
+        )
+    commit = head_commit(target_dir)
+    if commit is None:
+        raise SpecificationError("Cannot resolve Target Git checkpoint after commit")
+    print(f"Git checkpoint: {out.strip()} ({pending} pending Target file(s))")
+    return commit
 
 
 def commit_paths(target_dir: Path, paths: Sequence[str], message: str) -> str | None:
