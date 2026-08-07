@@ -128,7 +128,12 @@ The quarterdeck contains:
   <figcaption><em>The Analysis page shows the stories and high-level acceptance criteria created from the source material.</em></figcaption>
 </figure>
 
-Add - Quickstart_TechStack.png
+<figure style="margin: 1.5rem auto; text-align: center;">
+  <img src="Quickstart_TechStack.png"
+       alt="QuarterDeck Technology Stack page for the ReadingList target"
+       style="display: block; width: 100%; max-width: 1100px; height: auto; margin: 0 auto; object-fit: contain;">
+  <figcaption><em>Review and approve the proposed technology stack in QuarterDeck before planning the build.</em></figcaption>
+</figure>
 
 ## 4. Plan
 
@@ -174,7 +179,12 @@ Run it using the project instructions generated in that directory.
   <figcaption><em>Follow the generated project instructions to start the application; this example runs it with <code>uv run run.py</code>.</em></figcaption>
 </figure>
 
-Add Application - Quickstart_App.png
+<figure style="margin: 1.5rem auto; text-align: center;">
+  <img src="Quickstart_App.png"
+       alt="Generated ReadingList web application"
+       style="display: block; width: 100%; max-width: 900px; height: auto; margin: 0 auto; object-fit: contain;">
+  <figcaption><em>The generated ReadingList application running after the build.</em></figcaption>
+</figure>
 
 ## 6. Refit - Changing the Application
 
