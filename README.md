@@ -166,6 +166,23 @@ drydock score ac MyApp
 drydock document MyApp
 ```
 
+In development the specification you wrote stays the source of truth, so edit it and let Drydock
+route the change. `--update` re-imports and records a new source version; `--sources` reads the
+diff, decomposes it into stories, and writes a change ticket per affected Blueprint:
+
+```bash
+drydock import MyApp --update
+drydock refit MyApp --sources
+drydock build MyApp
+```
+
+A Target planned before source lineage existed needs its history rebuilt once. `--relineage`
+replays every source version from the Target's git history and attributes the existing stories:
+
+```bash
+drydock refit MyApp --relineage
+```
+
 Your project workspace is:
 
 ```text

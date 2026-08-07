@@ -10,6 +10,76 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-06: `LINEAGE.json` at the Target root records which source version produced which work.
+  The unit is a *source version*, not a parsed fragment of prose: import copies the file and lets
+  git record it, so a version is a `(content hash, commit)` pair and a delta is a git diff. A
+  version stays `pending` until `plan` or `refit` consumes it, and consumption appends the
+  requirements found and the stories they became without rewriting any earlier version — the
+  versioned history that previously did not exist, because refit overwrote the prior hash on
+  success. Requirements point at Manifest story ids and never at Blueprints, since stories already
+  carry `implements`. Each version also records the `METADATA.md` release identifier.
+
+- 2026-08-06: `drydock refit <Target> --relineage` rebuilds `LINEAGE.json` for a Target that
+  predates it. The deterministic half replays every source version from the Target's git history
+  with its commit and date; the judgement half attributes existing Manifest stories to the
+  requirements they implement, as a closed-set match. A story matching no requirement is recorded
+  `origin: plan` and left unattached rather than failing — planning legitimately invents
+  foundational work no sentence asked for. Requires a Target git repository and says so plainly
+  when one is absent.
+
+### Fixed
+
+- 2026-08-06: `drydock refit --sources` now runs. It resolved a changed source to Blueprints
+  through `MANIFEST.md` `source_lineage.files[].blueprints`, whose only writer attributed a source
+  to a Blueprint when the Blueprint text literally contained the source filename — something no
+  LLM-authored Blueprint does. The field was empty on every Target, so the command always failed
+  with `Changed source has no lineage candidate Blueprint`. Routing is now one LLM call that
+  decomposes the diff into stories seated on existing Blueprints, symmetric with planning:
+  `plan` decomposes the whole source, `refit --sources` decomposes what changed. Every gate runs
+  before the first write — unknown Blueprint, unknown or cyclic dependency, unrouted requirement —
+  and any later failure restores the Manifest, the lineage record, and `blueprint/changes/`, then
+  prints the commit to recover from. A requirement that seats on no existing Blueprint fails with
+  `replan required`; refit never creates a Blueprint.
+
+- 2026-08-06: A change ticket no longer claims authority over its whole parent Blueprint. Every
+  ticket previously declared `Supersedes: <parent>` and "governs in case of conflict", so a
+  one-sentence addition superseded assertions it never mentioned and that had already been proven.
+  Tickets now carry `Scope`: `additive` supersedes nothing and leaves every parent assertion in
+  force, `amending` supersedes only the sections listed under `## Amended Sections`, each
+  validated against the parent so a ticket cannot amend a section that does not exist.
+
+### Changed
+
+- 2026-08-06: Both refit paths write one ticket format,
+  `blueprint/changes/TICKET-NNN-{Name}.md` with `Version`, `Description`, `Amends`, `Depends On`,
+  `Scope`, `Origin`, `Created` and `Stories`. `refit --sources` previously invented an undocumented
+  `<Blueprint>_refit_N.md` table that appeared nowhere in `BLUEPRINTS_CONTRACT.md`; `build`
+  consumed both only through the Manifest `implements:` field, so the divergence went unnoticed.
+  The development workflow (machine-authored from a diff) and the production workflow
+  (human-authored through an enterprise change process) now emit and consume the same artifact.
+  The `Stories` row is load-bearing: `drydock refit` reprocesses every ticket on every run, and
+  without the declared ids the model invents new ones and stories are duplicated rather than
+  replaced in place. A ticket's `Depends On` remains computed from the parent Blueprint — inherited
+  edges are never routed by the model. Stories gain optional `origin:` and `created:` fields.
+
+- 2026-08-06: `refit --sources` reports blast radius from the existing `provides:`/`consumes:`
+  edges, with no LLM. A change to a foundational story's *contract* lists the downstream stories
+  that consume it, records them under `## Downstream Impact` in the ticket, and proceeds — the
+  classification is model judgement and is not stable between runs, so the Commander decides
+  whether to rebuild or defer. Deleting a provision another live story still consumes blocks
+  before any file is written, because no ticket can repair a build that no longer has the service
+  it uses. Source-driven refit also refuses non-text sources rather than routing a contentless
+  delta.
+
+- 2026-08-06: Retired two legacy lineage stores. `blueprint/sources/.drydock-import` is absorbed
+  into the `LINEAGE.json` import record, keeping its rule against narrowing a directory root to a
+  single file. `MANIFEST.md` `source_lineage:` is read once for migration and then removed, with
+  its broken `blueprints` list discarded and reported. Migration runs at most once per Target and
+  succeeds with neither file present. `import --update` no longer opens the Manifest at all, so it
+  works on a Target that has not been planned. All Target git invocation moves behind
+  `target_git`; the lineage commit sha is stamped by a follow-up commit rather than an amend,
+  because amending would rewrite the very commit the record points at.
+
 - 2026-08-06: QuarterDeck items that require a Commander answer can now be approved as proposed.
   Discovery questionnaires and the Technology Stack carry an `Approve` action in the page header;
   approving a questionnaire sets its state to `approved` without requiring answers, and approving

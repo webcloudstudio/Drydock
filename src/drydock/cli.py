@@ -494,6 +494,34 @@ def cmd_refit(args: argparse.Namespace) -> int:
     model = get_model(getattr(args, "model", None))
     llm_provider = get_llm_provider(getattr(args, "llm_provider", None))
 
+    if getattr(args, "sources", False) and getattr(args, "relineage", False):
+        raise UsageError("drydock refit: --sources and --relineage are mutually exclusive")
+
+    if getattr(args, "relineage", False):
+        from drydock.lineage_backfill import relineage_target
+
+        result = relineage_target(
+            target_dir,
+            log_dir=log_dir,
+            model=model,
+            llm_provider=llm_provider,
+        )
+        for source in result.sources:
+            print(
+                f"  [source]          {source.path}  "
+                f"{source.versions} version(s), {source.attributed} story attribution(s)"
+            )
+        for warning in result.warnings:
+            print(f"  [warning]         {warning}")
+        if result.unattached:
+            print(f"  [unattached]      {', '.join(result.unattached)}  (origin: plan)")
+        _commit_and_stamp(target_dir, "Backfill source lineage")
+        print(
+            f"RESULT: {len(result.sources)} source(s) relineaged, "
+            f"{len(result.unattached)} story(ies) unattached"
+        )
+        return 0
+
     if getattr(args, "sources", False):
         from drydock.source_refit import commit_target, source_refit_target
 
@@ -503,12 +531,20 @@ def cmd_refit(args: argparse.Namespace) -> int:
             model=model,
             llm_provider=llm_provider,
         )
-        commit_target(target_dir, "Author source-driven refit tickets")
-        for item in result.items:
-            print(f"  [ticket]          {item.ticket.relative_to(target_dir)}")
         if not result.items:
-            print("  No source changes mapped to Blueprint lineage.")
-        print(f"RESULT: {len(result.items)} refit ticket(s) authored")
+            print("  No pending source versions.")
+            return 0
+        for item in result.items:
+            print(
+                f"  [ticket]          {item.ticket.relative_to(target_dir)}  "
+                f"({item.scope}, {item.blueprint})  {', '.join(item.stories)}"
+            )
+        # A contract change never gates the build; the Commander decides whether to rebuild the
+        # consumers now or defer them.
+        for consumer in result.downstream:
+            print(f"  [downstream]      {consumer}")
+        commit_target(target_dir, "Author source-driven refit tickets")
+        print(f"RESULT: {len(result.items)} change ticket(s) authored")
         return 0
 
     def report(item: RefitItem) -> None:
@@ -2681,7 +2717,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_iter.add_argument(
         "--sources",
         action="store_true",
-        help="Author ordered refit tickets from imported source changes.",
+        help="Route imported source changes into change tickets and Manifest stories.",
+    )
+    p_iter.add_argument(
+        "--relineage",
+        action="store_true",
+        help="Rebuild LINEAGE.json from the Target's git history and attribute existing stories.",
     )
 
     # ── analyze ───────────────────────────────────────────────────────────────
