@@ -2290,6 +2290,22 @@ Published content.
         assert rc == 2
         assert "the following arguments are required: --output" in err
 
+    def test_publish_missing_source_never_calls_llm_diagnosis(self, tmp_path, monkeypatch):
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("deterministic FileNotFoundError reached the LLM")
+
+        monkeypatch.setattr("drydock.llm.run_prompt", fail_if_called)
+        missing = tmp_path / "missing.md"
+
+        rc, out, err = run_cli("publish", str(missing), "--output", str(tmp_path / "output.html"))
+
+        assert rc == 1
+        assert out.startswith("Drydock ")
+        assert "FileNotFoundError" in err
+        assert str(missing) in err
+        assert "A MAJOR ERROR HAS OCCURRED" not in err
+        assert "is diagnosing" not in err
+
 
 class TestRunQuarterdeck:
     """drydock run quarterdeck dispatches to quarterdeck_run.run_quarterdeck."""

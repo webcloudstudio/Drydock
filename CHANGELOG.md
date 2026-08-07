@@ -29,6 +29,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-06: Standoff diagnosis no longer calls an LLM for deterministic operating-system
+  exceptions. Missing files, denied permissions, incorrect path types, existing destinations, and
+  related `OSError` failures now return their direct error immediately; unexpected programming
+  exceptions and opaque post-LLM failures remain eligible for diagnosis.
+
 - 2026-08-06: Three defects that together made a source change silently vanish between
   `import --update` and the Manifest. `refit --relineage` marked every version it replayed from git
   `consumed`, but `import --update` commits the snapshot it imports, so a version awaiting a refit

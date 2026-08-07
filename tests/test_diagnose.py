@@ -10,6 +10,7 @@ from drydock import diagnose as diagnose_module
 from drydock.diagnose import (
     ARTIFACT_WAIVER_PROMPT_NAME,
     BLOCKED_PREFIXES,
+    DETERMINISTIC_EXCEPTIONS,
     assemble_prompt,
     clamp_diagnosis,
     diagnose,
@@ -113,6 +114,21 @@ def test_rate_limit_failure_is_blocked(tmp_path):
     ],
 )
 def test_deterministic_and_interrupted_failures_are_blocked(exc):
+    assert should_diagnose(exc=exc) is False
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        FileNotFoundError("missing.md"),
+        PermissionError("permission denied"),
+        IsADirectoryError("expected a file"),
+        NotADirectoryError("expected a directory"),
+        FileExistsError("already exists"),
+    ],
+)
+def test_common_operating_system_failures_are_blocked(exc):
+    assert isinstance(exc, DETERMINISTIC_EXCEPTIONS)
     assert should_diagnose(exc=exc) is False
 
 

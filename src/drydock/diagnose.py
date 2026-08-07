@@ -51,6 +51,11 @@ BLOCKED_PREFIXES = (
     "context/token limit",
 )
 
+#: Exceptions reported deterministically by the operating system already identify the failed
+#: operation and its immediate cause. An LLM cannot improve errors such as a missing path or
+#: denied permission, so these failures return immediately without spending a diagnostic call.
+DETERMINISTIC_EXCEPTIONS = (OSError,)
+
 
 class CompletedRun(Protocol):
     """The subset of an ``LlmResult`` this module consumes."""
@@ -90,8 +95,9 @@ def should_diagnose(
     """Whether this failure earns a standoff diagnosis.
 
     Allowlisted: a post-LLM error record, and an exception that is not a ``DrydockError``.
-    Blocked: deterministic Drydock errors, classifications with their own remediation, states in
-    which the provider is known to be unavailable, and any second diagnosis in one invocation.
+    Blocked: deterministic Drydock and operating-system errors, classifications with their own
+    remediation, states in which the provider is known to be unavailable, and any second
+    diagnosis in one invocation.
     """
     if _diagnosed:
         return False
@@ -106,7 +112,7 @@ def should_diagnose(
         return True
     if exc is None:
         return False
-    if isinstance(exc, DrydockError):
+    if isinstance(exc, (DrydockError, *DETERMINISTIC_EXCEPTIONS)):
         return False
     if provider_unavailable_reason(str(exc)) is not None:
         return False
