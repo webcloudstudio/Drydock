@@ -65,6 +65,7 @@ from drydock.exclude_files import ensure_exclude_file, load_excluded_filenames
 from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
 from drydock.metadata import increment_version, set_build_state, set_sub_state, stamp_last
+from drydock.override import PLAN_DECISION, WaivedGate, dedupe_waivers, stamp_override
 from drydock.paths import get_prompts_root
 from drydock.plan_graph import PlanComputation, PlannedStory
 from drydock.plan_score import PlanScore, score_plan
@@ -202,6 +203,7 @@ class PlanCreateResult:
     waiver_execution_id: str | None = None
     plan_mode: str = ""
     conformed_files: tuple[Path, ...] = ()
+    waivers: tuple[WaivedGate, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -3653,6 +3655,7 @@ def create_plan(
     log_dir: Path | None = None,
     allow_diagnostic_recovery: bool = False,
     continue_attempts: int = 3,
+    override: bool = False,
 ) -> PlanCreateResult | PlanDeferredResult:
     """Author the Blueprint and executable Manifest from the reviewed analysis."""
     target_dir = target_directory / target
@@ -3687,12 +3690,17 @@ def create_plan(
         )
     # TECHNOLOGY_STACK.md never gates planning. An absent or empty stack file means the stack is
     # undecided, which plan resolves from the sources — it is not a Commander decision to await.
+    waivers: list[WaivedGate] = []
     required_decisions = _required_plan_decisions(target_dir)
-    if required_decisions:
+    if required_decisions and not override:
         raise SpecificationError(
             "Required Analyze questionnaire decisions are unanswered — answer them in QuarterDeck "
             "before planning:\n  - " + "\n  - ".join(required_decisions)
         )
+    # Waivers are reported by the caller as one summary block rather than streamed: cmd_plan's
+    # progress callback deliberately suppresses raw plan chatter, and a bypassed gate must never
+    # depend on --debug to be seen.
+    waivers.extend(WaivedGate(kind=PLAN_DECISION, subject=label) for label in required_decisions)
 
     plan_path = target_dir / "MANIFEST.md"
     prior_manifest = _read_if(plan_path)
@@ -4461,6 +4469,9 @@ def create_plan(
 
     _refresh_chair(target_dir)
 
+    unique_waivers = dedupe_waivers(waivers)
+    stamp_override(target_dir, unique_waivers)
+
     return PlanCreateResult(
         plan=plan,
         target_dir=target_dir,
@@ -4479,4 +4490,5 @@ def create_plan(
         waiver_execution_id=waiver_execution_id,
         plan_mode=plan_mode,
         conformed_files=tuple(conformed_specs),
+        waivers=unique_waivers,
     )

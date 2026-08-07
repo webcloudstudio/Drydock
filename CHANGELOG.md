@@ -10,6 +10,31 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-07: `drydock plan --override` and `drydock build --override` waive the gates that wait
+  on a human answer — unanswered Analyze questionnaire decisions marked `required_before_plan`,
+  blocking `DECISIONS.json` records that park a story at `blocked/questions`, and acceptance
+  prerequisites awaiting Commander authorization. Each waiver is recorded rather than skipped: the
+  command prints an `OVERRIDE SUMMARY` naming every bypassed gate, and the Target's `METADATA.md`
+  gains `override: true` and `override_waivers: <n>` so a waived run cannot later be mistaken for
+  a governed one. A blocked analysis (`BLOCKERS.md`, `Quality: Blocked`) is deliberately not
+  waivable, because on a source the author controls that verdict is a regression signal about the
+  source rather than an interruption. The flag takes no sub-options; a selectable severity list
+  would make the flag itself part of the test surface. Note that an override build may reach for
+  an undeclared external prerequisite and is therefore not hermetic.
+
+- 2026-08-07: `drydock config env [<Target>]` prints resolved paths as shell `KEY=value`
+  assignments for `eval "$(drydock config env <Target>)"` — `DRYDOCK_WORKSPACE`,
+  `DRYDOCK_TARGETS_ROOT`, `DRYDOCK_BUILD_DIRECTORY`, and, when a Target is named,
+  `DRYDOCK_TARGET`, `DRYDOCK_TARGET_DIR`, and `DRYDOCK_TARGET_BUILD_DIR`. The Target need not
+  exist, so a driver that clears and regenerates one can learn its paths first. Like
+  `status --check/--ready`, the output is masthead-free; values are shell-quoted.
+
+- 2026-08-07: `helpers/autotest_ReadingList.sh` drives the full pipeline unattended as a
+  pre-release regression build: it clears the Target and build directory, runs
+  init → import → analyze → plan → build with `--override`, loops `build` under a
+  `status --ready` guard with a pass cap, and asserts completion with `status --check`. It
+  hardcodes no paths, taking them from `config env`, so a copy covers another Target.
+
 - 2026-08-07: `drydock status console` reports how the current terminal was classified — platform,
   stream encoding, `TERM`, console host, resolved glyph tier, colour — and prints a sample line of
   every tier past the tier wrapper, so a terminal that cannot render a glyph shows it. One command

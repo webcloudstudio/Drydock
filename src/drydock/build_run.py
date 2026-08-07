@@ -81,6 +81,12 @@ from drydock.errors import SpecificationError, clear_error_record, write_error_r
 from drydock.llm import format_token_summary, render_rate_limit_error_block, run_prompt
 from drydock.manifest_edit import batch_set_block_fields, reset_all_states
 from drydock.metadata import set_build_state, set_sub_state, stamp_last
+from drydock.override import (
+    ACCEPTANCE_AUTHORIZATION,
+    WaivedGate,
+    dedupe_waivers,
+    stamp_override,
+)
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
@@ -257,6 +263,10 @@ class BuildResult:
     readme_path: Path | None = None
     dry_run: bool = False
     env_result: EnvMaterialization | None = None
+    waivers: tuple[WaivedGate, ...] = ()
+    # Work the Manifest still owes that this run could not advance: blocked, or pending behind an
+    # unverified dependency. A build that ends with such work has stalled, not succeeded.
+    stalled_blocks: tuple[str, ...] = ()
 
     def built(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status in ("built", "implemented")]
@@ -264,8 +274,19 @@ class BuildResult:
     def failed(self) -> list[BuildStepResult]:
         return [s for s in self.steps if s.status == "failed"]
 
+    def stalled(self) -> bool:
+        """True when the run finished with work outstanding that it could not advance.
+
+        A build that parks every remaining story on a question, or that finds nothing buildable
+        while the Manifest is unfinished, used to exit 0 — indistinguishable from a completed
+        Target. That silence is the failure mode this reports.
+        """
+        return bool(self.stalled_blocks) and not self.built()
+
     def exit_code(self) -> int:
-        return 1 if self.failed() else 0
+        if self.dry_run:
+            return 0
+        return 1 if self.failed() or self.stalled() else 0
 
 
 @dataclass(frozen=True)
@@ -1918,6 +1939,25 @@ def _dry_run_display_path(path: Path) -> str:
         return str(path)
 
 
+def _outstanding_blocks(manifest_path: Path) -> tuple[str, ...]:
+    """Executable blocks the Manifest still owes after a run, in Manifest order.
+
+    Only meaningful for an unscoped build: ``--step`` and ``--story`` are explicitly partial, so
+    the work they leave behind is intended, not a stall.
+    """
+    try:
+        from drydock.manifest import DrydockManifest
+
+        manifest = DrydockManifest.load(manifest_path, compatibility=True)
+    except Exception:  # noqa: BLE001 - a manifest we cannot read is reported by the caller's path
+        return ()
+    return tuple(
+        block.block_id
+        for block in manifest.blocks
+        if block.block_type in {"story", "spike"} and block.state != "closed/verified"
+    )
+
+
 def build_target(
     target: str,
     target_dir: Path,
@@ -1938,6 +1978,7 @@ def build_target(
     escalate_model: str | None = None,
     dependency_registry_client: RegistryClient | None = None,
     ungate: bool = False,
+    override: bool = False,
 ) -> BuildResult:
     """Build every currently buildable step, stopping at acceptance review gates.
 
@@ -1946,6 +1987,7 @@ def build_target(
     the Drydock checkout is the user's responsibility.
     """
     run = runner if runner is not None else run_prompt
+    waivers: list[WaivedGate] = []
 
     manifest_path = target_dir / "MANIFEST.md"
     if not manifest_path.is_file():
@@ -1994,8 +2036,14 @@ def build_target(
     from drydock.question_gates import synchronize_manifest_question_gates
 
     synchronized_plan = synchronize_manifest_question_gates(
-        manifest_path, blueprint_dir, persist=not dry_run
+        manifest_path,
+        blueprint_dir,
+        persist=not dry_run,
+        override=override,
+        waivers=waivers,
     )
+    for waived in waivers:
+        _emit(on_text, waived.warning())
     if ungate:
         if dry_run:
             synchronized_plan, ungated_count = _ungate_acceptance_plan(synchronized_plan)
@@ -2242,13 +2290,33 @@ def build_target(
                         requirement,
                         story=owner.block_id if owner is not None else None,
                     )
-            synchronize_manifest_question_gates(manifest_path, blueprint_dir, persist=not dry_run)
-            _emit(
-                on_text,
-                "blocked/questions: acceptance prerequisite requires authorization — "
-                + ", ".join(f"{r.kind}={r.name}" for _, r in unauthorized),
+            synchronize_manifest_question_gates(
+                manifest_path,
+                blueprint_dir,
+                persist=not dry_run,
+                override=override,
+                waivers=waivers,
             )
-            continue
+            requirement_names = ", ".join(f"{r.kind}={r.name}" for _, r in unauthorized)
+            if override:
+                # The decision is still recorded — the authorization was never granted — but the
+                # unit proceeds. An override run reaches for undeclared prerequisites, so it is
+                # not hermetic; that is the cost of an unattended regression build.
+                for check, requirement in unauthorized:
+                    waived = WaivedGate(
+                        kind=ACCEPTANCE_AUTHORIZATION,
+                        subject=f"{check.source}#{check.check_id}",
+                        detail=f"{requirement.kind}={requirement.name}",
+                    )
+                    waivers.append(waived)
+                    _emit(on_text, waived.warning())
+            else:
+                _emit(
+                    on_text,
+                    "blocked/questions: acceptance prerequisite requires authorization — "
+                    + requirement_names,
+                )
+                continue
         if authorized_missing:
             _emit(
                 on_text,
@@ -2704,16 +2772,39 @@ def build_target(
                                     story=owner.block_id if owner is not None else None,
                                 )
                                 synchronize_manifest_question_gates(
-                                    manifest_path, blueprint_dir, persist=True
+                                    manifest_path,
+                                    blueprint_dir,
+                                    persist=True,
+                                    override=override,
+                                    waivers=waivers,
                                 )
-                                state, status = "blocked/questions", "blocked"
-                                error = "acceptance prerequisite requires authorization"
-                                failure_detail = (
-                                    f"Undeclared {requirement.kind}={requirement.name} was "
-                                    "discovered during acceptance. Partial work is preserved; "
-                                    "answer the blocking DECISIONS.json authorization to resume this story."
-                                )
-                                _emit(on_text, "blocked/questions: " + failure_detail)
+                                if override:
+                                    waived = WaivedGate(
+                                        kind=ACCEPTANCE_AUTHORIZATION,
+                                        subject=(
+                                            f"{declared_check.source}#{declared_check.check_id}"
+                                        ),
+                                        detail=(
+                                            f"undeclared {requirement.kind}={requirement.name} "
+                                            "discovered during acceptance"
+                                        ),
+                                    )
+                                    waivers.append(waived)
+                                    _emit(on_text, waived.warning())
+                                    # The prerequisite is genuinely absent and acceptance has
+                                    # already failed on it. Override makes that loud (a failure)
+                                    # rather than parking the story on an unanswerable question.
+                                    state, status = "closed/failed", "failed"
+                                else:
+                                    state, status = "blocked/questions", "blocked"
+                                    error = "acceptance prerequisite requires authorization"
+                                    failure_detail = (
+                                        f"Undeclared {requirement.kind}={requirement.name} was "
+                                        "discovered during acceptance. Partial work is preserved; "
+                                        "answer the blocking DECISIONS.json authorization to "
+                                        "resume this story."
+                                    )
+                                    _emit(on_text, "blocked/questions: " + failure_detail)
                             else:
                                 state, status = "closed/failed", "failed"
                             # Keep the repairable prefix — a resource kill is still driven
@@ -3174,6 +3265,9 @@ def build_target(
     if not dry_run:
         _refresh_chair(target_dir)
 
+    unique_waivers = dedupe_waivers(waivers)
+    stamp_override(target_dir, unique_waivers)
+
     return BuildResult(
         target=target,
         build_dir=resolved_build_dir,
@@ -3181,4 +3275,8 @@ def build_target(
         readme_path=readme_path,
         dry_run=dry_run,
         env_result=env_result,
+        waivers=unique_waivers,
+        stalled_blocks=_outstanding_blocks(manifest_path)
+        if step_id is None and story_id is None
+        else (),
     )

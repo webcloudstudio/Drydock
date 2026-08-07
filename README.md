@@ -296,6 +296,7 @@ drydock --version
 
 drydock config show
 drydock config set <key> <value>
+drydock config env [<Target>]
 
 drydock init <Target> [--display-name <name>] [--description <desc>]
 drydock status [<Target>] [--check | --ready]
@@ -304,9 +305,9 @@ drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
 
 drydock import <Target> <Source> [--format <auto|markdown|source|speckit|compass|intent>] [--force]
 drydock analyze <Target> [--model <model>] [--llm-provider <claude|codex>]
-drydock plan [--overwrite] [--no-conform] [--continue-attempts <n>] <Target> [--model <model>] [--llm-provider <claude|codex>]
+drydock plan [--overwrite] [--no-conform] [--override] [--continue-attempts <n>] <Target> [--model <model>] [--llm-provider <claude|codex>]
 
-drydock build <Target> [--step <step-id>] [--ungate] [--force] [--build-dir <path>] [--reset-failed] [--normalize-order] [--dry-run] [--show-prompt]
+drydock build <Target> [--step <step-id>] [--ungate] [--override] [--force] [--build-dir <path>] [--reset-failed] [--normalize-order] [--dry-run] [--show-prompt]
 drydock build status <Target>
 drydock score spec <Target>
 drydock score ac <Target>

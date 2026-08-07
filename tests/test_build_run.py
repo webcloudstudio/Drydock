@@ -21,6 +21,7 @@ from drydock.build_run import (
     _ungate_acceptance_plan,
     build_target,
 )
+from drydock.decisions import Decision, write_decisions
 from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError, write_error_record
 from drydock.questions import parse_questions
@@ -3201,3 +3202,158 @@ def test_build_without_an_example_writes_no_env(tmp_path):
     assert result.env_result is not None
     assert result.env_result.detail == "no .env.example"
     assert not (build_dir / ".env").exists()
+
+
+def test_undeclared_runtime_prerequisite_fails_loudly_under_override(tmp_path):
+    """Override refuses to park a story on a question it can never answer.
+
+    The prerequisite really is absent and acceptance really did fail on it. Blocking exits 0 and
+    reads as success to an unattended driver; failing is the honest signal.
+    """
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """# DATABASE: Demo
+
+## Questions
+
+- None.
+
+## Programmatic Acceptance
+
+### health-route
+The health route returns OK.
+
+```python
+from target_app import health
+assert health() == "ok"
+```
+
+## User Acceptance
+
+- None.
+
+## Guardrails
+
+- None.
+""",
+        encoding="utf-8",
+    )
+
+    def runner(prompt, working_directory, **kwargs):
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "target_app.py").write_text(
+            "import surprise_transport\n\ndef health():\n    return 'ok'\n",
+            encoding="utf-8",
+        )
+        return FakeResult(text=_success_report(changed=("target_app.py",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        repair_attempts=3,
+        override=True,
+    )
+
+    assert result.steps[0].status == "failed"
+    assert _state(target_dir, "foundation") == "closed/failed"
+    assert result.exit_code() == 1
+    authorization = [w for w in result.waivers if w.kind == "acceptance-authorization"]
+    assert authorization and "surprise_transport" in authorization[0].detail
+    # Partial work is still preserved for the next pass.
+    assert (build_dir / "target_app.py").is_file()
+
+
+def test_override_stamps_the_target_as_ungoverned(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "METADATA.md").write_text(
+        "# METADATA\n\nname: Demo\nversion: 0.01\n", encoding="utf-8"
+    )
+    write_decisions(
+        target_dir / "DECISIONS.json",
+        (
+            Decision(
+                id="d-1",
+                type="tooling",
+                severity="blocking",
+                origin="plan",
+                blueprint="DATABASE.md",
+                story="foundation",
+                status="recommended",
+                archived=False,
+                title="Which engine?",
+                description="Pick one.",
+                options=(),
+                system_choice="sqlite",
+            ),
+        ),
+    )
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), override=True
+    )
+
+    assert result.steps[0].status == "built"
+    assert [w.kind for w in result.waivers] == ["story-question"]
+    metadata = (target_dir / "METADATA.md").read_text(encoding="utf-8")
+    assert "override: true" in metadata
+
+
+def test_a_gated_story_blocks_the_build_without_override(tmp_path):
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    write_decisions(
+        target_dir / "DECISIONS.json",
+        (
+            Decision(
+                id="d-1",
+                type="tooling",
+                severity="blocking",
+                origin="plan",
+                blueprint="DATABASE.md",
+                story="foundation",
+                status="recommended",
+                archived=False,
+                title="Which engine?",
+                description="Pick one.",
+                options=(),
+                system_choice="sqlite",
+            ),
+        ),
+    )
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    assert result.steps == []
+    assert _state(target_dir, "foundation") == "blocked/questions"
+    # A build that advanced nothing while the Manifest is unfinished has stalled, not succeeded.
+    assert result.stalled_blocks == ("foundation",)
+    assert result.exit_code() == 1
+
+
+def test_a_completed_target_is_not_stalled(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+
+    first = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+    assert first.exit_code() == 0
+    assert first.stalled_blocks == ()
+
+    # Re-running a finished Target builds nothing and must still report success.
+    again = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+    assert again.steps == []
+    assert again.stalled_blocks == ()
+    assert again.exit_code() == 0
+
+
+def test_a_scoped_build_is_never_reported_as_stalled(tmp_path):
+    """--step and --story are explicitly partial; the work they leave behind is intended."""
+    target_dir, build_dir = _setup(tmp_path)
+
+    result = build_target(
+        "Demo", target_dir, build_dir=build_dir, runner=make_runner(), step_id="foundation"
+    )
+
+    assert _state(target_dir, "service") == "pending"
+    assert result.stalled_blocks == ()
+    assert result.exit_code() == 0

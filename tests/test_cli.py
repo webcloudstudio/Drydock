@@ -739,6 +739,34 @@ class TestAnalyzeCommand:
         assert seen["Target"] == "Marina"
         assert seen["ungate"] is True
 
+    def test_plan_and_build_help_describe_override(self):
+        for command in ("plan", "build"):
+            rc, out, _ = run_cli(command, "--help")
+            assert rc == 0
+            assert "--override" in out
+            # The help must name what override does not waive; a reader who assumes it waives
+            # everything will trust a green run over a blocked analysis.
+            assert "BLOCKERS.md" in out
+
+    @pytest.mark.parametrize(
+        "argv",
+        [("build", "Marina", "--override"), ("build", "--override", "Marina")],
+    )
+    def test_build_override_is_applied_in_either_operand_order(self, monkeypatch, argv):
+        seen = {}
+
+        def fake_build(build_args):
+            seen.update(vars(build_args))
+            return 0
+
+        monkeypatch.setattr("drydock.cli.cmd_build", fake_build)
+
+        rc, _out, err = run_cli(*argv)
+
+        assert rc == 0, err
+        assert seen["Target"] == "Marina"
+        assert seen["override"] is True
+
     def test_document_and_score_help_list_dispatcher_only_options(self):
         rc, document_help, _ = run_cli("document", "--help")
         assert rc == 0

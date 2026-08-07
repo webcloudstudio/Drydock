@@ -342,6 +342,46 @@ def cmd_config_show(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_config_env(args: argparse.Namespace) -> int:
+    """Print resolved Drydock paths as shell assignments for ``eval``.
+
+    Scripts that drive Drydock should not restate where the workspace, targets root, or build
+    root live; those are configuration and can move. Naming a Target adds its directory and its
+    build directory. The Target need not exist yet — a driver that clears and regenerates a
+    Target has to learn the paths before creating it.
+    """
+    import shlex
+
+    from drydock.config import build_dir_for, get_build_directory, get_target_directory
+    from drydock.config import get_workspace as _get_workspace
+
+    rows: list[tuple[str, str]] = [
+        ("DRYDOCK_WORKSPACE", str(_get_workspace())),
+        ("DRYDOCK_TARGETS_ROOT", str(get_target_directory())),
+        ("DRYDOCK_BUILD_DIRECTORY", str(get_build_directory())),
+    ]
+    target = getattr(args, "Target", None)
+    if target:
+        from drydock.metadata import METADATA_NAME, get_build_dir
+
+        target_dir = get_target_directory() / target
+        # An initialized Target may redirect its build directory in METADATA.md; honor that
+        # rather than assuming the default layout.
+        build_dir = (
+            get_build_dir(target, target_dir)
+            if (target_dir / METADATA_NAME).is_file()
+            else build_dir_for(target)
+        )
+        rows.extend([
+            ("DRYDOCK_TARGET", target),
+            ("DRYDOCK_TARGET_DIR", str(target_dir)),
+            ("DRYDOCK_TARGET_BUILD_DIR", str(build_dir)),
+        ])
+    for key, value in rows:
+        print(f"{key}={shlex.quote(value)}")
+    return 0
+
+
 def cmd_config_set(args: argparse.Namespace) -> int:
     from drydock.config import config_set
 
@@ -745,6 +785,25 @@ def _print_plan_summary(plan) -> None:
     )
 
 
+OVERRIDE_HELP = (
+    "Waive the gates that wait on a human answer — unanswered Analyze questionnaire decisions, "
+    "blocking DECISIONS.json records, and acceptance prerequisites awaiting authorization — and "
+    "report them instead of stopping. A blocked analysis (BLOCKERS.md, Quality: Blocked) is still "
+    "fatal. Intended for unattended regression runs; the Target is stamped as ungoverned."
+)
+
+
+def _print_override_summary(waivers: object) -> None:
+    """Print the bypassed-gate block after a command's result line, if any gate was waived."""
+    from drydock.override import format_override_summary
+
+    items = tuple(waivers or ())  # type: ignore[arg-type]
+    if not items:
+        return
+    print()
+    print(format_override_summary(items))  # type: ignore[arg-type]
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     from drydock.config import (
         get_diagnose_enabled,
@@ -789,6 +848,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 get_diagnose_enabled() and not getattr(args, "no_diagnose", False)
             ),
             continue_attempts=continue_attempts,
+            override=bool(getattr(args, "override", False)),
         )
     if isinstance(result, PlanDeferredResult):
         print()
@@ -813,6 +873,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Execution: {getattr(result, 'execution_id', None) or '-'}")
     print(f"Elapsed: {_elapsed_text(time.monotonic() - plan_started)}")
     print(f"Review: {result.quarterdeck_dir}")
+    _print_override_summary(getattr(result, "waivers", ()))
     if not getattr(args, "debug", False):
         return 0
     if result.conformed_files:
@@ -1685,6 +1746,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         target_dir / "MANIFEST.md",
         target_dir / "blueprint",
         persist=not bool(getattr(args, "dry_run", False)),
+        override=bool(getattr(args, "override", False)),
     )
     frontier = plan.buildable_steps()
     frontier_text = ", ".join(block.block_id for block in frontier) or "empty"
@@ -1758,6 +1820,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             repair_attempts=repair_attempts,
             escalate_model=escalate_model,
             ungate=bool(getattr(args, "ungate", False)),
+            override=bool(getattr(args, "override", False)),
         )
     print()
     label = "dry-run result" if result.dry_run else "result"
@@ -1771,6 +1834,19 @@ def cmd_build(args: argparse.Namespace) -> int:
         reviewable = _reviewable_build_steps(target_dir)
         if reviewable:
             print("legacy implemented steps remain; rebuild or revise them to run acceptance")
+    if result.stalled():
+        # A stalled run used to be indistinguishable from a finished Target. Name the outstanding
+        # work and fail, so an unattended driver stops here instead of reporting success.
+        print()
+        print(
+            f"BUILD STALLED — {len(result.stalled_blocks)} block(s) outstanding and none could "
+            "advance:"
+        )
+        for block_id in result.stalled_blocks[:20]:
+            print(f"  {block_id}")
+        if len(result.stalled_blocks) > 20:
+            print(f"  ... and {len(result.stalled_blocks) - 20} more")
+    _print_override_summary(getattr(result, "waivers", ()))
     if debug:
         print(f"completed at {_wall_time()}")
         print(f"build dir: {result.build_dir}")
@@ -2374,6 +2450,12 @@ def _add_build_options(parser: argparse.ArgumentParser) -> None:
         "next buildable step.",
     )
     parser.add_argument(
+        "--override",
+        dest="override",
+        action="store_true",
+        help=OVERRIDE_HELP,
+    )
+    parser.add_argument(
         "--normalize-order",
         "--normalize_order",
         dest="normalize_order",
@@ -2494,6 +2576,18 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_llm_override_flags(p_config)
     cfg_sub = p_config.add_subparsers(dest="config_command", metavar="<subcommand>")
     cfg_sub.add_parser("show", help="Display current configuration values and sources.")
+    p_env = cfg_sub.add_parser(
+        "env",
+        help="Print resolved paths as shell KEY=value assignments.",
+        description=(
+            "drydock config env             — workspace, targets root, and build root\n"
+            "drydock config env <Target>    — also that Target's directory and build directory\n"
+            "\n"
+            'Consume with: eval "$(drydock config env <Target>)"'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_env.add_argument("Target", metavar="<Target>", nargs="?", default=None)
     p_set = cfg_sub.add_parser("set", help="Set a configuration value.")
     # Derived from the config module's key map, never restated here: a hand-maintained copy
     # silently drops keys, and a key absent from this list is unsettable however correctly
@@ -2710,6 +2804,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="In reuse mode, skip the LLM conform pass that authors Programmatic Acceptance "
         "assertions for imported specs whose acceptance is empty.",
     )
+    p_plan.add_argument("--override", action="store_true", help=OVERRIDE_HELP)
     p_plan.add_argument(
         "--continue-attempts",
         dest="continue_attempts",
@@ -2904,8 +2999,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _is_machine_readable_query(args: argparse.Namespace) -> bool:
-    """True for ``status --check``/``--ready``: script-facing gates whose stdout is a bare token."""
-    if getattr(args, "command", None) != "status":
+    """True for stdout that a script consumes verbatim, which the masthead would corrupt.
+
+    ``status --check``/``--ready`` emit a bare status token; ``config env`` emits shell
+    assignments meant for ``eval``.
+    """
+    command = getattr(args, "command", None)
+    if command == "config":
+        return getattr(args, "config_command", None) == "env"
+    if command != "status":
         return False
     trailing = set(getattr(args, "args", None) or []) & {"--check", "--ready"}
     return bool(getattr(args, "check", False) or getattr(args, "ready", False) or trailing)
@@ -3047,6 +3149,7 @@ def _dispatch_build(args: argparse.Namespace) -> int:
             "continue_": ("--continue",),
             "reset": ("--reset",),
             "ungate": ("--ungate",),
+            "override": ("--override",),
             "normalize_order": ("--normalize-order", "--normalize_order"),
             "dry_run": ("--dry-run",),
             "show_prompt": ("--show-prompt",),
@@ -3177,6 +3280,8 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             return cmd_config_show(args)
         if args.config_command == "set":
             return cmd_config_set(args)
+        if args.config_command == "env":
+            return cmd_config_env(args)
         parser.parse_args(["config", "--help"])
         return 0
 
@@ -3305,7 +3410,7 @@ def _log_command_history(args: argparse.Namespace, argv: list[str] | None, rc: i
         return  # bare `drydock` / help text
     if command in {"status", "validate"}:
         return  # pure report
-    if command == "config" and getattr(args, "config_command", None) == "show":
+    if command == "config" and getattr(args, "config_command", None) in {"show", "env"}:
         return  # pure report
 
     from drydock.config import append_command_history, get_workspace

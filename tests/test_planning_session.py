@@ -3889,3 +3889,81 @@ def test_an_amendment_that_touches_an_accepted_story_is_rejected(tmp_path):
 
     assert "specs: 1 / 2 accepted" in excinfo.value.record.detail
     assert not (target_dir / "MANIFEST.md").is_file()
+
+
+def _gate_plan_on_a_question(target_dir) -> None:
+    """Write an unanswered discovery decision that declares itself required before planning."""
+    questionnaires = target_dir / "QuarterDeck" / "questionnaires"
+    questionnaires.mkdir(parents=True, exist_ok=True)
+    (questionnaires / "discovery-stack.json").write_text(
+        json.dumps({
+            "archived": False,
+            "questions": [
+                {
+                    "id": "S-1",
+                    "label": "Which web framework?",
+                    "required_before_plan": True,
+                    "answer": "",
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_unanswered_required_decision_blocks_planning(tmp_path):
+    target_dir = _make_target(tmp_path)
+    _gate_plan_on_a_question(target_dir)
+
+    with pytest.raises(SpecificationError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert "Which web framework?" in str(excinfo.value)
+
+
+def test_override_waives_the_required_decision_and_reports_it(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "METADATA.md").write_text("# METADATA\n\nname: Example\n", encoding="utf-8")
+    _gate_plan_on_a_question(target_dir)
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()), override=True)
+
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert [w.kind for w in result.waivers] == ["plan-decision"]
+    assert "Which web framework?" in result.waivers[0].subject
+    assert "override: true" in (target_dir / "METADATA.md").read_text(encoding="utf-8")
+
+
+def test_override_does_not_waive_a_blocked_analysis(tmp_path):
+    """A blockers file is a verdict about the sources, not a question awaiting an answer."""
+    target_dir = _make_target(tmp_path)
+    (target_dir / "BLOCKERS.md").write_text("- The sources contradict each other.\n", "utf-8")
+
+    with pytest.raises(SpecificationError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()), override=True)
+
+    assert "BLOCKERS.md" in str(excinfo.value)
+
+
+def test_override_does_not_waive_blocked_analysis_quality(tmp_path):
+    target_dir = _make_target(tmp_path)
+    analysis = target_dir / "ANALYSIS.md"
+    analysis.write_text(
+        analysis.read_text(encoding="utf-8").replace("Quality: Questions", "Quality: Blocked"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SpecificationError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()), override=True)
+
+    assert "Blocked" in str(excinfo.value)
+
+
+def test_a_clean_plan_records_no_waivers(tmp_path):
+    target_dir = _make_target(tmp_path)
+    (target_dir / "METADATA.md").write_text("# METADATA\n\nname: Example\n", encoding="utf-8")
+
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
+
+    assert result.waivers == ()
+    assert "override:" not in (target_dir / "METADATA.md").read_text(encoding="utf-8")

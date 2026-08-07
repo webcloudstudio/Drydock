@@ -417,3 +417,75 @@ class TestConfigSetQuarterdeckPort:
     def test_set_non_integer_raises(self, isolated_config):
         with pytest.raises(ConfigurationError, match="65535"):
             config_set("quarterdeck_port", "eighty")
+
+
+class TestConfigEnv:
+    """``drydock config env`` — the path contract scripts consume instead of hardcoding."""
+
+    def _run(self, *args: str) -> tuple[int, str]:
+        import io
+        from contextlib import redirect_stdout
+
+        from drydock.cli import main
+
+        out = io.StringIO()
+        with redirect_stdout(out):
+            try:
+                main(["config", "env", *args])
+            except SystemExit as exc:
+                return int(exc.code or 0), out.getvalue()
+        return 0, out.getvalue()
+
+    def _parse(self, text: str) -> dict[str, str]:
+        import shlex
+
+        rows = {}
+        for line in text.splitlines():
+            key, _, value = line.partition("=")
+            rows[key] = shlex.split(value)[0] if value else ""
+        return rows
+
+    def test_bare_env_reports_the_roots_and_no_target(self, tmp_workspace, isolated_config):
+        config_set("drydock_workspace", str(tmp_workspace))
+
+        rc, out = self._run()
+
+        assert rc == 0
+        rows = self._parse(out)
+        assert rows["DRYDOCK_WORKSPACE"] == str(tmp_workspace)
+        assert rows["DRYDOCK_TARGETS_ROOT"] == str(tmp_workspace / "targets")
+        assert "DRYDOCK_TARGET_DIR" not in rows
+
+    def test_naming_a_target_adds_its_directories(self, tmp_workspace, isolated_config):
+        config_set("drydock_workspace", str(tmp_workspace))
+
+        rc, out = self._run("Demo")
+
+        assert rc == 0
+        rows = self._parse(out)
+        assert rows["DRYDOCK_TARGET"] == "Demo"
+        assert rows["DRYDOCK_TARGET_DIR"] == str(tmp_workspace / "targets" / "Demo")
+        assert rows["DRYDOCK_TARGET_BUILD_DIR"].endswith("Demo")
+
+    def test_an_uninitialized_target_still_resolves(self, tmp_workspace, isolated_config):
+        """A driver has to learn the paths before it can create the Target."""
+        config_set("drydock_workspace", str(tmp_workspace))
+        assert not (tmp_workspace / "targets" / "Fresh").exists()
+
+        rc, out = self._run("Fresh")
+
+        assert rc == 0
+        assert "DRYDOCK_TARGET_DIR" in self._parse(out)
+
+    def test_output_is_masthead_free_and_eval_safe(self, tmp_path, isolated_config):
+        spaced = tmp_path / "work space"
+        spaced.mkdir()
+        config_set("drydock_workspace", str(spaced))
+
+        rc, out = self._run("Demo")
+
+        assert rc == 0
+        # The masthead would be parsed as a stray command by eval.
+        assert "Drydock " not in out
+        assert all("=" in line for line in out.splitlines())
+        assert self._parse(out)["DRYDOCK_WORKSPACE"] == str(spaced)
