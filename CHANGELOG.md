@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-07: `drydock uat [<Project>]` runs known project fixtures as isolated, timestamped,
+  unattended builds using one configured model and provider. Ordered `tests/uat/<Project>/spec_N.md`
+  inputs exercise both the initial lifecycle and subsequent `import --update` → `refit --sources`
+  incremental rebuilds; the first fixture is ReadingList, derived from the prior helper scripts.
+  Each run preserves child-command transcripts and emits Markdown/JSON summaries with wall time,
+  LLM time, token/cache usage, build-pass counts, and advisory `score ac`, `score build`, and
+  `score release` results. Score failures are reported but do not mask whether the build lifecycle
+  itself completed.
+
 - 2026-08-07: `drydock plan --override` and `drydock build --override` waive the gates that wait
   on a human answer — unanswered Analyze questionnaire decisions marked `required_before_plan`,
   blocking `DECISIONS.json` records that park a story at `blocked/questions`, and acceptance

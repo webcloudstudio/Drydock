@@ -235,6 +235,7 @@ class TestHelpAndVersion:
             "status",
             "config",
             "init",
+            "uat",
             "validate",
             "document",
             "publish",
@@ -253,6 +254,14 @@ class TestHelpAndVersion:
     def test_help_lists_score_command(self):
         _, out, _ = run_cli("--help")
         assert "score" in out
+
+    def test_uat_help_describes_isolation_and_ordered_specs(self):
+        rc, out, err = run_cli("uat", "--help")
+
+        assert rc == 0, err
+        assert "spec_N.md" in out
+        assert "isolated" in out
+        assert "--max-build-passes" in out
 
     def test_score_help_shows_ac_and_release(self):
         rc, out, _ = run_cli("score", "--help")

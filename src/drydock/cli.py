@@ -391,6 +391,39 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_uat(args: argparse.Namespace) -> int:
+    """Run known project fixtures through an isolated unattended lifecycle."""
+    from drydock.config import get_effort, get_llm_provider, get_model, get_workspace
+    from drydock.uat import run_uat
+
+    workspace = get_workspace().resolve()
+    fixtures_root = (
+        args.fixtures_root.resolve()
+        if args.fixtures_root is not None
+        else workspace / "tests" / "uat"
+    )
+    output_root = (
+        args.output_root.resolve() if args.output_root is not None else workspace / "uat" / "runs"
+    )
+    if args.max_build_passes < 1:
+        raise UsageError("--max-build-passes must be at least 1")
+    run_root, results = run_uat(
+        workspace,
+        selected=args.Project,
+        fixtures_root=fixtures_root,
+        output_root=output_root,
+        model=get_model(getattr(args, "model", None)),
+        provider=get_llm_provider(getattr(args, "llm_provider", None)),
+        effort=get_effort(getattr(args, "effort", None)),
+        max_build_passes=args.max_build_passes,
+        on_event=lambda text: print(f"UAT: {text}", flush=True),
+    )
+    passed = sum(result.status == "passed" for result in results)
+    print(f"UAT: {passed}/{len(results)} project(s) passed")
+    print(f"Report: {run_root / 'SUMMARY.md'}")
+    return 0 if passed == len(results) else 1
+
+
 def _sync_workspace_skills(workspace: Path) -> None:
     """Install or upgrade Drydock's Claude Code and Codex skills, best-effort."""
     from drydock.skills import sync_skills
@@ -2614,6 +2647,45 @@ def _build_parser() -> argparse.ArgumentParser:
         help="One-line project description.",
     )
 
+    # ── uat ──────────────────────────────────────────────────────────────────
+    p_uat = sub.add_parser(
+        "uat",
+        help="Build known project fixtures unattended in isolated run directories.",
+        description=(
+            "drydock uat                    — run every project under tests/uat\n"
+            "drydock uat <Project>          — run one known project\n"
+            "\n"
+            "Each fixture runs in an isolated directory and supplies ordered spec_N.md inputs.\n"
+            "spec_1 performs the initial build;\n"
+            "later inputs run import --update, refit --sources, and an incremental rebuild.\n"
+            "Acceptance and release scores are advisory and are recorded with token and time data."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_llm_override_flags(p_uat)
+    p_uat.add_argument("Project", nargs="?", default=None, metavar="<Project>")
+    p_uat.add_argument(
+        "--fixtures-root",
+        type=Path,
+        default=None,
+        metavar="<path>",
+        help="Fixture root (default: <workspace>/tests/uat).",
+    )
+    p_uat.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        metavar="<path>",
+        help="Run report root (default: <workspace>/uat/runs).",
+    )
+    p_uat.add_argument(
+        "--max-build-passes",
+        type=int,
+        default=25,
+        metavar="<n>",
+        help="Maximum build passes per initial or refit stage (default: 25).",
+    )
+
     # ── status ────────────────────────────────────────────────────────────────
     # Handles: status
     #          status <Target>
@@ -3287,6 +3359,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     if command == "init":
         return cmd_init(args)
+
+    if command == "uat":
+        return cmd_uat(args)
 
     if command == "validate":
         rc = cmd_validate(args)
@@ -3980,7 +4055,7 @@ def _log_target(args: argparse.Namespace) -> str:
 
 
 # Commands that always reach a model.
-_LLM_COMMANDS = frozenset({"analyze", "plan", "refit", "survey", "import"})
+_LLM_COMMANDS = frozenset({"analyze", "plan", "refit", "survey", "import", "uat"})
 
 # Commands whose sub-verb decides. ``build status`` reports state, ``build`` and ``build score``
 # call a model; ``score ac`` verifies acceptance deterministically, ``score release`` judges with

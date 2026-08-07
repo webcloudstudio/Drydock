@@ -43,6 +43,7 @@ prompts/generated/
 
 # Drydock self-host workspace
 targets/
+uat/runs/
 
 # QuarterDeck local state
 QuarterDeck/data/*.sqlite
