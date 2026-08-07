@@ -14,8 +14,8 @@ from pathlib import Path
 from drydock.compass_sources import seed_compass_from_sources
 from drydock.errors import SpecificationError
 from drydock.init_specification import init_specification
+from drydock.lineage import record_import_root, record_initial_snapshot
 from drydock.metadata import METADATA_NAME, set_field
-from drydock.source_refit import record_import_root
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset({
     "venv",
@@ -136,7 +136,7 @@ def import_source(
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-    record_import_root(sources_dir, source, "source")
+    record_import_root(target_dir, source, "source")
 
     imported: list[Path] = []
     try:
@@ -153,6 +153,7 @@ def import_source(
     except OSError as exc:
         raise SpecificationError(f"Cannot copy source files: {exc}") from exc
     seed_compass_from_sources(target_dir, imported, overwrite_unpopulated=False)
+    record_initial_snapshot(target_dir, sources_dir)
 
     detected = detect_stack(source)
     if detected:

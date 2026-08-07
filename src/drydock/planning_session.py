@@ -3587,6 +3587,58 @@ def _approve_outside_text_candidate(
 # ── Entry point ─────────────────────────────────────────────────────────────────────
 
 
+def _record_plan_lineage(
+    target_dir: Path,
+    blueprint_dir: Path,
+    plan: object,
+    *,
+    runner: RunnerFn | None,
+    model: str | None,
+    llm_provider: str | None,
+    log_dir: Path | None,
+    target: str,
+) -> None:
+    """Record that this plan consumed the pending source versions, and which stories they became.
+
+    Planning is the only actor that reads the whole source and decides what it decomposes into, so
+    the provenance link is captured here rather than reconstructed later. Failure is never fatal:
+    a Target with unlinked lineage is repairable with ``drydock refit <Target> --relineage``, but a
+    plan lost to a bookkeeping error is not.
+    """
+    from datetime import date as _date
+
+    from drydock.lineage import consume_after_plan
+    from drydock.lineage_attribution import attribute_source
+    from drydock.target_git import head_commit
+
+    def attributor(rel_path: str, source_text: str):
+        return attribute_source(
+            rel_path,
+            source_text,
+            plan,
+            working_directory=blueprint_dir,
+            runner=runner,
+            log_dir=log_dir,
+            model=model,
+            llm_provider=llm_provider,
+            target=target,
+        )
+
+    try:
+        _, warnings = consume_after_plan(
+            target_dir,
+            blueprint_dir / "sources",
+            date=_date.today().isoformat(),
+            commit=head_commit(target_dir),
+            attributor=attributor,
+        )
+    except Exception as exc:  # noqa: BLE001 - lineage must never break planning
+        print(f"  lineage: not recorded ({exc})")
+        return
+    for warning in warnings:
+        print(f"  lineage: {warning}")
+
+
 def create_plan(
     blueprint: str,
     target: str,
@@ -4378,9 +4430,16 @@ def create_plan(
 
     # 2. Persist the already merged, normalized, fully validated executable graph once.
     plan.save(plan_path)
-    from drydock.source_refit import persist_source_lineage
-
-    persist_source_lineage(plan_path, blueprint_dir)
+    _record_plan_lineage(
+        target_dir,
+        blueprint_dir,
+        plan,
+        runner=runner,
+        model=model,
+        llm_provider=llm_provider,
+        log_dir=log_dir,
+        target=target,
+    )
     from drydock.question_gates import synchronize_manifest_question_gates
 
     plan = synchronize_manifest_question_gates(plan_path, blueprint_dir)

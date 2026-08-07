@@ -11,7 +11,7 @@ header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio.
 ---
 
-Drydock turns project specifications into working software. This guide builds a trivial application to demonstrate the process.
+Drydock turns project specifications into working software. This guide builds a trivial application called ReadingList to demonstrate the process.
 
 The workflow follows the commands you run:
 
@@ -163,15 +163,37 @@ From the quartedeck you can see the stages of the build and the details of each 
 drydock build ReadingList       # Build the app
 ```
 
-The created application is in $drydock_build_directory/ReadingList/
-
-```text
-cd $drydock_build_directory/ReadingList/
-```
-
-Each application
+The created application is in $drydock_build_directory/ReadingList/.
 
 Run it using the project instructions generated in that directory.
+
+<figure style="margin: 1.5rem auto; text-align: center;">
+  <img src="Quickstart_UVRUN.png"
+       alt="Terminal running the generated ReadingList application with uv"
+       style="display: block; width: 100%; max-width: 774px; height: auto; margin: 0 auto; object-fit: contain;">
+  <figcaption><em>Follow the generated project instructions to start the application; this example runs it with <code>uv run run.py</code>.</em></figcaption>
+</figure>
+
+Add Application - Quickstart_App.png
+
+## 6. Refit - Changing the Application
+
+Add the following line to `reading-list.md`:
+
+```markdown
+The reader can mark a book as read and view whether each book is unread or read.
+```
+And now run:
+
+```bash
+drydock import ReadingList --update  # Re-import your updated specs
+drydock refit ReadingList --sources  # Create Refit Tickets, Update the Manifest
+drydock build ReadingList            # Incremental Build
+```
+
+This is drydocks development workflow - designed for high velocity changes to your specifications.  `drydock refit` git diffs the re-imported source materials, maps sources blueprints, appends to the build graph enabling you to `drydock build` normally.
+
+The post-production workflow by uses a similar process but treats the internal blueprints and not the user specifications as canonical.  Production change tickets map directly to blueprints to minimize drift as the replan becomes mechanical (no llm).
 
 ## What you just built
 
@@ -193,25 +215,6 @@ flowchart LR
     class PLUS governed
     class C,V output
 ```
-
-Add - Quickstart_UVRUN.png
-
-## Changing the Application
-
-Add the following line to `reading-list.md`:
-
-```markdown
-The reader can mark a book as read and view whether each book is unread or read.
-```
-
-```bash
-drydock import ReadingList --update  # Re-import your specs
-drydock refit ReadingList --sources  # Create Refit Tickets
-                                     # Update the Manifest
-drydock build ReadingList            # Incremental Build
-```
-
-The above is the development workflow and is designed for high velocity changes to your specifications.  Refit compares updated source materials to previous versions and maps the change to the build graph.  You build normally.
 
 # References
 

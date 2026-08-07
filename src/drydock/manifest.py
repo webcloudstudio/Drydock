@@ -1399,12 +1399,53 @@ class DrydockManifest:
         self.applied_specs = dict(records)
         self.set_metadata(applied_specs="\n".join(lines))
 
-    def set_source_lineage(self, lineage: Mapping[str, object]) -> None:
-        """Replace the isolated source-to-Blueprint lineage registry."""
-        self.source_lineage = dict(lineage)
-        self.set_metadata(
-            source_lineage=json.dumps(self.source_lineage, sort_keys=True, separators=(",", ":"))
-        )
+    def remove_metadata(self, key: str) -> bool:
+        """Drop a preamble metadata field and its block-scalar continuation lines.
+
+        ``_sync_preamble`` only rewrites keys it still finds in ``metadata.fields``; a key merely
+        deleted from that mapping falls through to the verbatim branch and survives in the file.
+        Removal therefore has to splice the source lines out as well.
+        """
+        key = key.lower()
+        existed = self.metadata.fields.pop(key, None) is not None
+        output: list[str] = []
+        index = 0
+        removed = False
+        while index < len(self.preamble):
+            match = _FIELD_RE.match(self.preamble[index])
+            if match and match.group(1).lower() == key:
+                removed = True
+                index += 1
+                # Consume the block-scalar body. A blank line only belongs to the field when an
+                # indented line follows it; otherwise it is the separator before the next block.
+                while index < len(self.preamble):
+                    line = self.preamble[index]
+                    if line[:1].isspace() and line.strip():
+                        index += 1
+                        continue
+                    if not line.strip():
+                        following = next(
+                            (
+                                candidate
+                                for candidate in self.preamble[index + 1 :]
+                                if candidate.strip()
+                            ),
+                            None,
+                        )
+                        if following is not None and following[:1].isspace():
+                            index += 1
+                            continue
+                    break
+                continue
+            output.append(self.preamble[index])
+            index += 1
+        self.preamble = output
+        return existed or removed
+
+    def clear_source_lineage(self) -> bool:
+        """Retire the ``source_lineage:`` preamble field; ``LINEAGE.json`` owns lineage now."""
+        self.source_lineage = {}
+        return self.remove_metadata("source_lineage")
 
     def _sync_preamble(self) -> None:
         existing = list(self.preamble)

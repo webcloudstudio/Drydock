@@ -6,6 +6,7 @@ import pytest
 
 from drydock.errors import SpecificationError
 from drydock.import_speckit import discover_speckit, import_speckit
+from drydock.lineage import load_lineage
 
 
 def _make_speckit(root, features=None):
@@ -119,17 +120,18 @@ class TestImportSpecKit:
         sources = result.blueprint_dir / "sources"
         assert (sources / "specs" / "auth" / "spec.md").is_file()
 
-    def test_drydock_import_marker_written(self, tmp_path):
+    def test_import_root_recorded_in_lineage(self, tmp_path):
         src = self._make_src(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
 
         result = import_speckit("Proj", "Tgt", src, td)
 
-        marker = result.blueprint_dir / "sources" / ".drydock-import"
-        assert marker.is_file()
-        text = marker.read_text(encoding="utf-8")
-        assert "format: speckit" in text
+        lineage = load_lineage(result.blueprint_dir.parent)
+        assert lineage.import_record.format == "speckit"
+        assert lineage.import_record.root == str(src)
+        assert lineage.sources
+        assert not (result.blueprint_dir / "sources" / ".drydock-import").exists()
 
     def test_features_found_reported(self, tmp_path):
         src = _make_speckit(

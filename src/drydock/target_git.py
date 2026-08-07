@@ -87,18 +87,24 @@ def commit_target(target_dir: Path, message: str) -> str | None:
     return head_commit(target_dir)
 
 
-def amend_head(target_dir: Path, paths: Sequence[str]) -> bool:
-    """Fold ``paths`` into the tip commit without changing its message.
+def commit_paths(target_dir: Path, paths: Sequence[str], message: str) -> str | None:
+    """Commit only ``paths``, quietly, and return the resulting sha.
 
-    Used when a record can only be completed after the commit exists — the commit sha a version
-    record needs is not known until the commit is made. Amending keeps one commit per import
-    rather than emitting a second bookkeeping commit.
+    A lineage record names the commit that introduced a source version, so that commit has to
+    exist before the record can be written — and it must stay reachable afterwards. Amending it
+    to fold the record in would orphan the very sha the record points at, so the stamp lands as
+    its own small follow-up commit instead.
     """
     if not is_repo(target_dir) or not paths:
-        return False
+        return None
     if _run(target_dir, "add", "--", *paths, timeout=15)[0] != 0:
-        return False
-    return _run(target_dir, "commit", "--amend", "--no-edit")[0] == 0
+        return None
+    code, _ = _run(target_dir, "diff", "--cached", "--quiet", "--", *paths)
+    if code == 0:
+        return None
+    if _run(target_dir, "commit", "-m", message, "--", *paths)[0] != 0:
+        return None
+    return head_commit(target_dir)
 
 
 def file_versions(target_dir: Path, rel_path: str) -> tuple[SourceVersion, ...]:

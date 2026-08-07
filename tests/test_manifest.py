@@ -181,3 +181,50 @@ def test_replay_20260727_context_manifest_parses_without_executing_acceptance():
 
     assert len(graph.blocks) == 67
     assert [node.block_id for node in graph.runnable_frontier()] == ["scaffold"]
+
+
+_LINEAGE_MANIFEST = """# MANIFEST: Demo
+state: approved
+source_lineage: |
+  {"version": 1, "files": {"spec.md": {"hash": "old"}}}
+updated: 2026-08-06
+
+## story 1: Demo
+id: demo
+summary: Demo
+implements: FEATURE-Demo.md
+state: pending
+"""
+
+
+def test_clear_source_lineage_removes_the_preamble_field_and_its_body():
+    manifest = DrydockManifest.parse(_LINEAGE_MANIFEST, source="test")
+
+    assert manifest.clear_source_lineage() is True
+
+    rendered = manifest.render()
+    assert "source_lineage" not in rendered
+    assert '{"version": 1' not in rendered
+    assert "updated: 2026-08-06" in rendered
+    assert "## story 1: Demo" in rendered
+    assert manifest.source_lineage == {}
+
+
+def test_clear_source_lineage_survives_a_save_and_reload(tmp_path: Path):
+    path = tmp_path / "MANIFEST.md"
+    path.write_text(_LINEAGE_MANIFEST, encoding="utf-8")
+    manifest = DrydockManifest.load(path, compatibility=True)
+
+    manifest.clear_source_lineage()
+    manifest.save()
+
+    reloaded = DrydockManifest.load(path, compatibility=True)
+    assert reloaded.source_lineage == {}
+    assert "source_lineage" not in path.read_text(encoding="utf-8")
+    assert reloaded.node("demo").block_id == "demo"
+
+
+def test_remove_metadata_reports_a_missing_field():
+    manifest = DrydockManifest.parse(_LINEAGE_MANIFEST, source="test")
+
+    assert manifest.remove_metadata("nonexistent") is False

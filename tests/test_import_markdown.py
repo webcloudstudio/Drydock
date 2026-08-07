@@ -6,6 +6,7 @@ import pytest
 
 from drydock.errors import SpecificationError
 from drydock.import_markdown import import_markdown
+from drydock.lineage import load_lineage
 
 
 class TestImportMarkdownFile:
@@ -25,7 +26,7 @@ class TestImportMarkdownFile:
             str(p.relative_to(result.blueprint_dir)) for p in result.imported
         ]
 
-    def test_drydock_import_marker_written(self, tmp_path):
+    def test_import_root_recorded_in_lineage(self, tmp_path):
         source = tmp_path / "req.md"
         source.write_text("# Req\n", encoding="utf-8")
         td = tmp_path / "targets"
@@ -33,11 +34,11 @@ class TestImportMarkdownFile:
 
         result = import_markdown("Proj", "Tgt", source, td)
 
-        marker = result.blueprint_dir / "sources" / ".drydock-import"
-        assert marker.is_file()
-        text = marker.read_text(encoding="utf-8")
-        assert "format: markdown" in text
-        assert str(source) in text
+        lineage = load_lineage(result.blueprint_dir.parent)
+        assert lineage.import_record.format == "markdown"
+        assert lineage.import_record.root == str(source)
+        assert "req.md" in lineage.sources
+        assert not (result.blueprint_dir / "sources" / ".drydock-import").exists()
 
     def test_single_non_md_file_is_copied(self, tmp_path):
         source = tmp_path / "spec.txt"

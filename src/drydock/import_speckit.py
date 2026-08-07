@@ -16,7 +16,7 @@ from pathlib import Path
 
 from drydock.errors import SpecificationError
 from drydock.init_specification import init_specification
-from drydock.source_refit import record_import_root
+from drydock.lineage import record_import_root, record_initial_snapshot
 
 # Spec Kit directories that contain the project specification.
 _SPECKIT_SUBDIRS: tuple[str, ...] = (".specify", "specs")
@@ -133,7 +133,7 @@ def import_speckit(
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-    record_import_root(sources_dir, source, "speckit")
+    record_import_root(target_dir, source, "speckit")
 
     imported: list[Path] = []
     for subdir_name in _SPECKIT_SUBDIRS:
@@ -157,6 +157,8 @@ def import_speckit(
                 imported.append(destination)
         except OSError as exc:
             raise SpecificationError(f"Cannot copy Spec Kit files: {exc}") from exc
+
+    record_initial_snapshot(target_dir, sources_dir)
 
     return ImportSpecKitResult(
         blueprint=blueprint,

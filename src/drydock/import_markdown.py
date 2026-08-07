@@ -12,9 +12,9 @@ from drydock.artifact_blocks import parse_artifact_blocks
 from drydock.compass_sources import clear_compass_import_pending, seed_compass_from_sources
 from drydock.errors import SpecificationError, UsageError
 from drydock.init_specification import init_specification
+from drydock.lineage import record_import_root, record_initial_snapshot
 from drydock.llm import run_prompt
 from drydock.prompts import load_prompt
-from drydock.source_refit import record_import_root
 
 _COMPASS_PROMPT_NAME = "import_compass"
 
@@ -109,7 +109,7 @@ def import_markdown(
 
     sources_dir = blueprint_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-    record_import_root(sources_dir, source, "markdown")
+    record_import_root(target_dir, source, "markdown")
     imported: list[Path] = []
     for source_path, relative in _import_files(source):
         destination = sources_dir / relative
@@ -117,6 +117,7 @@ def import_markdown(
         shutil.copyfile(source_path, destination)
         imported.append(destination)
     seed_compass_from_sources(target_dir, imported, overwrite_unpopulated=False)
+    record_initial_snapshot(target_dir, sources_dir)
 
     return ImportResult(
         blueprint=blueprint,

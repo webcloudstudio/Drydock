@@ -5,7 +5,7 @@ from pathlib import Path
 
 from drydock import source_refit
 from drydock.target_git import (
-    amend_head,
+    commit_paths,
     commit_target,
     diff,
     file_versions,
@@ -83,20 +83,19 @@ def test_source_refit_still_exports_commit_target():
     assert source_refit.commit_target is commit_target
 
 
-def test_amend_head_folds_a_file_into_the_tip_commit(tmp_path):
+def test_commit_paths_leaves_the_prior_commit_reachable(tmp_path):
     target = _repo(tmp_path)
     _write(target, "a.md", "a\n")
     _commit(target, "first")
-    before = head_commit(target)
+    first = head_commit(target)
     _write(target, "LINEAGE.json", "{}\n")
+    _write(target, "unrelated.md", "keep me out\n")
 
-    assert amend_head(target, ["LINEAGE.json"]) is True
+    sha = commit_paths(target, ["LINEAGE.json"], "Record source lineage")
 
-    assert head_commit(target) != before
-    log = subprocess.run(
-        ["git", "log", "--format=%s"], cwd=target, capture_output=True, text=True, check=True
-    )
-    assert log.stdout.split() == ["first"]
+    assert sha not in (None, first)
+    # The sha a lineage record points at must survive the stamp; amending would orphan it.
+    assert show(target, first, "a.md") == "a\n"
     files = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"],
         cwd=target,
@@ -104,14 +103,22 @@ def test_amend_head_folds_a_file_into_the_tip_commit(tmp_path):
         text=True,
         check=True,
     )
-    assert "LINEAGE.json" in files.stdout
+    assert files.stdout.split() == ["LINEAGE.json"]
 
 
-def test_amend_head_without_a_repository_is_a_noop(tmp_path):
+def test_commit_paths_is_a_noop_when_the_path_is_unchanged(tmp_path):
+    target = _repo(tmp_path)
+    _write(target, "LINEAGE.json", "{}\n")
+    _commit(target, "first")
+
+    assert commit_paths(target, ["LINEAGE.json"], "Record source lineage") is None
+
+
+def test_commit_paths_without_a_repository_is_a_noop(tmp_path):
     plain = tmp_path / "NoRepo"
     plain.mkdir()
 
-    assert amend_head(plain, ["LINEAGE.json"]) is False
+    assert commit_paths(plain, ["LINEAGE.json"], "Record source lineage") is None
 
 
 def test_file_versions_returns_every_version_oldest_first(tmp_path):

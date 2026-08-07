@@ -8,6 +8,7 @@ import pytest
 
 from drydock.errors import SpecificationError
 from drydock.import_source import _is_excluded, detect_stack, import_source
+from drydock.lineage import load_lineage
 
 # ---------------------------------------------------------------------------
 # Stack detection
@@ -102,17 +103,18 @@ class TestImportSource:
 
         assert (result.blueprint_dir / "sources" / "utils" / "helpers.py").is_file()
 
-    def test_drydock_import_marker_written(self, tmp_path):
+    def test_import_root_recorded_in_lineage(self, tmp_path):
         src = self._make_source(tmp_path)
         td = tmp_path / "targets"
         td.mkdir()
 
         result = import_source("Proj", "Tgt", src, td)
 
-        marker = result.blueprint_dir / "sources" / ".drydock-import"
-        assert marker.is_file()
-        text = marker.read_text(encoding="utf-8")
-        assert "format: source" in text
+        lineage = load_lineage(result.blueprint_dir.parent)
+        assert lineage.import_record.format == "source"
+        assert lineage.import_record.root == str(src)
+        assert lineage.sources
+        assert not (result.blueprint_dir / "sources" / ".drydock-import").exists()
 
     def test_intent_file_seeds_compass(self, tmp_path):
         src = self._make_source(tmp_path)

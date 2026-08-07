@@ -877,25 +877,51 @@ def cmd_prompt_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def _commit_and_stamp(target_dir: Path, message: str) -> str | None:
+    """Commit the Target, then record the resulting sha against the versions it just introduced.
+
+    A version's commit cannot be known until the commit exists, so lineage is written with a null
+    sha and stamped afterwards. The stamp is its own follow-up commit: amending would rewrite the
+    commit the record points at, leaving every recorded sha unreachable.
+    """
+    from drydock.lineage import load_lineage, stamp_pending_commits, write_lineage
+    from drydock.target_git import commit_paths, commit_target
+
+    commit = commit_target(target_dir, message)
+    if not commit:
+        return None
+    lineage = load_lineage(target_dir)
+    if stamp_pending_commits(lineage, commit):
+        write_lineage(target_dir, lineage)
+        commit_paths(target_dir, ["LINEAGE.json"], "Record source lineage")
+    return commit
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     from drydock.config import get_target_directory
     from drydock.import_markdown import detect_import_format
 
     td = get_target_directory()
 
-    # --update refreshes the snapshot recorded in blueprint/sources/.drydock-import; the source
-    # root and format come from that metadata, so no <Source> argument is accepted or needed.
+    # --update refreshes the snapshot from the import root recorded in LINEAGE.json, so no
+    # <Source> argument is accepted or needed.
     if getattr(args, "update", False):
-        from drydock.source_refit import commit_target, update_import
+        from drydock.source_refit import update_import
 
         if args.Source is not None:
             raise UsageError("--update refreshes the recorded source root; do not pass <Source>")
-        result = update_import(td / args.Target)
-        commit_target(td / args.Target, "Refresh imported source snapshot")
+        target_dir = td / args.Target
+        result = update_import(target_dir)
+        _commit_and_stamp(target_dir, "Refresh imported source snapshot")
         print(
             f"Source update: {len(result.added)} added, {len(result.changed)} changed, "
             f"{len(result.deleted)} deleted, {len(result.unchanged)} unchanged"
         )
+        if result.pending_versions:
+            print(
+                f"  {result.pending_versions} source version(s) pending; "
+                f"run: drydock refit {args.Target} --sources"
+            )
         return 0
 
     if args.Source is None:
@@ -923,7 +949,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         from drydock.source_refit import commit_target
 
         result = import_markdown(args.Target, args.Target, source, td)
-        commit_target(td / args.Target, "Import source snapshot")
+        _commit_and_stamp(td / args.Target, "Import source snapshot")
         print_import_result(result.source, result.imported, result.blueprint_dir / "sources")
         return 0
 
@@ -932,7 +958,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         from drydock.source_refit import commit_target
 
         source_result = import_source(args.Target, args.Target, source, td)
-        commit_target(td / args.Target, "Import source snapshot")
+        _commit_and_stamp(td / args.Target, "Import source snapshot")
         print_import_result(
             source_result.source, source_result.imported, source_result.blueprint_dir / "sources"
         )
@@ -943,7 +969,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         from drydock.source_refit import commit_target
 
         speckit_result = import_speckit(args.Target, args.Target, source, td)
-        commit_target(td / args.Target, "Import source snapshot")
+        _commit_and_stamp(td / args.Target, "Import source snapshot")
         print_import_result(
             speckit_result.source, speckit_result.imported, speckit_result.blueprint_dir / "sources"
         )
