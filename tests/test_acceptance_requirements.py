@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from drydock import acceptance_requirements
+from drydock import acceptance_requirements, target_environment
 from drydock.acceptance import (
     AcceptanceRequirement,
     parse_programmatic_acceptance_text,
@@ -90,6 +90,75 @@ def test_distribution_metadata_is_discovered_once_per_process(monkeypatch):
         acceptance_requirements._distribution_map.cache_clear()
 
     assert calls == 1
+
+
+def test_target_package_inventory_is_reused_until_invalidated(tmp_path, monkeypatch):
+    class Distribution:
+        metadata = {"Name": "httpx"}
+
+    calls = 0
+
+    def distributions(*, path):
+        nonlocal calls
+        calls += 1
+        assert path
+        return (Distribution(),)
+
+    interpreter = tmp_path / ".venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.touch()
+    site_packages = tmp_path / ".venv" / "lib" / "python3.12" / "site-packages"
+    site_packages.mkdir(parents=True)
+    monkeypatch.setattr(acceptance_requirements.importlib.metadata, "distributions", distributions)
+    acceptance_requirements.invalidate_target_environment_inventory()
+    requirement = AcceptanceRequirement("python-package", "httpx", "test")
+
+    try:
+        assert acceptance_requirements.requirement_available(requirement, tmp_path)
+        assert acceptance_requirements.requirement_available(requirement, tmp_path)
+        assert calls == 1
+
+        acceptance_requirements.invalidate_target_environment_inventory()
+        assert acceptance_requirements.requirement_available(requirement, tmp_path)
+        assert calls == 2
+    finally:
+        acceptance_requirements.invalidate_target_environment_inventory()
+
+
+def test_uv_provisioning_invalidates_target_package_inventory(tmp_path, monkeypatch):
+    class Distribution:
+        metadata = {"Name": "httpx"}
+
+    provisioned = False
+
+    def distributions(*, path):
+        assert path
+        return (Distribution(),) if provisioned else ()
+
+    def run(*args, **kwargs):
+        nonlocal provisioned
+        provisioned = True
+        return type("Completed", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "uv.lock").touch()
+    interpreter = tmp_path / ".venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.touch()
+    (tmp_path / ".venv" / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
+    monkeypatch.setattr(acceptance_requirements.importlib.metadata, "distributions", distributions)
+    monkeypatch.setattr(target_environment.shutil, "which", lambda name: "/usr/bin/uv")
+    monkeypatch.setattr(target_environment.subprocess, "run", run)
+    acceptance_requirements.invalidate_target_environment_inventory()
+    requirement = AcceptanceRequirement("python-package", "httpx", "test")
+
+    try:
+        assert not acceptance_requirements.requirement_available(requirement, tmp_path)
+        result = target_environment.provision_uv_environment(tmp_path)
+        assert result.interpreter == interpreter
+        assert acceptance_requirements.requirement_available(requirement, tmp_path)
+    finally:
+        acceptance_requirements.invalidate_target_environment_inventory()
 
 
 def test_plan_projects_canonical_story_local_tooling_question(tmp_path):

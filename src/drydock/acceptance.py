@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from drydock.build_plan import BuildPlan, PlanBlock
@@ -336,7 +337,18 @@ def _requirements(prefix: str, *, source: str, check_id: str) -> tuple[Acceptanc
 
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:
     """Return Python acceptance snippets from one Blueprint spec file."""
-    return parse_programmatic_acceptance_text(path.read_text(encoding="utf-8"), source=path.name)
+    stat = path.stat()
+    return _parse_programmatic_acceptance_file(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+
+@cache
+def _parse_programmatic_acceptance_file(
+    path: str, _mtime_ns: int, _size: int
+) -> tuple[ProgrammaticAcceptance, ...]:
+    source = Path(path)
+    return parse_programmatic_acceptance_text(
+        source.read_text(encoding="utf-8"), source=source.name
+    )
 
 
 def parse_programmatic_acceptance_text(

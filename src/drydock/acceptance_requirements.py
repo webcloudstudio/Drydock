@@ -140,8 +140,14 @@ def _manifest_packages(build_dir: Path) -> frozenset[str]:
     path = build_dir / "pyproject.toml"
     if not path.is_file():
         return frozenset()
+    stat = path.stat()
+    return _manifest_packages_file(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+
+@cache
+def _manifest_packages_file(path: str, _mtime_ns: int, _size: int) -> frozenset[str]:
     try:
-        doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        doc = tomllib.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, tomllib.TOMLDecodeError):
         return frozenset()
     project = doc.get("project", {})
@@ -159,23 +165,46 @@ def _manifest_packages(build_dir: Path) -> frozenset[str]:
     return frozenset(names)
 
 
+@cache
+def _target_python_packages(build_dir: str) -> frozenset[str]:
+    venv = Path(build_dir) / ".venv"
+    candidates = [*venv.glob("lib/python*/site-packages"), venv / "Lib" / "site-packages"]
+    names = []
+    for root in candidates:
+        if not root.is_dir():
+            continue
+        for distribution in importlib.metadata.distributions(path=[str(root)]):
+            name = distribution.metadata.get("Name", "")
+            if name:
+                names.append(canonicalize_package_name(name))
+    return frozenset(names)
+
+
+def invalidate_target_environment_inventory() -> None:
+    """Discard Target package inventories after environment provisioning."""
+    _target_python_packages.cache_clear()
+
+
 def requirement_available(requirement: AcceptanceRequirement, build_dir: Path) -> bool:
     if requirement.kind == "executable":
         return shutil.which(requirement.name) is not None
     environment = resolve_target_environment(build_dir)
     if environment.interpreter is None:
         return False
-    venv = build_dir / ".venv"
-    candidates = [*venv.glob("lib/python*/site-packages"), venv / "Lib" / "site-packages"]
     wanted = canonicalize_package_name(requirement.name)
-    for root in candidates:
-        if not root.is_dir():
-            continue
-        for distribution in importlib.metadata.distributions(path=[str(root)]):
-            name = distribution.metadata.get("Name", "")
-            if name and canonicalize_package_name(name) == wanted:
-                return True
-    return False
+    return wanted in _target_python_packages(str(build_dir.resolve()))
+
+
+@cache
+def _technology_stack_text(path: str, _mtime_ns: int, _size: int) -> str:
+    return Path(path).read_text(encoding="utf-8").lower()
+
+
+def _technology_stack_contains(path: Path, value: str) -> bool:
+    stat = path.stat()
+    return value.lower() in _technology_stack_text(
+        str(path.resolve()), stat.st_mtime_ns, stat.st_size
+    )
 
 
 def _decision_authorizes(requirement: AcceptanceRequirement, decision: Decision) -> bool:
@@ -202,7 +231,7 @@ def authorization_for(
     ) in _manifest_packages(build_dir):
         return RequirementAuthorization(requirement, True, "existing Target dependency manifest")
     stack = target_dir / "TECHNOLOGY_STACK.md"
-    if stack.is_file() and requirement.name.lower() in stack.read_text(encoding="utf-8").lower():
+    if stack.is_file() and _technology_stack_contains(stack, requirement.name):
         return RequirementAuthorization(requirement, True, "Commander technology stack")
     for decision in load_decisions(target_dir / "DECISIONS.json"):
         if not decision.archived and _decision_authorizes(requirement, decision):

@@ -91,10 +91,12 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
-- 2026-08-06: Programmatic Acceptance validation now discovers installed Python distribution
-  metadata once per Drydock process instead of rescanning the environment twice per acceptance
-  check. This removes repeated high-latency package metadata traversal during planning,
-  particularly when the environment resides on a Windows-mounted filesystem under WSL.
+- 2026-08-06: Programmatic Acceptance validation now caches installed Python distribution
+  metadata, Target environment package inventories, dependency manifests, Technology Stack text,
+  and parsed Blueprint acceptance for the duration of a Drydock workflow. Target package
+  inventory is explicitly invalidated after `uv sync --locked`; `DECISIONS.json` remains
+  live-read. This removes repeated high-latency metadata and specification traversal during Plan,
+  Build, and Score, particularly on Windows-mounted filesystems under WSL.
 
 - 2026-08-06: Text-only LLM-assisted commands no longer run with a writable codex sandbox.
   `llm.run_prompt(allow_tools=False)` suppressed tools on the `claude` path only; the `codex`

@@ -59,6 +59,9 @@ def provision_uv_environment(build_dir: Path) -> TargetEnvironment:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip() or "uv sync failed"
         return TargetEnvironment(None, detail, "uv sync --locked failed")
+    from drydock.acceptance_requirements import invalidate_target_environment_inventory
+
+    invalidate_target_environment_inventory()
     resolved = resolve_target_environment(build_dir)
     return TargetEnvironment(
         resolved.interpreter,
