@@ -98,6 +98,24 @@ are not authored Specification files.
 |-------|--------|----------|-------------|
 | `Amends` | Author / `drydock refit` | Yes | The parent Blueprint spec this ticket modifies (e.g. `FEATURE-Copy.md`). `drydock refit` reads this field to resolve dependency inheritance and inject parent context. |
 | `Depends On` | `drydock refit` | Yes | Copied from the parent spec's `Depends On` set plus the parent spec filename itself. Do not edit manually. |
+| `Scope` | Author / `drydock refit --sources` | Yes | `additive` or `amending`. Governs what the ticket supersedes. |
+| `Created` | `drydock refit` | Yes | ISO date the ticket was authored. |
+| `Origin` | `drydock refit --sources` | No | The source version this ticket came from, as `<source>@<commit>`. Absent on hand-authored tickets. |
+| `Stories` | `drydock refit --sources` | No | The Manifest story ids this ticket owns. When present, `drydock refit` emits exactly these ids and never invents new ones. |
+
+**Scope semantics.** A ticket declares its authority over its parent in one sentence directly
+below the header table.
+
+- `additive` — the ticket adds behavior. It supersedes nothing, and every assertion in the parent
+  Blueprint remains in force. Sentence: *"This ticket is additive. It supersedes nothing; every
+  assertion in `<parent>` remains in force."*
+- `amending` — the ticket alters behavior already specified. It supersedes only the sections
+  listed under `## Amended Sections`, each of which must exist as a heading in the parent.
+  Sentence: *"This ticket amends `<parent>`. It supersedes only the sections named under
+  `## Amended Sections`; every other assertion in `<parent>` remains in force."*
+
+An additive ticket must never claim authority over its whole parent: a single added requirement
+would otherwise supersede assertions it does not mention and that have already been proven.
 
 ---
 

@@ -75,6 +75,10 @@ _CANONICAL_FIELDS = {
         "id",
         "parent",
         "summary",
+        # Provenance, written by refit and by lineage attribution. Optional: a story planned
+        # before lineage existed carries neither, and must keep parsing.
+        "origin",
+        "created",
         "type",
         "kind",
         "phase",

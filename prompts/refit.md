@@ -68,6 +68,10 @@ Every change ticket must begin with a typed header. Use the values from the job 
 - **Version** is always `{DATE} V1` unless a version already exists for today — then increment the number.
 - **Amends** is copied verbatim from the job block `AMENDS` value.
 - **Depends On** is copied verbatim from the job block `DEPENDS_ON` value. Do not invent or modify this list.
+- **Scope** is copied verbatim from the job block `SCOPE` value when present, otherwise `amending`.
+- **Origin**, **Created**, and **Stories** are copied verbatim from the input ticket when present. Never remove, renumber, or rewrite them.
+
+Directly below the header table, emit the scope sentence exactly as `BLUEPRINTS_CONTRACT.md` specifies for the declared scope. An `additive` ticket supersedes nothing. An `amending` ticket supersedes only the sections it lists under `## Amended Sections`, and every listed section must exist as a heading in the parent spec.
 
 ---
 
@@ -120,6 +124,7 @@ state:        pending
 ```
 
 Follow the MANIFEST_CONTRACT rules:
+- If the job block supplies `STORY_IDS`, emit exactly those ids — one story block per id, in the order given — and invent no others. A ticket authored by `drydock refit --sources` already owns named stories in the Manifest; emitting different ids would append duplicates of work that already exists instead of updating it.
 - `id` must be a stable lowercase slug unique within the manifest.
 - `implements` always references the change ticket path, not the parent spec.
 - `state` is always `pending`.

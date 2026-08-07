@@ -29,8 +29,7 @@ from drydock.prompts import load_prompt
 PROMPT_NAME = "lineage_attribute"
 
 _TAG_RE = re.compile(
-    r"<(?P<name>attribution|requirement|unattached)\b(?P<attrs>[^>]*?)"
-    r"(?:/>|>(?P<body>.*?)</(?P=name)>)",
+    r"<(?P<name>[a-z][a-z0-9_-]*)\b(?P<attrs>[^>]*?)(?:/>|>(?P<body>.*?)</(?P=name)>)",
     re.DOTALL | re.IGNORECASE,
 )
 _ATTR_RE = re.compile(r"(\w+)\s*=\s*\"([^\"]*)\"")

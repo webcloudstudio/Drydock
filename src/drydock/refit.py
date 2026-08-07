@@ -14,7 +14,7 @@ untouched. Tests inject a fake runner instead of spending API credits.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -28,6 +28,7 @@ from drydock.build_plan import (
     set_applied_specs,
     stale_applied_specs,
 )
+from drydock.change_ticket import parse_ticket_header
 from drydock.errors import SpecificationError
 from drydock.llm import run_prompt
 from drydock.manifest_edit import batch_set_block_fields
@@ -143,26 +144,35 @@ def _assemble_refit_prompt(
     parent_text: str,
     resolved_deps: list[str],
     today: str,
+    scope: str = "amending",
+    declared_stories: Sequence[str] = (),
 ) -> PromptAssembly:
-    """Build the per-ticket PromptAssembly: system preamble + job block + content + body."""
+    """Build the per-ticket PromptAssembly: system preamble + job block + content + body.
+
+    ``STORY_IDS`` is what keeps re-conforming idempotent. ``refit_target`` reprocesses every
+    ticket in ``changes/`` on every run, including tickets a previous run already conformed. A
+    source-authored ticket already owns named stories in the Manifest, so unless those ids are
+    handed back to the model it will invent fresh ones and ``_patch_manifest`` will append
+    duplicates instead of replacing in place.
+    """
     deps_str = ", ".join(resolved_deps) if resolved_deps else "(none)"
+    job_lines = [
+        "## Refit job",
+        "",
+        f"- TICKET_PATH: changes/{ticket_filename}",
+        f"- DATE: {today}",
+        f"- AMENDS: {parent_filename}",
+        f"- DEPENDS_ON: {deps_str}",
+        f"- SCOPE: {scope}",
+    ]
+    if declared_stories:
+        job_lines.append(f"- STORY_IDS: {', '.join(declared_stories)}")
+    job_lines.append("")
     return PromptAssembly(
         parts=(
             system_preamble_part(),
             section_heading_part("# Input Context"),
-            lines_part(
-                "Refit job",
-                [
-                    "## Refit job",
-                    "",
-                    f"- TICKET_PATH: changes/{ticket_filename}",
-                    f"- DATE: {today}",
-                    f"- AMENDS: {parent_filename}",
-                    f"- DEPENDS_ON: {deps_str}",
-                    "",
-                ],
-                kind="job",
-            ),
+            lines_part("Refit job", job_lines, kind="job"),
             *contextual_markdown_parts(
                 f"changes/{ticket_filename}",
                 ticket_text,
@@ -377,6 +387,9 @@ def refit_target(
             )
             continue
 
+        # Scope and declared story ids come from the ticket's own header when it has one. A
+        # hand-authored ticket predating those fields parses to defaults rather than failing.
+        header = parse_ticket_header(ticket_text)
         amended_sources.add(Path(compact_source(amends)).name)
         resolved_deps = _resolve_ticket_deps(amends, blueprint_dir)
         parent_path = blueprint_dir / amends
@@ -390,6 +403,8 @@ def refit_target(
             parent_text=parent_text,
             resolved_deps=resolved_deps,
             today=today,
+            scope=header.scope if header else "amending",
+            declared_stories=header.stories if header else (),
         )
 
         result = run(

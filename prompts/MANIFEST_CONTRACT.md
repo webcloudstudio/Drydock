@@ -109,6 +109,8 @@ state:        pending
 |-------|----------|-------------|-------------|
 | `id` | Yes | Model | Stable unique slug within the Manifest |
 | `summary` | Yes | Model | One-line description |
+| `origin` | No | `drydock refit` | Provenance of a story authored from a source change, as `<source>@<commit>`. Absent on stories authored by `plan`. |
+| `created` | No | `drydock refit` | ISO date the story was appended to the graph. |
 | `type` | Yes | Model | `foundational` \| `service` \| `feature` |
 | `kind` | Yes | Model | Delivery kind: `capability` \| `integration` \| `migration` \| `test harness` |
 | `phase` | Yes | Model | Commander build sequencing; see below |

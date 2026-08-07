@@ -163,6 +163,38 @@ class TestAssembleRefitPrompt:
         assert "AMENDS: FEATURE-Copy.md" in rendered
         assert "DEPENDS_ON: FEATURE-Copy.md, DATABASE.md" in rendered
 
+    def test_declares_scope_and_omits_story_ids_when_absent(self):
+        assembly = _assemble_refit_prompt(
+            "## Prompt body",
+            ticket_filename="TICKET-001-Test.md",
+            ticket_text="Amends: FEATURE-Copy.md",
+            parent_filename="FEATURE-Copy.md",
+            parent_text="# FEATURE: Copy",
+            resolved_deps=["FEATURE-Copy.md"],
+            today="2026-06-30",
+        )
+        rendered = assembly.rendered_text
+        assert "SCOPE: amending" in rendered
+        assert "STORY_IDS" not in rendered
+
+    def test_hands_back_declared_story_ids_so_reconforming_replaces_in_place(self):
+        # refit_target reprocesses every ticket on every run. Without the declared ids the model
+        # invents new ones and _patch_manifest appends duplicate stories instead of replacing.
+        assembly = _assemble_refit_prompt(
+            "## Prompt body",
+            ticket_filename="TICKET-007-Mark-Read.md",
+            ticket_text="Amends: DATABASE.md",
+            parent_filename="DATABASE.md",
+            parent_text="# DATABASE",
+            resolved_deps=["DATABASE.md"],
+            today="2026-08-06",
+            scope="additive",
+            declared_stories=("mark-read-schema", "mark-read-route"),
+        )
+        rendered = assembly.rendered_text
+        assert "SCOPE: additive" in rendered
+        assert "STORY_IDS: mark-read-schema, mark-read-route" in rendered
+
     def test_contains_ticket_content(self):
         assembly = _assemble_refit_prompt(
             "body",
