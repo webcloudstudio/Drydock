@@ -17,40 +17,35 @@ The workflow follows the commands you run:
 
 ```mermaid
 flowchart LR
-    S["Set Up"] --> A["Analyze"]
+    S["Set Up"] --> I["Import"]
+    I --> A["Analyze"]
     A --> P["Plan"]
-    P --> I["Build"]
-    I --> W["Working Software"]
+    P --> B["Build"]
+    B --> W["Working Software"]
 
     classDef phase fill:#123b59,stroke:#2cb67d,color:#fff,font-weight:bold
     classDef result fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-    class P,S,A,I phase
+    class P,S,I,A,B phase
     class W result
 ```
 
-Drydock copies your specification material into a workpace, analyzes to create stories, plans to groom buildable blueprints, and then builds software.  Test driven development gates each step.  Drydock provides a web interface for control and observability.
+Drydock copies your specification material into a workspace, analyzes it to create stories, plans and grooms buildable Blueprints, and then builds software. Test-driven development gates each step. Drydock provides a web interface for control and observability.
 
 ## Before you begin
 
-1) Setup claude or codex cli in your `PATH`
+1) Set up the Claude Code or Codex CLI in your `PATH`.
 
-This example in this document uses uv to run the build. Install `uv` using the appropriate command:
-
+2) Install uv (easiest and its so much faster.)
 ```bash
-# macOS and Linux:
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://astral.sh/uv/install.sh | sh       # macOS and Linux:
+brew install uv                                        # macOS with Homebrew
+winget install --id=astral-sh.uv -e                    # Windows with WinGet
 
 # Windows PowerShell:
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# macOS with Homebrew:
-brew install uv
-
-# Windows with WinGet:
-winget install --id=astral-sh.uv -e
 ```
 
-2) Install drydock ([User Installation Guide](USER_INSTALLATION.md)).
+3) Install Drydock ([User Installation Guide](USER_INSTALLATION.md)).
 
 ```bash
 # Recommended — isolated tool install:
@@ -65,23 +60,21 @@ python -m pip install drydock-sdd
 
 `uv tool` and `pipx` install Drydock in a dedicated environment and put a command wrapper on your `PATH`; they are the right choice for an interactive CLI. `pip` installs Drydock into whatever virtual environment is active and requires you to update your `PATH`.
 
-3) Review your setup with
+4) Review your setup with
 
 ```bash
 drydock --version
-drydock config show
+drydock config show                          # show your configuration
+      # drydock config set drydock_workspace <Workspace for the drydock>
+      # drydock config set drydock_build_directory <Your application parent directory>
+      # drydock is scoped to work only in these directories.
 ```
 
-`config show` displays your setup - The two key directories are:
 
-- drydock_workspace: Workspace for the drydock
-- drydock_build directory: Parent Directory for applications
-
-Drydock is scoped to work only in these directories.
 
 ## 1. Create Target Workspace
 
-A **Target** is the name of the application you wish to build in ```$drydock_build_directory```.  Our example Target is named `ReadingList` and will deploy to `$drydock_build_directory/ReadingList`.
+A **Target** is the application Drydock builds under the configured `drydock_build_directory`. This guide creates the `ReadingList` Target at `<drydock_build_directory>/ReadingList`.
 
 ```bash
 drydock init ReadingList             # Initialize project workspace
@@ -118,16 +111,16 @@ drydock analyze ReadingList
 drydock run quarterdeck ReadingList
 ```
 
-Navigate to the Quarterdeck web server - default  http://127.0.0.1:8080.
+Navigate to the QuarterDeck web server at the default address, http://127.0.0.1:8080. Review the Target, then press `Ctrl+C` in the terminal to stop the server and continue.
 
-The quarterdeck various screens contains:
+QuarterDeck provides the following screens:
 
-* Commanders Chair - Overview of status
+* Commander's Chair - Overview of status
 * Compass - Your constitution
-* Analysis - The stories and input Analysis
+* Analysis - The stories and input analysis
 * Sea Trials - Project acceptance criteria
 * Blockers - **If this exists, you must answer**
-* Questionaires - Discovery Identity and Stack Choices.
+* Questionnaires - Discovery identity and stack choices
 
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="QuickStart_Analysis_Screen.png"
@@ -162,13 +155,14 @@ The plan or Agile Decomposition stage creates **Blueprint** files which are buil
 drydock run quarterdeck ReadingList
 ```
 
-In the quarterdeck you have access to
+In QuarterDeck you have access to:
+
 * The Manifest or Build Graph
 * The Kanban Board
-* Decisions - A Controllablel Log Of LLM Decisions
+* Decisions - A controllable log of LLM decisions
 * Blueprints - Your Blueprints
 
-From the quartedeck you can see the stages of the build and the details of each stage.  Drydock breaks the build into Blocks of similar work - foundational work, persistence work, services, and service consumers like UI Screens.
+From QuarterDeck you can see the stages of the build and the details of each stage. Drydock breaks the build into Blocks of similar work: foundational work, persistence work, services, and service consumers such as UI screens.
 
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="Quickstart_Plan.png"
@@ -183,9 +177,14 @@ From the quartedeck you can see the stages of the build and the details of each 
 drydock build ReadingList       # Build the app
 ```
 
-The created application is in $drydock_build_directory/ReadingList/.
+The created application is in `<drydock_build_directory>/ReadingList/`.
 
-Run it using the project instructions generated in that directory.  Our run instructions were defined by our technology stack choice.
+Run it using the project instructions generated in that directory. The run instructions are determined by the selected technology stack. For the technology stack selected in this example, run:
+
+```bash
+cd <drydock_build_directory>/ReadingList
+uv run run.py
+```
 
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="Quickstart_UVRUN.png"
@@ -208,7 +207,8 @@ Add the following line to `reading-list.md`:
 ```markdown
 The reader can mark a book as read and view whether each book is unread or read.
 ```
-And now run:
+
+Re-import the source, generate Refit Tickets, and run the incremental build:
 
 ```bash
 drydock import ReadingList --update  # Re-import your updated specs
@@ -216,9 +216,9 @@ drydock refit ReadingList --sources  # Create Refit Tickets, Update the Manifest
 drydock build ReadingList            # Incremental Build
 ```
 
-This is drydocks development workflow - designed for high velocity changes to your specifications.  `drydock refit` git diffs the re-imported source materials, maps sources blueprints, appends to the build graph enabling you to `drydock build` normally.
+This is Drydock's development workflow, designed for high-velocity changes to specifications. `drydock refit` uses Git diff to identify source-material changes, maps source changes to Blueprints, and appends work to the build graph, enabling `drydock build` to run normally.
 
-The post-production workflow by uses a similar process but treats the internal blueprints and not the user specifications as canonical.  Production change tickets map directly to blueprints to minimize drift as the replan becomes mechanical (no llm).
+The post-production workflow uses a similar process but treats the internal Blueprints, rather than the user specifications, as canonical. Production change tickets map directly to Blueprints to minimize drift and make replanning mechanical without an LLM.
 
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="QuickStart_ManifestChange.png"
@@ -234,7 +234,7 @@ The post-production workflow by uses a similar process but treats the internal b
   <figcaption><em>The incrementally rebuilt application lets the reader mark books as read and see their status.</em></figcaption>
 </figure>
 
-## How you just built
+## How the workflow fits together
 
 ```mermaid
 flowchart LR
@@ -243,22 +243,24 @@ flowchart LR
     ANA --> PLAN["drydock<br/>plan"]
     PLAN --> BUILD["drydock<br/>build"]
     BUILD --> C["Application"]
+    C --> UPDATE["update<br/>spec"]
+    UPDATE --> REFIT["drydock import --update<br/>drydock refit --sources"]
+    REFIT --> BUILD
 
     classDef input fill:#d4a017,stroke:#a07810,color:#111
-    classDef review fill:#be123c,stroke:#fb7185,color:#fff
     classDef governed fill:#1e40af,stroke:#3b5fc0,color:#fff
     classDef output fill:#0a5c38,stroke:#2cb67d,color:#fff
-    class N input
-    class IMP,ANA,PLAN,BUILD,SCORE governed
-    class R review
-    class PLUS governed
-    class C,V output
+    class N,UPDATE input
+    class IMP,ANA,PLAN,BUILD,REFIT governed
+    class C output
 ```
 
-# References
+# Links
 
-[User Installation Guide](USER_INSTALLATION.md).
-[Drydock Specification](Drydock_Specification.html).
+* [Project Home Page](https://www.webcloudstudio.com)
+* [GitHub](https://github.com/webcloudstudio/Drydock)
+* [User Installation Guide](USER_INSTALLATION.md)
+* [Drydock Specification](Drydock_Specification.html)
 
 ---
 
