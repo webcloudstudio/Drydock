@@ -6,8 +6,8 @@
 
 **Drydock turns specifications into working software.**
 
-Enterprise delivery, driven by the specification: typed specs, an executable build graph, verified
-builds, and durable evidence — on the Claude or Codex subscription you already have.
+Specification Driven Software Delivery. Agile. Test Driven. A dependency graph of stories.
+Context compression. A web console. Enterprise guardrails on the subscription you already have.
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
@@ -24,14 +24,23 @@ builds, and durable evidence — on the Claude or Codex subscription you already
 
 ## What Drydock is
 
-An agent writes the code and keeps none of the reasoning. Three weeks later it re-derives the
-design, contradicts an earlier decision, and breaks something nobody thought to test.
+You write what the product does. Drydock plans it, builds it, verifies it, and keeps the record.
 
-Drydock keeps the intent. It decomposes your description into typed specifications, orders them
-into an executable build graph, builds each piece, verifies the result against acceptance criteria
-written into the specification itself, and records what happened. Change the specification and
-Drydock re-plans the affected work, rebuilds only that, and re-verifies. Nothing depends on what
-the agent remembers.
+- **Specification driven.** Typed specifications are the source of truth. Code is the output.
+- **Agile.** The specification is decomposed into features and stories, with product-owner review
+  before the build starts.
+- **Test driven.** Acceptance criteria are written into the specification and executed. A story is
+  not done until its checks pass.
+- **A dependency graph of stories.** `MANIFEST.md` orders the work and builds the frontier — every
+  story whose dependencies are satisfied.
+- **Context compression and optimization.** Each build prompt carries only the specifications that
+  story needs. Large applications build reproducibly without a frontier-model budget.
+- **Web interface.** The QuarterDeck console shows the graph, the open questions, and the score.
+- **Enterprise guardrails.** Blocking questions instead of guesses, declared dependencies instead
+  of improvised ones, and durable evidence for every step.
+- **Change control.** Edit the specification; `drydock refit` writes a change ticket against each
+  affected Blueprint and rebuilds only the work that moved.
+- **Your subscription.** Runs on the `claude` or `codex` CLI. No API key, no per-token billing.
 
 ## Install
 
@@ -39,20 +48,27 @@ the agent remembers.
 uv tool install drydock-sdd
 ```
 
-Requires Python 3.11+ and one signed-in provider CLI (`claude` or `codex`). No API key, no
-per-token billing.
+Requires Python 3.11+ and one signed-in provider CLI, `claude` or `codex`.
 
 Provider setup, workspace configuration, and troubleshooting are in the
 **[User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf)**.
 
 ## How Drydock works
 
-Set up a workspace, import your notes, review the specifications and build graph, build, then
-change and maintain.
+```bash
+drydock init MyApp                 # create the project workspace
+drydock import MyApp ./notes       # import your specification sources
+drydock analyze MyApp              # questions, decisions, technology stack
+drydock plan MyApp                 # typed Blueprints and the MANIFEST.md build graph
+drydock run quarterdeck MyApp      # review it in the web console
+drydock build MyApp                # build the frontier, capture evidence
+drydock score ac MyApp             # verify every acceptance criterion
+drydock refit MyApp                # route a specification change back into the graph
+```
 
-The **Blueprint** holds the typed specifications. The **Manifest** (`MANIFEST.md`) is the executable
-build graph: it connects the stories, tracks dependencies, selects the work that can run next, and
-gives each build exactly the context it needs.
+The **Blueprint** holds the typed specifications. The **Manifest** (`MANIFEST.md`) is the build
+graph: it connects the stories, tracks dependencies, selects the work that can run next, and gives
+each build exactly the context it needs.
 
 <div align="center">
 <img src="docs/drydock_process.png" alt="Drydock setup, specification, planning, building, and maintenance commands." width="920" />
@@ -125,17 +141,11 @@ $ ./full_test.sh
 655 passed, 0 failed, 0 errored, 0 skipped
 ```
 
-Specification, graph, build step, evidence — one chain, readable months later.
+Specification, graph, build step, evidence: four artifacts, one chain, kept with the project.
 
-## Why it is different
-
-Not a prompt collection, not a one-shot generator. The typed specifications, build graph, review
-decisions, acceptance checks, and execution evidence stay with the project, so every build is
-reviewable, repeatable, and safe to change.
-
-See the
+Not a prompt collection and not a one-shot generator. The
 [Product Comparison Matrix](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html)
-for how Drydock compares with other specification-driven tools.
+sets Drydock against the other specification-driven tools.
 
 ## Release status
 
