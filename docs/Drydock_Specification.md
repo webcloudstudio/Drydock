@@ -726,6 +726,36 @@ is rejected.
 | `1` | Scoring cannot complete or the Target does not satisfy the evaluated build, acceptance, or release state |
 | `2` | Command syntax is invalid |
 
+### drydock uat
+
+```text
+drydock uat [<Project>] [--model <model>] [--llm-provider <provider>]
+```
+
+`drydock uat` turns known projects into repeatable end-to-end scored tests. It builds each selected
+project in isolation under the configured model, provider, specification version, and refit
+conditions, then records delivery time, token usage, build evidence, and advisory scores.
+
+**Input files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `spec_N.md` | `tests/uat/<Project>/` | Ordered initial and changed project specifications |
+
+**Output files**
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| `SUMMARY.md`, `summary.json`, `result.json`, command logs | `uat/runs/<run-id>/` | Scored lifecycle, timing, token, and command evidence |
+
+**Exit codes**
+
+| Code | Meaning |
+|---:|---|
+| `0` | Every selected project completes its build lifecycle |
+| `1` | One or more project lifecycles fail |
+| `2` | Command syntax or fixture input is invalid |
+
 ### drydock document
 
 `drydock document` creates Target documentation from the Target Blueprint.

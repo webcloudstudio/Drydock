@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="990" height="1015" viewBox="0 0 990 1015" font-family="'Cascadia Code', Consolas, 'Courier New', monospace" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" width="990" height="1039" viewBox="0 0 990 1039" font-family="'Cascadia Code', Consolas, 'Courier New', monospace" font-size="15">
   <title>Drydock — the whole process surface</title>
   <desc>The complete Drydock command surface expressed as a shell script: Set Up, Analyze, Implement, Loop. Commands that call an LLM are marked ai.</desc>
 
@@ -20,7 +20,7 @@
   </defs>
 
   <!-- panel -->
-  <rect x="0" y="0" width="990" height="1015" rx="10" fill="#1A1D23"/>
+  <rect x="0" y="0" width="990" height="1039" rx="10" fill="#1A1D23"/>
   <rect x="0" y="0" width="990" height="42" rx="10" fill="#22262E"/>
   <rect x="0" y="32" width="990" height="10" fill="#22262E"/>
   <line x1="0" y1="42" x2="990" y2="42" stroke="#363B44" stroke-width="1"/>
@@ -69,7 +69,8 @@
     <text x="30" y="906"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> rigging compact   </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Automanage compaction</tspan></text>
     <text x="30" y="930"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> rigging verify    </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Verify rigging compliance</tspan></text>
     <text x="30" y="954"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> score drydock     </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Adversarial self-assessment</tspan></text>
+    <text x="30" y="978"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> uat               </tspan><tspan class="arg">[Project]        </tspan><tspan class="cmt"># scored uat testing</tspan></text>
   </g>
 
-  <text x="960" y="993" text-anchor="end" class="foot" font-size="12">webcloudstudio.com/drydock</text>
+  <text x="960" y="1017" text-anchor="end" class="foot" font-size="12">webcloudstudio.com/drydock</text>
 </svg>
