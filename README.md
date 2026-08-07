@@ -16,11 +16,11 @@ reviewed, rebuilt, and changed cleanly.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
-### ▶ START HERE — [Quick Start](docs/QUICK_START.md)
+### ▶ START HERE — [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html)
 
 Install, connect a subscription CLI, and build your first project.
 
-[Guided tour](#guided-tour-one-feature-end-to-end) · [Specification](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html) · [Installation](docs/USER_INSTALLATION.md) · [Contributing](CONTRIBUTING.md) · [Overview deck](https://webcloudstudio.com/drydock/) · [White paper](https://zenodo.org/records/21287574)
+[Guided tour](#guided-tour-one-feature-end-to-end) · [Specification](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) · [Installation](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) · [Comparison matrix](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html) · [Overview deck](https://webcloudstudio.com/drydock/) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -147,6 +147,9 @@ Change goes through the specification. Edit the source, re-import it, and `drydo
 diff, decomposes it into stories, and writes a change ticket against each affected Blueprint. The
 next build rebuilds only the affected work.
 
+For how Drydock compares with other specification-driven tools, see the
+[Product Comparison Matrix](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html).
+
 ## Release status
 
 **Alpha.** The methodology is complete and the full SAIL path — import, analyze, plan, build,
@@ -156,23 +159,39 @@ new project types and refining the process guardrails that keep a build honest.
 Expect the command surface and Typed Specification contracts to move during the `0.x` series.
 Pin your version, and read [CHANGELOG.md](CHANGELOG.md) before upgrading.
 
+### Project-level UAT
+
+`drydock uat [<Project>]` rebuilds known projects unattended under isolated timestamped run
+directories. Fixtures live under `tests/uat/<Project>/`: `spec_1.md` drives the initial
+init/import/analyze/plan/build lifecycle, and each later `spec_N.md` drives
+`import --update` → `refit --sources` → incremental build. The selected model and provider apply
+to the whole run.
+
+Each run writes `uat/runs/<run-id>/SUMMARY.md`, `summary.json`, per-project `result.json`, and the
+complete stdout/stderr of every child command. Reports include command and LLM elapsed time, input,
+cached, fresh-input, and output tokens, build-pass counts, and the exit results from `score ac`,
+`score build`, and `score release`. Scoring is advisory in UAT V1: score failures remain visible in
+the report but do not override a successfully completed build lifecycle.
+
 ## Documentation
 
-- [Quick Start](docs/QUICK_START.md) — the recommended entry point
-  ([HTML](https://webcloudstudio.github.io/Drydock/QUICK_START.html) ·
-  [PDF](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf))
-- [User Installation Guide](docs/USER_INSTALLATION.md) — install, provider setup, workspace
-  configuration ([PDF](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.pdf))
-- [Drydock Specification](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html)
+- [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) — the recommended
+  entry point ([PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf))
+- [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) —
+  install, provider setup, and workspace configuration
+- [Drydock Specification](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html)
   — the authoritative command, artifact, and process contracts
-  ([source](docs/Drydock_Specification.md) ·
-  [PDF](https://webcloudstudio.github.io/Drydock/Drydock_Specification.pdf))
-- [Drydock skills](https://github.com/webcloudstudio/Drydock/tree/main/Rigging/skills) — `/refit`
-  and `/apply-refit`, provisioned into your workspace by `drydock init`
-- [Improving Step Accuracy in Specification-Driven Development](https://zenodo.org/records/21287574)
-  — the white paper
+  ([single page](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.html) ·
+  [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf))
 - [Overview deck](https://webcloudstudio.com/drydock/) ·
-  [10-minute walkthrough video](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4)
+  [walkthrough video](https://webcloudstudio.com/project-docs/drydock/presentation/PRODUCTION_Drydock_Video.web.mp4)
+
+Papers:
+
+- [Improving Step Accuracy in Specification-Driven Development](https://webcloudstudio.com/project-docs/drydock/papers/Improving_Step_Accuracy_in_SDD.html)
+- [Managing Changes in Specification-Driven Development](https://webcloudstudio.com/project-docs/drydock/papers/Managing_Changes_in_SDD.html)
+- [Managing Changed Specifications](https://webcloudstudio.com/project-docs/drydock/papers/SDD_Managing_Changed_Specifications.html)
+- [Product Comparison Matrix](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html)
 
 Run `drydock --help` for the complete command list.
 
@@ -197,8 +216,9 @@ API-key environment variables are not the intended execution path, provider CLIs
 isolated wrappers, and every run persists auditable evidence. Tests use injected runners and never
 require network or paid API access.
 
-See the [Drydock Security](docs/Drydock_Specification.md#drydock-security) section of the
-specification for the provider execution contracts.
+See the
+[Drydock Security](https://webcloudstudio.com/project-docs/drydock/index_sections/drydock-security.html)
+section of the specification for the provider execution contracts.
 
 ## License
 
