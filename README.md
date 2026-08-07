@@ -26,13 +26,30 @@ Install, connect a subscription CLI, and build your first project.
 
 ---
 
+## What Drydock is
+
+An agent can write a thousand lines of working code and remember none of the reasoning behind it.
+Ask for a change three weeks later and it re-derives the design, contradicts an earlier decision,
+and quietly breaks something nobody thought to test. The code survives; the intent does not.
+
+Drydock is a specification-driven delivery methodology, shipped as a Python command-line tool, that
+keeps the intent. You describe the product you want. Drydock decomposes that description into typed
+specifications, orders them into an executable build graph, builds each piece with your existing
+Claude or Codex subscription, verifies the result against acceptance criteria written into the
+specification itself, and records what happened in files you can read.
+
+The specification is the source of truth, not the prompt history. Change the specification and
+Drydock routes the change: it re-plans the affected work, rebuilds only that, and re-verifies.
+Nothing depends on what the agent remembers.
+
 ```bash
 uv tool install drydock-sdd
 ```
 
-Drydock is an installable Python command-line package. The PyPI distribution is `drydock-sdd`; the
-installed command is `drydock`. It runs on your existing Claude or Codex subscription CLI and
-requires no API key and no per-token billing.
+The PyPI distribution is `drydock-sdd`; the installed command is `drydock`. It requires Python 3.11
+or later and one signed-in provider CLI. There is no API key and no per-token billing — Drydock runs
+on the subscription you already pay for. Full setup is in the
+[Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html).
 
 ## How Drydock works
 
