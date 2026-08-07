@@ -2550,7 +2550,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         metavar="<Output.pdf>",
-        help="PDF output path; defaults to the HTML path with .pdf.",
+        help="PDF output path; implies --pdf. Defaults to the HTML path with .pdf.",
     )
 
     # ── rigging ──────────────────────────────────────────────────────────────
