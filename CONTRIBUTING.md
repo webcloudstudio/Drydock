@@ -63,6 +63,20 @@ For packaging or Rigging changes, build the wheel and verify the affected comman
 installation. Add focused unit tests and CLI contract tests for every implemented command, and
 preserve working commands while replacing deferred stubs.
 
+## Project-level UAT
+
+`drydock uat [<Project>]` rebuilds known projects unattended under isolated timestamped run
+directories. Fixtures live under `tests/uat/<Project>/`: `spec_1.md` drives the initial
+init/import/analyze/plan/build lifecycle, and each later `spec_N.md` drives
+`import --update` → `refit --sources` → incremental build. The selected model and provider apply
+to the whole run.
+
+Each run writes `uat/runs/<run-id>/SUMMARY.md`, `summary.json`, per-project `result.json`, and the
+complete stdout/stderr of every child command. Reports include command and LLM elapsed time, input,
+cached, fresh-input, and output tokens, build-pass counts, and the exit results from `score ac`,
+`score build`, and `score release`. Scoring is advisory in UAT V1: score failures remain visible in
+the report but do not override a successfully completed build lifecycle.
+
 ## Commits
 
 - Write descriptive commit messages in the imperative mood.
