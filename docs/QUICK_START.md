@@ -33,6 +33,23 @@ Drydock copies your specification material into a workpace, analyzes to create s
 ## Before you begin
 
 1) Setup claude or codex cli in your `PATH`
+
+This example in this document uses uv to run the build. Install `uv` using the appropriate command:
+
+```bash
+# macOS and Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows PowerShell:
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS with Homebrew:
+brew install uv
+
+# Windows with WinGet:
+winget install --id=astral-sh.uv -e
+```
+
 2) Install drydock ([User Installation Guide](USER_INSTALLATION.md)).
 
 ```bash
@@ -48,8 +65,6 @@ python -m pip install drydock-sdd
 
 `uv tool` and `pipx` install Drydock in a dedicated environment and put a command wrapper on your `PATH`; they are the right choice for an interactive CLI. `pip` installs Drydock into whatever virtual environment is active and requires you to update your `PATH`.
 
-This example in this document uses uv to run the build.
-
 3) Review your setup with
 
 ```bash
@@ -57,10 +72,10 @@ drydock --version
 drydock config show
 ```
 
-`config show` displays your setup - The two important directories are:
+`config show` displays your setup - The two key directories are:
 
-- **drydock_workspace**: Workspace for the drydock
-- **drydock_build directory**: Parent Directory for applications
+- drydock_workspace: Workspace for the drydock
+- drydock_build directory: Parent Directory for applications
 
 Drydock is scoped to work only in these directories.
 
@@ -103,9 +118,9 @@ drydock analyze ReadingList
 drydock run quarterdeck ReadingList
 ```
 
-Navigate to the Quarterdeck web server - the start page is listed on the Quarterdeck command above ( http://127.0.0.1:8080)
+Navigate to the Quarterdeck web server - default  http://127.0.0.1:8080.
 
-The quarterdeck contains:
+The quarterdeck various screens contains:
 
 * Commanders Chair - Overview of status
 * Compass - Your constitution
@@ -170,7 +185,7 @@ drydock build ReadingList       # Build the app
 
 The created application is in $drydock_build_directory/ReadingList/.
 
-Run it using the project instructions generated in that directory.
+Run it using the project instructions generated in that directory.  Our run instructions were defined by our technology stack choice.
 
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="Quickstart_UVRUN.png"
@@ -209,7 +224,7 @@ The post-production workflow by uses a similar process but treats the internal b
   <img src="QuickStart_ManifestChange.png"
        alt="Updated QuarterDeck Manifest after refitting the ReadingList target"
        style="display: block; width: 100%; max-width: 1002px; height: auto; margin: 0 auto; object-fit: contain;">
-  <figcaption><em>The updated Manifest adds the refit work to the dependency-aware build plan.</em></figcaption>
+  <figcaption><em>The updated Manifest with new stories.</em></figcaption>
 </figure>
 
 <figure style="margin: 1.5rem auto; text-align: center;">
@@ -219,11 +234,11 @@ The post-production workflow by uses a similar process but treats the internal b
   <figcaption><em>The incrementally rebuilt application lets the reader mark books as read and see their status.</em></figcaption>
 </figure>
 
-## What you just built
+## How you just built
 
 ```mermaid
 flowchart LR
-    N["reading-list.md"] --> IMP["drydock<br/>import"]
+    N["spec"] --> IMP["drydock<br/>import"]
     IMP --> ANA["drydock<br/>analyze"]
     ANA --> PLAN["drydock<br/>plan"]
     PLAN --> BUILD["drydock<br/>build"]
