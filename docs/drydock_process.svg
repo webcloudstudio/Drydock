@@ -34,22 +34,22 @@
     <text x="30" y="108"><tspan class="cmt"># Runs on your Claude/Codex/Other subscription CLI. No API keys or per-token-billing.</tspan></text>
 
     <text x="30" y="152"><tspan class="ph"># ── S ── SET UP ──────────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="182"><tspan class="dd">drydock</tspan><tspan class="sub"> config set     </tspan><tspan class="arg">&lt;var&gt; &lt;value&gt;    </tspan><tspan class="cmt"># setup</tspan></text>
-    <text x="30" y="206"><tspan class="dd">drydock</tspan><tspan class="sub"> init           </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># create the Target workspace</tspan></text>
+    <text x="30" y="182"><tspan class="dd">drydock</tspan><tspan class="sub"> config set     </tspan><tspan class="arg">&lt;var&gt; &lt;value&gt;    </tspan><tspan class="cmt"># Setup</tspan></text>
+    <text x="30" y="206"><tspan class="dd">drydock</tspan><tspan class="sub"> init           </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Create the Target workspace</tspan></text>
 
     <text x="30" y="250"><tspan class="ph"># ── A ── ANALYZE ─────────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="280"><tspan class="dd">drydock</tspan><tspan class="sub"> import         </tspan><tspan class="arg">MyApp ./notes    </tspan><tspan class="cmt"># import sources into the workspace</tspan></text>
+    <text x="30" y="280"><tspan class="dd">drydock</tspan><tspan class="sub"> import         </tspan><tspan class="arg">MyApp ./notes    </tspan><tspan class="cmt"># Import sources into the workspace</tspan></text>
     <text x="30" y="304"><tspan class="dd">drydock</tspan><tspan class="sub"> analyze        </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Epic decomposition into stories, blockers</tspan></text>
-    <text x="30" y="328"><tspan class="dd">drydock</tspan><tspan class="sub"> run quarterdeck</tspan><tspan class="arg"> MyApp           </tspan><tspan class="cmt"># Web Interface</tspan></text>
+    <text x="30" y="328"><tspan class="dd">drydock</tspan><tspan class="sub"> run quarterdeck</tspan><tspan class="arg"> MyApp           </tspan><tspan class="cmt"># Web interface</tspan></text>
     <text x="30" y="352"><tspan class="dd">drydock</tspan><tspan class="sub"> plan           </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Grooming and dependency graph</tspan></text>
 
     <text x="30" y="396"><tspan class="ph"># ── I ── IMPLEMENT ───────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="426"><tspan class="dd">drydock</tspan><tspan class="sub"> build          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Context aware</tspan></text>
-    <text x="30" y="450"><tspan class="dd">drydock</tspan><tspan class="sub"> score &lt;cmd&gt;    </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Scorecards</tspan></text>
+    <text x="30" y="426"><tspan class="dd">drydock</tspan><tspan class="sub"> build          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Iterative context-aware process</tspan></text>
+    <text x="30" y="450"><tspan class="dd">drydock</tspan><tspan class="sub"> score &lt;key&gt;    </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Scorecards</tspan></text>
 
     <text x="30" y="494"><tspan class="ph"># ── L ── LOOP ────────────────────────────────────────────────────────────</tspan></text>
     <text x="30" y="524"><tspan class="cmt"># The product changed.  Creates tickets into the build graph for building.</tspan></text>
-    <text x="30" y="548"><tspan class="dd">drydock</tspan><tspan class="sub"> refit          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Diff -&gt; Tickets.  Add tickets to Graph</tspan></text>
+    <text x="30" y="548"><tspan class="dd">drydock</tspan><tspan class="sub"> refit          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Diff -&gt; tickets.  Add tickets to graph</tspan></text>
     <text x="30" y="572"><tspan class="dd">drydock</tspan><tspan class="sub"> document       </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Project documentation automation</tspan></text>
     <text x="30" y="596"><tspan class="dd">drydock</tspan><tspan class="sub"> rigging        </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Enterprise standards &amp; guardrails. Compression.</tspan></text>
   </g>
