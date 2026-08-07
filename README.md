@@ -21,6 +21,8 @@ so the software can be reviewed, rebuilt, and changed cleanly.
 [Quick Start](docs/QUICK_START.md) · [Install and set up](#install-and-set-up) · [How Drydock works](#how-drydock-works) · [Why It Is Different](#why-it-is-different) · [Canonical Specification](https://webcloudstudio.com/project-docs/drydock/)
 [Overview Deck](https://webcloudstudio.com/drydock/) · [White Paper](https://zenodo.org/records/21287574) · [10 Minute Overview](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4) · [User Installation Guide](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
 
+PDF: [Specification](https://webcloudstudio.github.io/Drydock/Drydock_Specification.pdf) · [Quick Start](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf) · [User Installation](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.pdf)
+
 </div>
 
 ---
@@ -340,6 +342,13 @@ Public hub and launch materials:
 - [Launch deck and presentation](https://webcloudstudio.com/drydock/)
 - [Launch video](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4)
 - [Improving Step Accuracy in Specification-Driven Development](https://zenodo.org/records/21287574)
+
+PDF downloads:
+
+- [Drydock Specification (PDF)](https://webcloudstudio.github.io/Drydock/Drydock_Specification.pdf)
+- [Quick Start (PDF)](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf)
+- [User Installation Guide (PDF)](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.pdf)
+- [Specification, browsable HTML](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html)
 
 Repository references:
 
