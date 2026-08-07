@@ -303,6 +303,27 @@ def test_publish_document_writes_pdf_with_injected_renderer(tmp_path: Path):
     assert calls == [(output, pdf_output)]
 
 
+def test_publish_document_pdf_output_implies_pdf(tmp_path: Path):
+    source = tmp_path / "spec.md"
+    output = tmp_path / "index.html"
+    pdf_output = tmp_path / "paper.pdf"
+    source.write_text(SOURCE, encoding="utf-8")
+
+    def fake_renderer(html_path: Path, pdf_path: Path) -> Path:
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+        return pdf_path
+
+    result = publish_document(
+        source,
+        output,
+        pdf_output=pdf_output,
+        pdf_renderer=fake_renderer,
+    )
+
+    assert result.pdf_path == pdf_output
+    assert pdf_output.read_bytes().startswith(b"%PDF")
+
+
 def test_default_pdf_path_replaces_html_suffix():
     assert default_pdf_path(Path("dist/paper.html")) == Path("dist/paper.pdf")
 

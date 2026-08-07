@@ -862,7 +862,7 @@ def publish_document(
     else:
         html_path = build_documentation(source, output, theme=selected_theme)
     rendered_pdf: Path | None = None
-    if pdf:
+    if pdf or pdf_output is not None:
         rendered_pdf = pdf_output or default_pdf_path(html_path)
         renderer = pdf_renderer or render_pdf_with_playwright
         rendered_pdf = renderer(html_path, rendered_pdf)
