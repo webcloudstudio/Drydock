@@ -19,7 +19,7 @@ synthetic version would silently claim provenance the command cannot actually es
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date as _date
 from pathlib import Path
@@ -66,26 +66,38 @@ def require_target_repo(target_dir: Path) -> None:
 
 
 def replay_source(
-    versions: list[tuple[target_git.SourceVersion, str]], *, release: str = ""
+    versions: list[tuple[target_git.SourceVersion, str]],
+    *,
+    release: str = "",
+    prior: Mapping[str, Version] | None = None,
 ) -> list[Version]:
     """Fold ``(commit, text)`` pairs into version records, oldest first. Pure — no filesystem.
 
     Consecutive commits that did not change the content collapse into one version: git records a
     commit per touch, but lineage records a version per distinct state.
+
+    ``prior`` maps content hash to the version the existing lineage already holds for this source.
+    A version it records as pending stays pending. Being committed proves only that the content
+    existed, never that a command consumed it: ``import --update`` commits the snapshot it imports,
+    so a source version can sit in git history having produced no story at all. Relineage repairs
+    provenance it can establish, and must not overwrite unconsumed work with a claim it was done.
     """
+    known = prior or {}
     records: list[Version] = []
     for source_version, text in versions:
         digest = content_hash(text)
         if records and records[-1].hash == digest:
             continue
+        earlier = known.get(digest)
+        unconsumed = earlier is not None and earlier.pending
         records.append(
             Version(
                 hash=digest,
                 date=source_version.date,
                 commit=source_version.commit,
                 release=release,
-                state="consumed",
-                via="relineage",
+                state="pending" if unconsumed else "consumed",
+                via=None if unconsumed else "relineage",
             )
         )
     return records
@@ -133,7 +145,9 @@ def relineage_target(
             )
             if text is not None:
                 history.append((source_version, text))
-        records = replay_source(history, release=release)
+        prior_record = lineage.sources.get(rel_path)
+        prior = {version.hash: version for version in prior_record.versions} if prior_record else {}
+        records = replay_source(history, release=release, prior=prior)
 
         current = sources_dir / rel_path
         current_text = ""

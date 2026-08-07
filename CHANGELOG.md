@@ -29,6 +29,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-06: Three defects that together made a source change silently vanish between
+  `import --update` and the Manifest. `refit --relineage` marked every version it replayed from git
+  `consumed`, but `import --update` commits the snapshot it imports, so a version awaiting a refit
+  sat in history and relineage claimed it had produced work it never produced; replay now preserves
+  the pending state the existing `LINEAGE.json` records, and only genuinely unknown versions
+  default to consumed. `refit --sources` injected the compact Blueprint into the routing prompt
+  while validating amended section names against the authored Blueprint — the compact form is a
+  prose digest carrying no headings, so an `amending` story could only invent a heading and fail
+  the whole refit with `Ticket amends sections absent from <Blueprint>`; the authored headings are
+  now injected as a `sections` attribute the model copies from. Routed stories land in a new
+  computed block, and `refit --sources` did not update the Manifest `blocks:` count, leaving the
+  Manifest it had just written unloadable with `Manifest blocks count does not match computed
+  blocks`; the count is now recomputed before save.
+
 - 2026-08-06: `drydock refit --sources` now runs. It resolved a changed source to Blueprints
   through `MANIFEST.md` `source_lineage.files[].blueprints`, whose only writer attributed a source
   to a Blueprint when the Blueprint text literally contained the source filename — something no

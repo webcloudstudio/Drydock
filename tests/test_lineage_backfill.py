@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from drydock.errors import SpecificationError
-from drydock.lineage import load_lineage
+from drydock.lineage import Lineage, Version, content_hash, load_lineage, write_lineage
 from drydock.lineage_backfill import relineage_target, replay_source, require_target_repo
 from drydock.target_git import SourceVersion
 
@@ -115,6 +115,47 @@ def test_replay_source_collapses_commits_that_did_not_change_content():
     records = replay_source(history)
 
     assert [record.commit for record in records] == ["aaaaaaa", "ccccccc"]
+
+
+def test_replay_source_keeps_a_version_the_existing_lineage_records_as_pending():
+    # Being committed proves the content existed, not that a command consumed it.
+    history = [
+        (SourceVersion("aaaaaaa", "2026-08-01", "import"), "one\n"),
+        (SourceVersion("bbbbbbb", "2026-08-02", "update"), "one\ntwo\n"),
+    ]
+    unconsumed = content_hash("one\ntwo\n")
+    prior = {unconsumed: Version(hash=unconsumed, date="2026-08-02", state="pending")}
+
+    records = replay_source(history, prior=prior)
+
+    assert [record.state for record in records] == ["consumed", "pending"]
+    assert [record.via for record in records] == ["relineage", None]
+
+
+def test_relineage_does_not_consume_an_imported_version_nothing_has_planned(tmp_path):
+    # import --update commits the snapshot it imports, so unconsumed work sits in git history.
+    target = _target(tmp_path)
+    spec = target / "blueprint" / "sources" / "spec.md"
+    spec.write_text("Add a book.\n", encoding="utf-8")
+    _commit(target, "import")
+    spec.write_text("Add a book.\nMark it read.\n", encoding="utf-8")
+    _commit(target, "refresh imported source snapshot")
+    lineage = Lineage()
+    record = lineage.source("spec.md")
+    record.versions = [
+        Version(
+            hash=content_hash("Add a book.\n"), date="2026-08-01", state="consumed", via="plan"
+        ),
+        Version(hash=content_hash("Add a book.\nMark it read.\n"), date="2026-08-02"),
+    ]
+    write_lineage(target, lineage)
+
+    relineage_target(target, runner=_runner())
+
+    rebuilt = load_lineage(target).sources["spec.md"]
+    assert [version.state for version in rebuilt.versions] == ["consumed", "pending"]
+    assert rebuilt.versions[-1].commit  # replayed from git, still awaiting a refit
+    assert [path for path, _ in load_lineage(target).pending_versions()] == ["spec.md"]
 
 
 def test_relineage_replays_git_history_into_versions(tmp_path):

@@ -125,9 +125,26 @@ def test_assemble_route_prompt_injects_diff_graph_and_blueprints(tmp_path):
     assert '<diff source="spec.md" base="4579751" head="d6f6e56">' in assembled
     assert "+mark as read" in assembled
     assert "<graph>" in assembled
-    assert '<blueprint name="DATABASE.md">' in assembled
+    assert '<blueprint name="DATABASE.md"' in assembled
     # The compact form is what compaction exists to provide.
     assert "compact database" in assembled
+
+
+def test_assemble_route_prompt_names_the_authored_sections_behind_a_compact(tmp_path):
+    # An amending story must name headings from the authored Blueprint, but the compact form
+    # injected as the body carries none. Without the closed set the model can only invent one.
+    blueprint_dir = _blueprints(tmp_path)
+
+    assembled = assemble_route_prompt(
+        "BODY",
+        diffs=[("spec.md", "d6f6e56", "4579751", "+mark as read")],
+        manifest=_manifest(),
+        blueprint_dir=blueprint_dir,
+        names=blueprint_names(blueprint_dir),
+    )
+
+    assert '<blueprint name="DATABASE.md" sections="Schema">' in assembled
+    assert "## Schema" not in assembled.split("compact database")[0].split("<blueprints>")[-1]
 
 
 def test_assemble_route_prompt_marks_a_first_import_as_having_no_base(tmp_path):

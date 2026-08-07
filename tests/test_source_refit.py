@@ -158,6 +158,7 @@ Render read state per book.
 
 _PLANNED_MANIFEST = """# MANIFEST: Demo
 state: approved
+blocks: 2
 
 ## story 1: Persist books.
 id: database
@@ -272,6 +273,21 @@ def test_source_refit_appends_ordered_stories_with_provenance(tmp_path):
     assert "origin: spec.md" in manifest
     assert "created: " in manifest
     assert "implements: changes/TICKET-001-" in manifest
+
+
+def test_source_refit_leaves_the_manifest_loadable_after_adding_a_block(tmp_path):
+    # Routed stories land in a new block. A stale `blocks:` count fails validation, which would
+    # make the Manifest this refit just wrote unloadable by every later command.
+    from drydock.manifest import DrydockManifest
+
+    source = tmp_path / "authoring"
+    source.mkdir()
+    target = _routable_target(tmp_path, source)
+
+    source_refit_target(target, runner=_runner())
+
+    reloaded = DrydockManifest.load(target / "MANIFEST.md")
+    assert reloaded.metadata.fields["blocks"] == "3"
 
 
 def test_source_refit_consumes_the_version_and_records_its_stories(tmp_path):

@@ -1,7 +1,7 @@
 ---
 name: refit_sources_route
 description: Decompose an imported source change into Manifest stories seated on existing Blueprints.
-version: 1
+version: 2
 intent: Route a source diff into the minimum set of new stories, each seated on an existing Blueprint with an explicit scope and ordering.
 command: drydock refit --sources
 model: sonnet
@@ -53,7 +53,10 @@ Planning decomposed the original source into stories; you decompose what changed
 - **Scope:** `additive` when the story only adds behavior and every existing assertion in the
   parent Blueprint stays true. `amending` when the story changes or removes behavior the parent
   already specifies. When `amending`, list the parent's section headings you supersede in
-  `sections`, using their exact heading text.
+  `sections`, copied exactly from that Blueprint's `sections` attribute in `<blueprints>`. That
+  attribute is the closed set of headings the authored Blueprint has; a heading absent from it
+  fails the refit. Do not derive a heading from the Blueprint body — the body may be a compact
+  digest that carries no headings.
 - Emit nothing but the tags below. No preamble, no commentary.
 
 ## Output

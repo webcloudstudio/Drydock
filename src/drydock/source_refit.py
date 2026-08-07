@@ -379,6 +379,10 @@ def source_refit_target(
                     for item in proposal.requirements
                 ],
             )
+        # Routed stories land in a new block, so the declared count is now stale. Validation
+        # rejects a Manifest whose `blocks:` disagrees with its computed blocks, which would make
+        # the Manifest this refit just wrote unloadable by every later command.
+        manifest.set_metadata(blocks=str(_computed_block_count(manifest)))
         manifest.save()
         write_lineage(target_dir, lineage)
     except Exception:
@@ -392,6 +396,18 @@ def source_refit_target(
         tuple(items),
         tuple(rel_path for rel_path, _ in pending),
         tuple(f"{consumer} (consumes: {provision})" for consumer, provision in impact.downstream),
+    )
+
+
+def _computed_block_count(manifest: DrydockManifest) -> int:
+    """Distinct computed blocks across story nodes — what `blocks:` must declare."""
+    return len(
+        {
+            int(str(node.fields.get("block", "") or 0) or 0)
+            for node in manifest.blocks
+            if node.block_type == "story"
+        }
+        - {0}
     )
 
 

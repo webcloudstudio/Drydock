@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from drydock import change_ticket
 from drydock.change_ticket import SCOPES, scope_for_delta
 from drydock.errors import SpecificationError
 from drydock.lineage_attribution import parse_tag_blocks
@@ -92,16 +93,31 @@ def render_graph(manifest: DrydockManifest) -> str:
 
 
 def render_blueprints(blueprint_dir: Path, names: Sequence[str]) -> str:
-    """Inject the compact form when one exists; it is what the compaction step exists to provide."""
+    """Inject the compact form when one exists; it is what the compaction step exists to provide.
+
+    The authored file's section headings are injected alongside it either way. An amending story
+    must name the headings it supersedes in the authored Blueprint's exact wording, and the
+    compact form is a prose digest that carries no headings at all — so a model given only the
+    compact can do nothing but invent plausible ones, which
+    :func:`drydock.change_ticket.validate_amended_sections` then rejects, failing the whole refit.
+    Naming the closed set removes the guess.
+    """
     blocks: list[str] = []
     for name in names:
+        authored = blueprint_dir / name
         compact = blueprint_dir / f"{Path(name).stem}_compact.md"
-        source = compact if compact.is_file() else blueprint_dir / name
+        source = compact if compact.is_file() else authored
         try:
             text = source.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
             continue
-        blocks.append(f'  <blueprint name="{name}">\n{text}\n  </blueprint>')
+        sections = ()
+        try:
+            sections = change_ticket.parent_sections(authored.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+        attrs = f' sections="{", ".join(sections)}"' if sections else ""
+        blocks.append(f'  <blueprint name="{name}"{attrs}>\n{text}\n  </blueprint>')
     return "\n".join(blocks)
 
 
