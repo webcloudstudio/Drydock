@@ -212,7 +212,11 @@ def persist_source_lineage(manifest_path: Path, blueprint_dir: Path) -> None:
 
 
 def commit_target(target_dir: Path, message: str) -> None:
-    """Commit a Target repository when one exists; never commit the parent workspace."""
+    """Commit a Target repository when one exists; never commit the parent workspace.
+
+    The commit stages every pending change in the Target, not only the files the calling command
+    wrote, so the operation is announced explicitly with the file count and the resulting commit.
+    """
     if not (target_dir / ".git").exists():
         return
     status = subprocess.run(
@@ -220,8 +224,28 @@ def commit_target(target_dir: Path, message: str) -> None:
     )
     if status.returncode != 0 or not status.stdout.strip():
         return
+    pending = len([line for line in status.stdout.splitlines() if line.strip()])
+    print(f"Git commit: {target_dir}")
+    print(f'  git add -A && git commit -m "{message}"')
+    print(f"  staging {pending} pending Target file(s), not only this command's output")
     subprocess.run(["git", "add", "-A"], cwd=target_dir, check=True, timeout=15)
-    subprocess.run(["git", "commit", "-m", message], cwd=target_dir, check=True, timeout=30)
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=target_dir,
+        check=True,
+        timeout=30,
+        capture_output=True,
+        text=True,
+    )
+    head = subprocess.run(
+        ["git", "log", "-1", "--format=%h %s"],
+        cwd=target_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head.returncode == 0 and head.stdout.strip():
+        print(f"  → {head.stdout.strip()}")
 
 
 def _safe_blueprint_name(path: str) -> str:

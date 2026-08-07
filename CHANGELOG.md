@@ -19,6 +19,16 @@ command surface and Typed Specification contract are unstable and may change bet
   Technology Stack now also flies the sidebar action icon — red `✗` until approved, green `✓`
   after — so an unreviewed stack is as visible as an unanswered questionnaire.
 
+### Changed
+
+- 2026-08-06: Commands that auto-commit a Target repository (`drydock import`, `drydock import
+  --update`, `drydock refit`) now announce the commit before it runs: the Target path, the
+  `git add -A && git commit -m "<message>"` invocation, the number of pending files being staged,
+  and the resulting `<sha> <subject>`. The commit stages every pending change in the Target, not
+  only the files the calling command wrote, and the file count makes that explicit — a source
+  refresh touching one file can still produce a large commit when earlier plan and build artifacts
+  were never committed.
+
 ### Fixed
 
 - 2026-08-06: Text-only LLM-assisted commands no longer run with a writable codex sandbox.

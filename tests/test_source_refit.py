@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.source_refit import (
+    commit_target,
     record_import_root,
     source_refit_target,
     update_import,
@@ -125,3 +127,45 @@ def test_source_refit_writes_ordered_ticket_and_manifest_story(tmp_path):
     manifest = (target / "MANIFEST.md").read_text()
     assert "implements: FEATURE-Demo_refit_1.md" in manifest
     assert '"pending_change"' not in manifest
+
+
+def _git(target: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=target, check=True, capture_output=True)
+
+
+def test_commit_target_announces_the_git_commit(tmp_path, capsys):
+    target = tmp_path / "Demo"
+    target.mkdir()
+    _git(target, "init", "-q")
+    _git(target, "config", "user.email", "test@example.com")
+    _git(target, "config", "user.name", "Test")
+    (target / "a.md").write_text("a\n", encoding="utf-8")
+    (target / "b.md").write_text("b\n", encoding="utf-8")
+
+    commit_target(target, "Refresh imported source snapshot")
+
+    out = capsys.readouterr().out
+    assert f"Git commit: {target}" in out
+    assert 'git add -A && git commit -m "Refresh imported source snapshot"' in out
+    assert "staging 2 pending Target file(s)" in out
+    assert "Refresh imported source snapshot" in out.splitlines()[-1]
+
+
+def test_commit_target_is_silent_without_changes(tmp_path, capsys):
+    target = tmp_path / "Clean"
+    target.mkdir()
+    _git(target, "init", "-q")
+
+    commit_target(target, "Nothing to do")
+
+    assert capsys.readouterr().out == ""
+
+
+def test_commit_target_is_silent_without_a_repository(tmp_path, capsys):
+    target = tmp_path / "NoRepo"
+    target.mkdir()
+    (target / "a.md").write_text("a\n", encoding="utf-8")
+
+    commit_target(target, "Nothing to do")
+
+    assert capsys.readouterr().out == ""
