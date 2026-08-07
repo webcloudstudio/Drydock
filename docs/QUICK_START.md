@@ -31,12 +31,12 @@ flowchart LR
     class C output
 ```
 
-* import copies your specification material into a workspace.
-* analyze decomposes the import/epic into stories.
-* plan grooms blueprints, ac, and the build graph.
-* build creates software testing each stp.
-* refit diffs updated specs into tickets.
-* The quarterdeck web interface provides control and observability.
+* `import` copies your specification material into a workspace.
+* `analyze` decomposes the import/epic into stories.
+* `plan` grooms blueprints, ac, and the build graph.
+* `build` creates software testing each stp.
+* `refit` diffs updated specs into tickets.
+* The `quarterdeck` web interface provides control and observability.
 
 ## Before you begin
 
