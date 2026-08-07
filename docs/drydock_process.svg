@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="990" height="790" viewBox="0 0 990 790" font-family="'Cascadia Code', Consolas, 'Courier New', monospace" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" width="990" height="650" viewBox="0 0 990 650" font-family="'Cascadia Code', Consolas, 'Courier New', monospace" font-size="15">
   <title>Drydock — the whole process surface</title>
   <desc>The complete Drydock command surface expressed as a shell script: Set Up, Analyze, Implement, Loop.</desc>
 
@@ -18,7 +18,7 @@
   </defs>
 
   <!-- panel -->
-  <rect x="0" y="0" width="990" height="790" rx="10" fill="#1A1D23"/>
+  <rect x="0" y="0" width="990" height="650" rx="10" fill="#1A1D23"/>
   <rect x="0" y="0" width="990" height="42" rx="10" fill="#22262E"/>
   <rect x="0" y="32" width="990" height="10" fill="#22262E"/>
   <line x1="0" y1="42" x2="990" y2="42" stroke="#363B44" stroke-width="1"/>
@@ -34,31 +34,25 @@
     <text x="30" y="108"><tspan class="cmt"># Runs on your Claude/Codex/Other subscription CLI. No API keys or per-token-billing.</tspan></text>
 
     <text x="30" y="152"><tspan class="ph"># ── S ── SET UP ──────────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="182"><tspan class="dd">drydock</tspan><tspan class="sub"> config set </tspan><tspan class="arg">llm_provider claude</tspan><tspan class="cmt">      # or codex</tspan></text>
-    <text x="30" y="206"><tspan class="dd">drydock</tspan><tspan class="sub"> init            </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # create the Target workspace</tspan></text>
+    <text x="30" y="182"><tspan class="dd">drydock</tspan><tspan class="sub"> config set     </tspan><tspan class="arg">&lt;var&gt; &lt;value&gt;    </tspan><tspan class="cmt"># setup</tspan></text>
+    <text x="30" y="206"><tspan class="dd">drydock</tspan><tspan class="sub"> init           </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># create the Target workspace</tspan></text>
 
     <text x="30" y="250"><tspan class="ph"># ── A ── ANALYZE ─────────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="280"><tspan class="dd">drydock</tspan><tspan class="sub"> import          </tspan><tspan class="arg">MyApp ./notes</tspan><tspan class="cmt">            # notes, a source tree, or Spec Kit</tspan></text>
-    <text x="30" y="304"><tspan class="dd">drydock</tspan><tspan class="sub"> analyze         </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # → stories, acceptance criteria, blockers</tspan></text>
-    <text x="30" y="328"><tspan class="dd">drydock</tspan><tspan class="sub"> run quarterdeck </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # you answer the questions. the gate is human.</tspan></text>
-    <text x="30" y="352"><tspan class="dd">drydock</tspan><tspan class="sub"> plan            </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # → Blueprint + MANIFEST.md dependency graph</tspan></text>
-    <text x="30" y="376"><tspan class="dd">drydock</tspan><tspan class="sub"> validate        </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # typed specification must hold. no LLM.</tspan></text>
+    <text x="30" y="280"><tspan class="dd">drydock</tspan><tspan class="sub"> import         </tspan><tspan class="arg">MyApp ./notes    </tspan><tspan class="cmt"># import sources into the workspace</tspan></text>
+    <text x="30" y="304"><tspan class="dd">drydock</tspan><tspan class="sub"> analyze        </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Epic decomposition into stories, blockers</tspan></text>
+    <text x="30" y="328"><tspan class="dd">drydock</tspan><tspan class="sub"> run quarterdeck</tspan><tspan class="arg"> MyApp           </tspan><tspan class="cmt"># Web Interface</tspan></text>
+    <text x="30" y="352"><tspan class="dd">drydock</tspan><tspan class="sub"> plan           </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Grooming and dependency graph</tspan></text>
 
-    <text x="30" y="420"><tspan class="ph"># ── I ── IMPLEMENT ───────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="450"><tspan class="kw">while</tspan><tspan class="arg"> </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> status </tspan><tspan class="arg">MyApp --ready</tspan><tspan class="arg">; </tspan><tspan class="kw">do</tspan><tspan class="cmt">      # build the runnable frontier, one step at a time</tspan></text>
-    <text x="30" y="474"><tspan class="arg">  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> build         </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                  # scoped context in, code + evidence out</tspan></text>
-    <text x="30" y="498"><tspan class="arg">  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> build status  </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                  # what is done, blocked, and next</tspan></text>
-    <text x="30" y="522"><tspan class="kw">done</tspan></text>
-    <text x="30" y="552"><tspan class="dd">drydock</tspan><tspan class="sub"> score ac        </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # every assertion, deterministically → SOUNDINGS.md</tspan></text>
-    <text x="30" y="576"><tspan class="dd">drydock</tspan><tspan class="sub"> score release   </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # Sea Trials release gate → SCORECARD.md</tspan></text>
+    <text x="30" y="396"><tspan class="ph"># ── I ── IMPLEMENT ───────────────────────────────────────────────────────</tspan></text>
+    <text x="30" y="426"><tspan class="dd">drydock</tspan><tspan class="sub"> build          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Context aware</tspan></text>
+    <text x="30" y="450"><tspan class="dd">drydock</tspan><tspan class="sub"> score &lt;cmd&gt;    </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Scorecards</tspan></text>
 
-    <text x="30" y="620"><tspan class="ph"># ── L ── LOOP ────────────────────────────────────────────────────────────</tspan></text>
-    <text x="30" y="650"><tspan class="cmt"># The product changed. Change the specification — never patch behind its back.</tspan></text>
-    <text x="30" y="674"><tspan class="dd">drydock</tspan><tspan class="sub"> refit           </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # change tickets → conformed manifest work</tspan></text>
-    <text x="30" y="698"><tspan class="dd">drydock</tspan><tspan class="sub"> build           </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # rebuild only what the change touched</tspan></text>
-    <text x="30" y="722"><tspan class="dd">drydock</tspan><tspan class="sub"> document        </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # docs generated from the Blueprint, not from memory</tspan></text>
-    <text x="30" y="746"><tspan class="dd">drydock</tspan><tspan class="sub"> rigging update  </tspan><tspan class="arg">MyApp</tspan><tspan class="cmt">                    # propagate shared rules and templates</tspan></text>
+    <text x="30" y="494"><tspan class="ph"># ── L ── LOOP ────────────────────────────────────────────────────────────</tspan></text>
+    <text x="30" y="524"><tspan class="cmt"># The product changed.  Creates tickets into the build graph for building.</tspan></text>
+    <text x="30" y="548"><tspan class="dd">drydock</tspan><tspan class="sub"> refit          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Diff -&gt; Tickets.  Add tickets to Graph</tspan></text>
+    <text x="30" y="572"><tspan class="dd">drydock</tspan><tspan class="sub"> document       </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Project documentation automation</tspan></text>
+    <text x="30" y="596"><tspan class="dd">drydock</tspan><tspan class="sub"> rigging        </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Enterprise standards &amp; guardrails. Compression.</tspan></text>
   </g>
 
-  <text x="960" y="776" text-anchor="end" class="foot" font-size="12">webcloudstudio.com/drydock</text>
+  <text x="960" y="628" text-anchor="end" class="foot" font-size="12">webcloudstudio.com/drydock</text>
 </svg>
