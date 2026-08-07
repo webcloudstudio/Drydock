@@ -6,12 +6,10 @@
 
 **Your coding agent forgets. Drydock does not.**
 
-Drydock turns a written description of a software project into typed specifications,
-builds the software from those specifications with your Claude or Codex subscription,
-and records what happened.
-
-It keeps the specifications, build order, decisions, tests, and build results together
-so the software can be reviewed, rebuilt, and changed cleanly.
+Drydock turns a written description of a software project into typed specifications, builds the
+software from those specifications with your Claude or Codex subscription, and keeps the
+specifications, build order, decisions, tests, and results together so the software can be
+reviewed, rebuilt, and changed cleanly.
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
@@ -20,14 +18,9 @@ so the software can be reviewed, rebuilt, and changed cleanly.
 
 ### ▶ START HERE — [Quick Start](docs/QUICK_START.md)
 
-Install, configure a subscription CLI, and build your first project.
-Also available as [HTML](https://webcloudstudio.github.io/Drydock/QUICK_START.html)
-and [PDF](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf).
+Install, connect a subscription CLI, and build your first project.
 
-[Install and set up](#install-and-set-up) · [How Drydock works](#how-drydock-works) · [Why It Is Different](#why-it-is-different) · [Specification](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html)
-[Overview Deck](https://webcloudstudio.com/drydock/) · [White Paper](https://zenodo.org/records/21287574) · [10 Minute Overview](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4) · [User Installation Guide](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
-
-PDF: [Specification](https://webcloudstudio.github.io/Drydock/Drydock_Specification.pdf) · [Quick Start](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf) · [User Installation](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.pdf)
+[Guided tour](#guided-tour-one-feature-end-to-end) · [Specification](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html) · [Installation](docs/USER_INSTALLATION.md) · [Contributing](CONTRIBUTING.md) · [Overview deck](https://webcloudstudio.com/drydock/) · [White paper](https://zenodo.org/records/21287574)
 
 </div>
 
@@ -37,401 +30,179 @@ PDF: [Specification](https://webcloudstudio.github.io/Drydock/Drydock_Specificat
 uv tool install drydock-sdd
 ```
 
-Drydock uses your existing Claude or Codex subscription CLI. It does not require
-API keys or per-token API billing.
-
-Copyright (c) 2026 Web Cloud Studio. Licensed under the MIT License. See [LICENSE](LICENSE).
+Drydock is an installable Python command-line package. The PyPI distribution is `drydock-sdd`; the
+installed command is `drydock`. It runs on your existing Claude or Codex subscription CLI and
+requires no API key and no per-token billing.
 
 ## How Drydock works
 
-Drydock follows five steps:
+Drydock follows five steps: set up a workspace, import your project notes, review the
+specifications and build graph, build working software, then change and maintain it.
 
-1. Set up a workspace.
-2. Import your project notes.
-3. Review the specifications and build graph.
-4. Build working software.
-5. Change and maintain your working software.
-
-The Blueprint contains the typed specifications that define the product. The Manifest,
-stored in `MANIFEST.md`, is the executable build graph. It connects the Blueprint stories,
-tracks their dependencies, selects the work that can run next, and gives each build the
-context it needs.
+The **Blueprint** holds the typed specifications that define the product. The **Manifest**
+(`MANIFEST.md`) is the executable build graph: it connects the Blueprint stories, tracks their
+dependencies, selects the work that can run next, and gives each build exactly the context it
+needs.
 
 <div align="center">
 <img src="docs/drydock_process.png" alt="Drydock setup, specification, planning, building, and maintenance commands." width="920" />
 </div>
 
-## What Drydock Is
+## Guided tour: one feature, end to end
 
-Drydock is an installable Python command-line package. The PyPI distribution is
-`drydock-sdd`; the installed command is `drydock`.
+Every claim below is an artifact Drydock wrote while building a reference Target: a standalone
+CommonMark 0.31.2 parser, specified from the CommonMark specification and built in twelve blocks.
+Follow one feature through the four stages.
 
-The core idea is simple: reproducible LLM builds require a process. Drydock uses
-Agile structure, explicit product-owner review, durable evidence, and context-managed
-build prompts so generated software can be inspected, repeated, and iterated.
-
-## Install and set up
-
-Python 3.11 or later is required.
-
-```bash
-uv tool install drydock-sdd
-drydock --version
-drydock --help
-```
-
-Drydock needs one provider CLI for commands that analyze, plan, or build software.
-Install and sign in to one of these before using those commands:
-
-- `claude`
-- `codex`
-
-Select the provider:
-
-```bash
-drydock config set llm_provider claude
-# or
-drydock config set llm_provider codex
-```
-
-Choose a workspace directory and configure it:
-
-```bash
-mkdir -p "$HOME/drydock"
-
-drydock config set drydock_workspace "$HOME/drydock"
-drydock config show
-```
-
-The workspace holds your projects and Drydock's records. The default build location is:
+**1. Here is the specification.** `drydock analyze` and `drydock plan` decompose the imported
+sources into typed Blueprint files. Each one declares what it provides, what it depends on, and how
+it will be proven — `blueprint/FEATURE-Block-Basics.md`:
 
 ```text
-$HOME/drydock/build/<Target>/
+| Description | Parses tab handling, paragraphs, blank lines, thematic breaks, and ATX/setext headings. |
+| Depends On  | ARCHITECTURE.md |
+| Provides    | thematic breaks, ATX headings, setext headings, paragraphs, blank lines |
+
+## Programmatic Acceptance
+### block-basics-conformance
+The implementation passes the authoritative block-basics sections.
 ```
 
-You can change the build location later if needed:
+Programmatic Acceptance is executable. The check runs the authoritative CommonMark harness against
+the built parser and fails the story if the count regresses. The specification carries its own
+proof.
 
-```bash
-drydock config set drydock_build_directory "$HOME/projects"
-```
-
-PDF publishing is optional:
-
-```bash
-uv tool install "drydock-sdd[pdf]"
-playwright install chromium
-```
-
-### Workspace skills
-
-`drydock init` provisions Drydock's shipped workspace skills into both
-`.claude/skills/` and `.agents/skills/` in the configured workspace. The Loop skills include
-`/refit`, which captures a design discussion in the Target, and
-`/apply-refit`, which turns approved decisions into change tickets. See
-[Drydock skills](https://github.com/webcloudstudio/Drydock/tree/main/Rigging/skills)
-for usage.
-
-## Quick start
-
-The examples below use `MyApp` as the project name. Replace `MyApp` with the name
-of your own project when you run the commands.
-
-Create the project workspace:
-
-```bash
-drydock init MyApp \
-  --display-name "My App" \
-  --description "A working software product."
-
-drydock status
-```
-
-Import your project notes and create the Blueprint and Manifest:
-
-```bash
-drydock import MyApp ./notes --format markdown
-drydock analyze MyApp
-drydock run quarterdeck MyApp
-drydock plan MyApp
-drydock build status MyApp
-```
-
-Build working software and check it:
-
-```bash
-drydock build MyApp
-drydock build status MyApp
-drydock score ac MyApp
-drydock score release MyApp
-```
-
-Change the Blueprint first. Then update the build graph and rebuild the affected work:
-
-```bash
-drydock refit MyApp
-drydock build MyApp
-drydock score ac MyApp
-drydock document MyApp
-```
-
-In development the specification you wrote stays the source of truth, so edit it and let Drydock
-route the change. `--update` re-imports and records a new source version; `--sources` reads the
-diff, decomposes it into stories, and writes a change ticket per affected Blueprint:
-
-```bash
-drydock import MyApp --update
-drydock refit MyApp --sources
-drydock build MyApp
-```
-
-A Target planned before source lineage existed needs its history rebuilt once. `--relineage`
-replays every source version from the Target's git history and attributes the existing stories:
-
-```bash
-drydock refit MyApp --relineage
-```
-
-Your project workspace is:
+**2. Here is the graph.** `MANIFEST.md` is the build order, not a task list. The same feature
+appears as a story with its dependency edge, the context it will be given, and the acceptance
+contract it must satisfy:
 
 ```text
-$HOME/drydock/targets/MyApp/
+## story 4: Parse tabs, paragraphs, blank lines, thematic breaks, and ATX/setext headings.
+id: block-basics
+implements: FEATURE-Block-Basics.md
+context: spec.txt, ARCHITECTURE_compact.md
+provides: thematic breaks, ATX headings, setext headings, paragraphs, blank lines
+depends: architecture
+acceptance: yes
 ```
 
-The generated application is:
+`drydock build` executes the frontier — the stories whose dependencies are satisfied — so the
+parser skeleton exists before the block phase extends it, and no build prompt carries context it
+does not need.
+
+**3. Here is the step that built the file.** Each executed block writes its own evidence record.
+`evidence/feature-block-parsing.md` states what was built, what context was stacked into the
+prompt, what changed on disk, and what the acceptance checks returned:
 
 ```text
-$HOME/drydock/build/MyApp/
+- resulting state: closed/verified
+- execution id: 20260729.142054.864Z-36fc71af
+
+## Stories built
+- Block Basics (block-basics) [story]
+- Block Code (block-code) [story]
+...
+
+## Stacked context
+- implements: FEATURE-Block-Basics.md (SP 382)
+- context: spec.txt (SP 51527)
+- stack: python_compact.md (SP 1534)
+
+## Post-build programmatic acceptance
+- PASS: block-basics-conformance (FEATURE-Block-Basics.md)
+  return code: 0
+  stdout:
+    73 passed, 0 failed, 0 errored, 582 skipped
 ```
+
+**4. Here is the evidence it was verified.** `drydock score ac` re-runs every Programmatic
+Acceptance assertion in the Blueprint and writes the board to `SOUNDINGS.md` — one row per
+assertion, per feature, with a timestamp:
+
+```text
+| Status | Blueprint               | AC Id                     | Verified At          |
+| ✓ PASS | FEATURE-Block-Basics.md | block-basics-conformance  | 2026-07-30T13:30:01Z |
+| ✓ PASS | FEATURE-Block-Basics.md | block-basics-entrypoint   | 2026-07-30T13:30:01Z |
+```
+
+The finished parser passes the full authoritative suite:
+
+```console
+$ ./full_test.sh
+655 passed, 0 failed, 0 errored, 0 skipped
+```
+
+Specification, graph, build step, evidence — four artifacts, one chain, all recoverable months
+later. That chain is the product.
+
+## Why it is different
+
+Drydock is not a prompt collection and it is not a one-shot code generator. Reproducible LLM builds
+require a process: Agile decomposition, explicit product-owner review, durable evidence, and
+context-managed build prompts. Because the typed specifications, executable build graph, review
+decisions, acceptance checks, and execution evidence stay with the project, every build is
+reviewable, repeatable, and safe to change.
+
+Change goes through the specification. Edit the source, re-import it, and `drydock refit` reads the
+diff, decomposes it into stories, and writes a change ticket against each affected Blueprint. The
+next build rebuilds only the affected work.
+
+## Release status
+
+**Alpha.** The methodology is complete and the full SAIL path — import, analyze, plan, build,
+score, refit, document — is implemented and in daily use. Current work is testing Drydock against
+new project types and refining the process guardrails that keep a build honest.
+
+Expect the command surface and Typed Specification contracts to move during the `0.x` series.
+Pin your version, and read [CHANGELOG.md](CHANGELOG.md) before upgrading.
+
+## Documentation
+
+- [Quick Start](docs/QUICK_START.md) — the recommended entry point
+  ([HTML](https://webcloudstudio.github.io/Drydock/QUICK_START.html) ·
+  [PDF](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf))
+- [User Installation Guide](docs/USER_INSTALLATION.md) — install, provider setup, workspace
+  configuration ([PDF](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.pdf))
+- [Drydock Specification](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html)
+  — the authoritative command, artifact, and process contracts
+  ([source](docs/Drydock_Specification.md) ·
+  [PDF](https://webcloudstudio.github.io/Drydock/Drydock_Specification.pdf))
+- [Drydock skills](https://github.com/webcloudstudio/Drydock/tree/main/Rigging/skills) — `/refit`
+  and `/apply-refit`, provisioned into your workspace by `drydock init`
+- [Improving Step Accuracy in Specification-Driven Development](https://zenodo.org/records/21287574)
+  — the white paper
+- [Overview deck](https://webcloudstudio.com/drydock/) ·
+  [10-minute walkthrough video](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4)
 
 Run `drydock --help` for the complete command list.
 
-## Why It Is Different
+## Contributing
 
-Drydock is not a prompt collection and it is not a one-shot code generator. It keeps
-the typed specifications, executable build graph, review decisions, acceptance checks,
-and execution evidence with the project.
+Welcome aboard. The most valuable contribution right now is not code — it is a real project.
 
-That record makes each build reviewable, repeatable, and easier to change.
+Build something you actually care about with Drydock, then tell us where it held and where it
+broke: which specification confused the planner, which build step needed a human rescue, which
+piece of evidence you wanted and could not find. Open an
+[issue](https://github.com/webcloudstudio/Drydock/issues) with the Target name, the command, and
+what you expected. Alpha software improves at the speed of its feedback, and a failed build report
+is worth more to us than a compliment.
 
-For how Drydock compares with other specification-driven tools, see the
-[Product Comparison Matrix](docs/Product_Comparison_Matrix.md).
+If you want to work on Drydock itself — environment setup, architecture, verification contract, and
+quality gates — start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current Release Status
+## Security
 
-Drydock `0.1.5` is an alpha release. The primary SAIL path is implemented, but the
-command surface and Typed Specification contracts remain unstable during the `0.x` series:
+Drydock assembles prompts deterministically and runs the selected provider CLI as a subprocess.
+API-key environment variables are not the intended execution path, provider CLIs run through
+isolated wrappers, and every run persists auditable evidence. Tests use injected runners and never
+require network or paid API access.
 
-- Workspace configuration and Target initialization.
-- Markdown, source tree, Spec Kit, and Compass import.
-- LLM-assisted analysis with blockers, questionnaires, Soundings, Sea Trials, and
-  Commander review artifacts.
-- LLM-assisted planning into typed Blueprint files and `MANIFEST.md`.
-- Manifest-frontier build execution, evidence capture, and human verification.
-- Refit change-ticket conformance and applied-spec drift reconciliation.
-- QuarterDeck runtime for review and process navigation.
-- Rigging manifest registration, compaction, update, and verification.
-- Target documentation generation and assembly.
-- Deterministic Markdown publishing to HTML and optional PDF.
-- Deterministic acceptance verification and release-gate evaluation.
-- Advisory raw-specification conformance scoring before analysis.
-
-`drydock score spec <Target>` inventories `blueprint/sources/`, extracts cited facts from every
-Markdown source in bounded LLM passes, applies deterministic conformance rules, and writes
-`SPECIFICATION_SCORECARD.md`. Non-Markdown sources are inventoried without content ingestion. The
-assessment is advisory: findings do not gate `drydock analyze`.
-
-Findings carry one of three severities, ranked by whether a build would fail on them. `Critical`
-marks a violated guarantee of the scoring run itself. `Error` marks something a build would
-probably fail on: a screen consuming a service nothing defines, a column declared for a table
-nothing declares, a table with no columns, a CLI with no entry point, or two sources giving
-contradictory instructions. `Warning` marks a defined thing nothing uses, or a refinement whose
-absence still builds: a table never populated or never read, a missing help text, an unconsumed
-event.
-
-A specification is not faulted for leaving a consumer unstated, so a defined route or service that
-nothing uses is not a finding at all. A relation the extraction never captured against any owner is
-reported once as unobserved rather than charged against every owner. A column cited as
-`table.column` belongs to its table. Audit, log, history, journal, and archive tables are exempt
-from the unread-table warning.
-
-`drydock score ac <Target>` deterministically verifies each Programmatic Acceptance assertion
-and writes `SOUNDINGS.md`. `drydock score release <Target>` evaluates Sea Trials and writes
-`SCORECARD.md`.
-
-Programmatic Acceptance checks declare external tooling with repeated machine-readable lines such
-as `Requires: python-package=httpx; scope=test`. Plan rejects visible undeclared imports and
-subprocess executables. An unavailable requirement that is not already authorized becomes a
-blocking, story-local Blueprint question; unrelated frontier stories remain buildable. Commander
-answers are retained verbatim as durable Target guidance, including broad instructions such as
-"approve all test harnesses". The QuarterDeck's **Approve for this Manifest** action remains a
-current-Manifest authorization of the exact open request.
-
-Build never improvises an undeclared acceptance dependency. A newly discovered package or
-executable creates a build-origin blocking question, preserves partial work, and consumes no repair
-attempt. Python/uv Target acceptance runs through the Target `.venv`; `uv sync --locked` provisions
-only an authorized declared environment. Provisioning failure is an operational prerequisite
-failure, not failed application acceptance.
-
-`drydock score drydock` takes no Target. It runs an adversarial self-assessment of Drydock itself —
-the specification, every prompt contract, and the command process — against Agile decomposition,
-Test Driven Development, context economy, and governance, and writes ranked feature files with
-Agile stories and TDD acceptance criteria to `docs/drydock_planning/`. It requires a source
-checkout, recommends rather than changes anything, and defaults to the highest available model at
-maximum reasoning effort. `--effort` selects the reasoning depth for the run.
-
-The installed wheel includes Drydock's canonical product specification as a
-read-only package resource at `drydock/resources/docs/Drydock_Specification.md`.
-
-## Command Surface
-
-Every command accepts the invocation-wide overrides `--model <model>`,
-`--effort <low|medium|high|xhigh|max>`, and `--llm-provider <claude|codex>`. `--effort` selects
-reasoning depth for the LLM-assisted commands; the level maps onto what the selected provider and
-model serve. Precedence is `--effort`, then the prompt's declared effort, then `drydock_effort`,
-then the provider's own default.
-
-```text
-drydock --help
-drydock --version
-
-drydock config show
-drydock config set <key> <value>
-drydock config env [<Target>]
-
-drydock init <Target> [--display-name <name>] [--description <desc>]
-drydock status [<Target>] [--check | --ready]
-drydock validate <Target> [--verbose]
-drydock run quarterdeck [<Target>] [--host HOST] [--port PORT]
-
-drydock import <Target> <Source> [--format <auto|markdown|source|speckit|compass|intent>] [--force]
-drydock analyze <Target> [--model <model>] [--llm-provider <claude|codex>]
-drydock plan [--overwrite] [--no-conform] [--override] [--continue-attempts <n>] <Target> [--model <model>] [--llm-provider <claude|codex>]
-
-drydock build <Target> [--step <step-id>] [--ungate] [--override] [--force] [--build-dir <path>] [--reset-failed] [--normalize-order] [--dry-run] [--show-prompt]
-drydock build status <Target>
-drydock score spec <Target>
-drydock score ac <Target>
-drydock score release <Target>
-drydock score drydock [--model <model>] [--llm-provider <claude|codex>]
-
-drydock rigging compact [<Target>] [--all] [--force] [--include-file <file.md>] [--exclude-file <file.md>] [--include-dir <dir>]
-drydock rigging update <Target> [--dry-run]
-drydock rigging verify <Target>
-
-drydock document generate <Target> [--model <model>]
-drydock document assemble <Target> [--theme <theme>]
-drydock document assemble readme <Target>
-drydock document <Target> [--model <model>] [--theme <theme>]
-
-drydock publish <Source.md> --output <Output.html> [--theme <theme>] [--flatten] [--pdf] [--pdf-output <Output.pdf>]
-```
-
-Configuration keys:
-
-| Key | Environment override | Purpose |
-|---|---|---|
-| `drydock_workspace` | `DRYDOCK_WORKSPACE` | Workspace containing `targets/` and Drydock logs |
-| `drydock_build_directory` | `DRYDOCK_BUILD_DIRECTORY` | Root where generated applications are written |
-| `drydock_model` | `DRYDOCK_MODEL` | Default model for LLM-assisted commands |
-| `drydock_effort` | `DRYDOCK_EFFORT` | Default reasoning effort: `low`, `medium`, `high`, `xhigh`, `max`; unset keeps the provider default |
-| `llm_provider` | `LLM_PROVIDER` | Subscription CLI provider: `claude` or `codex` |
-| `prompt_warn_tokens` | `PROMPT_WARN_TOKENS` | Prompt-size warning threshold in tokens |
-| `quarterdeck_port` | `QUARTERDECK_PORT` | Default QuarterDeck port |
-| `diagnose` | `DRYDOCK_DIAGNOSE` | Standoff diagnosis of opaque failures; `--no-diagnose` suppresses it for one run |
-
-## Public Documentation
-
-Start here:
-
-- [Quick Start](docs/QUICK_START.md) — the recommended entry point for new users
-  ([HTML](https://webcloudstudio.github.io/Drydock/QUICK_START.html),
-  [PDF](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf))
-
-Public hub and launch materials:
-
-- [Web Cloud Studio](https://webcloudstudio.com)
-- [Drydock GitHub repository](https://github.com/webcloudstudio/Drydock)
-- [Canonical Drydock specification, browsable HTML](https://webcloudstudio.github.io/Drydock/index_sections/introduction.html)
-- [Launch deck and presentation](https://webcloudstudio.com/drydock/)
-- [Launch video](https://webcloudstudio.com/project-docs/drydock/presentation/Drydock_Video.web.mp4)
-- [Improving Step Accuracy in Specification-Driven Development](https://zenodo.org/records/21287574)
-
-PDF downloads:
-
-- [Drydock Specification (PDF)](https://webcloudstudio.github.io/Drydock/Drydock_Specification.pdf)
-- [Quick Start (PDF)](https://webcloudstudio.github.io/Drydock/QUICK_START.pdf)
-- [User Installation Guide (PDF)](https://webcloudstudio.github.io/Drydock/USER_INSTALLATION.pdf)
-
-Repository references:
-
-- [Install Drydock](https://github.com/webcloudstudio/Drydock/blob/main/docs/USER_INSTALLATION.md)
-- [Drydock specification source](docs/Drydock_Specification.md)
-- [Rendered specification HTML](docs/Drydock_Specification.html)
-- [Rendered specification PDF](docs/Drydock_Specification.pdf)
-- [Launch script](docs/presentation/script.md)
-- [Talking points](docs/presentation/talking_points.md)
-
-Development and governance:
-
-- [Contributing](CONTRIBUTING.md)
-- [Release process (maintainer runbook)](docs/RELEASE_PROCESS.md)
-- [Drydock skills](https://github.com/webcloudstudio/Drydock/tree/main/Rigging/skills)
-- [PyPI name reservation notes](docs/PYPI_NAME_RESERVATION.md)
-- [Launch distribution plan](docs/presentation/distribution.md)
-
-## Source Development
-
-Install from a source checkout:
-
-```bash
-git clone https://github.com/webcloudstudio/Drydock.git
-cd Drydock
-uv venv
-uv pip install -e ".[dev]"
-```
-
-Run local verification:
-
-```bash
-python -m pytest
-ruff check src/ tests/
-ruff format --check src/ tests/
-```
-
-Build release artifacts:
-
-```bash
-python -m hatchling build
-```
-
-After the editable install, run the installed console entry point against the source
-tree:
-
-```bash
-drydock --help
-```
-
-## Security Model
-
-Drydock assembles prompts deterministically and runs the selected provider CLI as a
-subprocess. Execution evidence is persisted under Drydock logs so a run can be audited.
-
-Provider handling is intentionally subscription-oriented:
-
-- API-key environment variables are not the intended execution path.
-- Claude and Codex are run through isolated command wrappers.
-- Build commands operate against the configured Target workspace and generated application
-  directory.
-- Tests use injected runners and never require network or paid API access.
-
-See the "Drydock Security" section in
-[docs/Drydock_Specification.md](docs/Drydock_Specification.md#drydock-security) for the
-current provider execution contracts.
+See the [Drydock Security](docs/Drydock_Specification.md#drydock-security) section of the
+specification for the provider execution contracts.
 
 ## License
 
-MIT - Copyright (c) 2026 Web Cloud Studio. See [LICENSE](LICENSE).
+MIT — Copyright (c) 2026 Web Cloud Studio. See [LICENSE](LICENSE).
 
-"Drydock" is a trademark of Web Cloud Studio; see [NOTICE](NOTICE) for use
-of the name in forks and derivative works. See [CONTRIBUTORS.md](CONTRIBUTORS.md)
-for the project's contributors.
+"Drydock" is a trademark of Web Cloud Studio; see [NOTICE](NOTICE) for use of the name in forks and
+derivative works. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the project's contributors.
