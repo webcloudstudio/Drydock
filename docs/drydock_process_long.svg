@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="990" height="1015" viewBox="0 0 990 1015" font-family="'Cascadia Code', Consolas, 'Courier New', monospace" font-size="15">
+  <title>Drydock — the whole process surface</title>
+  <desc>The complete Drydock command surface expressed as a shell script: Set Up, Analyze, Implement, Loop. Commands that call an LLM are marked ai.</desc>
+
+  <defs>
+    <style>
+      .cmt  { fill: #7E8590; }
+      .dd   { fill: #2CB67D; }
+      .sub  { fill: #FFFFFF; }
+      .subq { fill: #9BA1AB; }
+      .ai   { fill: #2CB67D; font-weight: bold; }
+      .arg  { fill: #C0C4CC; }
+      .kw   { fill: #C0C4CC; font-weight: bold; }
+      .ph   { fill: #2CB67D; font-weight: bold; }
+      .hd   { fill: #FFFFFF; font-weight: bold; }
+      .ttl  { fill: #C0C4CC; }
+      .foot { fill: #6B717B; }
+      text  { white-space: pre; }
+    </style>
+  </defs>
+
+  <!-- panel -->
+  <rect x="0" y="0" width="990" height="1015" rx="10" fill="#1A1D23"/>
+  <rect x="0" y="0" width="990" height="42" rx="10" fill="#22262E"/>
+  <rect x="0" y="32" width="990" height="10" fill="#22262E"/>
+  <line x1="0" y1="42" x2="990" y2="42" stroke="#363B44" stroke-width="1"/>
+
+  <!-- title bar -->
+  <circle cx="24" cy="21" r="5.5" fill="#3A404A"/>
+  <circle cx="44" cy="21" r="5.5" fill="#3A404A"/>
+  <circle cx="64" cy="21" r="5.5" fill="#2CB67D"/>
+  <text x="92" y="26" class="ttl" font-size="13.5">Drydock turns specifications into working software.</text>
+
+  <g>
+    <text x="30" y="82"><tspan class="hd"># Drydock - Agile and Test Driven Software Delivery</tspan></text>
+    <text x="30" y="108"><tspan class="cmt"># Runs on your Claude/Codex/Other subscription CLI. No API keys or per-token-billing.</tspan></text>
+    <text x="30" y="130"><tspan class="ai">ai</tspan><tspan class="cmt"> = calls your subscription CLI agent; all other commands are deterministic.</tspan></text>
+
+    <text x="30" y="174"><tspan class="ph"># ── S ── SET UP ──────────────────────────────────────────────────────────</tspan></text>
+    <text x="30" y="204"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> config show       </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Show configuration values and sources</tspan></text>
+    <text x="30" y="228"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> config set        </tspan><tspan class="arg">&lt;var&gt; &lt;value&gt;    </tspan><tspan class="cmt"># Set a configuration value</tspan></text>
+    <text x="30" y="252"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> init              </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Create the target workspace</tspan></text>
+    <text x="30" y="276"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> status            </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Status dashboard</tspan></text>
+    <text x="30" y="300"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> status            </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Summary and plan state</tspan></text>
+
+    <text x="30" y="344"><tspan class="ph"># ── A ── ANALYZE ─────────────────────────────────────────────────────────</tspan></text>
+    <text x="30" y="374"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> import            </tspan><tspan class="arg">MyApp &lt;file|dir&gt; </tspan><tspan class="cmt"># Import sources into the workspace</tspan></text>
+    <text x="30" y="398"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> analyze           </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Epic decomposition into stories &amp; blockers</tspan></text>
+    <text x="30" y="422"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> validate          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Validate Build Plan</tspan></text>
+    <text x="30" y="446"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> score spec        </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Audit imported raw specifications</tspan></text>
+    <text x="30" y="470"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> run quarterdeck   </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Web interface</tspan></text>
+    <text x="30" y="494"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> plan              </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Grooming and dependency graph</tspan></text>
+
+    <text x="30" y="538"><tspan class="ph"># ── I ── IMPLEMENT ───────────────────────────────────────────────────────</tspan></text>
+    <text x="30" y="568"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> build             </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Iterative context-aware process</tspan></text>
+    <text x="30" y="592"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> build status      </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Show build state</tspan></text>
+    <text x="30" y="616"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> build verify      </tspan><tspan class="arg">MyApp &lt;step&gt;     </tspan><tspan class="cmt"># Display/Verify build graph</tspan></text>
+    <text x="30" y="640"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> build score       </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Generate SCORECARD.md</tspan></text>
+    <text x="30" y="664"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> score ac          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Verify Story acceptance criteria</tspan></text>
+    <text x="30" y="688"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> score build       </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Post-build report: repairs, tokens, cache</tspan></text>
+    <text x="30" y="712"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> score release     </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Score project success criteria (EARS)</tspan></text>
+
+    <text x="30" y="756"><tspan class="ph"># ── L ── LOOP ────────────────────────────────────────────────────────────</tspan></text>
+    <text x="30" y="786"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> refit             </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Diff -&gt; ticket -&gt; dependency graph</tspan></text>
+    <text x="30" y="810"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> document          </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Project documentation automation</tspan></text>
+    <text x="30" y="834"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> document generate </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># AI pass only</tspan></text>
+    <text x="30" y="858"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> document assemble </tspan><tspan class="arg">MyApp            </tspan><tspan class="cmt"># Assembly only</tspan></text>
+    <text x="30" y="882"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> publish           </tspan><tspan class="arg">&lt;Source.md&gt;      </tspan><tspan class="cmt"># Render Markdown to HTML/PDF</tspan></text>
+    <text x="30" y="906"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> rigging compact   </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Automanage compaction</tspan></text>
+    <text x="30" y="930"><tspan class="ai">    </tspan><tspan class="dd">drydock</tspan><tspan class="subq"> rigging verify    </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Verify rigging compliance</tspan></text>
+    <text x="30" y="954"><tspan class="ai">ai  </tspan><tspan class="dd">drydock</tspan><tspan class="sub"> score drydock     </tspan><tspan class="arg">                 </tspan><tspan class="cmt"># Adversarial self-assessment</tspan></text>
+  </g>
+
+  <text x="960" y="993" text-anchor="end" class="foot" font-size="12">webcloudstudio.com/drydock</text>
+</svg>
