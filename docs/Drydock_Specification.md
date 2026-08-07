@@ -415,6 +415,9 @@ the Target workspace for later analysis. Compass imports write `COMPASS.md` at t
 `COMPASS.md` format and writes it to the Target root. An existing `COMPASS.md` is preserved unless
 `--force` is given.
 
+`drydock import <Target> --update` refreshes the imported snapshot from the recorded source root
+and records a new source version. `<Source>` is not accepted with `--update`.
+
 ### drydock score spec
 
 `drydock score spec <Target>` diagnoses potential errors in the specification. Feed the output to your
@@ -812,6 +815,8 @@ A Refit lets the Commander update the application while keeping the Blueprint an
 
 ```text
 drydock refit <Target>
+drydock refit <Target> --sources
+drydock refit <Target> --relineage
 ```
 
 ```mermaid
@@ -843,6 +848,19 @@ Refit also detects changed Blueprint files. It compares the cksum and git commit
 
 Foundational files such as `ARCHITECTURE.md`, `DATABASE.md`, and `UI-GENERAL.md` require explicit change tickets.
 
+`drydock refit <Target> --sources` routes imported source changes. It reads the difference between
+the last consumed source version and the current one, decomposes it into Manifest stories seated on
+existing Blueprints, and writes one change ticket per affected Blueprint. Refit never creates a
+Blueprint; a requirement that fits none fails the command and requires a replan. A change that
+removes a service other stories consume fails before any file is written. A change to a foundational
+contract is reported with its downstream consumers and does not block the command.
+
+`drydock refit <Target> --relineage` rebuilds `LINEAGE.json` from the Target's git history and
+attributes existing Manifest stories to the source requirements they implement. It requires a Target
+git repository.
+
+`--sources` and `--relineage` are mutually exclusive.
+
 **Exit codes.** `0` success or no-op; `1` operational failure or unticketed foundational drift; `2` usage error.
 
 ## Artifact I/O Matrix 
@@ -859,6 +877,7 @@ What drydock operations read/write
 | COMPASS.md | Target root | O*/I | I | I | I | I |
 | DATABASE.md | blueprint/ | · | O | I | I | I |
 | FEATURE-{Name}.md | blueprint/ | · | O | I | I | I |
+| LINEAGE.json | Target root | · | I/O | · | · | I/O |
 | MANIFEST.md | Target root | · | O | I | I | I |
 | PLAN_COMPASS.md | Target root | · | C/I | · | · | · |
 | questionnaires/*.json | QuarterDeck/questionnaires/ | O/I | I | I | · | · |
@@ -867,7 +886,7 @@ What drydock operations read/write
 | SEA_TRIALS.md | Target root | O | · | · | · | · |
 | SOUNDINGS.md | Target root | · | · | · | O | · |
 | changes/TICKET-{NNN}-{Name}.md | blueprint/changes/ | · | I | I | · | O |
-| sources/* | blueprint/sources/ | I | I | I | I | · |
+| sources/* | blueprint/sources/ | I | I | I | I | I |
 | UI-GENERAL.md | blueprint/ | · | O | I | I | I |
 
 **Legend:** `O` the command produces the artifact · `I` the command consumes the artifact ·
