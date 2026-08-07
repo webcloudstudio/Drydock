@@ -175,7 +175,7 @@ Run it using the project instructions generated in that directory.
 <figure style="margin: 1.5rem auto; text-align: center;">
   <img src="Quickstart_UVRUN.png"
        alt="Terminal running the generated ReadingList application with uv"
-       style="display: block; width: 100%; max-width: 774px; height: auto; margin: 0 auto; object-fit: contain;">
+       style="display: block; width: 100%; max-width: 620px; height: auto; margin: 0 auto; object-fit: contain;">
   <figcaption><em>Follow the generated project instructions to start the application; this example runs it with <code>uv run run.py</code>.</em></figcaption>
 </figure>
 
@@ -204,6 +204,20 @@ drydock build ReadingList            # Incremental Build
 This is drydocks development workflow - designed for high velocity changes to your specifications.  `drydock refit` git diffs the re-imported source materials, maps sources blueprints, appends to the build graph enabling you to `drydock build` normally.
 
 The post-production workflow by uses a similar process but treats the internal blueprints and not the user specifications as canonical.  Production change tickets map directly to blueprints to minimize drift as the replan becomes mechanical (no llm).
+
+<figure style="margin: 1.5rem auto; text-align: center;">
+  <img src="QuickStart_ManifestChange.png"
+       alt="Updated QuarterDeck Manifest after refitting the ReadingList target"
+       style="display: block; width: 100%; max-width: 1002px; height: auto; margin: 0 auto; object-fit: contain;">
+  <figcaption><em>The updated Manifest adds the refit work to the dependency-aware build plan.</em></figcaption>
+</figure>
+
+<figure style="margin: 1.5rem auto; text-align: center;">
+  <img src="QuickStart_AppUpdated.png"
+       alt="Updated ReadingList application showing unread and read books"
+       style="display: block; width: 100%; max-width: 900px; height: auto; margin: 0 auto; object-fit: contain;">
+  <figcaption><em>The incrementally rebuilt application lets the reader mark books as read and see their status.</em></figcaption>
+</figure>
 
 ## What you just built
 
