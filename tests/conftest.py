@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+# ``main()`` publishes the glyph tier it resolved so its subprocesses render identically. That
+# is one process per command in the field, but one process for the whole suite here, so a test
+# that drives the CLI would otherwise fix the tier for every test that follows it.
+_CONSOLE_ENV = ("DRYDOCK_GLYPHS", "DRYDOCK_ASCII")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_console_env():
+    saved = {name: os.environ.get(name) for name in _CONSOLE_ENV}
+    yield
+    for name, value in saved.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 @pytest.fixture()

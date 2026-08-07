@@ -43,6 +43,8 @@ def _run(target_dir: Path, *args: str, timeout: int = _TIMEOUT) -> tuple[int, st
             cwd=target_dir,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=timeout,
         )

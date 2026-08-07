@@ -122,7 +122,12 @@ def _sha(path: Path) -> str:
 def _git(path: Path, *args: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["git", "-C", str(path), *args], capture_output=True, text=True, timeout=10
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 1, str(exc)
@@ -235,6 +240,8 @@ def _measure(trial: SeaTrial, *, target_dir: Path, build_dir: Path) -> Measureme
                 cwd=build_dir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=MEASUREMENT_TIMEOUT,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:

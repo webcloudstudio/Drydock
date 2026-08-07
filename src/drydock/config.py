@@ -77,6 +77,8 @@ def _git_toplevel(start: Path) -> Path | None:
             cwd=start,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError):

@@ -160,6 +160,8 @@ def _git_head(path: Path) -> str | None:
             ["git", "-C", str(path), "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         if result.returncode == 0:
@@ -176,6 +178,8 @@ def _git_file_commit(path: Path) -> str:
             ["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         if root_result.returncode != 0:
@@ -186,6 +190,8 @@ def _git_file_commit(path: Path) -> str:
             ["git", "-C", str(root), "log", "-n", "1", "--format=%H", "--", str(rel)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         if log_result.returncode == 0 and log_result.stdout.strip():
@@ -202,6 +208,8 @@ def _is_dirty(path: Path) -> bool:
             ["git", "-C", str(path), "status", "--porcelain", "--", "."],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         return result.returncode == 0 and bool(result.stdout.strip())

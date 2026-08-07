@@ -53,6 +53,8 @@ def provision_uv_environment(build_dir: Path) -> TargetEnvironment:
         cwd=build_dir,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=900,
         check=False,
     )

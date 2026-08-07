@@ -569,6 +569,8 @@ def run_programmatic_acceptance(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 start_new_session=os.name == "posix",
                 preexec_fn=preexec,
             )

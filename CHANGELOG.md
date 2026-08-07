@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-07: `drydock status console` reports how the current terminal was classified — platform,
+  stream encoding, `TERM`, console host, resolved glyph tier, colour — and prints a sample line of
+  every tier past the tier wrapper, so a terminal that cannot render a glyph shows it. One command
+  and one screenshot now diagnose any icon complaint.
+
+- 2026-08-07: `drydock --glyphs <emoji|text|ascii|auto>` and `DRYDOCK_GLYPHS` override console
+  detection by naming a tier. `--ascii` and `--unicode` remain as aliases for the bottom and top
+  tiers. An override replaces the terminal heuristic but never the encoding limit: forcing emoji
+  onto a `cp437` stream would reintroduce the `UnicodeEncodeError` the detection exists to prevent.
+
 - 2026-08-06: `LINEAGE.json` at the Target root records which source version produced which work.
   The unit is a *source version*, not a parsed fragment of prose: import copies the file and lets
   git record it, so a version is a `(content hash, commit)` pair and a delta is a git diff. A
@@ -28,6 +38,27 @@ command surface and Typed Specification contract are unstable and may change bet
   when one is absent.
 
 ### Fixed
+
+- 2026-08-07: Status icons and shell markers now render correctly on terminals that previously
+  showed boxes or escape sequences. Four defects, each independently sufficient to break output:
+  the MSYS/MinGW rule was gated on `isatty()`, which is false for a Git Bash terminal under a
+  native Windows Python, so the rule never fired for the host it was written for; console output
+  defaulted to its richest form on any unrecognized terminal, and a UTF-8 encoding is not evidence
+  of an emoji font, so unknown hosts got glyphs they could not draw; an auto-detected downgrade was
+  never published to the environment, so subprocesses and the LLM runner rendered differently from
+  their parent; and ANSI colour was written whenever stdout was a terminal, which prints a literal
+  `←[32m` on a Windows console without virtual terminal processing enabled.
+
+  Output is now resolved to the richest of three tiers the terminal is *known* to support — `emoji`
+  (`✅`), `text` (`✓`, the default for any unrecognized host), or `ascii` (`v`) — capped by what the
+  stream's encoding can carry. Nearly every glyph Drydock prints is a single-width symbol that
+  survives at the `text` tier, so the icons stay.
+
+- 2026-08-07: Subprocess output is decoded as UTF-8 rather than as the system locale encoding.
+  `text=True` without `encoding=` decodes with `cp1252` on Windows and `ascii` under `LANG=C`, so a
+  streamed LLM transcript containing any non-ASCII character arrived as mojibake or raised
+  `UnicodeDecodeError` — before any console handling could apply. Fixed at every call site, with a
+  contract test that fails if a new one omits it.
 
 - 2026-08-06: Standoff diagnosis no longer calls an LLM for deterministic operating-system
   exceptions. Missing files, denied permissions, incorrect path types, existing destinations, and

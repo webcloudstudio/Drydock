@@ -23,6 +23,9 @@ from drydock.stubs import not_implemented
 
 logger = logging.getLogger(__name__)
 
+# Console glyph tiers, richest first after ``auto``. See ``drydock.console``.
+GLYPH_TIERS = ("auto", "emoji", "text", "ascii")
+
 
 class DrydockArgumentParser(argparse.ArgumentParser):
     """Argument parser that shows full help on syntax errors."""
@@ -239,6 +242,7 @@ def _extract_global_overrides(
             "effort": None,
             "debug": False,
             "ascii": None,
+            "glyphs": None,
         }
 
     from drydock.config import EFFORT_LEVELS
@@ -250,6 +254,7 @@ def _extract_global_overrides(
         "effort": None,
         "debug": False,
         "ascii": None,
+        "glyphs": None,
     }
     index = 0
 
@@ -299,6 +304,23 @@ def _extract_global_overrides(
         if token in {"--ascii", "--unicode"}:
             overrides["ascii"] = token == "--ascii"
             index += 1
+            continue
+        if option == "--glyphs":
+            if separator:
+                tier, consumed = inline, 1
+            elif index + 1 < len(argv):
+                tier, consumed = argv[index + 1], 2
+            else:
+                raise UsageError("argument --glyphs: expected one argument")
+            tier = tier.strip().lower()
+            if tier not in GLYPH_TIERS:
+                raise UsageError(
+                    f"argument --glyphs: invalid choice: {tier!r}\n"
+                    f"  Valid values: {', '.join(GLYPH_TIERS)}\n"
+                    "  auto detects what the terminal renders; run `drydock status console`."
+                )
+            overrides["glyphs"] = tier
+            index += consumed
             continue
         cleaned.append(token)
         index += 1
@@ -1457,6 +1479,37 @@ def cmd_status_ready(target: str) -> int:
     return 0 if ready else 1
 
 
+def cmd_status_console() -> int:
+    """Report how this terminal was classified, and show what it does with each glyph tier.
+
+    A user whose icons come out wrong runs one command and sends one screenshot. The sample
+    lines are the evidence: the raw line is written past the tier wrapper, so tofu there is
+    proof that the downgrade below it was correct.
+    """
+    from drydock import console
+
+    rows = console.console_report(sys.stdout)
+    width = max(len(name) for name, _ in rows)
+    print("\nConsole capability")
+    for name, value in rows:
+        print(f"  {name.ljust(width)}   {value}")
+
+    # Written past the tier wrapper, so each line shows what this terminal really does with
+    # that tier's characters rather than what the resolved tier would have made of them.
+    print("\nGlyph samples")
+    for tier in (console.EMOJI, console.TEXT, console.ASCII):
+        label = f"  {tier.ljust(width)}   "
+        sample = console.render(console.SAMPLE, tier)
+        if not console.write_raw(sys.stdout, label + sample + "\n"):
+            print(f"{label}(the stream refused these characters outright)")
+
+    print(
+        "\n  Any tier whose sample line shows boxes or question marks is not supported here.\n"
+        "  Override with `drydock --glyphs <emoji|text|ascii> <command>` or DRYDOCK_GLYPHS."
+    )
+    return 0
+
+
 def cmd_status_blueprint(blueprint: str) -> int:
     from drydock.config import get_target_directory, record_activity
     from drydock.status import status_blueprint
@@ -1514,18 +1567,23 @@ def _render_workspace_status(ws) -> None:
                 f"   {'Recommend:':<{label_width}} compact {len(info.compact_recs)} file(s)"
                 f" — run: drydock rigging compact {info.name}"
             )
+        # The outcome mark is chosen here rather than left to the stream wrapper: an emoji
+        # occupies two cells and a text glyph one, so the column width depends on the tier.
+        from drydock.console import EMOJI, active_tier, pad_display
+
+        passed, failed = ("✅", "❌") if active_tier() == EMOJI else ("✓", "✗")
         for rec in reversed(info.history):
             cmd = rec.get("command", "")
             stamp = str(rec.get("time", "")).strip()
             rc = rec.get("return_code")
-            action = "Run" if rc is None else ("✅" if rc == 0 else "❌")
+            action = "Run" if rc is None else (passed if rc == 0 else failed)
             if len(stamp) >= 10:
                 month = str(int(stamp[5:7]))
                 day = str(int(stamp[8:10]))
                 label = f"{month}-{day}:"
             else:
                 label = "Date:"
-            print(f"   {label:<{label_width}} {action} {cmd}")
+            print(f"   {label:<{label_width}} {pad_display(action, 3)} {cmd}")
         print()
 
 
@@ -1821,10 +1879,12 @@ _AC_GLYPH = {"PASS": ("✓", "32"), "FAIL": ("✗", "31"), "UNVERIFIED": ("—",
 
 
 def _ac_mark(status: str) -> str:
-    """Colored glyph plus padded status word. Color is dropped when stdout is not a terminal or
-    ``NO_COLOR`` is set, so captured output stays plain."""
+    """Colored glyph plus padded status word. Color is dropped when the terminal will not
+    render an escape sequence, so captured output and legacy consoles stay plain."""
+    from drydock.console import color_enabled
+
     glyph, code = _AC_GLYPH.get(status, ("?", "0"))
-    if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
+    if color_enabled(sys.stdout):
         glyph = f"\033[{code}m{glyph}\033[0m"
     return f"{glyph} {status:<10}"
 
@@ -2394,8 +2454,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Do not call the LLM to diagnose an opaque failure.",
     )
-    # Console encoding is detected per run and needs no flag. These override that decision when
-    # the detection is wrong for a particular terminal.
+    # Console capability is detected per run and needs no flag. These override that decision
+    # when the detection is wrong for a particular terminal; `drydock status console` reports
+    # what was detected and why.
+    parser.add_argument(
+        "--glyphs",
+        dest="glyphs",
+        choices=GLYPH_TIERS,
+        default=None,
+        metavar="<tier>",
+        help=("Override console detection: emoji (✅), text (✓), ascii (v), or auto (default)."),
+    )
     parser.add_argument(
         "--ascii",
         dest="ascii",
@@ -2461,7 +2530,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock status                   — compact dashboard of all targets\n"
             "drydock status <Target>          — validation summary and plan state\n"
             "drydock status <Target> --check  — completion gate: exit 0/1/2\n"
-            "drydock status <Target> --ready  — build-loop guard: exit 0 while buildable"
+            "drydock status <Target> --ready  — build-loop guard: exit 0 while buildable\n"
+            "drydock status console           — terminal capability report and glyph samples"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2846,6 +2916,10 @@ def _dispatch_status(args: argparse.Namespace) -> int:
     flags = {"--check", "--ready"}
     tokens = [token for token in args.args if token not in flags]
     trailing = set(args.args) & flags
+    if tokens == ["console"]:
+        # Reserved operand: no Target may be named `console`. It is a self-report about the
+        # terminal, not about a Target, and needs to work before any workspace exists.
+        return cmd_status_console()
     check = getattr(args, "check", False) or "--check" in trailing
     ready = getattr(args, "ready", False) or "--ready" in trailing
     if check and ready:
@@ -3896,11 +3970,16 @@ def main(argv: list[str] | None = None) -> None:
             args.debug = bool(getattr(args, "debug", False) or value)
         elif getattr(args, key, None) is None:
             setattr(args, key, value)
-    if getattr(args, "ascii", None) is not None:
-        # Invocation-wide, and published to the environment so every Drydock subprocess and
-        # LLM runner started by this command renders the same way.
-        os.environ["DRYDOCK_ASCII"] = "1" if args.ascii else "0"
-        configure_stdio()
+    glyphs = getattr(args, "glyphs", None)
+    if glyphs is None and getattr(args, "ascii", None) is not None:
+        glyphs = "ascii" if args.ascii else "emoji"
+    if glyphs is not None:
+        os.environ["DRYDOCK_GLYPHS"] = glyphs
+        os.environ["DRYDOCK_ASCII"] = "1" if glyphs == "ascii" else "0"
+    # Invocation-wide, and published to the environment whether it was chosen or detected, so
+    # every Drydock subprocess and LLM runner started by this command renders the same way. The
+    # child's own stdout is a pipe, so left to itself it would resolve a different tier.
+    os.environ["DRYDOCK_GLYPHS"] = configure_stdio()
     if getattr(args, "effort", None):
         # ``--effort`` is invocation-wide: publish it as the configured effort so every
         # LLM-assisted command, and any Drydock subprocess it starts, resolves the same
