@@ -30,7 +30,7 @@
   <text x="92" y="26" class="ttl" font-size="13.5">Drydock turns specifications into working software.</text>
 
   <g>
-    <text x="30" y="82"><tspan class="hd"># Drydock - based on Agile and Test Driven Development</tspan></text>
+    <text x="30" y="82"><tspan class="hd"># Drydock - Agile and Test Driven Software Delivery</tspan></text>
     <text x="30" y="108"><tspan class="cmt"># Runs on your Claude/Codex/Other subscription CLI. No API keys or per-token-billing.</tspan></text>
 
     <text x="30" y="152"><tspan class="ph"># ── S ── SET UP ──────────────────────────────────────────────────────────</tspan></text>
