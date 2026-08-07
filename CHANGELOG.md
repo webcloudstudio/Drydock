@@ -21,6 +21,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-06: Programmatic Acceptance validation now discovers installed Python distribution
+  metadata once per Drydock process instead of rescanning the environment twice per acceptance
+  check. This removes repeated high-latency package metadata traversal during planning,
+  particularly when the environment resides on a Windows-mounted filesystem under WSL.
+
 - 2026-08-06: Text-only LLM-assisted commands no longer run with a writable codex sandbox.
   `llm.run_prompt(allow_tools=False)` suppressed tools on the `claude` path only; the `codex`
   branch never consulted the flag and ran with the configured sandbox, which defaults to

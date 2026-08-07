@@ -8,6 +8,7 @@ import re
 import shutil
 import tomllib
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from drydock.acceptance import AcceptanceRequirement, ProgrammaticAcceptance
@@ -41,11 +42,18 @@ class RequirementAuthorization:
     commander_text: str = ""
 
 
-def _distribution_imports() -> frozenset[str]:
+@cache
+def _distribution_map() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return installed import-to-distribution metadata once per process."""
     try:
-        return frozenset(importlib.metadata.packages_distributions())
+        distributions = importlib.metadata.packages_distributions()
     except Exception:  # pragma: no cover - damaged host metadata
-        return frozenset()
+        return ()
+    return tuple(sorted((name, tuple(packages)) for name, packages in distributions.items()))
+
+
+def _distribution_imports() -> frozenset[str]:
+    return frozenset(name for name, _packages in _distribution_map())
 
 
 def visible_external_usage(code: str) -> tuple[tuple[str, str], ...]:
@@ -102,7 +110,7 @@ def undeclared_external_usage(check: ProgrammaticAcceptance) -> tuple[tuple[str,
         for item in check.requirements
     }
     missing = []
-    distributions = importlib.metadata.packages_distributions()
+    distributions = dict(_distribution_map())
     for kind, name in visible_external_usage(check.code):
         normalized = canonicalize_package_name(name) if kind == "python-package" else name
         aliases = {normalized}

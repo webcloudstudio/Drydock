@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from drydock import acceptance_requirements
 from drydock.acceptance import (
     AcceptanceRequirement,
     parse_programmatic_acceptance_text,
@@ -58,6 +59,37 @@ def test_fastapi_test_client_requires_declared_httpx():
     assert ("python-package", "httpx") in undeclared_external_usage(check)
     with pytest.raises(ValueError, match="undeclared python-package=httpx"):
         validate_declared_external_usage((check,))
+
+
+def test_distribution_metadata_is_discovered_once_per_process(monkeypatch):
+    calls = 0
+
+    def packages_distributions():
+        nonlocal calls
+        calls += 1
+        return {"external_import": ["external-package"]}
+
+    monkeypatch.setattr(
+        acceptance_requirements.importlib.metadata,
+        "packages_distributions",
+        packages_distributions,
+    )
+    acceptance_requirements._distribution_map.cache_clear()
+    check = parse_programmatic_acceptance_text(
+        _spec(
+            "Requires: python-package=external-package; scope=test",
+            "import external_import\nassert external_import",
+        ),
+        source="FEATURE-Health.md",
+    )[0]
+
+    try:
+        validate_declared_external_usage((check,))
+        validate_declared_external_usage((check,))
+    finally:
+        acceptance_requirements._distribution_map.cache_clear()
+
+    assert calls == 1
 
 
 def test_plan_projects_canonical_story_local_tooling_question(tmp_path):
