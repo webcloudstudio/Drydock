@@ -1,8 +1,8 @@
 ---
-title: Drydock Quick Start
-title_sub: Build your first application
-eyebrow: From specification to working software
-subtitle: Drydock - Quick Start Guide
+title: Quick Start Guide
+title_sub:
+eyebrow: Drydock turns specifications into working software.
+subtitle:
 logo: drydock_logo.png
 author: Ed Barlow
 studio: www.webcloudstudio.com
@@ -10,32 +10,39 @@ year: August 2026
 header_title: Drydock
 copyright: Copyright © 2026 Web Cloud Studio.
 ---
-
-Drydock turns project specifications into working software. This guide builds a trivial application called ReadingList to demonstrate the process.
-
-The workflow follows the commands you run:
+This quick start guide builds a trivial application called ReadingList.
 
 ```mermaid
 flowchart LR
-    S["Set Up"] --> I["Import"]
-    I --> A["Analyze"]
-    A --> P["Plan"]
-    P --> B["Build"]
-    B --> W["Working Software"]
+    N["spec"] --> IMP["drydock<br/>import"]
+    IMP --> ANA["drydock<br/>analyze"]
+    ANA --> PLAN["drydock<br/>plan"]
+    PLAN --> BUILD["drydock<br/>build"]
+    BUILD --> C["Application"]
+    C --> UPDATE["updated<br/>spec"]
+    UPDATE --> REFIT["drydock import<br/>drydock refit"]
+    REFIT --> BUILD
 
-    classDef phase fill:#123b59,stroke:#2cb67d,color:#fff,font-weight:bold
-    classDef result fill:#0a5c38,stroke:#2cb67d,color:#fff,font-weight:bold
-    class P,S,I,A,B phase
-    class W result
+    classDef input fill:#d4a017,stroke:#a07810,color:#111
+    classDef governed fill:#1e40af,stroke:#3b5fc0,color:#fff
+    classDef output fill:#0a5c38,stroke:#2cb67d,color:#fff
+    class N,UPDATE input
+    class IMP,ANA,PLAN,BUILD,REFIT governed
+    class C output
 ```
 
-Drydock copies your specification material into a workspace, analyzes it to create stories, plans and grooms buildable Blueprints, and then builds software. Test-driven development gates each step. Drydock provides a web interface for control and observability.
+* import copies your specification material into a workspace.
+* analyze decomposes the import/epic into stories.
+* plan grooms blueprints, ac, and the build graph.
+* build creates software testing each stp.
+* refit diffs updated specs into tickets.
+* The quarterdeck web interface provides control and observability.
 
 ## Before you begin
 
-1) Set up the Claude Code or Codex CLI in your `PATH`.
+1) Set up the `claude` or `codex` in your `PATH` (subscription API).
 
-2) Install uv (easiest and its so much faster.)
+2) Install uv (easiest and its so fast.)
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh       # macOS and Linux:
 brew install uv                                        # macOS with Homebrew
@@ -74,9 +81,12 @@ drydock config show                          # show your configuration
 
 ## 1. Create Target Workspace
 
-A **Target** is the application Drydock builds under the configured `drydock_build_directory`. This guide creates the `ReadingList` Target at `<drydock_build_directory>/ReadingList`.
+Create <target> workspace in `drydock_workspace/targets/<target>` and build target in `drydock_build_directory/<target>`.
+
 
 ```bash
+# project ReadingList workspace in `drydock_workspace/targets/<target>`
+# project ReadingList builds to `<drydock_build_directory>/ReadingList`
 drydock init ReadingList             # Initialize project workspace
 ```
 
@@ -179,7 +189,7 @@ drydock build ReadingList       # Build the app
 
 The created application is in `<drydock_build_directory>/ReadingList/`.
 
-Run it using the project instructions generated in that directory. The run instructions are determined by the selected technology stack. For the technology stack selected in this example, run:
+Run your project using the project instructions - explicit or set vi the selected technology stack. For ReadingList, run:
 
 ```bash
 cd <drydock_build_directory>/ReadingList
@@ -234,26 +244,6 @@ The post-production workflow uses a similar process but treats the internal Blue
   <figcaption><em>The incrementally rebuilt application lets the reader mark books as read and see their status.</em></figcaption>
 </figure>
 
-## How the workflow fits together
-
-```mermaid
-flowchart LR
-    N["spec"] --> IMP["drydock<br/>import"]
-    IMP --> ANA["drydock<br/>analyze"]
-    ANA --> PLAN["drydock<br/>plan"]
-    PLAN --> BUILD["drydock<br/>build"]
-    BUILD --> C["Application"]
-    C --> UPDATE["update<br/>spec"]
-    UPDATE --> REFIT["drydock import --update<br/>drydock refit --sources"]
-    REFIT --> BUILD
-
-    classDef input fill:#d4a017,stroke:#a07810,color:#111
-    classDef governed fill:#1e40af,stroke:#3b5fc0,color:#fff
-    classDef output fill:#0a5c38,stroke:#2cb67d,color:#fff
-    class N,UPDATE input
-    class IMP,ANA,PLAN,BUILD,REFIT governed
-    class C output
-```
 
 # Links
 
