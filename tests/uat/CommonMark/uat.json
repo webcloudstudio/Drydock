@@ -1,0 +1,10 @@
+{
+  "target": "commonmark",
+  "sources": [
+    "spec.txt",
+    "test/spec_tests.py",
+    "test/cmark.py",
+    "test/normalize.py"
+  ],
+  "test_command": ["sh", "full_test.sh"]
+}

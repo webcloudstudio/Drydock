@@ -2656,6 +2656,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock uat <Project>          — run one known project\n"
             "\n"
             "Each fixture runs in an isolated directory and supplies ordered spec_N.md inputs.\n"
+            "uat.json may add fixture-local sources and a post-build test_command argv list.\n"
             "spec_1 performs the initial build;\n"
             "later inputs run import --update, refit --sources, and an incremental rebuild.\n"
             "Acceptance and release scores are advisory and are recorded with token and time data."

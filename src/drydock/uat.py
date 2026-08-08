@@ -33,6 +33,8 @@ class UATFixture:
     target: str
     root: Path
     specifications: tuple[Path, ...]
+    sources: tuple[Path, ...] = ()
+    test_command: tuple[str, ...] = ()
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -74,6 +76,8 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
             raise SpecificationError(f"UAT fixture has no spec_N.md inputs: {directory}")
         config_path = directory / "uat.json"
         target = directory.name
+        sources: tuple[Path, ...] = ()
+        test_command: tuple[str, ...] = ()
         if config_path.is_file():
             try:
                 config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -82,9 +86,29 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                     f"Invalid UAT fixture configuration: {config_path}"
                 ) from exc
             target = str(config.get("target") or target).strip()
+            raw_sources = config.get("sources", [])
+            raw_test_command = config.get("test_command", [])
+            if not isinstance(raw_sources, list) or not all(
+                isinstance(item, str) and item.strip() for item in raw_sources
+            ):
+                raise SpecificationError(f"UAT fixture sources must be a list of paths: {config_path}")
+            if not isinstance(raw_test_command, list) or not all(
+                isinstance(item, str) and item for item in raw_test_command
+            ):
+                raise SpecificationError(
+                    f"UAT fixture test_command must be an argv list: {config_path}"
+                )
+            resolved_sources: list[Path] = []
+            for item in raw_sources:
+                source = (directory / item).resolve()
+                if not source.is_relative_to(directory.resolve()) or not source.is_file():
+                    raise SpecificationError(f"Invalid UAT fixture source: {item}")
+                resolved_sources.append(source)
+            sources = tuple(resolved_sources)
+            test_command = tuple(raw_test_command)
         if not target:
             raise SpecificationError(f"UAT fixture target is empty: {directory}")
-        fixtures.append(UATFixture(directory.name, target, directory, specs))
+        fixtures.append(UATFixture(directory.name, target, directory, specs, sources, test_command))
     if not fixtures:
         raise SpecificationError(f"No UAT fixtures found under: {root}")
     return tuple(fixtures)
@@ -201,6 +225,24 @@ def run_fixture(
             raise DrydockError(f"{fixture.name}: {label} exited {result.returncode}")
         return result
 
+    def execute_test() -> None:
+        if not fixture.test_command:
+            return
+        nonlocal sequence
+        sequence += 1
+        if on_event:
+            on_event(f"{fixture.name}: test")
+        result = runner(
+            fixture.test_command,
+            build_root / fixture.target,
+            env,
+            command_logs,
+            f"{sequence:02d}-test",
+        )
+        commands.append(result)
+        if result.returncode != 0:
+            raise DrydockError(f"{fixture.name}: test exited {result.returncode}")
+
     def build_to_completion(stage: str) -> None:
         nonlocal build_passes
         stage_passes = 0
@@ -225,6 +267,11 @@ def run_fixture(
             ("import", fixture.target, str(fixture.specifications[0]), "--format", "markdown"),
             "import-spec-1",
         )
+        for index, source in enumerate(fixture.sources, start=1):
+            execute(
+                ("import", fixture.target, str(source), "--format", "markdown"),
+                f"import-source-{index}",
+            )
         execute(("analyze", fixture.target), "analyze")
         execute(("plan", fixture.target, "--override"), "plan")
         build_to_completion("initial")
@@ -243,6 +290,8 @@ def run_fixture(
             )
             execute(("refit", fixture.target, "--sources"), f"refit-spec-{index}")
             build_to_completion(f"refit-{index}")
+
+        execute_test()
 
         for name, parts in (
             ("acceptance", ("score", "ac", fixture.target)),

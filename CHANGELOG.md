@@ -42,6 +42,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-08: UAT fixtures can declare fixture-local source files and a deterministic post-build
+  `test_command` in `uat.json`. The CommonMark fixture carries its complete upstream conformance
+  kit in `tests/uat/CommonMark/` and gates a completed unattended build by running
+  `sh full_test.sh` from the isolated application directory.
+
 - 2026-08-07: `drydock uat [<Project>]` runs known project fixtures as isolated, timestamped,
   unattended builds using one configured model and provider. Ordered `tests/uat/<Project>/spec_N.md`
   inputs exercise both the initial lifecycle and subsequent `import --update` → `refit --sources`

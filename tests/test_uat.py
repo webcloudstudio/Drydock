@@ -40,6 +40,38 @@ def test_discover_selected_fixture_rejects_unknown_project(tmp_path: Path) -> No
         discover_fixtures(tmp_path, "Missing")
 
 
+def test_discover_fixture_loads_local_sources_and_test_command(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path, updated=False)
+    source = fixture / "kit" / "suite.py"
+    source.parent.mkdir()
+    source.write_text("# suite\n", encoding="utf-8")
+    (fixture / "uat.json").write_text(
+        json.dumps({
+            "target": "Example",
+            "sources": ["kit/suite.py"],
+            "test_command": ["sh", "full_test.sh"],
+        }),
+        encoding="utf-8",
+    )
+
+    found = discover_fixtures(tmp_path)[0]
+
+    assert found.sources == (source.resolve(),)
+    assert found.test_command == ("sh", "full_test.sh")
+
+
+def test_discover_fixture_rejects_source_outside_fixture(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path, updated=False)
+    outside = tmp_path / "outside.py"
+    outside.write_text("# outside\n", encoding="utf-8")
+    (fixture / "uat.json").write_text(
+        json.dumps({"sources": ["../outside.py"]}), encoding="utf-8"
+    )
+
+    with pytest.raises(SpecificationError, match="Invalid UAT fixture source"):
+        discover_fixtures(tmp_path)
+
+
 def test_run_uat_builds_initial_and_updated_specs_and_keeps_scores_advisory(
     tmp_path: Path,
 ) -> None:
@@ -115,3 +147,46 @@ def test_required_pipeline_failure_stops_fixture_and_writes_result(tmp_path: Pat
     assert results[0].status == "failed"
     assert "analyze exited 1" in results[0].error
     assert "FAILED" in render_summary(results)
+
+
+def test_run_uat_executes_fixture_test_from_completed_build(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    fixture = _fixture(fixtures_root, name="CommonMark", updated=False)
+    source = fixture / "spec.txt"
+    source.write_text("spec\n", encoding="utf-8")
+    (fixture / "uat.json").write_text(
+        json.dumps({
+            "target": "commonmark",
+            "sources": ["spec.txt"],
+            "test_command": ["sh", "full_test.sh"],
+        }),
+        encoding="utf-8",
+    )
+    calls: list[tuple[tuple[str, ...], Path]] = []
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        del env
+        parts = tuple(argv)
+        calls.append((parts, cwd))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        returncode = 1 if parts[3:5] == ("status", "commonmark") and "--ready" in parts else 0
+        return CommandResult(parts, returncode, 1, str(stdout), str(stderr))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="CommonMark",
+        fixtures_root=fixtures_root,
+        output_root=tmp_path / "runs",
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 8, tzinfo=UTC),
+    )
+
+    assert results[0].status == "passed"
+    assert any(str(source.resolve()) in argv for argv, _ in calls)
+    assert (("sh", "full_test.sh"), tmp_path / "runs" / "20260808T000000.000000Z" / "CommonMark" / "build" / "commonmark") in calls
