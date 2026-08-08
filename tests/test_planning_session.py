@@ -2095,6 +2095,43 @@ def test_unbounded_test_suite_inside_acceptance_is_fatal(tmp_path):
     )
 
 
+def test_scoped_suite_cannot_require_zero_skipped(tmp_path):
+    target_dir = _make_target(tmp_path)
+    feature = _SPEC_HEADER.format(
+        ftype="FEATURE", name="Status", ac="Status command exits successfully."
+    ).replace(
+        "## Programmatic Acceptance\n\n",
+        "## Programmatic Acceptance\n\n"
+        "### check-scoped\nThe owned conformance slice passes.\n\n"
+        "Suite: scoped\n\n"
+        "```python\n"
+        "import subprocess, sys\n"
+        "result = subprocess.run(\n"
+        '    [sys.executable, "tests/spec_tests.py", "--pattern", "Escapes"],\n'
+        "    capture_output=True, text=True,\n"
+        ")\n"
+        "assert result.returncode == 0\n"
+        'assert "0 failed" in result.stdout\n'
+        'assert "0 skipped" in result.stdout\n'
+        "```\n\n",
+    )
+    arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="declares Suite: scoped but asserts zero skipped tests",
+    )
+
+
 def test_unbuilt_specs_are_discarded_and_regenerated(tmp_path):
     """Nothing built: every prior spec is prior plan output, so the replan rewrites it."""
     target_dir = _make_target(tmp_path)

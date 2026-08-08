@@ -1753,6 +1753,8 @@ _TEST_SUITE_INVOCATION_RE = re.compile(
 # Mirrors ``acceptance._full_suite``: ``Suite:`` declares a deliberate suite-bound run, and
 # both ``full`` and ``scoped`` are accepted.
 _SUITE_MARKER_RE = re.compile(r"^Suite:\s*(?:full|scoped)\s*$", re.MULTILINE | re.IGNORECASE)
+_SCOPED_SUITE_RE = re.compile(r"^Suite:\s*scoped\s*$", re.MULTILINE | re.IGNORECASE)
+_ZERO_SKIPPED_RE = re.compile(r"(?:assert[^\n]*|\bexpect[^\n]*)[\"']0 skipped[\"']", re.IGNORECASE)
 
 
 def _invokes_unbounded_test_suite(acceptance: str) -> bool:
@@ -1783,6 +1785,11 @@ def _invokes_unbounded_test_suite(acceptance: str) -> bool:
             continue
         return True
     return False
+
+
+def _scoped_suite_claims_zero_skipped(acceptance: str) -> bool:
+    """Reject a whole-suite completion condition on an intentionally bounded suite run."""
+    return bool(_SCOPED_SUITE_RE.search(acceptance) and _ZERO_SKIPPED_RE.search(acceptance))
 
 
 # A programmatic story should carry at least this many assertions before it stops
@@ -2077,6 +2084,12 @@ def _integrity_check(
                     "without declaring Suite: full; a non-terminal story must bound its run "
                     "with the runner's --pattern/--number selector, or gate the full run on "
                     "the terminal Suite: full story and SEA_TRIALS.md final measurement"
+                )
+            if acceptance and _scoped_suite_claims_zero_skipped(acceptance):
+                fatal.append(
+                    f"{block.block_id}: Programmatic Acceptance declares Suite: scoped but "
+                    "asserts zero skipped tests; skipped tests are expected outside the story's "
+                    "selected slice, so only the terminal Suite: full story may require 0 skipped"
                 )
 
     for name, owners in sorted(spec_owners.items()):

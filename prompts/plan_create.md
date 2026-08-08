@@ -554,6 +554,9 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   own line so the check receives the suite timeout. Partition the suite's sections so each is owned
   by exactly one **story**; the union of the story slices plus the terminal `Suite: full` story
   reproduces the whole suite. One story owning every section is an under-decomposed plan.
+  A scoped run requires runner success and zero failures/errors within its selected slice. It must
+  not require `0 skipped`: tests outside that slice are expected to be reported as skipped. Only
+  the terminal `Suite: full` assertion may require zero skipped tests.
 - Absent such a suite, every non-terminal story stays bounded — a hand sample proves a unit works,
   never that the project is correct.
 

@@ -196,6 +196,57 @@ def test_required_pipeline_failure_stops_fixture_and_writes_result(tmp_path: Pat
     assert results[0].status == "failed"
     assert "analyze exited 1" in results[0].error
     assert "FAILED" in render_summary(results)
+    evidence = Path(results[0].evidence_dir)
+    manifest = json.loads((evidence / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["commands"]) == 3
+    assert manifest["commands"][2]["returncode"] == 1
+    assert manifest["commands"][2]["stdout"]["sha256"]
+    assert manifest["commands"][2]["stderr"]["sha256"]
+    assert (evidence / "README.md").is_file()
+
+
+def test_uat_collects_llm_prompts_outputs_and_raw_transcripts(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+
+    def evidence_runner(argv, cwd, env, output_dir, label):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("standard output", encoding="utf-8")
+        stderr.write_text("standard error", encoding="utf-8")
+        logs = Path(env["DRYDOCK_WORKSPACE"]) / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        (logs / "call.prompt.md").write_text("prompt", encoding="utf-8")
+        (logs / "call.output.txt").write_text("answer", encoding="utf-8")
+        (logs / "call.raw.jsonl").write_text("{}\n", encoding="utf-8")
+        (logs / "llm.jsonl").write_text("", encoding="utf-8")
+        parts = tuple(argv)
+        returncode = 1 if parts[3:5] == ("status", "ReadingList") and "--ready" in parts else 0
+        return CommandResult(parts, returncode, 1, str(stdout), str(stderr), label, str(cwd))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        fixtures_root=fixtures_root,
+        output_root=tmp_path / "runs",
+        model="test-model",
+        provider="codex",
+        runner=evidence_runner,
+        now=datetime(2026, 8, 7, tzinfo=UTC),
+    )
+
+    evidence = Path(results[0].evidence_dir)
+    manifest = json.loads((evidence / "manifest.json").read_text(encoding="utf-8"))
+    assert (evidence / "prompts" / "call.prompt.md").read_text() == "prompt"
+    assert (evidence / "prompt_outputs" / "call.output.txt").read_text() == "answer"
+    assert (evidence / "provider_raw" / "call.raw.jsonl").read_text() == "{}\n"
+    assert {item["kind"] for item in manifest["llm_artifacts"]} == {
+        "prompt",
+        "prompt_output",
+        "provider_raw",
+        "llm_execution_records",
+    }
 
 
 def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> None:

@@ -238,6 +238,9 @@ suite and declares `Suite: full`. The marker sits on its own line in the check's
 tells the runner the check gates on the whole test suite rather than a story-scoped sample.
 The assertion requires runner success. It may additionally verify the passed total from
 authoritative suite data or an explicitly declared authoritative exact count.
+For `Suite: scoped`, require success and zero failures/errors in the selected slice, but never
+require `0 skipped`; tests outside the slice are expected to be skipped. Requiring zero skipped is
+reserved for the terminal `Suite: full` check.
 
 Place a whole-project deterministic suite on the story that **completes the runnable capability**
 — never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it

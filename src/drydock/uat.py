@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -26,6 +27,8 @@ class CommandResult:
     elapsed_ms: int
     stdout_path: str
     stderr_path: str
+    label: str = ""
+    cwd: str = ""
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,7 @@ class UATResult:
     score_exit_codes: dict[str, int]
     usage: dict[str, int]
     error: str = ""
+    evidence_dir: str = ""
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -171,7 +175,93 @@ def subprocess_runner(
         elapsed_ms=elapsed_ms,
         stdout_path=str(stdout_path),
         stderr_path=str(stderr_path),
+        label=label,
+        cwd=str(cwd),
     )
+
+
+def _file_evidence(path: Path, case_root: Path) -> dict[str, object]:
+    """Describe one preserved evidence artifact without relying on absolute paths."""
+    content = path.read_bytes()
+    return {
+        "path": path.relative_to(case_root).as_posix(),
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
+def _collect_evidence(
+    case_root: Path, workspace: Path, evidence_dir: Path, commands: Sequence[CommandResult]
+) -> Path:
+    """Collect command and LLM transcripts into a stable, indexed UAT evidence bundle."""
+    llm_logs = workspace / "logs"
+    prompts_dir = evidence_dir / "prompts"
+    outputs_dir = evidence_dir / "prompt_outputs"
+    raw_dir = evidence_dir / "provider_raw"
+    for path in (prompts_dir, outputs_dir, raw_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    llm_artifacts: list[dict[str, object]] = []
+    artifact_groups = (
+        ("prompt", "*.prompt.md", prompts_dir),
+        ("prompt_output", "*.output.txt", outputs_dir),
+        ("provider_raw", "*.raw.jsonl", raw_dir),
+    )
+    if llm_logs.is_dir():
+        for kind, pattern, destination in artifact_groups:
+            for source in sorted(llm_logs.glob(pattern)):
+                target = destination / source.name
+                shutil.copyfile(source, target)
+                artifact = _file_evidence(target, case_root)
+                artifact["kind"] = kind
+                llm_artifacts.append(artifact)
+        records = llm_logs / "llm.jsonl"
+        if records.is_file():
+            target = evidence_dir / "llm.jsonl"
+            shutil.copyfile(records, target)
+            artifact = _file_evidence(target, case_root)
+            artifact["kind"] = "llm_execution_records"
+            llm_artifacts.append(artifact)
+
+    command_artifacts: list[dict[str, object]] = []
+    for index, command in enumerate(commands, start=1):
+        entry: dict[str, object] = {
+            "sequence": index,
+            "label": command.label,
+            "argv": list(command.argv),
+            "cwd": command.cwd,
+            "returncode": command.returncode,
+            "elapsed_ms": command.elapsed_ms,
+        }
+        for stream, value in (("stdout", command.stdout_path), ("stderr", command.stderr_path)):
+            path = Path(value)
+            if path.is_file() and path.is_relative_to(case_root):
+                entry[stream] = _file_evidence(path, case_root)
+        command_artifacts.append(entry)
+
+    manifest = {
+        "schema_version": 1,
+        "commands": command_artifacts,
+        "llm_artifacts": llm_artifacts,
+    }
+    manifest_path = evidence_dir / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    lines = [
+        "# UAT Evidence",
+        "",
+        "The manifest records relative paths, byte counts, and SHA-256 hashes for the preserved evidence.",
+        "",
+        f"- Commands: {len(command_artifacts)} (stdout and stderr captured separately)",
+        f"- Prompts: {sum(item['kind'] == 'prompt' for item in llm_artifacts)}",
+        f"- Prompt outputs: {sum(item['kind'] == 'prompt_output' for item in llm_artifacts)}",
+        f"- Provider raw transcripts: {sum(item['kind'] == 'provider_raw' for item in llm_artifacts)}",
+        "- Machine index: `manifest.json`",
+        "",
+    ]
+    (evidence_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
+    return manifest_path
 
 
 def _usage_totals(records_path: Path) -> dict[str, int]:
@@ -219,8 +309,9 @@ def run_fixture(
     workspace = case_root / "workspace"
     build_root = case_root / "build"
     source_root = case_root / "sources"
-    command_logs = case_root / "commands"
-    for path in (workspace, build_root, source_root, command_logs):
+    evidence_dir = case_root / "evidence"
+    command_logs = evidence_dir / "commands"
+    for path in (workspace, build_root, source_root, evidence_dir, command_logs):
         path.mkdir(parents=True, exist_ok=True)
     for source in fixture.sources:
         shutil.copyfile(source, source_root / source.name)
@@ -316,6 +407,7 @@ def run_fixture(
         status = "failed"
         error = str(exc)
 
+    _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
     result = UATResult(
         fixture=fixture.name,
@@ -329,6 +421,7 @@ def run_fixture(
         score_exit_codes=scores,
         usage=_usage_totals(workspace / "logs" / "llm.jsonl"),
         error=error,
+        evidence_dir=str(evidence_dir),
     )
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -346,6 +439,7 @@ def render_summary(results: Sequence[UATResult]) -> str:
             f"- Target: `{result.target}`",
             f"- Elapsed: {result.elapsed_ms / 1000:.1f}s",
             f"- Build passes: {result.build_passes}",
+            f"- Evidence: `{result.evidence_dir}`",
             f"- LLM calls: {usage['calls']}",
             f"- Tokens: input {usage['input_tokens']:,}; cached {usage['cached_input_tokens']:,}; "
             f"fresh {usage['fresh_input_tokens']:,}; output {usage['output_tokens']:,}",
