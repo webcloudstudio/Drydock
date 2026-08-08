@@ -26,8 +26,7 @@ Enterprise guardrails on your existing subscription.
 
 **Drydock turns specifications into working software.**
 
-Drydock imports source material into typed Blueprints. Blueprints define stories with measurable,
-test-driven acceptance criteria.
+Drydock imports your source material using agile best practices into typed blueprints representing stories related with a graph database.  This enables drydock to context aware build your application.  Stories have measurable test driven acceptance criteria.
 
 - **Specification driven.** Typed specifications are the source of truth. Code is the output.
 - **Agile.** Specifications decompose into features and stories for product-owner review.
