@@ -151,13 +151,26 @@ later changes back into the build.
 
 | Stage | Command | What it does |
 |---|---|---|
-| **Analyze** | `drydock analyze <Target>` | Decomposes imported source material into stories, acceptance criteria, questions, and blockers for review. |
-| **Plan** | `drydock plan <Target>` | Converts the reviewed analysis into typed Blueprints and a dependency-aware `MANIFEST.md` build plan. |
-| **Build** | `drydock build <Target>` | Executes dependency-ready work in context-aware blocks and verifies each story against its acceptance criteria. |
-| **Refit** | `drydock refit <Target>` | Maps specification changes and change tickets to affected Manifest work so only the impacted scope is rebuilt. |
+| **Analyze** | `drydock analyze <Target>` | Decomposes imported source material into stories, acceptance criteria, questions, and blockers for review.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md` when blocked, and review questionnaires. |
+| **Plan** | `drydock plan <Target>` | Converts the reviewed analysis into typed Blueprints and a dependency-aware `MANIFEST.md` build plan.<br>**Creates:** Blueprint specifications and `MANIFEST.md`. |
+| **Build** | `drydock build <Target>` | Executes dependency-ready work in context-aware blocks and verifies each story against its acceptance criteria.<br>**Creates:** working software, tests, and build evidence. |
+| **Refit** | `drydock refit <Target>` | Maps specification changes and change tickets to affected Manifest work so only the impacted scope is rebuilt.<br>**Creates:** an updated `MANIFEST.md` and, after `build`, updated working software. |
 
-Review each stage and resolve blockers in QuarterDeck before continuing. The Blueprint remains the
-source of truth; the application is its built output.
+Direct and review each stage in QuarterDeck. The Blueprint remains the source of truth; the
+application is its built output.
+
+## QuarterDeck
+
+QuarterDeck is Drydock's Agile web portal for communication between the Commander (product owner)
+and Crew (LLM agents).
+
+Analysis, Blueprints, questionnaires, acceptance evidence, and the Manifest appear as operational
+screens, including an editable Build Compass and Kanban board. Commander decisions persist as
+governed input to subsequent commands.
+
+```bash
+drydock run quarterdeck <Target>
+```
 
 The Target workspace is `<drydock_workspace>/targets/<Target>/`; the application is built in
 `<drydock_build_directory>/<Target>/`.
