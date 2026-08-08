@@ -30,15 +30,18 @@ works, since the harness invokes it as a subprocess. Python 3 is the default.
 
 ## Test / Verification Process
 
-Run the conformance suite from the repository root:
+Imported UAT assets are flattened into the completed application's `sources/` directory. Run the
+conformance suite from the completed application root:
 
 ```bash
-python3 test/spec_tests.py --spec spec.txt --program "python3 mycommonmark.py"
+env PYTHONPATH=sources python3 sources/spec_tests.py \
+  --spec sources/spec.txt \
+  --program "python3 mycommonmark.py"
 ```
 
 Mechanics: `spec_tests.py` extracts every fenced `example` block from `spec.txt`
 (Markdown input + expected HTML), pipes each input through your program via
-stdin, normalizes both actual and expected HTML (`test/normalize.py` parses and
+stdin, normalizes both actual and expected HTML (`sources/normalize.py` parses and
 canonicalizes the DOM so insignificant whitespace/attribute differences are
 ignored), and compares.
 
@@ -79,13 +82,28 @@ parsing strategy" section). Follow it directly rather than reinventing rules.
 
 ## Files the LLM Needs
 
-- `spec.txt` — the specification AND the test corpus. Primary input. Required.
-- `test/spec_tests.py`, `test/cmark.py`, `test/normalize.py` — the harness.
+- `sources/spec.txt` — the specification AND the test corpus. Primary input. Required.
+- `sources/spec_tests.py`, `sources/cmark.py`, `sources/normalize.py` — the flattened harness.
 
 ## Definition of Done
 
-- A program exists in the target directory called full_test.sh which runs the full test
-- full test: `python3 test/spec_tests.py --spec spec.txt --program "..."` runs cleanly (0 errors).
+- A POSIX-compatible `full_test.sh` exists at the completed application root.
+- `sh full_test.sh` runs the complete, unfiltered conformance command above.
+- The script prints the suite output and exits zero only when the passed count is nonzero and the
+  failed, errored, and skipped counts are all zero.
 - Program satisfies the stdin→stdout contract.
 - Passing count is 100%
 - The llm is to write the library for this work - not reuse a public markdown library.  The exercise is to write the code as those libraries will not meet 100% acceptance criteria.  
+
+The final build story depends on every implementation story, adds no new parser behavior, runs
+`sh full_test.sh`, and preserves the command, exit code, suite summary, standard output, and
+standard error as evidence.
+
+## Fixture Provenance
+
+The CommonMark conformance assets are copied from:
+
+- https://github.com/commonmark/commonmark-spec
+- https://spec.commonmark.org/0.31.2/
+
+The copied assets retain the upstream `LICENSE`.

@@ -1,10 +1,12 @@
 {
   "target": "commonmark",
   "sources": [
+    "INSTRUCTIONS.md",
     "spec.txt",
     "test/spec_tests.py",
     "test/cmark.py",
     "test/normalize.py"
   ],
+  "updates": [],
   "test_command": ["sh", "full_test.sh"]
 }

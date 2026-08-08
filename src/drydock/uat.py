@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -32,9 +33,9 @@ class UATFixture:
     name: str
     target: str
     root: Path
-    specifications: tuple[Path, ...]
-    sources: tuple[Path, ...] = ()
-    test_command: tuple[str, ...] = ()
+    sources: tuple[Path, ...]
+    updates: tuple[Path, ...]
+    test_command: tuple[str, ...]
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -61,7 +62,7 @@ class UATResult:
 
 
 def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixture, ...]:
-    """Discover fixture directories containing ordered ``spec_N.md`` inputs."""
+    """Discover explicitly configured UAT source bundles."""
     if not root.is_dir():
         raise SpecificationError(f"UAT fixtures directory does not exist: {root}")
     directories = (
@@ -71,57 +72,77 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
     for directory in directories:
         if not directory.is_dir():
             raise SpecificationError(f"Unknown UAT fixture: {directory.name}")
-        specs = tuple(sorted(directory.glob("spec_*.md"), key=_spec_order))
-        if not specs:
-            raise SpecificationError(f"UAT fixture has no spec_N.md inputs: {directory}")
         config_path = directory / "uat.json"
-        target = directory.name
-        sources: tuple[Path, ...] = ()
-        test_command: tuple[str, ...] = ()
-        if config_path.is_file():
-            try:
-                config = json.loads(config_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise SpecificationError(
-                    f"Invalid UAT fixture configuration: {config_path}"
-                ) from exc
-            target = str(config.get("target") or target).strip()
-            raw_sources = config.get("sources", [])
-            raw_test_command = config.get("test_command", [])
-            if not isinstance(raw_sources, list) or not all(
-                isinstance(item, str) and item.strip() for item in raw_sources
-            ):
-                raise SpecificationError(
-                    f"UAT fixture sources must be a list of paths: {config_path}"
-                )
-            if not isinstance(raw_test_command, list) or not all(
-                isinstance(item, str) and item for item in raw_test_command
-            ):
-                raise SpecificationError(
-                    f"UAT fixture test_command must be an argv list: {config_path}"
-                )
-            resolved_sources: list[Path] = []
-            for item in raw_sources:
+        if not config_path.is_file():
+            raise SpecificationError(f"UAT fixture has no uat.json: {directory}")
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SpecificationError(f"Invalid UAT fixture configuration: {config_path}") from exc
+        if not isinstance(config, dict):
+            raise SpecificationError(f"UAT fixture configuration must be an object: {config_path}")
+        target = str(config.get("target") or directory.name).strip()
+        raw_sources = config.get("sources")
+        raw_updates = config.get("updates", [])
+        raw_test_command = config.get("test_command")
+        if (
+            not isinstance(raw_sources, list)
+            or not raw_sources
+            or not all(isinstance(item, str) and item.strip() for item in raw_sources)
+        ):
+            raise SpecificationError(
+                f"UAT fixture sources must be a nonempty list of paths: {config_path}"
+            )
+        if not isinstance(raw_updates, list) or not all(
+            isinstance(item, str) and item.strip() for item in raw_updates
+        ):
+            raise SpecificationError(f"UAT fixture updates must be a list of paths: {config_path}")
+        if (
+            not isinstance(raw_test_command, list)
+            or not raw_test_command
+            or not all(isinstance(item, str) and item for item in raw_test_command)
+        ):
+            raise SpecificationError(
+                f"UAT fixture test_command must be a nonempty argv list: {config_path}"
+            )
+
+        def resolve_paths(items: list[str], field: str) -> tuple[Path, ...]:
+            resolved: list[Path] = []
+            for item in items:
                 source = (directory / item).resolve()
                 if not source.is_relative_to(directory.resolve()) or not source.is_file():
-                    raise SpecificationError(f"Invalid UAT fixture source: {item}")
-                resolved_sources.append(source)
-            sources = tuple(resolved_sources)
-            test_command = tuple(raw_test_command)
+                    raise SpecificationError(f"Invalid UAT fixture {field} path: {item}")
+                resolved.append(source)
+            return tuple(resolved)
+
+        sources = resolve_paths(raw_sources, "source")
+        updates = resolve_paths(raw_updates, "update")
+        source_names = [source.name for source in sources]
+        if len(source_names) != len(set(source_names)):
+            raise SpecificationError(
+                f"UAT fixture sources collide after import flattening: {config_path}"
+            )
+        unknown_updates = sorted({update.name for update in updates} - set(source_names))
+        if unknown_updates:
+            raise SpecificationError(
+                "UAT fixture updates must replace an imported basename: "
+                + ", ".join(unknown_updates)
+            )
         if not target:
             raise SpecificationError(f"UAT fixture target is empty: {directory}")
-        fixtures.append(UATFixture(directory.name, target, directory, specs, sources, test_command))
+        fixtures.append(
+            UATFixture(
+                directory.name,
+                target,
+                directory,
+                sources,
+                updates,
+                tuple(raw_test_command),
+            )
+        )
     if not fixtures:
         raise SpecificationError(f"No UAT fixtures found under: {root}")
     return tuple(fixtures)
-
-
-def _spec_order(path: Path) -> tuple[int, str]:
-    suffix = path.stem.removeprefix("spec_")
-    try:
-        return int(suffix), path.name
-    except ValueError:
-        return sys.maxsize, path.name
 
 
 def subprocess_runner(
@@ -197,9 +218,12 @@ def run_fixture(
     case_root = run_root / fixture.name
     workspace = case_root / "workspace"
     build_root = case_root / "build"
+    source_root = case_root / "sources"
     command_logs = case_root / "commands"
-    for path in (workspace, build_root, command_logs):
+    for path in (workspace, build_root, source_root, command_logs):
         path.mkdir(parents=True, exist_ok=True)
+    for source in fixture.sources:
+        shutil.copyfile(source, source_root / source.name)
 
     env = os.environ.copy()
     env["DRYDOCK_WORKSPACE"] = str(workspace)
@@ -266,31 +290,17 @@ def run_fixture(
     try:
         execute(("init", fixture.target), "init")
         execute(
-            ("import", fixture.target, str(fixture.specifications[0]), "--format", "markdown"),
-            "import-spec-1",
+            ("import", fixture.target, str(source_root), "--format", "markdown"),
+            "import-sources",
         )
-        for index, source in enumerate(fixture.sources, start=1):
-            execute(
-                ("import", fixture.target, str(source), "--format", "markdown"),
-                f"import-source-{index}",
-            )
         execute(("analyze", fixture.target), "analyze")
         execute(("plan", fixture.target, "--override"), "plan")
         build_to_completion("initial")
 
-        for index, specification in enumerate(fixture.specifications[1:], start=2):
-            execute(
-                (
-                    "import",
-                    fixture.target,
-                    str(specification),
-                    "--format",
-                    "markdown",
-                    "--update",
-                ),
-                f"import-spec-{index}",
-            )
-            execute(("refit", fixture.target, "--sources"), f"refit-spec-{index}")
+        for index, update in enumerate(fixture.updates, start=1):
+            shutil.copyfile(update, source_root / update.name)
+            execute(("import", fixture.target, "--update"), f"import-update-{index}")
+            execute(("refit", fixture.target, "--sources"), f"refit-update-{index}")
             build_to_completion(f"refit-{index}")
 
         execute_test()

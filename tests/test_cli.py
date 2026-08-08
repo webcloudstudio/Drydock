@@ -255,11 +255,12 @@ class TestHelpAndVersion:
         _, out, _ = run_cli("--help")
         assert "score" in out
 
-    def test_uat_help_describes_isolation_and_ordered_specs(self):
+    def test_uat_help_describes_isolation_and_explicit_source_bundles(self):
         rc, out, err = run_cli("uat", "--help")
 
         assert rc == 0, err
-        assert "spec_N.md" in out
+        assert "explicit source bundle" in out
+        assert "test_command" in out
         assert "isolated" in out
         assert "--max-build-passes" in out
 

@@ -106,7 +106,7 @@ fail_under = 0
 
 [tool.ruff]
 line-length = 100
-exclude = ["Rigging/", "dist/", "validation/fixtures/", "*.md"]
+exclude = ["Rigging/", "dist/", "tests/uat/", "validation/fixtures/", "*.md"]
 target-version = "py311"
 preview = true
 
