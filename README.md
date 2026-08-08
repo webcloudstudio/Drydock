@@ -45,9 +45,6 @@ Drydock imports your source material using agile best practices into typed bluep
 | Quick Start | [HTML](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
 | User Installation Guide | | [PDF](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) |
 | Drydock Specification | [HTML](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf) |
-| Improving Step Accuracy in SDD | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Improving_Step_Accuracy_in_SDD.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Improving_Step_Accuracy_in_SDD.pdf) |
-| Managing Changes in SDD | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Managing_Changes_in_SDD.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Managing_Changes_in_SDD.pdf) |
-| Managing Changed Specifications | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/SDD_Managing_Changed_Specifications.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/SDD_Managing_Changed_Specifications.pdf) |
 | Product Comparison Matrix | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.pdf) |
 | Overview deck | [Web](https://webcloudstudio.com/drydock/) | |
 | Walkthrough video | [MP4](https://webcloudstudio.com/project-docs/drydock/presentation/PRODUCTION_Drydock_Video.web.mp4) | |
@@ -59,8 +56,7 @@ Drydock imports your source material using agile best practices into typed bluep
 **Before you begin**
 
 - [ ] Python 3.11 or later — `python3 --version`
-- [ ] `uv` — `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux),
-      `brew install uv`, or `winget install --id=astral-sh.uv -e` (Windows)
+- [ ] `uv` — `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux), `brew install uv`, or `winget install --id=astral-sh.uv -e` (Windows)
 - [ ] The `claude` or `codex` CLI, authenticated and on your `PATH`
 
 **1. Install Drydock**
@@ -107,13 +103,6 @@ project step by step. Upgrades, PDF publishing, and troubleshooting are in the
 
 ## The Drydock CLI
 
-* `import` copies your specification material into a workspace.
-* `analyze` decomposes the import into stories, acceptance criteria, questions, and blockers.
-* `plan` grooms Blueprints, acceptance criteria, and the build graph.
-* `build` creates software, testing each step.
-* `refit` diffs updated specs into tickets.
-* The `quarterdeck` web interface provides control and observability.
-
 `ai` calls your subscription CLI agent; all other commands are deterministic.
 
 ```text
@@ -152,6 +141,23 @@ ai  drydock rigging compact                    # Automanage compaction
 ai  drydock score drydock                      # Adversarial self-assessment
 ai  drydock uat               [Project]        # scored uat testing
 ```
+
+## Build workflow
+
+Import the source specification once, then move through three delivery stages. Use `refit` to route
+later changes back into the build.
+
+`analyze` → `plan` → `build` · changes → `refit` → `build`
+
+| Stage | Command | What it does |
+|---|---|---|
+| **Analyze** | `drydock analyze <Target>` | Decomposes imported source material into stories, acceptance criteria, questions, and blockers for review. |
+| **Plan** | `drydock plan <Target>` | Converts the reviewed analysis into typed Blueprints and a dependency-aware `MANIFEST.md` build plan. |
+| **Build** | `drydock build <Target>` | Executes dependency-ready work in context-aware blocks and verifies each story against its acceptance criteria. |
+| **Refit** | `drydock refit <Target>` | Maps specification changes and change tickets to affected Manifest work so only the impacted scope is rebuilt. |
+
+Review each stage and resolve blockers in QuarterDeck before continuing. The Blueprint remains the
+source of truth; the application is its built output.
 
 The Target workspace is `<drydock_workspace>/targets/<Target>/`; the application is built in
 `<drydock_build_directory>/<Target>/`.
