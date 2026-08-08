@@ -58,12 +58,47 @@ Provider setup, workspace configuration, and troubleshooting are in the
 * `refit` diffs updated specs into tickets.
 * The `quarterdeck` web interface provides control and observability.
 
-<div align="center">
-<img src="docs/drydock_process_long.svg" alt="The complete Drydock command surface: Set Up, Analyze, Implement, Loop." width="920" />
-</div>
+`ai` calls your subscription CLI agent; all other commands are deterministic.
+
+```text
+# ── S ── SET UP ──────────────────────────────────────────────────────────
+    drydock config show                        # Show configuration values and sources
+    drydock config set        <var> <value>    # Set a configuration value
+    drydock init              MyApp            # Create the target workspace
+    drydock status                             # Status dashboard
+    drydock status            MyApp            # Summary and plan state
+
+# ── A ── ANALYZE ─────────────────────────────────────────────────────────
+    drydock import            MyApp <file|dir> # Import sources into the workspace
+ai  drydock analyze           MyApp            # Epic decomposition into stories & blockers
+    drydock validate          MyApp            # Validate Build Plan
+ai  drydock score spec        MyApp            # Audit imported raw specifications
+    drydock run quarterdeck   MyApp            # Web interface
+ai  drydock plan              MyApp            # Grooming and dependency graph
+
+# ── I ── IMPLEMENT ───────────────────────────────────────────────────────
+ai  drydock build             MyApp            # Iterative context-aware process
+    drydock build status      MyApp            # Show build state
+    drydock build verify      MyApp <step>     # Display/Verify build graph
+ai  drydock build score       MyApp            # Generate SCORECARD.md
+    drydock score ac          MyApp            # Verify Story acceptance criteria
+    drydock score build       MyApp            # Post-build report: repairs, tokens, cache
+ai  drydock score release     MyApp            # Score project success criteria (EARS)
+
+# ── L ── LOOP ────────────────────────────────────────────────────────────
+ai  drydock refit             MyApp            # Diff -> ticket -> dependency graph
+ai  drydock document          MyApp            # Project documentation automation
+ai  drydock document generate MyApp            # AI pass only
+    drydock document assemble MyApp            # Assembly only
+    drydock publish           <Source.md>      # Render Markdown to HTML/PDF
+ai  drydock rigging compact                    # Automanage compaction
+    drydock rigging verify                     # Verify rigging compliance
+ai  drydock score drydock                      # Adversarial self-assessment
+ai  drydock uat               [Project]        # scored uat testing
+```
 
 The Target workspace is `<drydock_workspace>/targets/<Target>/`; the application is built in
-`<drydock_build_directory>/<Target>/`. Run `drydock --help` for the full command list.
+`<drydock_build_directory>/<Target>/`.
 
 ## Release status
 
