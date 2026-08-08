@@ -51,43 +51,36 @@ drydock --version
 
 If `drydock` is not found, run `uv tool update-shell` or `pipx ensurepath`, then open a new shell.
 
-**2. Check your provider**
+**2. Configure**
 
 ```bash
-drydock config show
-claude --version                            # or: codex --version
-```
+# Claude
+drydock config set llm_provider claude
+drydock config set drydock_model sonnet
 
-Provider and model must match. Change both together; see the
-[Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf).
+# Codex alternative
+# drydock config set llm_provider codex
+# drydock config set drydock_model gpt-5.4
 
-**3. Configure your directories**
-
-`drydock_workspace` holds Targets, Blueprints, and logs. `drydock_build_directory` holds generated
-applications.
-
-```bash
 export PROJECTS="$HOME/projects"
 mkdir -p "$PROJECTS/drydock"
 
 drydock config set drydock_workspace "$PROJECTS/drydock"
 drydock config set drydock_build_directory "$PROJECTS"
 drydock config show
-```
 
-```text
-$PROJECTS/
-├── drydock/
-│   ├── targets/        # Created by drydock init
-│   └── logs/           # Created when commands run
-└── <Target>/           # Generated application
+# $PROJECTS/
+# ├── drydock/
+# │   ├── targets/        # Target workspaces
+# │   └── logs/           # Drydock logs
+# └── <Target>/           # Generated application
 ```
 
 The [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) builds a real
 project step by step. Upgrades, PDF publishing, and troubleshooting are in the
 [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf).
 
-**4. Build your first project**
+**3. Build your first project**
 
 ```bash
 drydock init MyApp
