@@ -38,16 +38,66 @@ Drydock imports your source material using agile best practices into typed bluep
 - **Change control.** Edit the specification; `drydock refit` writes a change ticket against each affected Blueprint and rebuilds only the work that moved.
 - **Your subscription.** Runs on the `claude` or `codex` CLI. No API key, no per-token billing.
 
-## Install
+## Getting started
+
+**Before you begin**
+
+- [ ] Python 3.11 or later — `python3 --version`
+- [ ] `uv` — `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux),
+      `brew install uv`, or `winget install --id=astral-sh.uv -e` (Windows)
+- [ ] The `claude` or `codex` CLI, authenticated and on your `PATH`
+
+**1. Install Drydock**
 
 ```bash
-uv tool install drydock-sdd
+uv tool install drydock-sdd     # or: pipx install drydock-sdd
+drydock --version
 ```
 
-Requires Python 3.11+ and one signed-in provider CLI, `claude` or `codex`.
+If `drydock` is not found, run `uv tool update-shell` or `pipx ensurepath`, then open a new shell.
 
-Provider setup, workspace configuration, and troubleshooting are in the
-**[User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf)**.
+**2. Select your provider**
+
+```bash
+drydock config set llm_provider claude      # or: codex
+claude --version                            # must resolve and be authenticated
+```
+
+**3. Configure your directories**
+
+`drydock_workspace` holds Targets, Blueprints, evidence, and logs. `drydock_build_directory` holds
+the generated applications.
+
+```bash
+export PROJECTS="$HOME/projects"
+mkdir -p "$PROJECTS/drydock"
+
+drydock config set drydock_workspace "$PROJECTS/drydock"
+drydock config set drydock_build_directory "$PROJECTS"
+drydock config show
+```
+
+```text
+$PROJECTS/
+├── drydock/
+│   ├── targets/        # Created by drydock init
+│   └── logs/           # Created when commands run
+└── <Target>/           # Generated application
+```
+
+**4. Build something**
+
+```bash
+drydock init MyApp
+drydock import MyApp ./my-spec.md
+drydock analyze MyApp
+drydock plan MyApp
+drydock build MyApp
+```
+
+The [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) walks a real
+project through these steps with screenshots. Upgrades, PDF publishing, and troubleshooting are in
+the [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf).
 
 ## The Drydock CLI
 
