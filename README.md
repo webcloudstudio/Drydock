@@ -2,8 +2,6 @@
 
 <img src="docs/drydock_logo.png" alt="Drydock" width="160" />
 
-# Drydock
-
 **Drydock turns specifications into working software.**
 
 Specification driven. Agile. Test driven. Dependency-aware builds. A dedicated web console.
@@ -12,7 +10,6 @@ Enterprise guardrails. **No API keys — Drydock runs on your existing Claude or
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml/badge.svg)](https://github.com/webcloudstudio/Drydock/actions/workflows/ci.yml)
 
 ### ▶ START HERE — [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html)
 
@@ -22,42 +19,26 @@ Enterprise guardrails. **No API keys — Drydock runs on your existing Claude or
 
 ---
 
-## What Drydock is
+## Overview
 
 **Drydock turns specifications into working software.**
 
 Drydock imports your source material, creates stories using agile best practices, decomposes requirements into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
 
-- **Specification driven.** Typed specifications are the source of truth. Code is the output.
-- **Agile.** Specifications decompose into features and stories for product-owner review.
-- **Test driven.** Acceptance criteria are part of each Blueprint.
-- **Dependency graph of stories.** `MANIFEST.md` relates and orders the build.
-- **Context compression.** Related stories build together with only the specifications they need.
-- **QuarterDeck web console.** The Commander reviews and directs each phase.
-- **Enterprise guardrails.** Questions replace guesses. Dependencies are declared.
-
-**Status:** 0.1.x, pre-1.0. Commands, file formats, and artifact names may change between releases.
-
-## Glossary
-
-| Term | Meaning |
-|---|---|
-| **Target** | One project managed by Drydock, held in its own workspace directory. |
-| **Blueprint** | The typed specification for one story: scope, contracts, and acceptance criteria. |
-| **Manifest** | `MANIFEST.md`, the dependency graph that relates and orders the Blueprints. |
-| **Sea Trials** | Product-level objectives and proof-of-delivery criteria — the release gate. |
-| **Soundings** | The per-story acceptance-criterion verification board. |
-| **Scorecard** | `SCORECARD.md`, the recorded release scoring results, verdicts, and blockers. |
-| **QuarterDeck** | The web console used to review and direct each phase. |
-| **Commander** | You — the product owner who approves the work. |
-| **Crew** | The LLM agents that perform the work. |
+- **Specification Driven Delivery** producing governed reproducible working software.
+- **Agile Methedology** to decompose buildable stories and for product owner / llm review.
+- **Test driven development** with acceptance criteria embedded in each Story/Blueprint.
+- **Dependency graph of stories** in `MANIFEST.md` to relates nodes/stories and order builds.
+- **Context compression** and **Grouping** for context aware builds.
+- **QuarterDeck web console** for easy questionaires, observability, and user direction.
+- **Enterprise guardrails** with embedded branding, best practices, and build gates
 
 ## Drydock Documentation
 
 | Resource | PDF |
 |---|---|
 | [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
-| User Installation Guide | [PDF](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) |
+| [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) ||
 | [Drydock Specification](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf) |
 | [CHANGELOG.md](CHANGELOG.md) | — |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
@@ -98,12 +79,12 @@ drydock config show
 
 | Stage | Command | What it does |
 |---|---|---|
-| **init** | `drydock init <Target>` | Initialize Workspace |
-| **import** | `drydock import <Target>` | import source material |
-| **analyze** | `drydock analyze <Target>` | Decompose imports into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
-| **plan** | `drydock plan <Target>` | Create story Blueprints and the build graph.<br>**Creates:** Blueprint specifications and `MANIFEST.md`. |
-| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** working software and tests. |
-| **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Creates:** updated `MANIFEST.md` and, after `build`, updated working software. |
+| **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** targets/\<Target\> |
+| **import** | `drydock import <Target>` | import source material<br>**Creates:** targets/\<Target\>/sources |
+| **analyze** | `drydock analyze <Target>` | Decompose into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
+| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** blueprints/ and `MANIFEST.md`. |
+| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** \$drydock_build_directory/\<Target\> with working software. |
+| **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Updates:** `MANIFEST.md`; continue with a  `build`. |
 
 ## The Drydock CLI
 
@@ -150,14 +131,25 @@ drydock run quarterdeck <Target>
 
 ![QuarterDeck Commander's Chair](docs/QuickStart_Analysis_Screen.png)
 
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **Target** | One project managed by Drydock, held in its own workspace directory. |
+| **Blueprint** | The typed specification for one story: scope, contracts, and acceptance criteria. |
+| **Manifest** | `MANIFEST.md`, the dependency graph that relates and orders the Blueprints. |
+| **Sea Trials** | Product-level objectives and proof-of-delivery criteria — the release gate. |
+| **Soundings** | The per-story acceptance-criterion verification board. |
+| **Scorecard** | `SCORECARD.md`, the recorded release scoring results, verdicts, and blockers. |
+| **QuarterDeck** | The web console used to review and direct each phase. |
+| **Commander** | You — the product owner who approves the work. |
+| **Crew** | The LLM agents that perform the work. |
+
 ## Contributing
 
-Help test Drydock on real projects. Open [issues](https://github.com/webcloudstudio/Drydock/issues). See [CONTRIBUTING.md](CONTRIBUTING.md). Code changes are preferred.
+Help test Drydock on real projects. Open [issues](https://github.com/webcloudstudio/Drydock/issues). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## License
-
-MIT LICENSE (See LICENSE)
-Copyright (c) 2026 Web Cloud Studio - all rights reserved
+## License (See LICENSE)
 
 ```
 MIT License

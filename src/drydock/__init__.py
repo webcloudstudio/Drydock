@@ -2,7 +2,7 @@
 
 import logging
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 __copyright__ = "Copyright (c) 2026 Web Cloud Studio. All rights reserved."
 
 # Library hygiene: emit nothing unless a host application configures handlers.
