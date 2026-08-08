@@ -1,6 +1,6 @@
 # Drydock
 
-Governed Blueprint-driven software delivery CLI.
+Drydock Builds Working Software From Specifications.
 
 name: Drydock
 display_name: Drydock
