@@ -23,7 +23,7 @@ Enterprise guardrails. **No API keys — Drydock runs on your existing Claude or
 
 **Drydock turns specifications into working software.**
 
-Drydock imports your source material, creates stories using agile best practices, decomposes requirements into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
+Drydock imports your source material, creates stories using agile best practices, decomposes your sources into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
 
 - **Specification Driven Delivery** producing governed reproducible working software.
 - **Agile Methedology** to decompose buildable stories and for product owner / llm review.
@@ -79,12 +79,12 @@ drydock config show
 
 | Stage | Command | What it does |
 |---|---|---|
-| **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** targets/\<Target\> |
-| **import** | `drydock import <Target>` | import source material<br>**Creates:** targets/\<Target\>/sources |
+| **init** | `drydock init <Target>` | Initialize Workspace<br>**Creates:** `targets/<Target>` |
+| **import** | `drydock import <Target>` | import source material<br>**Creates:** `targets/<Target>/sources` |
 | **analyze** | `drydock analyze <Target>` | Decompose into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
-| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** blueprints/ and `MANIFEST.md`. |
-| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** \$drydock_build_directory/\<Target\> with working software. |
-| **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Updates:** `MANIFEST.md`; continue with a  `build`. |
+| **plan** | `drydock plan <Target>` | Create story blueprints and a graph datbase.<br>**Creates:** `blueprints/` and `MANIFEST.md`. |
+| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** `\$drydock_build_directory/<Target>` with working software. |
+| **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Updates:** `Blueprints/`, `MANIFEST.md`; continue with a  `build`. |
 
 ## The Drydock CLI
 
@@ -115,10 +115,21 @@ ai  drydock score release     MyApp            # Score project success criteria 
 
 # ── L ── LOOP ────────────────────────────────────────────────────────────
 ai  drydock refit             MyApp            # Diff -> ticket -> dependency graph
+```
+
+### Additional Commands
+
+```text
+    drydock build verify      MyApp <step>     # Display/Verify build graph
+ai  drydock build score       MyApp            # Generate SCORECARD.md
+ai  drydock uat               [Project]        # Scored UAT testing
 ai  drydock document          MyApp            # Project documentation automation
 ai  drydock document generate MyApp            # AI pass only
     drydock document assemble MyApp            # Assembly only
     drydock publish           <Source.md>      # Render Markdown to HTML/PDF
+ai  drydock rigging compact                    # Automanage compaction
+    drydock rigging verify                     # Verify rigging compliance
+ai  drydock score drydock                      # Adversarial self-assessment
 ```
 
 ## The QuarterDeck Web Server
