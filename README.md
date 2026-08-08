@@ -24,15 +24,18 @@ Enterprise guardrails on your existing subscription.
 
 ## What Drydock is
 
-Drydock imports source material into typed Blueprints. A Manifest relates and orders their stories.
-Each story has measurable, test-driven acceptance criteria.
+**Drydock turns specifications into working software.**
+
+Drydock imports source material into typed Blueprints. Blueprints define stories with measurable,
+test-driven acceptance criteria.
 
 - **Specification driven.** Typed specifications are the source of truth. Code is the output.
-- **Agile.** Features and stories are reviewed before build.
-- **Context-aware.** Related stories build together with only the specifications they need.
-- **Guarded.** Questions replace guesses. Dependencies are declared.
-- **Change controlled.** `drydock refit` maps changes to affected work.
-- **Your subscription.** Runs on the `claude` or `codex` CLI. No API key, no per-token billing.
+- **Agile.** Specifications decompose into features and stories for product-owner review.
+- **Test driven.** Acceptance criteria are part of each Blueprint.
+- **Dependency graph of stories.** `MANIFEST.md` relates and orders the build.
+- **Context compression.** Related stories build together with only the specifications they need.
+- **QuarterDeck web console.** The Commander reviews and directs each phase.
+- **Enterprise guardrails.** Questions replace guesses. Dependencies are declared.
 
 ## Getting started
 
