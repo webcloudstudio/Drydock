@@ -1716,72 +1716,24 @@ def _traffic_light(kind: str) -> str:
     )
 
 
-def _render_build_questions(
+def _render_blueprint_editors(
     documents: tuple[tuple[str, Path, str], ...],
 ) -> str:
-    """Render editable canonical questions grouped by authoritative artifact."""
-    from drydock.errors import SpecificationError
-    from drydock.questions import parse_questions
-
+    """Render a collapsed source editor for each authoritative Blueprint artifact."""
     groups = []
     for name, source, text in documents:
-        try:
-            questions = parse_questions(text, source=str(source))
-        except SpecificationError as exc:
-            groups.append(
-                "<div class='cmp-plan-section'><strong>"
-                f"{html.escape(name)}</strong><div class='item-error'>{html.escape(str(exc))}</div>"
-                "</div>"
-            )
-            continue
-        if not questions:
-            continue
-        rows = []
         relative = source.relative_to(_current_project_root()).as_posix()
         path_arg = html.escape(json.dumps(relative), quote=True)
-        for question in questions:
-            answered = question.status == "answered"
-            answer_id = (
-                "answer-"
-                + hashlib.sha256(f"{relative}#{question.question_id}".encode()).hexdigest()[:12]
-            )
-            question_arg = html.escape(json.dumps(question.question_id), quote=True)
-            answer_id_arg = html.escape(json.dumps(answer_id), quote=True)
-            rows.append(
-                "<div class='cmp-review-section'>"
-                f"<strong>{html.escape(question.question_id)}: {html.escape(question.name)}</strong>"
-                f"<div>{_md(question.question)}</div>"
-                f"<div class='subtle'>Origin: {html.escape(question.origin)} · "
-                f"Status: {html.escape(question.status)}</div>"
-                + (
-                    f"<div><strong>Answer:</strong>{_md(question.answer)}</div>"
-                    if answered
-                    else (
-                        f"<textarea id='{answer_id}' "
-                        "rows='3' placeholder='Answer this question'></textarea>"
-                        f'<button onclick="saveBlueprintQuestion({path_arg},'
-                        f'{question_arg},{answer_id_arg})">'
-                        "Save answer</button>"
-                    )
-                )
-                + "</div>"
-            )
         editor_id = "blueprint-" + hashlib.sha256(relative.encode()).hexdigest()[:12]
         editor_id_arg = html.escape(json.dumps(editor_id), quote=True)
         groups.append(
-            "<div class='cmp-plan-section'><strong>Build Questions — "
-            f"{html.escape(name)}</strong>{''.join(rows)}"
-            "<details class='cmp-detail'><summary>Edit Blueprint</summary>"
+            "<div class='cmp-plan-section'>"
+            f"<details class='cmp-detail'><summary>Edit Blueprint — {html.escape(name)}</summary>"
             f"<textarea id='{editor_id}' rows='24'>{html.escape(text)}</textarea>"
             f'<button onclick="saveBlueprintSource({path_arg},{editor_id_arg})">'
             "Save Blueprint</button></details></div>"
         )
     return "".join(groups)
-
-
-def _render_plan_feedback() -> str:
-    """Compatibility placeholder; Commander review uses DECISIONS.json."""
-    return ""
 
 
 def render_compass(item: dict[str, Any]) -> str:
@@ -1981,7 +1933,6 @@ def render_compass(item: dict[str, Any]) -> str:
     )
     parts = [
         header,
-        _render_plan_feedback(),
         "<div class='cmp-toolbar'>"
         f"<span class='cmp-total'>{warn_html}</span>"
         f"<button class='cmp-normalize' title='Run the deterministic build-block optimizer' "
@@ -2020,7 +1971,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 state,
             )
             user_html, blueprint_review = _render_blueprint_review(blueprint_documents)
-            questions_html = _render_build_questions(blueprint_documents)
+            blueprint_editor_html = _render_blueprint_editors(blueprint_documents)
             plan_html = _render_plan_traceability(block, by_id, blueprint_review)
             summary = str(block.fields.get("summary") or "")
             instructions = str(block.fields.get("instructions") or "")
@@ -2110,7 +2061,7 @@ def render_compass(item: dict[str, Any]) -> str:
                 f"{brief_html}{direction_html}{dependency_html}"
                 f"{dod_html}"
                 f"{user_html}"
-                f"{questions_html}"
+                f"{blueprint_editor_html}"
                 f"{plan_html}"
                 f"{_render_step_files(step, step_flags)}"
                 "</div>"
@@ -3190,20 +3141,9 @@ class CompassEdit(BaseModel):
     name: str = ""
 
 
-class BlueprintQuestionUpdate(BaseModel):
-    path: str
-    question_id: str
-    answer: str
-
-
 class BlueprintSourceUpdate(BaseModel):
     path: str
     content: str
-
-
-class PlanFeedbackUpdate(BaseModel):
-    decision_id: str
-    answer: str
 
 
 class DecisionDirection(BaseModel):
@@ -3412,14 +3352,6 @@ def api_compass_edit(item_id: str, edit: CompassEdit, request: Request = None) -
         return {"ok": True, **result}
 
 
-@app.post("/api/build-question/answer")
-def api_answer_build_question(update: BlueprintQuestionUpdate, request: Request = None):
-    del update, request
-    raise HTTPException(
-        status_code=410, detail="Blueprint questions were retired; use DECISIONS.json"
-    )
-
-
 @app.post("/api/build-question/approve/{story_id}")
 def api_approve_build_question(story_id: str, request: Request = None):
     from drydock.errors import SpecificationError
@@ -3455,14 +3387,6 @@ def api_update_blueprint_source(update: BlueprintSourceUpdate, request: Request 
         except (OSError, UnicodeError, SpecificationError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True}
-
-
-@app.post("/api/plan-feedback")
-def api_update_plan_feedback(update: PlanFeedbackUpdate, request: Request = None):
-    del update, request
-    raise HTTPException(
-        status_code=410, detail="planning-feedback.json was retired; use DECISIONS.json"
-    )
 
 
 @app.post("/api/decisions/direct")
@@ -4228,18 +4152,6 @@ def index(request: Request = None) -> str:
       else {{ const d = await r.json().catch(() => ({{}})); alert(d.detail || 'Edit failed'); }}
     }}
 
-    async function saveBlueprintQuestion(path, questionId, inputId) {{
-      const input = document.getElementById(inputId);
-      const answer = input ? input.value.trim() : '';
-      if (!answer) {{ alert('Answer is required.'); return; }}
-      const r = await fetch('/api/build-question/answer', {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{path, question_id: questionId, answer}})
-      }});
-      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save answer'); return; }}
-      location.reload();
-    }}
-
     async function saveBlueprintSource(path, inputId) {{
       const input = document.getElementById(inputId);
       const r = await fetch('/api/build-question/source', {{
@@ -4257,17 +4169,6 @@ def index(request: Request = None) -> str:
       await loadItem(itemId);
     }}
 
-    async function savePlanFeedback(decisionId) {{
-      const input = document.getElementById(`feedback-${{decisionId}}`);
-      const answer = input ? input.value.trim() : '';
-      if (!answer) {{ alert('Decision is required.'); return; }}
-      const r = await fetch('/api/plan-feedback', {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{decision_id: decisionId, answer}})
-      }});
-      if (!r.ok) {{ alert((await r.json()).detail || 'Unable to save feedback'); return; }}
-      location.reload();
-    }}
     async function saveDecision(itemId, decisionId, kind) {{
       const input = document.getElementById(`dec-input-${{decisionId}}`);
       const payload = {{item_id: itemId, decision_id: decisionId}};

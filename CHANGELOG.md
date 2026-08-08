@@ -8,6 +8,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Removed
+
+- 2026-08-08: Deleted the last executable remnants of the Blueprint Markdown question surface. The
+  Build Compass no longer parses `## Questions` sections or renders per-question "Save answer"
+  controls, so the compass step card presents a Blueprint source editor directly instead of hiding
+  it behind a question group that only appeared for documents containing questions. The retired
+  `POST /api/build-question/answer` and `POST /api/plan-feedback` endpoints, which returned HTTP 410
+  since the `DECISIONS.json` cutover, are gone along with their request models and client scripts;
+  callers must use the `DECISIONS.json` endpoints. The `drydock.questions` and
+  `drydock.plan_feedback` modules, whose only remaining consumers were that dead renderer and their
+  own tests, are removed. `drydock.question_gates` — which projects blocking `DECISIONS.json`
+  records onto Manifest story states — is unaffected.
+
 ### Fixed
 
 - 2026-08-07: Restored a green verification run. The test suite still asserted the Blueprint

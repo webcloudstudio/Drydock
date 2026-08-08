@@ -6,6 +6,7 @@ now / review / done / failed with reason), a rollup header, and editing controls
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 
@@ -262,7 +263,7 @@ class TestRender:
         assert out.index("user acceptance") < out.index("plan and traceability")
         assert out.index("plan and traceability") < out.index("stack breakdown")
 
-    def test_answering_a_blueprint_question_is_retired(self, tmp_path, monkeypatch):
+    def test_blueprint_question_surface_is_absent(self, tmp_path, monkeypatch):
         # Blueprint Markdown questions were retired; DECISIONS.json is the only decision surface.
         quarterdeck = _load_quarterdeck()
         target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
@@ -270,16 +271,15 @@ class TestRender:
             _CURRENT_BLUEPRINT, encoding="utf-8"
         )
 
-        import pytest
+        assert not hasattr(quarterdeck, "api_answer_build_question")
+        assert not hasattr(quarterdeck, "BlueprintQuestionUpdate")
+        page = inspect.getsource(quarterdeck.index)
+        assert "/api/build-question/answer" not in page
+        assert "saveBlueprintQuestion" not in page
 
-        with pytest.raises(quarterdeck.HTTPException, match="retired"):
-            quarterdeck.api_answer_build_question(
-                quarterdeck.BlueprintQuestionUpdate(
-                    path="blueprint/FEATURE-Program-Interface.md",
-                    question_id="Q-001",
-                    answer="Yes, normalize to LF.",
-                )
-            )
+        out = quarterdeck.render_compass({"path": str(target / "MANIFEST.md")})
+        assert "Save answer" not in out
+        assert "Edit Blueprint" in out
 
     def test_full_blueprint_editor_writes_the_source(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
