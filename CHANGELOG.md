@@ -49,7 +49,10 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-08-08: `drydock uat` now writes a per-fixture `evidence/` bundle on both successful and
   failed runs. It preserves every lifecycle command's stdout and stderr, copies LLM prompts,
   prompt outputs, provider-raw transcripts, and `llm.jsonl`, and indexes those artifacts with
-  relative paths, byte counts, and SHA-256 hashes in `evidence/manifest.json`.
+  relative paths, byte counts, and SHA-256 hashes in `evidence/manifest.json`. The lifecycle also
+  captures `build status <Target>`, `status <Target>`, and workspace-wide `status` views after
+  planning, refitting, and each completed build stage so the evidence shows state transitions as
+  well as command outcomes.
 
 - 2026-08-08: UAT fixtures can declare fixture-local source files and a deterministic post-build
   `test_command` in `uat.json`. Fixtures now declare a nonempty source bundle and ordered updates

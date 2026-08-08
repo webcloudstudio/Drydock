@@ -360,6 +360,12 @@ def run_fixture(
         if result.returncode != 0:
             raise DrydockError(f"{fixture.name}: test exited {result.returncode}")
 
+    def capture_status(stage: str) -> None:
+        """Preserve all supported status views without turning a snapshot into a gate."""
+        execute(("build", "status", fixture.target), f"{stage}-build-status", required=False)
+        execute(("status", fixture.target), f"{stage}-target-status", required=False)
+        execute(("status",), f"{stage}-workspace-status", required=False)
+
     def build_to_completion(stage: str) -> None:
         nonlocal build_passes
         stage_passes = 0
@@ -386,13 +392,17 @@ def run_fixture(
         )
         execute(("analyze", fixture.target), "analyze")
         execute(("plan", fixture.target, "--override"), "plan")
+        capture_status("after-plan")
         build_to_completion("initial")
+        capture_status("after-initial-build")
 
         for index, update in enumerate(fixture.updates, start=1):
             shutil.copyfile(update, source_root / update.name)
             execute(("import", fixture.target, "--update"), f"import-update-{index}")
             execute(("refit", fixture.target, "--sources"), f"refit-update-{index}")
+            capture_status(f"after-refit-{index}")
             build_to_completion(f"refit-{index}")
+            capture_status(f"after-refit-{index}-build")
 
         execute_test()
 

@@ -108,9 +108,6 @@ ai  drydock plan              MyApp            # Grooming and dependency graph
 
 # ── I ── IMPLEMENT ───────────────────────────────────────────────────────
 ai  drydock build             MyApp            # Iterative context-aware process
-    drydock build status      MyApp            # Show build state
-    drydock score ac          MyApp            # Verify Story acceptance criteria
-    drydock score build       MyApp            # Post-build report: repairs, tokens, cache
 ai  drydock score release     MyApp            # Score project success criteria (EARS)
 
 # ── L ── LOOP ────────────────────────────────────────────────────────────
@@ -120,6 +117,7 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
 ### Additional Commands
 
 ```text
+    drydock build status      MyApp            # Show build state
     drydock build verify      MyApp <step>     # Display/Verify build graph
 ai  drydock build score       MyApp            # Generate SCORECARD.md
 ai  drydock uat               [Project]        # Scored UAT testing
@@ -129,6 +127,8 @@ ai  drydock document generate MyApp            # AI pass only
     drydock publish           <Source.md>      # Render Markdown to HTML/PDF
 ai  drydock rigging compact                    # Automanage compaction
     drydock rigging verify                     # Verify rigging compliance
+    drydock score ac          MyApp            # Verify Story acceptance criteria
+    drydock score build       MyApp            # Post-build report: repairs, tokens, cache
 ai  drydock score drydock                      # Adversarial self-assessment
 ```
 

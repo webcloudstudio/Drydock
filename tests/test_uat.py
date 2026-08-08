@@ -130,7 +130,7 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
 
     def fake_runner(argv, cwd, env, output_dir, label):
         nonlocal ready_calls
-        del cwd, env
+        del env
         parts = tuple(argv[3:])
         calls.append(parts)
         returncode = 0
@@ -144,7 +144,7 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
         stderr = output_dir / f"{label}.stderr.log"
         stdout.write_text("", encoding="utf-8")
         stderr.write_text("", encoding="utf-8")
-        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr))
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
 
     run_root, results = run_uat(
         tmp_path,
@@ -163,7 +163,16 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
     assert result.score_exit_codes == {"acceptance": 0, "build-report": 0, "release": 1}
     assert ("import", "ReadingList", "--update") in calls
     assert ("refit", "ReadingList", "--sources") in calls
+    assert ("build", "status", "ReadingList") in calls
+    assert ("status", "ReadingList") in calls
+    assert ("status",) in calls
     assert (run_root / "ReadingList" / "sources" / "reading-list.md").read_text() == "# Updated\n"
+    evidence = json.loads(
+        (run_root / "ReadingList" / "evidence" / "manifest.json").read_text(encoding="utf-8")
+    )
+    labels = [command["label"] for command in evidence["commands"]]
+    assert any(label.endswith("after-refit-1-build-status") for label in labels)
+    assert any(label.endswith("after-refit-1-build-workspace-status") for label in labels)
     assert (run_root / "summary.json").is_file()
     assert "ReadingList: PASSED" in (run_root / "SUMMARY.md").read_text(encoding="utf-8")
 
@@ -247,6 +256,16 @@ def test_uat_collects_llm_prompts_outputs_and_raw_transcripts(tmp_path: Path) ->
         "provider_raw",
         "llm_execution_records",
     }
+    labels = [command["label"] for command in manifest["commands"]]
+    for suffix in (
+        "after-plan-build-status",
+        "after-plan-target-status",
+        "after-plan-workspace-status",
+        "after-initial-build-build-status",
+        "after-initial-build-target-status",
+        "after-initial-build-workspace-status",
+    ):
+        assert any(label.endswith(suffix) for label in labels)
 
 
 def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> None:
