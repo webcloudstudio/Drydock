@@ -21,10 +21,9 @@ from drydock.build_run import (
     _ungate_acceptance_plan,
     build_target,
 )
-from drydock.decisions import Decision, write_decisions
+from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.dependency_gate import RegistryPackageInfo
 from drydock.errors import SpecificationError, write_error_record
-from drydock.questions import parse_questions
 
 _TWO_STORIES = """# MANIFEST: Demo
 state: draft
@@ -3117,49 +3116,35 @@ assert health() == "ok"
     assert result.steps[0].status == "blocked"
     assert _state(target_dir, "foundation") == "blocked/questions"
     assert (build_dir / "target_app.py").is_file()
-    question = parse_questions(
-        (target_dir / "blueprint" / "DATABASE.md").read_text(encoding="utf-8")
-    )[0]
-    assert question.origin == "build"
-    assert "python-package=surprise_transport" in question.question
+    decision = load_decisions(target_dir / "DECISIONS.json")[0]
+    assert decision.origin == "build"
+    assert decision.severity == "blocking"
+    assert "python-package=surprise_transport" in decision.description
     evidence = result.steps[0].evidence_path.read_text(encoding="utf-8")
     assert "acceptance prerequisite requires authorization" in evidence
 
 
 def test_active_commander_guidance_is_injected_into_build_prompt(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(
-        """# DATABASE: Demo
-
-## Questions
-
-### Q-harness: Authorize test harnesses
-
-- Origin: plan
-- Severity: Blocking
-- Status: answered
-
-#### Question
-
-Authorize test harness tooling?
-
-#### Answer
-
-Approve all test harnesses
-
-## Programmatic Acceptance
-
-- None.
-
-## User Acceptance
-
-- None.
-
-## Guardrails
-
-- None.
-""",
-        encoding="utf-8",
+    write_decisions(
+        target_dir / "DECISIONS.json",
+        (
+            Decision(
+                id="harness",
+                type="text",
+                severity="blocking",
+                origin="plan",
+                blueprint="DATABASE.md",
+                story=None,
+                status="answered",
+                archived=False,
+                title="Authorize test harnesses",
+                description="Authorize test harness tooling?",
+                options=(),
+                system_choice="not authorized",
+                override_text="Approve all test harnesses",
+            ),
+        ),
     )
     prompts = []
 

@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from drydock.decisions import Decision, load_decisions, write_decisions
 from drydock.errors import SpecificationError
 from drydock.manifest import DrydockManifest
 from drydock.plan_feedback import (
@@ -17,7 +18,6 @@ from drydock.plan_feedback import (
 )
 from drydock.question_gates import approve_story_questions, synchronize_manifest_question_gates
 from drydock.questions import (
-    answer_question,
     normalize_questions_first,
     parse_questions,
     validate_questions_document,
@@ -76,6 +76,26 @@ state: pending
 """
 
 
+def _decision(
+    decision_id: str, story: str, *, severity: str = "blocking", answer: str = ""
+) -> Decision:
+    return Decision(
+        id=decision_id,
+        type="text",
+        severity=severity,
+        origin="plan",
+        blueprint="FEATURE-Color.md",
+        story=story,
+        status="answered" if answer else "open",
+        archived=False,
+        title="Presentation color",
+        description="What color should it be?",
+        options=(),
+        system_choice="unset",
+        override_text=answer or None,
+    )
+
+
 def test_canonical_question_contract_and_first_section_normalization():
     text = _blueprint(body="## Behavior\n\nDo it.\n")
     question = validate_questions_document(text, require_first_section=True)[0]
@@ -110,48 +130,46 @@ def test_alternate_question_headings_are_rejected(heading):
         parse_questions(_blueprint().replace("## Questions", heading))
 
 
-def test_answer_writes_authoritative_blueprint_and_ungates_story(tmp_path):
+def test_answered_decision_ungates_its_story(tmp_path):
     target = tmp_path / "Demo"
     blueprint = target / "blueprint"
     blueprint.mkdir(parents=True)
     (target / "MANIFEST.md").write_text(_manifest(), encoding="utf-8")
-    (blueprint / "FEATURE-Color.md").write_text(_blueprint(), encoding="utf-8")
-    (blueprint / "UI.md").write_text(
-        _blueprint(body="## UI\n\nRender it.\n").replace("Q-001", "Q-002"),
-        encoding="utf-8",
+    write_decisions(
+        target / "DECISIONS.json",
+        (_decision("color-hue", "color"), _decision("color-shade", "color")),
     )
-    for name in ("FEATURE-Independent.md", "FEATURE-Consumer.md"):
-        (blueprint / name).write_text(
-            _blueprint(status="answered", answer="Known.").replace("Q-001", f"Q-{name[:3]}"),
-            encoding="utf-8",
-        )
 
     plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
-    color = plan.node("color")
-    assert color.state == "blocked/questions"
-    assert color.fields["questions"] == "2 open (2 blocking), 0 answered"
+    assert plan.node("color").state == "blocked/questions"
     assert [node.block_id for node in plan.buildable_steps()] == ["independent"]
 
-    answer_question(blueprint / "FEATURE-Color.md", "Q-001", "Blue")
-    answer_question(blueprint / "UI.md", "Q-002", "Navy")
+    write_decisions(
+        target / "DECISIONS.json",
+        (
+            _decision("color-hue", "color", answer="Blue"),
+            _decision("color-shade", "color", answer="Navy"),
+        ),
+    )
     plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
+
     assert plan.node("color").state == "pending"
-    assert plan.node("color").fields["questions"] == "0 open (0 blocking), 2 answered"
     assert [node.block_id for node in plan.buildable_steps()] == ["delivery"]
 
 
-def test_manifest_approval_is_current_only_and_not_feedback(tmp_path):
+def test_story_local_approval_escape_hatch_is_rejected(tmp_path):
+    # A story governed by a blocking decision is released by answering it, not by approving
+    # the story for the current Manifest.
     target = tmp_path / "Demo"
     blueprint = target / "blueprint"
     blueprint.mkdir(parents=True)
     (target / "MANIFEST.md").write_text(_manifest(), encoding="utf-8")
-    (blueprint / "FEATURE-Color.md").write_text(_blueprint(), encoding="utf-8")
+    write_decisions(target / "DECISIONS.json", (_decision("color-hue", "color"),))
 
     synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
-    approved = approve_story_questions(target / "MANIFEST.md", "color")
 
-    assert approved.node("color").state == "pending"
-    assert approved.node("color").fields["questions_approved"] == "true"
+    with pytest.raises(SpecificationError, match="answer the decision"):
+        approve_story_questions(target / "MANIFEST.md", "color")
     assert load_feedback(target) == ()
 
 
@@ -160,14 +178,15 @@ def test_material_plan_decision_is_visible_without_blocking_story(tmp_path):
     blueprint = target / "blueprint"
     blueprint.mkdir(parents=True)
     (target / "MANIFEST.md").write_text(_manifest(), encoding="utf-8")
-    material = _blueprint().replace("- Status: open", "- Severity: Material\n- Status: open")
-    (blueprint / "FEATURE-Color.md").write_text(material, encoding="utf-8")
+    write_decisions(
+        target / "DECISIONS.json",
+        (_decision("color-hue", "color", severity="material"),),
+    )
 
     plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
 
-    color = plan.node("color")
-    assert color.state == "pending"
-    assert color.fields["questions"] == "1 open (0 blocking), 0 answered"
+    assert plan.node("color").state == "pending"
+    assert load_decisions(target / "DECISIONS.json")[0].severity == "material"
 
 
 def test_answered_feedback_survives_blueprint_rename_and_requires_explicit_retirement(tmp_path):
@@ -291,16 +310,12 @@ def test_answered_analyze_questionnaire_enters_plan_feedback(tmp_path):
     assert "Apply each" in render_feedback_prompt(decisions)
 
 
-def test_transitive_dependent_is_not_buildable_when_question_owner_is_blocked(tmp_path):
+def test_transitive_dependent_is_not_buildable_when_decision_owner_is_blocked(tmp_path):
     target = tmp_path / "Demo"
     blueprint = target / "blueprint"
     blueprint.mkdir(parents=True)
     (target / "MANIFEST.md").write_text(_manifest(), encoding="utf-8")
-    (blueprint / "FEATURE-Color.md").write_text(_blueprint(), encoding="utf-8")
-    for name in ("FEATURE-Independent.md", "FEATURE-Consumer.md"):
-        (blueprint / name).write_text(
-            _blueprint(status="answered", answer="Known."), encoding="utf-8"
-        )
+    write_decisions(target / "DECISIONS.json", (_decision("color-hue", "color"),))
 
     plan = synchronize_manifest_question_gates(target / "MANIFEST.md", blueprint)
 

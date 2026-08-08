@@ -11,12 +11,11 @@ from drydock.acceptance import (
 )
 from drydock.acceptance_requirements import (
     authorization_for,
-    project_plan_requirement_questions,
+    project_plan_requirement_decisions,
     undeclared_external_usage,
     validate_declared_external_usage,
 )
-from drydock.plan_feedback import harvest_answered_questions
-from drydock.questions import answer_question, parse_questions
+from drydock.decisions import Decision, write_decisions
 
 
 def _spec(requires: str, code: str) -> str:
@@ -25,10 +24,6 @@ def _spec(requires: str, code: str) -> str:
 | Field | Value |
 |---|---|
 | Type | FEATURE |
-
-## Questions
-
-- None.
 
 ## Programmatic Acceptance
 
@@ -161,7 +156,34 @@ def test_uv_provisioning_invalidates_target_package_inventory(tmp_path, monkeypa
         acceptance_requirements.invalidate_target_environment_inventory()
 
 
-def test_plan_projects_canonical_story_local_tooling_question(tmp_path):
+def _authorize(target, answer: str) -> None:
+    """Persist an answered Commander authorization decision in DECISIONS.json."""
+    write_decisions(
+        target / "DECISIONS.json",
+        (
+            Decision(
+                id="acceptance-health-route-tooling",
+                type="text",
+                severity="blocking",
+                origin="plan",
+                blueprint="FEATURE-Health.md",
+                story=None,
+                status="answered",
+                archived=False,
+                title="Authorize health-route test tooling",
+                description=(
+                    "Authorize python-package=httpx for test scope. Affected acceptance check: "
+                    "FEATURE-Health.md#health-route."
+                ),
+                options=(),
+                system_choice="not authorized",
+                override_text=answer,
+            ),
+        ),
+    )
+
+
+def test_plan_projects_a_blocking_tooling_decision(tmp_path):
     target = tmp_path / "Demo"
     target.mkdir()
     blocks = {
@@ -170,30 +192,23 @@ def test_plan_projects_canonical_story_local_tooling_question(tmp_path):
         )
     }
 
-    added = project_plan_requirement_questions(
+    decisions = project_plan_requirement_decisions(
         blocks, target_dir=target, build_dir=tmp_path / "build"
     )
-    question = parse_questions(blocks["FEATURE-Health.md"])[0]
 
-    assert added == ("FEATURE-Health.md#Q-health-route-tooling",)
-    assert question.origin == "plan"
-    assert question.severity == "blocking"
-    assert "python-package=httpx" in question.question
-    assert "uv add --dev httpx" in question.question
+    decision = decisions[0]
+    assert decision.id == "acceptance-health-route-tooling"
+    assert decision.blueprint == "FEATURE-Health.md"
+    assert decision.origin == "plan"
+    assert decision.severity == "blocking"
+    assert "python-package=httpx" in decision.description
+    assert "uv add --dev httpx" in decision.description
 
 
 def test_broad_commander_test_harness_guidance_authorizes_later_tools(tmp_path):
     target = tmp_path / "Demo"
-    blueprint = target / "blueprint"
-    blueprint.mkdir(parents=True)
-    path = blueprint / "FEATURE-Health.md"
-    blocks = {
-        path.name: _spec("Requires: python-package=httpx; scope=test", "import httpx\nassert httpx")
-    }
-    project_plan_requirement_questions(blocks, target_dir=target, build_dir=tmp_path / "build")
-    path.write_text(blocks[path.name], encoding="utf-8")
-    answer_question(path, "Q-health-route-tooling", "Approve all test harnesses")
-    harvested = harvest_answered_questions(target)
+    target.mkdir()
+    _authorize(target, "Approve all test harnesses")
 
     auth = authorization_for(
         AcceptanceRequirement("python-package", "playwright", "test"),
@@ -201,22 +216,14 @@ def test_broad_commander_test_harness_guidance_authorizes_later_tools(tmp_path):
         build_dir=tmp_path / "build",
     )
 
-    assert harvested[0].answer == "Approve all test harnesses"
     assert auth.authorized
     assert auth.commander_text == "Approve all test harnesses"
 
 
 def test_broad_test_guidance_does_not_authorize_runtime_scope(tmp_path):
     target = tmp_path / "Demo"
-    blueprint = target / "blueprint"
-    blueprint.mkdir(parents=True)
-    path = blueprint / "FEATURE-Health.md"
-    text = _spec("Requires: python-package=httpx; scope=test", "assert True")
-    blocks = {path.name: text}
-    project_plan_requirement_questions(blocks, target_dir=target, build_dir=tmp_path / "build")
-    path.write_text(blocks[path.name], encoding="utf-8")
-    answer_question(path, "Q-health-route-tooling", "Approve all test harnesses")
-    harvest_answered_questions(target)
+    target.mkdir()
+    _authorize(target, "Approve all test harnesses")
 
     auth = authorization_for(
         AcceptanceRequirement("python-package", "httpx", "runtime"),
@@ -229,19 +236,8 @@ def test_broad_test_guidance_does_not_authorize_runtime_scope(tmp_path):
 
 def test_narrow_commander_answer_authorizes_only_named_tool_and_scope(tmp_path):
     target = tmp_path / "Demo"
-    blueprint = target / "blueprint"
-    blueprint.mkdir(parents=True)
-    path = blueprint / "FEATURE-Health.md"
-    blocks = {
-        path.name: _spec("Requires: python-package=httpx; scope=test", "import httpx\nassert httpx")
-    }
-    project_plan_requirement_questions(blocks, target_dir=target, build_dir=tmp_path / "build")
-    path.write_text(blocks[path.name], encoding="utf-8")
-    answer_question(
-        path,
-        "Q-health-route-tooling",
-        "Approve httpx for test scope only",
-    )
+    target.mkdir()
+    _authorize(target, "Approve httpx for test scope only")
 
     httpx = authorization_for(
         AcceptanceRequirement("python-package", "httpx", "test"),

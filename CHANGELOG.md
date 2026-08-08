@@ -8,6 +8,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-08-07: Restored a green verification run. The test suite still asserted the Blueprint
+  Markdown question surface retired on 2026-08-02, so 27 tests described behavior that no longer
+  existed; gate, authorization, build-decision, and Commander-guidance coverage is now expressed
+  against `DECISIONS.json`, and the Sea Trials question projection is asserted as retired. Three
+  further CI-only failures are closed: `pyproject.toml` declares `pythonpath = ["."]` so tests that
+  import sibling test helpers work under `uv run`, the `logs/` replay fixture consumed by the
+  MANIFEST parser test moved to `tests/fixtures/` because `logs/` is not committed, and
+  `validation/bin/*.sh` carry the executable bit in Git so `validation/bin/run_validation.sh` finds
+  its case scripts on a clean checkout.
+
 ### Changed
 
 - 2026-08-07: GitHub Actions verification now uses one Ubuntu/Python 3.12 job instead of repeating

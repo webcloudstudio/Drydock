@@ -9,6 +9,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from drydock.decisions import Decision, write_decisions
+
 
 def _load_quarterdeck():
     path = Path(__file__).parents[1] / "QuarterDeck" / "app.py"
@@ -260,35 +262,26 @@ class TestRender:
         assert out.index("user acceptance") < out.index("plan and traceability")
         assert out.index("plan and traceability") < out.index("stack breakdown")
 
-    def test_build_questions_are_grouped_editable_and_gate_the_story(self, tmp_path, monkeypatch):
+    def test_answering_a_blueprint_question_is_retired(self, tmp_path, monkeypatch):
+        # Blueprint Markdown questions were retired; DECISIONS.json is the only decision surface.
         quarterdeck = _load_quarterdeck()
         target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
-        source = target / "blueprint" / "FEATURE-Program-Interface.md"
-        source.write_text(_CURRENT_BLUEPRINT, encoding="utf-8")
-
-        out = quarterdeck.render_compass(_ITEM)
-
-        assert "Blocked Questions" in out
-        assert "Unanswered Questions Exist" in out
-        assert "Build Questions — FEATURE-Program-Interface.md" in out
-        assert "Save answer" in out
-        assert "Edit Blueprint" in out
-        assert "Approve for this Manifest" in out
-
-        quarterdeck.api_answer_build_question(
-            quarterdeck.BlueprintQuestionUpdate(
-                path="blueprint/FEATURE-Program-Interface.md",
-                question_id="Q-001",
-                answer="Yes, normalize to LF.",
-            )
+        (target / "blueprint" / "FEATURE-Program-Interface.md").write_text(
+            _CURRENT_BLUEPRINT, encoding="utf-8"
         )
 
-        updated = source.read_text(encoding="utf-8")
-        assert "- Status: answered" in updated
-        assert "Yes, normalize to LF." in updated
-        assert "state: pending" in (target / "MANIFEST.md").read_text(encoding="utf-8")
+        import pytest
 
-    def test_full_blueprint_editor_validates_canonical_questions(self, tmp_path, monkeypatch):
+        with pytest.raises(quarterdeck.HTTPException, match="retired"):
+            quarterdeck.api_answer_build_question(
+                quarterdeck.BlueprintQuestionUpdate(
+                    path="blueprint/FEATURE-Program-Interface.md",
+                    question_id="Q-001",
+                    answer="Yes, normalize to LF.",
+                )
+            )
+
+    def test_full_blueprint_editor_writes_the_source(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=_CURRENT_MANIFEST)
         source = target / "blueprint" / "FEATURE-Program-Interface.md"
@@ -304,17 +297,8 @@ class TestRender:
                 content=changed,
             )
         )
+
         assert "Standard output remains deterministic." in source.read_text(encoding="utf-8")
-
-        import pytest
-
-        with pytest.raises(quarterdeck.HTTPException, match="exactly '## Questions'"):
-            quarterdeck.api_update_blueprint_source(
-                quarterdeck.BlueprintSourceUpdate(
-                    path="blueprint/FEATURE-Program-Interface.md",
-                    content=changed.replace("## Questions", "## Open Questions"),
-                )
-            )
 
     def test_verified_story_labels_blueprint_acceptance_passed(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
@@ -538,7 +522,28 @@ state: pending
     def test_questions_group_uses_yellow_traffic_light(self, tmp_path, monkeypatch):
         quarterdeck = _load_quarterdeck()
         manifest = _MANIFEST.replace("state: pending", "state: blocked/questions", 2)
-        _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+        target = _setup(quarterdeck, tmp_path, monkeypatch, manifest=manifest)
+        # The gate is derived from DECISIONS.json on every render; without an unanswered
+        # blocking record the story would be re-opened before the traffic light is drawn.
+        write_decisions(
+            target / "DECISIONS.json",
+            (
+                Decision(
+                    id="core-tooling",
+                    type="text",
+                    severity="blocking",
+                    origin="plan",
+                    blueprint="ARCHITECTURE.md",
+                    story="core",
+                    status="open",
+                    archived=False,
+                    title="Authorize core tooling",
+                    description="Authorize the core build tooling.",
+                    options=(),
+                    system_choice="not authorized",
+                ),
+            ),
+        )
         out = quarterdeck.render_compass(_ITEM)
         assert "cmp-traffic-light-yellow" in out
         assert "aria-label='Build Block has unanswered questions'" in out

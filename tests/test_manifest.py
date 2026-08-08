@@ -170,12 +170,11 @@ def test_graph_add_move_regroup_remove_and_reset():
 
 
 def test_replay_20260727_context_manifest_parses_without_executing_acceptance():
-    output = (
-        Path(__file__).parents[1]
-        / "logs"
-        / "20260727.214434.270Z_commonmark_plan_claude.output.txt"
-    ).read_text(encoding="utf-8")
-    manifest = output.split("=== MANIFEST.md ===\n", 1)[1].rsplit("\n=== END MANIFEST.md ===", 1)[0]
+    # Captured from the 2026-07-27 CommonMark plan run; logs/ is not committed, so the replayed
+    # MANIFEST.md body lives with the tests.
+    manifest = (Path(__file__).parent / "fixtures" / "replay_20260727_manifest.md").read_text(
+        encoding="utf-8"
+    )
 
     graph = DrydockManifest.parse(manifest, source="replay:20260727.214434.270Z-e71883e0")
 

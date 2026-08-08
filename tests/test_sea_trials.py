@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from drydock.errors import SpecificationError
@@ -21,7 +19,7 @@ def _trial(**fields: str) -> str:
     return f"# Sea Trials: Demo\n\n## st-001: Example\n{body}"
 
 
-def test_parses_structured_trial_and_questions():
+def test_parses_structured_trial():
     document = parse_sea_trials_text(
         """# Sea Trials: Demo
 
@@ -35,19 +33,6 @@ Baseline: 180
 Operator: <=
 Target: 100
 Unit: ms
-
-## Questions
-
-### Q-latency-baseline: Latency baseline
-
-- Origin: plan
-- Status: open
-
-#### Question
-
-Which representative workload defines the baseline?
-
-#### Answer
 """
     )
 
@@ -56,7 +41,6 @@ Which representative workload defines the baseline?
     assert trial.command == ("python", "measure.py")
     assert trial.baseline == 180
     assert trial.target == 100
-    assert document.questions[0].question_id == "q-latency-baseline"
 
 
 @pytest.mark.parametrize(
@@ -82,48 +66,7 @@ def test_measurement_questions_are_not_treated_as_stack(question_id, text):
     assert is_stack_selection_question(question_id, text) is False
 
 
-def test_stack_question_is_dropped_from_parsed_questions():
-    document = parse_sea_trials_text(
-        """# Sea Trials: Demo
-
-## st-001: Full conformance
-Type: outcome
-Required: yes
-Criterion: The parser passes every case in the full conformance test suite.
-Verification: proof
-Command: ["python", "run.py"]
-
-## Questions
-
-### Q-st-001-baseline: Suite baseline
-
-- Origin: plan
-- Status: open
-
-#### Question
-
-Which test-suite edition defines the baseline?
-
-#### Answer
-
-### Q-st-001-stack: Stack
-
-- Origin: plan
-- Status: open
-
-#### Question
-
-Select the applicable Rigging stack components before planning.
-
-#### Answer
-"""
-    )
-
-    ids = [question.question_id for question in document.questions]
-    assert ids == ["q-st-001-baseline"]
-
-
-def test_stack_question_is_stripped_from_normalized_text():
+def test_legacy_questions_section_is_stripped_from_normalized_text():
     normalized = normalize_sea_trials_text(
         """# Sea Trials: Demo
 
@@ -150,10 +93,11 @@ Select the applicable Rigging stack components before planning.
     )
 
     assert "q-st-001-stack" not in normalized
-    assert "## Questions\n\n- None." in normalized
+    assert "## Questions" not in normalized
+    assert "st-001" in normalized
 
 
-def test_trial_after_questions_block_is_parsed():
+def test_trial_after_a_legacy_questions_block_is_parsed():
     document = parse_sea_trials_text(
         """# Sea Trials: Demo
 
@@ -187,7 +131,7 @@ Pattern: event
     )
 
     assert [trial.criterion_id for trial in document.trials] == ["st-001", "st-002"]
-    assert document.questions[0].question_id == "q-st-001-target"
+    assert document.questions == ()
 
 
 def test_legacy_table_is_imported_as_qualitative_acceptance():
@@ -475,114 +419,9 @@ Verification: llm
     assert normalize_sea_trials_text(normalized) == normalized
 
 
-def test_projects_questions_and_preserves_answers(tmp_path):
+def test_question_projection_is_retired(tmp_path):
+    """Sea Trials decisions live in DECISIONS.json; no questionnaire is projected."""
     path = tmp_path / "discovery-sea-trials.json"
-    path.write_text(
-        json.dumps({"questions": [{"id": "q-one", "answer": "Known workload"}]}),
-        encoding="utf-8",
-    )
-    document = parse_sea_trials_text(
-        """# Sea Trials: Demo
-
-## st-one: One
-Type: qualitative
-Required: yes
-Criterion: The workflow is understandable.
-Verification: llm
-
-## Questions
-
-### Q-one: Workload
-
-- Origin: plan
-- Status: open
-
-#### Question
-
-Which workload applies?
-
-#### Answer
-"""
-    )
-
-    project_questions(document, path)
-
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["state"] == "answered"
-    assert payload["questions"][0]["answer"] == "Known workload"
-
-
-def test_projection_preserves_commander_notes_and_resolution(tmp_path):
-    path = tmp_path / "discovery-sea-trials.json"
-    path.write_text(
-        json.dumps({
-            "questions": [{"id": "q-one", "answer": "Known workload"}],
-            "resolution": "Commander accepted",
-            "additional_notes": "Measured against the 2026 baseline.",
-        }),
-        encoding="utf-8",
-    )
-    document = parse_sea_trials_text(
-        """# Sea Trials: Demo
-
-## st-one: One
-Type: qualitative
-Required: yes
-Criterion: The workflow is understandable.
-Verification: llm
-
-## Questions
-
-### Q-one: Workload
-
-- Origin: plan
-- Status: open
-
-#### Question
-
-Which workload applies?
-
-#### Answer
-"""
-    )
-
-    project_questions(document, path)
-
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["resolution"] == "Commander accepted"
-    assert payload["additional_notes"] == "Measured against the 2026 baseline."
-
-
-def test_answered_projection_survives_a_rerun_without_questions(tmp_path):
-    """A regenerated SEA_TRIALS.md must not delete answers the Commander already gave."""
-    path = tmp_path / "discovery-sea-trials.json"
-    path.write_text(
-        json.dumps({"questions": [{"id": "q-one", "answer": "Known workload"}]}),
-        encoding="utf-8",
-    )
-    document = parse_sea_trials_text(
-        """# Sea Trials: Demo
-
-## st-one: One
-Type: qualitative
-Required: yes
-Criterion: The workflow is understandable.
-Verification: llm
-"""
-    )
-
-    assert project_questions(document, path) == path
-    assert json.loads(path.read_text(encoding="utf-8"))["questions"][0]["answer"] == (
-        "Known workload"
-    )
-
-
-def test_unanswered_projection_is_removed_when_questions_disappear(tmp_path):
-    path = tmp_path / "discovery-sea-trials.json"
-    path.write_text(
-        json.dumps({"questions": [{"id": "q-one", "answer": ""}]}),
-        encoding="utf-8",
-    )
     document = parse_sea_trials_text(
         """# Sea Trials: Demo
 

@@ -91,6 +91,9 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests import helpers from sibling test modules (`from tests.test_cli import run_cli`), which
+# requires the repository root on sys.path under runners that do not add the CWD (e.g. `uv run`).
+pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["drydock"]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from drydock.build_decisions import parse_build_decisions, record_build_decisions
-from drydock.questions import parse_questions
+from drydock.decisions import load_decisions
 
 
 def _spec() -> str:
@@ -11,17 +11,13 @@ def _spec() -> str:
 |---|---|
 | Type | FEATURE |
 
-## Questions
-
-- None.
-
 ## Programmatic Acceptance
 
 - None. No programmatic surface.
 """
 
 
-def test_build_decision_is_recorded_only_in_owning_blueprint(tmp_path):
+def test_build_decision_is_recorded_in_decisions_json_for_the_owning_blueprint(tmp_path):
     blueprint = tmp_path / "blueprint"
     blueprint.mkdir()
     path = blueprint / "FEATURE-Color.md"
@@ -38,11 +34,13 @@ RESULT: SUCCESS
         allowed_specs=frozenset({"FEATURE-Color.md"}),
     )
 
-    assert written == (path,)
-    decision = parse_questions(path.read_text(encoding="utf-8"), source=str(path))[0]
+    decisions_path = tmp_path / "DECISIONS.json"
+    assert written == (decisions_path,)
+    decision = load_decisions(decisions_path)[0]
+    assert decision.blueprint == "FEATURE-Color.md"
     assert decision.origin == "build"
     assert decision.severity == "material"
-    assert decision.status == "open"
+    assert decision.status == "recommended"
 
 
 def test_build_decision_rejects_unowned_spec_and_blocking_severity(tmp_path):

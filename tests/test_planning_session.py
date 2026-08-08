@@ -236,10 +236,6 @@ _SPEC_HEADER = (
 ## Guardrails
 
 - None.
-
-## Questions
-
-- None.
 """
 )
 
@@ -296,7 +292,7 @@ _ARCH_CONFORMANT = (
     "## Modules\n\n- Architecture body.\n\n"
     "## Programmatic Acceptance\n\n"
     + _pa("The architecture package imports cleanly.")
-    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
+    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
 )
 
 _FEATURE_EMPTY_ACCEPTANCE = (
@@ -307,7 +303,7 @@ _FEATURE_EMPTY_ACCEPTANCE = (
     "## Trigger\n\n- User runs drydock status.\n\n"
     "## Test\n\n- Verify status prints the build state.\n\n"
     "## Programmatic Acceptance\n\n- None.\n\n"
-    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
+    "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
 )
 
 _FEATURE_CONFORMED_BODY = (
@@ -321,7 +317,7 @@ _FEATURE_CONFORMED_BODY = (
         "The status command exits with code 0.",
         "The status output names the current build state.",
     )
-    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n## Questions\n\n- None.\n"
+    + "\n\n## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n"
 )
 
 _REUSE_TWO_STORY_MANIFEST = (
@@ -1375,15 +1371,11 @@ def test_spec_is_dirty_false_when_hash_matches(tmp_path):
 
 
 def test_replan_preserves_closed_story_when_only_relationship_metadata_changes(tmp_path):
-    from drydock.questions import normalize_questions_first
-
     target_dir = _make_target(tmp_path)
     blueprint_dir = target_dir / "blueprint"
     output = _llm_output(_manifest(story_state="pending"))
     regenerated = _parse_blocks(output)["FEATURE-Status.md"]
-    prior = normalize_questions_first(regenerated, source="FEATURE-Status.md").replace(
-        "| Depends On  | |", "| Depends On  | ARCHITECTURE.md |"
-    )
+    prior = regenerated.replace("| Depends On  | |", "| Depends On  | ARCHITECTURE.md |")
     assert prior != regenerated
     (blueprint_dir / "FEATURE-Status.md").write_text(prior, encoding="utf-8")
     _mark_built(
@@ -2375,7 +2367,6 @@ def _screen_output(pa_lines: str, *, provides: str = "GET /welcome", consumes: s
         "## Layout\n\n- Welcome body.\n\n"
         f"## Programmatic Acceptance\n\n{pa_lines}\n\n"
         "## User Acceptance\n\n- None.\n\n## Guardrails\n\n- None.\n\n"
-        "## Questions\n\n- None.\n"
     )
     manifest = _manifest(implements="SCREEN-Welcome.md")
     return (
@@ -3211,7 +3202,6 @@ def _spec_with(acceptance: str) -> str:
         "| Field    | Value |\n"
         "|----------|-------|\n"
         "| Provides | status command |\n\n"
-        "## Questions\n\n- None.\n\n"
         "## Programmatic Acceptance\n\n"
         f"{acceptance}\n\n"
         "## User Acceptance\n\n- None.\n\n"
@@ -3807,7 +3797,7 @@ def test_continuation_stops_when_no_progress_and_reports_the_score(tmp_path):
 
     record = excinfo.value.record
     assert record.classification == "plan generation stalled"
-    assert "specs: 1 / 2 accepted" in record.detail
+    assert "specs:     1 / 2  accepted" in record.detail
     assert "story-status -> FEATURE-Status.md" in record.detail
     assert "exec-1" in record.detail and "exec-2" in record.detail
     # All-or-nothing survives: a stall writes nothing.
@@ -3833,7 +3823,7 @@ def test_a_junk_continuation_pass_does_not_corrupt_accepted_artifacts(tmp_path):
     with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=runner)
 
-    assert "specs: 1 / 2 accepted" in excinfo.value.record.detail
+    assert "specs:     1 / 2  accepted" in excinfo.value.record.detail
     assert not (target_dir / "MANIFEST.md").is_file()
 
 
@@ -3887,7 +3877,7 @@ def test_an_amendment_that_touches_an_accepted_story_is_rejected(tmp_path):
     with pytest.raises(RecordedError) as excinfo:
         create_plan("Example", "Example", tmp_path, runner=runner)
 
-    assert "specs: 1 / 2 accepted" in excinfo.value.record.detail
+    assert "specs:     1 / 2  accepted" in excinfo.value.record.detail
     assert not (target_dir / "MANIFEST.md").is_file()
 
 

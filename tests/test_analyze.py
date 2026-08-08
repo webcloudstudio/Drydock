@@ -1412,7 +1412,8 @@ Pattern: ubiquitous""",
         assert sea_trials.startswith("# Sea Trials: TestProject")
         assert "### Guardrails" in sea_trials
 
-    def test_sea_trial_questions_are_projected_to_quarterdeck(self, tmp_path):
+    def test_sea_trial_questions_are_not_projected_to_quarterdeck(self, tmp_path):
+        # Blueprint question sections are retired; decisions live in DECISIONS.json.
         target_dir = _target(tmp_path, **{"COMPASS.md": "compass"})
         structured = """# Sea Trials: MyTarget
 
@@ -1439,12 +1440,7 @@ Which representative workload defines the measurement?
 
         analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun(text=output))
 
-        questionnaire = json.loads(
-            (target_dir / "QuarterDeck/questionnaires/discovery-sea-trials.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        assert questionnaire["questions"][0]["id"] == "q-speed-workload"
+        assert not (target_dir / "QuarterDeck/questionnaires/discovery-sea-trials.json").exists()
 
     def test_analyze_does_not_write_soundings(self, tmp_path):
         # SOUNDINGS.md is written only by `drydock score ac`; analyze must not create it.
