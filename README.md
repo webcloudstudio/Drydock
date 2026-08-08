@@ -7,7 +7,7 @@
 **Drydock turns specifications into working software.**
 
 Specification driven. Agile. Test driven. Dependency-aware builds. A dedicated web console.
-Enterprise guardrails on your existing subscription.
+Enterprise guardrails. **No API keys — Drydock runs on your existing Claude or Codex subscription.**
 
 [![PyPI](https://img.shields.io/pypi/v/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
 [![Python](https://img.shields.io/pypi/pyversions/drydock-sdd.svg)](https://pypi.org/project/drydock-sdd/)
@@ -26,7 +26,7 @@ Enterprise guardrails on your existing subscription.
 
 **Drydock turns specifications into working software.**
 
-Drydock imports your source material using agile best practices into typed blueprints representing stories related with a graph database.  This enables drydock to context aware build your application.  Stories have measurable test driven acceptance criteria.
+Drydock imports your source material, creates stories using agile best practices, decomposes requirements into typed blueprints (stories) related using a graph database.  Drydock will run context aware builds.  Each story has deterministic test driven acceptance criteria.
 
 - **Specification driven.** Typed specifications are the source of truth. Code is the output.
 - **Agile.** Specifications decompose into features and stories for product-owner review.
@@ -36,61 +36,74 @@ Drydock imports your source material using agile best practices into typed bluep
 - **QuarterDeck web console.** The Commander reviews and directs each phase.
 - **Enterprise guardrails.** Questions replace guesses. Dependencies are declared.
 
+**Status:** 0.1.x, pre-1.0. Commands, file formats, and artifact names may change between releases.
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **Target** | One project managed by Drydock, held in its own workspace directory. |
+| **Blueprint** | The typed specification for one story: scope, contracts, and acceptance criteria. |
+| **Manifest** | `MANIFEST.md`, the dependency graph that relates and orders the Blueprints. |
+| **Sea Trials** | Product-level objectives and proof-of-delivery criteria — the release gate. |
+| **Soundings** | The per-story acceptance-criterion verification board. |
+| **Scorecard** | `SCORECARD.md`, the recorded release scoring results, verdicts, and blockers. |
+| **QuarterDeck** | The web console used to review and direct each phase. |
+| **Commander** | You — the product owner who approves the work. |
+| **Crew** | The LLM agents that perform the work. |
+
+## Drydock Documentation
+
+| Resource | PDF |
+|---|---|
+| [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
+| User Installation Guide | [PDF](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) |
+| [Drydock Specification](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf) |
+| [CHANGELOG.md](CHANGELOG.md) | — |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | — |
+
 ## Getting started
 
-**Before you begin**
+**Prerequisites**
 
 - [ ] Python 3.11 or later — `python3 --version`
-- [ ] `uv` — `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux), `brew install uv`, or `winget install --id=astral-sh.uv -e` (Windows)
-- [ ] The `claude` or `codex` CLI, authenticated and on your `PATH`
+- [ ] Install `uv`
+  - `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux),
+  - `brew install uv`
+  - `winget install --id=astral-sh.uv -e` (Windows)
+- [ ] `claude` or `codex` CLI, authenticated, in your `PATH` (claude --version, codex --version)
 
-**1. Install Drydock**
+**Install Drydock**
 
 ```bash
 uv tool install drydock-sdd     # or: pipx install drydock-sdd
 drydock --version
 ```
 
-If `drydock` is not found, run `uv tool update-shell` or `pipx ensurepath`, then open a new shell.
-
-**2. Configure**
+**Configure Drydock**
 
 ```bash
-# Claude
-drydock config set llm_provider claude
-drydock config set drydock_model sonnet
+export PROJECTS="$HOME/projects" # main directory you keep your code/projects/git
+mkdir -p "$PROJECTS/drydock"     # the drydock workspace
 
-# Codex alternative
-# drydock config set llm_provider codex
-# drydock config set drydock_model gpt-5.4
-
-export PROJECTS="$HOME/projects"
-mkdir -p "$PROJECTS/drydock"
-
+drydock config set llm_provider claude          # or codex
+drydock config set drydock_model sonnet         # or gpt-5.4 or other models
 drydock config set drydock_workspace "$PROJECTS/drydock"
 drydock config set drydock_build_directory "$PROJECTS"
 drydock config show
-
-# $PROJECTS/
-# ├── drydock/
-# │   ├── targets/        # Target workspaces
-# │   └── logs/           # Drydock logs
-# └── <Target>/           # Generated application
 ```
+## Build workflow
 
-The [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) builds a real
-project step by step. Upgrades, PDF publishing, and troubleshooting are in the
-[User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf).
+`init` → `import` → `analyze` → `plan` → `build` → `refit` → `build`
 
-**3. Build your first project**
-
-```bash
-drydock init MyApp
-drydock import MyApp specification.md
-drydock analyze MyApp
-drydock plan MyApp
-drydock build MyApp
-```
+| Stage | Command | What it does |
+|---|---|---|
+| **init** | `drydock init <Target>` | Initialize Workspace |
+| **import** | `drydock import <Target>` | import source material |
+| **analyze** | `drydock analyze <Target>` | Decompose imports into stories, acceptance criteria, questions, and blockers.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md`, questionnaires. |
+| **plan** | `drydock plan <Target>` | Create story Blueprints and the build graph.<br>**Creates:** Blueprint specifications and `MANIFEST.md`. |
+| **build** | `drydock build <Target>` | Executes context-aware builds gated by deterministic acceptance criteria.<br>**Creates:** working software and tests. |
+| **refit** | `drydock refit <Target>` | git diff changes into change tickets and Manifest nodes.<br>**Creates:** updated `MANIFEST.md` and, after `build`, updated working software. |
 
 ## The Drydock CLI
 
@@ -127,21 +140,9 @@ ai  drydock document generate MyApp            # AI pass only
     drydock publish           <Source.md>      # Render Markdown to HTML/PDF
 ```
 
-## Build workflow
-
-`analyze` → `plan` → `build` → change → `refit` → `build`
-
-| Stage | Command | What it does |
-|---|---|---|
-| **Analyze** | `drydock analyze <Target>` | Decomposes imported source material into stories, acceptance criteria, questions, and blockers for review.<br>**Creates:** `ANALYSIS.md`, `SEA_TRIALS.md`, `BLOCKERS.md` when blocked, and review questionnaires. |
-| **Plan** | `drydock plan <Target>` | Converts the reviewed analysis into typed Blueprints and a dependency-aware `MANIFEST.md` build plan.<br>**Creates:** Blueprint specifications and `MANIFEST.md`. |
-| **Build** | `drydock build <Target>` | Executes dependency-ready work in context-aware blocks and verifies each story against its acceptance criteria.<br>**Creates:** working software and tests. |
-| **Refit** | `drydock refit <Target>` | Maps specification changes and change tickets to affected Manifest work so only the impacted scope is rebuilt.<br>**Creates:** an updated `MANIFEST.md` and, after `build`, updated working software. |
-
 ## The QuarterDeck Web Server
 
 QuarterDeck is the Agile web surface between the Commander (product owner) and Crew (LLM agents).
-It presents questionnaires, decisions, stories, Blueprints, and the Manifest.
 
 ```bash
 drydock run quarterdeck <Target>
@@ -149,33 +150,35 @@ drydock run quarterdeck <Target>
 
 ![QuarterDeck Commander's Chair](docs/QuickStart_Analysis_Screen.png)
 
-The Target workspace is `<drydock_workspace>/targets/<Target>/`; the application is built in
-`<drydock_build_directory>/<Target>/`.
-
-## Documentation
-
-| Resource | Web | PDF |
-|---|---|---|
-| Quick Start | [HTML](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
-| User Installation Guide | — | [PDF](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) |
-| Drydock Specification | [HTML](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf) |
-| Product Comparison Matrix | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.pdf) |
-| Overview deck | [Web](https://webcloudstudio.com/drydock/) | — |
-| Walkthrough video | [MP4](https://webcloudstudio.com/project-docs/drydock/presentation/PRODUCTION_Drydock_Video.web.mp4) | — |
-| Release history | [CHANGELOG.md](CHANGELOG.md) | — |
-| Contributor guide | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
-
-## Security
-
-Drydock executes imported specifications through local CLI agents. Use trusted sources or isolate
-the build environment. See [Drydock Security](https://webcloudstudio.com/project-docs/drydock/index_sections/drydock-security.html).
-
 ## Contributing
 
-Help test Drydock on real projects. Open an [issue](https://github.com/webcloudstudio/Drydock/issues)
-or see [CONTRIBUTING.md](CONTRIBUTING.md). Code changes are preferred.
+Help test Drydock on real projects. Open [issues](https://github.com/webcloudstudio/Drydock/issues). See [CONTRIBUTING.md](CONTRIBUTING.md). Code changes are preferred.
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2026 Web Cloud Studio. "Drydock" is a trademark of Web Cloud Studio;
-see [NOTICE](NOTICE) and [CONTRIBUTORS.md](CONTRIBUTORS.md).
+MIT LICENSE (See LICENSE)
+Copyright (c) 2026 Web Cloud Studio - all rights reserved
+
+```
+MIT License
+
+Copyright (c) 2026 Web Cloud Studio
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
