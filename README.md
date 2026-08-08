@@ -38,6 +38,22 @@ Drydock imports your source material using agile best practices into typed bluep
 - **Change control.** Edit the specification; `drydock refit` writes a change ticket against each affected Blueprint and rebuilds only the work that moved.
 - **Your subscription.** Runs on the `claude` or `codex` CLI. No API key, no per-token billing.
 
+## Documentation
+
+| | | |
+|---|---|---|
+| Quick Start | [HTML](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf) |
+| User Installation Guide | | [PDF](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf) |
+| Drydock Specification | [HTML](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf) |
+| Improving Step Accuracy in SDD | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Improving_Step_Accuracy_in_SDD.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Improving_Step_Accuracy_in_SDD.pdf) |
+| Managing Changes in SDD | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Managing_Changes_in_SDD.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Managing_Changes_in_SDD.pdf) |
+| Managing Changed Specifications | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/SDD_Managing_Changed_Specifications.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/SDD_Managing_Changed_Specifications.pdf) |
+| Product Comparison Matrix | [HTML](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html) | [PDF](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.pdf) |
+| Overview deck | [Web](https://webcloudstudio.com/drydock/) | |
+| Walkthrough video | [MP4](https://webcloudstudio.com/project-docs/drydock/presentation/PRODUCTION_Drydock_Video.web.mp4) | |
+| Release history | [CHANGELOG.md](CHANGELOG.md) | |
+| Contributor guide | [CONTRIBUTING.md](CONTRIBUTING.md) | |
+
 ## Getting started
 
 **Before you begin**
@@ -85,19 +101,9 @@ $PROJECTS/
 └── <Target>/           # Generated application
 ```
 
-**4. Build something**
-
-```bash
-drydock init MyApp
-drydock import MyApp ./my-spec.md
-drydock analyze MyApp
-drydock plan MyApp
-drydock build MyApp
-```
-
-The [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) walks a real
-project through these steps with screenshots. Upgrades, PDF publishing, and troubleshooting are in
-the [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf).
+The [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) builds a real
+project step by step. Upgrades, PDF publishing, and troubleshooting are in the
+[User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf).
 
 ## The Drydock CLI
 
@@ -150,34 +156,6 @@ ai  drydock uat               [Project]        # scored uat testing
 The Target workspace is `<drydock_workspace>/targets/<Target>/`; the application is built in
 `<drydock_build_directory>/<Target>/`.
 
-## Release status
-
-**Alpha.** The methodology is complete and the full delivery path — import, analyze, plan, build,
-score, refit, document — is implemented and in daily use. Current work is new project types and
-sharper process guardrails.
-
-Command surface and specification contracts still move during `0.x`. Pin your version and read
-[CHANGELOG.md](CHANGELOG.md) before upgrading.
-
-## Documentation
-
-- [Quick Start](https://webcloudstudio.com/project-docs/drydock/QUICK_START.html) — build your first
-  project ([PDF](https://webcloudstudio.com/project-docs/drydock/QUICK_START.pdf))
-- [User Installation Guide](https://webcloudstudio.com/project-docs/drydock/USER_INSTALLATION.pdf)
-- [Drydock Specification](https://webcloudstudio.com/project-docs/drydock/index_sections/introduction.html)
-  — command, artifact, and process contracts
-  ([single page](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.html) ·
-  [PDF](https://webcloudstudio.com/project-docs/drydock/Drydock_Specification.pdf))
-- [Overview deck](https://webcloudstudio.com/drydock/) ·
-  [walkthrough video](https://webcloudstudio.com/project-docs/drydock/presentation/PRODUCTION_Drydock_Video.web.mp4)
-
-Papers:
-
-- [Improving Step Accuracy in Specification-Driven Development](https://webcloudstudio.com/project-docs/drydock/papers/Improving_Step_Accuracy_in_SDD.html)
-- [Managing Changes in Specification-Driven Development](https://webcloudstudio.com/project-docs/drydock/papers/Managing_Changes_in_SDD.html)
-- [Managing Changed Specifications](https://webcloudstudio.com/project-docs/drydock/papers/SDD_Managing_Changed_Specifications.html)
-- [Product Comparison Matrix](https://webcloudstudio.com/project-docs/drydock/papers/Product_Comparison_Matrix.html)
-
 ## Contributing
 
 Welcome aboard. The most useful contribution right now is a real project.
@@ -189,16 +167,32 @@ command, and what you expected. A failed build report is worth more than a compl
 
 To work on Drydock itself, start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Security
-
-Drydock assembles prompts deterministically and runs the provider CLI as a subprocess through an
-isolated wrapper. API keys are not the execution path, every run persists auditable evidence, and
-tests never require network or paid API access. See
-[Drydock Security](https://webcloudstudio.com/project-docs/drydock/index_sections/drydock-security.html).
+Report a vulnerability privately through a
+[GitHub security advisory](https://github.com/webcloudstudio/Drydock/security/advisories/new).
 
 ## License
 
-MIT — Copyright (c) 2026 Web Cloud Studio. See [LICENSE](LICENSE).
+MIT License — Copyright (c) 2026 Web Cloud Studio.
+
+```text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 "Drydock" is a trademark of Web Cloud Studio; see [NOTICE](NOTICE) for use of the name in forks and
 derivative works. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for contributors.
