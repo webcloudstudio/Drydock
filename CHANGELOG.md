@@ -8,6 +8,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-08-07: GitHub Actions verification now uses one Ubuntu/Python 3.12 job instead of repeating
+  the full suite across three Python versions and two operating systems. The single job retains
+  lint, formatting, tests, and clean wheel installation checks while removing unenforced coverage
+  collection and the slow Windows compatibility matrix from every push and pull request.
+
 ### Added
 
 - 2026-08-07: `drydock uat [<Project>]` runs known project fixtures as isolated, timestamped,

@@ -13,43 +13,11 @@ concurrency:
 
 defaults:
   run:
-    # Use bash on every OS (Git Bash on Windows runners) so steps are identical.
     shell: bash
 
 jobs:
-  test:
-    name: test (py${{ matrix.python-version }} / ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Sync dependencies
-        run: uv sync --extra dev --python ${{ matrix.python-version }}
-
-      - name: Lint
-        run: uv run ruff check .
-
-      - name: Format check
-        run: uv run ruff format --check .
-
-      - name: Tests
-        run: uv run pytest --cov=drydock --cov-report=term-missing
-
-  package:
-    name: build + install smoke test
+  verify:
+    name: verify (Ubuntu / Python 3.12)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +26,18 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --extra dev --python 3.12
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
 
       - name: Build wheel and sdist
         run: uv build
@@ -74,3 +54,6 @@ jobs:
 
       - name: Verify wheel-embedded Rigging matches source Rigging
         run: uv run --no-project python scripts/check_wheel_rigging.py
+
+      - name: Tests
+        run: uv run pytest
