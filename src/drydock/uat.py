@@ -91,7 +91,9 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
             if not isinstance(raw_sources, list) or not all(
                 isinstance(item, str) and item.strip() for item in raw_sources
             ):
-                raise SpecificationError(f"UAT fixture sources must be a list of paths: {config_path}")
+                raise SpecificationError(
+                    f"UAT fixture sources must be a list of paths: {config_path}"
+                )
             if not isinstance(raw_test_command, list) or not all(
                 isinstance(item, str) and item for item in raw_test_command
             ):

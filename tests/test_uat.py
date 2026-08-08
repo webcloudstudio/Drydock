@@ -64,9 +64,7 @@ def test_discover_fixture_rejects_source_outside_fixture(tmp_path: Path) -> None
     fixture = _fixture(tmp_path, updated=False)
     outside = tmp_path / "outside.py"
     outside.write_text("# outside\n", encoding="utf-8")
-    (fixture / "uat.json").write_text(
-        json.dumps({"sources": ["../outside.py"]}), encoding="utf-8"
-    )
+    (fixture / "uat.json").write_text(json.dumps({"sources": ["../outside.py"]}), encoding="utf-8")
 
     with pytest.raises(SpecificationError, match="Invalid UAT fixture source"):
         discover_fixtures(tmp_path)
@@ -189,4 +187,7 @@ def test_run_uat_executes_fixture_test_from_completed_build(tmp_path: Path) -> N
 
     assert results[0].status == "passed"
     assert any(str(source.resolve()) in argv for argv, _ in calls)
-    assert (("sh", "full_test.sh"), tmp_path / "runs" / "20260808T000000.000000Z" / "CommonMark" / "build" / "commonmark") in calls
+    assert (
+        ("sh", "full_test.sh"),
+        tmp_path / "runs" / "20260808T000000.000000Z" / "CommonMark" / "build" / "commonmark",
+    ) in calls
