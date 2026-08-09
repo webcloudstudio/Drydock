@@ -740,7 +740,7 @@ conditions, then records delivery time, token usage, build evidence, and advisor
 
 | Artifact | Location | Purpose |
 |---|---|---|
-| `spec_N.md` | `tests/uat/<Project>/` | Ordered initial and changed project specifications |
+| Project fixture | `tests/uat/<Project>/` | Sources, updates, and run configuration for one known project |
 
 **Output files**
 

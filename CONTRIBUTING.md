@@ -66,10 +66,24 @@ preserve working commands while replacing deferred stubs.
 ## Project-level UAT
 
 `drydock uat [<Project>]` rebuilds known projects unattended under isolated timestamped run
-directories. Fixtures live under `tests/uat/<Project>/`: `spec_1.md` drives the initial
-init/import/analyze/plan/build lifecycle, and each later `spec_N.md` drives
-`import --update` → `refit --sources` → incremental build. The selected model and provider apply
-to the whole run.
+directories. It is the full-suite end-to-end capability: every fixture runs the complete
+init/import/analyze/plan/build lifecycle against a real model, then scores the result.
+
+Fixtures live under `tests/uat/<Project>/` and are declared in `uat.json`:
+
+- `sources` — the fixture-local files imported before the initial lifecycle. Required, nonempty.
+  Filenames carry no ordering or positional meaning; the bundle is flattened to
+  `sources/<basename>` in the build.
+- `updates` — files that replace an imported basename to drive
+  `import --update` → `refit --sources` → incremental build, once each, in order.
+- `test_command` — argv run from the completed application root after the build; a nonzero exit
+  fails the fixture.
+
+A fixture may also ship a `TECHNOLOGY_STACK.md`, which is seeded into the Target between `init`
+and `analyze` and fixes the implementation stack for the run instead of letting `analyze` propose
+one. Its named Rigging files are validated against the catalog at discovery.
+
+The selected model and provider apply to the whole run.
 
 Each run writes `uat/runs/<run-id>/SUMMARY.md`, `summary.json`, per-project `result.json`, and the
 complete stdout/stderr of every child command. Reports include command and LLM elapsed time, input,
