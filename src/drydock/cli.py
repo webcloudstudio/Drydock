@@ -415,7 +415,8 @@ def _uat_report(uat_root: Path, selected: str) -> int:
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
     from drydock.config import get_effort, get_llm_provider, get_model, get_workspace
-    from drydock.uat import run_uat
+    from drydock.uat import make_streaming_runner, render_summary, run_uat
+    from drydock.uat_console import StepConsole
 
     workspace = get_workspace().resolve()
     uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
@@ -423,6 +424,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
         return _uat_report(uat_root, args.report)
     if args.max_build_passes < 1:
         raise UsageError("--max-build-passes must be at least 1")
+    step_console = StepConsole(sys.stdout, quiet=args.quiet)
     _, results = run_uat(
         workspace,
         selected=args.Project,
@@ -431,8 +433,12 @@ def cmd_uat(args: argparse.Namespace) -> int:
         provider=get_llm_provider(getattr(args, "llm_provider", None)),
         effort=get_effort(getattr(args, "effort", None)),
         max_build_passes=args.max_build_passes,
-        on_event=lambda text: print(f"UAT: {text}", flush=True),
+        runner=make_streaming_runner(step_console),
+        on_event=step_console.event,
     )
+    if not args.quiet:
+        print()
+        print(render_summary(results, uat_root))
     passed = sum(result.status == "passed" for result in results)
     print(f"UAT: {passed}/{len(results)} kit(s) passed")
     for result in results:
@@ -2675,6 +2681,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "A kit is uat/<Project>/: uat.json, its sources/ bundle, and its own runs/ history.\n"
             "Each kit runs in an isolated workspace from the explicit source bundle in uat.json.\n"
             "Ordered updates refresh that bundle, run refit --sources, and rebuild.\n"
+            "Each child command's output streams to the console as it runs; --quiet reports\n"
+            "only stage names. Complete output is preserved as evidence either way.\n"
             "The required test_command runs from the completed application directory.\n"
             "Acceptance and release scores are advisory and are recorded with token and time data."
         ),
@@ -2703,6 +2711,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=25,
         metavar="<n>",
         help="Maximum build passes per initial or refit stage (default: 25).",
+    )
+    p_uat.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Report only stage names instead of streaming each child command's output.",
     )
 
     # ── status ────────────────────────────────────────────────────────────────

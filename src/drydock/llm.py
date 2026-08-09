@@ -23,6 +23,7 @@ from drydock.errors import ConfigurationError, LlmConfigurationError, LlmError
 from drydock.execution import (
     ExecutionArtifacts,
     append_execution_record,
+    format_ms,
     isoformat,
     sha256_bytes,
     sha256_file,
@@ -412,19 +413,6 @@ def _elapsed_ms(started_at: datetime, completed_at: datetime) -> int:
     return max(0, int((completed_at - started_at).total_seconds() * 1000))
 
 
-def _format_ms(milliseconds: int | None) -> str | None:
-    if milliseconds is None:
-        return None
-    seconds = milliseconds / 1000.0
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    minutes, rem = divmod(seconds, 60)
-    if minutes < 60:
-        return f"{int(minutes)}m {rem:.1f}s"
-    hours, rem = divmod(minutes, 60)
-    return f"{int(hours)}h {int(rem)}m"
-
-
 def _format_cost(cost_usd: float | None) -> str | None:
     if cost_usd is None:
         return None
@@ -480,13 +468,13 @@ def _performance_summary(
     requested_model: str | None = None,
 ) -> str:
     model = stats.model or requested_model or "-"
-    elapsed = _format_ms(stats.elapsed_ms) or "-"
+    elapsed = format_ms(stats.elapsed_ms) or "-"
     parts = [
         f"{_wall_time()}  Completed {llm.upper()}/{model} ({command_name})",
         f"rc={returncode}",
         f"elapsed={elapsed}",
     ]
-    provider_duration = _format_ms(stats.duration_ms)
+    provider_duration = format_ms(stats.duration_ms)
     if provider_duration and stats.duration_ms != stats.elapsed_ms:
         parts.append(f"provider={provider_duration}")
     if stats.turns is not None:

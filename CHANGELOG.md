@@ -32,6 +32,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-09: `drydock uat` streams each child command's output to the console as it is produced
+  instead of reporting one stage name per step. The runner replaced `subprocess.run(capture_output)`
+  with a `Popen` tee: raw bytes go to the evidence log unaltered while decoded text reaches the
+  terminal on every read, so a run that takes minutes per step shows progress rather than silence.
+  Child output is reproduced faithfully — carriage-return redraws and lines without a trailing
+  newline pass through, since the `│` (stdout) / `!` (stderr) gutter is inserted only at a line
+  start. Each step is framed by a header carrying the kit, stage, argv, and wall clock, and a
+  footer carrying the exit code and elapsed time; the run ends with the per-kit summary that was
+  previously written but never displayed. Children run with `PYTHONUNBUFFERED=1` so pipe buffering
+  cannot withhold output until exit. `--quiet` restores the previous stage-name-only reporting.
+  Evidence content is unchanged either way.
+
 - 2026-08-09: The TOML conformance fixture is a Go project. Its `TECHNOLOGY_STACK.md` names
   `go.md` and `common.md`; `full_test.sh` compiles `./cmd/toml-decoder` as a step distinct from
   scoring, so a compilation failure and a conformance failure are separable in the evidence; and

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import json
 import os
@@ -9,19 +10,24 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
+from typing import IO
 
 from drydock import technology_stack
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
+from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit
 
 DEFAULT_MAX_BUILD_PASSES = 25
+#: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
+_STREAM_CHUNK_BYTES = 4096
 
 
 @dataclass(frozen=True)
@@ -245,35 +251,100 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
     return tuple(fixtures)
 
 
+def _pump(
+    pipe: IO[bytes], handle: IO[bytes], source: str, sink: StepSink | None
+) -> threading.Thread:
+    """Copy one child stream to its evidence log and, when watched, to the console.
+
+    The log receives the child's bytes unaltered. The sink receives incrementally decoded text
+    as each read completes, so a caller can display output while the command is still running.
+    """
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+
+    def drain() -> None:
+        try:
+            while True:
+                data = pipe.read(_STREAM_CHUNK_BYTES)
+                if not data:
+                    break
+                handle.write(data)
+                handle.flush()
+                if sink is not None:
+                    text = decoder.decode(data)
+                    if text:
+                        sink.chunk(source, text)
+            if sink is not None:
+                tail = decoder.decode(b"", True)
+                if tail:
+                    sink.chunk(source, tail)
+        finally:
+            pipe.close()
+
+    return threading.Thread(target=drain, daemon=True)
+
+
 def subprocess_runner(
-    argv: Sequence[str], cwd: Path, env: dict[str, str], output_dir: Path, label: str
+    argv: Sequence[str],
+    cwd: Path,
+    env: dict[str, str],
+    output_dir: Path,
+    label: str,
+    *,
+    sink: StepSink | None = None,
 ) -> CommandResult:
-    """Run one child Drydock command and persist its complete console output."""
+    """Run one child Drydock command, persisting and optionally streaming its console output.
+
+    Output is teed rather than captured: a UAT step can run for many minutes, and withholding
+    its output until the process exits leaves the operator unable to distinguish progress from
+    a stall.
+    """
     stdout_path = output_dir / f"{label}.stdout.log"
     stderr_path = output_dir / f"{label}.stderr.log"
+    if sink is not None:
+        sink.step(argv, label)
     started = time.monotonic()
-    proc = subprocess.run(
+    proc = subprocess.Popen(  # noqa: S603 - argv is built by this module, never a shell string
         list(argv),
         cwd=cwd,
         env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
     )
+    with stdout_path.open("wb") as out_handle, stderr_path.open("wb") as err_handle:
+        assert proc.stdout is not None and proc.stderr is not None  # noqa: S101 - PIPE guarantee
+        pumps = (
+            _pump(proc.stdout, out_handle, "stdout", sink),
+            _pump(proc.stderr, err_handle, "stderr", sink),
+        )
+        for pump in pumps:
+            pump.start()
+        returncode = proc.wait()
+        for pump in pumps:
+            pump.join()
     elapsed_ms = round((time.monotonic() - started) * 1000)
-    stdout_path.write_text(proc.stdout, encoding="utf-8")
-    stderr_path.write_text(proc.stderr, encoding="utf-8")
+    if sink is not None:
+        sink.finish(returncode, elapsed_ms)
     return CommandResult(
         argv=tuple(argv),
-        returncode=proc.returncode,
+        returncode=returncode,
         elapsed_ms=elapsed_ms,
         stdout_path=str(stdout_path),
         stderr_path=str(stderr_path),
         label=label,
         cwd=str(cwd),
     )
+
+
+def make_streaming_runner(sink: StepSink) -> Runner:
+    """Bind ``sink`` to the standard runner so the pipeline stays unaware of the console."""
+
+    def runner(
+        argv: Sequence[str], cwd: Path, env: dict[str, str], output_dir: Path, label: str
+    ) -> CommandResult:
+        return subprocess_runner(argv, cwd, env, output_dir, label, sink=sink)
+
+    return runner
 
 
 def _file_evidence(path: Path, case_root: Path) -> dict[str, object]:
@@ -442,6 +513,9 @@ def run_fixture(
     # Mark every child command as part of a UAT run. A UAT measures what Drydock delivers at
     # the full repair budget, so the build's interactive stall short-circuit is suppressed.
     env["DRYDOCK_UAT"] = "1"
+    # Child output is teed to the console as it arrives. Block buffering into a pipe would
+    # withhold it until the step exits, which is exactly what the streaming runner prevents.
+    env["PYTHONUNBUFFERED"] = "1"
     if effort:
         env["DRYDOCK_EFFORT"] = effort
     env.pop("DRYDOCK_PARENT_TRANSCRIPT", None)

@@ -264,6 +264,8 @@ class TestHelpAndVersion:
         assert "isolated" in out
         assert "--max-build-passes" in out
         assert "--report" in out
+        assert "--quiet" in out
+        assert "streams to the console" in out
 
     def test_uat_report_without_any_kit_is_a_usage_error(self):
         rc, _, err = run_cli("uat", "--report", "--uat-root", "/nonexistent/uat")

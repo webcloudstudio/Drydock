@@ -31,6 +31,24 @@ def log_timestamp(value: datetime) -> str:
     return f"{value:%Y%m%d.%H%M%S}.{value.microsecond // 1000:03d}Z"
 
 
+def format_ms(milliseconds: int | None) -> str | None:
+    """Format a duration for a human reading console output.
+
+    Shared by the LLM run banners and the UAT step footers so one elapsed time reads the
+    same everywhere it is reported.
+    """
+    if milliseconds is None:
+        return None
+    seconds = milliseconds / 1000.0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, rem = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{int(minutes)}m {rem:.1f}s"
+    hours, rem = divmod(minutes, 60)
+    return f"{int(hours)}h {int(rem)}m"
+
+
 def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 

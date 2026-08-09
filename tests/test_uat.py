@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -8,7 +10,14 @@ import pytest
 
 from drydock import technology_stack
 from drydock.errors import SpecificationError
-from drydock.uat import CommandResult, discover_fixtures, render_summary, run_uat
+from drydock.uat import (
+    CommandResult,
+    discover_fixtures,
+    make_streaming_runner,
+    render_summary,
+    run_uat,
+    subprocess_runner,
+)
 
 
 def _fixture(root: Path, name: str = "ReadingList", *, updated: bool = True) -> Path:
@@ -408,6 +417,128 @@ def test_run_uat_marks_every_child_command_as_a_uat_run(tmp_path: Path) -> None:
 
     def fake_runner(argv, cwd, env, output_dir, label):
         seen.append(env.get("DRYDOCK_UAT"))
+        parts = tuple(argv[3:])
+        returncode = 1 if parts[:2] == ("status", "ReadingList") and "--ready" in parts else 0
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+
+    assert seen and set(seen) == {"1"}
+
+
+class _RecordingSink:
+    """Collect what a streaming runner reports, in order, without any console formatting."""
+
+    def __init__(self) -> None:
+        self.steps: list[tuple[tuple[str, ...], str]] = []
+        self.chunks: list[tuple[str, str]] = []
+        self.finished: list[tuple[int, int]] = []
+
+    def step(self, argv, label) -> None:
+        self.steps.append((tuple(argv), label))
+
+    def chunk(self, source, text) -> None:
+        self.chunks.append((source, text))
+
+    def finish(self, returncode, elapsed_ms) -> None:
+        self.finished.append((returncode, elapsed_ms))
+
+    def text(self, source: str) -> str:
+        return "".join(text for name, text in self.chunks if name == source)
+
+
+def _child(program: str) -> tuple[str, ...]:
+    return (sys.executable, "-c", program)
+
+
+def test_subprocess_runner_tees_both_streams_to_the_sink_and_to_evidence(tmp_path: Path) -> None:
+    sink = _RecordingSink()
+    program = (
+        "import sys\n"
+        "sys.stdout.write('building step 1\\n')\n"
+        "sys.stderr.write('warning: no stack\\n')\n"
+        "sys.stdout.write('done\\n')\n"
+    )
+
+    result = subprocess_runner(
+        _child(program), tmp_path, dict(os.environ), tmp_path, "07-build", sink=sink
+    )
+
+    assert result.returncode == 0
+    assert result.label == "07-build"
+    assert sink.steps == [(tuple(_child(program)), "07-build")]
+    assert sink.text("stdout") == "building step 1\ndone\n"
+    assert sink.text("stderr") == "warning: no stack\n"
+    # The evidence logs still hold the child's complete output, unchanged by the console.
+    assert Path(result.stdout_path).read_text(encoding="utf-8") == "building step 1\ndone\n"
+    assert Path(result.stderr_path).read_text(encoding="utf-8") == "warning: no stack\n"
+    assert sink.finished and sink.finished[0][0] == 0
+
+
+def test_subprocess_runner_preserves_carriage_returns_and_unterminated_lines(
+    tmp_path: Path,
+) -> None:
+    # A progress line redraws with \r and never ends with \n. Line-buffered teeing would hold
+    # it back until the process exited, which is the failure this runner exists to prevent.
+    sink = _RecordingSink()
+    program = "import sys\nsys.stdout.write('pass 1\\rpass 2')\n"
+
+    result = subprocess_runner(
+        _child(program), tmp_path, dict(os.environ), tmp_path, "08-progress", sink=sink
+    )
+
+    assert sink.text("stdout") == "pass 1\rpass 2"
+    # Read as bytes: universal-newline decoding would hide whether the \r survived.
+    assert Path(result.stdout_path).read_bytes() == b"pass 1\rpass 2"
+
+
+def test_subprocess_runner_reports_a_failing_child_with_its_output_preserved(
+    tmp_path: Path,
+) -> None:
+    sink = _RecordingSink()
+    program = "import sys\nsys.stderr.write('boom\\n')\nraise SystemExit(3)\n"
+
+    result = subprocess_runner(
+        _child(program), tmp_path, dict(os.environ), tmp_path, "09-fail", sink=sink
+    )
+
+    assert result.returncode == 3
+    assert sink.finished[0][0] == 3
+    assert Path(result.stderr_path).read_text(encoding="utf-8") == "boom\n"
+
+
+def test_streaming_runner_matches_the_runner_contract(tmp_path: Path) -> None:
+    sink = _RecordingSink()
+    runner = make_streaming_runner(sink)
+
+    result = runner(_child("print('ok')"), tmp_path, dict(os.environ), tmp_path, "01-init")
+
+    assert result.returncode == 0
+    assert sink.text("stdout").strip() == "ok"
+    assert sink.steps[0][1] == "01-init"
+
+
+def test_run_uat_gives_every_child_an_unbuffered_environment(tmp_path: Path) -> None:
+    # Buffering into a pipe would withhold a step's output until it exited.
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    seen: list[str | None] = []
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        seen.append(env.get("PYTHONUNBUFFERED"))
         parts = tuple(argv[3:])
         returncode = 1 if parts[:2] == ("status", "ReadingList") and "--ready" in parts else 0
         output_dir.mkdir(parents=True, exist_ok=True)
