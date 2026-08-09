@@ -10,6 +10,36 @@ cases at TOML 1.0.
 Rejecting invalid input is scored as heavily as accepting valid input. A parser
 that is merely permissive fails roughly 70 percent of the suite.
 
+## Run Harness
+
+`full_test.sh` is the single scoring entry point. `drydock uat` runs
+`sh full_test.sh` from the completed application root and takes its exit code and
+output as the score. Create it verbatim:
+
+```sh
+#!/bin/sh
+# full_test.sh — scoring entry point. Do not filter, skip, or reinterpret.
+set -eu
+exec sh sources/run_conformance.sh
+```
+
+**Verify the paths before the first run.** Imported sources are flattened into a
+`sources/` directory at the application root, but confirm rather than assume:
+
+```bash
+ls sources/
+```
+
+Expected contents: `INSTRUCTIONS.md`, `toml-v1.0.0.md`, `run_conformance.sh`,
+`setup_harness.sh`. If the listing differs, correct the path in `full_test.sh` to
+match reality and record the correction in the build evidence.
+
+**Path corrections are the only permitted edit.** Do not add `-skip` or `-run`
+flags, do not filter or summarize the harness output, do not mask the exit code
+with `|| true` or a trailing `exit 0`, and do not substitute a different test
+command. A `full_test.sh` that does any of those things is a failed build
+regardless of what it prints.
+
 ## Interface Contract
 
 The program is a filter: read TOML from **stdin**, write tagged JSON to
@@ -129,16 +159,9 @@ The specification is normative and short. Follow it directly.
 
 ## Definition of Done
 
-- A program exists in the target directory called `full_test.sh` which runs the
-  full test suite. It is a thin wrapper over `sources/run_conformance.sh` and
-  must not filter, skip, or reinterpret the harness result:
-
-  ```sh
-  #!/bin/sh
-  set -eu
-  exec sh sources/run_conformance.sh
-  ```
-- `sh full_test.sh` runs cleanly with zero errors.
+- A POSIX-compatible `full_test.sh` exists at the completed application root,
+  exactly as given under **Run Harness** above.
+- `sh full_test.sh` runs cleanly with zero errors and exits zero.
 - The program satisfies the stdin → tagged-JSON → exit-code contract.
 - Passing count is 100 percent: 210 valid, 499 invalid.
 - The LLM writes the parser itself. **`tomllib`, `tomli`, `toml`, `tomlkit`, and

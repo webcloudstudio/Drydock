@@ -30,6 +30,22 @@ test, and the candidate set below spans it on purpose.
 | HTML5 | Spread across ~23 insertion modes | Yes, one file per mode |
 | SQL engine | Everywhere, and unbounded without scoping | Partially |
 
+## Note on the Toml Fixture's Run Harness Block
+
+Not a rule for the repository — just what the Toml fixture does. `INSTRUCTIONS.md`
+carries a `## Run Harness` section holding the complete `full_test.sh` verbatim,
+an `ls sources/` step telling the builder to correct paths against reality rather
+than assume the layout, and a prohibition on any edit other than a path
+correction. `Definition of Done` points at that section instead of restating the
+script.
+
+The path-verification step exists because `uat.py` copies fixture sources by
+basename into a flat `sources/` directory at the application root, so any
+subdirectory structure inside a fixture is lost.
+
+Worth revisiting for later fixtures once there is evidence it changed the outcome.
+CommonMark and ReadingList are untouched.
+
 ## Candidate Matrix
 
 **Bundle** is what lands in `blueprint/sources/` and is paid for on every prompt.
@@ -148,12 +164,76 @@ export PATH=/usr/local/go/bin:$PATH
 Note that the builder never writes Go under any of these targets — Go binaries only grade
 Python. "Drydock builds a Go project" is a separate experiment none of these run.
 
+## Running the Toml Fixture
+
+One-time setup. The system `/usr/bin/go` is 1.18.1 from apt and cannot build the
+harness — `toml-test` needs 1.19 or newer and fails on `fmt.Appendf`.
+
+```bash
+cd /mnt/c/Users/barlo/projects/drydock
+
+curl -sL https://go.dev/dl/go1.24.6.linux-amd64.tar.gz -o /tmp/go.tgz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf /tmp/go.tgz
+export PATH=/usr/local/go/bin:$HOME/.local/bin:$PATH
+go version                                        # expect go1.24.6
+
+sh tests/uat/Toml/setup_harness.sh                # installs to ~/.local/bin
+toml-test version                                 # expect v2.2.0
+```
+
+Add the `PATH` line to `~/.bashrc` so the harness stays resolvable in later
+shells. Everything after this point is offline.
+
+Run:
+
+```bash
+drydock uat Toml
+```
+
+Inspect the result:
+
+```bash
+ls -t uat/runs | head -1                          # newest run directory
+RUN=uat/runs/$(ls -t uat/runs | head -1)
+cat "$RUN/toml/result.json"
+sed -n '1,40p' "$RUN/SUMMARY.md"
+```
+
+Score the build by hand, or re-score a group after the fact:
+
+```bash
+cd "$RUN/toml/build/toml"
+sh full_test.sh                                   # full suite, the scored run
+sh sources/run_conformance.sh -run 'valid/string/*'
+sh sources/run_conformance.sh -json
+sh sources/run_conformance.sh -script             # emit -skip flags for current failures
+```
+
+Rebuild the proof kit without rebuilding the project:
+
+```bash
+drydock uat --report
+```
+
 ## Recommended Order
 
 1. **TOML** — smallest bundle, validates the Go harness path, fast regression target after.
 2. **jq** — the flagship. Undecomposed suite plus one genuinely hard semantic core.
 3. **HTML5** — after the WHATWG §13 extractor exists. Best decomposition story in the set.
 4. **SQL (`evidence` + `select1` only)** — stretch, with the exclusion written into the Blueprint.
+
+## Next Steps
+
+1. Install Go 1.24 and the harness, then run `drydock uat Toml` for the first
+   real pass. Nothing below the LLM is unverified; the build loop itself has not
+   been exercised on this fixture.
+2. Read the run's `full_test.sh`. Confirm it matches the Run Harness block and
+   that the builder did not add skip flags or mask the exit code. If it did, that
+   is a finding about the instructions, not about the parser.
+3. Record the observed score, pass count, token usage, and wall-clock in this
+   file so jq has a baseline to compare against.
+4. Stand up the jq fixture once the manual-slicing question below is decided.
+5. Author the WHATWG §13 extractor. It gates HTML5 and nothing else can start it.
 
 ## Open Decisions
 
