@@ -26,6 +26,7 @@ not open individual component files.
 | `fastapi.md` | Web Server | FastAPI routers, dependency injection, templates, and testing patterns. | `common.md`, `python.md` |
 | `flask.md` | Web Server | Flask application factory, routes, templates, and error handling. | `common.md`, `python.md` |
 | `github-actions.md` | Technologies | GitHub Actions CI/CD with OIDC and lint/test gates. | `terraform.md`, `python.md` |
+| `go.md` | Technologies | Go module layout, errors, interfaces, concurrency, testing, and build gates. | `common.md` |
 | `persistence.md` | Persistence | Typed boundary for persistent stores and external services. | `common.md` |
 | `postgres.md` | Persistence | PostgreSQL schema, pooling, migrations, and indexing patterns. | `python.md`, `persistence.md` |
 | `python.md` | Technologies | Python conventions, typing, configuration, testing, and dependencies. | `common.md` |

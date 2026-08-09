@@ -19,6 +19,7 @@ These technology files are **shared across all projects** in this specification 
 | `python.md` | `language: python` | Config classes, code style, type hints and static typing, logging, testing with pytest, dependencies, startup validation |
 | `uv_ruff.md` | `tooling: uv-ruff` | uv environment/lock workflow, ruff lint+format configuration, identical local/CI gates |
 | `typescript.md` | `language: typescript` | Code style, strict compiler settings, no `any`/unsafe assertions, explicit domain modeling, boundary validation, generated types |
+| `go.md` | `language: go` | Module layout, errors as values, consumer-side interfaces, goroutine lifetimes, table-driven tests, build and lint gates, dependency discipline |
 | `flask.md` | `framework: flask` | App factory, blueprints, Jinja2, HTMX, test client, security |
 | `django.md` | `framework: django` | Settings package, ORM, migrations, admin, django-htmx |
 | `sqlite.md` | `database: sqlite` | Connection setup, PRAGMAs, JSON columns, migrations, backup |
@@ -46,6 +47,7 @@ These technology files are **shared across all projects** in this specification 
 ### Languages
 - **python.md** — Server-side Python application development
 - **typescript.md** — Typed JavaScript application development (strict compilation, boundary validation)
+- **go.md** — Go application and CLI development (module layout, errors as values, owned goroutines)
 
 ### Tooling
 - **uv_ruff.md** — Python toolchain: uv environments/dependencies, ruff lint+format
