@@ -439,6 +439,9 @@ def run_fixture(
     env["DRYDOCK_BUILD_DIRECTORY"] = str(build_root)
     env["DRYDOCK_MODEL"] = model
     env["LLM_PROVIDER"] = provider
+    # Mark every child command as part of a UAT run. A UAT measures what Drydock delivers at
+    # the full repair budget, so the build's interactive stall short-circuit is suppressed.
+    env["DRYDOCK_UAT"] = "1"
     if effort:
         env["DRYDOCK_EFFORT"] = effort
     env.pop("DRYDOCK_PARENT_TRANSCRIPT", None)

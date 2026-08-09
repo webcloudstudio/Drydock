@@ -133,6 +133,144 @@ def test_stages_only_files_marked_stage(tmp_path):
     assert not (build / "spec.txt").exists()
 
 
+# ---------------------------------------------------------------------------
+# Staged-asset dependency closure
+# ---------------------------------------------------------------------------
+
+
+def _closure_kit(tmp_path, files: dict[str, str | bytes]):
+    blueprint = tmp_path / "blueprint"
+    sources = blueprint / "sources"
+    sources.mkdir(parents=True)
+    for rel, content in files.items():
+        path = sources / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+    return blueprint, tmp_path / "build"
+
+
+def _staged(blueprint, build, table: str) -> list[str]:
+    staged, _replaced = stage_build_assets(blueprint, parse_source_roles(table), build)
+    return [asset.relative_path for asset in staged]
+
+
+def test_a_staged_harness_drags_in_the_helper_it_shells_out_to(tmp_path):
+    # The Toml UAT failure: the harness was `stage`, the installer it names was `prompt-only`,
+    # and the build died on its first story with a missing input.
+    blueprint, build = _closure_kit(
+        tmp_path,
+        {
+            "run_conformance.sh": "#!/bin/sh\nsh sources/setup_harness.sh\n",
+            "setup_harness.sh": "#!/bin/sh\ngo install toml-test\n",
+        },
+    )
+    table = """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/run_conformance.sh | conformance harness | context | stage |
+| sources/setup_harness.sh | test helper | context | prompt-only |
+"""
+
+    assert _staged(blueprint, build, table) == [
+        "sources/run_conformance.sh",
+        "sources/setup_harness.sh",
+    ]
+    assert (build / "sources" / "setup_harness.sh").is_file()
+
+
+def test_the_closure_follows_more_than_one_hop(tmp_path):
+    blueprint, build = _closure_kit(
+        tmp_path,
+        {
+            "a.sh": "sh b.sh\n",
+            "b.sh": "python3 kit/c.py\n",
+            "kit/c.py": "print('leaf')\n",
+            "unrelated.py": "print('nobody names me')\n",
+        },
+    )
+    table = """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/a.sh | conformance harness | context | stage |
+| sources/b.sh | test helper | context | prompt-only |
+| sources/kit/c.py | test helper | context | prompt-only |
+| sources/unrelated.py | reference implementation | context | none |
+"""
+
+    assert _staged(blueprint, build, table) == ["sources/a.sh", "sources/b.sh", "sources/kit/c.py"]
+
+
+def test_a_reference_cycle_terminates(tmp_path):
+    blueprint, build = _closure_kit(
+        tmp_path,
+        {"a.sh": "sh b.sh; sh a.sh\n", "b.sh": "sh a.sh\n"},
+    )
+    table = """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/a.sh | conformance harness | context | stage |
+| sources/b.sh | test helper | context | prompt-only |
+"""
+
+    assert _staged(blueprint, build, table) == ["sources/a.sh", "sources/b.sh"]
+
+
+def test_markdown_named_by_a_staged_file_is_still_never_staged(tmp_path):
+    # Markdown is prompt material. A harness that mentions the specification in a comment must
+    # not put a copy of it on disk for the agent to treat as a deliverable.
+    blueprint, build = _closure_kit(
+        tmp_path,
+        {"harness.sh": "# implements spec.md\n", "spec.md": "# Spec\n"},
+    )
+    table = """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/harness.sh | conformance harness | context | stage |
+| sources/spec.md | normative specification | context | prompt-only |
+"""
+
+    assert _staged(blueprint, build, table) == ["sources/harness.sh"]
+
+
+def test_a_binary_fixture_is_scanned_without_raising(tmp_path):
+    blueprint, build = _closure_kit(
+        tmp_path,
+        {"corpus.bin": b"\xff\xfe\x00binary corpus\x00", "helper.py": "print('helper')\n"},
+    )
+    table = """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/corpus.bin | asset | context | stage |
+| sources/helper.py | test helper | context | prompt-only |
+"""
+
+    assert _staged(blueprint, build, table) == ["sources/corpus.bin"]
+
+
+def test_a_partial_filename_match_does_not_drag_in_a_sibling(tmp_path):
+    blueprint, build = _closure_kit(
+        tmp_path,
+        {"harness.sh": "python3 runner_v2.py\n", "runner.py": "print('not me')\n"},
+    )
+    table = """## Source Roles
+
+| Path | Role | Plan disposition | Build disposition |
+|---|---|---|---|
+| sources/harness.sh | conformance harness | context | stage |
+| sources/runner.py | test helper | context | prompt-only |
+"""
+
+    assert _staged(blueprint, build, table) == ["sources/harness.sh"]
+
+
 def test_staging_is_idempotent(tmp_path):
     blueprint, build = _kit(tmp_path)
     roles = parse_source_roles(_ROLES_TABLE)

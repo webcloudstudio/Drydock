@@ -65,6 +65,33 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-09: Build-asset staging is now closed over what the staged files reference. Previously
+  only the sources the Analysis marked `stage` reached `<build_dir>/sources/`, so a conformance
+  harness whose declared dependency was classified `prompt-only` arrived on disk without the
+  installer it shells out to, and the build failed at its first story with a missing input.
+  `declared_build_assets` now scans each staged file for the names of its non-Markdown siblings
+  and stages the transitive closure, enforcing in code the rule `prompts/analyze.md` had asked of
+  the model. Markdown remains prompt material and is never staged. Scoring inherits the closure
+  unchanged, since staging and score-time verification read the same declaration.
+
+- 2026-08-09: The build prompt now names the files present on disk in the build directory. The
+  staged set was computed but never surfaced, leaving the agent to infer its own working directory
+  from imported prose; an agent that read "the imported source files are placed in a `sources/`
+  subdirectory" reported its own fenced Markdown context as missing inputs and halted. Both the
+  per-story and per-block prompts carry a `Files on disk in the build directory` block listing the
+  staged paths and stating that every other file named in the prompt is context, not a missing
+  input. The block is omitted when nothing is staged.
+
+- 2026-08-09: `drydock uat` now spends the full `--repair-attempts` budget on a block whose
+  acceptance score stops improving. Interactively, one repair pass that moves no acceptance
+  criterion still ends the block — the operator should not pay for a model that is spinning — but
+  a UAT measures what Drydock delivers at the full budget, and a fixture that would converge on a
+  later call was being scored as a methodology failure. `drydock uat` marks every child command
+  with `DRYDOCK_UAT`; the build reports the flat pass on the console and continues rather than
+  recording a stop reason. A criterion the agent reports as defective remains terminal in both
+  modes, because staged acceptance assets are restored before grading and no later pass can move
+  it.
+
 - 2026-08-08: Plan integrity now rejects `Suite: scoped` Programmatic Acceptance that requires
   `0 skipped`. A scoped conformance invocation deliberately excludes tests owned by other stories;
   only the terminal `Suite: full` story may use zero skipped as whole-suite completion evidence.

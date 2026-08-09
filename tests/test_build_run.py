@@ -2376,6 +2376,79 @@ def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     assert "stopped: deterministic acceptance score did not improve" in evidence
 
 
+def test_a_uat_run_spends_the_whole_repair_budget_through_a_stall(tmp_path, monkeypatch):
+    # A UAT measures what Drydock delivers at the full budget. Stopping on the first flat pass
+    # scores the methodology on the model's second call rather than its last.
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=None)
+    lines: list[str] = []
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=2,
+        on_text=lines.append,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    step = result.steps[0]
+    assert step.status == "failed"
+    # The budget ran out; nothing cut it short, so no stop reason may be recorded.
+    assert not step.stop_reason
+    assert step.calls_used == 3
+    assert step.calls_budget == 3
+    # The flat pass still has to be visible; only its authority to end the block is removed.
+    assert "repair: no acceptance progress on call 2 — continuing (uat)" in lines
+    assert not any("repair: stopped" in line for line in lines)
+
+
+def test_a_uat_run_can_recover_on_a_call_the_stall_rule_would_have_cut_off(tmp_path, monkeypatch):
+    # The behavior the change exists to enable: two flat passes, then a green one.
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=3)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2, 3]
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+
+
+def test_a_uat_run_still_stops_on_a_reported_defective_criterion(tmp_path, monkeypatch):
+    # Staged acceptance assets are restored before grading, so no later pass can move that
+    # check. That stop is a fact about the run, not a budget heuristic UAT may waive.
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = _defective_claim_runner(_DEFECTIVE_AC_REPORT)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0]
+    assert result.steps[0].stop_reason == "acceptance criterion reported defective"
+
+
 # A console that carries only check ids tells an operator that something failed, not what the
 # check was doing. The runner's own output is what makes a defect obvious on sight — a tally
 # whose total exceeds the specified case count, say — so it belongs on screen, not only in the

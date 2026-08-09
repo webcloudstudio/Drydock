@@ -49,6 +49,7 @@ from drydock.prompt_assembly import (
     system_preamble_part,
 )
 from drydock.prompt_headers import prompt_header_for_file
+from drydock.source_roles import StagedAsset
 
 
 def story_points_for(byte_count: int) -> int:
@@ -643,6 +644,31 @@ def _fence_for(text: str) -> str:
     return "`" * max(3, longest + 1)
 
 
+def _staged_files_part(staged_assets: tuple[StagedAsset, ...]):
+    """Name the files that exist on disk in the build directory, or nothing when none do.
+
+    The agent otherwise has no account of its own working directory and infers one from the
+    imported prose, which describes the author's intent rather than what Drydock staged.
+    Markdown is deliberately never staged — it arrives fenced in this prompt — so an agent
+    left to guess reports its own context files as missing inputs and halts.
+    """
+    if not staged_assets:
+        return None
+    return lines_part(
+        "Files on disk",
+        [
+            "## Files on disk in the build directory",
+            *[f"- {asset.relative_path}" for asset in staged_assets],
+            "",
+            "These are the only imported files present on disk. Every other file named in "
+            "this prompt is supplied as prompt context and is not on disk; read it here and "
+            "do not report it as a missing input.",
+            "",
+        ],
+        kind="section",
+    )
+
+
 def render_build_prompt(
     body: str,
     assembly: StepAssembly,
@@ -668,6 +694,7 @@ def render_build_prompt_assembly(
     build_dir: Path,
     today: str,
     reusable_compacts: tuple[Path, ...] = (),
+    staged_assets: tuple[StagedAsset, ...] = (),
 ) -> PromptAssembly:
     """Compose the full executable build prompt for one step.
 
@@ -693,6 +720,9 @@ def render_build_prompt_assembly(
             kind="job",
         ),
     ]
+    staged_part = _staged_files_part(staged_assets)
+    if staged_part is not None:
+        parts.append(staged_part)
     missing = assembly.missing_files()
     if missing:
         parts.append(
@@ -945,6 +975,7 @@ def render_build_group_prompt_assembly(
     today: str,
     reusable_compacts: tuple[Path, ...] = (),
     regression_steps: tuple[StepAssembly, ...] = (),
+    staged_assets: tuple[StagedAsset, ...] = (),
 ) -> PromptAssembly:
     """Compose the executable build prompt for one feature/group block."""
     block_label = group.feature_id or "ungrouped"
@@ -977,6 +1008,9 @@ def render_build_group_prompt_assembly(
             kind="section",
         ),
     ]
+    staged_part = _staged_files_part(staged_assets)
+    if staged_part is not None:
+        parts.append(staged_part)
     missing = group.missing_files()
     if missing:
         parts.append(

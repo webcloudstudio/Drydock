@@ -397,3 +397,34 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
         ("sh", "full_test.sh"),
         fixtures_root / "CommonMark" / "runs" / run_id / "build" / "commonmark",
     ) in calls
+
+
+def test_run_uat_marks_every_child_command_as_a_uat_run(tmp_path: Path) -> None:
+    # The mode has to cross a process boundary: each step is a separate `python -m drydock`.
+    # `build` reads this to spend its whole repair budget instead of stopping on a flat pass.
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    seen: list[str | None] = []
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        seen.append(env.get("DRYDOCK_UAT"))
+        parts = tuple(argv[3:])
+        returncode = 1 if parts[:2] == ("status", "ReadingList") and "--ready" in parts else 0
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+
+    assert seen and set(seen) == {"1"}

@@ -321,6 +321,27 @@ def settable_config_keys() -> tuple[str, ...]:
     return tuple(_KEY_MAP)
 
 
+def is_uat_run() -> bool:
+    """True while a command runs as a step of ``drydock uat``.
+
+    Set by ``drydock uat`` on the environment of every child command it spawns. Read from the
+    environment only, never the configuration file: this marks one execution, and a persisted
+    setting would silently change every interactive build on the machine.
+    """
+    return os.environ.get("DRYDOCK_UAT", "").strip().lower() in _TRUE_VALUES
+
+
+def repair_through_stall() -> bool:
+    """True when a repair loop runs its full budget even after a pass makes no AC progress.
+
+    Interactively, one flat pass ends the block — the operator should not pay for a model that
+    is spinning. A UAT run measures what Drydock delivers at the full ``--repair-attempts``
+    budget, so a fixture that would converge on a later call must not be scored as a failure of
+    the methodology.
+    """
+    return is_uat_run()
+
+
 def get_sandbox_mem_limit_mb() -> int:
     """Address-space ceiling in MB for an acceptance run; ``0`` lifts the bound.
 

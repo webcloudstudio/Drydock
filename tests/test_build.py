@@ -24,6 +24,7 @@ from drydock.build import (
     step_incremental_story_points,
 )
 from drydock.build_plan import parse_build_plan
+from drydock.source_roles import StagedAsset
 
 
 class TestBands:
@@ -868,3 +869,68 @@ class TestContextRoles:
         text = assembly.text if hasattr(assembly, "text") else str(assembly)
         assert 'role="normative specification and conformance test suite"' in text
         assert 'role="test helper"' in text
+
+
+class TestStagedFilesBlock:
+    """The prompt must state what is on disk, or the agent infers it from imported prose.
+
+    A Toml build agent read "the imported source files are placed in a `sources/` subdirectory"
+    from its own INSTRUCTIONS, found the Markdown absent — Markdown is never staged, it arrives
+    fenced in the prompt — and halted reporting its own context files as missing inputs.
+    """
+
+    def _assets(self, tmp_path: Path):
+        source = tmp_path / "blueprint" / "sources"
+        source.mkdir(parents=True, exist_ok=True)
+        (source / "harness.sh").write_text("run\n", encoding="utf-8")
+        return (
+            StagedAsset(
+                relative_path="sources/harness.sh",
+                source=source / "harness.sh",
+                sha256="0" * 64,
+            ),
+        )
+
+    def _step(self, tmp_path: Path):
+        plan = _plan(tmp_path)
+        return assemble_step(plan.by_id()["core"], _roots(tmp_path))
+
+    def test_a_step_prompt_names_the_staged_files(self, tmp_path):
+        assembly = render_build_prompt_assembly(
+            "BODY",
+            self._step(tmp_path),
+            target="Demo",
+            build_dir=tmp_path / "build",
+            today="2026-08-09",
+            staged_assets=self._assets(tmp_path),
+        )
+        text = assembly.rendered_text
+        assert "## Files on disk in the build directory" in text
+        assert "- sources/harness.sh" in text
+        assert "do not report it as a missing input" in text
+
+    def test_a_step_prompt_omits_the_block_when_nothing_is_staged(self, tmp_path):
+        assembly = render_build_prompt_assembly(
+            "BODY",
+            self._step(tmp_path),
+            target="Demo",
+            build_dir=tmp_path / "build",
+            today="2026-08-09",
+        )
+        assert "Files on disk in the build directory" not in assembly.rendered_text
+
+    def test_a_group_prompt_names_the_staged_files_too(self, tmp_path):
+        # A group build reads the same working directory; the block cannot be step-only.
+        assembly = render_build_group_prompt_assembly(
+            "BODY",
+            make_step_group(
+                feature_id="feat-foundation",
+                name="Foundation",
+                steps=(self._step(tmp_path),),
+            ),
+            target="Demo",
+            build_dir=tmp_path / "build",
+            today="2026-08-09",
+            staged_assets=self._assets(tmp_path),
+        )
+        assert "- sources/harness.sh" in assembly.rendered_text

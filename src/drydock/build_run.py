@@ -69,7 +69,12 @@ from drydock.build_plan import (
     set_applied_specs,
     stale_applied_specs,
 )
-from drydock.config import blueprint_dir_for, build_dir_for, get_sandbox_mem_limit_mb
+from drydock.config import (
+    blueprint_dir_for,
+    build_dir_for,
+    get_sandbox_mem_limit_mb,
+    repair_through_stall,
+)
 from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.dependency_gate import (
     DependencyGateResult,
@@ -2178,6 +2183,7 @@ def build_target(
                 today=today,
                 reusable_compacts=reusable_compact_sources,
                 regression_steps=regression_assemblies,
+                staged_assets=staged_assets,
             )
         else:
             prompt_assembly = render_build_prompt_assembly(
@@ -2187,6 +2193,7 @@ def build_target(
                 build_dir=resolved_build_dir,
                 today=today,
                 reusable_compacts=reusable_compact_sources,
+                staged_assets=staged_assets,
             )
         commander_guidance = render_commander_guidance(
             load_decisions(target_dir / "DECISIONS.json")
@@ -2389,6 +2396,8 @@ def build_target(
         # whose classification is repairable, whose deterministic acceptance score improved,
         # and whose budget remains feeds its diagnostics back and re-runs against the persisted
         # partial work. Any other outcome (green, stalled, or a terminal failure) ends the loop.
+        # Under ``drydock uat`` a stalled pass is reported but does not end it; only a green
+        # pass, a terminal failure, or an exhausted budget does.
         state = status = error = failure_detail = ""
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         agent_report: tuple[str, str] | None = None
@@ -2885,6 +2894,11 @@ def build_target(
                 and not ac_progress
                 and not quantitative_progress
             )
+            # A flat pass is a signal, not always a verdict. Interactively it ends the block so
+            # the operator stops paying for a model that is spinning. Under ``drydock uat`` the
+            # measurement is what Drydock delivers at the full budget, so the pass is reported
+            # and the loop continues.
+            stop_on_stall = stalled and not repair_through_stall()
             # A criterion the agent reports as broken is terminal, not repairable: staged
             # acceptance assets are restored before grading, so no further pass can move it.
             # Stop on the first such report rather than spending the rest of the budget.
@@ -2916,9 +2930,16 @@ def build_target(
                     + " and repair it there, then rerun the build. Rerunning without repairing "
                     "the assertion will fail identically."
                 )
-            elif stalled:
+            elif stop_on_stall:
                 stop_reason = "deterministic acceptance score did not improve"
                 _emit(on_text, "repair: stopped — deterministic acceptance score did not improve")
+            elif stalled and attempt < max_attempt:
+                # No ``stop_reason``: the attempt record must not name a stop that never
+                # happened, or the build report reads as though the budget was cut short.
+                _emit(
+                    on_text,
+                    f"repair: no acceptance progress on call {attempt + 1} — continuing (uat)",
+                )
             attempt_records.append(
                 AttemptRecord(
                     index=attempt,
@@ -2938,7 +2959,7 @@ def build_target(
             if (
                 status == "failed"
                 and _is_repairable(error)
-                and not stalled
+                and not stop_on_stall
                 and not defective_ids
                 and attempt < max_attempt
             ):

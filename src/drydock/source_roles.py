@@ -145,6 +145,41 @@ def _staged_destination(build_dir: Path, rel: str) -> Path:
     return build_dir / BUILD_ASSET_DIR / _reject_escaping_rel(rel)
 
 
+def _staged_asset_for(sources_dir: Path, rel: str) -> StagedAsset:
+    source = sources_dir / rel
+    return StagedAsset(
+        relative_path=f"{BUILD_ASSET_DIR}/{_reject_escaping_rel(rel)}",
+        source=source,
+        sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+    )
+
+
+# Scan ceiling for reference discovery. A staged corpus can be large, and a fixture data file
+# names no siblings; reading all of it to learn that costs more than it returns.
+_REFERENCE_SCAN_BYTES = 4 * 1024 * 1024
+
+
+def _referenced_sources(source: Path, candidates: dict[str, str]) -> set[str]:
+    """Return the relative paths of sibling sources this file names in its own text.
+
+    ``candidates`` maps every referable token — a relative path and its bare filename — to the
+    relative path it denotes. A binary fixture references nothing; decoding failure is not an
+    error.
+    """
+    try:
+        text = source.read_bytes()[:_REFERENCE_SCAN_BYTES].decode("utf-8", errors="replace")
+    except OSError:
+        return set()
+    found: set[str] = set()
+    for token, rel in candidates.items():
+        # Bounded on word characters only, so a reference written with its import prefix
+        # (``sh sources/setup_harness.sh``) matches on the path separator, while a fixture
+        # named ``run`` does not match ``runner.py``.
+        if re.search(rf"(?<![\w-]){re.escape(token)}(?![\w-])", text):
+            found.add(rel)
+    return found
+
+
 def declared_build_assets(
     blueprint_dir: Path, roles: dict[str, SourceRole]
 ) -> tuple[StagedAsset, ...]:
@@ -152,28 +187,56 @@ def declared_build_assets(
 
     Pure: reads the Blueprint, writes nothing. Staging and score-time verification share this
     so the two can never disagree about which files are part of the kit.
+
+    The declared set is closed over what its members name. ``prompts/analyze.md`` asks the model
+    to stage everything a staged file needs at run time, but a prompt rule an LLM can silently
+    violate is not a contract: a harness that shells out to an unstaged installer fails at the
+    first story with a missing input. Over-staging is the safe direction — an extra read-only
+    source in the build directory costs nothing and is digest-verified like any other.
     """
     sources_dir = blueprint_dir / "sources"
     if not sources_dir.is_dir():
         return ()
-    assets: list[StagedAsset] = []
+    stageable: dict[str, Path] = {}
     for source in sorted(iter_source_files(sources_dir)):
-        rel = source.relative_to(sources_dir).as_posix()
-        role = source_role_for(rel, roles)
-        if role is None or role.build_disposition != "stage":
-            continue
         # Markdown is prompt material, never a deliverable file.
         if source.suffix == ".md":
             continue
+        stageable[source.relative_to(sources_dir).as_posix()] = source
+
+    declared = {
+        rel
+        for rel in stageable
+        if (role := source_role_for(rel, roles)) is not None and role.build_disposition == "stage"
+    }
+    for rel in declared:
         _reject_escaping_rel(rel)
-        assets.append(
-            StagedAsset(
-                relative_path=f"{BUILD_ASSET_DIR}/{rel}",
-                source=source,
-                sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-            )
-        )
-    return tuple(assets)
+
+    # A referable token is either the relative path or the bare filename. Ambiguous filenames
+    # shared by two directories are dropped from the by-name index; the full path still works.
+    by_name: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for rel in stageable:
+        name = PurePosixPath(rel).name
+        if by_name.setdefault(name, rel) != rel:
+            ambiguous.add(name)
+    candidates: dict[str, str] = {rel: rel for rel in stageable}
+    for name, rel in by_name.items():
+        if name not in ambiguous and name not in candidates:
+            candidates[name] = rel
+
+    resolved = set(declared)
+    pending = list(declared)
+    while pending:
+        rel = pending.pop()
+        for referenced in _referenced_sources(stageable[rel], candidates):
+            if referenced in resolved:
+                continue
+            _reject_escaping_rel(referenced)
+            resolved.add(referenced)
+            pending.append(referenced)
+
+    return tuple(_staged_asset_for(sources_dir, rel) for rel in sorted(resolved))
 
 
 def stage_build_assets(

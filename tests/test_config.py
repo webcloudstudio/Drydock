@@ -489,3 +489,19 @@ class TestConfigEnv:
         assert "Drydock " not in out
         assert all("=" in line for line in out.splitlines())
         assert self._parse(out)["DRYDOCK_WORKSPACE"] == str(spaced)
+
+
+def test_repair_through_stall_follows_the_uat_marker(monkeypatch):
+    from drydock.config import is_uat_run, repair_through_stall
+
+    monkeypatch.delenv("DRYDOCK_UAT", raising=False)
+    assert not is_uat_run()
+    assert not repair_through_stall()
+
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    assert is_uat_run()
+    assert repair_through_stall()
+
+    # Marks one execution, never a persisted setting: an unrecognized value is not UAT mode.
+    monkeypatch.setenv("DRYDOCK_UAT", "off")
+    assert not repair_through_stall()
