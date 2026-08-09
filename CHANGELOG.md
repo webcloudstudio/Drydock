@@ -77,6 +77,13 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-09: The Programmatic Acceptance declaration gate no longer treats the POSIX shell and the
+  Python interpreter as undeclared external tooling. `visible_external_usage` flagged every literal
+  `subprocess` executable, so a conformance check that shelled out through `sh` failed planning with
+  `undeclared executable=sh` even though `shutil.which` would have authorized it instantly. `sh`,
+  `bash`, `env`, `python`, and `python3` are now baseline substrate and require no `Requires:`
+  declaration; every other executable still must be declared and Commander-authorized.
+
 - 2026-08-09: Build-asset staging is now closed over what the staged files reference. Previously
   only the sources the Analysis marked `stage` reached `<build_dir>/sources/`, so a conformance
   harness whose declared dependency was classified `prompt-only` arrived on disk without the

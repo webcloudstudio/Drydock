@@ -56,6 +56,33 @@ def test_fastapi_test_client_requires_declared_httpx():
         validate_declared_external_usage((check,))
 
 
+def test_baseline_shell_and_interpreter_need_no_declaration():
+    check = parse_programmatic_acceptance_text(
+        _spec(
+            "",
+            'import subprocess\nsubprocess.run(["sh", "-c", "true"], check=True)',
+        ),
+        source="FEATURE-Health.md",
+    )[0]
+
+    assert undeclared_external_usage(check) == ()
+    validate_declared_external_usage((check,))
+
+
+def test_non_baseline_executable_still_requires_declaration():
+    check = parse_programmatic_acceptance_text(
+        _spec(
+            "",
+            'import subprocess\nsubprocess.run(["toml-test", "--version"], check=True)',
+        ),
+        source="FEATURE-Health.md",
+    )[0]
+
+    assert ("executable", "toml-test") in undeclared_external_usage(check)
+    with pytest.raises(ValueError, match="undeclared executable=toml-test"):
+        validate_declared_external_usage((check,))
+
+
 def test_distribution_metadata_is_discovered_once_per_process(monkeypatch):
     calls = 0
 

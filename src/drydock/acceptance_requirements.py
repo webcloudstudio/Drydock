@@ -32,6 +32,17 @@ _KNOWN_EXTERNAL_IMPORTS = frozenset({
     "sqlalchemy",
     "starlette",
 })
+# The declaration gate exists to catch tooling a Target may not have. The POSIX shell and the
+# interpreter running the check are the substrate Drydock already requires to execute a
+# Programmatic Acceptance snippet at all, so demanding they be declared blocks planning on a
+# dependency that is, by construction, satisfied.
+_BASELINE_EXECUTABLES = frozenset({
+    "bash",
+    "env",
+    "python",
+    "python3",
+    "sh",
+})
 
 
 @dataclass(frozen=True)
@@ -96,7 +107,11 @@ def visible_external_usage(code: str) -> tuple[tuple[str, str], ...]:
         )
         if isinstance(first, ast.Constant) and isinstance(first.value, str):
             executable = first.value.strip().split()[0]
-            if executable and not executable.startswith((".", "/")):
+            if (
+                executable
+                and not executable.startswith((".", "/"))
+                and executable not in _BASELINE_EXECUTABLES
+            ):
                 usage.append(("executable", executable))
     return tuple(dict.fromkeys(usage))
 
