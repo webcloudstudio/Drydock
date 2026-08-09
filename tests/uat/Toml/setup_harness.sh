@@ -1,9 +1,9 @@
 #!/bin/sh
 # One-time installation of the upstream toml-test conformance harness.
 #
-# Requires network access and a Go toolchain of at least 1.19. The Go shipped by
-# apt on Debian and Ubuntu is often 1.18 and will fail; install the official
-# tarball instead:
+# Requires network access and a Go toolchain of at least 1.22 — the same floor
+# stack/go.md sets for the deliverable. The Go shipped by apt on Debian and
+# Ubuntu is frequently older and will fail; install the official tarball instead:
 #
 #     curl -sL https://go.dev/dl/go1.24.6.linux-amd64.tar.gz -o go.tgz
 #     sudo tar -C /usr/local -xzf go.tgz

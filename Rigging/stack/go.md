@@ -1,6 +1,6 @@
 # Go Best Practices
 
-**Version:** 20260809 V1  
+**Version:** 20260809 V2  
 **Category:** Technologies
 **Description:** Go language conventions and patterns for specification-driven projects
 
@@ -51,13 +51,20 @@ require github.com/some/dep v1.4.2
 ```
 
 Rules:
+- **Go 1.22 is the hard floor. Verify it first and stop if it is not met.** Before writing any code, run `go version`. On anything older than 1.22, stop and report the toolchain as a blocker — do not downgrade the code to compile on it, do not work around it, do not proceed and hope. The distribution-packaged Go on Debian and Ubuntu is frequently older than this and must be replaced with the official tarball.
+
+```sh
+go version | awk '{print $3}' | sed 's/^go//' | \
+  awk -F. '$1<1 || ($1==1 && $2<22) { print "go 1.22+ required, found " $0; exit 1 }'
+```
+
 - Business logic lives in `internal/`. `cmd/<name>/main.go` parses flags, wires dependencies, and calls into `internal/`; it holds no behavior worth testing.
 - `pkg/` exists only when external consumers import the code. A binary-only project does not need it.
 - The `go` line in `go.mod` is the minimum toolchain, and it is a real constraint — `go 1.19` fails on anything newer than 1.19 syntax and stdlib. State the version the code actually requires.
 - `go.sum` is committed. `go mod tidy` runs before every commit that touches dependencies, and its output is part of the diff.
 - Do not vendor unless the deployment target requires it. If vendoring, `go mod vendor` output is committed whole and never edited.
 
-**Why**: Go's tooling assumes this layout and enforces `internal/` at compile time. A project that follows it gets dependency hygiene, import boundaries, and reproducible builds without configuration.
+**Why**: Go's tooling assumes this layout and enforces `internal/` at compile time. A project that follows it gets dependency hygiene, import boundaries, and reproducible builds without configuration. The 1.22 floor is not stylistic: 1.22 changed loop variables to be scoped per iteration, so identical source produces different behavior on 1.21 and earlier. Code written against modern semantics and compiled by an older toolchain fails silently rather than loudly.
 
 ---
 

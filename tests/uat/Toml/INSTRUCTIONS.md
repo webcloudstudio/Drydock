@@ -10,6 +10,10 @@ cases at TOML 1.0.
 Rejecting invalid input is scored as heavily as accepting valid input. A parser
 that is merely permissive fails roughly 70 percent of the suite.
 
+The implementation language is Go, fixed by this Target's `TECHNOLOGY_STACK.md`
+and governed by `stack/go.md`. The conformance harness itself is written in Go
+but is a scoring instrument, not part of the deliverable.
+
 ## Run Harness
 
 `full_test.sh` is the single scoring entry point. `drydock uat` runs
@@ -20,8 +24,14 @@ output as the score. Create it verbatim:
 #!/bin/sh
 # full_test.sh — scoring entry point. Do not filter, skip, or reinterpret.
 set -eu
-exec sh sources/run_conformance.sh
+go build -o toml-decoder ./cmd/toml-decoder
+DECODER="$PWD/toml-decoder" exec sh sources/run_conformance.sh
 ```
+
+The build step is deliberately separate from the scoring step so that a
+compilation failure and a conformance failure are distinguishable in the
+evidence. `DECODER` is the harness's only knowledge of the implementation
+language; the harness itself is language-neutral.
 
 **Verify the paths before the first run.** Imported sources are flattened into a
 `sources/` directory at the application root, but confirm rather than assume:
@@ -46,23 +56,40 @@ The program is a filter: read TOML from **stdin**, write tagged JSON to
 **stdout**, exit `0`. On invalid TOML, write a diagnostic to **stderr** and exit
 non-zero. No arguments, no config, no side effects.
 
-Minimal shape (`mytoml.py`):
+Minimal shape (`cmd/toml-decoder/main.go`):
 
-```python
-#!/usr/bin/env python3
-import sys, json
+```go
+package main
 
-def decode(text: str) -> dict:
-    ...  # your implementation; returns the tagged structure
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 
-if __name__ == "__main__":
-    try:
-        result = decode(sys.stdin.buffer.read().decode("utf-8"))
-    except Exception as exc:
-        print(exc, file=sys.stderr)
-        sys.exit(1)
-    json.dump(result, sys.stdout)
+	"github.com/owner/toml-decoder/internal/toml"
+)
+
+func main() {
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	tagged, err := toml.Decode(string(input))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(tagged); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
 ```
+
+The parser lives in `internal/toml`; `main` reads, delegates, and encodes. See
+`stack/go.md` for the module layout and the toolchain floor.
 
 ### Tagged JSON encoding
 
@@ -92,11 +119,16 @@ only):
 sh sources/setup_harness.sh
 ```
 
-Then run the suite from the application directory:
+Then run the suite from the application directory. `DECODER` is required — the
+harness has no default implementation language:
 
 ```bash
-sh sources/run_conformance.sh
+go build -o toml-decoder ./cmd/toml-decoder
+DECODER="$PWD/toml-decoder" sh sources/run_conformance.sh
 ```
+
+During development, `sh full_test.sh` does both steps and is the same command the
+score is taken from.
 
 Mechanics: `toml-test` holds the corpus internally. For each valid case it pipes
 TOML into the decoder on stdin and compares the emitted tagged JSON against the
@@ -164,9 +196,11 @@ The specification is normative and short. Follow it directly.
 - `sh full_test.sh` runs cleanly with zero errors and exits zero.
 - The program satisfies the stdin → tagged-JSON → exit-code contract.
 - Passing count is 100 percent: 210 valid, 499 invalid.
-- The LLM writes the parser itself. **`tomllib`, `tomli`, `toml`, `tomlkit`, and
-  any other TOML library are forbidden**, whether stdlib or third party. Python's
-  stdlib `tomllib` already scores 208/210 and 499/499, so importing it makes the
-  exercise meaningless. Permitted stdlib imports are `sys`, `json`, `re`,
-  `datetime`, `math`, and `string`.
+- The parser is written from the specification. **Every third-party TOML module is
+  forbidden** — `github.com/BurntSushi/toml`, `github.com/pelletier/go-toml`,
+  `github.com/naoina/toml`, and any other. `BurntSushi/toml` scores near-perfectly
+  on this suite, so importing it makes the exercise meaningless.
+- `go.mod` declares no `require` dependencies. The standard library is sufficient:
+  `encoding/json`, `strconv`, `strings`, `unicode`, `unicode/utf8`, `time`, `math`,
+  `fmt`, `io`, `os`, `errors`.
 - No network access at test time after `setup_harness.sh` has run once.

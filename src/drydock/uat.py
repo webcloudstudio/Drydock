@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
+from drydock import technology_stack
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.uat_report import build_case_kit, build_run_kit
@@ -42,6 +43,10 @@ class UATFixture:
     sources: tuple[Path, ...]
     updates: tuple[Path, ...]
     test_command: tuple[str, ...]
+    #: Optional ``TECHNOLOGY_STACK.md`` seeded into the Target after ``init``. A fixture
+    #: that declares its stack removes the language choice from the model; one that does
+    #: not lets ``analyze`` propose it as usual.
+    stack: Path | None = None
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -116,6 +121,35 @@ def _environment(model: str, provider: str, effort: str | None) -> dict[str, str
         "python_version": platform.python_version(),
         "platform": platform.platform(),
     }
+
+
+def _fixture_stack(directory: Path) -> Path | None:
+    """Return the fixture's declared ``TECHNOLOGY_STACK.md``, validated, or ``None``.
+
+    The technology stack is configuration, not a command-line decision: a fixture that
+    must be built in a particular language ships the decision-of-record artifact itself.
+    It is seeded into the Target between ``init`` and ``analyze``, where the existing
+    never-overwrite contract makes it authoritative for the rest of the lifecycle.
+
+    Validation is strict here because a typo would otherwise degrade silently into a
+    missing context file at build time, long after the run stopped being cheap.
+    """
+    path = directory / technology_stack.FILENAME
+    if not path.is_file():
+        return None
+    try:
+        entries = technology_stack.parse(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise SpecificationError(f"Unreadable UAT fixture technology stack: {path}") from exc
+    if not entries:
+        raise SpecificationError(f"UAT fixture technology stack declares no technologies: {path}")
+    catalog = set(technology_stack.rigging_names())
+    unknown = sorted({name for name in technology_stack.stack_files_from(entries)} - catalog)
+    if unknown:
+        raise SpecificationError(
+            f"UAT fixture technology stack names unknown Rigging files: {', '.join(unknown)}"
+        )
+    return path
 
 
 def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixture, ...]:
@@ -195,6 +229,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 sources,
                 updates,
                 tuple(raw_test_command),
+                _fixture_stack(directory),
             )
         )
     if not fixtures:
@@ -345,6 +380,23 @@ def _usage_totals(records_path: Path) -> dict[str, int]:
     return totals
 
 
+def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
+    """Place the fixture's declared stack in the Target before ``analyze`` proposes one.
+
+    ``analyze`` never overwrites an existing ``TECHNOLOGY_STACK.md``, so seeding it here
+    makes the fixture's declaration the decision of record and ``plan`` reads it as the
+    sole stack authority. Returns the written path, or ``None`` when the fixture is
+    content to let ``analyze`` choose.
+    """
+    if fixture.stack is None:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    destination = target_dir / technology_stack.FILENAME
+    shutil.copyfile(fixture.stack, destination)
+    return destination
+
+
 def run_fixture(
     fixture: UATFixture,
     run_root: Path,
@@ -440,6 +492,7 @@ def run_fixture(
     status = "passed"
     try:
         execute(("init", fixture.target), "init")
+        seed_technology_stack(fixture, workspace)
         execute(
             ("import", fixture.target, str(source_root), "--format", "markdown"),
             "import-sources",

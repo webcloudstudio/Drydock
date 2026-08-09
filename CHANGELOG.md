@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-09: A UAT fixture declares its own technology stack by shipping a `TECHNOLOGY_STACK.md`
+  in its fixture directory. `drydock uat` seeds that file into the Target between `init` and
+  `analyze`; because `analyze` never overwrites an existing Technology Stack, the declaration
+  becomes the decision of record and `plan` reads it as the sole stack authority. The stack is
+  configuration rather than a command-line argument — there is no `--stack` flag. Fixture
+  discovery validates the declaration against the Rigging catalog and fails with exit `2` on an
+  unknown Rigging filename or an empty table, so a typo surfaces before the run spends tokens. A
+  fixture with no such file behaves exactly as before and lets `analyze` propose the stack.
+
 - 2026-08-08: `drydock uat` now emits a self-contained, verifiable proof kit for every run. Each
   project case gains an `index.html` receipt that links every lifecycle command to its own captured
   stdout and stderr, quotes the failing stage's output verbatim, and tabulates each LLM execution
@@ -23,6 +32,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-09: The TOML conformance fixture is a Go project. Its `TECHNOLOGY_STACK.md` names
+  `go.md` and `common.md`; `full_test.sh` compiles `./cmd/toml-decoder` as a step distinct from
+  scoring, so a compilation failure and a conformance failure are separable in the evidence; and
+  `run_conformance.sh` now requires `DECODER` instead of defaulting to a Python command, which
+  removes the implementation language from the scoring instrument. The Go toolchain was already a
+  prerequisite because the upstream `toml-test` harness is written in Go, so the deliverable and
+  the instrument now share one toolchain. `Rigging/stack/go.md` sets Go 1.22 as a hard floor with
+  a verification snippet and instructs the builder to stop and report a blocker rather than
+  degrade the code to compile on an older toolchain; 1.22 changed loop-variable scoping, so an
+  older compiler changes behavior silently rather than failing to build.
 - 2026-08-08: UAT reports are portable. `result.json`, `summary.json`, and `SUMMARY.md` now record
   paths relative to the run or case directory instead of the generating machine's absolute paths,
   and `evidence/manifest.json` carries the artifact inventory and run provenance. Each result

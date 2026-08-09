@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from drydock import technology_stack
 from drydock.errors import SpecificationError
 from drydock.uat import CommandResult, discover_fixtures, render_summary, run_uat
 
@@ -40,6 +41,86 @@ def test_discover_fixture_uses_explicit_sources_and_updates(tmp_path: Path) -> N
     assert found.sources == ((fixture / "reading-list.md").resolve(),)
     assert found.updates == ((fixture / "updates" / "reading-list.md").resolve(),)
     assert found.test_command == ("sh", "bin/test.sh")
+
+
+def test_discover_fixture_reads_declared_technology_stack(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    (fixture / "TECHNOLOGY_STACK.md").write_text(
+        technology_stack.render([technology_stack.StackEntry("Go", "go.md")], "2026-08-09"),
+        encoding="utf-8",
+    )
+
+    found = discover_fixtures(tmp_path)[0]
+
+    assert found.stack == fixture / "TECHNOLOGY_STACK.md"
+
+
+def test_discover_fixture_without_technology_stack_leaves_the_choice_to_analyze(
+    tmp_path: Path,
+) -> None:
+    _fixture(tmp_path)
+
+    assert discover_fixtures(tmp_path)[0].stack is None
+
+
+def test_discover_fixture_rejects_technology_stack_naming_unknown_rigging_file(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    (fixture / "TECHNOLOGY_STACK.md").write_text(
+        technology_stack.render([technology_stack.StackEntry("Go", "nosuchstack.md")]),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SpecificationError, match="nosuchstack.md"):
+        discover_fixtures(tmp_path)
+
+
+def test_discover_fixture_rejects_empty_technology_stack(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    (fixture / "TECHNOLOGY_STACK.md").write_text("# Technology Stack\n", encoding="utf-8")
+
+    with pytest.raises(SpecificationError, match="declares no technologies"):
+        discover_fixtures(tmp_path)
+
+
+def test_run_uat_seeds_declared_stack_into_target_before_analyze(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    fixture = _fixture(fixtures_root, updated=False)
+    declared = technology_stack.render([technology_stack.StackEntry("Go", "go.md")], "2026-08-09")
+    (fixture / "TECHNOLOGY_STACK.md").write_text(declared, encoding="utf-8")
+    seen_at_analyze: list[str] = []
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        parts = tuple(argv[3:])
+        if parts[:1] == ("analyze",):
+            path = (
+                Path(env["DRYDOCK_WORKSPACE"])
+                / "targets"
+                / "ReadingList"
+                / technology_stack.FILENAME
+            )
+            seen_at_analyze.append(path.read_text(encoding="utf-8"))
+        returncode = 1 if parts[:2] == ("status", "ReadingList") and "--ready" in parts else 0
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    run_uat(
+        tmp_path,
+        selected=None,
+        fixtures_root=fixtures_root,
+        output_root=tmp_path / "runs",
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+
+    assert seen_at_analyze == [declared]
 
 
 def test_discover_selected_fixture_rejects_unknown_project(tmp_path: Path) -> None:

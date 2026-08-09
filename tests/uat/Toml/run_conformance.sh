@@ -5,19 +5,23 @@
 # normally invoked as `sh sources/run_conformance.sh` from that directory.
 #
 # Usage:
-#   sh sources/run_conformance.sh                        # full TOML 1.0 suite
-#   sh sources/run_conformance.sh -run 'valid/string/*'  # one feature group
-#   sh sources/run_conformance.sh -json                  # machine-readable report
+#   DECODER=./toml-decoder sh sources/run_conformance.sh                        # full suite
+#   DECODER=./toml-decoder sh sources/run_conformance.sh -run 'valid/string/*'  # one group
+#   DECODER=./toml-decoder sh sources/run_conformance.sh -json                  # machine-readable
 #
 # Environment:
-#   DECODER    decoder command (default: "python3 mytoml.py")
+#   DECODER    decoder command. Required — this harness is language-neutral and
+#              deliberately has no default implementation language.
 #   TOML_TEST  absolute path to the toml-test binary (default: found on PATH)
 #
 # Exit code is the harness exit code: 0 only when every test passes.
 
 set -u
 
-DECODER="${DECODER:-python3 mytoml.py}"
+if [ -z "${DECODER:-}" ]; then
+    echo "error: DECODER is not set; give the command that runs your decoder." >&2
+    exit 2
+fi
 
 if [ -n "${TOML_TEST:-}" ] && [ -x "${TOML_TEST}" ]; then
     HARNESS="${TOML_TEST}"
