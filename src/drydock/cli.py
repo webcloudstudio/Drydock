@@ -391,26 +391,23 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     return 0
 
 
-def _uat_report(output_root: Path, selected: str) -> int:
-    """Rebuild the proof kit for one completed run, or for every run when asked for all."""
-    from drydock.uat_report import build_run_kit
+def _uat_report(uat_root: Path, selected: str) -> int:
+    """Rebuild the proof kits for one kit, or for every kit when asked for all."""
+    from drydock.uat_report import build_kit_index
 
-    if not output_root.is_dir():
-        raise UsageError(f"No UAT runs found under {output_root}")
-    if selected == "all":
-        runs = sorted(path for path in output_root.iterdir() if path.is_dir())
-    elif selected:
+    if not uat_root.is_dir():
+        raise UsageError(f"No UAT kits found under {uat_root}")
+    if selected and selected != "all":
         candidate = Path(selected)
-        runs = [candidate if candidate.is_absolute() else output_root / selected]
+        kits = [candidate if candidate.is_absolute() else uat_root / selected]
     else:
-        existing = sorted(path for path in output_root.iterdir() if path.is_dir())
-        runs = existing[-1:]
-    if not runs:
-        raise UsageError(f"No UAT runs found under {output_root}")
-    for run_root in runs:
-        if not run_root.is_dir():
-            raise UsageError(f"Not a UAT run directory: {run_root}")
-        index = build_run_kit(run_root)
+        kits = sorted(path for path in uat_root.iterdir() if (path / "uat.json").is_file())
+    if not kits:
+        raise UsageError(f"No UAT kits found under {uat_root}")
+    for kit_root in kits:
+        if not (kit_root / "uat.json").is_file():
+            raise UsageError(f"Not a UAT kit directory: {kit_root}")
+        index = build_kit_index(kit_root)
         print(f"Proof kit: {index}")
     return 0
 
@@ -421,23 +418,15 @@ def cmd_uat(args: argparse.Namespace) -> int:
     from drydock.uat import run_uat
 
     workspace = get_workspace().resolve()
-    fixtures_root = (
-        args.fixtures_root.resolve()
-        if args.fixtures_root is not None
-        else workspace / "uat" / "source"
-    )
-    output_root = (
-        args.output_root.resolve() if args.output_root is not None else workspace / "uat" / "runs"
-    )
+    uat_root = args.uat_root.resolve() if args.uat_root is not None else workspace / "uat"
     if args.report is not None:
-        return _uat_report(output_root, args.report)
+        return _uat_report(uat_root, args.report)
     if args.max_build_passes < 1:
         raise UsageError("--max-build-passes must be at least 1")
-    run_root, results = run_uat(
+    _, results = run_uat(
         workspace,
         selected=args.Project,
-        fixtures_root=fixtures_root,
-        output_root=output_root,
+        uat_root=uat_root,
         model=get_model(getattr(args, "model", None)),
         provider=get_llm_provider(getattr(args, "llm_provider", None)),
         effort=get_effort(getattr(args, "effort", None)),
@@ -445,8 +434,9 @@ def cmd_uat(args: argparse.Namespace) -> int:
         on_event=lambda text: print(f"UAT: {text}", flush=True),
     )
     passed = sum(result.status == "passed" for result in results)
-    print(f"UAT: {passed}/{len(results)} project(s) passed")
-    print(f"Report: {run_root / 'SUMMARY.md'}")
+    print(f"UAT: {passed}/{len(results)} kit(s) passed")
+    for result in results:
+        print(f"Report: {Path(result.output_dir) / 'README.md'}")
     return 0 if passed == len(results) else 1
 
 
@@ -2678,11 +2668,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "uat",
         help="Build known project fixtures unattended in isolated run directories.",
         description=(
-            "drydock uat                    — run every project under uat/source\n"
-            "drydock uat <Project>          — run one known project\n"
-            "drydock uat --report [<run>]   — rebuild the proof kit for a completed run\n"
+            "drydock uat                    — run every kit under uat/\n"
+            "drydock uat <Project>          — run one kit\n"
+            "drydock uat --report [<kit>]   — rebuild proof kits from completed runs\n"
             "\n"
-            "Each fixture runs in an isolated workspace from the explicit source bundle in uat.json.\n"
+            "A kit is uat/<Project>/: uat.json, its sources/ bundle, and its own runs/ history.\n"
+            "Each kit runs in an isolated workspace from the explicit source bundle in uat.json.\n"
             "Ordered updates refresh that bundle, run refit --sources, and rebuild.\n"
             "The required test_command runs from the completed application directory.\n"
             "Acceptance and release scores are advisory and are recorded with token and time data."
@@ -2692,26 +2683,19 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_llm_override_flags(p_uat)
     p_uat.add_argument("Project", nargs="?", default=None, metavar="<Project>")
     p_uat.add_argument(
-        "--fixtures-root",
+        "--uat-root",
         type=Path,
         default=None,
         metavar="<path>",
-        help="Fixture root (default: <workspace>/uat/source).",
-    )
-    p_uat.add_argument(
-        "--output-root",
-        type=Path,
-        default=None,
-        metavar="<path>",
-        help="Run report root (default: <workspace>/uat/runs).",
+        help="Directory holding the kits (default: <workspace>/uat).",
     )
     p_uat.add_argument(
         "--report",
         nargs="?",
         const="",
         default=None,
-        metavar="<run>",
-        help="Rebuild index.html and SHA256SUMS for a completed run (default: the latest run).",
+        metavar="<kit>",
+        help="Rebuild index.html and SHA256SUMS from completed runs (default: every kit).",
     )
     p_uat.add_argument(
         "--max-build-passes",

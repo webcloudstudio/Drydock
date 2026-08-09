@@ -19,7 +19,7 @@ from pathlib import Path
 from drydock import technology_stack
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
-from drydock.uat_report import build_case_kit, build_run_kit
+from drydock.uat_report import build_case_kit
 
 DEFAULT_MAX_BUILD_PASSES = 25
 
@@ -153,19 +153,27 @@ def _fixture_stack(directory: Path) -> Path | None:
 
 
 def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixture, ...]:
-    """Discover explicitly configured UAT source bundles."""
+    """Discover the configured UAT kits under ``root``.
+
+    A kit is a directory holding ``uat.json``. Sweeping the root skips anything else, because a
+    kit's own ``runs/`` history and a published repository's supporting directories live beside
+    the kits and are not themselves runnable. Naming a kit explicitly still errors when it has
+    no configuration, so a typo is never silently ignored.
+    """
     if not root.is_dir():
-        raise SpecificationError(f"UAT fixtures directory does not exist: {root}")
+        raise SpecificationError(f"UAT kit directory does not exist: {root}")
     directories = (
-        [root / selected] if selected else sorted(path for path in root.iterdir() if path.is_dir())
+        [root / selected]
+        if selected
+        else sorted(path for path in root.iterdir() if (path / "uat.json").is_file())
     )
     fixtures: list[UATFixture] = []
     for directory in directories:
         if not directory.is_dir():
-            raise SpecificationError(f"Unknown UAT fixture: {directory.name}")
+            raise SpecificationError(f"Unknown UAT kit: {directory.name}")
         config_path = directory / "uat.json"
         if not config_path.is_file():
-            raise SpecificationError(f"UAT fixture has no uat.json: {directory}")
+            raise SpecificationError(f"UAT kit has no uat.json: {directory}")
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -233,7 +241,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
             )
         )
     if not fixtures:
-        raise SpecificationError(f"No UAT fixtures found under: {root}")
+        raise SpecificationError(f"No UAT kits found under: {root}")
     return tuple(fixtures)
 
 
@@ -399,8 +407,9 @@ def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
 
 def run_fixture(
     fixture: UATFixture,
-    run_root: Path,
+    case_root: Path,
     *,
+    run_id: str = "",
     model: str,
     provider: str,
     effort: str | None = None,
@@ -408,10 +417,13 @@ def run_fixture(
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
 ) -> UATResult:
-    """Execute one initial build and each subsequent specification refit in isolation."""
+    """Execute one initial build and each subsequent specification refit in isolation.
+
+    ``case_root`` is the kit's own run directory — ``<kit>/runs/<run-id>/`` — so a kit and its
+    complete run history form one self-contained tree that can be published as its own repository.
+    """
     started = time.monotonic()
     started_at = datetime.now(UTC)
-    case_root = run_root / fixture.name
     workspace = case_root / "workspace"
     build_root = case_root / "build"
     source_root = case_root / "sources"
@@ -532,7 +544,7 @@ def run_fixture(
     result = UATResult(
         fixture=fixture.name,
         target=fixture.target,
-        run_id=run_root.name,
+        run_id=run_id or case_root.name,
         status=status,
         elapsed_ms=elapsed_ms,
         build_passes=build_passes,
@@ -547,6 +559,8 @@ def run_fixture(
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    # build_case_kit writes README.md and index.html from result.json, so `drydock uat --report`
+    # reproduces byte-identical reports for a run it did not execute.
     build_case_kit(case_root)
     return result
 
@@ -586,8 +600,7 @@ def run_uat(
     workspace: Path,
     *,
     selected: str | None,
-    fixtures_root: Path,
-    output_root: Path,
+    uat_root: Path,
     model: str,
     provider: str,
     effort: str | None = None,
@@ -595,32 +608,32 @@ def run_uat(
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
     now: datetime | None = None,
-) -> tuple[Path, tuple[UATResult, ...]]:
-    """Run selected known projects and write aggregate JSON and Markdown reports."""
+) -> tuple[str, tuple[UATResult, ...]]:
+    """Run the selected kits, each into its own ``<kit>/runs/<run-id>/`` directory.
+
+    Every kit owns its inputs and its complete run history, so ``<uat-root>/<Kit>/`` can be
+    published as an independent, self-runnable repository. One invocation stamps every kit it
+    runs with the same run id, which is what lets separate repositories be correlated later.
+    """
     del workspace  # retained in the contract to make caller path ownership explicit
     timestamp = now or datetime.now(UTC)
     run_id = timestamp.strftime("%Y%m%dT%H%M%S.%fZ")
-    run_root = output_root / run_id
-    run_root.mkdir(parents=True, exist_ok=False)
-    fixtures = discover_fixtures(fixtures_root, selected)
-    results = tuple(
-        run_fixture(
-            fixture,
-            run_root,
-            model=model,
-            provider=provider,
-            effort=effort,
-            max_build_passes=max_build_passes,
-            runner=runner,
-            on_event=on_event,
+    fixtures = discover_fixtures(uat_root, selected)
+    results: list[UATResult] = []
+    for fixture in fixtures:
+        case_root = fixture.root / "runs" / run_id
+        case_root.mkdir(parents=True, exist_ok=False)
+        results.append(
+            run_fixture(
+                fixture,
+                case_root,
+                run_id=run_id,
+                model=model,
+                provider=provider,
+                effort=effort,
+                max_build_passes=max_build_passes,
+                runner=runner,
+                on_event=on_event,
+            )
         )
-        for fixture in fixtures
-    )
-    (run_root / "summary.json").write_text(
-        json.dumps([result.to_dict(run_root) for result in results], indent=2, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
-    )
-    (run_root / "SUMMARY.md").write_text(render_summary(results, run_root), encoding="utf-8")
-    build_run_kit(run_root)
-    return run_root, results
+    return run_id, tuple(results)

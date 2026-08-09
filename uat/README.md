@@ -1,91 +1,97 @@
-# Drydock Project-Level UAT
+# Drydock UAT Kits
 
-`drydock uat` rebuilds known projects unattended, end to end, against a real model. It is the
-full-suite acceptance capability: each fixture runs the complete `init` → `import` → `analyze` →
-`plan` → `build` lifecycle in an isolated workspace, then scores the result and writes a
-self-contained proof kit.
+A **kit** is one known project that Drydock rebuilds unattended, end to end, against a real model:
+`init` → `import` → `analyze` → `plan` → `build`, then scored and sealed into a self-verifying
+proof kit. Kits are Drydock's full-suite acceptance capability and its public worked examples.
+
+Each kit directory is self-contained and self-runnable. `uat/Toml/` is published on its own as
+`drydock-example-toml`; nothing outside it is needed to reproduce a run.
 
 ## Layout
 
-| Path | Contents |
-|---|---|
-| `uat/source/<Project>/` | Committed fixture: source bundle, optional updates, `uat.json` |
-| `uat/runs/<run-id>/` | Generated run output; not committed |
+```text
+uat/
+  README.md              this file
+  <Kit>/                 one kit, publishable as its own repository
+    README.md            what the kit builds and how to run it
+    uat.json             source bundle, updates, and test command
+    index.html           landing page linking every run
+    sources/             the input bundle, flat — no subdirectories
+    updates/             replacement sources that drive incremental rebuilds
+    runs/<run-id>/       one complete unattended run
+```
 
-`uat/runs/` is ignored by Git. Nothing under it is an editable source.
+`runs/` is generated. It is ignored by Git in this repository and published deliberately in an
+example repository.
 
 ## Running
 
 ```bash
-drydock uat                      # every project under uat/source
-drydock uat Toml                 # one project
-drydock uat --report             # rebuild the proof kit for the latest run
-drydock uat --report <run-id>    # rebuild the proof kit for one run
+drydock uat                      # every kit under uat/
+drydock uat Toml                 # one kit
+drydock uat --report             # rebuild proof kits from completed runs
+drydock uat --report Toml        # rebuild one kit's proof kits
 ```
-
-Useful flags:
 
 | Flag | Effect |
 |---|---|
-| `--fixtures-root <path>` | Fixture root (default `<workspace>/uat/source`) |
-| `--output-root <path>` | Run root (default `<workspace>/uat/runs`) |
-| `--max-build-passes <n>` | Repair passes allowed per build before the fixture fails |
+| `--uat-root <path>` | Directory holding the kits (default `<workspace>/uat`) |
+| `--max-build-passes <n>` | Repair passes allowed per build before the kit fails |
 | `--llm-provider`, `--model`, `--effort` | Provider and model selection for the whole run |
 
-A run is long and consumes subscription quota. The `Toml` fixture takes roughly thirty minutes and
+A run is long and consumes subscription quota. The `Toml` kit takes roughly thirty minutes and
 eighteen LLM calls.
 
-## Fixture definition
+## Kit definition
 
-Each `uat/source/<Project>/uat.json` declares:
+`uat.json` declares:
 
 - `target` — the Target name created by `init`.
-- `sources` — fixture-local files imported before the initial lifecycle. Required and nonempty.
-  Filenames carry no ordering or positional meaning; the bundle is flattened to
-  `sources/<basename>` in the build.
+- `sources` — kit-local files imported before the initial lifecycle. Required and nonempty.
+  Paths are relative to the kit root; the bundle is flattened to `sources/<basename>` in the
+  build, so basenames must be unique.
 - `updates` — files that replace an imported basename to drive
   `import --update` → `refit --sources` → incremental build, once each, in order.
 - `test_command` — argv run from the completed application root after the build. A nonzero exit
-  fails the fixture.
+  fails the kit.
 
-A fixture may also ship `TECHNOLOGY_STACK.md`, seeded into the Target between `init` and `analyze`
-to fix the implementation stack instead of letting `analyze` propose one. Its named Rigging files
-are validated against the catalog at discovery.
+A kit may also ship `TECHNOLOGY_STACK.md`, seeded into the Target between `init` and `analyze` to
+fix the implementation stack instead of letting `analyze` propose one. Its named Rigging files are
+validated against the catalog at discovery.
+
+Every non-Markdown source is an artifact for the build to use — a test harness, a fixture corpus,
+a tool — and is staged verbatim into the build directory's `sources/`. Markdown is specification
+prose and becomes Blueprint input instead.
 
 ## Reading a run
 
 ```text
-uat/runs/<run-id>/
-  SUMMARY.md            run verdict, elapsed time, token and cost accounting
-  summary.json          the same data, machine-readable
-  index.html            linked proof kit for the whole run
-  SHA256SUMS            integrity manifest; verify with `sha256sum -c SHA256SUMS`
-  <Project>/
-    index.html          per-project proof kit
-    result.json         every child command, argv, exit code, elapsed time
-    SHA256SUMS
-    sources/            the exact bundle imported for this run
-    workspace/          the isolated Drydock workspace, including targets/<target>/
-    build/<target>/     the delivered application
-    evidence/
-      commands/         stdout and stderr of every child command
-      prompts/          the assembled prompt for every LLM call
-      prompt_outputs/   the parsed model output
-      provider_raw/     the unmodified provider transcript
-      llm.jsonl         one record per call: tokens, elapsed time, execution id
-      manifest.json     evidence index
+runs/<run-id>/
+  README.md             run verdict, elapsed time, token and cost accounting
+  index.html            linked proof kit
+  result.json           every child command, argv, exit code, elapsed time
+  SHA256SUMS            integrity manifest
+  sources/              the exact bundle imported for this run
+  workspace/            the isolated Drydock workspace, including targets/<target>/
+  build/<target>/       the delivered application
+  evidence/
+    commands/           stdout and stderr of every child command
+    prompts/            the assembled prompt for every LLM call
+    prompt_outputs/     the parsed model output
+    provider_raw/       the unmodified provider transcript
+    llm.jsonl           one record per call: tokens, elapsed time, execution id
+    manifest.json       evidence index
 ```
 
-Start at `SUMMARY.md` for the verdict, then `<Project>/index.html` for the linked kit. When a build
-fails, the authoritative diagnosis is
-`<Project>/workspace/targets/<target>/evidence/<block-id>.md`, which records the pre-build
-acceptance observation, the stacked context, the build-directory changes, and the post-build
-acceptance result for every criterion.
+When a build fails, the authoritative diagnosis is
+`workspace/targets/<target>/evidence/<block-id>.md`: the pre-build acceptance observation, the
+stacked context, the build-directory changes, and the post-build result for every criterion.
 
-## Verifying integrity
+Verify a kit with:
 
 ```bash
-cd uat/runs/<run-id> && sha256sum -c SHA256SUMS
+cd runs/<run-id> && sha256sum -c SHA256SUMS
 ```
 
-The kit is portable: absolute paths are rewritten to run-relative paths when the kit is built.
+Absolute paths are rewritten to run-relative paths when the kit is sealed, so a run stays readable
+on any machine.

@@ -43,6 +43,9 @@ prompts/generated/
 
 # Drydock self-host workspace
 targets/
+uat/*/runs/
+uat/*/index.html
+# Superseded aggregate run root; safe to delete.
 uat/runs/
 
 # QuarterDeck local state

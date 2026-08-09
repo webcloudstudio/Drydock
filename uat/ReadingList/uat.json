@@ -1,0 +1,13 @@
+{
+  "target": "ReadingList",
+  "sources": [
+    "sources/reading-list.md"
+  ],
+  "updates": [
+    "updates/reading-list.md"
+  ],
+  "test_command": [
+    "sh",
+    "bin/test.sh"
+  ]
+}

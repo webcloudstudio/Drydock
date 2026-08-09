@@ -1,0 +1,14 @@
+{
+  "target": "toml",
+  "sources": [
+    "sources/INSTRUCTIONS.md",
+    "sources/toml-v1.0.0.md",
+    "sources/run_conformance.sh",
+    "sources/setup_harness.sh"
+  ],
+  "updates": [],
+  "test_command": [
+    "sh",
+    "full_test.sh"
+  ]
+}

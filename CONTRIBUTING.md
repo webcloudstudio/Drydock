@@ -65,33 +65,40 @@ preserve working commands while replacing deferred stubs.
 
 ## Project-level UAT
 
-`drydock uat [<Project>]` rebuilds known projects unattended under isolated timestamped run
-directories. It is the full-suite end-to-end capability: every fixture runs the complete
-init/import/analyze/plan/build lifecycle against a real model, then scores the result.
+`drydock uat [<Project>]` rebuilds known projects unattended. It is the full-suite end-to-end
+capability: every kit runs the complete init/import/analyze/plan/build lifecycle against a real
+model, then scores the result.
 
-Fixtures live under `uat/source/<Project>/` and are declared in `uat.json`:
+A kit is `uat/<Project>/` — its `uat.json`, its `sources/` bundle, and its own `runs/` history.
+Each kit is self-contained and publishable as an independent repository, so nothing outside the
+kit directory is needed to reproduce a run. `uat.json` declares:
 
-- `sources` — the fixture-local files imported before the initial lifecycle. Required, nonempty.
+- `sources` — the kit-local files imported before the initial lifecycle. Required, nonempty.
   Filenames carry no ordering or positional meaning; the bundle is flattened to
   `sources/<basename>` in the build.
 - `updates` — files that replace an imported basename to drive
   `import --update` → `refit --sources` → incremental build, once each, in order.
 - `test_command` — argv run from the completed application root after the build; a nonzero exit
-  fails the fixture.
+  fails the kit.
 
-A fixture may also ship a `TECHNOLOGY_STACK.md`, which is seeded into the Target between `init`
-and `analyze` and fixes the implementation stack for the run instead of letting `analyze` propose
-one. Its named Rigging files are validated against the catalog at discovery.
+A kit may also ship a `TECHNOLOGY_STACK.md`, which is seeded into the Target between `init` and
+`analyze` and fixes the implementation stack for the run instead of letting `analyze` propose one.
+Its named Rigging files are validated against the catalog at discovery.
 
 The selected model and provider apply to the whole run.
 
-Each run writes `uat/runs/<run-id>/SUMMARY.md`, `summary.json`, per-project `result.json`, and the
-complete stdout/stderr of every child command. Reports include command and LLM elapsed time, input,
-cached, fresh-input, and output tokens, build-pass counts, and the exit results from `score ac`,
-`score build`, and `score release`. Scoring is advisory in UAT V1: score failures remain visible in
-the report but do not override a successfully completed build lifecycle.
+Each run writes `uat/<Project>/runs/<run-id>/README.md`, `result.json`, `index.html`,
+`SHA256SUMS`, and the complete stdout/stderr of every child command. Reports include command and
+LLM elapsed time, input, cached, fresh-input, and output tokens, build-pass counts, and the exit
+results from `score ac`, `score build`, and `score release`. Scoring is advisory in UAT V1: score
+failures remain visible in the report but do not override a successfully completed build
+lifecycle.
 
-`uat/README.md` carries the operator instructions for running a fixture and reading its proof kit.
+Kit sources are upstream bundles imported byte-for-byte, so `uat/` is excluded from the
+whitespace-trimming and ruff pre-commit hooks. A conformance corpus can depend on trailing
+whitespace; normalizing it silently changes the test.
+
+`uat/README.md` carries the operator instructions for running a kit and reading its proof kit.
 
 ## Commits
 

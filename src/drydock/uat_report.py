@@ -27,7 +27,7 @@ __all__ = [
     "ArtifactGroup",
     "FileRecord",
     "build_case_kit",
-    "build_run_kit",
+    "build_kit_index",
     "prune_generated",
 ]
 
@@ -37,7 +37,9 @@ PRUNED_DIRECTORIES = frozenset({"__pycache__", ".pytest_cache", ".ruff_cache", "
 
 _INDEX_NAME = "index.html"
 _SUMS_NAME = "SHA256SUMS"
-_KIT_OUTPUTS = frozenset({_INDEX_NAME, _SUMS_NAME})
+# Generated at the top of a kit and rewritten on every rebuild, so they are never inventoried:
+# a checksum of a file that the next rebuild replaces is a checksum that fails verification.
+_KIT_OUTPUTS = frozenset({_INDEX_NAME, _SUMS_NAME, "README.md"})
 
 _MAX_EXCERPT_BYTES = 16_384
 
@@ -387,6 +389,68 @@ def _tokens(usage: dict) -> str:
     )
 
 
+def _render_case_markdown(result: dict) -> str:
+    """Render the run report a forge shows when a reader opens the run directory.
+
+    Markdown, not HTML: a published kit is read on GitHub, which renders the README of whatever
+    directory the reader lands in and shows HTML as source. ``index.html`` carries the same run
+    for local ``file://`` reading, where nothing renders Markdown.
+    """
+    fixture = str(result.get("fixture") or "")
+    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+    scores = (
+        result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
+    )
+    environment = result.get("environment") if isinstance(result.get("environment"), dict) else {}
+    lines = [
+        f"# {fixture}: {str(result.get('status') or '').upper()}",
+        "",
+        "Open `index.html` for the linked proof kit; verify it with `sha256sum -c SHA256SUMS`.",
+        "",
+        f"- Target: `{result.get('target') or ''}`",
+        f"- Run: `{result.get('run_id') or ''}`",
+        f"- Provider and model: `{environment.get('provider', '')}` / "
+        f"`{environment.get('model', '')}`",
+        f"- Elapsed: {int(result.get('elapsed_ms') or 0) / 1000:.1f}s",
+        f"- Build passes: {result.get('build_passes', 0)}",
+        f"- LLM calls: {usage.get('calls', 0)}",
+        f"- Tokens: input {usage.get('input_tokens', 0):,}; "
+        f"cached {usage.get('cached_input_tokens', 0):,}; "
+        f"fresh {usage.get('fresh_input_tokens', 0):,}; output {usage.get('output_tokens', 0):,}",
+        f"- LLM elapsed: {int(usage.get('llm_elapsed_ms') or 0) / 1000:.1f}s",
+        "- Advisory scores: "
+        + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
+    ]
+    if result.get("error"):
+        lines.append(f"- Failure: {result['error']}")
+    lines += [
+        "",
+        "## Commands",
+        "",
+        "| # | Command | Exit | Elapsed | Output |",
+        "|---|---|---|---|---|",
+    ]
+    for item in (entry for entry in result.get("commands") or [] if isinstance(entry, dict)):
+        argv = " ".join(str(part) for part in item.get("argv") or [])
+        stdout = str(item.get("stdout_path") or "")
+        lines.append(
+            f"| {item.get('label', '')} | `{argv}` | {item.get('returncode', '')} "
+            f"| {int(item.get('elapsed_ms') or 0) / 1000:.1f}s "
+            f"| [stdout]({stdout}) · [stderr]({item.get('stderr_path') or ''}) |"
+        )
+    lines += [
+        "",
+        "## Evidence",
+        "",
+        "- [`evidence/commands/`](evidence/commands) — stdout and stderr of every command",
+        "- [`evidence/prompts/`](evidence/prompts) — the assembled prompt for every LLM call",
+        "- [`evidence/provider_raw/`](evidence/provider_raw) — unmodified provider transcripts",
+        "- [`result.json`](result.json) — the machine-readable record of this run",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup]) -> str:
     target = str(result.get("target") or case_root.name)
     fixture = str(result.get("fixture") or case_root.name)
@@ -539,31 +603,23 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
     )
 
 
-def _render_run(run_root: Path, results: Sequence[dict]) -> str:
-    total = len(results)
-    passed_cases = [item for item in results if str(item.get("status")) == "passed"]
-    passed = total > 0 and len(passed_cases) == total
-    verdict = f"{len(passed_cases)}/{total} project(s) passed"
+def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
+    """Render the kit landing page: one row per run, newest first."""
+    latest = results[0][1] if results else {}
+    passed = str(latest.get("status")) == "passed"
+    verdict = f"latest run {str(latest.get('status') or 'unknown').upper()}"
     detail = (
-        "Open a project below for its command-by-command evidence."
-        if passed
-        else "; ".join(
-            html.escape(str(item.get("error") or f"{item.get('fixture')}: failed"))
-            for item in results
-            if str(item.get("status")) != "passed"
-        )
+        str(latest.get("error") or "") or "Open a run below for its command-by-command evidence."
     )
 
     rows = []
-    for item in results:
-        fixture = str(item.get("fixture") or "")
+    for run_id, item in results:
         case_status = str(item.get("status") or "")
         usage = item.get("usage") if isinstance(item.get("usage"), dict) else {}
         commands = [entry for entry in item.get("commands") or [] if isinstance(entry, dict)]
         state = "pass" if case_status == "passed" else "fail"
         rows.append([
-            f'<td><a href="{html.escape(fixture)}/index.html">{html.escape(fixture)}</a></td>',
-            _cell(item.get("target") or ""),
+            f'<td><a href="runs/{html.escape(run_id)}/index.html">{html.escape(run_id)}</a></td>',
             f'<td><span class="tag {state}">{html.escape(case_status.upper())}</span></td>',
             _cell(len(commands), css="num"),
             _cell(item.get("build_passes", ""), css="num"),
@@ -572,23 +628,23 @@ def _render_run(run_root: Path, results: Sequence[dict]) -> str:
         ])
 
     return _page(
-        f"Drydock UAT run {run_root.name}",
+        f"Drydock UAT kit {kit_root.name}",
         "\n".join([
-            "<h1>Drydock UAT run</h1>",
-            f'<p class="sub">Run <code>{html.escape(run_root.name)}</code> — a complete, '
-            "self-verifying record of every command Drydock executed.</p>",
-            _banner(passed, verdict, detail),
-            "<h2>Projects</h2>",
+            f"<h1>Drydock UAT kit — {html.escape(kit_root.name)}</h1>",
+            '<p class="sub">Every unattended build of this project, each a complete, '
+            "self-verifying record of the commands Drydock executed.</p>",
+            _banner(passed, verdict, html.escape(detail)),
+            "<h2>Runs</h2>",
             _table(
-                ("Project", "Target", "Status", "Commands", "Build passes", "Elapsed", "LLM usage"),
+                ("Run", "Status", "Commands", "Build passes", "Elapsed", "LLM usage"),
                 rows,
             ),
-            "<h2>Run artifacts</h2>",
+            "<h2>Kit inputs</h2>",
             _table(
                 ("File", "Purpose"),
                 [
-                    [_link("SUMMARY.md"), _cell("Human-readable run summary")],
-                    [_link("summary.json"), _cell("Machine-readable result for every project")],
+                    [_link("README.md"), _cell("How to run this kit and read its evidence")],
+                    [_link("uat.json"), _cell("Source bundle, updates, and test command")],
                 ],
             ),
             "<footer>Generated by <code>drydock uat --report</code>.</footer>",
@@ -623,29 +679,26 @@ def build_case_kit(case_root: Path) -> Path:
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
 
+    (case_root / "README.md").write_text(_render_case_markdown(result), encoding="utf-8")
     index = case_root / _INDEX_NAME
     index.write_text(_render_case(case_root, result, groups), encoding="utf-8")
     return index
 
 
-def build_run_kit(run_root: Path) -> Path:
-    """Rebuild every case receipt under a run and write the run-level index."""
-    _make_portable(run_root / "summary.json", run_root)
-    _make_portable(run_root / "SUMMARY.md", run_root)
-    summary = _read_json(run_root / "summary.json")
-    results: list[dict] = []
-    if isinstance(summary, list):
-        results = [item for item in summary if isinstance(item, dict)]
-    if not results:
-        for case in sorted(path for path in run_root.iterdir() if path.is_dir()):
-            result = _read_json(case / "result.json")
-            if isinstance(result, dict):
-                results.append(result)
-    for item in results:
-        fixture = str(item.get("fixture") or "")
-        case_root = run_root / fixture
-        if case_root.is_dir():
+def build_kit_index(kit_root: Path) -> Path:
+    """Rebuild every run receipt under one kit and write the kit landing page."""
+    runs_root = kit_root / "runs"
+    results: list[tuple[str, dict]] = []
+    if runs_root.is_dir():
+        for case_root in sorted(
+            (path for path in runs_root.iterdir() if path.is_dir()), reverse=True
+        ):
+            if not (case_root / "result.json").is_file():
+                continue
             build_case_kit(case_root)
-    index = run_root / _INDEX_NAME
-    index.write_text(_render_run(run_root, results), encoding="utf-8")
+            result = _read_json(case_root / "result.json")
+            if isinstance(result, dict):
+                results.append((case_root.name, result))
+    index = kit_root / _INDEX_NAME
+    index.write_text(_render_kit(kit_root, results), encoding="utf-8")
     return index

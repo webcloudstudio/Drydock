@@ -6,12 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from drydock.uat_report import build_case_kit, build_run_kit, prune_generated
+from drydock.uat_report import build_case_kit, build_kit_index, prune_generated
 
 
-def _case(run_root: Path, *, status: str = "passed", failing: bool = False) -> Path:
-    """Write a minimal but complete UAT case directory shaped like a real run."""
-    case = run_root / "commonmark"
+def _case(
+    kit_root: Path,
+    *,
+    run_id: str = "20260101T000000.000000Z",
+    status: str = "passed",
+    failing: bool = False,
+) -> Path:
+    """Write a minimal but complete UAT run directory shaped like a real kit run."""
+    case = kit_root / "runs" / run_id
     commands_dir = case / "evidence" / "commands"
     commands_dir.mkdir(parents=True)
     (commands_dir / "01-init.stdout.log").write_text("initialized\n", encoding="utf-8")
@@ -38,7 +44,7 @@ def _case(run_root: Path, *, status: str = "passed", failing: bool = False) -> P
         json.dumps({
             "fixture": "commonmark",
             "target": "commonmark",
-            "run_id": run_root.name,
+            "run_id": run_id,
             "status": status,
             "elapsed_ms": 1500,
             "build_passes": 1,
@@ -159,31 +165,32 @@ def test_prune_generated_ignores_a_missing_directory(tmp_path: Path) -> None:
     assert prune_generated(tmp_path / "absent") == 0
 
 
-def test_run_kit_indexes_every_case_and_reports_the_aggregate_verdict(tmp_path: Path) -> None:
-    run_root = tmp_path / "run"
-    case = _case(run_root, status="failed", failing=True)
-    (run_root / "summary.json").write_text(
-        "[" + (case / "result.json").read_text(encoding="utf-8") + "]", encoding="utf-8"
-    )
-    (run_root / "SUMMARY.md").write_text(f"- Evidence: `{case / 'evidence'}`\n", encoding="utf-8")
+def test_kit_index_lists_every_run_and_reports_the_latest_verdict(tmp_path: Path) -> None:
+    kit = tmp_path / "CommonMark"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    (kit / "README.md").write_text("# CommonMark\n", encoding="utf-8")
+    _case(kit, run_id="20260101T000000.000000Z")
+    case = _case(kit, run_id="20260102T000000.000000Z", status="failed", failing=True)
 
-    index = build_run_kit(run_root)
+    index = build_kit_index(kit)
 
     page = index.read_text(encoding="utf-8")
-    assert "0/1 project(s) passed" in page
-    assert "commonmark/index.html" in page
+    assert "latest run FAILED" in page
+    # Newest first, and every run is reachable from the landing page.
+    assert page.index("20260102T000000.000000Z") < page.index("20260101T000000.000000Z")
+    assert "runs/20260102T000000.000000Z/index.html" in page
     assert (case / "index.html").is_file()
-    assert str(tmp_path) not in (run_root / "SUMMARY.md").read_text(encoding="utf-8")
-    assert all((run_root / link).exists() for link in _links(index))
+    assert all((kit / link).exists() for link in _links(index))
 
 
-def test_run_kit_falls_back_to_case_results_without_a_summary(tmp_path: Path) -> None:
-    run_root = tmp_path / "run"
-    _case(run_root)
+def test_kit_index_is_written_for_a_kit_with_no_runs(tmp_path: Path) -> None:
+    kit = tmp_path / "CommonMark"
+    kit.mkdir()
 
-    page = build_run_kit(run_root).read_text(encoding="utf-8")
+    page = build_kit_index(kit).read_text(encoding="utf-8")
 
-    assert "1/1 project(s) passed" in page
+    assert "latest run UNKNOWN" in page
 
 
 def test_case_kit_requires_a_run_record(tmp_path: Path) -> None:

@@ -14,7 +14,8 @@ from drydock.uat import CommandResult, discover_fixtures, render_summary, run_ua
 def _fixture(root: Path, name: str = "ReadingList", *, updated: bool = True) -> Path:
     fixture = root / name
     fixture.mkdir(parents=True)
-    (fixture / "reading-list.md").write_text("# Initial\n", encoding="utf-8")
+    (fixture / "sources").mkdir()
+    (fixture / "sources" / "reading-list.md").write_text("# Initial\n", encoding="utf-8")
     updates: list[str] = []
     if updated:
         update = fixture / "updates" / "reading-list.md"
@@ -24,7 +25,7 @@ def _fixture(root: Path, name: str = "ReadingList", *, updated: bool = True) -> 
     (fixture / "uat.json").write_text(
         json.dumps({
             "target": name,
-            "sources": ["reading-list.md"],
+            "sources": ["sources/reading-list.md"],
             "updates": updates,
             "test_command": ["sh", "bin/test.sh"],
         }),
@@ -38,7 +39,7 @@ def test_discover_fixture_uses_explicit_sources_and_updates(tmp_path: Path) -> N
 
     found = discover_fixtures(tmp_path)[0]
 
-    assert found.sources == ((fixture / "reading-list.md").resolve(),)
+    assert found.sources == ((fixture / "sources" / "reading-list.md").resolve(),)
     assert found.updates == ((fixture / "updates" / "reading-list.md").resolve(),)
     assert found.test_command == ("sh", "bin/test.sh")
 
@@ -112,8 +113,7 @@ def test_run_uat_seeds_declared_stack_into_target_before_analyze(tmp_path: Path)
     run_uat(
         tmp_path,
         selected=None,
-        fixtures_root=fixtures_root,
-        output_root=tmp_path / "runs",
+        uat_root=fixtures_root,
         model="test-model",
         provider="codex",
         runner=fake_runner,
@@ -126,7 +126,7 @@ def test_run_uat_seeds_declared_stack_into_target_before_analyze(tmp_path: Path)
 def test_discover_selected_fixture_rejects_unknown_project(tmp_path: Path) -> None:
     _fixture(tmp_path)
 
-    with pytest.raises(SpecificationError, match="Unknown UAT fixture"):
+    with pytest.raises(SpecificationError, match="Unknown UAT kit"):
         discover_fixtures(tmp_path, "Missing")
 
 
@@ -138,7 +138,7 @@ def test_discover_fixture_loads_nested_local_source(tmp_path: Path) -> None:
     (fixture / "uat.json").write_text(
         json.dumps({
             "target": "Example",
-            "sources": ["reading-list.md", "kit/suite.py"],
+            "sources": ["sources/reading-list.md", "kit/suite.py"],
             "updates": [],
             "test_command": ["sh", "full_test.sh"],
         }),
@@ -147,7 +147,10 @@ def test_discover_fixture_loads_nested_local_source(tmp_path: Path) -> None:
 
     found = discover_fixtures(tmp_path)[0]
 
-    assert found.sources == ((fixture / "reading-list.md").resolve(), source.resolve())
+    assert found.sources == (
+        (fixture / "sources" / "reading-list.md").resolve(),
+        source.resolve(),
+    )
     assert found.test_command == ("sh", "full_test.sh")
 
 
@@ -174,7 +177,7 @@ def test_discover_fixture_rejects_flattened_source_collision(tmp_path: Path) -> 
     duplicate.write_text("# duplicate\n", encoding="utf-8")
     (fixture / "uat.json").write_text(
         json.dumps({
-            "sources": ["reading-list.md", "kit/reading-list.md"],
+            "sources": ["sources/reading-list.md", "kit/reading-list.md"],
             "test_command": ["sh", "bin/test.sh"],
         }),
         encoding="utf-8",
@@ -190,7 +193,7 @@ def test_discover_fixture_rejects_update_for_unknown_basename(tmp_path: Path) ->
     update.write_text("# other\n", encoding="utf-8")
     (fixture / "uat.json").write_text(
         json.dumps({
-            "sources": ["reading-list.md"],
+            "sources": ["sources/reading-list.md"],
             "updates": ["other.md"],
             "test_command": ["sh", "bin/test.sh"],
         }),
@@ -227,11 +230,10 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
         stderr.write_text("", encoding="utf-8")
         return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
 
-    run_root, results = run_uat(
+    run_id, results = run_uat(
         tmp_path,
         selected=None,
-        fixtures_root=fixtures_root,
-        output_root=tmp_path / "runs",
+        uat_root=fixtures_root,
         model="test-model",
         provider="codex",
         runner=fake_runner,
@@ -247,15 +249,15 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
     assert ("build", "status", "ReadingList") in calls
     assert ("status", "ReadingList") in calls
     assert ("status",) in calls
-    assert (run_root / "ReadingList" / "sources" / "reading-list.md").read_text() == "# Updated\n"
-    evidence = json.loads(
-        (run_root / "ReadingList" / "evidence" / "manifest.json").read_text(encoding="utf-8")
-    )
+    case_root = fixtures_root / "ReadingList" / "runs" / run_id
+    assert (case_root / "sources" / "reading-list.md").read_text() == "# Updated\n"
+    evidence = json.loads((case_root / "evidence" / "manifest.json").read_text(encoding="utf-8"))
     labels = [command["label"] for command in evidence["commands"]]
     assert any(label.endswith("after-refit-1-build-status") for label in labels)
     assert any(label.endswith("after-refit-1-build-workspace-status") for label in labels)
-    assert (run_root / "summary.json").is_file()
-    assert "ReadingList: PASSED" in (run_root / "SUMMARY.md").read_text(encoding="utf-8")
+    assert (case_root / "result.json").is_file()
+    assert "ReadingList: PASSED" in (case_root / "README.md").read_text(encoding="utf-8")
+    assert (case_root / "index.html").is_file()
 
 
 def test_required_pipeline_failure_stops_fixture_and_writes_result(tmp_path: Path) -> None:
@@ -275,8 +277,7 @@ def test_required_pipeline_failure_stops_fixture_and_writes_result(tmp_path: Pat
     _, results = run_uat(
         tmp_path,
         selected="ReadingList",
-        fixtures_root=fixtures_root,
-        output_root=tmp_path / "runs",
+        uat_root=fixtures_root,
         model="test-model",
         provider="codex",
         runner=failing_runner,
@@ -318,8 +319,7 @@ def test_uat_collects_llm_prompts_outputs_and_raw_transcripts(tmp_path: Path) ->
     _, results = run_uat(
         tmp_path,
         selected="ReadingList",
-        fixtures_root=fixtures_root,
-        output_root=tmp_path / "runs",
+        uat_root=fixtures_root,
         model="test-model",
         provider="codex",
         runner=evidence_runner,
@@ -358,7 +358,7 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
     (fixture / "uat.json").write_text(
         json.dumps({
             "target": "commonmark",
-            "sources": ["reading-list.md", "test/spec_tests.py"],
+            "sources": ["sources/reading-list.md", "test/spec_tests.py"],
             "updates": [],
             "test_command": ["sh", "full_test.sh"],
         }),
@@ -378,11 +378,10 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
         returncode = 1 if parts[3:5] == ("status", "commonmark") and "--ready" in parts else 0
         return CommandResult(parts, returncode, 1, str(stdout), str(stderr))
 
-    run_root, results = run_uat(
+    run_id, results = run_uat(
         tmp_path,
         selected="CommonMark",
-        fixtures_root=fixtures_root,
-        output_root=tmp_path / "runs",
+        uat_root=fixtures_root,
         model="test-model",
         provider="codex",
         runner=fake_runner,
@@ -390,11 +389,11 @@ def test_run_uat_flattens_sources_and_tests_completed_build(tmp_path: Path) -> N
     )
 
     assert results[0].status == "passed"
-    staged_root = run_root / "CommonMark" / "sources"
+    staged_root = fixtures_root / "CommonMark" / "runs" / run_id / "sources"
     assert (staged_root / "spec_tests.py").read_text(encoding="utf-8") == "# suite\n"
     assert not (staged_root / "test").exists()
     assert any(str(staged_root) in argv for argv, _ in calls)
     assert (
         ("sh", "full_test.sh"),
-        run_root / "CommonMark" / "build" / "commonmark",
+        fixtures_root / "CommonMark" / "runs" / run_id / "build" / "commonmark",
     ) in calls
