@@ -494,13 +494,6 @@ def cmd_init(args: argparse.Namespace) -> int:
     _sync_workspace_skills(get_workspace())
 
     record_activity("init", target=args.Target)
-    t = args.Target
-    print()
-    print("Next steps:")
-    print(f"  1. Import source material:  drydock import {t} <source> --format markdown")
-    print(f"  2. Analyze the spec:        drydock analyze {t}")
-    print(f"  3. Create a plan:           drydock plan {t}")
-    print(f"  4. Review the build tree:   drydock run quarterdeck {t}")
     return 0
 
 
