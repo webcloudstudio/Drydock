@@ -391,6 +391,30 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def _uat_report(output_root: Path, selected: str) -> int:
+    """Rebuild the proof kit for one completed run, or for every run when asked for all."""
+    from drydock.uat_report import build_run_kit
+
+    if not output_root.is_dir():
+        raise UsageError(f"No UAT runs found under {output_root}")
+    if selected == "all":
+        runs = sorted(path for path in output_root.iterdir() if path.is_dir())
+    elif selected:
+        candidate = Path(selected)
+        runs = [candidate if candidate.is_absolute() else output_root / selected]
+    else:
+        existing = sorted(path for path in output_root.iterdir() if path.is_dir())
+        runs = existing[-1:]
+    if not runs:
+        raise UsageError(f"No UAT runs found under {output_root}")
+    for run_root in runs:
+        if not run_root.is_dir():
+            raise UsageError(f"Not a UAT run directory: {run_root}")
+        index = build_run_kit(run_root)
+        print(f"Proof kit: {index}")
+    return 0
+
+
 def cmd_uat(args: argparse.Namespace) -> int:
     """Run known project fixtures through an isolated unattended lifecycle."""
     from drydock.config import get_effort, get_llm_provider, get_model, get_workspace
@@ -405,6 +429,8 @@ def cmd_uat(args: argparse.Namespace) -> int:
     output_root = (
         args.output_root.resolve() if args.output_root is not None else workspace / "uat" / "runs"
     )
+    if args.report is not None:
+        return _uat_report(output_root, args.report)
     if args.max_build_passes < 1:
         raise UsageError("--max-build-passes must be at least 1")
     run_root, results = run_uat(
@@ -2654,6 +2680,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "drydock uat                    — run every project under tests/uat\n"
             "drydock uat <Project>          — run one known project\n"
+            "drydock uat --report [<run>]   — rebuild the proof kit for a completed run\n"
             "\n"
             "Each fixture runs in an isolated workspace from the explicit source bundle in uat.json.\n"
             "Ordered updates refresh that bundle, run refit --sources, and rebuild.\n"
@@ -2677,6 +2704,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<path>",
         help="Run report root (default: <workspace>/uat/runs).",
+    )
+    p_uat.add_argument(
+        "--report",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="<run>",
+        help="Rebuild index.html and SHA256SUMS for a completed run (default: the latest run).",
     )
     p_uat.add_argument(
         "--max-build-passes",

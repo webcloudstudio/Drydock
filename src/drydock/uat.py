@@ -5,17 +5,20 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
+from drydock.uat_report import build_case_kit, build_run_kit
 
 DEFAULT_MAX_BUILD_PASSES = 25
 
@@ -44,6 +47,17 @@ class UATFixture:
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
 
 
+def _relativize(value: object, base: Path) -> str:
+    """Express a recorded path relative to ``base`` so a written report stays portable."""
+    text = str(value or "")
+    if not text:
+        return text
+    try:
+        return Path(text).relative_to(base).as_posix()
+    except ValueError:
+        return text
+
+
 @dataclass(frozen=True)
 class UATResult:
     fixture: str
@@ -58,11 +72,50 @@ class UATResult:
     usage: dict[str, int]
     error: str = ""
     evidence_dir: str = ""
+    environment: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self, base: Path | None = None) -> dict[str, object]:
+        """Serialize the result, rewriting absolute paths relative to ``base`` when given."""
         payload = asdict(self)
         payload["commands"] = [asdict(command) for command in self.commands]
+        if base is None:
+            return payload
+        for key in ("output_dir", "evidence_dir"):
+            payload[key] = _relativize(payload[key], base)
+        for command in payload["commands"]:
+            for key in ("stdout_path", "stderr_path", "cwd"):
+                command[key] = _relativize(command[key], base)
         return payload
+
+
+def _environment(model: str, provider: str, effort: str | None) -> dict[str, str]:
+    """Capture the provenance a reader needs to judge whether a run is reproducible."""
+    try:
+        version = metadata.version("drydock")
+    except metadata.PackageNotFoundError:  # editable checkout without installed metadata
+        version = "unknown"
+    commit = ""
+    try:
+        commit = subprocess.run(
+            ["git", "-C", str(Path(__file__).resolve().parents[2]), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        commit = ""
+    return {
+        "drydock_version": version,
+        "git_commit": commit,
+        "provider": provider,
+        "model": model,
+        "effort": effort or "",
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+    }
 
 
 def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixture, ...]:
@@ -305,6 +358,7 @@ def run_fixture(
 ) -> UATResult:
     """Execute one initial build and each subsequent specification refit in isolation."""
     started = time.monotonic()
+    started_at = datetime.now(UTC)
     case_root = run_root / fixture.name
     workspace = case_root / "workspace"
     build_root = case_root / "build"
@@ -419,6 +473,9 @@ def run_fixture(
 
     _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
+    environment = _environment(model, provider, effort)
+    environment["started_at"] = started_at.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    environment["finished_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     result = UATResult(
         fixture=fixture.name,
         target=fixture.target,
@@ -432,15 +489,22 @@ def run_fixture(
         usage=_usage_totals(workspace / "logs" / "llm.jsonl"),
         error=error,
         evidence_dir=str(evidence_dir),
+        environment=environment,
     )
     (case_root / "result.json").write_text(
-        json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    build_case_kit(case_root)
     return result
 
 
-def render_summary(results: Sequence[UATResult]) -> str:
-    lines = ["# Drydock UAT Summary", ""]
+def render_summary(results: Sequence[UATResult], base: Path | None = None) -> str:
+    lines = [
+        "# Drydock UAT Summary",
+        "",
+        "Open `index.html` for the linked proof kit; verify it with `sha256sum -c SHA256SUMS`.",
+        "",
+    ]
     for result in results:
         usage = result.usage
         lines.extend([
@@ -449,7 +513,9 @@ def render_summary(results: Sequence[UATResult]) -> str:
             f"- Target: `{result.target}`",
             f"- Elapsed: {result.elapsed_ms / 1000:.1f}s",
             f"- Build passes: {result.build_passes}",
-            f"- Evidence: `{result.evidence_dir}`",
+            f"- Receipt: `{_relativize(result.output_dir, base) if base else result.output_dir}"
+            "/index.html`",
+            f"- Evidence: `{_relativize(result.evidence_dir, base) if base else result.evidence_dir}`",
             f"- LLM calls: {usage['calls']}",
             f"- Tokens: input {usage['input_tokens']:,}; cached {usage['cached_input_tokens']:,}; "
             f"fresh {usage['fresh_input_tokens']:,}; output {usage['output_tokens']:,}",
@@ -498,8 +564,10 @@ def run_uat(
         for fixture in fixtures
     )
     (run_root / "summary.json").write_text(
-        json.dumps([result.to_dict() for result in results], indent=2, sort_keys=True) + "\n",
+        json.dumps([result.to_dict(run_root) for result in results], indent=2, sort_keys=True)
+        + "\n",
         encoding="utf-8",
     )
-    (run_root / "SUMMARY.md").write_text(render_summary(results), encoding="utf-8")
+    (run_root / "SUMMARY.md").write_text(render_summary(results, run_root), encoding="utf-8")
+    build_run_kit(run_root)
     return run_root, results

@@ -121,6 +121,7 @@ ai  drydock refit             MyApp            # Diff -> ticket -> dependency gr
     drydock build verify      MyApp <step>     # Display/Verify build graph
 ai  drydock build score       MyApp            # Generate SCORECARD.md
 ai  drydock uat               [Project]        # Scored UAT testing
+    drydock uat --report      [run]            # Rebuild a run's HTML proof kit
 ai  drydock document          MyApp            # Project documentation automation
 ai  drydock document generate MyApp            # AI pass only
     drydock document assemble MyApp            # Assembly only

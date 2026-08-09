@@ -8,6 +8,29 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-08-08: `drydock uat` now emits a self-contained, verifiable proof kit for every run. Each
+  project case gains an `index.html` receipt that links every lifecycle command to its own captured
+  stdout and stderr, quotes the failing stage's output verbatim, and tabulates each LLM execution
+  beside the exact prompt, model output, and raw provider transcript that produced it. A run-level
+  `index.html` states the aggregate verdict and links to each case. `SHA256SUMS` covers the
+  delivered code, imported sources, Blueprint, command logs, and LLM evidence, so a checked-in kit
+  is validated with `sha256sum -c SHA256SUMS`. The verdict is derived from recorded exit codes, so
+  a failed lifecycle renders as `FAILED` and cannot present as a clean run.
+- 2026-08-08: `drydock uat --report [<run>|all]` rebuilds the proof kit for a completed run without
+  re-executing it, which also backfills receipts for runs recorded before this capability existed.
+
+### Changed
+
+- 2026-08-08: UAT reports are portable. `result.json`, `summary.json`, and `SUMMARY.md` now record
+  paths relative to the run or case directory instead of the generating machine's absolute paths,
+  and `evidence/manifest.json` carries the artifact inventory and run provenance. Each result
+  records the Drydock version, repository commit, provider, model, effort, Python version, platform,
+  and start and finish timestamps. Regenerable `__pycache__` and tooling caches are pruned before a
+  kit is inventoried, so a run directory can be committed to another repository as delivered
+  evidence.
+
 ### Removed
 
 - 2026-08-08: Deleted the last executable remnants of the Blueprint Markdown question surface. The

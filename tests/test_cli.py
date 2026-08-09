@@ -263,6 +263,12 @@ class TestHelpAndVersion:
         assert "test_command" in out
         assert "isolated" in out
         assert "--max-build-passes" in out
+        assert "--report" in out
+
+    def test_uat_report_without_any_run_is_a_usage_error(self):
+        rc, _, err = run_cli("uat", "--report", "--output-root", "/nonexistent/uat/runs")
+        assert rc == 2
+        assert "No UAT runs found" in err
 
     def test_score_help_shows_ac_and_release(self):
         rc, out, _ = run_cli("score", "--help")
