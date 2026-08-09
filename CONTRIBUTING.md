@@ -69,7 +69,7 @@ preserve working commands while replacing deferred stubs.
 directories. It is the full-suite end-to-end capability: every fixture runs the complete
 init/import/analyze/plan/build lifecycle against a real model, then scores the result.
 
-Fixtures live under `tests/uat/<Project>/` and are declared in `uat.json`:
+Fixtures live under `uat/source/<Project>/` and are declared in `uat.json`:
 
 - `sources` — the fixture-local files imported before the initial lifecycle. Required, nonempty.
   Filenames carry no ordering or positional meaning; the bundle is flattened to
@@ -90,6 +90,8 @@ complete stdout/stderr of every child command. Reports include command and LLM e
 cached, fresh-input, and output tokens, build-pass counts, and the exit results from `score ac`,
 `score build`, and `score release`. Scoring is advisory in UAT V1: score failures remain visible in
 the report but do not override a successfully completed build lifecycle.
+
+`uat/README.md` carries the operator instructions for running a fixture and reading its proof kit.
 
 ## Commits
 

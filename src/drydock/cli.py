@@ -424,7 +424,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
     fixtures_root = (
         args.fixtures_root.resolve()
         if args.fixtures_root is not None
-        else workspace / "tests" / "uat"
+        else workspace / "uat" / "source"
     )
     output_root = (
         args.output_root.resolve() if args.output_root is not None else workspace / "uat" / "runs"
@@ -2678,7 +2678,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "uat",
         help="Build known project fixtures unattended in isolated run directories.",
         description=(
-            "drydock uat                    — run every project under tests/uat\n"
+            "drydock uat                    — run every project under uat/source\n"
             "drydock uat <Project>          — run one known project\n"
             "drydock uat --report [<run>]   — rebuild the proof kit for a completed run\n"
             "\n"
@@ -2696,7 +2696,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         metavar="<path>",
-        help="Fixture root (default: <workspace>/tests/uat).",
+        help="Fixture root (default: <workspace>/uat/source).",
     )
     p_uat.add_argument(
         "--output-root",

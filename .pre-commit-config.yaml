@@ -5,9 +5,13 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(Rigging/|archive/|docs/Drydock_Specification\.md$)
+        # uat/source/ holds upstream fixture bundles imported byte-for-byte; whitespace in a
+        # conformance corpus is significant and must not be normalized.
+        exclude: ^(Rigging/|archive/|uat/source/|docs/Drydock_Specification\.md$)
       - id: end-of-file-fixer
-        exclude: ^(Rigging/|archive/|docs/Drydock_Specification\.md$)
+        # uat/source/ holds upstream fixture bundles imported byte-for-byte; whitespace in a
+        # conformance corpus is significant and must not be normalized.
+        exclude: ^(Rigging/|archive/|uat/source/|docs/Drydock_Specification\.md$)
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict
@@ -20,6 +24,6 @@ repos:
         args: [--fix]
         # Rigging/ holds governed rule and template content, not application code.
         # Ruff must not reformat it; doing so would rewrite the templates.
-        exclude: ^Rigging/
+        exclude: ^(Rigging/|uat/source/)
       - id: ruff-format
-        exclude: ^Rigging/
+        exclude: ^(Rigging/|uat/source/)
