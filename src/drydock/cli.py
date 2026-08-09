@@ -424,6 +424,8 @@ def cmd_uat(args: argparse.Namespace) -> int:
         return _uat_report(uat_root, args.report)
     if args.max_build_passes < 1:
         raise UsageError("--max-build-passes must be at least 1")
+    if args.run is not None and args.stage is None:
+        raise UsageError("--run requires --stage")
     step_console = StepConsole(sys.stdout, quiet=args.quiet)
     _, results = run_uat(
         workspace,
@@ -435,6 +437,8 @@ def cmd_uat(args: argparse.Namespace) -> int:
         max_build_passes=args.max_build_passes,
         runner=make_streaming_runner(step_console),
         on_event=step_console.event,
+        start_stage=args.stage or "init",
+        run=args.run,
     )
     if not args.quiet:
         print()
@@ -2670,6 +2674,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "drydock uat                    — run every kit under uat/\n"
             "drydock uat <Project>          — run one kit\n"
             "drydock uat --report [<kit>]   — rebuild proof kits from completed runs\n"
+            "drydock uat <Project> --stage <stage>\n"
+            "                               — resume the newest run at <stage>\n"
             "\n"
             "A kit is uat/<Project>/: uat.json, its sources/ bundle, and its own runs/ history.\n"
             "Each kit runs in an isolated workspace from the explicit source bundle in uat.json.\n"
@@ -2709,6 +2715,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--quiet",
         action="store_true",
         help="Report only stage names instead of streaming each child command's output.",
+    )
+    p_uat.add_argument(
+        "--stage",
+        default=None,
+        choices=("import", "analyze", "plan", "build", "refit", "test", "score"),
+        metavar="<stage>",
+        help=(
+            "Resume an existing run at this stage, reusing everything the earlier attempt "
+            "produced. Development affordance: a resumed run is not a clean-room measurement."
+        ),
+    )
+    p_uat.add_argument(
+        "--run",
+        default=None,
+        metavar="<run-id>",
+        help="Run directory to resume (default: the newest). Requires --stage.",
     )
 
     # ── status ────────────────────────────────────────────────────────────────

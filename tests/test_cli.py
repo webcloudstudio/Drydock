@@ -266,6 +266,18 @@ class TestHelpAndVersion:
         assert "--report" in out
         assert "--quiet" in out
         assert "streams to the console" in out
+        assert "--stage" in out
+        assert "Resume" in out or "resume" in out
+
+    def test_uat_run_requires_a_resume_stage(self):
+        rc, _, err = run_cli("uat", "ReadingList", "--run", "20260809T000000.000000Z")
+        assert rc == 2
+        assert "--run requires --stage" in err
+
+    def test_uat_rejects_an_unknown_resume_stage(self):
+        rc, _, err = run_cli("uat", "ReadingList", "--stage", "compile")
+        assert rc == 2
+        assert "--stage" in err
 
     def test_uat_report_without_any_kit_is_a_usage_error(self):
         rc, _, err = run_cli("uat", "--report", "--uat-root", "/nonexistent/uat")

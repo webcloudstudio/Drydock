@@ -29,6 +29,22 @@ DEFAULT_MAX_BUILD_PASSES = 25
 #: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
 _STREAM_CHUNK_BYTES = 4096
 
+#: Ordered resumable entry points. A run directory holds its own Drydock workspace and build
+#: tree, so a lifecycle that failed late can be re-entered at a named stage instead of paying
+#: for every earlier LLM pass again. This is a development affordance: a resumed run reuses
+#: whatever the prior attempt left on disk and is therefore not a clean-room measurement.
+STAGES = ("init", "import", "analyze", "plan", "build", "refit", "test", "score")
+
+
+def stage_index(name: str) -> int:
+    """Return the ordinal of a resumable stage, rejecting an unknown name."""
+    try:
+        return STAGES.index(name)
+    except ValueError:
+        raise SpecificationError(
+            f"Unknown UAT stage {name!r}; expected one of: {', '.join(STAGES)}"
+        ) from None
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -84,6 +100,9 @@ class UATResult:
     error: str = ""
     evidence_dir: str = ""
     environment: dict[str, str] = field(default_factory=dict)
+    #: Stage this run was re-entered at, empty for a run executed from the beginning. A resumed
+    #: run reuses prior state, so its receipt must not present itself as a clean lifecycle.
+    resumed_from: str = ""
 
     def to_dict(self, base: Path | None = None) -> dict[str, object]:
         """Serialize the result, rewriting absolute paths relative to ``base`` when given."""
@@ -476,11 +495,94 @@ def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
     return destination
 
 
+def _next_sequence(command_logs: Path) -> int:
+    """Return the highest recorded step number in ``command_logs``.
+
+    A resumed run appends to the same evidence directory, so its numbering continues past the
+    prior attempt rather than overwriting logs the earlier failure produced.
+    """
+    highest = 0
+    if not command_logs.is_dir():
+        return highest
+    for path in command_logs.glob("*.log"):
+        prefix = path.name.split("-", 1)[0]
+        if prefix.isdigit():
+            highest = max(highest, int(prefix))
+    return highest
+
+
+def _prior_run(case_root: Path) -> tuple[tuple[CommandResult, ...], int]:
+    """Load a prior attempt's commands and build-pass count from its ``result.json``.
+
+    Carrying the earlier commands forward keeps the receipt an honest record of everything the
+    run directory actually executed, including the failure that made a resume necessary.
+    """
+    path = case_root / "result.json"
+    if not path.is_file():
+        return (), 0
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SpecificationError(f"Unreadable prior UAT result: {path}") from exc
+    if not isinstance(payload, dict):
+        raise SpecificationError(f"Prior UAT result must be an object: {path}")
+
+    def absolute(value: object) -> str:
+        text = str(value or "")
+        if not text:
+            return text
+        candidate = Path(text)
+        return text if candidate.is_absolute() else str(case_root / candidate)
+
+    commands = []
+    for item in payload.get("commands") or []:
+        if not isinstance(item, dict):
+            continue
+        commands.append(
+            CommandResult(
+                argv=tuple(str(part) for part in item.get("argv") or ()),
+                returncode=int(item.get("returncode") or 0),
+                elapsed_ms=int(item.get("elapsed_ms") or 0),
+                stdout_path=absolute(item.get("stdout_path")),
+                stderr_path=absolute(item.get("stderr_path")),
+                label=str(item.get("label") or ""),
+                cwd=absolute(item.get("cwd")),
+            )
+        )
+    try:
+        passes = int(payload.get("build_passes") or 0)
+    except (TypeError, ValueError):
+        passes = 0
+    return tuple(commands), passes
+
+
+def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
+    """Return the run directory a resume re-enters: ``run`` when named, else the newest.
+
+    Run identifiers are UTC timestamps, so lexical order is chronological order.
+    """
+    runs = fixture.root / "runs"
+    if run:
+        candidate = runs / run
+        if not candidate.is_dir():
+            raise SpecificationError(f"No such run for kit {fixture.name}: {candidate}")
+        return candidate
+    existing = (
+        sorted(path for path in runs.iterdir() if (path / "result.json").is_file())
+        if runs.is_dir()
+        else []
+    )
+    if not existing:
+        raise SpecificationError(f"No completed run to resume for kit {fixture.name}: {runs}")
+    return existing[-1]
+
+
 def run_fixture(
     fixture: UATFixture,
     case_root: Path,
     *,
     run_id: str = "",
+    start_stage: str = "init",
     model: str,
     provider: str,
     effort: str | None = None,
@@ -492,9 +594,13 @@ def run_fixture(
 
     ``case_root`` is the kit's own run directory — ``<kit>/runs/<run-id>/`` — so a kit and its
     complete run history form one self-contained tree that can be published as its own repository.
+
+    ``start_stage`` re-enters an existing run directory at a named stage, reusing the workspace,
+    Blueprint, and build tree the earlier attempt produced.
     """
     started = time.monotonic()
     started_at = datetime.now(UTC)
+    start = stage_index(start_stage)
     workspace = case_root / "workspace"
     build_root = case_root / "build"
     source_root = case_root / "sources"
@@ -502,8 +608,11 @@ def run_fixture(
     command_logs = evidence_dir / "commands"
     for path in (workspace, build_root, source_root, evidence_dir, command_logs):
         path.mkdir(parents=True, exist_ok=True)
-    for source in fixture.sources:
-        shutil.copyfile(source, source_root / source.name)
+    # Resuming past `import` must not restore the base sources: an update already applied to the
+    # bundle is part of the state the resumed stage is expected to see.
+    if start <= stage_index("import"):
+        for source in fixture.sources:
+            shutil.copyfile(source, source_root / source.name)
 
     env = os.environ.copy()
     env["DRYDOCK_WORKSPACE"] = str(workspace)
@@ -520,10 +629,11 @@ def run_fixture(
         env["DRYDOCK_EFFORT"] = effort
     env.pop("DRYDOCK_PARENT_TRANSCRIPT", None)
 
-    commands: list[CommandResult] = []
+    prior_commands, prior_passes = _prior_run(case_root) if start else ((), 0)
+    commands: list[CommandResult] = list(prior_commands)
     scores: dict[str, int] = {}
-    build_passes = 0
-    sequence = 0
+    build_passes = prior_passes
+    sequence = _next_sequence(command_logs) if start else 0
 
     def execute(parts: Sequence[str], label: str, *, required: bool = True) -> CommandResult:
         nonlocal sequence
@@ -580,27 +690,34 @@ def run_fixture(
     error = ""
     status = "passed"
     try:
-        execute(("init", fixture.target), "init")
-        seed_technology_stack(fixture, workspace)
-        execute(
-            ("import", fixture.target, str(source_root), "--format", "markdown"),
-            "import-sources",
-        )
-        execute(("analyze", fixture.target), "analyze")
-        execute(("plan", fixture.target, "--override"), "plan")
-        capture_status("after-plan")
-        build_to_completion("initial")
-        capture_status("after-initial-build")
+        if start <= stage_index("init"):
+            execute(("init", fixture.target), "init")
+            seed_technology_stack(fixture, workspace)
+        if start <= stage_index("import"):
+            execute(
+                ("import", fixture.target, str(source_root), "--format", "markdown"),
+                "import-sources",
+            )
+        if start <= stage_index("analyze"):
+            execute(("analyze", fixture.target), "analyze")
+        if start <= stage_index("plan"):
+            execute(("plan", fixture.target, "--override"), "plan")
+            capture_status("after-plan")
+        if start <= stage_index("build"):
+            build_to_completion("initial")
+            capture_status("after-initial-build")
 
-        for index, update in enumerate(fixture.updates, start=1):
-            shutil.copyfile(update, source_root / update.name)
-            execute(("import", fixture.target, "--update"), f"import-update-{index}")
-            execute(("refit", fixture.target, "--sources"), f"refit-update-{index}")
-            capture_status(f"after-refit-{index}")
-            build_to_completion(f"refit-{index}")
-            capture_status(f"after-refit-{index}-build")
+        if start <= stage_index("refit"):
+            for index, update in enumerate(fixture.updates, start=1):
+                shutil.copyfile(update, source_root / update.name)
+                execute(("import", fixture.target, "--update"), f"import-update-{index}")
+                execute(("refit", fixture.target, "--sources"), f"refit-update-{index}")
+                capture_status(f"after-refit-{index}")
+                build_to_completion(f"refit-{index}")
+                capture_status(f"after-refit-{index}-build")
 
-        execute_test()
+        if start <= stage_index("test"):
+            execute_test()
 
         for name, parts in (
             ("acceptance", ("score", "ac", fixture.target)),
@@ -632,6 +749,7 @@ def run_fixture(
         error=error,
         evidence_dir=str(evidence_dir),
         environment=environment,
+        resumed_from=start_stage if start else "",
     )
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -685,26 +803,39 @@ def run_uat(
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
     now: datetime | None = None,
+    start_stage: str = "init",
+    run: str | None = None,
 ) -> tuple[str, tuple[UATResult, ...]]:
     """Run the selected kits, each into its own ``<kit>/runs/<run-id>/`` directory.
 
     Every kit owns its inputs and its complete run history, so ``<uat-root>/<Kit>/`` can be
     published as an independent, self-runnable repository. One invocation stamps every kit it
     runs with the same run id, which is what lets separate repositories be correlated later.
+
+    ``start_stage`` (with optional ``run``) resumes an existing run directory instead of
+    creating one, re-entering the lifecycle at that stage.
     """
     del workspace  # retained in the contract to make caller path ownership explicit
+    resuming = stage_index(start_stage) > 0
+    if run is not None and not resuming:
+        raise SpecificationError("A UAT run can only be selected together with a resume stage.")
     timestamp = now or datetime.now(UTC)
     run_id = timestamp.strftime("%Y%m%dT%H%M%S.%fZ")
     fixtures = discover_fixtures(uat_root, selected)
     results: list[UATResult] = []
     for fixture in fixtures:
-        case_root = fixture.root / "runs" / run_id
-        case_root.mkdir(parents=True, exist_ok=False)
+        if resuming:
+            case_root = resolve_run_dir(fixture, run)
+            run_id = case_root.name
+        else:
+            case_root = fixture.root / "runs" / run_id
+            case_root.mkdir(parents=True, exist_ok=False)
         results.append(
             run_fixture(
                 fixture,
                 case_root,
-                run_id=run_id,
+                run_id=case_root.name if resuming else run_id,
+                start_stage=start_stage,
                 model=model,
                 provider=provider,
                 effort=effort,

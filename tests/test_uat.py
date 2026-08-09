@@ -559,3 +559,137 @@ def test_run_uat_gives_every_child_an_unbuffered_environment(tmp_path: Path) -> 
     )
 
     assert seen and set(seen) == {"1"}
+
+
+def _stub_runner(calls: list[tuple[str, ...]], *, fail: tuple[str, ...] = ()):
+    """Return a runner that records lifecycle argv and fails the named stage."""
+
+    def runner(argv, cwd, env, output_dir, label):
+        del env
+        parts = tuple(argv[3:])
+        calls.append(parts)
+        returncode = 0
+        if parts[:2] == ("status", "ReadingList") and "--ready" in parts:
+            returncode = 1  # never ready: one status check, no build pass
+        if fail and parts[: len(fail)] == fail:
+            returncode = 1
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    return runner
+
+
+def test_resume_reenters_the_newest_run_at_the_named_stage(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    first: list[tuple[str, ...]] = []
+    run_id, failed = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner(first, fail=("plan",)),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    assert failed[0].status == "failed"
+
+    resumed_calls: list[tuple[str, ...]] = []
+    resumed_id, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner(resumed_calls),
+        start_stage="plan",
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    # The resumed run re-enters the same directory: no new run id, no repeated LLM stages.
+    assert resumed_id == run_id
+    assert results[0].status == "passed"
+    assert results[0].resumed_from == "plan"
+    assert ("plan", "ReadingList", "--override") in resumed_calls
+    assert not [parts for parts in resumed_calls if parts[:1] in {("init",), ("analyze",)}]
+    assert not [parts for parts in resumed_calls if parts[:1] == ("import",)]
+
+
+def test_resume_appends_to_the_prior_evidence_instead_of_overwriting_it(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    run_id, failed = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([], fail=("plan",)),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    case_root = fixtures_root / "ReadingList" / "runs" / run_id
+    before = sorted(path.name for path in (case_root / "evidence" / "commands").glob("*.log"))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([]),
+        start_stage="plan",
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    after = sorted(path.name for path in (case_root / "evidence" / "commands").glob("*.log"))
+    assert set(before) <= set(after)
+    # The prior attempt's commands stay in the receipt; the new ones continue the numbering.
+    labels = [command.label for command in results[0].commands]
+    assert labels[: len(failed[0].commands)] == [c.label for c in failed[0].commands]
+    assert int(after[-1].split("-", 1)[0]) > int(before[-1].split("-", 1)[0])
+
+
+def test_resume_rejects_an_unknown_stage_and_a_run_without_a_stage(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+
+    with pytest.raises(SpecificationError, match="Unknown UAT stage"):
+        run_uat(
+            tmp_path,
+            selected="ReadingList",
+            uat_root=fixtures_root,
+            model="test-model",
+            provider="codex",
+            runner=_stub_runner([]),
+            start_stage="compile",
+        )
+    with pytest.raises(SpecificationError, match="resume stage"):
+        run_uat(
+            tmp_path,
+            selected="ReadingList",
+            uat_root=fixtures_root,
+            model="test-model",
+            provider="codex",
+            runner=_stub_runner([]),
+            run="20260809T000000.000000Z",
+        )
+
+
+def test_resume_without_a_prior_run_names_the_missing_history(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+
+    with pytest.raises(SpecificationError, match="No completed run to resume"):
+        run_uat(
+            tmp_path,
+            selected="ReadingList",
+            uat_root=fixtures_root,
+            model="test-model",
+            provider="codex",
+            runner=_stub_runner([]),
+            start_stage="build",
+        )

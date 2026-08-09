@@ -459,9 +459,17 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
     status = str(result.get("status") or ("passed" if not failed else "failed"))
     passed = status == "passed"
 
+    resumed = str(result.get("resumed_from") or "")
     detail = ""
     if result.get("error"):
         detail = f"Failure: <code>{html.escape(str(result['error']))}</code>"
+    elif passed and resumed:
+        # A resumed run reuses state an earlier attempt produced, and its command table still
+        # carries that attempt's failures. Saying "every command exited 0" would be false.
+        detail = (
+            f"Resumed at <code>{html.escape(resumed)}</code>; every required command from that "
+            "stage onward exited 0. Earlier rows are the prior attempt, retained as evidence."
+        )
     elif passed:
         detail = (
             f"{len(commands)} lifecycle commands ran; every required command exited 0. "

@@ -149,6 +149,25 @@ def test_case_kit_states_success_only_when_every_command_exited_zero(tmp_path: P
     assert "drydock build commonmark" in page
 
 
+def test_case_kit_marks_a_resumed_run_instead_of_claiming_a_clean_lifecycle(
+    tmp_path: Path,
+) -> None:
+    # A resumed run's table still carries the prior attempt's failed rows, so the passing
+    # banner must say where the run re-entered rather than vouch for every command.
+    case = _case(tmp_path / "run", failing=True)
+    result = json.loads((case / "result.json").read_text(encoding="utf-8"))
+    result["status"] = "passed"
+    result["error"] = ""
+    result["resumed_from"] = "build"
+    (case / "result.json").write_text(json.dumps(result), encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "commonmark: PASSED" in page
+    assert "Resumed at" in page
+    assert "every required command exited 0" not in page
+
+
 def test_case_kit_prunes_regenerable_caches(tmp_path: Path) -> None:
     case = _case(tmp_path / "run")
     cache = case / "build" / "commonmark" / "__pycache__"

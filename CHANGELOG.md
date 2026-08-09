@@ -10,6 +10,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-09: `drydock uat --stage <stage>` resumes an existing run instead of starting a new one,
+  re-entering the lifecycle at `import`, `analyze`, `plan`, `build`, `refit`, `test`, or `score`.
+  A run directory already owns its Drydock workspace and build tree, so a lifecycle that failed
+  late is retried without paying for the earlier LLM passes again. The newest run of each selected
+  kit is resumed by default; `--run <run-id>` selects an older one and requires `--stage`. Resuming
+  past `import` leaves the source bundle as the prior attempt left it, evidence log numbering
+  continues past the existing files rather than overwriting them, and the earlier attempt's
+  commands are carried into `result.json`. A resumed run records `resumed_from` and its receipt
+  states the re-entry stage rather than claiming every command exited `0`, because a resumed run
+  reuses prior state and is not a clean-room measurement.
+
 - 2026-08-09: A UAT fixture declares its own technology stack by shipping a `TECHNOLOGY_STACK.md`
   in its fixture directory. `drydock uat` seeds that file into the Target between `init` and
   `analyze`; because `analyze` never overwrites an existing Technology Stack, the declaration
