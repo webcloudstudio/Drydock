@@ -391,13 +391,22 @@ class DroppedAcceptance:
 
 def unsatisfiable_defects(code: str) -> tuple[str, ...]:
     """Return every reason ``code`` can never pass, whatever the implementation does."""
-    from drydock.proof_integrity import analyze_invocation, analyze_literals, analyze_structure
+    from drydock.proof_integrity import (
+        analyze_invocation,
+        analyze_literals,
+        analyze_output_assertions,
+        analyze_structure,
+    )
 
-    return tuple(
+    messages = [
         defect.message
         for analyze in (analyze_literals, analyze_structure, analyze_invocation)
         for defect in analyze(code)
-    )
+    ]
+    # Only the fatal output assertions belong here. A merely redundant substring check still
+    # passes when the code is correct, so it is a warning, not grounds for dropping the check.
+    messages.extend(defect.message for defect in analyze_output_assertions(code) if defect.fatal)
+    return tuple(messages)
 
 
 def drop_unsatisfiable_acceptance(

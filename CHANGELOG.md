@@ -10,6 +10,29 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-09: A build agent can end its own repair budget with an `AC_BROKEN: <check-id>` line
+  when a declared acceptance criterion cannot pass however the code is written. Staged acceptance
+  assets are restored before grading, so the agent is structurally unable to repair a broken
+  assertion; without an escape hatch it spends every remaining call re-failing identically. The
+  token is read from the response independently of `RESULT`, because the case that motivates it —
+  correct code failed by a wrong assertion — is one the agent may legitimately report as `SUCCESS`.
+  An unrecognized or absent id claims every currently failing check; a check that passed cannot be
+  claimed. Drydock stops with `stop_reason` "acceptance criterion reported defective" and directs
+  the operator to the assertion's source specification. The pre-existing prose inference remains as
+  a fallback, now also reading `BLOCKERS` and recognizing "always fails", "cannot be satisfied",
+  and "incorrectly reject".
+
+- 2026-08-09: `proof_integrity.analyze_output_assertions` rejects an acceptance snippet that
+  asserts a literal never appears in a command's captured output when that literal is tally
+  vocabulary (`failed`, `error`, `skipped`, `warning`, and inflections). A test runner prints
+  `N passed, M failed` on a clean run, so `assert "failed" not in result.stdout.lower()` is false
+  on correct code and no implementation can move it. These fail `drydock validate` and are dropped
+  as unsatisfiable before a build spends a repair pass. A substring assertion on any other literal
+  beside an exit-status assertion warns instead: the exit status is already the verdict, and the
+  substring models an output format the author may never have observed. Assertions tracked through
+  a binding (`out = result.stdout`) are covered; a substring check that is the proof's only gate is
+  left alone.
+
 - 2026-08-09: `drydock uat --stage <stage>` resumes an existing run instead of starting a new one,
   re-entering the lifecycle at `import`, `analyze`, `plan`, `build`, `refit`, `test`, or `score`.
   A run directory already owns its Drydock workspace and build tree, so a lifecycle that failed

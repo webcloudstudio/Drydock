@@ -5,6 +5,7 @@ from __future__ import annotations
 from drydock.proof_integrity import (
     analyze_invocation,
     analyze_literals,
+    analyze_output_assertions,
     analyze_proof,
     analyze_structure,
     analyze_swallowed_output,
@@ -331,3 +332,83 @@ def test_dynamic_arguments_are_not_analyzed():
     # The argument shape is undecidable, so the analysis stays silent rather than guess.
     code = "import subprocess\ncmd = build_cmd()\nsubprocess.run(cmd, shell=use_shell)\n"
     assert analyze_invocation(code) == ()
+
+
+# --- Assertions on captured output text -------------------------------------------------
+
+# The defect that failed a working TOML decoder four times: ``toml-test`` prints
+# "invalid tests: 96 passed,  0 failed" on a clean run, so the forbidden word is always there.
+_TALLY_ASSERTION = """
+import subprocess
+
+result = subprocess.run(["sh", "run_conformance.sh"], capture_output=True, text=True)
+print(result.stdout)
+assert result.returncode == 0
+assert "failed" not in result.stdout.lower()
+"""
+
+
+def test_forbidding_a_tally_word_is_fatal():
+    defects = analyze_output_assertions(_TALLY_ASSERTION)
+    assert len(defects) == 1
+    assert defects[0].fatal
+    assert defects[0].kind == "tally-vocabulary"
+    assert defects[0].literal == "failed"
+    assert "tally" in defects[0].message
+
+
+def test_forbidding_skipped_is_fatal():
+    # A scoped conformance run reports "skipped tests: 774" on success.
+    (defect,) = analyze_output_assertions(
+        'assert result.returncode == 0\nassert "skipped" not in result.stdout.lower()'
+    )
+    assert defect.fatal
+    assert defect.literal == "skipped"
+
+
+def test_redundant_substring_beside_exit_gate_is_advisory():
+    (defect,) = analyze_output_assertions(
+        'assert result.returncode == 0\nassert "Traceback" not in result.stdout'
+    )
+    assert not defect.fatal
+    assert defect.kind == "redundant-substring"
+
+
+def test_substring_tracked_through_a_binding():
+    (defect,) = analyze_output_assertions(
+        'out = result.stdout\nassert result.returncode == 0\nassert "Traceback" not in out'
+    )
+    assert defect.literal == "Traceback"
+
+
+def test_substring_without_an_exit_gate_is_left_alone():
+    # The substring check is the only verdict the proof has; removing it leaves nothing.
+    assert analyze_output_assertions('assert "Traceback" not in result.stdout') == ()
+
+
+def test_assertion_on_non_stream_text_is_ignored():
+    assert (
+        analyze_output_assertions('text = Path("out.json").read_text()\nassert "error" not in text')
+        == ()
+    )
+
+
+def test_positive_membership_assertion_is_ignored():
+    # Requiring a word to be present is an ordinary check, not a model of failure vocabulary.
+    assert (
+        analyze_output_assertions(
+            'assert result.returncode == 0\nassert "3 passed" in result.stdout'
+        )
+        == ()
+    )
+
+
+def test_unparseable_code_is_not_reported():
+    assert analyze_output_assertions("def broken(:") == ()
+
+
+def test_duplicate_literals_report_once():
+    defects = analyze_output_assertions(
+        'assert "failed" not in result.stdout.lower()\nassert "failed" not in result.stderr.lower()'
+    )
+    assert len(defects) == 1

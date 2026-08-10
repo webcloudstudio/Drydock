@@ -111,3 +111,21 @@ BLOCKERS:
 FAILURE_SUMMARY: <one line naming the cause>
 FAILURE_DETAIL: <what happened, why, and what to change before rerunning>
 ```
+
+15. When a declared acceptance criterion cannot pass no matter how the code is written,
+   say so with this exact token. You may not edit the criterion — it is staged and
+   restored before grading — so a repair pass cannot fix it and Drydock must stop
+   instead of spending the remaining budget:
+
+```text
+AC_BROKEN: <check-id>[, <check-id>]
+```
+
+   Emit it only after running the criterion and confirming the underlying command
+   succeeded while the assertion still failed. The clearest case is an assertion about a
+   command's output text that contradicts what the command prints on success — for
+   example asserting a runner's stdout omits the word `failed` when the runner prints
+   `0 failed` in its summary on a clean run. Name the affected check ids. Emit the token
+   alongside your normal `RESULT` line and state the reasoning in `FAILURE_DETAIL`;
+   emit it even when `RESULT: SUCCESS` because the code itself is correct. Do not use it
+   for a criterion you merely failed to satisfy.

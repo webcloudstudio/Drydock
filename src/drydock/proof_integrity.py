@@ -556,3 +556,131 @@ def analyze_swallowed_output(code: str) -> tuple[SwallowedOutputDefect, ...]:
         else _call_name(first)
     )
     return (SwallowedOutputDefect(call=label),)
+
+
+# --- Assertions on captured output text ------------------------------------------------
+#
+# A criterion that shells out to a test runner already has a verdict: the runner's exit status.
+# An assertion layered on top of it, forbidding a word in the runner's stdout, is the author's
+# model of an output format they may never have run. When that model is wrong the criterion is
+# false on correct code, and no implementation can move it — the build spends its whole repair
+# budget proving that.
+#
+# The failure is not hypothetical or rare. Test runners print their tally in the form
+# ``N passed, M failed``, so the words ``failed``, ``error``, ``skipped`` and ``warning`` appear
+# in the summary of a completely clean run. ``assert "failed" not in result.stdout.lower()`` is
+# therefore unsatisfiable against every runner that reports a count of failures, which is most
+# of them. Forbidding one of those words is treated as a defect; forbidding any other literal
+# alongside an exit-status assertion is advisory, because the exit status is already the gate.
+
+# Words that appear in a passing runner's own summary line. Forbidding one of these in captured
+# output asserts that a successful run stays silent about its counters, which it does not.
+_TALLY_VOCABULARY = frozenset({
+    "fail",
+    "failed",
+    "failure",
+    "failures",
+    "error",
+    "errors",
+    "skip",
+    "skipped",
+    "warning",
+    "warnings",
+})
+_STREAM_ATTRS = frozenset({"stdout", "stderr", "output"})
+
+
+@dataclass(frozen=True)
+class OutputAssertionDefect:
+    """An assertion forbidding a literal in a command's captured output."""
+
+    kind: str  # tally-vocabulary | redundant-substring
+    literal: str
+    fatal: bool
+
+    @property
+    def message(self) -> str:
+        if self.kind == "tally-vocabulary":
+            return (
+                f"asserts {self.literal!r} never appears in captured output, but a test runner "
+                f'prints its tally ("N passed, M failed") on a clean run, so the word is present '
+                f"when the run succeeds. The assertion is false on correct code and no "
+                f"implementation can move it. Gate on the exit status instead, or match a "
+                f"nonzero count."
+            )
+        return (
+            f"asserts {self.literal!r} never appears in captured output alongside an exit-status "
+            f"assertion. The exit status is already the verdict; a substring check models an "
+            f"output format the author may not have observed. Drop it, or verify it against a "
+            f"captured sample of the command's real output."
+        )
+
+
+def _reads_captured_stream(node: ast.AST, captured_names: frozenset[str]) -> bool:
+    """True when ``node`` reads a subprocess result stream, directly or through a binding."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Attribute) and child.attr in _STREAM_ATTRS:
+            return True
+        if isinstance(child, ast.Name) and child.id in captured_names:
+            return True
+    return False
+
+
+def _stream_bindings(tree: ast.AST) -> frozenset[str]:
+    """Names bound to a captured stream, so ``out = result.stdout`` is tracked through ``out``."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not _reads_captured_stream(node.value, frozenset(names)):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+    return frozenset(names)
+
+
+def _asserts_exit_status(tree: ast.AST) -> bool:
+    """True when the proof already gates on a return code."""
+    return any(
+        isinstance(node, ast.Attribute) and node.attr in {"returncode", "exit_code", "status"}
+        for node in ast.walk(tree)
+    )
+
+
+def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
+    """Flag assertions that forbid a literal in a command's captured output.
+
+    Fatal for a word a passing runner prints anyway; advisory when the proof already asserts
+    on the exit status and the substring check is therefore redundant speculation.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+    captured_names = _stream_bindings(tree)
+    has_exit_assert = _asserts_exit_status(tree)
+    defects: list[OutputAssertionDefect] = []
+    seen: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+            continue
+        compare = node.test
+        if len(compare.ops) != 1 or not isinstance(compare.ops[0], ast.NotIn):
+            continue
+        if not isinstance(compare.left, ast.Constant) or not isinstance(compare.left.value, str):
+            continue
+        if not _reads_captured_stream(compare.comparators[0], captured_names):
+            continue
+        literal = compare.left.value
+        fatal = literal.strip().lower() in _TALLY_VOCABULARY
+        if not fatal and not has_exit_assert:
+            # No exit-status gate: the substring check is the only verdict the proof has.
+            # Removing it would leave nothing, so it is not redundant and not reported.
+            continue
+        kind = "tally-vocabulary" if fatal else "redundant-substring"
+        if (kind, literal) in seen:
+            continue
+        seen.add((kind, literal))
+        defects.append(OutputAssertionDefect(kind=kind, literal=literal, fatal=fatal))
+    return tuple(defects)

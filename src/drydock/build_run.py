@@ -1291,6 +1291,41 @@ def _is_repairable(error: str | None) -> bool:
     )
 
 
+# The objective escape hatch. An agent that has run a criterion and concluded the criterion
+# itself cannot pass emits this line; Drydock stops the repair loop on it without interpreting
+# prose. Prose inference (``_DEFECT_CLAIM_TERMS`` below) remains as a fallback for agents that
+# describe the defect without using the token, but the token is the contract.
+_AC_BROKEN_RE = re.compile(r"^\s*AC[_ -]?BROKEN:\s*(?P<ids>.*)$", re.IGNORECASE | re.MULTILINE)
+
+
+def _ac_broken_claim(
+    summary: str,
+    failed_checks: tuple[AcceptanceRunResult, ...],
+) -> tuple[str, ...]:
+    """Return failing check ids the agent declared broken via the ``AC_BROKEN:`` token.
+
+    The token carries a comma-separated id list. Ids that are not currently failing are
+    ignored: an agent cannot condemn a criterion that passed. A token with no recognizable id
+    claims every failing check, because an agent that emits it has already concluded no repair
+    pass can succeed — and the claim only ever reaches the existing terminal outcome sooner.
+    """
+    if not failed_checks:
+        return ()
+    matches = tuple(_AC_BROKEN_RE.finditer(summary))
+    if not matches:
+        return ()
+    failing = {check.check_id for check in failed_checks}
+    claimed: list[str] = []
+    for match in matches:
+        for raw in match.group("ids").replace(";", ",").split(","):
+            candidate = raw.strip().strip("`\"'[]")
+            if candidate in failing and candidate not in claimed:
+                claimed.append(candidate)
+    if claimed:
+        return tuple(check.check_id for check in failed_checks if check.check_id in claimed)
+    return tuple(check.check_id for check in failed_checks)
+
+
 # Vocabulary that distinguishes "this criterion is itself broken" from an agent merely
 # mentioning the check it failed. Naming a check is not a claim about it; these words are.
 _DEFECT_CLAIM_TERMS = (
@@ -1304,6 +1339,11 @@ _DEFECT_CLAIM_TERMS = (
     "invalid",
     "cannot pass",
     "can never pass",
+    "cannot be satisfied",
+    "can never be true",
+    "always fails",
+    "always fail",
+    "incorrectly reject",
     "unsatisfiable",
 )
 
@@ -1332,7 +1372,7 @@ def _names_check(words: list[str], check_id: str) -> bool:
 
 
 def _defective_acceptance_claim(
-    agent_report: tuple[str, str] | None,
+    agent_report: tuple[str, ...] | None,
     failed_checks: tuple[AcceptanceRunResult, ...],
 ) -> tuple[str, ...]:
     """Return the failing check ids the agent reported as defective criteria.
@@ -1497,6 +1537,12 @@ def _render_repair_feedback(
         "diagnose coherent root-cause clusters, then rerun the full declared scope. Fix the",
         "general parser or renderer behavior; do not add example-specific exceptions. Keep",
         "working through failing examples while the deterministic tally is improving.",
+        "",
+        "If a check below cannot pass however the code is written — the command it runs",
+        "succeeds and the assertion still fails — do not keep repairing. Report it with",
+        "`AC_BROKEN: <check-id>` and explain the contradiction in `FAILURE_DETAIL`. That",
+        "ends the repair budget and sends the criterion back for repair in the Blueprint,",
+        "which is where a broken assertion has to be fixed.",
         "",
     ]
     exhausted = tuple(result for result in failed_checks if _resource_verdict(result))
@@ -2904,10 +2950,20 @@ def build_target(
             # Stop on the first such report rather than spending the rest of the budget.
             defective_ids: tuple[str, ...] = ()
             if status == "failed" and _is_repairable(error) and acceptance:
-                defective_ids = _defective_acceptance_claim(
-                    agent_report,
-                    tuple(check for check in acceptance if not check.passed),
-                )
+                unmet = tuple(check for check in acceptance if not check.passed)
+                # The ``AC_BROKEN:`` token is read straight from the agent's response and does
+                # not depend on ``RESULT: FAILED``. An agent that runs a criterion, sees the
+                # tool succeed, and concludes the assertion itself is wrong may well report
+                # SUCCESS — the token still has to stop the loop.
+                defective_ids = _ac_broken_claim(summary, unmet)
+                if not defective_ids:
+                    # Fallback for an agent that describes the defect without the token. The
+                    # scan stays confined to the declared failure fields: raw agent output
+                    # routinely contains claim vocabulary as ordinary content (a conformance
+                    # tally prints "invalid tests: ... failed").
+                    _, blockers = _parse_build_report(summary)
+                    prose = (agent_report or ("", ""))[:2] + (blockers,)
+                    defective_ids = _defective_acceptance_claim(prose, unmet)
             stop_reason = None
             if defective_ids:
                 stop_reason = "acceptance criterion reported defective"

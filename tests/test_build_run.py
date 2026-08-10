@@ -3072,6 +3072,91 @@ def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):
     assert result.steps[0].stop_reason == "deterministic acceptance score did not improve"
 
 
+def test_ac_broken_token_stops_the_loop_even_when_the_agent_reports_success(tmp_path):
+    # The motivating case: the code is correct and the criterion is wrong, so the agent has no
+    # failure of its own to report. Prose inference cannot be relied on to notice — the token is
+    # the contract, and it must stop the loop on its own.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = _defective_claim_runner(
+        "RESULT: SUCCESS\n"
+        "AC_BROKEN: foundation-file\n"
+        "FILES CHANGED:\n- foundation.txt\n\n"
+        "SUMMARY:\nThe command succeeds; the assertion contradicts its output.\n"
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0]
+    step = result.steps[0]
+    assert step.status == "failed"
+    assert step.stop_reason == "acceptance criterion reported defective"
+    assert step.calls_used == 1
+    assert "DATABASE.md" in step.failure_detail
+
+
+def test_a_defect_named_only_in_blockers_stops_the_loop(tmp_path):
+    # The agent's clearest statement often lands in BLOCKERS rather than FAILURE_DETAIL.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = _defective_claim_runner(
+        "RESULT: FAILURE\n"
+        "FAILURE_SUMMARY: acceptance did not pass\n"
+        "FAILURE_DETAIL: the command runs correctly.\n\n"
+        "FILES CHANGED:\n- foundation.txt\n\n"
+        "SUMMARY:\nDone.\n\n"
+        "BLOCKERS:\n- the foundation-file criterion is broken and always fails\n"
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0]
+    assert result.steps[0].stop_reason == "acceptance criterion reported defective"
+
+
+def test_ac_broken_claim_parsing():
+    from drydock.build_run import _ac_broken_claim
+
+    class _Check:
+        def __init__(self, check_id):
+            self.check_id = check_id
+
+    failed = (_Check("numeric-boolean-conformance"), _Check("date-time-conformance"))
+    assert _ac_broken_claim("AC_BROKEN: date-time-conformance", failed) == (
+        "date-time-conformance",
+    )
+    # Spelling variants an agent may reasonably emit.
+    assert _ac_broken_claim("ac broken: date-time-conformance", failed) == (
+        "date-time-conformance",
+    )
+    assert _ac_broken_claim("AC-BROKEN: `date-time-conformance`", failed) == (
+        "date-time-conformance",
+    )
+    # No recognizable id: the agent has concluded no repair can succeed, so every failing
+    # check is claimed rather than none.
+    assert _ac_broken_claim("AC_BROKEN: the conformance assertions", failed) == (
+        "numeric-boolean-conformance",
+        "date-time-conformance",
+    )
+    # A check that passed cannot be condemned, and no token means no claim.
+    assert _ac_broken_claim("AC_BROKEN: something-else", ()) == ()
+    assert _ac_broken_claim("RESULT: FAILED\nnothing to see", failed) == ()
+
+
 def test_defective_claim_helpers_require_both_a_name_and_a_defect_word():
     from drydock.build_run import _defective_acceptance_claim, _names_check, _normalize_words
 

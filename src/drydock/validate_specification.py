@@ -354,6 +354,7 @@ def validate_specification(
     from drydock.proof_integrity import (
         analyze_invocation,
         analyze_literals,
+        analyze_output_assertions,
         analyze_structure,
         analyze_swallowed_output,
     )
@@ -384,6 +385,15 @@ def validate_specification(
             for invocation in analyze_invocation(check.code):
                 f(section, f"{md_file.name} [{check.check_id}]: {invocation.message}")
                 snippet_defects += 1
+            # An assertion forbidding a word the command prints on success is false on correct
+            # code. Fail those; a redundant substring check beside an exit-status gate only
+            # risks the same defect, so it warns.
+            for output_defect in analyze_output_assertions(check.code):
+                if output_defect.fatal:
+                    f(section, f"{md_file.name} [{check.check_id}]: {output_defect.message}")
+                    snippet_defects += 1
+                else:
+                    w(section, f"{md_file.name} [{check.check_id}]: {output_defect.message}")
             # Swallowed diagnostics do not make a check wrong, only undiagnosable. Warn.
             for swallowed in analyze_swallowed_output(check.code):
                 w(section, f"{md_file.name} [{check.check_id}]: {swallowed.message}")
