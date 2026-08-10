@@ -95,7 +95,12 @@ from drydock.override import (
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
-from drydock.proof_integrity import analyze_invocation, analyze_literals, analyze_structure
+from drydock.proof_integrity import (
+    analyze_invocation,
+    analyze_literals,
+    analyze_output_assertions,
+    analyze_structure,
+)
 from drydock.source_roles import (
     SourceRole,
     StagedAsset,
@@ -905,6 +910,11 @@ def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...])
             lines.append(f"  - {check.source} [{check.check_id}]: {structural.message}")
         for invocation in analyze_invocation(check.code):
             lines.append(f"  - {check.source} [{check.check_id}]: {invocation.message}")
+        # An assertion forbidding a word the command prints on success is false on correct
+        # code. Only the fatal class blocks: a merely redundant substring check still passes.
+        for output_defect in analyze_output_assertions(check.code):
+            if output_defect.fatal:
+                lines.append(f"  - {check.source} [{check.check_id}]: {output_defect.message}")
     if not lines:
         return
     raise SpecificationError(

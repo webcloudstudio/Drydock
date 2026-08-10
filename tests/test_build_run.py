@@ -3221,6 +3221,41 @@ def test_malformed_invocation_blocks_the_build_before_the_agent_runs(tmp_path):
     assert runner.calls == []
 
 
+_TALLY_ASSERTION_SPEC = """# FEATURE: Conformance
+
+## Programmatic Acceptance
+
+### suite-conformance
+The conformance sections pass completely.
+
+```python
+import subprocess
+
+result = subprocess.run(["sh", "run_suite.sh"], capture_output=True, text=True)
+print(result.stdout)
+assert result.returncode == 0
+assert "failed" not in result.stdout.lower()
+```
+"""
+
+
+def test_tally_word_assertion_blocks_the_build_before_the_agent_runs(tmp_path):
+    # A runner prints "0 failed" on a clean run, so this criterion is false on correct code.
+    # Refuse for free rather than spending the repair budget proving it cannot pass.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_TALLY_ASSERTION_SPEC, encoding="utf-8")
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    message = str(exc.value)
+    assert "unsatisfiable Programmatic Acceptance" in message
+    assert "DATABASE.md [suite-conformance]" in message
+    assert "Gate on the exit status instead" in message
+    assert runner.calls == []
+
+
 def test_undeclared_runtime_prerequisite_blocks_without_repair_and_preserves_work(tmp_path):
     target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
