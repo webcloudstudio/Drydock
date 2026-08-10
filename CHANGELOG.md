@@ -10,6 +10,21 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: A story whose acceptance criteria were quarantined closes `closed/failed`, not
+  `closed/verified`. Quarantine excludes a criterion from grading so no repair call is spent on
+  something no implementation can satisfy, but the criterion was *removed*, not satisfied —
+  closing the story verified counted it toward `manifest.verified`, which release scoring gates
+  on, so a Blueprint defect could buy a release for a story nothing verified. The story now
+  carries a `UNVERIFIED: acceptance criterion defective: <ids>` finding naming the Blueprint as
+  the defect rather than the implementation, and the step result fails to match. `--ungate` does
+  not recognise the marker: it records an operator decision to release a real red, while this
+  one records a defect only a Blueprint repair can clear. `drydock uat` no longer runs its
+  refit stages after a degraded build — a refit over a terminal partial build measures nothing,
+  and its required steps could raise and rewrite the run as `failed`, destroying the degraded
+  verdict. The staged-asset invocation rules moved from `prompts/plan_create.md` to
+  `prompts/BLUEPRINTS_CONTRACT.md` so every prompt that authors or rewrites Programmatic
+  Acceptance carries them.
+
 - 2026-08-10: Three further classes of unsatisfiable acceptance criterion are caught
   statically, closing the defect family that failed the Toml UAT build on five consecutive
   runs. `proof_integrity.analyze_invocation` reports an `env=` dict literal carrying no

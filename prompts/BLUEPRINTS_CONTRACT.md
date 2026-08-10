@@ -258,6 +258,19 @@ project-acceptance criterion. Naming the suite file or asserting it is staged (`
 is staging, not testing: a stubbed or absent definition of done for an available suite is a defect,
 not an acceptable check.
 
+An assertion that invokes a staged asset obeys that asset's own documented interface. Read the
+asset before writing the call. Every environment variable it declares required is supplied, and it
+is supplied by extending the inherited environment — `env={**os.environ, "NAME": value}`. Never
+write `env={"NAME": value}`: that replaces the environment, leaving the child with no `PATH`, so
+nothing it invokes resolves and the assertion fails at every level of implementation quality. Never
+repair a staged asset's interface by editing the asset; it is restored before grading, so the edit
+is reported as tampering rather than honored.
+
+An assertion that feeds input to a program passes it through `subprocess` `input=` rather than a
+shell. When a shell is unavoidable, `printf '%s'` copies its argument verbatim: `\n` reaches the
+program as a backslash and a letter, not a newline, so the program is graded on input the author
+never wrote. Use `printf '%b'` or a real line break.
+
 `COMPASS.md` uses `## Compass`, `## Constraints`, and `## Guardrails` as its body sections.
 Success criteria belong in `SEA_TRIALS.md`; open questions in spike questionnaires. Do not add
 those sections to `COMPASS.md`.

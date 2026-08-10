@@ -894,3 +894,48 @@ def test_a_run_with_no_failures_still_passes(tmp_path: Path) -> None:
 
     assert results[0].status == "passed"
     assert results[0].degraded == ()
+
+
+def test_a_degraded_build_skips_refit_but_still_measures(tmp_path: Path) -> None:
+    """A refit re-specifies work against a build that completed. Over a terminal partial build
+    it measures nothing, and its required `import --update` / `refit` steps would raise and
+    rewrite the run as ``failed`` — destroying the degraded verdict."""
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=True)
+    runner, seen = _staged_runner(tmp_path, failing=("initial-build",))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status == "degraded"
+    assert not any("import-update" in label for label in seen)
+    assert not any("refit-update" in label for label in seen)
+    # The measurement the run exists to take still happened.
+    assert any("score-release" in label for label in seen)
+
+
+def test_a_clean_build_still_runs_its_refit_stage(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=True)
+    runner, seen = _staged_runner(tmp_path, failing=())
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status == "passed"
+    assert any("import-update" in label for label in seen)
+    assert any("refit-update" in label for label in seen)

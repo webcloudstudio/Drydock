@@ -787,7 +787,11 @@ def run_fixture(
             build_to_completion("initial")
             capture_status("after-initial-build")
 
-        if start <= stage_index("refit"):
+        # A refit re-specifies work against a build that completed. Running it over a terminal
+        # partial build measures nothing and costs a full LLM pass, and its own `import --update`
+        # and `refit` steps are required steps — a failure there would raise and rewrite the run
+        # as ``failed``, destroying the degraded verdict this stage exists to preserve.
+        if start <= stage_index("refit") and not degraded:
             for index, update in enumerate(fixture.updates, start=1):
                 shutil.copyfile(update, source_root / update.name)
                 execute(("import", fixture.target, "--update"), f"import-update-{index}")

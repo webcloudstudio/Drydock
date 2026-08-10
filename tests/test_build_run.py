@@ -2699,13 +2699,49 @@ def test_unsatisfiable_acceptance_is_quarantined_rather_than_graded(tmp_path):
     assert "DATABASE.md [escapes]" in text
 
 
-def test_a_quarantined_criterion_does_not_fail_the_build(tmp_path):
-    # The whole point: a Blueprint defect must not be reported as an implementation failure,
-    # and must not consume the repair budget on a criterion no implementation can satisfy.
-    log, runner = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
+def test_a_quarantined_criterion_does_not_consume_the_repair_budget(tmp_path):
+    # A Blueprint defect must not be answered by spending LLM calls on a criterion no
+    # implementation can satisfy, and must not refuse the build before any story is attempted.
+    _, runner = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
 
-    assert runner.calls, "the build must proceed rather than refuse on a Blueprint defect"
-    assert "result: FAILED" not in "\n".join(log)
+    # One call: the unit is attempted, and the defective criterion neither refuses the build
+    # before any work (the old behavior) nor drives a repair loop it can never satisfy. The
+    # build then stops on the failed story, as it does for any acceptance failure.
+    assert len(runner.calls) == 1
+
+
+def test_a_quarantined_story_does_not_close_verified(tmp_path):
+    """The criterion was removed, not satisfied. Closing the story verified would count it in
+    ``manifest.verified``, which release scoring gates on — buying a release with a criterion
+    nothing ever ran."""
+    from drydock.build_run import QUARANTINED_FINDING_PREFIX
+
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNSATISFIABLE_SPEC, encoding="utf-8")
+    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    plan = parse_build_plan(target_dir / "MANIFEST.md")
+    story = plan.by_id()["foundation"]
+    assert story.state == "closed/failed"
+    finding = str(story.fields.get("finding", ""))
+    assert finding.startswith(QUARANTINED_FINDING_PREFIX)
+    assert "escapes" in finding
+    assert "repair the assertion in the Blueprint specification" in finding
+
+
+def test_a_quarantined_story_fails_the_build_result(tmp_path):
+    # The step result has to agree with the Manifest the pass just wrote, so an unattended run
+    # records the shortfall instead of reading a verified story nothing verified.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNSATISFIABLE_SPEC, encoding="utf-8")
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    owner = next(step for step in result.steps if step.block_id == "foundation")
+    assert owner.status == "failed"
+    assert owner.state == "closed/failed"
+    assert "acceptance criteria defective" in (owner.error or "")
+    assert [entry.check_id for entry in owner.quarantined_acceptance] == ["escapes"]
 
 
 def test_a_hardcoded_conformance_tally_blocks_the_build(tmp_path):

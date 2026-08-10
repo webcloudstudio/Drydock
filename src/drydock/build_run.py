@@ -111,6 +111,21 @@ BUILD_FAILURE_HINT = (
 )
 
 UNGATED_FINDING_PREFIX = "UNVERIFIED: acceptance bypassed by --ungate"
+#: A story whose criteria could not be graded because they cannot pass by construction. It is
+#: deliberately not the ``--ungate`` prefix: that marker records an operator decision to release
+#: a real red, while this one records a Blueprint defect that no build decision can clear. The
+#: only repair is to fix the assertion, so ``--ungate`` does not recognise it.
+QUARANTINED_FINDING_PREFIX = "UNVERIFIED: acceptance criterion defective"
+
+
+def _quarantined_finding(entries: tuple[QuarantinedAcceptance, ...]) -> str:
+    """Name the excluded criteria and the one action that clears them."""
+    return (
+        f"{QUARANTINED_FINDING_PREFIX}: "
+        + ", ".join(entry.check_id for entry in entries)
+        + " — repair the assertion in the Blueprint specification; a rerun cannot clear it"
+    )
+
 
 PROMPT_NAME = "build"
 RunnerFn = Callable[..., object]
@@ -2321,6 +2336,7 @@ def build_target(
         checks, quarantined = _quarantine_unsatisfiable_acceptance(
             tuple(gathered_checks), sources_dir=resolved_build_dir / "sources"
         )
+        quarantined_by_block: dict[str, tuple[QuarantinedAcceptance, ...]] = {}
         if quarantined:
             _emit(
                 on_text,
@@ -2329,6 +2345,12 @@ def build_target(
             )
             for entry in quarantined:
                 _emit(on_text, f"  - {entry.rendered}")
+                owner = story_by_source_check.get((entry.source, entry.check_id))
+                if owner is not None:
+                    quarantined_by_block[owner.block_id] = (
+                        *quarantined_by_block.get(owner.block_id, ()),
+                        entry,
+                    )
         unauthorized = []
         authorized_missing = []
         requirement_evidence: list[str] = []
@@ -3172,6 +3194,7 @@ def build_target(
                 and owner.block_id == block.block_id
             )
             own_failed = tuple(check for check in own_checks if not check.passed)
+            own_quarantined = quarantined_by_block.get(block.block_id, ())
             if ac_attributable:
                 if own_failed:
                     block_state: str = "closed/failed"
@@ -3188,6 +3211,14 @@ def build_target(
             else:
                 block_state = state
                 block_finding = finding
+            if own_quarantined and block_state != "closed/failed":
+                # A story whose criteria were excluded as unsatisfiable has not been verified:
+                # its verification was removed, not satisfied. Letting it close verified would
+                # count toward ``manifest.verified``, which release scoring gates on, so the
+                # story would buy a release with a criterion nothing ever ran. The finding names
+                # the Blueprint as the defect rather than blaming the implementation.
+                block_state = "closed/failed"
+                block_finding = _quarantined_finding(own_quarantined)
             block_fields: dict[str, str | None] = {
                 "state": block_state,
                 "evidence": _rel(evidence_path, target_dir),
@@ -3329,25 +3360,39 @@ def build_target(
             owned_acceptance = tuple(
                 check for check in acceptance if check.check_id in owned_check_ids
             )
-            owned_quarantined = tuple(
-                entry
-                for entry in quarantined
-                if (owner := story_by_source_check.get((entry.source, entry.check_id))) is not None
-                and owner.block_id == block.block_id
-            )
+            owned_quarantined = quarantined_by_block.get(block.block_id, ())
+            # The step result has to agree with the Manifest the same pass just wrote. A story
+            # closed/failed on a defective criterion is a failed step, so the build exits
+            # nonzero and an unattended run records the shortfall instead of reporting a
+            # verified story nothing verified.
+            step_status = "failed" if owned_quarantined and status != "blocked" else status
+            step_state = "closed/failed" if step_status == "failed" and owned_quarantined else state
+            step_error = error
+            step_failure_detail = failure_detail
+            if owned_quarantined and not error:
+                step_error = "acceptance criteria defective: " + ", ".join(
+                    entry.check_id for entry in owned_quarantined
+                )
+                step_failure_detail = (
+                    "These criteria cannot pass by construction, so they were excluded from "
+                    "grading rather than failed against. The story is not verified: its "
+                    "verification was removed, not satisfied. Repair the assertion in the "
+                    "Blueprint specification, then rerun the build.\n"
+                    + "\n".join(f"  - {entry.rendered}" for entry in owned_quarantined)
+                )
             step_result = BuildStepResult(
                 block_id=block.block_id,
                 name=block.name,
                 block_type=block.block_type,
                 container_block_id=unit.block_id,
                 container_name=unit.name,
-                status=status,
-                state=state,
+                status=step_status,
+                state=step_state,
                 story_points=assembly.total_story_points,
                 execution_id=execution_id,
                 evidence_path=evidence_path,
-                error=error,
-                failure_detail=failure_detail,
+                error=step_error,
+                failure_detail=step_failure_detail,
                 written_files=changed_files,
                 pre_acceptance=pre_acceptance,
                 acceptance=acceptance,
