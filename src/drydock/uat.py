@@ -108,6 +108,10 @@ class UATResult:
     #: Stage this run was re-entered at, empty for a run executed from the beginning. A resumed
     #: run reuses prior state, so its receipt must not present itself as a clean lifecycle.
     resumed_from: str = ""
+    #: Project guardrails the release gate could not settle either way. The run passed — nothing
+    #: demonstrated a violation — but each names a prohibition a human must confirm by hand
+    #: before the build is released. Reported, never a failure.
+    attestations: tuple[str, ...] = ()
 
     def to_dict(self, base: Path | None = None) -> dict[str, object]:
         """Serialize the result, rewriting absolute paths relative to ``base`` when given."""
@@ -453,6 +457,24 @@ def _collect_evidence(
     ]
     (evidence_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
     return manifest_path
+
+
+def _release_attestations(target_dir: Path) -> tuple[str, ...]:
+    """Return the unproven guardrails the release gate handed back for manual verification.
+
+    Read from the Target's own score evidence rather than the console stream, so a resumed or
+    re-reported run recovers the same list. A run that never reached ``score release``, or an
+    older record predating the field, simply has none.
+    """
+    record_path = target_dir / "evidence" / "score-release.json"
+    try:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ()
+    if not isinstance(payload, dict):
+        return ()
+    items = payload.get("attestations")
+    return tuple(str(item) for item in items) if isinstance(items, list) else ()
 
 
 def _usage_totals(records_path: Path) -> dict[str, int]:
@@ -823,6 +845,7 @@ def run_fixture(
         status = "degraded"
         error = "; ".join(degraded)
 
+    attestations = _release_attestations(workspace / "targets" / fixture.target)
     _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
     environment = _environment(model, provider, effort)
@@ -844,6 +867,7 @@ def run_fixture(
         environment=environment,
         resumed_from=start_stage if start else "",
         degraded=tuple(degraded),
+        attestations=attestations,
     )
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"

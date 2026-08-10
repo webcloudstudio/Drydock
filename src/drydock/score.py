@@ -368,17 +368,13 @@ def score_release(
     unknown_refs = sorted((manifest_refs | proof_refs) - known_trial_ids)
     if unknown_refs:
         blockers.append("Unknown Sea Trial references: " + ", ".join(unknown_refs))
-    # A required guardrail verified by proof is traceable work like any other: something must
-    # declare ``Sea Trials: <id>``. Without that link the guardrail can only ever be unproven,
-    # so the gap is reported here as missing coverage rather than surfacing as a bare breach.
+    # Guardrails are exempt: no story builds a prohibition, and nothing is obliged to declare
+    # ``Sea Trials: <id>`` for one. A guardrail no proof reaches is reported UNPROVEN and carried
+    # as a manual-verification attestation, not as a coverage failure.
     traceable_required = {
         trial.criterion_id
         for trial in document.trials
-        if trial.required
-        and (
-            trial.trial_type in {"technical", "behavioral"}
-            or (trial.trial_type == "guardrail" and trial.verification == "proof")
-        )
+        if trial.required and trial.trial_type in {"technical", "behavioral"}
     }
     uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
     if uncovered:
@@ -515,16 +511,19 @@ def score_release(
     low_dimensions = [name for name, value in dimensions.items() if value < 60]
     if low_dimensions:
         blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
+    attestations: list[str] = []
     for item in criteria:
         trial = trial_by_id[item.criterion_id]
         if trial.trial_type == "guardrail":
-            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE blocks too —
-            # but it is reported as UNPROVEN, because no evidence showed the prohibition violated.
+            # A guardrail is absolute, and Required does not apply. A breach is a demonstrated
+            # failure and blocks the release. An unproven guardrail is not: no evidence showed
+            # the prohibition violated, and many prohibitions worth writing admit no automated
+            # proof at all. It qualifies the release with an attestation a human must settle.
             if item.verdict == "FAIL":
                 blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
             elif item.verdict != "PASS":
                 detail = item.evidence[0] if item.evidence else "no evidence supplied"
-                blockers.append(
+                attestations.append(
                     f"Guardrail {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
                 )
             continue
@@ -545,14 +544,16 @@ def score_release(
     evidence_path = target_dir / "evidence" / "score-release.json"
     scorecard_path = target_dir / "SCORECARD.md"
     record = {
-        "schema_version": 2,
+        "schema_version": 3,
         "recorded_at": _now(),
         "target": target,
         "complete": complete,
+        "qualified": complete and bool(attestations),
         "technical_score": score,
         "dimensions": dimensions,
         "criteria": [asdict(item) for item in criteria],
         "blockers": blockers,
+        "attestations": attestations,
         "warnings": warnings,
         "improvements": improvements,
         "identities": {
@@ -580,6 +581,7 @@ def score_release(
             warnings=tuple(warnings),
             improvements=improvements,
             code_identity=code_identity,
+            attestations=tuple(attestations),
         ),
         encoding="utf-8",
         newline="\n",
@@ -596,4 +598,5 @@ def score_release(
         scorecard_path,
         evidence_path,
         result.execution_id,
+        tuple(attestations),
     )

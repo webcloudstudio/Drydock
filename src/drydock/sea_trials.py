@@ -210,12 +210,18 @@ state; the notation records the writing discipline and changes no verdict.
 
 A guardrail is a permanent *never* — a thing the project may not do regardless of how well it
 scores. Guardrails are reported as `HELD`, `BREACHED`, or `UNPROVEN`. A breach fails the completion
-gate outright, independent of every score. A guardrail whose evidence is missing is `UNPROVEN`
-and also fails the gate: an unproven *never* is not held. A guardrail verified by proof must be
-named by a Programmatic Acceptance `Sea Trials:` reference, or it is reported as lacking
-implementation/proof coverage.
+gate outright, independent of every score.
 
-Guardrails are exempt from `accepts:` coverage. No story builds a prohibition.
+`UNPROVEN` means no evidence settled the prohibition either way. It does not fail the gate. Nothing
+demonstrated a violation, and many prohibitions worth writing down admit no automated proof at all.
+The gate instead completes as `COMPLETE — MANUAL VERIFICATION REQUIRED` and names every unproven
+guardrail as a check a human owes before release. Binding a proof to a guardrail with a Programmatic
+Acceptance `Sea Trials:` reference settles it mechanically and removes the manual check; it is not
+required.
+
+Guardrails are exempt from `accepts:` coverage and from proof-reference coverage. No story builds a
+prohibition. They carry no weight in the technical score either: a project is not marked down for
+writing one.
 
 """
 

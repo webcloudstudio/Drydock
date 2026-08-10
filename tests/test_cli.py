@@ -295,6 +295,49 @@ class TestHelpAndVersion:
         assert rc == 2
         assert "ac|build|release" in err
 
+    def test_score_release_qualifies_an_unproven_guardrail_instead_of_failing(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """An unproven prohibition exits 0 and names the manual check it needs.
+
+        The release completed: nothing demonstrated a breach. The operator is told exactly what
+        a human still owes, in a line that reads differently from a blocker.
+        """
+        from drydock.build_score import BuildScoreResult
+        from drydock.cli import cmd_score_release
+
+        unproven = (
+            "Guardrail st-003 is UNPROVEN (no code-bound proof references this criterion): "
+            "The application shall never store a book whose title or author is empty."
+        )
+        result = BuildScoreResult(
+            target="Demo",
+            score=95,
+            dimensions={"build_quality": 100},
+            criteria=(),
+            blockers=(),
+            warnings=(),
+            improvements=(),
+            complete=True,
+            scorecard_path=tmp_path / "SCORECARD.md",
+            evidence_path=tmp_path / "score-release.json",
+            execution_id="exec-1",
+            attestations=(unproven,),
+        )
+        monkeypatch.setattr("drydock.config.require_target_dir", lambda target: tmp_path)
+        monkeypatch.setattr("drydock.score.score_release", lambda *a, **k: result)
+        monkeypatch.setattr(
+            "drydock.quarterdeck_state.refresh_commanders_chair", lambda target_dir: None
+        )
+
+        rc = cmd_score_release("Demo")
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert "Release gate: Demo  COMPLETE — MANUAL VERIFICATION REQUIRED" in out
+        assert f"  ATTESTATION REQUIRED: {unproven}" in out
+        assert "BLOCKER" not in out
+
     def test_parse_score_ac_args_accepts_step_flag(self):
         from drydock.cli import _parse_score_ac_args
 
@@ -2169,6 +2212,7 @@ class TestBuildScore:
                 scorecard_path=target / "SCORECARD.md",
                 evidence_path=target / "evidence" / "build-score.json",
                 blockers=("Required Sea Trial st-one is FAIL",),
+                attestations=(),
                 exit_code=lambda: 1,
             ),
         )
@@ -2180,6 +2224,7 @@ class TestBuildScore:
         assert "build_quality   40   BELOW GATE" in out
         assert "Completion gate: INCOMPLETE" in out
         assert "Required Sea Trial st-one is FAIL" in out
+        assert "ATTESTATION REQUIRED" not in out
 
 
 class TestRefit:

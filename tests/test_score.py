@@ -318,8 +318,12 @@ def test_release_score_blocks_on_dirty_worktree(tmp_path):
     assert any("uncommitted changes" in blocker for blocker in result.blockers)
 
 
-def _add_proof_guardrail(target_dir: Path, *, linked: bool) -> None:
-    """Append a required proof-verified guardrail, optionally linked to a proof."""
+def _add_proof_guardrail(target_dir: Path, *, linked: bool, breached: bool = False) -> None:
+    """Append a required proof-verified guardrail, optionally linked to a proof.
+
+    ``breached`` links a proof that fails, which is the only way a guardrail reaches BREACHED:
+    a linked proof settles the verdict and the model's opinion is discarded.
+    """
     sea = target_dir / "SEA_TRIALS.md"
     sea.write_text(
         sea.read_text(encoding="utf-8")
@@ -334,17 +338,22 @@ Pattern: unwanted
         encoding="utf-8",
     )
     if linked:
+        assertion = (
+            'assert Path("side-effect.txt").exists()'
+            if breached
+            else 'assert not Path("side-effect.txt").exists()'
+        )
         features = target_dir / "blueprint" / "FEATURES.md"
         features.write_text(
             features.read_text(encoding="utf-8")
-            + """
+            + f"""
 ### no-side-effects
 Sea Trials: st-never
 Conversion writes nothing.
 
 ```python
 from pathlib import Path
-assert not Path("side-effect.txt").exists()
+{assertion}
 ```
 """,
             encoding="utf-8",
@@ -368,11 +377,12 @@ def _guardrail_runner(*, guardrail_verdict: str = "PASS"):
     return lambda *args, **kwargs: FakeRun(json.dumps(payload))
 
 
-def test_unlinked_proof_guardrail_reports_coverage_gap_not_a_breach(tmp_path):
-    """A proof-verified guardrail that no proof references is a traceability gap.
+def test_unlinked_proof_guardrail_qualifies_the_release_rather_than_failing_it(tmp_path):
+    """A guardrail no proof references is unproven, and the specification allows that.
 
-    The model cannot rescue it by asserting PASS, and the report names the real defect
-    instead of claiming the prohibition was violated.
+    Guardrails require no story or proof reference, so the missing link is not a coverage
+    failure. Nothing showed the prohibition violated either, so the release completes and the
+    criterion is handed to a human. The model cannot rescue it by asserting PASS.
     """
     target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
     _add_proof_guardrail(target_dir, linked=False)
@@ -380,10 +390,27 @@ def test_unlinked_proof_guardrail_reports_coverage_gap_not_a_breach(tmp_path):
     result = score_release("Demo", target_dir, runner=_guardrail_runner())
 
     blockers = "\n".join(result.blockers)
-    assert "Required Sea Trials lack implementation/proof coverage: st-never" in blockers
-    assert "Guardrail st-never is UNPROVEN" in blockers
-    assert "BREACHED" not in blockers
+    assert "lack implementation/proof coverage" not in blockers
+    assert "st-never" not in blockers
+    attestations = "\n".join(result.attestations)
+    assert "Guardrail st-never is UNPROVEN" in attestations
+    assert "BREACHED" not in attestations
+    assert result.complete is True
+    assert result.qualified is True
+    assert result.exit_code() == 0
+
+
+def test_breached_guardrail_still_fails_the_release(tmp_path):
+    """Softening UNPROVEN must not soften a demonstrated breach."""
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    _add_proof_guardrail(target_dir, linked=True, breached=True)
+
+    result = score_release("Demo", target_dir, runner=_guardrail_runner())
+
     assert result.complete is False
+    assert result.exit_code() == 1
+    assert "Guardrail st-never is BREACHED" in "\n".join(result.blockers)
+    assert result.attestations == ()
 
 
 def test_linked_proof_guardrail_holds(tmp_path):

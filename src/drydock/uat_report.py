@@ -683,6 +683,19 @@ def _render_case_markdown(result: dict) -> str:
         lines.append("- Degraded: " + "; ".join(str(item) for item in result["degraded"] or ()))
     elif result.get("error"):
         lines.append(f"- Failure: {result['error']}")
+    attestations = _attestations(result)
+    if attestations:
+        # The run passed. These are prohibitions the release gate could not settle either way,
+        # so they are surfaced as work a human owes — not as a shortfall of the run.
+        lines += [
+            "",
+            "## Manual verification required",
+            "",
+            "The release gate completed. It could not settle the following project guardrails "
+            "from evidence, so each needs a manual check before release.",
+            "",
+        ]
+        lines += [f"- {item}" for item in attestations]
     lines += [
         "",
         "## Commands",
@@ -716,6 +729,12 @@ def _render_case_markdown(result: dict) -> str:
 _STATUS_TAGS = {"passed": "pass", "degraded": "degraded"}
 
 
+def _attestations(result: dict) -> tuple[str, ...]:
+    """Unproven project guardrails this run handed back for manual verification."""
+    items = result.get("attestations")
+    return tuple(str(item) for item in items) if isinstance(items, list) else ()
+
+
 def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup]) -> str:
     target = str(result.get("target") or case_root.name)
     fixture = str(result.get("fixture") or case_root.name)
@@ -725,6 +744,9 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
     passed = status == "passed"
 
     resumed = str(result.get("resumed_from") or "")
+    # Unproven guardrails do not gate the run: nothing demonstrated a violation. They are named
+    # because a prohibition the evidence could not settle still needs a human to settle it.
+    attestations = _attestations(result)
     detail = ""
     if status == "degraded":
         # Not a failure: the lifecycle ran end to end and the scores below describe the
@@ -747,6 +769,14 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
         detail = (
             f"{len(commands)} lifecycle commands ran; every required command exited 0. "
             "Each row below links to its own captured output."
+        )
+    if passed and attestations:
+        count = len(attestations)
+        noun = "guardrail" if count == 1 else "guardrails"
+        detail += (
+            f" {count} project {noun} could not be settled from evidence and "
+            f"{'needs' if count == 1 else 'need'} manual verification before release; "
+            "see Manual verification required."
         )
     verdict = f"{fixture}: {status.upper()}"
 
@@ -852,6 +882,16 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
         else ""
     )
 
+    attestations_block = (
+        "<h2>Manual verification required</h2>"
+        '<p class="note">The release gate completed. It could not settle the following project '
+        "guardrails from evidence, so each needs a manual check before release.</p><ul>"
+        + "".join(f"<li>{html.escape(item)}</li>" for item in attestations)
+        + "</ul>"
+        if attestations
+        else ""
+    )
+
     steps_panel = "".join([
         "<h2>Lifecycle commands</h2>",
         '<p class="note">Each Drydock command executed in order, with its recorded exit code '
@@ -860,6 +900,7 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
         "indicator on its own.</p>",
         commands_table,
         scores_block,
+        attestations_block,
     ])
     llm_panel = (
         "".join([

@@ -270,6 +270,98 @@ def test_run_uat_builds_initial_and_updated_sources_and_keeps_scores_advisory(
     assert (case_root / "index.html").is_file()
 
 
+def test_run_uat_carries_unproven_guardrails_into_the_run_record(tmp_path: Path) -> None:
+    """A passing run still reports the prohibitions a human must settle by hand.
+
+    The list is harvested from the Target's own score evidence rather than the console, so
+    `--report` reproduces it for a run it did not execute.
+    """
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    unproven = (
+        "Guardrail st-003 is UNPROVEN (no code-bound proof references this criterion): "
+        "The application shall never store a book whose title or author is empty."
+    )
+
+    ready_calls = 0
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        nonlocal ready_calls
+        del env
+        parts = tuple(argv[3:])
+        returncode = 0
+        # The build stops when nothing is left buildable, which `--ready` reports by exiting 1.
+        if parts[:2] == ("status", "ReadingList") and "--ready" in parts:
+            ready_calls += 1
+            returncode = 0 if ready_calls == 1 else 1
+        if parts[:3] == ("score", "release", "ReadingList"):
+            evidence = Path(cwd) / "targets" / "ReadingList" / "evidence"
+            evidence.mkdir(parents=True, exist_ok=True)
+            (evidence / "score-release.json").write_text(
+                json.dumps({"complete": True, "qualified": True, "attestations": [unproven]}),
+                encoding="utf-8",
+            )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    run_id, results = run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    result = results[0]
+    assert result.status == "passed"
+    assert result.attestations == (unproven,)
+    case_root = fixtures_root / "ReadingList" / "runs" / run_id
+    record = json.loads((case_root / "result.json").read_text(encoding="utf-8"))
+    assert record["attestations"] == [unproven]
+    assert "## Manual verification required" in (case_root / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_run_uat_records_no_attestations_when_the_gate_settled_everything(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    ready_calls = 0
+
+    def fake_runner(argv, cwd, env, output_dir, label):
+        nonlocal ready_calls
+        del env
+        parts = tuple(argv[3:])
+        returncode = 0
+        if parts[:2] == ("status", "ReadingList") and "--ready" in parts:
+            ready_calls += 1
+            returncode = 0 if ready_calls == 1 else 1
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        return CommandResult(tuple(argv), returncode, 10, str(stdout), str(stderr), label, str(cwd))
+
+    _, results = run_uat(
+        tmp_path,
+        selected=None,
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=fake_runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].attestations == ()
+
+
 def test_required_pipeline_failure_stops_fixture_and_writes_result(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)

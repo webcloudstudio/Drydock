@@ -16,6 +16,7 @@ def _case(
     status: str = "passed",
     failing: bool = False,
     degraded: tuple[str, ...] = (),
+    attestations: tuple[str, ...] = (),
 ) -> Path:
     """Write a minimal but complete UAT run directory shaped like a real kit run."""
     case = kit_root / "runs" / run_id
@@ -53,6 +54,7 @@ def _case(
             "evidence_dir": str(case / "evidence"),
             "error": "commonmark: build exited 1" if failing else "",
             "degraded": list(degraded),
+            "attestations": list(attestations),
             "score_exit_codes": {"acceptance": 0},
             "usage": {"calls": 2, "input_tokens": 10, "cached_input_tokens": 4, "output_tokens": 3},
             "environment": {"provider": "codex", "model": "test-model"},
@@ -372,6 +374,45 @@ def test_a_degraded_run_is_reported_as_neither_a_pass_nor_a_failure(tmp_path: Pa
     assert "Every later stage ran against the work the build produced." in page
     assert "Failure:" not in page
     assert "- Degraded: initial-build-1 exited 1; test exited 1" in readme
+
+
+def test_a_passing_run_names_the_guardrails_a_human_still_owes(tmp_path: Path) -> None:
+    """An unproven guardrail qualifies the report; it does not reject the run.
+
+    Nothing demonstrated a violation, so the verdict stamp stays Approved. The criterion is
+    still named, because a prohibition the evidence could not settle needs a person to settle it.
+    """
+    kit = tmp_path / "ReadingList"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    unproven = (
+        "Guardrail st-003 is UNPROVEN (no code-bound proof references this criterion): "
+        "The application shall never store a book whose title or author is empty."
+    )
+    case = _case(kit, attestations=(unproven,))
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    readme = (case / "README.md").read_text(encoding="utf-8")
+
+    assert "Manual verification required" in page
+    assert "1 project guardrail could not be settled from evidence" in page
+    assert "st-003 is UNPROVEN" in page
+    assert "Approved" in page
+    assert "Rejected" not in page
+    assert "## Manual verification required" in readme
+    assert f"- {unproven}" in readme
+
+
+def test_a_fully_proven_run_reports_nothing_to_verify_by_hand(tmp_path: Path) -> None:
+    kit = tmp_path / "ReadingList"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    case = _case(kit)
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "Manual verification required" not in page
+    assert "Manual verification required" not in (case / "README.md").read_text(encoding="utf-8")
 
 
 def test_the_kit_index_tags_a_degraded_run_distinctly(tmp_path: Path) -> None:

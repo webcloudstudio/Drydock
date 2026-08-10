@@ -224,13 +224,17 @@ def test_breached_guardrail_blocks_completion(tmp_path):
     assert result.complete is False
     assert result.exit_code() == 1
     assert "Guardrail st-privacy is BREACHED" in "\n".join(result.blockers)
+    # A breach is demonstrated failure, not an open question: it never becomes a manual check.
+    assert result.attestations == ()
+    assert result.qualified is False
     assert "| absolute | BREACHED |" in (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
 
 
-def test_guardrail_without_evidence_is_unproven_and_blocks(tmp_path):
-    """An unproven never is not held: missing evidence fails the gate rather than passing it.
+def test_guardrail_without_evidence_is_unproven_and_qualifies_the_gate(tmp_path):
+    """An unproven never is not a breach: nothing showed the prohibition violated.
 
-    It is reported as UNPROVEN, not BREACHED — nothing showed the prohibition violated.
+    Missing evidence is a gap in proof coverage, and many prohibitions worth writing admit no
+    automated proof at all. The gate completes and hands the criterion to a human instead.
     """
     target_dir, _ = _target(tmp_path, guardrail=True, guardrail_evidence=False)
 
@@ -238,11 +242,50 @@ def test_guardrail_without_evidence_is_unproven_and_blocks(tmp_path):
 
     verdicts = {item.criterion_id: item.verdict for item in result.criteria}
     assert verdicts["st-privacy"] == "INCONCLUSIVE"
-    assert result.complete is False
-    blockers = "\n".join(result.blockers)
-    assert "Guardrail st-privacy is UNPROVEN" in blockers
-    assert "BREACHED" not in blockers
-    assert "| absolute | UNPROVEN |" in (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert result.complete is True
+    assert result.qualified is True
+    assert result.exit_code() == 0
+    assert not any("st-privacy" in blocker for blocker in result.blockers)
+    attestations = "\n".join(result.attestations)
+    assert "Guardrail st-privacy is UNPROVEN" in attestations
+    assert "BREACHED" not in attestations
+    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert "| absolute | UNPROVEN |" in scorecard
+    assert "- Completion gate: COMPLETE — MANUAL VERIFICATION REQUIRED" in scorecard
+    assert "## Manual verification required" in scorecard
+    assert (
+        "Guardrail st-privacy is UNPROVEN" in scorecard.split("## Manual verification required")[1]
+    )
+
+
+def test_a_fully_proven_gate_records_no_manual_verification(tmp_path):
+    target_dir, _ = _target(tmp_path, guardrail=True)
+
+    result = score_target("Demo", target_dir, runner=_runner(guardrail_verdict="PASS"))
+
+    assert result.qualified is False
+    assert result.attestations == ()
+    scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
+    assert "- Completion gate: COMPLETE\n" in scorecard
+    assert "## Manual verification required\n\n- None." in scorecard
+
+
+def test_a_guardrail_does_not_move_the_coverage_score(tmp_path):
+    """Writing a prohibition down must not cost a project points.
+
+    A guardrail is judged HELD, BREACHED, or UNPROVEN, not scored, so it is excluded from the
+    share of required assertions that discounts acceptance coverage.
+    """
+    without, _ = _target(tmp_path / "plain")
+    with_guardrail, _ = _target(tmp_path / "guarded", guardrail=True, guardrail_evidence=False)
+
+    plain = score_target("Demo", without, runner=_runner())
+    guarded = score_target("Demo", with_guardrail, runner=_runner(guardrail_verdict="PASS"))
+
+    assert (
+        guarded.dimensions["acceptance_criteria_coverage"]
+        == plain.dimensions["acceptance_criteria_coverage"]
+    )
 
 
 def test_required_assertions_judged_only_by_the_model_lose_coverage_score(tmp_path):

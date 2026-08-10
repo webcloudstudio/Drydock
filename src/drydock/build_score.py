@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,15 +47,24 @@ def _coverage_penalty(
 ) -> int:
     """Discount acceptance coverage by the share of required assertions judged only by the model.
 
-    A required technical, behavioral, or guardrail criterion is expected to be provable, so a
-    contract resting on model opinion cannot score as one resting on proof or measurement.
-    Qualitative and outcome criteria are exempt: judgment is their only honest method.
+    A required technical or behavioral criterion is expected to be provable, so a contract
+    resting on model opinion cannot score as one resting on proof or measurement. Qualitative
+    and outcome criteria are exempt: judgment is their only honest method.
+
+    Guardrails are exempt too, and for a different reason. A guardrail is a prohibition judged
+    HELD, BREACHED, or UNPROVEN, not a quality dimension; scoring one that no proof reaches
+    would charge a project for writing the prohibition down. An unproven guardrail is carried
+    as a manual-verification attestation instead, where a human can settle it.
 
     ``deterministic_ids`` names the criteria that carry genuine deterministic backing — a
     passing measurement contract or a proof that survives integrity analysis. A criterion whose
     only proof is vacuous is not in the set, so it is scored as if judged by the model.
     """
-    graded = [trial for trial in trials if trial.required and trial.trial_type in ASSERTION_TYPES]
+    graded = [
+        trial
+        for trial in trials
+        if trial.required and trial.trial_type in ASSERTION_TYPES - {"guardrail"}
+    ]
     if not graded:
         return value
     deterministic = sum(1 for trial in graded if trial.criterion_id in deterministic_ids)
@@ -104,6 +113,16 @@ class BuildScoreResult:
     scorecard_path: Path
     evidence_path: Path
     execution_id: str
+    #: Prohibitions no evidence settled either way. They do not block the gate — an unproven
+    #: guardrail is a gap in proof coverage, not a demonstrated failure, and for many
+    #: prohibitions no automated proof can honestly exist. Each names a check a human owes
+    #: before release.
+    attestations: tuple[str, ...] = ()
+
+    @property
+    def qualified(self) -> bool:
+        """The gate completed but owes manual verification of at least one prohibition."""
+        return self.complete and bool(self.attestations)
 
     def exit_code(self) -> int:
         return 0 if self.complete else 1
@@ -349,6 +368,21 @@ def _parse_json(text: str) -> dict:
     return payload
 
 
+#: Gate label for a run that completed but owes manual verification of an unproven prohibition.
+QUALIFIED_GATE = "COMPLETE — MANUAL VERIFICATION REQUIRED"
+
+
+def gate_label(complete: bool, attestations: Sequence[str] = ()) -> str:
+    """Render the three-state completion gate.
+
+    A gate is COMPLETE when nothing is outstanding, INCOMPLETE when a blocker stands, and
+    qualified when the only thing outstanding is a prohibition a human must confirm.
+    """
+    if not complete:
+        return "INCOMPLETE"
+    return QUALIFIED_GATE if attestations else "COMPLETE"
+
+
 def _render_scorecard(
     *,
     target: str,
@@ -361,11 +395,12 @@ def _render_scorecard(
     warnings: tuple[str, ...],
     improvements: tuple[str, ...],
     code_identity: str,
+    attestations: tuple[str, ...] = (),
 ) -> str:
     lines = [
         f"# Build Scorecard: {target}",
         "",
-        f"- Completion gate: {'COMPLETE' if complete else 'INCOMPLETE'}",
+        f"- Completion gate: {gate_label(complete, attestations)}",
         f"- Technical score: {score}/100",
         f"- Code identity: {code_identity or '-'}",
         "",
@@ -390,8 +425,9 @@ def _render_scorecard(
         evidence = "; ".join(result.evidence) or result.rationale
         guardrail = trial.trial_type == "guardrail"
         # A guardrail is absolute: it is held, breached, or unproven, and Required does not
-        # apply to it. UNPROVEN blocks release exactly as BREACHED does; it reports honestly
-        # that no evidence settled the prohibition either way.
+        # apply to it. BREACHED blocks the gate. UNPROVEN does not — it reports honestly that no
+        # evidence settled the prohibition either way, and is carried as an attestation a human
+        # owes rather than as a failure the build did not demonstrate.
         verdict = result.verdict
         if guardrail:
             verdict = {"PASS": "HELD", "FAIL": "BREACHED"}.get(result.verdict, "UNPROVEN")
@@ -402,6 +438,8 @@ def _render_scorecard(
         )
     lines.extend(["", "## Completion blockers", ""])
     lines.extend(f"- {item}" for item in blockers or ("None.",))
+    lines.extend(["", "## Manual verification required", ""])
+    lines.extend(f"- {item}" for item in attestations or ("None.",))
     lines.extend(["", "## Advisory warnings", ""])
     lines.extend(f"- {item}" for item in warnings or ("None.",))
     lines.extend(["", "## Ranked improvements", ""])
@@ -634,16 +672,19 @@ def score_target(
     low_dimensions = [name for name, value in dimensions.items() if value < 60]
     if low_dimensions:
         blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
+    attestations: list[str] = []
     for item in criteria:
         trial = trial_by_id[item.criterion_id]
         if trial.trial_type == "guardrail":
-            # A guardrail is absolute. An unproven never is not held, so INCONCLUSIVE blocks
-            # too — reported as UNPROVEN — and Required does not apply.
+            # A guardrail is absolute, and Required does not apply. A breach is a demonstrated
+            # failure and blocks. An unproven guardrail is not: nothing showed the prohibition
+            # violated, and no automated proof exists for many prohibitions worth writing. It
+            # is reported as UNPROVEN and handed to a human as an attestation.
             if item.verdict == "FAIL":
                 blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
             elif item.verdict != "PASS":
                 detail = item.evidence[0] if item.evidence else "no evidence supplied"
-                blockers.append(
+                attestations.append(
                     f"Guardrail {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
                 )
             continue
@@ -664,14 +705,16 @@ def score_target(
     evidence_path = target_dir / "evidence" / "build-score.json"
     scorecard_path = target_dir / "SCORECARD.md"
     record = {
-        "schema_version": 2,
+        "schema_version": 3,
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "target": target,
         "complete": complete,
+        "qualified": complete and bool(attestations),
         "technical_score": score,
         "dimensions": dimensions,
         "criteria": [asdict(item) for item in criteria],
         "blockers": blockers,
+        "attestations": attestations,
         "warnings": warnings,
         "improvements": improvements,
         "identities": {
@@ -699,6 +742,7 @@ def score_target(
             warnings=tuple(warnings),
             improvements=improvements,
             code_identity=code_identity,
+            attestations=tuple(attestations),
         ),
         encoding="utf-8",
         newline="\n",
@@ -715,4 +759,5 @@ def score_target(
         scorecard_path,
         evidence_path,
         result.execution_id,
+        tuple(attestations),
     )

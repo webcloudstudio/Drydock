@@ -1975,7 +1975,7 @@ def _reviewable_build_steps(target_dir: Path) -> list[tuple[str, str]]:
 
 
 def cmd_build_score(args: argparse.Namespace) -> int:
-    from drydock.build_score import score_target
+    from drydock.build_score import gate_label, score_target
     from drydock.config import (
         get_llm_provider,
         get_model,
@@ -1995,11 +1995,13 @@ def cmd_build_score(args: argparse.Namespace) -> int:
     print()
     print(f"Build score: {result.score}/100")
     _print_dimensions(result.dimensions)
-    print(f"Completion gate: {'COMPLETE' if result.complete else 'INCOMPLETE'}")
+    print(f"Completion gate: {gate_label(result.complete, result.attestations)}")
     print(f"Scorecard: {result.scorecard_path}")
     print(f"Evidence: {result.evidence_path}")
     for blocker in result.blockers:
         print(f"  BLOCKER: {blocker}")
+    for attestation in result.attestations:
+        print(f"  ATTESTATION REQUIRED: {attestation}")
     return result.exit_code()
 
 
@@ -2210,6 +2212,7 @@ def cmd_score_build(target: str) -> int:
 
 
 def cmd_score_release(target: str) -> int:
+    from drydock.build_score import gate_label
     from drydock.config import (
         get_llm_provider,
         get_model,
@@ -2232,11 +2235,13 @@ def cmd_score_release(target: str) -> int:
     print()
     print(f"Release score: {result.score}/100")
     _print_dimensions(result.dimensions)
-    print(f"Release gate: {target}  {'COMPLETE' if result.complete else 'INCOMPLETE'}")
+    print(f"Release gate: {target}  {gate_label(result.complete, result.attestations)}")
     print(f"Scorecard: {result.scorecard_path}")
     print(f"Evidence: {result.evidence_path}")
     for blocker in result.blockers:
         print(f"  BLOCKER: {blocker}")
+    for attestation in result.attestations:
+        print(f"  ATTESTATION REQUIRED: {attestation}")
     return result.exit_code()
 
 

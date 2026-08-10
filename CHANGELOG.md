@@ -10,6 +10,25 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: An unproven project guardrail qualifies a release instead of failing it.
+  `drydock score release` and `drydock build score` previously blocked completion on a guardrail
+  whose verdict was `UNPROVEN`, conflating "evidence showed the prohibition violated" with
+  "no evidence settled it either way". Only `BREACHED` blocks now. An unproven guardrail is
+  reported as an attestation — a named check a human owes before release — and the gate reports
+  a third state, `COMPLETE — MANUAL VERIFICATION REQUIRED`, exiting 0. Both scorers emit a new
+  `attestations` list and `qualified` flag in `evidence/score-release.json` and
+  `evidence/build-score.json` (`schema_version` 2 → 3), `SCORECARD.md` gains a
+  `## Manual verification required` section, and the CLI prints `ATTESTATION REQUIRED:` lines
+  distinct from `BLOCKER:`. `drydock uat` harvests the list from the Target's score evidence into
+  `result.json` and renders it in the run `README.md` and `index.html`; run status is unchanged,
+  because an unproven prohibition was never a failure of the run. Related: `score release` no
+  longer counts a proof-verified guardrail toward required implementation/proof coverage, which
+  restores the specification's rule that guardrails require no story or proof reference, and
+  guardrails no longer influence `acceptance_criteria_coverage` — a project is not marked down
+  for writing a prohibition down. The motivating case was a ReadingList UAT run that built and
+  tested clean, passed 27 of 27 acceptance criteria, and was failed at the release gate solely
+  because no acceptance check declared `Sea Trials: st-003`.
+
 - 2026-08-10: A story whose acceptance criteria were quarantined closes `closed/failed`, not
   `closed/verified`. Quarantine excludes a criterion from grading so no repair call is spent on
   something no implementation can satisfy, but the criterion was *removed*, not satisfied —
