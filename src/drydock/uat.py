@@ -19,7 +19,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import IO
 
-from drydock import technology_stack
+from drydock import sea_trials, technology_stack
 from drydock.build_report import build_score_report
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
@@ -70,6 +70,12 @@ class UATFixture:
     #: that declares its stack removes the language choice from the model; one that does
     #: not lets ``analyze`` propose it as usual.
     stack: Path | None = None
+    #: Optional frozen ``SEA_TRIALS.md`` seeded into the Target after ``init``. Without it the
+    #: model authors the exam it is then graded on, so every run is a fresh random draw of
+    #: acceptance criteria and no two runs measure the same thing — which is why a fixture could
+    #: stop passing without changing. With it, every run is graded against the same exam and a
+    #: regression is finally detectable.
+    sea_trials: Path | None = None
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -161,6 +167,25 @@ def _environment(model: str, provider: str, effort: str | None) -> dict[str, str
         "python_version": platform.python_version(),
         "platform": platform.platform(),
     }
+
+
+def _fixture_sea_trials(directory: Path) -> Path | None:
+    """Return the fixture's frozen ``SEA_TRIALS.md``, validated, or ``None``.
+
+    Validation is strict for the same reason the stack's is: a contract that will not parse
+    degrades into a missing gate long after the run stopped being cheap, and the run would then
+    measure nothing while reporting a verdict.
+    """
+    path = directory / sea_trials.FILENAME
+    if not path.is_file():
+        return None
+    try:
+        sea_trials.parse_sea_trials_text(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise SpecificationError(f"Unreadable UAT fixture Sea Trials: {path}") from exc
+    except SpecificationError as exc:
+        raise SpecificationError(f"Invalid UAT fixture Sea Trials {path}: {exc}") from exc
+    return path
 
 
 def _fixture_stack(directory: Path) -> Path | None:
@@ -278,6 +303,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 updates,
                 tuple(raw_test_command),
                 _fixture_stack(directory),
+                _fixture_sea_trials(directory),
             )
         )
     if not fixtures:
@@ -534,6 +560,23 @@ def _usage_totals(records_path: Path) -> dict[str, int]:
         except (TypeError, ValueError):
             pass
     return totals
+
+
+def seed_sea_trials(fixture: UATFixture, workspace: Path) -> Path | None:
+    """Place the fixture's frozen Sea Trials in the Target before ``analyze`` authors any.
+
+    ``analyze`` never overwrites an existing ``SEA_TRIALS.md``, so seeding it here makes the
+    fixture's contract the exam for the whole run. Returns the written path, or ``None`` when
+    the fixture is content to let ``analyze`` generate criteria — which is the right choice for
+    a real Target, where generating them is the product.
+    """
+    if fixture.sea_trials is None:
+        return None
+    target_dir = workspace / "targets" / fixture.target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    destination = target_dir / sea_trials.FILENAME
+    shutil.copyfile(fixture.sea_trials, destination)
+    return destination
 
 
 def seed_technology_stack(fixture: UATFixture, workspace: Path) -> Path | None:
@@ -826,6 +869,7 @@ def run_fixture(
         if start <= stage_index("init"):
             execute(("init", fixture.target), "init")
             seed_technology_stack(fixture, workspace)
+            seed_sea_trials(fixture, workspace)
         if start <= stage_index("import"):
             execute(
                 ("import", fixture.target, str(source_root), "--format", "markdown"),

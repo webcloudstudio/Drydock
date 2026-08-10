@@ -2048,3 +2048,37 @@ class TestAnalyzeCli:
         )
         assert r.returncode == 0
         assert "Target" in r.stdout or "Target" in r.stderr
+
+
+# --- Commander Sea Trials override --------------------------------------------
+#
+# Authorship is exclusive per run: the Commander's file, or the model's, never a merge. It also
+# stops the model writing the exam it is then graded on.
+
+
+def test_a_commander_contract_is_never_overwritten_by_analyze(tmp_path):
+    from drydock.sea_trials import commander_sea_trials
+
+    target_dir = _target(tmp_path)
+    contract = (
+        "# Sea Trials: Example\n\n## st-cmdr: Commander criterion\n"
+        "Type: technical\nRequired: yes\nCriterion: The system shall do the declared thing.\n"
+        "Verification: proof\n"
+    )
+    (target_dir / "SEA_TRIALS.md").write_text(contract, encoding="utf-8")
+
+    result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+    assert commander_sea_trials(target_dir) is not None
+    assert (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8") == contract
+    # The Target has a contract, so this is not a missing-Sea-Trials run.
+    assert result.sea_trials_created is True
+
+
+def test_without_a_commander_contract_analyze_authors_one(tmp_path):
+    target_dir = _target(tmp_path)
+
+    result = analyze("MyTarget", target_dir, runner=lambda *a, **k: FakeRun())
+
+    assert result.sea_trials_created is True
+    assert "st-cmdr" not in (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")

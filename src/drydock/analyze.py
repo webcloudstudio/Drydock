@@ -53,6 +53,7 @@ from drydock.prompt_context import prompt_source_header
 from drydock.prompt_headers import prompt_header_for_file
 from drydock.prompts import load_prompt
 from drydock.sea_trials import (
+    commander_sea_trials,
     normalize_sea_trials_text,
     parse_sea_trials_text,
     project_questions,
@@ -1032,8 +1033,19 @@ def analyze(
     # criteria is a genuine Commander blocker. How a criterion is worded is not admission: EARS and
     # plain English are both accepted, recorded as `Notation: ears` or `Notation: other`, and
     # explained to the judge at scoring time.
+    # Authorship is exclusive per run. A Commander file present means the model never writes
+    # this artifact — not that its output is merged on top, which would need two writers and a
+    # per-criterion precedence rule and would gain nothing. It also stops the model writing the
+    # exam it is graded on, which is what makes one run comparable to the next.
+    commander_trials = commander_sea_trials(target_dir)
+    if commander_trials is not None:
+        sea_trials_text = None
+
     sea_trials_blocker: str | None = None
-    if sea_trials_text is None:
+    if commander_trials is not None:
+        # The Commander's contract is the contract. Nothing to admit and nothing to blocker on.
+        pass
+    elif sea_trials_text is None:
         sea_trials_blocker = (
             "SEA_TRIALS.md was not created: analyze returned no acceptance criteria."
         )
@@ -1196,5 +1208,7 @@ def analyze(
         warnings=tuple(
             item for item in (sea_trials_blocker, withheld_content_warning(source_material)) if item
         ),
-        sea_trials_created=sea_trials_text is not None,
+        # True whenever the Target has a Sea Trials contract at the end of this run, whoever
+        # authored it. A Commander file is not "missing Sea Trials".
+        sea_trials_created=sea_trials_text is not None or commander_trials is not None,
     )

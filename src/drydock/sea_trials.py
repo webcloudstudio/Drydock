@@ -715,3 +715,24 @@ def project_questions(document: SeaTrialsDocument, path: Path) -> Path | None:
     """Sea Trials has no question projection; decisions are persisted in DECISIONS.json."""
     del document, path
     return None
+
+
+#: The Commander-authored Sea Trials artifact, sitting beside ``TECHNOLOGY_STACK.md`` in the
+#: Target root. Its presence is the whole contract.
+FILENAME = "SEA_TRIALS.md"
+
+
+def commander_sea_trials(target_dir: Path) -> Path | None:
+    """Return the Commander's ``SEA_TRIALS.md`` when one is present, else ``None``.
+
+    Authorship is exclusive per run: the Commander's file, or the model's, never a merge. A
+    merge would need two writers, per-criterion precedence, and a conflict rule, and would buy
+    nothing — ``TECHNOLOGY_STACK.md`` works precisely because it is pure Commander input.
+
+    This also removes a structural defect. Without it the model writes the exam it is then
+    graded on, so every run draws a fresh set of acceptance criteria and no two runs measure the
+    same thing. A Commander file makes the exam fixed without freezing any other artifact, which
+    is what makes a regression detectable at all.
+    """
+    path = target_dir / FILENAME
+    return path if path.is_file() else None

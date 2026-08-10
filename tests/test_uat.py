@@ -1037,3 +1037,64 @@ def test_a_clean_build_still_runs_its_refit_stage(tmp_path: Path) -> None:
     assert results[0].status == "passed"
     assert any("import-update" in label for label in seen)
     assert any("refit-update" in label for label in seen)
+
+
+# --- Frozen fixture Sea Trials ------------------------------------------------
+#
+# Without this the model authors the exam it is then graded on, so every run is a fresh
+# random draw of acceptance criteria and no two runs measure the same thing. That is why a
+# fixture could stop passing without changing.
+
+
+def test_every_shipped_fixture_ships_a_parseable_frozen_contract():
+    from drydock.sea_trials import parse_sea_trials_text
+    from drydock.uat import discover_fixtures
+
+    fixtures = discover_fixtures(Path(__file__).resolve().parents[1] / "uat")
+
+    assert fixtures
+    for fixture in fixtures:
+        assert fixture.sea_trials is not None, fixture.name
+        document = parse_sea_trials_text(fixture.sea_trials.read_text(encoding="utf-8"))
+        assert document.trials
+        # A frozen exam whose policy is not also frozen is only half fixed.
+        assert document.policy_declared is True
+
+
+def test_a_fixture_contract_is_seeded_into_the_target(tmp_path):
+    from drydock.uat import UATFixture, seed_sea_trials
+
+    fixture_root = tmp_path / "fixture"
+    fixture_root.mkdir()
+    contract = fixture_root / "SEA_TRIALS.md"
+    contract.write_text(
+        "# Sea Trials: Demo\n\n## st-001: Example\n"
+        "Type: technical\nRequired: yes\nCriterion: The system shall work.\n"
+        "Verification: proof\n",
+        encoding="utf-8",
+    )
+    workspace = tmp_path / "workspace"
+
+    written = seed_sea_trials(
+        UATFixture("Demo", "Demo", fixture_root, (), (), (), None, contract), workspace
+    )
+
+    assert written == workspace / "targets" / "Demo" / "SEA_TRIALS.md"
+    assert written.read_text(encoding="utf-8") == contract.read_text(encoding="utf-8")
+
+
+def test_a_fixture_without_a_contract_seeds_nothing(tmp_path):
+    from drydock.uat import UATFixture, seed_sea_trials
+
+    assert seed_sea_trials(UATFixture("Demo", "Demo", tmp_path, (), (), ()), tmp_path) is None
+
+
+def test_an_unparseable_fixture_contract_is_refused_at_discovery(tmp_path):
+    from drydock.uat import _fixture_sea_trials
+
+    (tmp_path / "SEA_TRIALS.md").write_text(
+        "# Sea Trials: Demo\n\nnothing here\n", encoding="utf-8"
+    )
+
+    with pytest.raises(SpecificationError, match="Invalid UAT fixture Sea Trials"):
+        _fixture_sea_trials(tmp_path)
