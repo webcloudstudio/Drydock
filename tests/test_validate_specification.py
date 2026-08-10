@@ -230,11 +230,13 @@ assert convert({literal}) == "<p>*a*</p>\\n"
             self._SPEC.format(literal=literal), encoding="utf-8"
         )
 
-    def test_raw_literal_newline_fails_validation(self, tmp_target_root):
+    def test_raw_literal_newline_warns_without_failing(self, tmp_target_root):
+        """Authoring advice, not a gate: the analyzers are advisory everywhere now."""
         target_dir = _init(tmp_target_root)
         self._write_spec(target_dir, r'r"\*a\*\n"')
         result = validate_specification("TestProject", target_dir)
-        messages = [f.message for f in result.failures()]
+        assert "Acceptance snippets" not in [f.section for f in result.failures()]
+        messages = [f.message for f in result.warnings()]
         assert any("FEATURE-ESCAPES.md [escapes]" in m for m in messages), messages
 
     def test_correctly_authored_literal_passes(self, tmp_target_root):
@@ -289,17 +291,18 @@ Blocks resolve before inlines.
         )
         return validate_specification("TestProject", target_dir)
 
-    def test_name_carried_from_a_sibling_check_fails_validation(self, tmp_target_root):
+    def test_name_carried_from_a_sibling_check_warns(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         result = self._validate(target_dir, "assert result.returncode == 0")
-        messages = [f.message for f in result.failures()]
+        assert "Acceptance snippets" not in [f.section for f in result.failures()]
+        messages = [f.message for f in result.warnings()]
         assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
         assert any("never defined" in m for m in messages), messages
 
-    def test_unparseable_snippet_fails_validation(self, tmp_target_root):
+    def test_unparseable_snippet_warns(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
         result = self._validate(target_dir, "assert convert(")
-        assert any("not valid Python" in f.message for f in result.failures())
+        assert any("not valid Python" in f.message for f in result.warnings())
 
     def test_self_contained_snippet_passes(self, tmp_target_root):
         target_dir = _init(tmp_target_root)
@@ -328,7 +331,7 @@ Blocks resolve before inlines.
         ]
         assert any("never prints it" in m for m in warnings), warnings
 
-    def test_argument_list_with_shell_true_fails_validation(self, tmp_target_root):
+    def test_argument_list_with_shell_true_warns(self, tmp_target_root):
         # The defect that cost a commonmark build its whole repair budget: with shell=True,
         # POSIX runs only element 0 — a bare env assignment — and the harness never executes.
         target_dir = _init(tmp_target_root)
@@ -342,7 +345,8 @@ Blocks resolve before inlines.
             "assert '1 passed' in result.stdout"
         )
         result = self._validate(target_dir, code)
-        messages = [f.message for f in result.failures()]
+        assert "Acceptance snippets" not in [f.section for f in result.failures()]
+        messages = [f.message for f in result.warnings()]
         assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
         assert any("the intended command never runs" in m for m in messages), messages
 

@@ -512,11 +512,13 @@ def test_the_tally_separates_harness_defects_from_product_defects(tmp_path):
     assert tally.to_dict()["total"] == 3
 
 
-# --- Removing unsatisfiable criteria -----------------------------------------
+# --- Flagging doubtful criteria ----------------------------------------------
 #
-# The Manifest is the build graph. A criterion that cannot pass by construction makes the
-# block that owns it unbuildable, and no repair pass may rewrite it, so it is stripped at plan
-# time rather than carried into a build that is guaranteed to fail.
+# Static analysis of an assertion is authoring guidance, never a gate. The analyzers are an
+# unbounded blacklist grown one observed failure at a time, each with its own false-positive
+# rate against legitimate snippets, and two were retracted after they began failing fixtures
+# that had passed for weeks. Nothing is removed and nothing is excluded from grading: a
+# criterion that truly cannot exercise the code reports UNVERIFIED at run time instead.
 
 _TWO_CRITERIA_SPEC = """# FEATURE: Scoped Verification
 
@@ -555,25 +557,17 @@ assert "1 passed" in result.stdout
 """
 
 
-def test_unsatisfiable_criterion_is_removed_and_the_rest_is_kept():
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+def test_a_doubtful_criterion_is_named_and_its_siblings_are_not():
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
-    cleaned, dropped = drop_unsatisfiable_acceptance(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
+    flagged = flag_unsatisfiable_acceptance(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
 
-    assert [d.check_id for d in dropped] == ["scoped-number"]
-    assert "the intended command never runs" in dropped[0].reason
-    # The removal takes the heading, its intent prose, and its fence together.
-    assert "scoped-number" not in cleaned
-    assert "PYTHONPATH=sources" not in cleaned
-    assert "### scoped-pattern" in cleaned
-    assert "bash" in cleaned
-    # Surrounding structure survives intact.
-    assert cleaned.startswith("# FEATURE: Scoped Verification")
-    assert "## User Acceptance" in cleaned
+    assert [item.check_id for item in flagged] == ["scoped-number"]
+    assert "the intended command never runs" in flagged[0].reason
 
 
-def test_a_hardcoded_conformance_tally_is_removed_at_plan_time():
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+def test_a_hardcoded_conformance_tally_is_flagged_at_plan_time():
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
     spec = (
         "# FEATURE: Conformance Harness\n\n"
@@ -589,48 +583,35 @@ def test_a_hardcoded_conformance_tally_is_removed_at_plan_time():
         "```\n"
     )
 
-    cleaned, dropped = drop_unsatisfiable_acceptance(spec, source="FEATURE-Conformance.md")
+    flagged = flag_unsatisfiable_acceptance(spec, source="FEATURE-Conformance.md")
 
-    assert [d.check_id for d in dropped] == ["complete-conformance-suite"]
-    assert "column-align" in dropped[0].reason
-    assert "210 passed" not in cleaned
+    assert [item.check_id for item in flagged] == ["complete-conformance-suite"]
+    assert "column-align" in flagged[0].reason
 
 
-def test_a_satisfiable_spec_is_returned_untouched():
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+def test_the_spec_text_is_never_edited_by_the_analysis():
+    """The criterion stays in the file. Removal was enforcement; this reports."""
+    from drydock.acceptance import flag_unsatisfiable_acceptance, parse_programmatic_acceptance_text
+
+    flag_unsatisfiable_acceptance(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
+
+    checks = parse_programmatic_acceptance_text(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
+    assert [check.check_id for check in checks] == ["scoped-pattern", "scoped-number"]
+
+
+def test_a_satisfiable_spec_raises_no_flags():
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
     good = _TWO_CRITERIA_SPEC.split("### scoped-number")[0] + "## User Acceptance\n\n- None.\n"
-    cleaned, dropped = drop_unsatisfiable_acceptance(good, source="FEATURE-X.md")
 
-    assert dropped == ()
-    assert cleaned == good
+    assert flag_unsatisfiable_acceptance(good, source="FEATURE-X.md") == ()
 
 
-def test_removing_every_criterion_leaves_a_well_formed_empty_section():
-    # The hole is reported by the plan's own assertion gate; the file must stay parseable.
-    from drydock.acceptance import drop_unsatisfiable_acceptance
-
-    only_bad = (
-        "# FEATURE: X\n\n## Programmatic Acceptance\n\n"
-        "### broken\nIt never runs.\n\n"
-        "```python\n"
-        "import subprocess\n"
-        "subprocess.run(['A=1', 'prog'], shell=True)\n"
-        "```\n\n"
-        "## Guardrails\n\n- None.\n"
-    )
-    cleaned, dropped = drop_unsatisfiable_acceptance(only_bad, source="FEATURE-X.md")
-
-    assert [d.check_id for d in dropped] == ["broken"]
-    assert "- None." in cleaned
-    assert "## Guardrails" in cleaned
-
-
-def test_spec_without_acceptance_is_untouched():
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+def test_spec_without_acceptance_raises_no_flags():
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
     text = "# FEATURE: X\n\n## Guardrails\n\n- None.\n"
-    assert drop_unsatisfiable_acceptance(text, source="FEATURE-X.md") == (text, ())
+    assert flag_unsatisfiable_acceptance(text, source="FEATURE-X.md") == ()
 
 
 # --- The staged-harness environment contract ---------------------------------
@@ -682,63 +663,58 @@ def _staged_sources(tmp_path):
     return sources
 
 
-def test_a_staged_call_missing_its_required_variable_is_dropped(tmp_path):
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+def test_a_staged_call_missing_its_required_variable_is_flagged(tmp_path):
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
-    cleaned, dropped = drop_unsatisfiable_acceptance(
+    flagged = flag_unsatisfiable_acceptance(
         _STAGED_CALL_SPEC, source="FEATURE-Keys.md", sources_dir=_staged_sources(tmp_path)
     )
 
-    assert [d.check_id for d in dropped] == ["key-conformance"]
-    assert "DECODER" in dropped[0].reason
-    assert "key-conformance" not in cleaned
+    assert [item.check_id for item in flagged] == ["key-conformance"]
+    assert "DECODER" in flagged[0].reason
 
 
-def test_the_same_call_is_kept_when_the_variable_is_supplied(tmp_path):
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+def test_the_same_call_raises_no_flag_when_the_variable_is_supplied(tmp_path):
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
     supplied = _STAGED_CALL_SPEC.replace(
         "    capture_output=True,",
         '    env={**os.environ, "DECODER": "./toml-decoder"},\n    capture_output=True,',
     ).replace("import subprocess", "import os\nimport subprocess")
 
-    cleaned, dropped = drop_unsatisfiable_acceptance(
+    flagged = flag_unsatisfiable_acceptance(
         supplied, source="FEATURE-Keys.md", sources_dir=_staged_sources(tmp_path)
     )
 
-    assert dropped == ()
-    assert cleaned == supplied
+    assert flagged == ()
 
 
 def test_without_a_sources_directory_the_staged_contract_is_not_applied(tmp_path):
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
-    assert drop_unsatisfiable_acceptance(_STAGED_CALL_SPEC, source="FEATURE-Keys.md") == (
-        _STAGED_CALL_SPEC,
-        (),
-    )
+    assert flag_unsatisfiable_acceptance(_STAGED_CALL_SPEC, source="FEATURE-Keys.md") == ()
 
 
-# --- Quarantine at grading time ----------------------------------------------
+# --- Flagging at grading time ------------------------------------------------
 
 
-def test_partition_separates_gradeable_criteria_from_unsatisfiable_ones(tmp_path):
-    from drydock.acceptance import parse_programmatic_acceptance_text, partition_unsatisfiable
+def test_a_doubtful_criterion_is_still_graded(tmp_path):
+    """Nothing is excluded. Exclusion on a static prediction is what was retired."""
+    from drydock.acceptance import flag_unsatisfiable, parse_programmatic_acceptance_text
 
     checks = parse_programmatic_acceptance_text(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
-    kept, quarantined = partition_unsatisfiable(checks)
+    flagged = flag_unsatisfiable(checks)
 
-    assert [check.check_id for check in kept] == ["scoped-pattern"]
-    assert [entry.check_id for entry in quarantined] == ["scoped-number"]
-    assert quarantined[0].source == "FEATURE-X.md"
-    assert quarantined[0].rendered.startswith("FEATURE-X.md [scoped-number]: ")
+    assert [entry.check_id for entry in flagged] == ["scoped-number"]
+    assert flagged[0].source == "FEATURE-X.md"
+    assert flagged[0].rendered.startswith("FEATURE-X.md [scoped-number]: ")
 
 
-def test_partition_reads_the_staged_contract_when_given_the_sources_directory(tmp_path):
-    from drydock.acceptance import parse_programmatic_acceptance_text, partition_unsatisfiable
+def test_grading_time_flags_read_the_staged_contract_when_given_the_sources_directory(tmp_path):
+    from drydock.acceptance import flag_unsatisfiable, parse_programmatic_acceptance_text
 
     checks = parse_programmatic_acceptance_text(_STAGED_CALL_SPEC, source="FEATURE-Keys.md")
 
-    assert partition_unsatisfiable(checks)[1] == ()
-    _, quarantined = partition_unsatisfiable(checks, sources_dir=_staged_sources(tmp_path))
-    assert [entry.check_id for entry in quarantined] == ["key-conformance"]
+    assert flag_unsatisfiable(checks) == ()
+    flagged = flag_unsatisfiable(checks, sources_dir=_staged_sources(tmp_path))
+    assert [entry.check_id for entry in flagged] == ["key-conformance"]

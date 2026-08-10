@@ -539,7 +539,7 @@ def parse_programmatic_acceptance_text(
 
 @dataclass(frozen=True)
 class DroppedAcceptance:
-    """One acceptance criterion removed from a spec because it can never pass."""
+    """One acceptance criterion a static analyzer believes cannot pass, as authored."""
 
     check_id: str
     reason: str
@@ -580,22 +580,24 @@ def unsatisfiable_defects(code: str, *, sources_dir: Path | None = None) -> tupl
     return tuple(messages)
 
 
-def drop_unsatisfiable_acceptance(
+def flag_unsatisfiable_acceptance(
     text: str, *, source: str, sources_dir: Path | None = None
-) -> tuple[str, tuple[DroppedAcceptance, ...]]:
-    """Remove acceptance criteria that no implementation can satisfy, and report them.
+) -> tuple[DroppedAcceptance, ...]:
+    """Report acceptance criteria a static analyzer believes cannot pass. Never edits the spec.
 
-    A criterion that dies in its own frame, asserts against an impossible literal, or never
-    launches the command it names is not verification — it is a build failure waiting on a
-    timer. Carrying it into the Manifest poisons the build graph, because the build grades
-    against it and no repair pass may rewrite it. Removing it here costs nothing real: the
-    criterion proved nothing before it was removed.
+    These analyzers are the real prize of the work that produced them: each is a tested
+    description of one way a model writes a broken assertion. As *gates* they fight the model
+    after the fact and accumulate false positives — the space of bad assertions is not
+    enumerable, every analyzer carries its own false-positive rate against legitimate snippets,
+    and two were retracted after they started failing fixtures that had passed for weeks.
 
-    Removal is deliberately loud rather than silent. The caller surfaces every drop, and a
-    story left with no acceptance at all still fails the plan's own assertion gate — the
-    absence of verification is a planning defect, and it belongs at plan time where it is
-    cheap, not forty minutes into a build.
+    So the knowledge is kept and the enforcement is dropped. A finding here is a warning that
+    may cost marks, never a removal and never a hard gate. The runtime classifier is what
+    protects the build now: a snippet that truly dies in its own frame reports UNVERIFIED and is
+    not charged against the build, and it does so from what actually happened rather than from a
+    prediction about what would.
     """
+    del source  # named by the caller, which owns the message
     section_match = next(
         (
             match
@@ -605,55 +607,37 @@ def drop_unsatisfiable_acceptance(
         None,
     )
     if section_match is None:
-        return text, ()
+        return ()
     following = [m for m in SECTION_RE.finditer(text) if m.start() > section_match.start()]
     start = section_match.end()
     end = following[0].start() if following else len(text)
     section = text[start:end]
     if not section.strip() or section.strip() == "- None.":
-        return text, ()
+        return ()
 
-    # Split the section into one unit per ``### criterion`` heading so a removal takes the
-    # heading, its intent prose, and its fence together — never half a criterion.
     headings = list(HEADING_RE.finditer(section))
     if not headings:
-        return text, ()
-    preamble = section[: headings[0].start()]
-    units: list[tuple[str, str]] = []
+        return ()
+    flagged: list[DroppedAcceptance] = []
     for index, heading in enumerate(headings):
         unit_end = headings[index + 1].start() if index + 1 < len(headings) else len(section)
-        units.append((heading.group("title").strip(), section[heading.start() : unit_end]))
-
-    kept: list[str] = []
-    dropped: list[DroppedAcceptance] = []
-    for title, unit in units:
+        unit = section[heading.start() : unit_end]
         fence = PYTHON_FENCE_RE.search(unit)
-        defects = (
-            unsatisfiable_defects(fence.group("code").strip(), sources_dir=sources_dir)
-            if fence
-            else ()
-        )
-        if not defects:
-            kept.append(unit)
+        if fence is None:
             continue
-        dropped.append(DroppedAcceptance(check_id=_slugify(title), reason=defects[0]))
-    if not dropped:
-        return text, ()
-
-    body = preamble + "".join(kept)
-    if not PYTHON_FENCE_RE.search(body):
-        # Every criterion was unsatisfiable. Leave the section well-formed and empty rather
-        # than half-deleted; the plan's assertion gate reports the resulting hole.
-        body = "\n- None.\n"
-    if not body.endswith("\n\n"):
-        body = body.rstrip("\n") + "\n\n"
-    del source  # named by the caller, which owns the message
-    return text[:start] + body + text[end:], tuple(dropped)
+        defects = unsatisfiable_defects(fence.group("code").strip(), sources_dir=sources_dir)
+        if defects:
+            flagged.append(
+                DroppedAcceptance(
+                    check_id=_slugify(heading.group("title").strip()), reason=defects[0]
+                )
+            )
+    return tuple(flagged)
 
 
 @dataclass(frozen=True)
 class QuarantinedAcceptance:
-    """One acceptance criterion excluded from grading because it cannot pass by construction."""
+    """One acceptance criterion a static analyzer flagged as unable to pass, as authored."""
 
     check_id: str
     source: str
@@ -664,28 +648,21 @@ class QuarantinedAcceptance:
         return f"{self.source} [{self.check_id}]: {self.reason}"
 
 
-def partition_unsatisfiable(
+def flag_unsatisfiable(
     checks: tuple[ProgrammaticAcceptance, ...], *, sources_dir: Path | None = None
-) -> tuple[tuple[ProgrammaticAcceptance, ...], tuple[QuarantinedAcceptance, ...]]:
-    """Split criteria into those worth grading and those that cannot pass by construction.
+) -> tuple[QuarantinedAcceptance, ...]:
+    """Report criteria a static analyzer believes cannot pass, without excluding any of them.
 
-    ``plan`` already strips these, but a Blueprint reaches the build by other routes — ``refit``,
-    an import adapter, a hand edit — so the same judgement has to hold at the point of grading.
-    A quarantined criterion is excluded rather than fatal: it never proved anything, so failing
-    the block on it would report a defect in the implementation for a defect in the Blueprint,
-    and would do so on every rerun since a repair pass may not rewrite a staged asset.
+    Excluding a criterion from grading on a static prediction is enforcement, and enforcement
+    is what these analyzers are no longer for. A criterion that genuinely dies in its own frame
+    now settles as UNVERIFIED at run time on the evidence of the traceback, which costs the
+    build nothing and does not depend on an analyzer being right in advance.
     """
-    kept: list[ProgrammaticAcceptance] = []
-    quarantined: list[QuarantinedAcceptance] = []
-    for check in checks:
-        defects = unsatisfiable_defects(check.code, sources_dir=sources_dir)
-        if not defects:
-            kept.append(check)
-            continue
-        quarantined.append(
-            QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=defects[0])
-        )
-    return tuple(kept), tuple(quarantined)
+    return tuple(
+        QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=defects[0])
+        for check in checks
+        if (defects := unsatisfiable_defects(check.code, sources_dir=sources_dir))
+    )
 
 
 def programmatic_acceptance_for_step(

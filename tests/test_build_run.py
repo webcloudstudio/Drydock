@@ -2676,78 +2676,100 @@ def test_a_resource_kill_still_loops_the_repair_pass():
     assert _is_repairable("programmatic acceptance failed (resource exhaustion): x") is True
 
 
-def _quarantine_log(tmp_path, spec: str) -> tuple[list[str], object]:
-    """Build a Target whose only criterion is unsatisfiable; return the console log and runner.
+FLAG = "flagged as doubtful by static analysis — graded anyway"
 
-    The criterion is excluded from grading rather than failing the build: it proved nothing,
-    and a repair pass may not rewrite it, so grading against it would fail identically forever.
+
+def _quarantine_log_in(target_dir, build_dir, spec: str) -> None:
+    """Build an already-set-up Target against ``spec``, tolerating an ordinary failure."""
+    (target_dir / "blueprint" / "DATABASE.md").write_text(spec, encoding="utf-8")
+    try:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+    except SpecificationError:
+        pass
+
+
+def _quarantine_log(tmp_path, spec: str) -> tuple[list[str], object]:
+    """Build a Target whose only criterion is doubtful; return the console log and runner.
+
+    Static analysis names the criterion and the build grades it anyway. A prediction that a
+    criterion cannot pass is not reliable enough to remove it: what protects the build is the
+    runtime verdict, where a criterion that really dies in its own frame reports UNVERIFIED and
+    is never charged against the build.
     """
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(spec, encoding="utf-8")
     runner = make_runner()
     log: list[str] = []
-    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
+    try:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
+    except SpecificationError:
+        # A criterion that is doubtful *and* genuinely unsatisfiable now fails its story like
+        # any other failing assertion, which can block a dependent story. That is the ordinary
+        # failure path, not a quarantine, and it is not what these tests are measuring.
+        pass
     return log, runner
 
 
-def test_unsatisfiable_acceptance_is_quarantined_rather_than_graded(tmp_path):
-    """A mis-authored expectation is not a red baseline the agent can drive green. Excluding
-    it from the graded set names the Blueprint file to repair and lets the build proceed."""
+def test_a_doubtful_criterion_is_named_and_graded(tmp_path):
+    """The flag is authoring advice. The criterion is still graded like any other."""
     log, _ = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
 
     text = "\n".join(log)
-    assert "quarantined 1 unsatisfiable criterion — not graded" in text
+    assert FLAG in text
     assert "DATABASE.md [escapes]" in text
 
 
-def test_a_quarantined_criterion_does_not_consume_the_repair_budget(tmp_path):
-    # A Blueprint defect must not be answered by spending LLM calls on a criterion no
-    # implementation can satisfy, and must not refuse the build before any story is attempted.
+def test_a_doubtful_criterion_does_not_consume_the_repair_budget(tmp_path):
+    # A doubtful criterion must not refuse the build before any story is attempted, and must
+    # not drive a repair loop against a criterion no implementation can satisfy.
     _, runner = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
 
-    # One call: the unit is attempted, and the defective criterion neither refuses the build
-    # before any work (the old behavior) nor drives a repair loop it can never satisfy. The
-    # build then stops on the failed story, as it does for any acceptance failure.
     assert len(runner.calls) == 1
 
 
-def test_a_quarantined_story_does_not_close_verified(tmp_path):
-    """The criterion was removed, not satisfied. Closing the story verified would count it in
-    ``manifest.verified``, which release scoring gates on — buying a release with a criterion
-    nothing ever ran."""
+def test_a_doubtful_criterion_carries_an_advisory_finding_not_a_verdict(tmp_path):
+    """Static doubt is recorded against the story; it does not decide the story's state.
+
+    Failing the story on the flag made a prediction load-bearing. The story's state now comes
+    from what its assertions actually did when they ran.
+    """
     from drydock.build_run import QUARANTINED_FINDING_PREFIX
 
     target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNSATISFIABLE_SPEC, encoding="utf-8")
-    build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+    _quarantine_log_in(target_dir, build_dir, _UNSATISFIABLE_SPEC)
 
     plan = parse_build_plan(target_dir / "MANIFEST.md")
-    story = plan.by_id()["foundation"]
-    assert story.state == "closed/failed"
-    finding = str(story.fields.get("finding", ""))
-    assert finding.startswith(QUARANTINED_FINDING_PREFIX)
+    finding = str(plan.by_id()["foundation"].fields.get("finding", ""))
+    assert QUARANTINED_FINDING_PREFIX in finding
     assert "escapes" in finding
-    assert "repair the assertion in the Blueprint specification" in finding
+    assert "graded normally" in finding
 
 
-def test_a_quarantined_story_fails_the_build_result(tmp_path):
-    # The step result has to agree with the Manifest the pass just wrote, so an unattended run
-    # records the shortfall instead of reading a verified story nothing verified.
+def test_a_criterion_reporting_unverified_does_not_fail_its_story(tmp_path):
+    """The whole point of the change: doubt costs a warning, never a build.
+
+    ``block-priority`` reads a name a sibling check bound, so it dies in its own frame and
+    reports UNVERIFIED. It is not charged against the build, and the story closes on the
+    strength of the assertion that actually ran.
+    """
     target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNSATISFIABLE_SPEC, encoding="utf-8")
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_CARRIED_NAME_SPEC, encoding="utf-8")
 
     result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
 
     owner = next(step for step in result.steps if step.block_id == "foundation")
-    assert owner.status == "failed"
-    assert owner.state == "closed/failed"
-    assert "acceptance criteria defective" in (owner.error or "")
-    assert [entry.check_id for entry in owner.quarantined_acceptance] == ["escapes"]
+    assert owner.status == "built"
+    assert owner.state == "closed/verified"
+    assert [entry.check_id for entry in owner.quarantined_acceptance] == ["block-priority"]
+    assert {check.check_id: check.outcome for check in owner.acceptance} == {
+        "block-conformance": "PASS",
+        "block-priority": "UNVERIFIED",
+    }
 
 
-def test_a_hardcoded_conformance_tally_blocks_the_build(tmp_path):
-    # The Toml regression, at the gate that would have prevented the run entirely: the criterion
-    # pins a case count the installed suite owns and a whitespace layout the runner owns.
+def test_a_hardcoded_conformance_tally_is_flagged_for_the_author(tmp_path):
+    # The Toml regression: the criterion pins a case count the installed suite owns and a
+    # whitespace layout the runner owns. Named for the author, not removed from grading.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(
         "DB SPEC CONTENT\n\n"
@@ -2769,7 +2791,7 @@ def test_a_hardcoded_conformance_tally_blocks_the_build(tmp_path):
     build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
 
     text = "\n".join(log)
-    assert "quarantined 1 unsatisfiable criterion — not graded" in text
+    assert FLAG in text
     assert "DATABASE.md [complete-conformance-suite]" in text
 
 
@@ -2801,15 +2823,14 @@ assert result.returncode == 0
 """
 
 
-def test_a_check_reading_a_sibling_checks_name_is_quarantined(tmp_path):
+def test_a_check_reading_a_sibling_checks_name_is_flagged(tmp_path):
     log, _ = _quarantine_log(tmp_path, _CARRIED_NAME_SPEC)
 
     text = "\n".join(log)
     assert "DATABASE.md [block-priority]" in text
     assert "'result' is read but never defined" in text
     assert "its own process" in text
-    # The sibling check that *does* define its own names keeps grading.
-    assert "quarantined 1 unsatisfiable criterion" in text
+    assert FLAG in text
 
 
 _UNPARSEABLE_SPEC = """# FEATURE: Blocks

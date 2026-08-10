@@ -3284,7 +3284,7 @@ def _spec_with(acceptance: str) -> str:
     )
 
 
-def test_plan_strips_an_unsatisfiable_criterion_before_writing_the_graph(tmp_path):
+def test_plan_flags_a_doubtful_criterion_without_editing_the_spec(tmp_path):
     from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
 
     manifest = _manifest()
@@ -3295,12 +3295,10 @@ def test_plan_strips_an_unsatisfiable_criterion_before_writing_the_graph(tmp_pat
 
     _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
 
-    # The emitted spec is sanitized in place, so what gets written is buildable.
-    written = blocks["FEATURE-Status.md"]
-    assert "scoped-number" not in written
-    assert "PYTHONPATH=sources" not in written
-    assert "### check-1" in written and "### check-2" in written
-    # And the removal is surfaced, leading the warning list.
+    # The spec is written exactly as authored. Silent removal on a static prediction cost more
+    # than it saved: a false positive deleted a criterion that would have passed.
+    assert blocks["FEATURE-Status.md"] == spec
+    # The doubt is surfaced, leading the warning list.
     assert ACCEPTANCE_REMOVED_MARKER in warnings[0]
     assert "FEATURE-Status.md [scoped-number]" in warnings[0]
     assert "the intended command never runs" in warnings[0]
@@ -3319,19 +3317,22 @@ def test_plan_leaves_a_satisfiable_spec_and_its_warnings_alone(tmp_path):
     assert not any(ACCEPTANCE_REMOVED_MARKER in w for w in warnings)
 
 
-def test_a_story_left_without_acceptance_fails_the_plan(tmp_path):
-    """Removing every criterion leaves a story that verifies nothing. That is a planning
-    defect, and it must surface here — cheaply — not as a failed build."""
-    from drydock.planning_session import _validate_plan_output
+def test_a_story_whose_only_criterion_is_doubtful_still_plans(tmp_path):
+    """The story keeps its assertion. A flag is authoring advice, not a missing criterion.
+
+    This used to fail the plan, but only because the analyzer had already deleted the story's
+    one criterion. Nothing is deleted now, so the story has verification and plans normally.
+    """
+    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
 
     manifest = _manifest()
-    blocks = {
-        "MANIFEST.md": manifest,
-        "FEATURE-Status.md": _spec_with(_MALFORMED_CRITERION),
-    }
+    spec = _spec_with(_MALFORMED_CRITERION)
+    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
 
-    with pytest.raises(SpecificationError, match="Programmatic Acceptance assertion"):
-        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert blocks["FEATURE-Status.md"] == spec
+    assert any(ACCEPTANCE_REMOVED_MARKER in warning for warning in warnings)
 
 
 # ── Plan restructure: deterministic Zone A and Zone C wiring ─────────────────────────
@@ -4124,7 +4125,7 @@ assert result.returncode == 0
 ```"""
 
 
-def test_plan_strips_a_staged_call_missing_the_environment_the_asset_requires(tmp_path):
+def test_plan_flags_a_staged_call_missing_the_environment_the_asset_requires(tmp_path):
     from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
 
     sources = tmp_path / "sources"
@@ -4138,11 +4139,11 @@ def test_plan_strips_a_staged_call_missing_the_environment_the_asset_requires(tm
 
     _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
 
-    assert "key-conformance" not in blocks["FEATURE-Status.md"]
+    assert "key-conformance" in blocks["FEATURE-Status.md"]
     assert "### check-1" in blocks["FEATURE-Status.md"]
-    removal = next(w for w in warnings if ACCEPTANCE_REMOVED_MARKER in w)
-    assert "FEATURE-Status.md [key-conformance]" in removal
-    assert "DECODER" in removal
+    flag = next(w for w in warnings if ACCEPTANCE_REMOVED_MARKER in w)
+    assert "FEATURE-Status.md [key-conformance]" in flag
+    assert "DECODER" in flag
 
 
 def test_plan_keeps_the_same_call_when_it_extends_the_inherited_environment(tmp_path):

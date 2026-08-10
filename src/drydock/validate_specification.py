@@ -347,8 +347,15 @@ def validate_specification(
                 )
 
     # --- Programmatic Acceptance snippets ---
-    # An unsatisfiable assertion is worse than a missing one: the build spends a full LLM
-    # cycle trying to make correct code satisfy a check no implementation can pass.
+    # These analyzers describe ways a model writes a broken assertion, and each is worth
+    # telling an author about. None of them gates. The space of bad assertions is not
+    # enumerable, so the set could only ever grow one observed failure at a time, and every
+    # analyzer carries a false-positive rate against legitimate snippets — two were retracted
+    # after they began failing specs that had validated for weeks. A snippet that truly cannot
+    # exercise the code under test reports UNVERIFIED when it runs, on the evidence of its own
+    # traceback, which is a sounder authority than a prediction. A snippet that fails to parse
+    # is still a hard failure: that is a fact about the file, not a judgement about the
+    # assertion.
     section = "Acceptance snippets"
     from drydock.acceptance import parse_programmatic_acceptance
     from drydock.proof_integrity import (
@@ -360,6 +367,7 @@ def validate_specification(
     )
 
     snippet_defects = 0
+    snippet_advisories = 0
     for md_file in sorted(spec_dir.glob("*.md")):
         if "_compact." in md_file.name or md_file.name in _GENERATED_FILES:
             continue
@@ -370,35 +378,20 @@ def validate_specification(
             snippet_defects += 1
             continue
         for check in checks:
-            for defect in analyze_literals(check.code):
-                f(section, f"{md_file.name} [{check.check_id}]: {defect.message}")
-                snippet_defects += 1
-            # A snippet that cannot parse, or reads a name it never binds, fails in its own
-            # frame on every run. It is unsatisfiable for the same reason a mis-authored
-            # literal is, so it fails validation rather than warning.
-            for structural in analyze_structure(check.code):
-                f(section, f"{md_file.name} [{check.check_id}]: {structural.message}")
-                snippet_defects += 1
-            # An invocation that launches something other than the command under test grades
-            # the wrong process. No implementation can move it, so it fails validation here
-            # rather than consuming a build's repair budget.
-            for invocation in analyze_invocation(check.code):
-                f(section, f"{md_file.name} [{check.check_id}]: {invocation.message}")
-                snippet_defects += 1
-            # An assertion forbidding a word the command prints on success is false on correct
-            # code. Fail those; a redundant substring check beside an exit-status gate only
-            # risks the same defect, so it warns.
-            for output_defect in analyze_output_assertions(check.code):
-                if output_defect.fatal:
-                    f(section, f"{md_file.name} [{check.check_id}]: {output_defect.message}")
-                    snippet_defects += 1
-                else:
-                    w(section, f"{md_file.name} [{check.check_id}]: {output_defect.message}")
-            # Swallowed diagnostics do not make a check wrong, only undiagnosable. Warn.
-            for swallowed in analyze_swallowed_output(check.code):
-                w(section, f"{md_file.name} [{check.check_id}]: {swallowed.message}")
-    if snippet_defects == 0:
-        p(section, "Programmatic Acceptance snippets are parseable and satisfiable")
+            for analyze in (
+                analyze_literals,
+                analyze_structure,
+                analyze_invocation,
+                analyze_output_assertions,
+                analyze_swallowed_output,
+            ):
+                for defect in analyze(check.code):
+                    w(section, f"{md_file.name} [{check.check_id}]: {defect.message}")
+                    snippet_advisories += 1
+    if snippet_defects == 0 and snippet_advisories == 0:
+        p(section, "Programmatic Acceptance snippets are parseable and raise no authoring flags")
+    elif snippet_defects == 0:
+        p(section, "Programmatic Acceptance snippets are parseable")
 
     # --- Typed spec file headers ---
     section = "Typed headings"

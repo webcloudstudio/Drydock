@@ -36,6 +36,7 @@ from drydock.acceptance import (
     AcceptanceRunResult,
     ProgrammaticAcceptance,
     QuarantinedAcceptance,
+    flag_unsatisfiable,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
@@ -115,15 +116,16 @@ UNGATED_FINDING_PREFIX = "UNVERIFIED: acceptance bypassed by --ungate"
 #: deliberately not the ``--ungate`` prefix: that marker records an operator decision to release
 #: a real red, while this one records a Blueprint defect that no build decision can clear. The
 #: only repair is to fix the assertion, so ``--ungate`` does not recognise it.
-QUARANTINED_FINDING_PREFIX = "UNVERIFIED: acceptance criterion defective"
+QUARANTINED_FINDING_PREFIX = "ADVISORY: acceptance criterion may be mis-authored"
 
 
 def _quarantined_finding(entries: tuple[QuarantinedAcceptance, ...]) -> str:
-    """Name the excluded criteria and the one action that clears them."""
+    """Name the doubtful criteria and the action that clears the doubt. Never a failure."""
     return (
         f"{QUARANTINED_FINDING_PREFIX}: "
         + ", ".join(entry.check_id for entry in entries)
-        + " — repair the assertion in the Blueprint specification; a rerun cannot clear it"
+        + " — static analysis doubts these assertions; they were graded normally. Review the "
+        "authoring in the Blueprint specification."
     )
 
 
@@ -905,29 +907,20 @@ def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> tuple
 def _quarantine_unsatisfiable_acceptance(
     checks: tuple[ProgrammaticAcceptance, ...], *, sources_dir: Path | None
 ) -> tuple[tuple[ProgrammaticAcceptance, ...], tuple[QuarantinedAcceptance, ...]]:
-    """Exclude Blueprint assertions that cannot pass by construction, and report them.
+    """Report Blueprint assertions a static analyzer doubts, and grade all of them anyway.
 
-    A mis-authored expectation is not a red baseline the build can drive green: no correct
-    implementation satisfies it. Grading against it fails the block for a Blueprint defect and
-    keeps failing, because a repair pass may not rewrite a staged acceptance asset. Removing it
-    from the graded set costs nothing real — it proved nothing while it was there — and leaves
-    the build free to measure the criteria that do mean something.
+    This used to exclude the flagged criteria and fail the owning story. That made a static
+    prediction load-bearing: the analyzers behind it are an unbounded blacklist grown one
+    observed failure at a time, each carries its own false-positive rate against legitimate
+    snippets, and a wrong call here failed a clean build over a criterion that would have
+    passed. Two of the analyzers had already been retracted for exactly that.
 
-    Four families qualify. A mis-authored *expectation* (a raw literal carrying what the author
-    meant as a control character, or an assertion on a tally the runner owns) asserts against
-    something no conforming implementation produces. A mis-authored *snippet* (unparseable, or
-    reading a name it never binds) dies in its own frame before the code under test runs at all.
-    A mis-authored *invocation* launches something other than the command under test, or hands
-    it an environment with no ``PATH``. A mis-authored *staged-asset call* omits a precondition
-    the staged script itself enforces, so it grades that guard rather than the program.
-
-    The exclusion is loud, not silent: the caller surfaces every quarantined criterion, records
-    it against the Target, and a story left with nothing to grade shows as an unproved story in
-    the acceptance score.
+    What replaces it is the runtime classifier. A criterion that genuinely dies in its own frame
+    settles as UNVERIFIED on the evidence of its own traceback, is reported apart from product
+    failures, and is never charged against the build. That is the same protection, decided after
+    the fact rather than predicted, so a false positive costs a warning instead of a build.
     """
-    from drydock.acceptance import partition_unsatisfiable
-
-    return partition_unsatisfiable(checks, sources_dir=sources_dir)
+    return checks, flag_unsatisfiable(checks, sources_dir=sources_dir)
 
 
 _RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)
@@ -2340,8 +2333,9 @@ def build_target(
         if quarantined:
             _emit(
                 on_text,
-                f"acceptance: quarantined {len(quarantined)} unsatisfiable "
-                f"criteri{'on' if len(quarantined) == 1 else 'a'} — not graded",
+                f"acceptance: {len(quarantined)} "
+                f"criteri{'on' if len(quarantined) == 1 else 'a'} flagged as doubtful by static "
+                f"analysis — graded anyway, review the authoring",
             )
             for entry in quarantined:
                 _emit(on_text, f"  - {entry.rendered}")
@@ -2449,19 +2443,20 @@ def build_target(
                 strict_target=True,
             )
         )
-        # A baseline observation that died inside its own snippet is not a red baseline. Static
-        # analysis catches most of these above; this catches the rest — a mis-typed attribute,
-        # a stdlib import that does not exist — before the step spends an LLM pass on a check
-        # no implementation can turn green.
+        # A baseline observation that died inside its own snippet is not a red baseline, and it
+        # is not a reason to refuse the build either. It settles as UNVERIFIED wherever it is
+        # read, so it costs the story nothing; the other assertions on the same story are still
+        # worth running. Reported loudly so the author repairs the assertion.
         malformed = tuple(check for check in pre_acceptance if _malformed_verdict(check))
         if malformed:
-            raise SpecificationError(
-                "Build blocked: Programmatic Acceptance assertion fails in its own frame.\n"
-                + "\n".join(
-                    f"  - {check.source} [{check.check_id}]: {check.error}" for check in malformed
-                )
-                + "\nRepair the assertion in the Blueprint specification, then rerun the build."
+            _emit(
+                on_text,
+                f"pre-ac: {len(malformed)} assertion"
+                f"{'' if len(malformed) == 1 else 's'} fail in their own frame and will report "
+                f"UNVERIFIED — repair the assertion in the Blueprint specification",
             )
+            for check in malformed:
+                _emit(on_text, f"  - {check.source} [{check.check_id}]: {check.error}")
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
             weak_checks = [check.check_id for check in pre_acceptance if check.passed]
@@ -3212,12 +3207,9 @@ def build_target(
                 block_state = state
                 block_finding = finding
             if own_quarantined and block_state != "closed/failed":
-                # A story whose criteria were excluded as unsatisfiable has not been verified:
-                # its verification was removed, not satisfied. Letting it close verified would
-                # count toward ``manifest.verified``, which release scoring gates on, so the
-                # story would buy a release with a criterion nothing ever ran. The finding names
-                # the Blueprint as the defect rather than blaming the implementation.
-                block_state = "closed/failed"
+                # The criteria were graded, not removed, so the story's state is whatever the
+                # grading said. The doubt is recorded as a finding the author can act on; it is
+                # not grounds for failing a story whose assertions actually ran and passed.
                 block_finding = _quarantined_finding(own_quarantined)
             block_fields: dict[str, str | None] = {
                 "state": block_state,
@@ -3361,25 +3353,13 @@ def build_target(
                 check for check in acceptance if check.check_id in owned_check_ids
             )
             owned_quarantined = quarantined_by_block.get(block.block_id, ())
-            # The step result has to agree with the Manifest the same pass just wrote. A story
-            # closed/failed on a defective criterion is a failed step, so the build exits
-            # nonzero and an unattended run records the shortfall instead of reporting a
-            # verified story nothing verified.
-            step_status = "failed" if owned_quarantined and status != "blocked" else status
-            step_state = "closed/failed" if step_status == "failed" and owned_quarantined else state
+            # A flagged criterion no longer changes the step's verdict. It was graded like any
+            # other, and its verdict — including UNVERIFIED, which costs the build nothing — is
+            # the authority. The flag is authoring advice carried alongside the result.
+            step_status = status
+            step_state = state
             step_error = error
             step_failure_detail = failure_detail
-            if owned_quarantined and not error:
-                step_error = "acceptance criteria defective: " + ", ".join(
-                    entry.check_id for entry in owned_quarantined
-                )
-                step_failure_detail = (
-                    "These criteria cannot pass by construction, so they were excluded from "
-                    "grading rather than failed against. The story is not verified: its "
-                    "verification was removed, not satisfied. Repair the assertion in the "
-                    "Blueprint specification, then rerun the build.\n"
-                    + "\n".join(f"  - {entry.rendered}" for entry in owned_quarantined)
-                )
             step_result = BuildStepResult(
                 block_id=block.block_id,
                 name=block.name,

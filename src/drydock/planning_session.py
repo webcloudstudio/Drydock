@@ -2183,41 +2183,40 @@ def _parse_plan_text(text: str) -> BuildPlan:
     return DrydockManifest.parse(text, source="MANIFEST.md")
 
 
-#: Marks a planning warning that changed an emitted spec rather than merely commenting on it.
-#: The console promotes these above ordinary graph advisories.
-ACCEPTANCE_REMOVED_MARKER = "removed unsatisfiable acceptance criterion"
+#: Marks a planning warning about an acceptance criterion a static analyzer believes cannot
+#: pass as authored. The console promotes these above ordinary graph advisories. Nothing is
+#: removed: the analyzers are authoring guidance, not a gate.
+ACCEPTANCE_REMOVED_MARKER = "unsatisfiable acceptance criterion"
 
 
 def _strip_unsatisfiable_acceptance(
     blocks: dict[str, str], *, sources_dir: Path | None = None
 ) -> tuple[str, ...]:
-    """Remove unsatisfiable acceptance criteria from the emitted specs, in place.
+    """Report unsatisfiable acceptance criteria in the emitted specs, without editing them.
 
-    The Manifest is the build graph. A criterion that cannot pass by construction makes the
-    block that owns it unbuildable, and the build cannot repair it — staged acceptance assets
-    are restored before grading. Catching it at plan time is the difference between a warning
-    now and a failed build later.
+    This used to delete the criterion. Deletion was enforcement built on a static prediction,
+    and the prediction has a false-positive rate: the analyzers behind it are an unbounded
+    blacklist grown one observed failure at a time, and two of them were retracted after they
+    began failing fixtures that had passed for weeks. Silently removing a legitimate criterion
+    costs more than carrying a doubtful one, because a criterion that really cannot pass now
+    settles as UNVERIFIED at run time and is never charged against the build.
 
     ``sources_dir`` points at the staged assets the emitted criteria will run against, so a
     criterion that invokes one can be checked against that asset's own declared preconditions.
     """
-    from drydock.acceptance import drop_unsatisfiable_acceptance
+    from drydock.acceptance import flag_unsatisfiable_acceptance
 
-    removals: list[str] = []
+    findings: list[str] = []
     for name in sorted(blocks):
         if name in _RESERVED_BLOCKS:
             continue
-        cleaned, dropped = drop_unsatisfiable_acceptance(
-            blocks[name], source=name, sources_dir=sources_dir
+        findings.extend(
+            f"{name} [{flagged.check_id}]: {ACCEPTANCE_REMOVED_MARKER} — {flagged.reason}"
+            for flagged in flag_unsatisfiable_acceptance(
+                blocks[name], source=name, sources_dir=sources_dir
+            )
         )
-        if not dropped:
-            continue
-        blocks[name] = cleaned
-        removals.extend(
-            f"{name} [{drop.check_id}]: {ACCEPTANCE_REMOVED_MARKER} — {drop.reason}"
-            for drop in dropped
-        )
-    return tuple(removals)
+    return tuple(findings)
 
 
 #: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
