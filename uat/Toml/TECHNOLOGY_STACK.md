@@ -15,4 +15,4 @@ is never overwritten. `drydock plan` reads it to assign per-story `stack:` guida
 | Technology | Rigging | Notes |
 |---|---|---|
 | Go | go.md | Go 1.22 or newer; toolchain minimum pinned in go.mod. |
-| Shell | common.md | POSIX sh for full_test.sh and the conformance harness. |
+| Shell | common.md | POSIX sh for the supplied scoring entry point and the conformance harness. |

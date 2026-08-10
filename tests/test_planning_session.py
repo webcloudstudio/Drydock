@@ -2096,6 +2096,9 @@ def test_unbounded_test_suite_inside_acceptance_is_fatal(tmp_path):
 
 
 def test_scoped_suite_cannot_require_zero_skipped(tmp_path):
+    # The zero-skipped claim is read from a report the harness writes, not from captured stdout:
+    # a tally asserted as a literal substring of a runner's output is stripped as unsatisfiable
+    # before this rule is reached, so the rule is exercised on the form that survives that pass.
     target_dir = _make_target(tmp_path)
     feature = _SPEC_HEADER.format(
         ftype="FEATURE", name="Status", ac="Status command exits successfully."
@@ -2106,13 +2109,13 @@ def test_scoped_suite_cannot_require_zero_skipped(tmp_path):
         "Suite: scoped\n\n"
         "```python\n"
         "import subprocess, sys\n"
+        "from pathlib import Path\n"
         "result = subprocess.run(\n"
         '    [sys.executable, "tests/spec_tests.py", "--pattern", "Escapes"],\n'
         "    capture_output=True, text=True,\n"
         ")\n"
         "assert result.returncode == 0\n"
-        'assert "0 failed" in result.stdout\n'
-        'assert "0 skipped" in result.stdout\n'
+        'assert "0 skipped" in Path("report.txt").read_text(encoding="utf-8")\n'
         "```\n\n",
     )
     arch = _SPEC_HEADER.format(ftype="ARCHITECTURE", name="Example", ac="None.")

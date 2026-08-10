@@ -593,17 +593,36 @@ _STREAM_ATTRS = frozenset({"stdout", "stderr", "output"})
 # and must not be treated as a defect.
 _TALLY_STREAMS = frozenset({"stdout", "output"})
 
+# The mirror image of the vocabulary rule. Requiring a *specific* tally to appear in captured
+# output pins two things the author does not own: the case count, which belongs to whatever
+# suite version the harness installs, and the whitespace, because runners column-align their
+# columns (``valid tests: 205 passed,  0 failed`` carries two spaces before the zero). Either
+# drifts and the criterion is false on correct code, with no implementation able to move it.
+_TALLY_NOUNS = r"(?:passed|failed|failures?|errors?|skipped|ok|tests?|cases?|examples?|assertions?)"
+_HARDCODED_TALLY_RE = re.compile(
+    rf"\b\d+\s+{_TALLY_NOUNS}\b|\b{_TALLY_NOUNS}\s*[:=]\s*\d+", re.IGNORECASE
+)
+
 
 @dataclass(frozen=True)
 class OutputAssertionDefect:
-    """An assertion forbidding a literal in a command's captured output."""
+    """An assertion constraining a literal in a command's captured output."""
 
-    kind: str  # tally-vocabulary | redundant-substring
+    kind: str  # tally-vocabulary | hardcoded-tally | redundant-substring
     literal: str
     fatal: bool
 
     @property
     def message(self) -> str:
+        if self.kind == "hardcoded-tally":
+            return (
+                f"asserts the exact tally {self.literal!r} appears in captured output. The count "
+                f"belongs to the installed suite, not to the specification, and runners "
+                f'column-align their tallies ("205 passed,  0 failed" carries two spaces), so '
+                f"the literal is false on correct code as soon as either drifts and no "
+                f"implementation can move it. Gate on the exit status, or match with a regular "
+                f"expression that tolerates whitespace and asserts the failure count is zero."
+            )
         if self.kind == "tally-vocabulary":
             return (
                 f"asserts {self.literal!r} never appears in captured output, but a test runner "
@@ -664,10 +683,12 @@ def _asserts_exit_status(tree: ast.AST) -> bool:
 
 
 def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
-    """Flag assertions that forbid a literal in a command's captured output.
+    """Flag assertions that constrain a literal in a command's captured output.
 
-    Fatal for a word a passing runner prints anyway; advisory when the proof already asserts
-    on the exit status and the substring check is therefore redundant speculation.
+    Fatal for a word a passing runner prints anyway, and for a required literal carrying a
+    hardcoded tally the runner's own formatting and suite version control; advisory when the
+    proof already asserts on the exit status and the substring check is therefore redundant
+    speculation.
     """
     try:
         tree = ast.parse(code)
@@ -681,7 +702,7 @@ def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
         if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
             continue
         compare = node.test
-        if len(compare.ops) != 1 or not isinstance(compare.ops[0], ast.NotIn):
+        if len(compare.ops) != 1 or not isinstance(compare.ops[0], ast.NotIn | ast.In):
             continue
         if not isinstance(compare.left, ast.Constant) or not isinstance(compare.left.value, str):
             continue
@@ -689,6 +710,19 @@ def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
         if not streams:
             continue
         literal = compare.left.value
+        if isinstance(compare.ops[0], ast.In):
+            # A required literal is only a defect when it pins a tally. Any other required
+            # substring is an ordinary, satisfiable expectation about the program's own output.
+            if not (streams & _TALLY_STREAMS) or not _HARDCODED_TALLY_RE.search(literal):
+                continue
+            key = ("hardcoded-tally", literal)
+            if key in seen:
+                continue
+            seen.add(key)
+            defects.append(
+                OutputAssertionDefect(kind="hardcoded-tally", literal=literal, fatal=True)
+            )
+            continue
         # Fatal only where a runner actually prints its tally. The same word forbidden on
         # stderr is an ordinary, satisfiable check on a command that succeeds silently.
         fatal = bool(streams & _TALLY_STREAMS) and literal.strip().lower() in _TALLY_VOCABULARY

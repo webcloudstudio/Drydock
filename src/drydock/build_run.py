@@ -983,6 +983,11 @@ _BUILD_REPORT_SECTION_RE = re.compile(
 # Category prefix for a build agent's own declared failure. Such a self-report is advisory:
 # when the agent still wrote files, the deterministic acceptance gate is the authority.
 _AGENT_REPORTED_PREFIX = "agent-reported failure"
+# Category for a step whose observed file delta is empty. Like the self-report above it is
+# advisory whenever the block carries acceptance criteria: an empty delta is a statement about
+# the agent's work, not about the environment, and a step that rewrites a correct file with
+# identical bytes produces one.
+_NO_FILES_WRITTEN = "no build files written"
 
 
 def _parse_agent_failure(summary: str) -> tuple[str, str]:
@@ -1116,7 +1121,7 @@ def _classify_failure(
         return category, detail
 
     if not wrote_files:
-        return "no build files written", "The build agent completed but changed no files."
+        return _NO_FILES_WRITTEN, "The build agent completed but changed no files."
 
     return None
 
@@ -1292,7 +1297,9 @@ def _is_repairable(error: str | None) -> bool:
     repairable: the build directory holds the partial work and the failing checks name
     what remains. Every other classification (token/context limit, sandbox unavailable,
     provider error, dependency gate, staged-asset tamper, no files written) is terminal
-    and never loops — re-running it only wastes a pass.
+    and never loops — re-running it only wastes a pass. ``no files written`` reaches here
+    only for a block with no acceptance criteria; with criteria it is downgraded to advisory
+    before this point and the acceptance verdict is what gets classified.
     """
     if not error:
         return False
@@ -2641,6 +2648,19 @@ def build_target(
                 # A surviving agent-reported failure (no checks, or no files) carries the note
                 # into the repair feedback so a rerun sees what the agent claimed went wrong.
                 agent_report = _parse_agent_failure(summary)
+            # An empty file delta is measured by content hash, so a step that rewrites an
+            # already-correct file with identical bytes reports zero changes while having done
+            # exactly the right thing. Treating that as terminal skips acceptance entirely,
+            # which also discards the agent's ``AC_BROKEN`` report — the one signal that stops
+            # a repair loop against a criterion no implementation can satisfy. With checks to
+            # measure, let the deterministic gate decide; with none, an agent that changed
+            # nothing has genuinely produced nothing and the failure stands.
+            if status == "failed" and error == _NO_FILES_WRITTEN and checks:
+                _emit(
+                    on_text,
+                    "no files changed (advisory) — deterministic acceptance is authoritative",
+                )
+                state, status, error, failure_detail = "", "", None, ""
             if changed_files:
                 preview = ", ".join(changed_files[:5])
                 suffix = "" if len(changed_files) <= 5 else f", ... (+{len(changed_files) - 5})"

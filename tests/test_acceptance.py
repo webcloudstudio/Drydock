@@ -488,6 +488,30 @@ def test_unsatisfiable_criterion_is_removed_and_the_rest_is_kept():
     assert "## User Acceptance" in cleaned
 
 
+def test_a_hardcoded_conformance_tally_is_removed_at_plan_time():
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    spec = (
+        "# FEATURE: Conformance Harness\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### complete-conformance-suite\n"
+        "The complete supplied suite passes without skipped cases.\n\n"
+        "```python\n"
+        "import subprocess\n\n"
+        'result = subprocess.run(["sh", "full_test.sh"], capture_output=True, text=True)\n'
+        "print(result.stdout)\n"
+        "assert result.returncode == 0\n"
+        'assert "valid tests: 210 passed, 0 failed" in result.stdout\n'
+        "```\n"
+    )
+
+    cleaned, dropped = drop_unsatisfiable_acceptance(spec, source="FEATURE-Conformance.md")
+
+    assert [d.check_id for d in dropped] == ["complete-conformance-suite"]
+    assert "column-align" in dropped[0].reason
+    assert "210 passed" not in cleaned
+
+
 def test_a_satisfiable_spec_is_returned_untouched():
     from drydock.acceptance import drop_unsatisfiable_acceptance
 

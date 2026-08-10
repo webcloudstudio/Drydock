@@ -204,6 +204,7 @@ The implementation passes the conformance sections this story owns.
 Suite: scoped
 
 ```python
+import re
 import subprocess
 import sys
 
@@ -214,7 +215,7 @@ result = subprocess.run(
 print(result.stdout)
 print(result.stderr, file=sys.stderr)
 assert result.returncode == 0
-assert "0 failed" in result.stdout
+assert re.search(r"\b0\s+failed\b", result.stdout)
 ```
 ````
 
@@ -236,8 +237,13 @@ requires a full pass over the story's scope, never a hand-picked subset. A featu
 the sections it owns and declares `Suite: scoped`; a terminal verification story gates on the whole
 suite and declares `Suite: full`. The marker sits on its own line in the check's heading block and
 tells the runner the check gates on the whole test suite rather than a story-scoped sample.
-The assertion requires runner success. It may additionally verify the passed total from
-authoritative suite data or an explicitly declared authoritative exact count.
+The assertion requires runner success. It may additionally verify the failure count, matched with
+a whitespace-tolerant regular expression (`re.search(r"\b0\s+failed\b", result.stdout)`). Never
+assert a runner's tally as a literal substring of its output: the case count belongs to the
+installed suite, not to the specification, and runners column-align their summaries
+(`valid tests: 205 passed,  0 failed` carries two spaces), so a literal such as
+`assert "valid tests: 210 passed, 0 failed" in result.stdout` is false on correct code and no
+implementation can move it. Drydock removes such a criterion from the specification at plan time.
 For `Suite: scoped`, require success and zero failures/errors in the selected slice, but never
 require `0 skipped`; tests outside the slice are expected to be skipped. Requiring zero skipped is
 reserved for the terminal `Suite: full` check.

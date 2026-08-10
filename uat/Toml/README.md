@@ -2,7 +2,8 @@
 
 A Drydock UAT kit. Drydock reads the TOML 1.0.0 specification and a language-neutral conformance
 harness, then designs and builds a complete TOML parser in Go, unattended, from `init` to a scored
-`build`. Correctness is measured by the upstream `toml-test` suite: 210 valid and 499 invalid cases.
+`build`. Correctness is measured by the upstream `toml-test` suite: every supplied valid and
+invalid case must pass.
 
 The parser is written from the specification. Every third-party TOML module is forbidden, and
 `go.mod` declares no dependencies.
@@ -54,8 +55,9 @@ execute. The Markdown becomes Blueprint input.
 ## What the build must produce
 
 A filter: read TOML from stdin, write tagged JSON to stdout, exit `0`; on invalid TOML write a
-diagnostic to stderr and exit non-zero. `full_test.sh` at the application root builds the decoder
-and runs the full conformance suite, unfiltered, returning the harness exit code unchanged.
+diagnostic to stderr and exit non-zero. The supplied `sources/full_test.sh` builds the decoder and
+runs the full conformance suite, unfiltered, returning the harness exit code unchanged. It is a
+staged, hash-verified asset, so the build cannot weaken its own score by editing it.
 
 ## Reading the evidence
 

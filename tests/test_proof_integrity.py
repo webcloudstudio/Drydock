@@ -394,10 +394,63 @@ def test_assertion_on_non_stream_text_is_ignored():
 
 
 def test_positive_membership_assertion_is_ignored():
-    # Requiring a word to be present is an ordinary check, not a model of failure vocabulary.
+    # Requiring an ordinary word to be present is a satisfiable expectation about the program's
+    # own output, not a model of the runner's summary formatting.
     assert (
         analyze_output_assertions(
-            'assert result.returncode == 0\nassert "3 passed" in result.stdout'
+            'assert result.returncode == 0\nassert "All tests passed" in result.stdout'
+        )
+        == ()
+    )
+
+
+# The Toml conformance case. toml-test prints "valid tests: 205 passed,  0 failed" — the count
+# is a property of the installed suite and the columns are aligned, so a literal carrying both
+# is false on correct code for two independent reasons.
+_HARDCODED_TALLY_ASSERTION = """
+import subprocess
+
+result = subprocess.run(["sh", "full_test.sh"], capture_output=True, text=True)
+print(result.stdout)
+assert result.returncode == 0
+assert "valid tests: 210 passed, 0 failed" in result.stdout
+"""
+
+
+def test_requiring_a_hardcoded_tally_is_fatal():
+    (defect,) = analyze_output_assertions(_HARDCODED_TALLY_ASSERTION)
+    assert defect.fatal
+    assert defect.kind == "hardcoded-tally"
+    assert defect.literal == "valid tests: 210 passed, 0 failed"
+    assert "column-align" in defect.message
+
+
+def test_hardcoded_tally_in_noun_colon_count_form_is_fatal():
+    (defect,) = analyze_output_assertions(
+        'assert result.returncode == 0\nassert "failures: 0" in result.stdout'
+    )
+    assert defect.kind == "hardcoded-tally"
+
+
+def test_hardcoded_tally_tracked_through_a_stdout_binding():
+    (defect,) = analyze_output_assertions(
+        'out = result.stdout\nassert "709 tests" in out',
+    )
+    assert defect.kind == "hardcoded-tally"
+
+
+def test_hardcoded_tally_on_stderr_is_not_reported():
+    # Only a runner's stdout summary carries the formatting hazard.
+    assert analyze_output_assertions('assert "210 passed" in result.stderr') == ()
+
+
+def test_whitespace_tolerant_regex_on_a_tally_is_not_reported():
+    # The prescribed repair: match the shape, not the literal.
+    assert (
+        analyze_output_assertions(
+            "import re\n"
+            "assert result.returncode == 0\n"
+            'assert re.search(r"valid tests:\\s+\\d+ passed,\\s+0 failed", result.stdout)'
         )
         == ()
     )

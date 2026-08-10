@@ -10,6 +10,19 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-09: The Toml UAT kit ships its scoring entry point instead of asking the build agent to
+  transcribe it. `sources/full_test.sh` is a declared kit source, staged and hash-verified like the
+  conformance harness it invokes, and `uat.json` scores with `sh sources/full_test.sh`. Staged
+  assets land under the build directory's fixed `sources/` root, which is why the path moved off
+  the application root. The kit loses an entire LLM block, the "path corrections are the only
+  permitted edit" escape hatch, and the surface on which a build could weaken its own score — a
+  modified entry point is now restored before grading rather than caught by review. The kit's
+  Definition of Done no longer asserts absolute case totals (`210 valid, 499 invalid`, stale against
+  the 205/474 the installed suite supplies); it requires every supplied case to pass with zero
+  failed, errored, and skipped. `drydock uat` also asserts that a kit declaring a `sources/` scoring
+  command ships that asset. The CommonMark kit keeps an agent-authored `full_test.sh`: its command
+  names the program the build chooses, so it cannot be a static asset.
+
 - 2026-08-09: `drydock uat --report` renders the run receipt (`uat/<kit>/runs/<run>/index.html`
   and the kit landing page) as a printed acceptance report rather than a web page: a white
   monospaced sheet with the Drydock mark inlined as a data URI, an APPROVED or REJECTED verdict
@@ -128,6 +141,29 @@ command surface and Typed Specification contract are unstable and may change bet
   records onto Manifest story states — is unaffected.
 
 ### Fixed
+
+- 2026-08-09: A build step whose observed file delta is empty no longer skips acceptance grading
+  when the block declares Programmatic Acceptance. `_written_files` compares content hashes, so a
+  step that rewrites an already-correct deliverable with identical bytes reported zero changes and
+  was classified `no build files written` — a terminal status that short-circuited the acceptance
+  run, which in turn discarded the agent's `AC_BROKEN` report, the one signal that ends a repair
+  loop against a criterion nothing can satisfy. The classification is now advisory whenever the
+  block has criteria to measure: the deterministic gate decides, and a defective-criterion claim
+  stops the loop on the first call instead of consuming the budget behind a misleading cause. With
+  no criteria, an agent that changed nothing still fails terminally. Observed on `drydock uat Toml`,
+  where a correct decoder and a correct scoring script were reported as an unpersisted artifact.
+
+- 2026-08-09: `proof_integrity.analyze_output_assertions` now also rejects the positive form of the
+  tally defect: an acceptance snippet requiring an exact runner tally to appear in captured stdout,
+  such as `assert "valid tests: 210 passed, 0 failed" in result.stdout`. The case count belongs to
+  the installed suite rather than to the specification, and runners column-align their summaries
+  (`valid tests: 205 passed,  0 failed` carries two spaces), so the literal is false on correct code
+  as soon as either drifts, for two independent reasons. The defect is fatal: `drydock validate`
+  reports it, planning strips the criterion, and a build refuses to start rather than spend its
+  repair budget on it. Only a literal carrying a tally is rejected — an ordinary required substring,
+  the same literal asserted against stderr, and a whitespace-tolerant regular expression are all
+  left alone. `prompts/BLUEPRINTS_CONTRACT.md` now teaches `re.search(r"\b0\s+failed\b", ...)` in
+  place of `assert "0 failed" in result.stdout`.
 
 - 2026-08-09: The Programmatic Acceptance declaration gate no longer treats the POSIX shell and the
   Python interpreter as undeclared external tooling. `visible_external_usage` flagged every literal

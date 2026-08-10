@@ -748,3 +748,18 @@ def test_resume_into_a_stage_with_no_input_names_the_producing_stage(tmp_path: P
         start_stage="plan",
     )
     assert ("plan", "ReadingList", "--override") in calls
+
+
+def test_shipped_kits_declare_every_asset_their_score_command_runs() -> None:
+    # A kit whose scoring entry point is not among its declared sources leaves the script to be
+    # authored by the build agent, which is both nondeterministic and self-scoring. When the
+    # command names a path under `sources/`, that asset must ship with the kit.
+    uat_root = Path(__file__).resolve().parents[1] / "uat"
+    for config_path in sorted(uat_root.glob("*/uat.json")):
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        declared = set(config["sources"])
+        for source in declared:
+            assert (config_path.parent / source).is_file(), f"{config_path}: missing {source}"
+        for argument in config["test_command"]:
+            if argument.startswith("sources/"):
+                assert argument in declared, f"{config_path}: {argument} is not a declared source"

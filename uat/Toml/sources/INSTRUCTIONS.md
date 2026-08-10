@@ -4,8 +4,10 @@
 
 Build a TOML v1.0.0 parser that conforms to the specification in
 `sources/toml-v1.0.0.md`. Correctness is measured by the upstream `toml-test`
-conformance suite. The goal is to pass every test: 210 valid and 499 invalid
-cases at TOML 1.0.
+conformance suite. The goal is to pass every valid and every invalid case the
+installed suite supplies, with no case failed, errored, or skipped. The suite's
+size is a property of the version `setup_harness.sh` installs; never assert a
+case count.
 
 Rejecting invalid input is scored as heavily as accepting valid input. A parser
 that is merely permissive fails roughly 70 percent of the suite.
@@ -16,9 +18,11 @@ but is a scoring instrument, not part of the deliverable.
 
 ## Run Harness
 
-`full_test.sh` is the single scoring entry point. `drydock uat` runs
-`sh full_test.sh` from the completed application root and takes its exit code and
-output as the score. Create it verbatim:
+`sources/full_test.sh` is the single scoring entry point. It is supplied, not
+authored: it is staged verbatim into the build directory alongside the other
+imported assets, and `drydock uat` runs `sh sources/full_test.sh` from the
+completed application root and takes its exit code and output as the score. It
+reads:
 
 ```sh
 #!/bin/sh
@@ -33,22 +37,12 @@ compilation failure and a conformance failure are distinguishable in the
 evidence. `DECODER` is the harness's only knowledge of the implementation
 language; the harness itself is language-neutral.
 
-**Verify the paths before the first run.** Imported sources are flattened into a
-`sources/` directory at the application root, but confirm rather than assume:
-
-```bash
-ls sources/
-```
-
-Expected contents: `INSTRUCTIONS.md`, `toml-v1.0.0.md`, `run_conformance.sh`,
-`setup_harness.sh`. If the listing differs, correct the path in `full_test.sh` to
-match reality and record the correction in the build evidence.
-
-**Path corrections are the only permitted edit.** Do not add `-skip` or `-run`
-flags, do not filter or summarize the harness output, do not mask the exit code
-with `|| true` or a trailing `exit 0`, and do not substitute a different test
-command. A `full_test.sh` that does any of those things is a failed build
-regardless of what it prints.
+**The scoring assets are read-only.** `sources/full_test.sh`,
+`sources/run_conformance.sh`, and `sources/setup_harness.sh` are hash-verified
+against the import and restored before grading, so a modification is reported as
+tampering rather than honored. Do not write to them. Build `cmd/toml-decoder` so
+that the supplied entry point succeeds; changing the entry point is not a
+repair.
 
 ## Interface Contract
 
@@ -127,8 +121,8 @@ go build -o toml-decoder ./cmd/toml-decoder
 DECODER="$PWD/toml-decoder" sh sources/run_conformance.sh
 ```
 
-During development, `sh full_test.sh` does both steps and is the same command the
-score is taken from.
+During development, `sh sources/full_test.sh` does both steps and is the same
+command the score is taken from.
 
 Mechanics: `toml-test` holds the corpus internally. For each valid case it pipes
 TOML into the decoder on stdin and compares the emitted tagged JSON against the
@@ -186,16 +180,19 @@ The specification is normative and short. Follow it directly.
 ## Files the LLM Needs
 
 - `sources/toml-v1.0.0.md` — the specification. Primary input. Required.
-- `sources/run_conformance.sh` — the scoring entry point.
+- `sources/full_test.sh` — the supplied scoring entry point.
+- `sources/run_conformance.sh` — the conformance harness it invokes.
 - `sources/setup_harness.sh` — one-time harness installation.
 
 ## Definition of Done
 
-- A POSIX-compatible `full_test.sh` exists at the completed application root,
-  exactly as given under **Run Harness** above.
-- `sh full_test.sh` runs cleanly with zero errors and exits zero.
+- `sh sources/full_test.sh` runs cleanly with zero errors and exits zero.
 - The program satisfies the stdin → tagged-JSON → exit-code contract.
-- Passing count is 100 percent: 210 valid, 499 invalid.
+- Every supplied valid and invalid case passes: the failed, errored, and skipped
+  counts are all zero. Assert the failure count with a whitespace-tolerant
+  pattern such as `re.search(r"\b0\s+failed\b", output)`; the harness aligns its
+  summary columns and the case totals belong to the installed suite, so a
+  literal tally is not a valid acceptance criterion.
 - The parser is written from the specification. **Every third-party TOML module is
   forbidden** — `github.com/BurntSushi/toml`, `github.com/pelletier/go-toml`,
   `github.com/naoina/toml`, and any other. `BurntSushi/toml` scores near-perfectly

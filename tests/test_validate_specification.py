@@ -356,7 +356,7 @@ Blocks resolve before inlines.
             "    env={**os.environ, 'PYTHONPATH': 'sources'}, capture_output=True, text=True,\n"
             ")\n"
             "print(result.stdout)\n"
-            "assert '1 passed' in result.stdout"
+            "assert result.returncode == 0"
         )
         result = self._validate(target_dir, code)
         assert "Acceptance snippets" not in [f.section for f in result.failures()]

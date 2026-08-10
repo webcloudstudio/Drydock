@@ -2665,6 +2665,35 @@ def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_pat
     assert runner.calls == []
 
 
+def test_a_hardcoded_conformance_tally_blocks_the_build(tmp_path):
+    # The Toml regression, at the gate that would have prevented the run entirely: the criterion
+    # pins a case count the installed suite owns and a whitespace layout the runner owns.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### complete-conformance-suite\n"
+        "The complete supplied suite passes.\n\n"
+        "```python\n"
+        "import subprocess\n"
+        'result = subprocess.run(["sh", "full_test.sh"], capture_output=True, text=True)\n'
+        "print(result.stdout)\n"
+        "assert result.returncode == 0\n"
+        'assert "valid tests: 210 passed, 0 failed" in result.stdout\n'
+        "```\n",
+        encoding="utf-8",
+    )
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as exc:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    message = str(exc.value)
+    assert "unsatisfiable Programmatic Acceptance" in message
+    assert "DATABASE.md [complete-conformance-suite]" in message
+    assert runner.calls == []
+
+
 # Every check runs as its own script in its own process. A snippet that reads a name a sibling
 # check bound raises NameError on every run, so it can never go green — the same category of
 # waste as a mis-authored expectation, and it must be caught before an LLM pass is spent.
@@ -3126,6 +3155,77 @@ def test_a_defect_named_only_in_blockers_stops_the_loop(tmp_path):
 
     assert [c["attempt"] for c in runner.calls] == [0]
     assert result.steps[0].stop_reason == "acceptance criterion reported defective"
+
+
+def test_idempotent_rewrite_does_not_suppress_the_defective_criterion_report(tmp_path):
+    # The motivating regression. The deliverable is already on disk from an earlier pass, so the
+    # step rewrites it with identical bytes and the content-hash delta is empty. Classifying that
+    # as "no build files written" used to skip acceptance entirely, which discarded the agent's
+    # AC_BROKEN report and let the loop spend its whole budget on a criterion nothing can satisfy.
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    build_dir.mkdir(parents=True, exist_ok=True)
+    (build_dir / "foundation.txt").write_text("bad\n", encoding="utf-8")
+    runner = _defective_claim_runner(
+        "RESULT: SUCCESS\n"
+        "AC_BROKEN: foundation-file\n"
+        "FILES CHANGED:\n- foundation.txt\n\n"
+        "SUMMARY:\nThe marker is already correct; the assertion contradicts it.\n"
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+    )
+
+    assert [c["attempt"] for c in runner.calls] == [0]
+    step = result.steps[0]
+    assert step.status == "failed"
+    assert step.error == "programmatic acceptance failed: foundation-file"
+    assert step.stop_reason == "acceptance criterion reported defective"
+    assert "DATABASE.md" in step.failure_detail
+
+
+def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
+    # A step whose deliverable is already byte-correct changes nothing and is still done. With
+    # criteria to measure, the deterministic gate is authoritative.
+    messages: list[str] = []
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    build_dir.mkdir(parents=True, exist_ok=True)
+    (build_dir / "foundation.txt").write_text("ok\n", encoding="utf-8")
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(write_files=False),
+        on_text=messages.append,
+    )
+
+    assert result.steps[0].status == "built"
+    assert _state(target_dir, "foundation") == "closed/verified"
+    assert _finding(target_dir, "foundation") is None
+    assert any("no files changed (advisory)" in message for message in messages)
+
+
+def test_no_file_delta_stays_terminal_without_acceptance_criteria(tmp_path):
+    # With nothing to measure, an agent that changed nothing has produced nothing.
+    target_dir, build_dir = _setup(tmp_path, manifest=_ONE_STORY)
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(write_files=False),
+    )
+
+    assert result.steps[0].status == "failed"
+    assert result.steps[0].error == "no build files written"
 
 
 def test_ac_broken_claim_parsing():
