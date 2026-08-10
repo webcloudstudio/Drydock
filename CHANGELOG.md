@@ -8,6 +8,20 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Changed
+
+- 2026-08-09: `drydock uat --report` renders the run receipt (`uat/<kit>/runs/<run>/index.html`
+  and the kit landing page) as a printed acceptance report rather than a web page: a white
+  monospaced sheet with the Drydock mark inlined as a data URI, an APPROVED or REJECTED verdict
+  stamp keyed to the recorded status, and the evidence filed into tabs — Steps, Error, LLM, Code,
+  Sources, Blueprint. The Error tab appears only when a command exited nonzero, the LLM tab only
+  when the run recorded an execution, and command logs are no longer inventoried a second time
+  under their own table. A captured stream is linked only when it holds bytes, so an empty
+  `stderr` renders as a dash: `stderr` carries provider progress on successful commands and its
+  existence never implied a failure. Every evidence link opens in a new tab. Rendering only —
+  the inventory, `SHA256SUMS`, and `result.json` contracts are unchanged, and an old run can be
+  re-rendered in place.
+
 ### Added
 
 - 2026-08-09: A build agent can end its own repair budget with an `AC_BROKEN: <check-id>` line

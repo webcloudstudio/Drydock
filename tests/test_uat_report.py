@@ -168,6 +168,76 @@ def test_case_kit_marks_a_resumed_run_instead_of_claiming_a_clean_lifecycle(
     assert "every required command exited 0" not in page
 
 
+def test_case_kit_links_a_stream_only_when_it_captured_output(tmp_path: Path) -> None:
+    # An empty stderr is the normal case for a command that printed nothing to it, so it must
+    # not be offered as a link and must not read as evidence of a problem.
+    case = _case(tmp_path / "run")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert "evidence/commands/01-init.stderr.log" not in page
+    assert "evidence/commands/02-build.stderr.log" in page
+
+
+def test_case_kit_opens_every_evidence_link_in_its_own_tab(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    anchors = re.findall(r"<a\b[^>]*>", page)
+    assert anchors
+    assert all('target="_blank"' in anchor for anchor in anchors)
+
+
+def test_case_kit_files_the_evidence_into_tabs_without_repeating_the_logs(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path / "run", status="failed", failing=True)
+    (case / "evidence" / "llm.jsonl").write_text(
+        json.dumps({
+            "execution_id": "exec-1",
+            "status": "completed",
+            "job": {"command_name": "build", "llm": "codex", "model": "test-model"},
+            "result": {
+                "returncode": 0,
+                "stats": {"elapsed_ms": 10, "input_tokens": 5, "cached_input_tokens": 1},
+            },
+            "artifacts": {"prompt": str(case / "sources" / "spec.txt")},
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    tabs = re.findall(r'<button type="button" data-panel="[^"]+">?[^>]*>([^<]+)</button>', page)
+    assert tabs == ["Steps", "Error", "LLM", "Code", "Sources", "Blueprint"]
+    # The command logs are reached from the step that produced them; no inventory table
+    # lists them again as their own rows.
+    assert '">evidence/commands/' not in page
+
+
+def test_case_kit_drops_the_error_tab_when_nothing_failed(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    assert 'data-panel="error"' not in page
+    assert 'data-panel="steps"' in page
+
+
+def test_case_kit_stamps_the_verdict_and_carries_the_drydock_mark(tmp_path: Path) -> None:
+    passing = build_case_kit(_case(tmp_path / "pass")).read_text(encoding="utf-8")
+    failing = build_case_kit(_case(tmp_path / "fail", status="failed", failing=True)).read_text(
+        encoding="utf-8"
+    )
+
+    assert '<div class="stamp pass"><span class="mark">Approved</span>' in passing
+    assert '<div class="stamp fail"><span class="mark">Rejected</span>' in failing
+    # The mark is inlined, so a kit copied off this machine keeps its letterhead.
+    assert 'src="data:image/png;base64,' in passing
+
+
 def test_case_kit_prunes_regenerable_caches(tmp_path: Path) -> None:
     case = _case(tmp_path / "run")
     cache = case / "build" / "commonmark" / "__pycache__"

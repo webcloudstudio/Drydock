@@ -15,12 +15,14 @@ for an old run without re-executing it.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import json
 import shutil
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 __all__ = [
@@ -262,59 +264,131 @@ def _write_sums(base: Path, groups: Sequence[ArtifactGroup]) -> None:
 
 _STYLE = """
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --ink: #14181d; --muted: #5c6672; --line: #d9dee5;
-  --pass: #0f7b3d; --pass-bg: #e6f4ec; --fail: #b3261e; --fail-bg: #fbeae9;
-  --accent: #1b4f8f; --code-bg: #f0f2f5;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #98a2b0; --line: #2a313a;
-    --pass: #5fd18c; --pass-bg: #12271b; --fail: #ff8a80; --fail-bg: #2a1616;
-    --accent: #7fb2f0; --code-bg: #10141a;
-  }
+  --paper: #ffffff; --ink: #14171a; --muted: #5b616a; --rule: #c9c9c3; --hard: #14171a;
+  --pass: #16663a; --fail: #a3170f; --tint: #f7f7f4;
 }
 * { box-sizing: border-box; }
 body {
-  margin: 0; padding: 2rem 1.25rem 5rem; background: var(--bg); color: var(--ink);
-  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 0; padding: 1.75rem 1rem 3rem; background: var(--paper); color: var(--ink);
+  font: 13.5px/1.62 "Courier New", Courier, ui-monospace, SFMono-Regular, monospace;
 }
-main { max-width: 1120px; margin: 0 auto; }
-h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
-h2 { font-size: 1.1rem; margin: 2.25rem 0 .5rem; letter-spacing: -.01em; }
-p.sub { color: var(--muted); margin: 0 0 1.5rem; }
-p.note { color: var(--muted); margin: .25rem 0 .75rem; font-size: .9rem; }
-code, pre, .mono { font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace; }
-code { background: var(--code-bg); padding: .1em .35em; border-radius: 3px; font-size: .88em; }
+main { max-width: 1080px; margin: 0 auto; }
+a { color: var(--ink); text-underline-offset: 2px; }
+a:hover { color: var(--pass); }
+code, pre, .mono { font-family: inherit; }
+code { background: var(--tint); padding: 0 .25em; }
 pre {
-  background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px;
-  padding: .85rem 1rem; overflow-x: auto; font-size: .82rem; margin: 0 0 1rem;
+  background: var(--tint); border: 1px solid var(--rule); padding: .8rem .9rem;
+  overflow-x: auto; font-size: .84rem; margin: 0 0 1rem; white-space: pre-wrap; word-break: break-word;
 }
-a { color: var(--accent); }
-.banner {
-  border: 1px solid var(--line); border-left-width: 6px; border-radius: 8px;
-  padding: 1rem 1.15rem; margin: 0 0 1.5rem; background: var(--panel);
+
+/* ── letterhead ─────────────────────────────────────────────── */
+.letterhead {
+  display: flex; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap;
+  border-bottom: 3px double var(--hard); padding-bottom: 1rem; margin-bottom: 1rem;
 }
-.banner.pass { border-left-color: var(--pass); background: var(--pass-bg); }
-.banner.fail { border-left-color: var(--fail); background: var(--fail-bg); }
-.banner .verdict { font-size: 1.15rem; font-weight: 650; letter-spacing: .02em; }
-.banner.pass .verdict { color: var(--pass); }
-.banner.fail .verdict { color: var(--fail); }
-.banner .detail { color: var(--ink); margin-top: .35rem; }
-.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-table { border-collapse: collapse; width: 100%; font-size: .875rem; }
-th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-weight: 600; color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.letterhead .logo { width: 190px; max-width: 42vw; height: auto; flex: 0 0 auto; }
+.letterhead .wordmark { font-size: 1.7rem; font-weight: 700; letter-spacing: .12em; color: var(--pass); }
+.ident { flex: 1 1 18rem; min-width: 15rem; }
+.kind { text-transform: uppercase; letter-spacing: .22em; font-size: .72rem; color: var(--muted); }
+h1 { font-size: 1.32rem; font-weight: 700; letter-spacing: .04em; margin: .3rem 0 .25rem; text-transform: uppercase; }
+.docline { color: var(--muted); font-size: .82rem; word-break: break-all; }
+
+/* ── rubber stamp ───────────────────────────────────────────── */
+.stamp {
+  flex: 0 0 auto; align-self: center; text-align: center; padding: .45rem 1.1rem .55rem;
+  border: 3px solid currentColor; outline: 1px solid currentColor; outline-offset: 3px;
+  transform: rotate(-7deg); opacity: .88; letter-spacing: .16em; font-weight: 700;
+  text-transform: uppercase; line-height: 1.2;
+}
+.stamp .mark { display: block; font-size: 1.55rem; }
+.stamp .sub { display: block; font-size: .62rem; letter-spacing: .18em; margin-top: .2rem; }
+.stamp.pass { color: var(--pass); }
+.stamp.fail { color: var(--fail); }
+
+/* ── verdict and metadata ───────────────────────────────────── */
+.verdict { margin: 0 0 1rem; font-size: .95rem; }
+.verdict .state { font-weight: 700; letter-spacing: .08em; }
+.verdict.pass .state { color: var(--pass); }
+.verdict.fail .state { color: var(--fail); }
+.verdict .detail { color: var(--ink); margin-top: .3rem; font-size: .86rem; }
+dl.meta {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(23rem, 1fr));
+  gap: .15rem 2rem; margin: 0 0 1.25rem; border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule); padding: .6rem 0; font-size: .82rem;
+}
+dl.meta > div { display: flex; gap: .6rem; }
+dl.meta dt { color: var(--muted); text-transform: uppercase; letter-spacing: .08em; flex: 0 0 7rem; }
+dl.meta dd { margin: 0; overflow-wrap: anywhere; }
+
+/* ── tabs ───────────────────────────────────────────────────── */
+nav.tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid var(--hard); margin-bottom: 1.25rem; }
+nav.tabs button {
+  font: inherit; font-size: .8rem; text-transform: uppercase; letter-spacing: .12em;
+  background: var(--tint); color: var(--muted); cursor: pointer; padding: .4rem 1rem;
+  border: 1px solid var(--rule); border-bottom: none; margin-bottom: -1px;
+}
+nav.tabs button[aria-selected="true"] {
+  background: var(--paper); color: var(--ink); font-weight: 700;
+  border-color: var(--hard); border-bottom: 1px solid var(--paper);
+}
+.panel { display: none; }
+.panel.active { display: block; }
+h2 { font-size: .9rem; margin: 1.75rem 0 .4rem; text-transform: uppercase; letter-spacing: .12em; }
+.panel > h2:first-child { margin-top: 0; }
+p.note { color: var(--muted); margin: .2rem 0 .8rem; font-size: .82rem; }
+
+/* ── tables ─────────────────────────────────────────────────── */
+.scroll { overflow-x: auto; border: 1px solid var(--rule); }
+table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; white-space: nowrap; background: var(--tint); border-bottom: 1px solid var(--hard); }
 tbody tr:last-child td { border-bottom: none; }
-td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-td.hash { font-size: .72rem; color: var(--muted); word-break: break-all; }
-.tag { display: inline-block; padding: .05rem .5rem; border-radius: 999px; font-size: .74rem; font-weight: 650; letter-spacing: .03em; }
-.tag.pass { color: var(--pass); background: var(--pass-bg); border: 1px solid var(--pass); }
-.tag.fail { color: var(--fail); background: var(--fail-bg); border: 1px solid var(--fail); }
-dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1.25rem; margin: 0 0 1rem; }
-dl.meta dt { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
-dl.meta dd { margin: 0; }
-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+td.num { text-align: right; white-space: nowrap; }
+td.hash { font-size: .7rem; color: var(--muted); word-break: break-all; }
+td.dash { color: var(--muted); }
+.tag { display: inline-block; padding: 0 .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; border: 1px solid currentColor; }
+.tag.pass { color: var(--pass); }
+.tag.fail { color: var(--fail); }
+footer { margin-top: 2.5rem; padding-top: .75rem; border-top: 3px double var(--hard); color: var(--muted); font-size: .78rem; }
+
+@media print {
+  body { padding: 0; }
+  nav.tabs { display: none; }
+  .panel { display: block; page-break-inside: avoid; }
+}
 """
+
+_SCRIPT = """
+document.addEventListener('click', function (event) {
+  var tab = event.target.closest('nav.tabs button[data-panel]');
+  if (!tab) return;
+  var root = tab.closest('main');
+  root.querySelectorAll('nav.tabs button[data-panel]').forEach(function (button) {
+    button.setAttribute('aria-selected', String(button === tab));
+  });
+  root.querySelectorAll('.panel').forEach(function (panel) {
+    panel.classList.toggle('active', panel.id === 'panel-' + tab.dataset.panel);
+  });
+});
+"""
+
+
+@lru_cache(maxsize=1)
+def _logo_data_uri() -> str:
+    """Inline the Drydock mark so a copied kit keeps its letterhead offline."""
+    from drydock import paths
+
+    try:
+        path = paths.get_quarterdeck_root() / "static" / "drydock_logo.png"
+    except (FileNotFoundError, OSError):
+        return ""
+    if not path.is_file():
+        return ""
+    try:
+        return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
 
 
 def _page(title: str, body: str) -> str:
@@ -323,17 +397,54 @@ def _page(title: str, body: str) -> str:
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{html.escape(title)}</title>\n<style>{_STYLE}</style>\n"
-        f"</head>\n<body>\n<main>\n{body}\n</main>\n</body>\n</html>\n"
+        f"</head>\n<body>\n<main>\n{body}\n</main>\n<script>{_SCRIPT}</script>\n"
+        "</body>\n</html>\n"
     )
 
 
-def _banner(passed: bool, verdict: str, detail: str) -> str:
+def _letterhead(kind: str, heading: str, docline: str, passed: bool, mark: str) -> str:
+    """Render the report's masthead: Drydock mark, document identity, and the verdict stamp."""
+    logo = _logo_data_uri()
+    brand = (
+        f'<img class="logo" src="{logo}" alt="Drydock">'
+        if logo
+        else '<div class="wordmark">DRYDOCK</div>'
+    )
+    state = "pass" if passed else "fail"
+    return (
+        f'<header class="letterhead">{brand}'
+        f'<div class="ident"><div class="kind">{html.escape(kind)}</div>'
+        f"<h1>{html.escape(heading)}</h1>"
+        f'<div class="docline">{html.escape(docline)}</div></div>'
+        f'<div class="stamp {state}"><span class="mark">{html.escape(mark)}</span>'
+        '<span class="sub">Drydock UAT</span></div></header>'
+    )
+
+
+def _verdict(passed: bool, verdict: str, detail: str) -> str:
     state = "pass" if passed else "fail"
     detail_html = f'<div class="detail">{detail}</div>' if detail else ""
     return (
-        f'<div class="banner {state}"><div class="verdict">{html.escape(verdict)}</div>'
+        f'<div class="verdict {state}"><span class="state">{html.escape(verdict)}</span>'
         f"{detail_html}</div>"
     )
+
+
+def _tabs(panels: Sequence[tuple[str, str, str]]) -> str:
+    """Render a tab strip and its panels from ``(slug, label, body)`` triples."""
+    panels = [panel for panel in panels if panel[2]]
+    if not panels:
+        return ""
+    buttons = "".join(
+        f'<button type="button" data-panel="{slug}" '
+        f'aria-selected="{"true" if index == 0 else "false"}">{html.escape(label)}</button>'
+        for index, (slug, label, _) in enumerate(panels)
+    )
+    sections = "".join(
+        f'<section class="panel{" active" if index == 0 else ""}" id="panel-{slug}">{body}</section>'
+        for index, (slug, _, body) in enumerate(panels)
+    )
+    return f'<nav class="tabs">{buttons}</nav>{sections}'
 
 
 def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
@@ -344,12 +455,35 @@ def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     return f'<div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
+def _anchor(target: str, label: str = "") -> str:
+    """Link a kit file. Kits are read from ``file://``, so every link opens its own tab."""
+    return (
+        f'<a class="mono" href="{html.escape(target)}" target="_blank" '
+        f'rel="noopener">{html.escape(label or target)}</a>'
+    )
+
+
 def _link(target: str, label: str = "") -> str:
     if not target:
-        return "<td>—</td>"
-    return (
-        f'<td><a class="mono" href="{html.escape(target)}">{html.escape(label or target)}</a></td>'
-    )
+        return '<td class="dash">—</td>'
+    return f"<td>{_anchor(target, label)}</td>"
+
+
+def _stream_link(base: Path, relative: str, label: str) -> str:
+    """Link a captured stream only when it holds bytes.
+
+    An absent or zero-length stream is the normal case for a command that printed nothing to
+    it, so it is rendered as a dash rather than a link that opens an empty file.
+    """
+    if not relative:
+        return '<td class="dash">—</td>'
+    path = base / relative
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return '<td class="dash">—</td>'
+    except OSError:
+        return '<td class="dash">—</td>'
+    return f"<td>{_anchor(relative, label)}</td>"
 
 
 def _cell(text: object, *, css: str = "") -> str:
@@ -374,7 +508,7 @@ def _command_text(argv: Sequence[object]) -> str:
 
 def _meta(pairs: Sequence[tuple[str, str]]) -> str:
     items = "".join(
-        f"<dt>{html.escape(name)}</dt><dd>{value}</dd>" for name, value in pairs if value
+        f"<div><dt>{html.escape(name)}</dt><dd>{value}</dd></div>" for name, value in pairs if value
     )
     return f'<dl class="meta">{items}</dl>' if items else ""
 
@@ -387,6 +521,42 @@ def _tokens(usage: dict) -> str:
         f"(cached {usage.get('cached_input_tokens', 0):,}) · "
         f"output {usage.get('output_tokens', 0):,}"
     )
+
+
+# Inventory groups that earn their own tab, as ``group name -> (slug, short tab label)``.
+# Command logs, LLM evidence, and the run record are omitted: the Steps, LLM, and footer
+# sections already link those files, and listing them again is the same evidence twice.
+_INVENTORY_TABS = {
+    "Delivered code": ("code", "Code"),
+    "Imported sources": ("sources", "Sources"),
+    "Blueprint and Target state": ("blueprint", "Blueprint"),
+}
+
+
+def _inventory_panels(groups: Sequence[ArtifactGroup]) -> list[tuple[str, str, str]]:
+    """Render the file inventory as one tab per artifact class."""
+    panels: list[tuple[str, str, str]] = []
+    for group in groups:
+        tab = _INVENTORY_TABS.get(group.name)
+        if tab is None:
+            continue
+        slug, label = tab
+        rows = [
+            [
+                _link(record.path),
+                _cell(f"{record.bytes:,}", css="num"),
+                _cell(record.sha256, css="hash"),
+            ]
+            for record in group.files
+        ]
+        body = (
+            f"<h2>{html.escape(group.name)}</h2>"
+            f'<p class="note">{html.escape(group.description)} '
+            f"{len(group.files)} files, {group.total_bytes:,} bytes.</p>"
+            + _table(("File", "Bytes", "SHA-256"), rows)
+        )
+        panels.append((slug, label, body))
+    return panels
 
 
 def _render_case_markdown(result: dict) -> str:
@@ -490,8 +660,8 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
             f"<td><code>{html.escape(_command_text(argv))}</code></td>",
             _status_cell(command.get("returncode")),
             _cell(f"{elapsed / 1000:.1f}s", css="num"),
-            _link(stdout, "stdout"),
-            _link(stderr, "stderr"),
+            _stream_link(case_root, stdout, "stdout"),
+            _stream_link(case_root, stderr, "stderr"),
         ])
     commands_table = _table(("#", "Stage", "Command", "Result", "Elapsed", "", ""), command_rows)
 
@@ -515,22 +685,7 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
                 + "".join(sections)
             )
 
-    inventory = []
-    for group in groups:
-        rows = [
-            [
-                _link(record.path),
-                _cell(f"{record.bytes:,}", css="num"),
-                _cell(record.sha256, css="hash"),
-            ]
-            for record in group.files
-        ]
-        inventory.append(
-            f"<h2>{html.escape(group.name)}</h2>"
-            f'<p class="note">{html.escape(group.description)} '
-            f"{len(group.files)} files, {group.total_bytes:,} bytes.</p>"
-            + _table(("File", "Bytes", "SHA-256"), rows)
-        )
+    inventory = _inventory_panels(groups)
 
     calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root)
     call_rows = [
@@ -581,32 +736,67 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
         result.get("score_exit_codes") if isinstance(result.get("score_exit_codes"), dict) else {}
     )
     score_rows = [[_cell(name), _status_cell(code)] for name, code in sorted(scores.items())]
+    scores_block = (
+        "<h2>Advisory scores</h2>"
+        '<p class="note">Scoring is advisory and does not gate the run.</p>'
+        + _table(("Score", "Result"), score_rows)
+        if score_rows
+        else ""
+    )
 
-    return _page(
-        f"Drydock UAT proof — {fixture}",
-        "\n".join([
-            f"<h1>Drydock UAT proof kit — {html.escape(fixture)}</h1>",
-            '<p class="sub">Every claim on this page is backed by a file in this directory. '
-            "Links are relative, so the kit stays valid wherever it is checked in.</p>",
-            _banner(passed, verdict, detail),
-            meta,
-            "<h2>Lifecycle commands</h2>",
-            '<p class="note">Each Drydock command executed in order, with its recorded exit '
-            "code and its own captured streams.</p>",
-            commands_table,
-            excerpt,
-            "<h2>Advisory scores</h2>",
-            '<p class="note">Scoring is advisory and does not gate the run.</p>',
-            _table(("Score", "Result"), score_rows),
+    steps_panel = "".join([
+        "<h2>Lifecycle commands</h2>",
+        '<p class="note">Each Drydock command executed in order, with its recorded exit code '
+        "and its own captured streams. A stream is linked only when it captured output; "
+        "stderr carries provider progress on successful commands and is not a failure "
+        "indicator on its own.</p>",
+        commands_table,
+        scores_block,
+    ])
+    llm_panel = (
+        "".join([
             "<h2>LLM executions</h2>",
             '<p class="note">One row per model invocation, with the exact prompt sent, the '
             "output returned, and the raw provider transcript.</p>",
             calls_table,
-            *inventory,
-            "<h2>Verifying this kit</h2>",
-            "<pre>cd " + html.escape(case_root.name) + "\nsha256sum -c SHA256SUMS</pre>",
-            "<footer>Generated by <code>drydock uat --report</code>. Byte counts and digests "
-            "are computed from the files in this directory at generation time.</footer>",
+        ])
+        if call_rows
+        else ""
+    )
+
+    provider = str(environment.get("provider") or "")
+    model = str(environment.get("model") or "")
+    docline = " · ".join(
+        part
+        for part in (
+            f"Run {result.get('run_id') or ''}",
+            f"Target {target}",
+            f"{provider}/{model}" if provider or model else "",
+        )
+        if part
+    )
+    return _page(
+        f"Drydock UAT report — {fixture}",
+        "\n".join([
+            _letterhead(
+                "User Acceptance Test — Run Report",
+                fixture,
+                docline,
+                passed,
+                "Approved" if passed else "Rejected",
+            ),
+            _verdict(passed, verdict, detail),
+            meta,
+            _tabs([
+                ("steps", "Steps", steps_panel),
+                ("error", "Error", excerpt),
+                ("llm", "LLM", llm_panel),
+                *inventory,
+            ]),
+            "<footer>Generated by <code>drydock uat --report</code>. Byte counts and digests are "
+            "computed from the files in this directory at generation time. Verify the kit with "
+            f"<code>cd {html.escape(case_root.name)} &amp;&amp; sha256sum -c SHA256SUMS</code>. "
+            f"Record: {_anchor('result.json')} · {_anchor('SHA256SUMS')}</footer>",
         ]),
     )
 
@@ -627,7 +817,7 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
         commands = [entry for entry in item.get("commands") or [] if isinstance(entry, dict)]
         state = "pass" if case_status == "passed" else "fail"
         rows.append([
-            f'<td><a href="runs/{html.escape(run_id)}/index.html">{html.escape(run_id)}</a></td>',
+            f"<td>{_anchor(f'runs/{run_id}/index.html', run_id)}</td>",
             f'<td><span class="tag {state}">{html.escape(case_status.upper())}</span></td>',
             _cell(len(commands), css="num"),
             _cell(item.get("build_passes", ""), css="num"),
@@ -638,11 +828,17 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
     return _page(
         f"Drydock UAT kit {kit_root.name}",
         "\n".join([
-            f"<h1>Drydock UAT kit — {html.escape(kit_root.name)}</h1>",
-            '<p class="sub">Every unattended build of this project, each a complete, '
-            "self-verifying record of the commands Drydock executed.</p>",
-            _banner(passed, verdict, html.escape(detail)),
+            _letterhead(
+                "User Acceptance Test — Project Register",
+                kit_root.name,
+                f"{len(results)} recorded runs · newest first",
+                passed,
+                "Approved" if passed else "Rejected",
+            ),
+            _verdict(passed, verdict, html.escape(detail)),
             "<h2>Runs</h2>",
+            '<p class="note">Every unattended build of this project, each a complete, '
+            "self-verifying record of the commands Drydock executed.</p>",
             _table(
                 ("Run", "Status", "Commands", "Build passes", "Elapsed", "LLM usage"),
                 rows,
