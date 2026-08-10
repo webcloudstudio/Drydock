@@ -905,6 +905,19 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
         ])
         if result.error:
             lines.append(f"- Failure: {result.error}")
+        if result.attestations:
+            # The kit passed. These are prohibitions the release gate could not settle from
+            # evidence, and the operator reading this summary is the one who must settle them,
+            # so they are named here and not left to the written report alone.
+            lines.extend([
+                "",
+                "### Manual verification required",
+                "",
+                "The release gate completed. It could not settle the following project "
+                "guardrails from evidence; each needs a manual test before release.",
+                "",
+            ])
+            lines.extend(f"- {item}" for item in result.attestations)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

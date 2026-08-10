@@ -445,6 +445,11 @@ def cmd_uat(args: argparse.Namespace) -> int:
         print(render_summary(results, uat_root))
     passed = sum(result.status == "passed" for result in results)
     print(f"UAT: {passed}/{len(results)} kit(s) passed")
+    # A passing kit can still owe a manual test. Print it after the tally, where it survives
+    # --quiet: a prohibition nobody was told about is a prohibition nobody checks.
+    for result in results:
+        for attestation in result.attestations:
+            print(f"  MANUAL TEST REQUIRED: {result.fixture}: {attestation}")
     for result in results:
         print(f"Report: {Path(result.output_dir) / 'README.md'}")
     return 0 if passed == len(results) else 1

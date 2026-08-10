@@ -327,6 +327,11 @@ def test_run_uat_carries_unproven_guardrails_into_the_run_record(tmp_path: Path)
     assert "## Manual verification required" in (case_root / "README.md").read_text(
         encoding="utf-8"
     )
+    # The operator reading the run summary is the one who must settle these.
+    summary = render_summary(results)
+    assert "ReadingList: PASSED" in summary
+    assert "### Manual verification required" in summary
+    assert f"- {unproven}" in summary
 
 
 def test_run_uat_records_no_attestations_when_the_gate_settled_everything(tmp_path: Path) -> None:
@@ -360,6 +365,7 @@ def test_run_uat_records_no_attestations_when_the_gate_settled_everything(tmp_pa
     )
 
     assert results[0].attestations == ()
+    assert "Manual verification required" not in render_summary(results)
 
 
 def test_required_pipeline_failure_stops_fixture_and_writes_result(tmp_path: Path) -> None:
