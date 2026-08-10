@@ -28,7 +28,7 @@ __all__ = [
 _HEADING_RE = re.compile(r"^# Evidence:\s*(?P<name>.+?)\s*\((?P<block_id>[^()]+)\)\s*$")
 _FIELD_RE = re.compile(r"^-\s*(?P<key>[^:]+?)\s*:\s*(?P<value>.*)$")
 _SECTION_RE = re.compile(r"^##\s+(?P<name>.+?)\s*$")
-_VERDICT_RE = re.compile(r"^-\s*(?P<mark>PASS|FAIL):\s*(?P<check_id>\S+)")
+_VERDICT_RE = re.compile(r"^-\s*(?P<mark>PASS|FAIL|UNVERIFIED):\s*(?P<check_id>\S+)")
 # Mirrors the line build_run writes for each pass; every field after the status is optional.
 _ATTEMPT_RE = re.compile(
     r"^-\s*attempt\s+(?P<index>\d+)\s*\([^)]*\):\s*(?P<status>[^;]+)"
@@ -91,6 +91,9 @@ class BlockScore:
     passed_checks: int = 0
     total_checks: int = 0
     failed_check_ids: tuple[str, ...] = ()
+    #: Assertions that never exercised the code under test. Evidence about the acceptance kit,
+    #: not about the build, so they are excluded from ``total_checks`` and reported apart.
+    unverified_check_ids: tuple[str, ...] = ()
     files_changed: tuple[str, ...] = ()
     stories: tuple[str, ...] = ()
 
@@ -194,6 +197,11 @@ class BuildScoreReport:
         return sum(block.total_checks for block in self.blocks)
 
     @property
+    def unverified_checks(self) -> int:
+        """Assertions that reported a non-result. A harness defect, never a product defect."""
+        return sum(len(block.unverified_check_ids) for block in self.blocks)
+
+    @property
     def first_call_blocks(self) -> int:
         """Blocks that reached their final state without a repair pass."""
         return sum(1 for block in self.blocks if block.verified and not block.repaired)
@@ -279,6 +287,10 @@ def _parse_evidence(text: str, block_id_hint: str) -> tuple[BlockScore, tuple[st
 
     passed = sum(1 for mark, _ in verdicts if mark == "PASS")
     failed_ids = tuple(check_id for mark, check_id in verdicts if mark == "FAIL")
+    # UNVERIFIED assertions never reached the code under test. They are reported so the harness
+    # defect is visible, but they are not part of the denominator the build is measured by.
+    unverified_ids = tuple(check_id for mark, check_id in verdicts if mark == "UNVERIFIED")
+    graded = len(verdicts) - len(unverified_ids)
     state = fields.get("resulting state", "")
 
     if not attempts:
@@ -290,7 +302,7 @@ def _parse_evidence(text: str, block_id_hint: str) -> tuple[BlockScore, tuple[st
                 execution_id=fields.get("execution id", "").strip(),
                 status="built" if state == "closed/verified" else "failed",
                 passed_checks=passed if verdicts else None,
-                total_checks=len(verdicts) if verdicts else None,
+                total_checks=graded if verdicts else None,
             )
         ]
 
@@ -306,8 +318,9 @@ def _parse_evidence(text: str, block_id_hint: str) -> tuple[BlockScore, tuple[st
         story_points=story_points,
         attempts=tuple(attempts),
         passed_checks=passed,
-        total_checks=len(verdicts),
+        total_checks=graded,
         failed_check_ids=failed_ids,
+        unverified_check_ids=unverified_ids,
         files_changed=tuple(files),
         stories=tuple(stories),
     )

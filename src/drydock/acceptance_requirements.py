@@ -32,17 +32,6 @@ _KNOWN_EXTERNAL_IMPORTS = frozenset({
     "sqlalchemy",
     "starlette",
 })
-# The declaration gate exists to catch tooling a Target may not have. The POSIX shell and the
-# interpreter running the check are the substrate Drydock already requires to execute a
-# Programmatic Acceptance snippet at all, so demanding they be declared blocks planning on a
-# dependency that is, by construction, satisfied.
-_BASELINE_EXECUTABLES = frozenset({
-    "bash",
-    "env",
-    "python",
-    "python3",
-    "sh",
-})
 
 
 @dataclass(frozen=True)
@@ -107,11 +96,11 @@ def visible_external_usage(code: str) -> tuple[tuple[str, str], ...]:
         )
         if isinstance(first, ast.Constant) and isinstance(first.value, str):
             executable = first.value.strip().split()[0]
-            if (
-                executable
-                and not executable.startswith((".", "/"))
-                and executable not in _BASELINE_EXECUTABLES
-            ):
+            # No baseline exemption list. Nothing here blocks, so there is nothing to exempt
+            # from: reporting that a check shells out to ``sh`` is accurate and harmless, and
+            # a frozenset someone must edit and re-release to unblock a build is exactly the
+            # mechanism this stopped being.
+            if executable and not executable.startswith((".", "/")):
                 usage.append(("executable", executable))
     return tuple(dict.fromkeys(usage))
 
@@ -139,16 +128,25 @@ def undeclared_external_usage(check: ProgrammaticAcceptance) -> tuple[tuple[str,
     return tuple(missing)
 
 
-def validate_declared_external_usage(checks: tuple[ProgrammaticAcceptance, ...]) -> None:
-    defects = [
-        f"{check.source} [{check.check_id}] uses undeclared {kind}={name}"
+def recommend_external_declarations(checks: tuple[ProgrammaticAcceptance, ...]) -> tuple[str, ...]:
+    """Return advisory notes about external tooling a check uses without declaring.
+
+    This replaces a gate that conflated two questions and only ever asked the harmless one. A
+    tool that is present and undeclared costs nothing at run time: the check works. The
+    declaration is still worth having — it belongs in Rigging or ``TECHNOLOGY_STACK.md``, where
+    the Commander states it once for the whole project rather than per check — so the absence is
+    reported as a recommendation and never stops planning.
+
+    The authoring rule that makes this a rarity: an acceptance check is written in the project's
+    own language and uses that language's libraries. Reaching for an external executable is the
+    exception, and it belongs in Rigging when it is genuinely needed.
+    """
+    return tuple(
+        f"{check.source} [{check.check_id}] uses undeclared {kind}={name}; "
+        f"consider declaring it in Rigging or TECHNOLOGY_STACK.md"
         for check in checks
         for kind, name in undeclared_external_usage(check)
-    ]
-    if defects:
-        raise ValueError(
-            "Programmatic Acceptance has undeclared external tooling:\n  " + "\n  ".join(defects)
-        )
+    )
 
 
 def _manifest_packages(build_dir: Path) -> frozenset[str]:

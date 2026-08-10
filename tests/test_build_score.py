@@ -29,6 +29,7 @@ def _target(
     guardrail: bool = False,
     guardrail_evidence: bool = True,
     vacuous_proof: bool = False,
+    unbound_story_check: str = "",
 ) -> tuple[Path, Path]:
     target_dir = tmp_path / "targets" / "Demo"
     blueprint_dir = target_dir / "blueprint"
@@ -64,7 +65,18 @@ The build contains its marker.
 ```python
 {proof_body}
 ```
-""",
+{
+            f'''
+### story-only
+A story-level assertion bound to no Sea Trial.
+
+```python
+{unbound_story_check}
+```
+'''
+            if unbound_story_check
+            else ""
+        }""",
         encoding="utf-8",
     )
     sea = """# Sea Trials: Demo
@@ -190,6 +202,40 @@ def test_vacuous_proof_is_warned_on_but_does_not_block_completion(tmp_path):
     assert result.complete is True
     assert result.blockers == ()
     assert any("vacuous" in warning for warning in result.warnings)
+
+
+def test_a_failed_story_assertion_is_reported_but_does_not_block_the_release(tmp_path):
+    """The release gate has exactly one input: Sea Trials.
+
+    Story acceptance already gates by construction — a story whose assertions do not close does
+    not build — so reading it again here would give the gate a second, independent input.
+    """
+    target_dir, _ = _target(tmp_path, unbound_story_check="value = 1\nassert value == 2")
+
+    result = score_target("Demo", target_dir, runner=_runner())
+
+    assert result.complete is True
+    assert result.blockers == ()
+    assert any("Programmatic acceptance failed: story-only" in item for item in result.warnings)
+    record = json.loads((target_dir / "evidence" / "build-score.json").read_text(encoding="utf-8"))
+    assert record["story_acceptance"]["failed"] == 1
+    assert record["story_acceptance"]["product_defects"] == 1
+    assert record["story_acceptance"]["passed"] == 1
+
+
+def test_an_unverified_story_assertion_is_named_a_harness_defect(tmp_path):
+    target_dir, _ = _target(
+        tmp_path, unbound_story_check="open('/nonexistent/dir/config.json').read()"
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner())
+
+    assert result.complete is True
+    assert result.blockers == ()
+    assert any("unverified" in warning for warning in result.warnings)
+    record = json.loads((target_dir / "evidence" / "build-score.json").read_text(encoding="utf-8"))
+    assert record["story_acceptance"]["harness_defects"] == 1
+    assert record["story_acceptance"]["failed"] == 0
 
 
 def test_failed_measurement_overrides_model_and_blocks_completion(tmp_path):

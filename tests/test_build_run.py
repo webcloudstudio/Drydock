@@ -1089,9 +1089,10 @@ def test_missing_acceptance_fixture_is_skipped_and_recorded_as_decision(tmp_path
     assert step.status == "built"
     assert step.acceptance[0].passed is False
     assert step.acceptance[0].skipped is True
-    assert "SKIPPED: foundation-fixture" in (target_dir / "evidence" / "foundation.md").read_text(
-        encoding="utf-8"
-    )
+    assert step.acceptance[0].outcome == "UNVERIFIED"
+    assert "UNVERIFIED: foundation-fixture" in (
+        target_dir / "evidence" / "foundation.md"
+    ).read_text(encoding="utf-8")
     decisions = json.loads((target_dir / "DECISIONS.json").read_text(encoding="utf-8"))
     assert decisions[0]["title"] == "Acceptance skipped: foundation-fixture"
     assert decisions[0]["status"] == "recommended"

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import IO
 
 from drydock import technology_stack
+from drydock.build_report import build_score_report
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.uat_console import StepSink
@@ -112,6 +113,11 @@ class UATResult:
     #: demonstrated a violation — but each names a prohibition a human must confirm by hand
     #: before the build is released. Reported, never a failure.
     attestations: tuple[str, ...] = ()
+    #: Story-acceptance outcomes for the run, three-valued. ``product_defects`` counts assertions
+    #: that exercised the built code and found it wrong; ``harness_defects`` counts assertions
+    #: that never reached it. A reader distinguishes "Drydock produced a bad artifact" from
+    #: "Drydock's checker rejected a good one" from this field alone.
+    assertions: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self, base: Path | None = None) -> dict[str, object]:
         """Serialize the result, rewriting absolute paths relative to ``base`` when given."""
@@ -475,6 +481,31 @@ def _release_attestations(target_dir: Path) -> tuple[str, ...]:
         return ()
     items = payload.get("attestations")
     return tuple(str(item) for item in items) if isinstance(items, list) else ()
+
+
+def _assertion_outcomes(target_dir: Path, target: str, records_path: Path) -> dict[str, int]:
+    """Return the run's PASS/FAIL/UNVERIFIED assertion tally and its defect attribution.
+
+    This is the field that tells the two failure modes apart without reading a log. A FAIL is
+    evidence about the product Drydock built. An UNVERIFIED is evidence about Drydock's own kit:
+    the assertion never reached the code under test, so it says nothing about the build. The two
+    need opposite fixes, and ``status: failed`` alone cannot distinguish them.
+    """
+    empty = {"passed": 0, "failed": 0, "unverified": 0, "product_defects": 0, "harness_defects": 0}
+    try:
+        report = build_score_report(target, target_dir, records_path=records_path)
+    except (OSError, ValueError):
+        return empty
+    passed = report.passed_checks
+    unverified = report.unverified_checks
+    failed = max(report.total_checks - passed, 0)
+    return {
+        "passed": passed,
+        "failed": failed,
+        "unverified": unverified,
+        "product_defects": failed,
+        "harness_defects": unverified,
+    }
 
 
 def _usage_totals(records_path: Path) -> dict[str, int]:
@@ -846,6 +877,11 @@ def run_fixture(
         error = "; ".join(degraded)
 
     attestations = _release_attestations(workspace / "targets" / fixture.target)
+    assertions = _assertion_outcomes(
+        workspace / "targets" / fixture.target,
+        fixture.target,
+        workspace / "logs" / "llm.jsonl",
+    )
     _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
     environment = _environment(model, provider, effort)
@@ -868,6 +904,7 @@ def run_fixture(
         resumed_from=start_stage if start else "",
         degraded=tuple(degraded),
         attestations=attestations,
+        assertions=assertions,
     )
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"

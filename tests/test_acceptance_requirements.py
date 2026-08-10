@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from drydock import acceptance_requirements, target_environment
 from drydock.acceptance import (
     AcceptanceRequirement,
@@ -12,8 +10,8 @@ from drydock.acceptance import (
 from drydock.acceptance_requirements import (
     authorization_for,
     project_plan_requirement_decisions,
+    recommend_external_declarations,
     undeclared_external_usage,
-    validate_declared_external_usage,
 )
 from drydock.decisions import Decision, write_decisions
 
@@ -42,7 +40,12 @@ The health route responds successfully.
 """
 
 
-def test_fastapi_test_client_requires_declared_httpx():
+# The declaration gate is retired. It asked whether the model had written a ``Requires:`` line
+# beside a check, never whether the tool was installed, so a check that ran perfectly failed
+# planning over a missing declaration. Undeclared usage is now a recommendation.
+
+
+def test_undeclared_usage_is_recommended_never_a_planning_failure():
     check = parse_programmatic_acceptance_text(
         _spec(
             "Requires: python-package=fastapi; scope=test",
@@ -52,11 +55,17 @@ def test_fastapi_test_client_requires_declared_httpx():
     )[0]
 
     assert ("python-package", "httpx") in undeclared_external_usage(check)
-    with pytest.raises(ValueError, match="undeclared python-package=httpx"):
-        validate_declared_external_usage((check,))
+    notes = recommend_external_declarations((check,))
+    assert any("undeclared python-package=httpx" in note for note in notes)
+    assert all("TECHNOLOGY_STACK.md" in note for note in notes)
 
 
-def test_baseline_shell_and_interpreter_need_no_declaration():
+def test_a_baseline_executable_needs_no_exemption_list():
+    """``sh`` is reported like anything else, because reporting it blocks nothing.
+
+    The old gate needed a hard-coded exemption for ``sh``/``bash``/``python3`` precisely
+    because it blocked. Nothing blocks now, so nothing needs exempting.
+    """
     check = parse_programmatic_acceptance_text(
         _spec(
             "",
@@ -65,11 +74,11 @@ def test_baseline_shell_and_interpreter_need_no_declaration():
         source="FEATURE-Health.md",
     )[0]
 
-    assert undeclared_external_usage(check) == ()
-    validate_declared_external_usage((check,))
+    assert ("executable", "sh") in undeclared_external_usage(check)
+    assert recommend_external_declarations((check,))
 
 
-def test_non_baseline_executable_still_requires_declaration():
+def test_an_undeclared_executable_is_reported_without_stopping_the_plan():
     check = parse_programmatic_acceptance_text(
         _spec(
             "",
@@ -79,8 +88,10 @@ def test_non_baseline_executable_still_requires_declaration():
     )[0]
 
     assert ("executable", "toml-test") in undeclared_external_usage(check)
-    with pytest.raises(ValueError, match="undeclared executable=toml-test"):
-        validate_declared_external_usage((check,))
+    assert any(
+        "undeclared executable=toml-test" in note
+        for note in recommend_external_declarations((check,))
+    )
 
 
 def test_distribution_metadata_is_discovered_once_per_process(monkeypatch):
@@ -106,8 +117,8 @@ def test_distribution_metadata_is_discovered_once_per_process(monkeypatch):
     )[0]
 
     try:
-        validate_declared_external_usage((check,))
-        validate_declared_external_usage((check,))
+        recommend_external_declarations((check,))
+        recommend_external_declarations((check,))
     finally:
         acceptance_requirements._distribution_map.cache_clear()
 

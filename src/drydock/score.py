@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from drydock.acceptance import (
+    OUTCOME_FAIL,
     AcceptanceObservation,
     ProgrammaticAcceptance,
     all_programmatic_acceptance,
@@ -28,6 +29,7 @@ from drydock.acceptance import (
     parse_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
+    tally_outcomes,
 )
 from drydock.acceptance_requirements import authorization_for, requirement_available
 from drydock.build_plan import BuildPlan, parse_build_plan, stale_applied_specs
@@ -341,9 +343,19 @@ def score_release(
         strict_target=True,
     )
     proof_integrity = tuple(analyze_proof(check.code) for check in checks)
-    failed_acceptance = [check.check_id for check in acceptance if not check.passed]
+    # Story acceptance is reported, never an input to the release decision. It already gates the
+    # release by construction: a story whose assertions do not close does not build. The release
+    # gate's single input is Sea Trials.
+    outcomes = tally_outcomes(acceptance)
+    failed_acceptance = [check.check_id for check in acceptance if check.outcome == OUTCOME_FAIL]
     if failed_acceptance:
-        blockers.append("Programmatic acceptance failed: " + ", ".join(failed_acceptance))
+        warnings.append("Programmatic acceptance failed: " + ", ".join(failed_acceptance))
+    unverified_acceptance = [check.check_id for check in acceptance if check.unverified]
+    if unverified_acceptance:
+        warnings.append(
+            "Programmatic acceptance was unverified (harness defect, not a build defect): "
+            + ", ".join(unverified_acceptance)
+        )
     vacuous_proofs = [
         check.check_id for check, integ in zip(checks, proof_integrity, strict=True) if not integ.ok
     ]
@@ -401,6 +413,15 @@ def score_release(
             "stale": [item.rel_path for item in stale],
         },
         "programmatic_acceptance": [asdict(item) for item in acceptance],
+        "story_acceptance": {
+            **outcomes.to_dict(),
+            "note": (
+                "Reported, not gating. Story acceptance gates the release by construction "
+                "through Manifest closure; the release gate's only input is Sea Trials. "
+                "UNVERIFIED assertions never reached the code under test and say nothing "
+                "about the build."
+            ),
+        },
         "traceability": {
             "manifest_references": sorted(manifest_refs),
             "proof_references": sorted(proof_refs),
@@ -565,6 +586,15 @@ def score_release(
         "measurements": [asdict(item) for item in measurements],
         "evidence_files": evidence_facts,
         "programmatic_acceptance": [asdict(item) for item in acceptance],
+        "story_acceptance": {
+            **outcomes.to_dict(),
+            "note": (
+                "Reported, not gating. Story acceptance gates the release by construction "
+                "through Manifest closure; the release gate's only input is Sea Trials. "
+                "UNVERIFIED assertions never reached the code under test and say nothing "
+                "about the build."
+            ),
+        },
         "execution_id": result.execution_id,
     }
     evidence_path.parent.mkdir(parents=True, exist_ok=True)

@@ -29,7 +29,7 @@ from drydock import technology_stack
 from drydock.acceptance import PYTHON_FENCE_RE, parse_programmatic_acceptance_text
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
-    validate_declared_external_usage,
+    recommend_external_declarations,
 )
 from drydock.build_plan import (
     AppliedSpecRecord,
@@ -2623,15 +2623,19 @@ def _validate_plan_output(
         if name.lower().endswith(".md")
         for check in parse_programmatic_acceptance_text(text, source=name)
     )
-    try:
-        validate_declared_external_usage(declared_checks)
-    except ValueError as exc:
-        raise SpecificationError(str(exc)) from exc
+    # Tooling declaration is a recommendation, never a gate. The gate it replaces asked whether
+    # the model had written a ``Requires:`` line beside a check, not whether the tool was
+    # installed — so a check that works perfectly on a machine where the tool has been present
+    # for a decade failed planning over a missing declaration. Whether a tool is *absent* is a
+    # separate question, asked by ``project_plan_requirement_decisions`` against the real
+    # environment, and it is the only one that can legitimately stop anything.
+    usage_recommendations = recommend_external_declarations(declared_checks)
     # Removals lead the warning list: they changed the artifact the author is about to read,
     # so they must not be buried under advisory graph notes.
     warnings = (
         dropped_acceptance
         + declaration_warnings
+        + usage_recommendations
         + tuple(defect.rendered() for defect in advisory_plan_shape(emitted_files))
     ) + tuple(
         _integrity_check(

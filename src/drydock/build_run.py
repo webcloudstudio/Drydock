@@ -1731,7 +1731,7 @@ def _write_evidence(
     if acceptance:
         lines.append("## Post-build programmatic acceptance")
         for check in acceptance:
-            mark = "SKIPPED" if check.skipped else ("PASS" if check.passed else "FAIL")
+            mark = check.outcome
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
             if check.intent:
                 lines.append(f"  intent: {check.intent}")
@@ -1846,7 +1846,7 @@ def _write_group_evidence(
     if acceptance:
         lines.append("## Post-build programmatic acceptance")
         for check in acceptance:
-            mark = "SKIPPED" if check.skipped else ("PASS" if check.passed else "FAIL")
+            mark = check.outcome
             lines.append(f"- {mark}: {check.check_id} ({check.source})")
             if check.intent:
                 lines.append(f"  intent: {check.intent}")
@@ -1916,8 +1916,8 @@ def _write_group_evidence(
 
 
 def _observation_mark(check: AcceptanceObservation) -> str:
-    if check.skipped:
-        return "SKIPPED"
+    if check.unverified:
+        return "UNVERIFIED"
     if not check.passed:
         return "RED"
     if not check.integrity_ok:

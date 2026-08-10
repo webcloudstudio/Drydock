@@ -24,11 +24,22 @@ REQUIRES_RE = re.compile(r"^Requires:\s*(?P<value>.+?)\s*$", re.MULTILINE | re.I
 TIMEOUT_SECONDS = 60
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
+# The three outcomes an assertion can have. Only FAIL is evidence about the product: it means
+# the check reached the code under test and the oracle was violated. UNVERIFIED means the check
+# never got there — a missing path, a permission, an absent declared tool, a defective snippet.
+# That is evidence about the kit, so it is counted separately, reported loudly, and never
+# charged against the build.
+OUTCOME_PASS = "PASS"
+OUTCOME_FAIL = "FAIL"
+OUTCOME_UNVERIFIED = "UNVERIFIED"
+OUTCOMES = (OUTCOME_PASS, OUTCOME_FAIL, OUTCOME_UNVERIFIED)
+
 # Category prefixes for a check that failed by exhausting a resource rather than by missing
 # an expectation. Consumers use these to gate a repair pass on the resource fact.
 MEMORY_FAILURE_PREFIX = "exhausted memory"
 TIMEOUT_FAILURE_PREFIX = "timed out"
 SKIPPED_FAILURE_PREFIX = "skipped acceptance"
+UNVERIFIED_FAILURE_PREFIX = "unverified acceptance"
 # A check that died inside its own snippet rather than inside the code under test. No
 # implementation can turn it green, so a repair pass on it is wasted.
 MALFORMED_FAILURE_PREFIX = "malformed check"
@@ -43,6 +54,18 @@ _MALFORMED_EXCEPTIONS = frozenset({
     "IndentationError",
     "TabError",
 })
+# Exceptions that, raised in the snippet's own frame, mean the check never reached the code
+# under test: the filesystem or the environment refused it. ``ConnectionError`` and friends are
+# deliberately absent — a refused connection to the service under test is a product defect.
+_ENVIRONMENT_EXCEPTIONS = frozenset({
+    "FileNotFoundError",
+    "IsADirectoryError",
+    "NotADirectoryError",
+    "PermissionError",
+})
+_MISSING_MODULE_RE = re.compile(
+    r"(?:ModuleNotFoundError|ImportError): No module named ['\"]([^'\"]+)"
+)
 _TRACEBACK_FILE_RE = re.compile(r'^\s*File "([^"]+)", line ', re.MULTILINE)
 _EXCEPTION_LINE_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception))\b:?(.*)$")
 _FIXTURE_PATH_RE = re.compile(
@@ -115,14 +138,13 @@ def _resource_failure(return_code: int, stderr: str, limit_mb: int) -> str | Non
     return None
 
 
-def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str | None:
-    """Classify a non-zero exit as a defective snippet, or ``None`` when it is not.
+def _own_frame_exception(return_code: int, stderr: str, script_name: str) -> tuple[str, str] | None:
+    """Return ``(exception, detail)`` when the check died in its own frame, else ``None``.
 
-    Attribution is by traceback frame, not by exception type alone. ``NameError`` raised
-    inside the code under test is a genuine red the build must drive green; the same
-    exception raised in the check's own frame means the check reads a name nothing binds —
-    most often a name a sibling check defined, which is not in scope because every check runs
-    as its own script in its own process.
+    Attribution is by traceback frame, not by exception type alone. The same exception means
+    opposite things depending on where it was raised: inside the code under test it is a
+    genuine red the build must drive green; inside the check's own frame it says the check
+    never reached the code under test at all.
     """
     if return_code == 0:
         return None
@@ -132,13 +154,69 @@ def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str |
     match = _EXCEPTION_LINE_RE.match(lines[-1].strip())
     if match is None:
         return None
-    exception = match.group(1).rsplit(".", 1)[-1]
-    detail = match.group(2).strip()
-
     frames = _TRACEBACK_FILE_RE.findall(stderr)
     if not frames or Path(frames[-1]).name != script_name:
         # The failure surfaced inside the code under test. That is the build's job to fix.
         return None
+    return match.group(1).rsplit(".", 1)[-1], match.group(2).strip()
+
+
+def _environment_failure(
+    return_code: int,
+    stderr: str,
+    script_name: str,
+    requirements: tuple[AcceptanceRequirement, ...] = (),
+) -> str | None:
+    """Classify a non-zero exit as a non-result, or ``None`` when it is a real verdict.
+
+    An assertion that fails because it could not read a file, lacked a permission, or found a
+    declared tool absent never exercised the code under test. It is not evidence that the
+    implementation is wrong; it is evidence that the kit around the implementation is wrong.
+    Only failures raised in the check's own frame qualify — the same exception from inside the
+    built code is a product defect and stays a FAIL.
+    """
+    attributed = _own_frame_exception(return_code, stderr, script_name)
+    if attributed is None:
+        return None
+    exception, detail = attributed
+    if exception in _ENVIRONMENT_EXCEPTIONS:
+        return (
+            f"{UNVERIFIED_FAILURE_PREFIX}: the assertion raised {exception}"
+            f"{f' ({detail})' if detail else ''} in its own frame, before reaching the code "
+            f"under test. This is a fault in the acceptance kit or its environment, not a "
+            f"defect in the build."
+        )
+    # A missing module is normally the expected red baseline, so it is a genuine FAIL. It is a
+    # non-result only when the module is one the check *declared* it needs: the Commander
+    # promised the tool and the environment did not supply it, so nothing was tested.
+    declared = {
+        item.name.lower().replace("-", "_")
+        for item in requirements
+        if item.kind == "python-package"
+    }
+    if declared and (match := _MISSING_MODULE_RE.search(stderr)):
+        missing = match.group(1).split(".", 1)[0]
+        if missing.lower().replace("-", "_") in declared:
+            return (
+                f"{UNVERIFIED_FAILURE_PREFIX}: declared python-package {missing!r} is absent "
+                f"from the acceptance environment, so the assertion never ran. Provision the "
+                f"declared dependency; this is not a defect in the build."
+            )
+    return None
+
+
+def _malformed_failure(return_code: int, stderr: str, script_name: str) -> str | None:
+    """Classify a non-zero exit as a defective snippet, or ``None`` when it is not.
+
+    ``NameError`` raised inside the code under test is a genuine red the build must drive
+    green; the same exception raised in the check's own frame means the check reads a name
+    nothing binds — most often a name a sibling check defined, which is not in scope because
+    every check runs as its own script in its own process.
+    """
+    attributed = _own_frame_exception(return_code, stderr, script_name)
+    if attributed is None:
+        return None
+    exception, detail = attributed
 
     # ``ImportError`` is deliberately absent. A missing module is the *expected* red baseline
     # before the code under test is written, and nothing in the traceback distinguishes that
@@ -226,6 +304,22 @@ class AcceptanceRunResult:
     interpreter: str = ""
     provisioning_result: str = "not requested"
 
+    @property
+    def outcome(self) -> str:
+        """PASS, FAIL, or UNVERIFIED — the three-valued verdict for this assertion.
+
+        ``skipped`` is the storage for UNVERIFIED so that every consumer written against the
+        older two-valued model keeps excluding these results from the build's tally, which is
+        exactly what UNVERIFIED requires.
+        """
+        if self.skipped:
+            return OUTCOME_UNVERIFIED
+        return OUTCOME_PASS if self.passed else OUTCOME_FAIL
+
+    @property
+    def unverified(self) -> bool:
+        return self.outcome == OUTCOME_UNVERIFIED
+
 
 @dataclass(frozen=True)
 class AcceptanceObservation:
@@ -242,9 +336,19 @@ class AcceptanceObservation:
     integrity_reasons: tuple[str, ...] = ()
 
     @property
+    def outcome(self) -> str:
+        if self.skipped:
+            return OUTCOME_UNVERIFIED
+        return OUTCOME_PASS if self.passed else OUTCOME_FAIL
+
+    @property
+    def unverified(self) -> bool:
+        return self.outcome == OUTCOME_UNVERIFIED
+
+    @property
     def status(self) -> str:
         if self.skipped:
-            return "skipped"
+            return "unverified"
         if not self.passed:
             return "baseline-red"
         return "green" if self.integrity_ok else "green-vacuous"
@@ -252,6 +356,58 @@ class AcceptanceObservation:
     @property
     def weak(self) -> bool:
         return self.passed
+
+
+@dataclass(frozen=True)
+class OutcomeTally:
+    """Counts of the three assertion outcomes, plus the defect attribution they imply."""
+
+    passed: int = 0
+    failed: int = 0
+    unverified: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.passed + self.failed + self.unverified
+
+    @property
+    def product_defects(self) -> int:
+        """Assertions that reached the code under test and found it wrong."""
+        return self.failed
+
+    @property
+    def harness_defects(self) -> int:
+        """Assertions that never reached the code under test."""
+        return self.unverified
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "passed": self.passed,
+            "failed": self.failed,
+            "unverified": self.unverified,
+            "total": self.total,
+            "product_defects": self.product_defects,
+            "harness_defects": self.harness_defects,
+        }
+
+
+def tally_outcomes(
+    results: tuple[AcceptanceRunResult | AcceptanceObservation, ...],
+) -> OutcomeTally:
+    """Aggregate assertion outcomes so a run reports harness defects apart from product defects.
+
+    Without this split, ``status: failed`` says only that something went wrong, and the two
+    causes it conflates — Drydock produced a bad artifact, Drydock's checker rejected a good one
+    — need opposite fixes.
+    """
+    counts = {outcome: 0 for outcome in OUTCOMES}
+    for result in results:
+        counts[result.outcome] += 1
+    return OutcomeTally(
+        passed=counts[OUTCOME_PASS],
+        failed=counts[OUTCOME_FAIL],
+        unverified=counts[OUTCOME_UNVERIFIED],
+    )
 
 
 def _slugify(text: str) -> str:
@@ -586,6 +742,8 @@ def run_programmatic_acceptance(
     results: list[AcceptanceRunResult] = []
     environment = resolve_target_environment(build_dir)
     if environment.interpreter is None:
+        # No interpreter means not one assertion ran. That is a fault in the kit, so every
+        # check is UNVERIFIED rather than a fleet of product failures.
         return tuple(
             AcceptanceRunResult(
                 check_id=check.check_id,
@@ -595,7 +753,11 @@ def run_programmatic_acceptance(
                 return_code=None,
                 stdout="",
                 stderr="",
-                error=f"acceptance environment unavailable: {environment.detail}",
+                error=(
+                    f"{UNVERIFIED_FAILURE_PREFIX}: acceptance environment unavailable: "
+                    f"{environment.detail}"
+                ),
+                skipped=True,
                 provisioning_result=environment.provisioning_result,
             )
             for check in checks
@@ -668,10 +830,20 @@ def run_programmatic_acceptance(
             scrubbed = _scrub_script_path(stderr, script)
             verdict = (
                 _resource_failure(return_code, stderr, limit_mb)
+                or _environment_failure(return_code, scrubbed, script.name, check.requirements)
                 or _malformed_failure(return_code, scrubbed, script.name)
                 or _missing_fixture_failure(return_code, scrubbed, check.code, build_dir)
             )
-            skipped = bool(verdict and verdict.startswith(SKIPPED_FAILURE_PREFIX))
+            # A malformed snippet, a missing fixture, and an environment fault all mean the
+            # same thing: the code under test was never exercised. None is charged to the build.
+            skipped = bool(
+                verdict
+                and verdict.startswith((
+                    SKIPPED_FAILURE_PREFIX,
+                    UNVERIFIED_FAILURE_PREFIX,
+                    MALFORMED_FAILURE_PREFIX,
+                ))
+            )
         results.append(
             AcceptanceRunResult(
                 check_id=check.check_id,

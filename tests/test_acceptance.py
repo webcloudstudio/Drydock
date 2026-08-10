@@ -168,7 +168,13 @@ def test_strict_target_execution_does_not_fall_back_to_drydock_python(tmp_path):
 
     assert not result.passed
     assert result.interpreter == ""
-    assert result.error == "acceptance environment unavailable: Target Python project has no .venv"
+    # No interpreter means no assertion ran, so this is a non-result about the kit rather than
+    # a fleet of product failures.
+    assert result.outcome == acceptance.OUTCOME_UNVERIFIED
+    assert result.error == (
+        "unverified acceptance: acceptance environment unavailable: "
+        "Target Python project has no .venv"
+    )
 
 
 def test_target_venv_cannot_import_a_package_available_only_on_drydock_pythonpath(
@@ -426,6 +432,84 @@ def test_a_passing_check_carries_no_verdict(tmp_path):
     result = _run_one("assert 1 == 1", tmp_path)
     assert result.passed
     assert result.error is None
+
+
+# --- Three-valued outcome ----------------------------------------------------
+#
+# An assertion that fails because it could not read a file never reached the code under test.
+# It is not a failure, it is a non-result. Only FAIL is evidence about the product; UNVERIFIED
+# is evidence about the kit and is never charged against the build.
+
+
+def test_a_missing_path_in_the_check_is_unverified_not_a_failure(tmp_path):
+    result = _run_one("open('/nonexistent/dir/config.json').read()", tmp_path)
+    assert result.outcome == acceptance.OUTCOME_UNVERIFIED
+    assert result.unverified
+    assert result.error is not None
+    assert result.error.startswith(acceptance.UNVERIFIED_FAILURE_PREFIX)
+    assert "FileNotFoundError" in result.error
+
+
+def test_a_missing_path_inside_the_code_under_test_stays_a_failure(tmp_path):
+    (tmp_path / "built_module.py").write_text(
+        "def load():\n    return open('/nonexistent/dir/config.json').read()\n", encoding="utf-8"
+    )
+    result = _run_one("from built_module import load\nassert load()", tmp_path)
+    # The refusal came from the built code's own frame. That is a product defect.
+    assert result.outcome == acceptance.OUTCOME_FAIL
+    assert result.error is None
+
+
+def test_a_declared_package_absent_at_run_time_is_unverified(tmp_path):
+    check = acceptance.ProgrammaticAcceptance(
+        check_id="declared-tool",
+        source="SPEC.md",
+        intent="uses a declared dependency",
+        code="import definitely_not_installed_pkg\nassert definitely_not_installed_pkg",
+        requirements=(
+            acceptance.AcceptanceRequirement(
+                "python-package", "definitely-not-installed-pkg", "test"
+            ),
+        ),
+    )
+    result = acceptance.run_programmatic_acceptance(
+        (check,), build_dir=tmp_path, target_dir=tmp_path, blueprint_dir=tmp_path
+    )[0]
+    assert result.outcome == acceptance.OUTCOME_UNVERIFIED
+    assert "declared python-package" in (result.error or "")
+
+
+def test_an_undeclared_missing_module_stays_the_expected_red_baseline(tmp_path):
+    result = _run_one("import definitely_not_installed_pkg", tmp_path)
+    assert result.outcome == acceptance.OUTCOME_FAIL
+    assert result.error is None
+
+
+def test_a_malformed_check_is_unverified_rather_than_charged_to_the_build(tmp_path):
+    result = _run_one("assert result.returncode == 0", tmp_path)
+    assert result.outcome == acceptance.OUTCOME_UNVERIFIED
+
+
+def test_an_ordinary_assertion_failure_is_a_product_defect(tmp_path):
+    result = _run_one("value = 1\nassert value == 2", tmp_path)
+    assert result.outcome == acceptance.OUTCOME_FAIL
+
+
+def test_a_passing_check_is_a_pass(tmp_path):
+    assert _run_one("assert 1 == 1", tmp_path).outcome == acceptance.OUTCOME_PASS
+
+
+def test_the_tally_separates_harness_defects_from_product_defects(tmp_path):
+    results = (
+        _run_one("assert 1 == 1", tmp_path),
+        _run_one("value = 1\nassert value == 2", tmp_path),
+        _run_one("open('/nonexistent/dir/config.json').read()", tmp_path),
+    )
+    tally = acceptance.tally_outcomes(results)
+    assert (tally.passed, tally.failed, tally.unverified) == (1, 1, 1)
+    assert tally.product_defects == 1
+    assert tally.harness_defects == 1
+    assert tally.to_dict()["total"] == 3
 
 
 # --- Removing unsatisfiable criteria -----------------------------------------
