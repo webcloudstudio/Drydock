@@ -583,6 +583,15 @@ def _stub_runner(calls: list[tuple[str, ...]], *, fail: tuple[str, ...] = ()):
     return runner
 
 
+def _seed_target_artifact(fixtures_root: Path, run_id: str, name: str) -> None:
+    """Write the Target artifact a resumed stage requires, which a fake runner never produces."""
+    target = (
+        fixtures_root / "ReadingList" / "runs" / run_id / "workspace" / "targets" / "ReadingList"
+    )
+    target.mkdir(parents=True, exist_ok=True)
+    (target / name).write_text(f"# {name}\n", encoding="utf-8")
+
+
 def test_resume_reenters_the_newest_run_at_the_named_stage(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)
@@ -597,6 +606,7 @@ def test_resume_reenters_the_newest_run_at_the_named_stage(tmp_path: Path) -> No
         now=datetime(2026, 8, 9, tzinfo=UTC),
     )
     assert failed[0].status == "failed"
+    _seed_target_artifact(fixtures_root, run_id, "ANALYSIS.md")
 
     resumed_calls: list[tuple[str, ...]] = []
     resumed_id, results = run_uat(
@@ -633,6 +643,7 @@ def test_resume_appends_to_the_prior_evidence_instead_of_overwriting_it(tmp_path
     )
     case_root = fixtures_root / "ReadingList" / "runs" / run_id
     before = sorted(path.name for path in (case_root / "evidence" / "commands").glob("*.log"))
+    _seed_target_artifact(fixtures_root, run_id, "ANALYSIS.md")
 
     _, results = run_uat(
         tmp_path,
@@ -693,3 +704,47 @@ def test_resume_without_a_prior_run_names_the_missing_history(tmp_path: Path) ->
             runner=_stub_runner([]),
             start_stage="build",
         )
+
+
+def test_resume_into_a_stage_with_no_input_names_the_producing_stage(tmp_path: Path) -> None:
+    # Resuming at `build` after a failed `plan` must not spend two commands discovering that
+    # no MANIFEST.md exists; it must name the stage that produces one.
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    run_id, _ = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner([], fail=("plan",)),
+        now=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+    target = fixtures_root / "ReadingList" / "runs" / run_id / "workspace" / "targets"
+    (target / "ReadingList").mkdir(parents=True)
+    (target / "ReadingList" / "ANALYSIS.md").write_text("# analysis\n", encoding="utf-8")
+
+    calls: list[tuple[str, ...]] = []
+    with pytest.raises(SpecificationError, match=r"MANIFEST.md does not exist"):
+        run_uat(
+            tmp_path,
+            selected="ReadingList",
+            uat_root=fixtures_root,
+            model="test-model",
+            provider="codex",
+            runner=_stub_runner(calls),
+            start_stage="build",
+        )
+    assert calls == []
+
+    # The stage whose input does exist is accepted.
+    run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=_stub_runner(calls),
+        start_stage="plan",
+    )
+    assert ("plan", "ReadingList", "--override") in calls

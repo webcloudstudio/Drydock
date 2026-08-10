@@ -19,7 +19,11 @@ command surface and Typed Specification contract are unstable and may change bet
   continues past the existing files rather than overwriting them, and the earlier attempt's
   commands are carried into `result.json`. A resumed run records `resumed_from` and its receipt
   states the re-entry stage rather than claiming every command exited `0`, because a resumed run
-  reuses prior state and is not a clean-room measurement.
+  reuses prior state and is not a clean-room measurement. Each stage declares the Target artifact
+  it consumes, so a resume into a stage the prior attempt never reached fails immediately with the
+  missing artifact and the stage that produces it — `--stage build` after a failed `plan` reports
+  the absent `MANIFEST.md` and directs the operator to `--stage plan` rather than running a status
+  check and a completion gate to discover the same thing.
 
 - 2026-08-09: A UAT fixture declares its own technology stack by shipping a `TECHNOLOGY_STACK.md`
   in its fixture directory. `drydock uat` seeds that file into the Target between `init` and

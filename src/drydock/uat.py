@@ -577,6 +577,35 @@ def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
     return existing[-1]
 
 
+#: The Target artifact each resumable stage consumes, and the stage that produces it. A resume
+#: into a stage whose input the prior attempt never produced would otherwise fail several
+#: commands later with a message about the missing artifact rather than the wrong entry point.
+_STAGE_PREREQUISITES: dict[str, tuple[str, str]] = {
+    "import": ("METADATA.md", "init"),
+    "analyze": ("METADATA.md", "init"),
+    "plan": ("ANALYSIS.md", "analyze"),
+    "build": ("MANIFEST.md", "plan"),
+    "refit": ("MANIFEST.md", "plan"),
+    "test": ("MANIFEST.md", "plan"),
+    "score": ("MANIFEST.md", "plan"),
+}
+
+
+def verify_resume_prerequisite(fixture: UATFixture, case_root: Path, start_stage: str) -> None:
+    """Reject a resume whose entry stage has no input, naming the stage that produces it."""
+    required = _STAGE_PREREQUISITES.get(start_stage)
+    if required is None:
+        return
+    artifact, producer = required
+    path = case_root / "workspace" / "targets" / fixture.target / artifact
+    if path.is_file():
+        return
+    raise SpecificationError(
+        f"Cannot resume {fixture.name} at {start_stage!r}: {artifact} does not exist in "
+        f"{case_root.name}. Resume at {producer!r} instead."
+    )
+
+
 def run_fixture(
     fixture: UATFixture,
     case_root: Path,
@@ -601,6 +630,8 @@ def run_fixture(
     started = time.monotonic()
     started_at = datetime.now(UTC)
     start = stage_index(start_stage)
+    if start:
+        verify_resume_prerequisite(fixture, case_root, start_stage)
     workspace = case_root / "workspace"
     build_root = case_root / "build"
     source_root = case_root / "sources"
