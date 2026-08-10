@@ -270,11 +270,12 @@ def test_a_fully_proven_gate_records_no_manual_verification(tmp_path):
     assert "## Manual verification required\n\n- None." in scorecard
 
 
-def test_a_guardrail_does_not_move_the_coverage_score(tmp_path):
-    """Writing a prohibition down must not cost a project points.
+def test_a_guardrail_the_author_called_unprovable_does_not_move_the_coverage_score(tmp_path):
+    """Writing down a prohibition that admits no test must not cost a project points.
 
-    A guardrail is judged HELD, BREACHED, or UNPROVEN, not scored, so it is excluded from the
-    share of required assertions that discounts acceptance coverage.
+    This fixture's guardrail declares ``Verification: evidence`` — the author's claim that it
+    cannot be settled deterministically — so it is excluded from the share of required
+    assertions that discounts acceptance coverage.
     """
     without, _ = _target(tmp_path / "plain")
     with_guardrail, _ = _target(tmp_path / "guarded", guardrail=True, guardrail_evidence=False)

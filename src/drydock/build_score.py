@@ -51,19 +51,29 @@ def _coverage_penalty(
     resting on model opinion cannot score as one resting on proof or measurement. Qualitative
     and outcome criteria are exempt: judgment is their only honest method.
 
-    Guardrails are exempt too, and for a different reason. A guardrail is a prohibition judged
-    HELD, BREACHED, or UNPROVEN, not a quality dimension; scoring one that no proof reaches
-    would charge a project for writing the prohibition down. An unproven guardrail is carried
-    as a manual-verification attestation instead, where a human can settle it.
+    A guardrail is graded on what its author claimed about it. ``Verification: proof`` or
+    ``measurement`` asserts the prohibition *is* deterministically verifiable, so it is traceable
+    work like any other assertion and an unbound proof scores as model opinion. ``evidence`` or
+    ``llm`` asserts it is not — "shall never log personal data" admits no test — and grading that
+    would charge a project for writing the prohibition down, so it is exempt. Either way an
+    unproven guardrail is carried as a manual-verification attestation and never fails the gate;
+    the only question here is whether it costs marks.
 
     ``deterministic_ids`` names the criteria that carry genuine deterministic backing — a
     passing measurement contract or a proof that survives integrity analysis. A criterion whose
-    only proof is vacuous is not in the set, so it is scored as if judged by the model.
+    only proof is vacuous is not in the set, so it is scored as if judged by the model. A
+    proof-verified criterion no ``Sea Trials:`` reference reaches is not in the set either.
     """
     graded = [
         trial
         for trial in trials
-        if trial.required and trial.trial_type in ASSERTION_TYPES - {"guardrail"}
+        if trial.required
+        and (
+            trial.trial_type in ASSERTION_TYPES - {"guardrail"}
+            or (
+                trial.trial_type == "guardrail" and trial.verification in DETERMINISTIC_VERIFICATION
+            )
+        )
     ]
     if not graded:
         return value

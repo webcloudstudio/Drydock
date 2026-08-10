@@ -220,8 +220,14 @@ Acceptance `Sea Trials:` reference settles it mechanically and removes the manua
 required.
 
 Guardrails are exempt from `accepts:` coverage and from proof-reference coverage. No story builds a
-prohibition. They carry no weight in the technical score either: a project is not marked down for
-writing one.
+prohibition.
+
+They are graded on what you claimed about them. A guardrail you marked `Verification: evidence` or
+`llm` carries no weight in the technical score: you declared it unprovable, and a project is not
+marked down for writing such a prohibition down. A guardrail you marked `Verification: proof` or
+`measurement` is graded like any other assertion, because you declared it provable — leaving it
+unbound scores as model opinion and costs acceptance coverage until a Programmatic Acceptance
+`Sea Trials:` reference reaches it. Neither form fails the gate.
 
 """
 

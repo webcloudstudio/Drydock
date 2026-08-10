@@ -23,9 +23,12 @@ command surface and Typed Specification contract are unstable and may change bet
   `result.json` and renders it in the run `README.md` and `index.html`; run status is unchanged,
   because an unproven prohibition was never a failure of the run. Related: `score release` no
   longer counts a proof-verified guardrail toward required implementation/proof coverage, which
-  restores the specification's rule that guardrails require no story or proof reference, and
-  guardrails no longer influence `acceptance_criteria_coverage` — a project is not marked down
-  for writing a prohibition down. The motivating case was a ReadingList UAT run that built and
+  restores the rule that guardrails require no story or proof reference. Guardrails are now
+  graded on what their author claimed about them: `Verification: evidence` or `llm` declares the
+  prohibition unprovable and carries no weight in `acceptance_criteria_coverage`, while
+  `Verification: proof` or `measurement` declares it provable and is graded like any other
+  assertion, so leaving it unbound scores as model opinion until a Programmatic Acceptance
+  `Sea Trials:` reference reaches it. The motivating case was a ReadingList UAT run that built and
   tested clean, passed 27 of 27 acceptance criteria, and was failed at the release gate solely
   because no acceptance check declared `Sea Trials: st-003`.
 
