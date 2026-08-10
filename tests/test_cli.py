@@ -2779,6 +2779,30 @@ class TestStatus:
         assert rc == 2
 
 
+def test_render_recorded_error_keeps_indented_code_lines_intact():
+    # An acceptance failure chain is structure, not prose. Reflowing it to 72 columns split the
+    # failing assertion across two lines mid-regex, which is precisely the line the reader needs.
+    from drydock.cli import _render_recorded_error
+    from drydock.errors import ErrorRecord
+
+    assertion = (
+        '        assertion: assert re.search(r"\\b0\\s+errors?\\b", '
+        "result.stdout, re.IGNORECASE) → AssertionError"
+    )
+    record = ErrorRecord(
+        command="build",
+        phase="post-output validation",
+        timestamp="t",
+        classification="programmatic acceptance failed: complete-conformance",
+        detail='Block "Block 6" [block-6] failed its acceptance criteria.\n' + assertion,
+        recovery="Use: drydock build toml --ungate",
+    )
+    out = _render_recorded_error(record)
+
+    assert assertion.strip() in out
+    assert any(line.rstrip().endswith("→ AssertionError") for line in out.splitlines())
+
+
 def test_render_recorded_error_shows_diagnostic_and_recovery():
     from drydock.cli import _render_recorded_error
     from drydock.errors import ErrorRecord

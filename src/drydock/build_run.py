@@ -1166,6 +1166,10 @@ def _assertion_summary(result: AcceptanceRunResult) -> str:
     return "failed with no diagnostic output"
 
 
+# Enough of a runner's summary to show its tally without pasting a whole suite log.
+_OBSERVED_OUTPUT_LINES = 12
+
+
 def _render_ac_failure_chain(
     unit: BuildUnit,
     failed: tuple[AcceptanceRunResult, ...],
@@ -1211,6 +1215,13 @@ def _render_ac_failure_chain(
                 )
                 if exception:
                     lines.append(f"        error: {exception}")
+            # The assertion alone does not say why it failed. The check prints what it captured
+            # before asserting, so the runner's own account of the run is already in stdout —
+            # carry its tail into the report rather than making the reader open the evidence file.
+            observed = [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
+            if observed:
+                lines.append("        observed output:")
+                lines.extend(f"          {line}" for line in observed[-_OBSERVED_OUTPUT_LINES:])
     return "\n".join(lines)
 
 

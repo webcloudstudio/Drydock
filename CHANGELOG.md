@@ -10,6 +10,28 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: `proof_integrity.analyze_output_assertions` now reads the regular-expression form
+  of an output assertion, not only `in` / `not in` comparisons. Its own remediation advice
+  recommends rewriting a pinned tally as `re.search(r"\b0\s+failed\b", result.stdout)`, which
+  moved the assertion into a call none of the existing rules could see. Two defects are caught
+  in that form: a pinned nonzero count (`re.search(r"\b205\s+passed\b", ...)`) is reported as a
+  hardcoded tally, and requiring a count of errors, skips or warnings in captured stdout
+  alongside an exit-status assertion is reported as a *speculative tally* — only passes and
+  failures are reliably tallied, and a runner with none of the others prints no such line at
+  all, so `re.search(r"\b0\s+errors?\b", ...)` is false on a clean run. Both are fatal: planning
+  strips the criterion and a build against an already-authored one refuses to start.
+  `prompts/BLUEPRINTS_CONTRACT.md` no longer instructs the planner to require zero errors on a
+  scoped suite or zero skips on the terminal full suite; the failure count is the only tally an
+  assertion may require.
+
+- 2026-08-10: A programmatic-acceptance failure report carries the output the check printed.
+  The Block → Story → AC chain stated the failing assertion and the exit code but not the
+  runner's own account of the run, so a reader could not distinguish a broken assertion from
+  broken code without opening the evidence file. Up to twelve lines of captured stdout now
+  follow the assertion under `observed output:`. The terminal renderer for a post-LLM failure
+  also stops reflowing indented lines, which had been splitting the failing assertion across
+  two lines mid-regex.
+
 - 2026-08-09: Every surface that reports token usage — the per-call console line, the
   `drydock build` report table and its totals, the UAT run summary, and the UAT receipt —
   states `cached` and `uncached` instead of a total input with a cached subset. That is the

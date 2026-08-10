@@ -3867,6 +3867,13 @@ def _render_recorded_error(record, *, target: str | None = None) -> str:
             if not paragraph:
                 wrapped.append("")
                 continue
+            if paragraph.startswith((" ", "\t")):
+                # An indented line is structure or code — a failure chain, an assertion, a
+                # runner's tally. Reflowing it to the terminal width destroys the very thing
+                # the reader came for: the assertion arrives split across two lines with its
+                # regex broken at a space. Emit it as authored and let the terminal wrap.
+                wrapped.append(pad + paragraph)
+                continue
             wrapped.extend(
                 textwrap.wrap(
                     paragraph,

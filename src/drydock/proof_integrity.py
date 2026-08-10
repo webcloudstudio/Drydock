@@ -603,17 +603,54 @@ _HARDCODED_TALLY_RE = re.compile(
     rf"\b\d+\s+{_TALLY_NOUNS}\b|\b{_TALLY_NOUNS}\s*[:=]\s*\d+", re.IGNORECASE
 )
 
+# Rewriting the pinned literal as a whitespace-tolerant regular expression — the remedy this
+# module recommends — moves the assertion out of an ``in`` comparison and into a ``re.search``
+# call, where none of the rules above can see it. Two defects survive that move.
+#
+# The first is the count. ``re.search(r"\b205\s+passed\b", ...)`` pins the installed suite's case
+# count exactly as the literal form did. A *zero* count is different in kind: "no failures" is the
+# specification's own claim about correct code, not a number the suite owns, which is why
+# ``\b0\s+failed\b`` is the documented form.
+#
+# The second is the noun. A runner is only reliably observed to report passes and failures.
+# ``errors``, ``skipped`` and ``warnings`` are per-runner vocabulary, and a runner that has none
+# of them commonly prints no such line at all — toml-test emits ``skipped tests: N`` only when it
+# skipped something, and never emits an error tally. Requiring ``0 errors`` in captured output
+# therefore asserts that the runner uses a vocabulary it may not have, and no implementation can
+# supply it. The exit status already carries the verdict, so where the proof gates on it these
+# assertions can only subtract; without it, the regex is the proof's only gate and is left alone.
+_REGEX_SEARCH_NAMES = frozenset({"search", "match", "fullmatch", "findall", "finditer"})
+#
+# These two match against the *pattern source*, not against runner output, so a digit may be
+# preceded by the regex escape that introduces it (``\b0``) and the separator may be written as
+# ``\s+``. Anchor on "not part of a longer number" rather than on a word boundary.
+_PINNED_COUNT_RE = re.compile(
+    rf"(?<!\d)(?!0(?![0-9]))\d+(?:\\s[*+]|\s)*{_TALLY_NOUNS}\b", re.IGNORECASE
+)
+_SPECULATIVE_TALLY_RE = re.compile(
+    r"(?<!\d)\d+(?:\\s[*+]|\s)*(errors|error|skipped|skips|skip|warnings|warning)\b", re.IGNORECASE
+)
+
 
 @dataclass(frozen=True)
 class OutputAssertionDefect:
     """An assertion constraining a literal in a command's captured output."""
 
-    kind: str  # tally-vocabulary | hardcoded-tally | redundant-substring
+    kind: str  # tally-vocabulary | hardcoded-tally | speculative-tally | redundant-substring
     literal: str
     fatal: bool
 
     @property
     def message(self) -> str:
+        if self.kind == "speculative-tally":
+            return (
+                f"requires the pattern {self.literal!r} to match captured output, which asserts "
+                f"the runner reports a count of errors, skips or warnings. Only passes and "
+                f"failures are reliably tallied; a runner with none of the others commonly prints "
+                f"no such line at all, so the pattern is false on correct code and no "
+                f"implementation can move it. The exit status already gates the run — assert on "
+                f"it, and verify at most the failure count."
+            )
         if self.kind == "hardcoded-tally":
             return (
                 f"asserts the exact tally {self.literal!r} appears in captured output. The count "
@@ -674,6 +711,27 @@ def _stream_bindings(tree: ast.AST) -> dict[str, frozenset[str]]:
     return bindings
 
 
+def _regex_pattern_against_stream(
+    node: ast.AST, bindings: dict[str, frozenset[str]]
+) -> tuple[str, frozenset[str]] | None:
+    """The literal pattern and streams of a ``re.search``-family call reading captured output.
+
+    Returns ``None`` for anything else, including a computed (non-literal) pattern, which this
+    module does not reason about.
+    """
+    if not isinstance(node, ast.Call) or _call_name(node) not in _REGEX_SEARCH_NAMES:
+        return None
+    if len(node.args) < 2:
+        return None
+    pattern = node.args[0]
+    if not isinstance(pattern, ast.Constant) or not isinstance(pattern.value, str):
+        return None
+    streams = _streams_read(node.args[1], bindings)
+    if not streams:
+        return None
+    return pattern.value, streams
+
+
 def _asserts_exit_status(tree: ast.AST) -> bool:
     """True when the proof already gates on a return code."""
     return any(
@@ -699,7 +757,30 @@ def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
     defects: list[OutputAssertionDefect] = []
     seen: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+        if not isinstance(node, ast.Assert):
+            continue
+        # A regex form of the same claim. Only a required match is analysed: a negated one
+        # (``assert not re.search(...)``) forbids a pattern, which the vocabulary rule below
+        # already reasons about in its literal form and which carries no count to pin.
+        negated = any(isinstance(child, ast.Not) for child in ast.walk(node.test))
+        for call in () if negated else ast.walk(node.test):
+            found = _regex_pattern_against_stream(call, captured_names)
+            if found is None:
+                continue
+            pattern, streams = found
+            if not (streams & _TALLY_STREAMS):
+                continue
+            if _PINNED_COUNT_RE.search(pattern):
+                kind = "hardcoded-tally"
+            elif has_exit_assert and _SPECULATIVE_TALLY_RE.search(pattern):
+                kind = "speculative-tally"
+            else:
+                continue
+            if (kind, pattern) in seen:
+                continue
+            seen.add((kind, pattern))
+            defects.append(OutputAssertionDefect(kind=kind, literal=pattern, fatal=True))
+        if not isinstance(node.test, ast.Compare):
             continue
         compare = node.test
         if len(compare.ops) != 1 or not isinstance(compare.ops[0], ast.NotIn | ast.In):

@@ -456,6 +456,76 @@ def test_whitespace_tolerant_regex_on_a_tally_is_not_reported():
     )
 
 
+# The Toml conformance case, one repair later. Rewriting the pinned literal as a regex moved the
+# assertion into a call the literal rules cannot see, and the criterion grew two nouns toml-test
+# never prints on a clean run: it emits "skipped tests: N" only when it skipped something, and no
+# error tally at all.
+_SPECULATIVE_TALLY_ASSERTION = """
+import re
+import subprocess
+
+result = subprocess.run(["sh", "sources/full_test.sh"], capture_output=True, text=True)
+print(result.stdout)
+assert result.returncode == 0
+assert re.search(r"\\b0\\s+failed\\b", result.stdout)
+assert re.search(r"\\b0\\s+errors?\\b", result.stdout, re.IGNORECASE)
+assert re.search(r"\\b0\\s+skipped\\b", result.stdout, re.IGNORECASE)
+"""
+
+
+def test_requiring_a_tally_of_errors_or_skips_by_regex_is_fatal():
+    defects = analyze_output_assertions(_SPECULATIVE_TALLY_ASSERTION)
+    assert [d.kind for d in defects] == ["speculative-tally", "speculative-tally"]
+    assert all(d.fatal for d in defects)
+    # The failure count is the documented form and survives; only the speculative nouns are cited.
+    assert [d.literal for d in defects] == [r"\b0\s+errors?\b", r"\b0\s+skipped\b"]
+    assert "exit status" in defects[0].message
+
+
+def test_pinned_count_in_a_regex_is_a_hardcoded_tally():
+    # The regex form does not launder a case count the installed suite owns.
+    (defect,) = analyze_output_assertions(
+        "import re\n"
+        "assert result.returncode == 0\n"
+        'assert re.search(r"\\b205\\s+passed\\b", result.stdout)'
+    )
+    assert defect.kind == "hardcoded-tally"
+    assert defect.fatal
+
+
+def test_speculative_tally_without_an_exit_assertion_is_not_reported():
+    # With no exit-status gate the regex is the proof's only verdict; removing it leaves nothing.
+    assert (
+        analyze_output_assertions(
+            'import re\nassert re.search(r"\\b0\\s+errors\\b", result.stdout)'
+        )
+        == ()
+    )
+
+
+def test_speculative_tally_on_stderr_is_not_reported():
+    assert (
+        analyze_output_assertions(
+            "import re\n"
+            "assert result.returncode == 0\n"
+            'assert re.search(r"\\b0\\s+errors\\b", result.stderr)'
+        )
+        == ()
+    )
+
+
+def test_forbidding_a_nonzero_tally_by_regex_is_not_reported():
+    # A negated match forbids a pattern rather than requiring one, and pins no count.
+    assert (
+        analyze_output_assertions(
+            "import re\n"
+            "assert result.returncode == 0\n"
+            'assert not re.search(r"[1-9]\\d*\\s+errors", result.stdout)'
+        )
+        == ()
+    )
+
+
 def test_unparseable_code_is_not_reported():
     assert analyze_output_assertions("def broken(:") == ()
 

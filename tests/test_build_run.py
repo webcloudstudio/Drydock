@@ -1239,6 +1239,32 @@ def test_programmatic_acceptance_failure_reports_block_story_ac_chain(tmp_path):
     assert "process exit code: 1" in error_text
 
 
+def test_ac_failure_detail_carries_the_output_the_check_printed(tmp_path):
+    # The assertion says what was checked, not why it failed. A check that shells out prints the
+    # runner's own account first; the report must show it, or the reader cannot tell a broken
+    # assertion from broken code without opening the evidence file.
+    target_dir, build_dir = _setup(tmp_path, manifest=_FEATURE_GROUP_MANIFEST)
+    (target_dir / "blueprint" / "SERVICE.md").write_text(
+        "SVC SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### service-tally\n"
+        "Service reports a clean run.\n\n"
+        "```python\n"
+        "import re\n"
+        'summary = "valid tests: 205 passed,  0 failed"\n'
+        "print(summary)\n"
+        'assert re.search(r"\\\\b0\\\\s+errors\\\\b", summary)\n'
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target("Demo", target_dir, build_dir=build_dir, runner=make_runner())
+
+    detail = result.steps[0].failure_detail
+    assert "observed output:" in detail
+    assert "valid tests: 205 passed,  0 failed" in detail
+
+
 def test_ac_failure_fails_only_the_owning_story_not_its_group_mate(tmp_path):
     # We fail stories by AC. Within a feature group built in one pass, only the story whose own
     # acceptance check failed is closed/failed; a group-mate whose own checks all passed verifies

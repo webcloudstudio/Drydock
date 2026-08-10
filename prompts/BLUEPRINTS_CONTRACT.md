@@ -244,9 +244,12 @@ installed suite, not to the specification, and runners column-align their summar
 (`valid tests: 205 passed,  0 failed` carries two spaces), so a literal such as
 `assert "valid tests: 210 passed, 0 failed" in result.stdout` is false on correct code and no
 implementation can move it. Drydock removes such a criterion from the specification at plan time.
-For `Suite: scoped`, require success and zero failures/errors in the selected slice, but never
-require `0 skipped`; tests outside the slice are expected to be skipped. Requiring zero skipped is
-reserved for the terminal `Suite: full` check.
+The failure count is the only tally an assertion may require. Never require a count of errors,
+skips or warnings in captured output: only passes and failures are reliably tallied, and a runner
+with none of the others commonly prints no such line at all, so `re.search(r"\b0\s+errors?\b",
+result.stdout)` is false on a clean run and no implementation can move it. This holds for both
+`Suite: scoped` and `Suite: full` — a scoped run additionally expects tests outside its slice to
+be skipped. Drydock removes such a criterion from the specification at plan time.
 
 Place a whole-project deterministic suite on the story that **completes the runnable capability**
 — never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it
