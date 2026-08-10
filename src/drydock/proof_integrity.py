@@ -380,6 +380,7 @@ def analyze_structure(code: str) -> tuple[StructuralDefect, ...]:
 
 _CAPTURING_CALLS = frozenset({"run", "check_output", "Popen", "communicate", "getoutput"})
 _ECHO_CALLS = frozenset({"print", "write", "writelines"})
+_CAPTURED_STREAMS = frozenset({"stdout", "stderr", "output"})
 
 
 @dataclass(frozen=True)
@@ -535,6 +536,17 @@ def analyze_swallowed_output(code: str) -> tuple[SwallowedOutputDefect, ...]:
         isinstance(node, ast.Call) and _call_name(node) in _ECHO_CALLS for node in ast.walk(tree)
     )
     if echoes:
+        return ()
+    # A check that asserts on the captured streams names the evidence in its own assertion, so
+    # the failure still reports what the command produced. Only a check that captures the output
+    # and reads nothing but the exit code destroys the diagnostics.
+    reads_streams = any(
+        isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, ast.Load)
+        and node.attr in _CAPTURED_STREAMS
+        for node in ast.walk(tree)
+    )
+    if reads_streams:
         return ()
     first = capturing[0]
     func = first.func

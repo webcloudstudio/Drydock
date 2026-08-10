@@ -237,6 +237,19 @@ def test_captured_output_that_is_printed_is_clean():
     assert analyze_swallowed_output(code) == ()
 
 
+def test_captured_output_that_is_asserted_on_is_clean():
+    # The assertion names the captured stream, so the failure still reports what the command
+    # produced. Only an exit-code-only check discards the evidence.
+    code = (
+        "import json\n"
+        "import subprocess\n"
+        "result = subprocess.run(['decoder'], capture_output=True, text=True)\n"
+        "assert result.returncode == 0\n"
+        "assert json.loads(result.stdout) == {'a': 1}\n"
+    )
+    assert analyze_swallowed_output(code) == ()
+
+
 def test_uncaptured_subprocess_is_clean():
     # Without capture the runner's output already reaches the check's own streams.
     code = "import subprocess\nassert subprocess.run(['suite']).returncode == 0\n"
