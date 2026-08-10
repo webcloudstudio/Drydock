@@ -310,6 +310,67 @@ def merge_declaration(
     return tuple(amendment), ()
 
 
+# ── Analyzed-story coverage ─────────────────────────────────────────────────────────
+
+
+def story_covers(node: object) -> tuple[str, ...]:
+    """The analyzed Story IDs a declared or serialized story claims in ``covers:``."""
+    return _node_list(node, "covers")
+
+
+def coverage_defects(
+    owners: Sequence[tuple[str, Sequence[str]]],
+    analyzed_ids: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Judge analyzed-story ownership, returning ``(fatal, warnings)``.
+
+    One rule with one implementation, applied at every stage that can act on it: Stage 1
+    checks the topology declaration while a repair costs one small call and no authored
+    artifact, and final validation checks the serialized Manifest. Both agree by
+    construction, so a declaration accepted at Stage 1 cannot fail this rule afterwards.
+
+    ``owners`` pairs each story's own ID with the analyzed IDs it claims. The gate is
+    inactive when ``analyzed_ids`` is empty — the Spec Kit and reuse paths plan without a
+    Story List.
+    """
+    fatal: list[str] = []
+    warnings: list[str] = []
+    if not analyzed_ids:
+        return (), ()
+
+    covered: set[str] = set()
+    claimants: dict[str, list[str]] = {}
+    for story_id, raw_refs in owners:
+        refs = tuple(ref for ref in raw_refs if ref)
+        covered.update(refs)
+        for ref in refs:
+            claimants.setdefault(ref, []).append(story_id)
+        if len(refs) > 1:
+            warnings.append(
+                f"{story_id}: covers {len(refs)} analyzed stories "
+                f"({', '.join(refs)}); confirm they are one behavior, or decompose the story"
+            )
+    # Shared ownership blurs failure attribution: an analyzed story is delivered by one
+    # story. A plan-introduced foundation story simply omits `covers:` rather than
+    # duplicating an ID that another story already owns.
+    for story_id in analyzed_ids:
+        owning = claimants.get(story_id, ())
+        if len(owning) > 1:
+            warnings.append(
+                f"analyzed story {story_id} is claimed by {len(owning)} Manifest stories "
+                f"({', '.join(owning)}); exactly one story owns it"
+            )
+    uncovered = [story_id for story_id in analyzed_ids if story_id not in covered]
+    if uncovered:
+        fatal.append(
+            "analyzed stories are not delivered by any Manifest story: "
+            + ", ".join(uncovered)
+            + " — name each analyzed Story ID in the covers: field of the story "
+            "that delivers it"
+        )
+    return tuple(fatal), tuple(warnings)
+
+
 # ── Manifest serialization ──────────────────────────────────────────────────────────
 
 

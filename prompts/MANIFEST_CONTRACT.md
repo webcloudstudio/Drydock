@@ -116,7 +116,7 @@ state:        pending
 | `phase` | Yes | Model | Commander build sequencing; see below |
 | `block` | Generated | Drydock | Context-optimization group; computed, never authored |
 | `implements` | Yes | Model | The single governed specification this story builds |
-| `covers` | No | Model | `ANALYSIS.md` Story IDs this story delivers |
+| `covers` | No | Model | `ANALYSIS.md` Story IDs this story delivers. Every analyzed Story ID is named by exactly one story, whatever its `type`; a story with no analyzed counterpart omits the field |
 | `accepts` | No | Model | `SEA_TRIALS.md` IDs this story implements |
 | `context` | No | Model | Read-only support context files. Never a Compass file |
 | `stack` | No | Model | Rigging stack files this story builds with |

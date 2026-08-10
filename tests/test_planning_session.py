@@ -3590,6 +3590,65 @@ def test_a_declaration_with_an_unknown_edge_is_refused(tmp_path):
     assert not (target_dir / "MANIFEST.md").is_file()
 
 
+def test_uncovered_analyzed_story_is_repaired_at_stage_1(tmp_path):
+    # Coverage is decidable as soon as the declaration exists, so it is corrected there —
+    # before Stage 2 authors anything against a topology that would be refused later.
+    target_dir = _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    uncovered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    )
+    repaired = uncovered.replace(
+        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
+    )
+    runner = _sequence_runner(_topology_output(uncovered), _declaration_block(repaired))
+
+    result = create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 2
+    assert "Plan Topology Repair" in runner.calls[1]
+    assert "not delivered by any Manifest story: ARCH-001" in runner.calls[1]
+    assert (target_dir / "MANIFEST.md").is_file()
+    assert result.plan.by_id()["story-foundation"].fields["covers"] == ("ARCH-001",)
+
+
+def test_stage_1_coverage_repair_is_skipped_when_the_declaration_covers_every_story(tmp_path):
+    _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    covered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    ).replace(
+        "implements:   ARCHITECTURE.md", "implements:   ARCHITECTURE.md\ncovers:       ARCH-001"
+    )
+    runner = _sequence_runner(_topology_output(covered))
+
+    create_plan("Example", "Example", tmp_path, runner=runner)
+
+    assert len(runner.calls) == 1
+
+
+def test_an_unrepaired_coverage_defect_still_refuses_the_plan(tmp_path):
+    # The Stage 1 repair is an opportunity, not the authority: a model that will not
+    # correct its declaration still meets the same rule at final validation.
+    target_dir = _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
+    uncovered = _TOPOLOGY_DECLARATION.replace(
+        "implements:   FEATURE-Status.md",
+        "implements:   FEATURE-Status.md\ncovers:       STATUS-001",
+    )
+    runner = _sequence_runner(_topology_output(uncovered))
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=runner)
+
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="analyzed stories are not delivered by any Manifest story: ARCH-001",
+    )
+    assert not (target_dir / "MANIFEST.md").is_file()
+
+
 def test_an_unknown_topology_edge_is_repaired_without_regenerating_specs(tmp_path):
     target_dir = _make_target(tmp_path)
     dangling = _TOPOLOGY_DECLARATION.replace(

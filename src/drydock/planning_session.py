@@ -2134,51 +2134,22 @@ def _integrity_check(
                 "required Sea Trials lack implementation/proof coverage: " + ", ".join(missing)
             )
 
-    # Story count is not capped; see the module note.
-    # Reject an under-decomposed plan: every analyzed story is delivered by some
-    # story, and a story that swallows several analyzed stories declares it. The
-    # gate is inactive when the analysis carries no Story List — the Spec Kit and
-    # reuse paths plan without one.
-    from drydock.quarterdeck_state import analysis_story_ids
+    # Story count is not capped; see the module note. Reject an under-decomposed plan:
+    # every analyzed story is delivered by some story. Stage 1 applied this same rule to
+    # the declaration, so reaching a defect here means the plan arrived by a path that has
+    # no topology to check.
+    from drydock.plan_topology import coverage_defects, story_covers
 
-    analysis_path = blueprint_dir.parent / "ANALYSIS.md"
-    analysis_text = analysis_path.read_text(encoding="utf-8") if analysis_path.is_file() else ""
-    analyzed_ids = analysis_story_ids(analysis_text)
-    if analyzed_ids:
-        covered_stories: set[str] = set()
-        owners: dict[str, list[str]] = {}
-        for block in plan.blocks:
-            if block.block_type != "story":
-                continue
-            raw_covers = block.fields.get("covers", ())
-            refs = tuple(raw_covers) if isinstance(raw_covers, tuple) else (raw_covers,)
-            refs = tuple(ref for ref in refs if ref)
-            covered_stories.update(refs)
-            for ref in refs:
-                owners.setdefault(ref, []).append(block.block_id)
-            if len(refs) > 1:
-                warnings.append(
-                    f"{block.block_id}: covers {len(refs)} analyzed stories "
-                    f"({', '.join(refs)}); confirm they are one behavior, or decompose the story"
-                )
-        # Shared ownership blurs failure attribution: an analyzed story is delivered by
-        # one Manifest story. A plan-introduced foundation story simply omits `covers:`
-        # rather than duplicating an ID that another story already owns.
-        for story_id in analyzed_ids:
-            claimants = owners.get(story_id, ())
-            if len(claimants) > 1:
-                warnings.append(
-                    f"analyzed story {story_id} is claimed by {len(claimants)} Manifest stories "
-                    f"({', '.join(claimants)}); exactly one story owns it"
-                )
-        uncovered = [story_id for story_id in analyzed_ids if story_id not in covered_stories]
-        if uncovered:
-            fatal.append(
-                "analyzed stories are not delivered by any Manifest story: "
-                + ", ".join(uncovered)
-                + " — name each analyzed Story ID in the covers: field of the story "
-                "that delivers it"
-            )
+    coverage_fatal, coverage_warnings = coverage_defects(
+        [
+            (block.block_id, story_covers(block))
+            for block in plan.blocks
+            if block.block_type == "story"
+        ],
+        analyzed_story_ids(blueprint_dir),
+    )
+    fatal.extend(coverage_fatal)
+    warnings.extend(coverage_warnings)
 
     # Zone C — deterministic verification of the declared graph. The model authors judgment;
     # Python proves the result is internally consistent and refuses it otherwise. Active only
@@ -3024,6 +2995,98 @@ def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int
         kind="repair",
     )
     return PromptAssembly(parts=(repair,))
+
+
+def analyzed_story_ids(blueprint_dir: Path) -> tuple[str, ...]:
+    """Story IDs declared by the Target's ``ANALYSIS.md``, or none when it has no Story List."""
+    from drydock.quarterdeck_state import analysis_story_ids
+
+    analysis_path = blueprint_dir.parent / "ANALYSIS.md"
+    if not analysis_path.is_file():
+        return ()
+    return analysis_story_ids(analysis_path.read_text(encoding="utf-8"))
+
+
+def _declaration_coverage_defect(declaration: str, blueprint_dir: Path) -> str:
+    """The coverage defect in a topology declaration, or an empty string when it is sound."""
+    from drydock.plan_topology import coverage_defects, story_covers
+
+    declared, _ = parse_topology(declaration)
+    fatal, _ = coverage_defects(
+        [(story.story_id, story_covers(story)) for story in declared],
+        analyzed_story_ids(blueprint_dir),
+    )
+    return "\n  ".join(fatal)
+
+
+def _repair_declaration_coverage(
+    declaration: str,
+    *,
+    blueprint_dir: Path,
+    target: str,
+    target_dir: Path,
+    llm_provider: str | None,
+    model: str | None,
+    log_dir: Path | None,
+    runner: Callable[..., object],
+    on_text: Callable[[str], None] | None,
+    attempts: int,
+    initial_execution_id: str | None,
+) -> str:
+    """Correct analyzed-story coverage in the declaration before Stage 2 spends a call.
+
+    Coverage is decidable the moment the topology exists, and a repair here costs one small
+    call against the declaration alone. Returning an uncorrected declaration is not a
+    failure path: the same rule runs again at final validation, which owns the refusal.
+    """
+    for repair_pass in range(1, attempts + 1):
+        defect = _declaration_coverage_defect(declaration, blueprint_dir)
+        if not defect:
+            return declaration
+        if on_text is not None:
+            on_text(f"[plan] topology coverage repair pass {repair_pass}/{attempts} · {defect}\n")
+        assembly = _topology_repair_assembly(
+            declaration=declaration, defect=defect, pass_number=repair_pass
+        )
+        try:
+            result = cast(
+                CompletedRun,
+                runner(
+                    assembly.rendered_text,
+                    target_dir,
+                    llm=llm_provider,
+                    model=model,
+                    command_name="plan",
+                    parameters={
+                        "target": target,
+                        "coverage_repair_pass": repair_pass,
+                        "initial_execution_id": initial_execution_id or "",
+                    },
+                    log_dir=log_dir,
+                    target=target,
+                    on_text=on_text,
+                    prompt_assembly=assembly,
+                ),
+            )
+        except Exception:
+            return declaration
+        if not result.ok or not result.text.strip():
+            return declaration
+        try:
+            repair_blocks = _parse_strict_blocks(result.text, result)
+        except OutsideArtifactTextError:
+            repair_blocks = _parse_repair_artifact_envelopes(result.text)
+        except Exception:
+            return declaration
+        if set(repair_blocks) != {TOPOLOGY_BLOCK}:
+            return declaration
+        repaired = repair_blocks[TOPOLOGY_BLOCK]
+        stories, defects = parse_topology(repaired)
+        # A malformed or emptied re-emission is discarded whole; the accepted declaration stands.
+        if defects or not stories or repaired == declaration:
+            return declaration
+        declaration = repaired
+    return declaration
 
 
 #: Plan integrity defects a topology re-emission alone can repair: each is stated entirely in a
@@ -4169,6 +4232,21 @@ def create_plan(
             # batches. Only a delimited response carries the evidence needed to distinguish a cut
             # artifact from a complete one, so write-call recovery keeps the original behavior.
         if continue_attempts > 0 and blocks_text is not None and TOPOLOGY_BLOCK in blocks:
+            # Coverage is checked here, against the frozen declaration, so an uncovered
+            # analyzed story costs one repair call rather than the whole Stage 2 spend.
+            blocks[TOPOLOGY_BLOCK] = _repair_declaration_coverage(
+                blocks[TOPOLOGY_BLOCK],
+                blueprint_dir=blueprint_dir,
+                target=target,
+                target_dir=target_dir,
+                llm_provider=llm_provider,
+                model=model or prompt.model,
+                log_dir=log_dir,
+                runner=run,
+                on_text=on_text,
+                attempts=continue_attempts,
+                initial_execution_id=exec_id,
+            )
             declared_stories, _ = parse_topology(blocks[TOPOLOGY_BLOCK])
             if declared_stories:
                 continuation = _continue_short_plan(
