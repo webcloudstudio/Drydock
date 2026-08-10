@@ -26,7 +26,6 @@ from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import (
-    ASSERTION_TYPES,
     DETERMINISTIC_VERIFICATION,
     SeaTrial,
     load_sea_trials,
@@ -52,34 +51,23 @@ def _coverage_penalty(
 ) -> int:
     """Discount acceptance coverage by the share of required assertions judged only by the model.
 
-    A required technical or behavioral criterion is expected to be provable, so a contract
-    resting on model opinion cannot score as one resting on proof or measurement. Qualitative
-    and outcome criteria are exempt: judgment is their only honest method.
+    Every criterion is graded on the testability its author declared, and on nothing else. A
+    criterion declared ``deterministic`` claims a machine can settle it, so a contract resting on
+    model opinion cannot score as one resting on proof or measurement. A criterion declared
+    ``judgeable`` or ``neither`` claims otherwise — "reads professionally" admits no test, and
+    "shall never log personal data" admits no automated proof — and grading those would charge a
+    project for writing an honest criterion down, so they are exempt.
 
-    A guardrail is graded on what its author claimed about it. ``Verification: proof`` or
-    ``measurement`` asserts the prohibition *is* deterministically verifiable, so it is traceable
-    work like any other assertion and an unbound proof scores as model opinion. ``evidence`` or
-    ``llm`` asserts it is not — "shall never log personal data" admits no test — and grading that
-    would charge a project for writing the prohibition down, so it is exempt. Either way an
-    unproven guardrail is carried as a manual-verification attestation and never fails the gate;
-    the only question here is whether it costs marks.
+    This generalizes what used to be a per-type special case for guardrails. The rule was always
+    "grade the author's own claim"; the testability column simply lets the author state that
+    claim directly instead of leaving it to be inferred from the verification method.
 
     ``deterministic_ids`` names the criteria that carry genuine deterministic backing — a
     passing measurement contract or a proof that survives integrity analysis. A criterion whose
     only proof is vacuous is not in the set, so it is scored as if judged by the model. A
     proof-verified criterion no ``Sea Trials:`` reference reaches is not in the set either.
     """
-    graded = [
-        trial
-        for trial in trials
-        if trial.required
-        and (
-            trial.trial_type in ASSERTION_TYPES - {"guardrail"}
-            or (
-                trial.trial_type == "guardrail" and trial.verification in DETERMINISTIC_VERIFICATION
-            )
-        )
-    ]
+    graded = [trial for trial in trials if trial.required and trial.testability == "deterministic"]
     if not graded:
         return value
     deterministic = sum(1 for trial in graded if trial.criterion_id in deterministic_ids)
@@ -560,11 +548,7 @@ def score_target(
     traceable_required = {
         trial.criterion_id
         for trial in document.trials
-        if trial.required
-        and (
-            trial.trial_type in {"technical", "behavioral"}
-            or (trial.trial_type == "guardrail" and trial.verification == "proof")
-        )
+        if trial.required and trial.testability == "deterministic" and trial.verification == "proof"
     }
     uncovered = sorted(traceable_required - (manifest_refs | proof_refs))
     if uncovered:
@@ -609,6 +593,10 @@ def score_target(
         "measurements": [asdict(item) for item in measurements],
         "evidence_files": evidence_facts,
         "sea_trials": [asdict(item) for item in document.trials],
+        "policy": {
+            **document.policy.to_dict(),
+            "source": "SEA_TRIALS.md" if document.policy_declared else "Drydock default",
+        },
         "deterministic_blockers": blockers,
         "warnings": warnings,
     }
@@ -708,24 +696,28 @@ def score_target(
     low_dimensions = [name for name, value in dimensions.items() if value < 60]
     if low_dimensions:
         blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
+    # The gate verdict is the policy applied to the rows, not a rubric compiled into this file.
+    # Where the two disagree the file wins, so changing a gate's severity means editing
+    # SEA_TRIALS.md — which is the whole point of writing the policy down.
     attestations: list[str] = []
     for item in criteria:
-        trial = trial_by_id[item.criterion_id]
-        if trial.trial_type == "guardrail":
-            # A guardrail is absolute, and Required does not apply. A breach is a demonstrated
-            # failure and blocks. An unproven guardrail is not: nothing showed the prohibition
-            # violated, and no automated proof exists for many prohibitions worth writing. It
-            # is reported as UNPROVEN and handed to a human as an attestation.
-            if item.verdict == "FAIL":
-                blockers.append(f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}")
-            elif item.verdict != "PASS":
-                detail = item.evidence[0] if item.evidence else "no evidence supplied"
-                attestations.append(
-                    f"Guardrail {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
-                )
+        if item.verdict == "PASS":
             continue
-        if trial.required and item.verdict != "PASS":
-            blockers.append(f"Required Sea Trial {item.criterion_id} is {item.verdict}")
+        trial = trial_by_id[item.criterion_id]
+        effect = document.policy.effect(trial.consequence, item.verdict)
+        guardrail = trial.trial_type == "guardrail"
+        if effect == "fail":
+            blockers.append(
+                f"Guardrail {item.criterion_id} is BREACHED: {trial.criterion}"
+                if guardrail
+                else f"Required Sea Trial {item.criterion_id} is {item.verdict}"
+            )
+        elif effect == "attest":
+            detail = item.evidence[0] if item.evidence else "no evidence supplied"
+            label = "Guardrail" if guardrail else "Sea Trial"
+            attestations.append(
+                f"{label} {item.criterion_id} is UNPROVEN ({detail}): {trial.criterion}"
+            )
 
     criterion_improvements = [
         f"Resolve {item.criterion_id} ({item.verdict}): {trial_by_id[item.criterion_id].criterion}"

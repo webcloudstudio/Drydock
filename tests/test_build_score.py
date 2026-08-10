@@ -335,11 +335,17 @@ def test_a_guardrail_the_author_called_unprovable_does_not_move_the_coverage_sco
     )
 
 
-def test_required_assertions_judged_only_by_the_model_lose_coverage_score(tmp_path):
+def test_a_criterion_declared_deterministic_but_judged_by_the_model_loses_coverage_score(tmp_path):
+    """Grading follows the testability the author declared, not the method they supplied.
+
+    Declaring ``deterministic`` claims a machine can settle it. Supplying only model opinion
+    against that claim is the gap the coverage score measures.
+    """
     target_dir, _ = _target(tmp_path)
     sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
     (target_dir / "SEA_TRIALS.md").write_text(
-        sea.replace("Verification: proof", "Verification: llm"), encoding="utf-8"
+        sea.replace("Verification: proof", "Testability: deterministic\nVerification: llm"),
+        encoding="utf-8",
     )
 
     result = score_target("Demo", target_dir, runner=_runner())
@@ -348,6 +354,83 @@ def test_required_assertions_judged_only_by_the_model_lose_coverage_score(tmp_pa
     assert result.dimensions["acceptance_criteria_coverage"] == 45
     assert result.complete is False
     assert "Technical dimensions below 60: acceptance_criteria_coverage" in result.blockers
+
+
+def test_a_criterion_the_author_declared_unprovable_costs_no_coverage_score(tmp_path):
+    """The other half of the same rule: an honest ``judgeable`` claim is not marked down."""
+    target_dir, _ = _target(tmp_path)
+    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+    (target_dir / "SEA_TRIALS.md").write_text(
+        sea.replace("Verification: proof", "Testability: judgeable\nVerification: llm"),
+        encoding="utf-8",
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+
+    assert result.dimensions["acceptance_criteria_coverage"] == 90
+
+
+def test_the_gate_verdict_follows_the_policy_declared_in_the_file(tmp_path):
+    """Changing a gate's severity is an edit to SEA_TRIALS.md, not to this module."""
+    target_dir, _ = _target(tmp_path, vacuous_proof=True)
+    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+    strict = sea.replace(
+        "# Sea Trials: Demo\n",
+        "# Sea Trials: Demo\n\n## Policy\n\n"
+        "| Consequence | On FAIL | On INCONCLUSIVE |\n|---|---|---|\n"
+        "| blocks  | fail   | fail   |\n"
+        "| scores  | score  | score  |\n"
+        "| attests | report | report |\n",
+    )
+    (target_dir / "SEA_TRIALS.md").write_text(strict, encoding="utf-8")
+
+    strict_result = score_target("Demo", target_dir, runner=_runner(proof_verdict="FAIL"))
+
+    assert strict_result.complete is False
+    assert "Required Sea Trial st-proof is FAIL" in strict_result.blockers
+
+    relaxed = strict.replace("| blocks  | fail   | fail   |", "| blocks  | score  | report |")
+    (target_dir / "SEA_TRIALS.md").write_text(relaxed, encoding="utf-8")
+
+    relaxed_result = score_target("Demo", target_dir, runner=_runner(proof_verdict="FAIL"))
+
+    assert relaxed_result.complete is True
+    assert relaxed_result.blockers == ()
+
+
+def test_an_unsettled_blocking_criterion_attests_rather_than_failing_the_release(tmp_path):
+    """An INCONCLUSIVE means nothing settled it either way.
+
+    Refusing a release on that is how a definition of done hardens into a gate no correct build
+    can pass, so the default policy hands it to a human instead.
+    """
+    target_dir, _ = _target(tmp_path)
+    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+    # An evidence-verified criterion whose evidence file is absent is INCONCLUSIVE.
+    (target_dir / "SEA_TRIALS.md").write_text(
+        sea.replace("Verification: proof", "Verification: evidence\nEvidence: evidence/absent.md"),
+        encoding="utf-8",
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+
+    assert result.complete is True
+    assert result.qualified is True
+    assert any("st-proof is UNPROVEN" in item for item in result.attestations)
+
+
+def test_a_criterion_declared_attests_never_blocks_a_release(tmp_path):
+    target_dir, _ = _target(tmp_path)
+    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
+    (target_dir / "SEA_TRIALS.md").write_text(
+        sea.replace("Required: yes", "Required: yes\nConsequence: attests"), encoding="utf-8"
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner(proof_verdict="FAIL"))
+
+    assert result.complete is True
+    assert result.blockers == ()
+    assert result.attestations == ()
 
 
 # ---------------------------------------------------------------------------

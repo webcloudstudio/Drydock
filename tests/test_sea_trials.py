@@ -528,3 +528,155 @@ def test_command_placeholder_is_rejected():
 
     with pytest.raises(SpecificationError, match="literal argv"):
         parse_sea_trials_text(text)
+
+
+# --- Typed columns and the policy block --------------------------------------
+#
+# Rows declare what each criterion *is*. The policy block declares what those properties
+# *mean*. Keeping them apart is what makes a gate's severity editable in the artifact.
+
+
+_TYPED = """# Sea Trials: Demo
+
+## Policy
+
+| Consequence | On FAIL | On INCONCLUSIVE |
+|---|---|---|
+| blocks  | fail   | attest |
+| scores  | score  | score  |
+| attests | report | report |
+
+## st-brand: Brand rendering
+Type: technical
+Required: yes
+Criterion: The report shall render in the project's branding.
+Testability: deterministic
+Consequence: blocks
+Verification: proof
+
+## st-tone: Professional tone
+Type: qualitative
+Required: yes
+Criterion: The report reads professionally.
+Testability: judgeable
+Consequence: scores
+Verification: llm
+
+## st-wealth: Commercial ambition
+Type: outcome
+Required: no
+Criterion: The project makes its author a billionaire.
+Testability: neither
+Consequence: attests
+Verification: evidence
+"""
+
+
+def test_declared_testability_and_consequence_are_read_as_written():
+    document = parse_sea_trials_text(_TYPED)
+    by_id = {trial.criterion_id: trial for trial in document.trials}
+
+    assert by_id["st-brand"].testability == "deterministic"
+    assert by_id["st-brand"].consequence == "blocks"
+    assert by_id["st-tone"].testability == "judgeable"
+    assert by_id["st-wealth"].testability == "neither"
+    assert by_id["st-wealth"].consequence == "attests"
+
+
+def test_testability_and_consequence_are_independent():
+    """Collapsing them is the defect behind the guardrail-hardening loop."""
+    text = _TYPED.replace(
+        "Testability: judgeable\nConsequence: scores",
+        "Testability: neither\nConsequence: blocks",
+    )
+    trial = {t.criterion_id: t for t in parse_sea_trials_text(text).trials}["st-tone"]
+
+    assert trial.testability == "neither"
+    assert trial.consequence == "blocks"
+
+
+def test_a_declared_policy_is_read_from_the_file():
+    document = parse_sea_trials_text(_TYPED)
+
+    assert document.policy_declared is True
+    assert document.policy.effect("blocks", "FAIL") == "fail"
+    assert document.policy.effect("blocks", "INCONCLUSIVE") == "attest"
+    assert document.policy.effect("attests", "FAIL") == "report"
+
+
+def test_the_file_policy_wins_over_the_compiled_default():
+    """Changing a gate's severity must be an edit to SEA_TRIALS.md, not to build_score.py."""
+    from drydock.sea_trials import DEFAULT_POLICY
+
+    text = _TYPED.replace("| blocks  | fail   | attest |", "| blocks  | score  | report |")
+    document = parse_sea_trials_text(text)
+
+    assert DEFAULT_POLICY.effect("blocks", "FAIL") == "fail"
+    assert document.policy.effect("blocks", "FAIL") == "score"
+
+
+def test_a_file_without_a_policy_uses_the_default():
+    from drydock.sea_trials import DEFAULT_POLICY
+
+    text = _TYPED.split("## Policy")[0] + _TYPED.split("| attests | report | report |")[1]
+    document = parse_sea_trials_text(text)
+
+    assert document.policy_declared is False
+    assert document.policy == DEFAULT_POLICY
+
+
+def test_an_incomplete_policy_is_refused_rather_than_silently_defaulted():
+    """A policy the author wrote and Drydock ignored is worse than no policy at all."""
+    text = _TYPED.replace("| scores  | score  | score  |\n", "")
+
+    with pytest.raises(SpecificationError, match="every consequence"):
+        parse_sea_trials_text(text)
+
+
+def test_an_unknown_policy_effect_is_refused():
+    text = _TYPED.replace("| blocks  | fail   | attest |", "| blocks  | explode | attest |")
+
+    with pytest.raises(SpecificationError, match="invalid effect"):
+        parse_sea_trials_text(text)
+
+
+def test_an_older_row_derives_both_columns_and_keeps_its_meaning():
+    legacy = """# Sea Trials: Demo
+
+## st-proof: Built behavior
+Type: behavioral
+Required: yes
+Criterion: The built artifact shall contain its marker.
+Verification: proof
+
+## st-privacy: No personal data in logs
+Type: guardrail
+Required: yes
+Criterion: If a request carries personal data, then the system shall omit it from all logs.
+Verification: evidence
+
+## st-nice: Pleasant to read
+Type: qualitative
+Required: no
+Criterion: The output reads well.
+Verification: llm
+"""
+    by_id = {t.criterion_id: t for t in parse_sea_trials_text(legacy).trials}
+
+    assert (by_id["st-proof"].testability, by_id["st-proof"].consequence) == (
+        "deterministic",
+        "blocks",
+    )
+    # A guardrail blocks on a breach however it is verified — that is what "never" means.
+    assert (by_id["st-privacy"].testability, by_id["st-privacy"].consequence) == (
+        "judgeable",
+        "blocks",
+    )
+    assert (by_id["st-nice"].testability, by_id["st-nice"].consequence) == ("judgeable", "scores")
+
+
+def test_an_invalid_testability_is_refused():
+    text = _TYPED.replace("Testability: deterministic", "Testability: probably")
+
+    with pytest.raises(SpecificationError, match="invalid Testability"):
+        parse_sea_trials_text(text)

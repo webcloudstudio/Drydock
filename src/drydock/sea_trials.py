@@ -13,6 +13,25 @@ TRIAL_TYPES = frozenset({"technical", "behavioral", "qualitative", "outcome", "g
 VERIFICATION_TYPES = frozenset({"proof", "measurement", "evidence", "llm"})
 DETERMINISTIC_VERIFICATION = frozenset({"proof", "measurement"})
 
+#: What kind of thing the criterion is, epistemically: can it be settled by a machine, only by
+#: a judge, or by neither. "renders in my branding" is deterministic; "reads professionally" is
+#: judgeable; "I want to become a billionaire" is neither, and is still worth writing down.
+TESTABILITY_VALUES = frozenset({"deterministic", "judgeable", "neither"})
+
+#: What a verdict on the criterion *costs*. Deliberately a separate column from testability:
+#: collapsing them is the defect behind the guardrail-hardening loop, where declaring a
+#: prohibition unprovable and declaring it harmless became the same statement. A criterion can
+#: be perfectly deterministic and still only score, and it can be unjudgeable and still block.
+CONSEQUENCE_VALUES = frozenset({"blocks", "scores", "attests"})
+
+#: What the gate does with a criterion in a given state.
+#:
+#: ``fail``   — the release gate does not complete.
+#: ``attest`` — the gate completes and names the criterion as a check a human owes.
+#: ``score``  — the criterion costs marks and nothing else.
+#: ``report`` — the criterion is recorded and costs nothing.
+POLICY_EFFECTS = frozenset({"fail", "attest", "score", "report"})
+
 #: Types whose Criterion is an assertion and therefore normally carries an EARS Pattern. EARS is
 #: preferred writing discipline for these types, not a requirement: ``Pattern`` is optional
 #: everywhere and a criterion that reads better as plain English is notated ``other``.
@@ -122,6 +141,8 @@ _FIELD_NAMES = (
     "Type",
     "Required",
     "Criterion",
+    "Testability",
+    "Consequence",
     "Verification",
     "Pattern",
     "Notation",
@@ -136,6 +157,62 @@ _FIELD_NAMES = (
 _INLINE_FIELD_RE = re.compile(r"(?:^|\s)(?P<key>" + "|".join(_FIELD_NAMES) + r"):", re.I)
 
 
+def derive_testability(verification: str) -> str:
+    """Return the testability a criterion carries when its author did not declare one.
+
+    Legacy rows say only how they are verified, which is a statement about method rather than
+    about the criterion. The mapping is the honest reading of that method: a proof or a
+    measurement claims a machine can settle it; evidence or model judgement claims a judge is
+    needed. An author who means ``neither`` has to say so, because nothing in the old vocabulary
+    could express it.
+    """
+    return "deterministic" if verification in DETERMINISTIC_VERIFICATION else "judgeable"
+
+
+def derive_consequence(trial_type: str, required: bool) -> str:
+    """Return the consequence a criterion carries when its author did not declare one.
+
+    A guardrail is a permanent *never*: a demonstrated breach stops a release regardless of
+    every score, so it blocks. A required criterion is part of the definition of done and blocks
+    likewise. Anything else costs marks. What none of them do is block on an *unsettled*
+    verdict — see :data:`DEFAULT_POLICY`.
+    """
+    return "blocks" if trial_type == "guardrail" or required else "scores"
+
+
+@dataclass(frozen=True)
+class GatePolicy:
+    """How a criterion's consequence turns into a gate effect. The scoring function itself.
+
+    Rows in ``SEA_TRIALS.md`` are data — they declare what each criterion *is*. This declares
+    what those properties *mean*. Keeping the two apart is what makes a gate's severity editable
+    in the artifact instead of in Python.
+    """
+
+    on_fail: dict[str, str]
+    on_inconclusive: dict[str, str]
+
+    def effect(self, consequence: str, verdict: str) -> str:
+        table = self.on_fail if verdict == "FAIL" else self.on_inconclusive
+        return table.get(consequence, "report")
+
+    def to_dict(self) -> dict[str, dict[str, str]]:
+        return {"on_fail": dict(self.on_fail), "on_inconclusive": dict(self.on_inconclusive)}
+
+
+#: The policy in force when ``SEA_TRIALS.md`` declares none.
+#:
+#: A FAIL is a demonstrated shortfall and behaves as it always has. An INCONCLUSIVE is not: it
+#: means nothing settled the criterion either way, and treating that as a failure is how a
+#: definition of done hardens into a gate no correct build can pass. So an unsettled blocking
+#: criterion is handed to a human as an attestation rather than refusing the release — the same
+#: judgement already made for unproven guardrails, applied consistently.
+DEFAULT_POLICY = GatePolicy(
+    on_fail={"blocks": "fail", "scores": "score", "attests": "report"},
+    on_inconclusive={"blocks": "attest", "scores": "score", "attests": "report"},
+)
+
+
 @dataclass(frozen=True)
 class SeaTrial:
     criterion_id: str
@@ -144,6 +221,10 @@ class SeaTrial:
     required: bool
     criterion: str
     verification: str
+    #: Can this be settled by a machine, only by a judge, or by neither.
+    testability: str = "judgeable"
+    #: What a verdict on it costs. Never collapsed into testability.
+    consequence: str = "scores"
     pattern: str = ""
     notation: str = "other"
     command: tuple[str, ...] = ()
@@ -179,6 +260,65 @@ class SeaTrialsDocument:
     project: str
     trials: tuple[SeaTrial, ...]
     questions: tuple[SeaTrialQuestion, ...]
+    #: The scoring function over the rows. Declared in the file when present, otherwise
+    #: :data:`DEFAULT_POLICY`. Where the two disagree, the file wins: changing a gate's severity
+    #: must mean editing the artifact, not editing and re-releasing Drydock.
+    policy: GatePolicy = DEFAULT_POLICY
+    #: Whether the policy came from the file rather than the compiled default.
+    policy_declared: bool = False
+
+
+_POLICY_HEADING_RE = re.compile(r"^##\s+Policy\s*$", re.I | re.MULTILINE)
+
+
+def parse_policy_block(text: str) -> GatePolicy | None:
+    """Parse the ``## Policy`` table, or return ``None`` when the file declares none.
+
+    The contract is a table with one row per consequence and one column per verdict state, read
+    by exact keyword in fixed positions. Nothing here is matched by substring: a policy resolved
+    by ``value in text`` is a defect generator, because every criterion's prose is also in the
+    file and any word can appear in it by accident.
+
+        | Consequence | On FAIL | On INCONCLUSIVE |
+        |---|---|---|
+        | blocks  | fail   | attest |
+        | scores  | score  | score  |
+        | attests | report | report |
+
+    An unparseable or incomplete table raises rather than silently falling back to the default:
+    a policy the author wrote and Drydock ignored is worse than no policy at all.
+    """
+    heading = _POLICY_HEADING_RE.search(text)
+    if heading is None:
+        return None
+    following = re.search(r"^##\s+", text[heading.end() :], re.MULTILINE)
+    body = text[heading.end() :][: following.start() if following else None]
+
+    on_fail: dict[str, str] = {}
+    on_inconclusive: dict[str, str] = {}
+    for line in body.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [cell.strip().lower() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or cells[0] not in CONSEQUENCE_VALUES:
+            continue
+        consequence, fail_effect, inconclusive_effect = cells
+        for effect in (fail_effect, inconclusive_effect):
+            if effect not in POLICY_EFFECTS:
+                raise SpecificationError(
+                    f"SEA_TRIALS.md Policy row {consequence!r} has invalid effect {effect!r}; "
+                    f"expected one of {', '.join(sorted(POLICY_EFFECTS))}"
+                )
+        on_fail[consequence] = fail_effect
+        on_inconclusive[consequence] = inconclusive_effect
+
+    missing = sorted(CONSEQUENCE_VALUES - set(on_fail))
+    if missing:
+        raise SpecificationError(
+            "SEA_TRIALS.md Policy must declare an effect for every consequence; missing: "
+            + ", ".join(missing)
+        )
+    return GatePolicy(on_fail=on_fail, on_inconclusive=on_inconclusive)
 
 
 #: Canonical reader documentation embedded in ``SEA_TRIALS.md``. Drydock owns this text and
@@ -205,6 +345,39 @@ Every criterion carries a `Notation` of `ears` or `other`. Drydock derives it an
 every write. `ears` means the criterion declares an EARS `Pattern` and its sentence matches that
 pattern exactly. `other` means plain English. Both are equally binding and are judged on what they
 state; the notation records the writing discipline and changes no verdict.
+
+### Testability and Consequence
+
+Two separate columns, and they may not be collapsed.
+
+`Testability` says what kind of thing the criterion *is*: `deterministic` (a machine can settle
+it), `judgeable` (only a reader can), or `neither` (an aspiration worth recording that no
+evidence will ever settle). Grading follows this claim and nothing else — a criterion declared
+`deterministic` and backed only by model opinion loses coverage score; one declared `judgeable`
+does not, because judgement is its only honest method.
+
+`Consequence` says what a verdict on it *costs*: `blocks` (a demonstrated failure stops the
+release), `scores` (it costs marks), or `attests` (it is recorded and costs nothing). A criterion
+can be perfectly deterministic and still only score. A criterion nothing can test can still block.
+
+Both are derived when absent, so an older file keeps its meaning: `proof` and `measurement` read
+as `deterministic`, everything else as `judgeable`; guardrails and required criteria read as
+`blocks`, everything else as `scores`.
+
+### Policy
+
+The `## Policy` table is the scoring function over the rows above: it maps each `Consequence` to
+what the gate does with a FAIL and with an INCONCLUSIVE. Effects are `fail` (the gate does not
+complete), `attest` (the gate completes and names a check a human owes), `score` (costs marks),
+and `report` (costs nothing).
+
+Where the policy disagrees with Drydock's compiled default, **the file wins**. Changing a gate's
+severity is an edit to this table, not an edit to Drydock.
+
+Drydock's default blocks on a demonstrated FAIL and attests on an INCONCLUSIVE. Nothing blocks on
+an unsettled verdict: an INCONCLUSIVE means no evidence settled the criterion either way, and
+failing a release on that is how a definition of done hardens into a gate no correct build can
+pass.
 
 ### Guardrails
 
@@ -368,14 +541,31 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
                 unit=unit,
             )
             pattern = _pattern(fields.get("pattern", ""))
+            required = required_raw == "yes"
+            testability = fields.get("testability", "").strip().lower() or derive_testability(
+                verification
+            )
+            if testability not in TESTABILITY_VALUES:
+                raise SpecificationError(
+                    f"SEA_TRIALS.md {criterion_id} has invalid Testability: {testability}"
+                )
+            consequence = fields.get("consequence", "").strip().lower() or derive_consequence(
+                trial_type, required
+            )
+            if consequence not in CONSEQUENCE_VALUES:
+                raise SpecificationError(
+                    f"SEA_TRIALS.md {criterion_id} has invalid Consequence: {consequence}"
+                )
             trials.append(
                 SeaTrial(
                     criterion_id=criterion_id,
                     title=heading.group("title").strip(),
                     trial_type=trial_type,
-                    required=required_raw == "yes",
+                    required=required,
                     criterion=criterion,
                     verification=verification,
+                    testability=testability,
+                    consequence=consequence,
                     pattern=pattern,
                     notation=derive_notation(pattern, criterion),
                     command=command,
@@ -404,12 +594,27 @@ def parse_sea_trials_text(text: str) -> SeaTrialsDocument:
             seen.add(criterion_id)
             trials.append(
                 SeaTrial(
-                    criterion_id, cells[1], "qualitative", True, cells[1], "llm", evidence=cells[3]
+                    criterion_id,
+                    cells[1],
+                    "qualitative",
+                    True,
+                    cells[1],
+                    "llm",
+                    testability=derive_testability("llm"),
+                    consequence=derive_consequence("qualitative", True),
+                    evidence=cells[3],
                 )
             )
     if not trials:
         raise SpecificationError("SEA_TRIALS.md contains no project acceptance criteria")
-    return SeaTrialsDocument(project, tuple(trials), tuple(questions))
+    declared_policy = parse_policy_block(text)
+    return SeaTrialsDocument(
+        project,
+        tuple(trials),
+        tuple(questions),
+        policy=declared_policy or DEFAULT_POLICY,
+        policy_declared=declared_policy is not None,
+    )
 
 
 def _strip_documentation(text: str) -> str:
