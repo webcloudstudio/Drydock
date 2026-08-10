@@ -86,7 +86,8 @@ This is the point of the conform pass. Treat it as writing the failing tests fir
   the exact bytes it produces. Inside a raw literal, `\n` and `\r` are a backslash and a letter,
   not a control character: `r"text\n"` does not end in a newline. Write control characters in a
   normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
-  backslash is intended. Drydock rejects the plan and blocks the build on this defect.
+  backslash is intended. Drydock warns about this defect; the warning does not remove the
+  criterion, so the authoring is yours to get right.
 - Write `- None. <reason>` (reason on the same line) only when the item genuinely has no
   programmatic surface — a pure visual or manual concern. A bare `- None.` is not acceptable for a
   spec that provides anything.

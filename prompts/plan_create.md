@@ -295,11 +295,26 @@ Rules:
   paraphrased into hand assertions: paraphrase samples it and drops coverage. Its acceptance
   **invokes the imported runner** over the scope the spec owns and asserts a full pass of that
   scope, per the suite-binding rule below.
+- **Act on the system. Read the state back. Compare to expected.** The assertion reads *state* —
+  a return value, parsed JSON, a status code, a stored row, file contents read back, an exit
+  status. It never reads a substring of captured stdout or stderr, a test-runner tally, or a log
+  line. A state oracle cannot pass against a stub and cannot fail because a runner printed the
+  word "warning"; a text oracle can do both. Print captured output for diagnosis, never assert on
+  it.
+- Write the check in the project's own language, using that language's libraries. An in-language
+  HTTP client yields a status code and a parsed body, which is state; `curl` yields stdout, which
+  is text to scrape. Reaching for an external executable is the exception and belongs in Rigging.
+- Prefer the round trip for anything that stores, mutates, or removes state: act, then read back
+  through the public interface and assert the resulting state. A write that returns a plausible
+  object while persisting nothing must fail. Enumerate coverage from the interface — every route
+  and method, every subcommand and behavior-changing flag, every exported function — rather than
+  sampling it. Assert declared failure signals on negative paths, never message wording.
 - Every assertion must be satisfiable by a correct implementation. Read each expectation back as
   the exact bytes it produces. Inside a raw literal, `\n` and `\r` are a backslash and a letter,
   not a control character: `r"text\n"` does not end in a newline. Write control characters in a
   normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
-  backslash is intended. Drydock rejects the plan and blocks the build on this defect.
+  backslash is intended. Drydock warns about this defect; the warning does not remove the
+  criterion, so the authoring is yours to get right.
 - Write `- None.` only when the item genuinely has no programmatic surface (pure visual/manual
   UI, or a Commander-observed check). State the reason on the same line, e.g.
   `- None. Visual-only screen; behavior covered by its backing FEATURE spec.` Bare `- None.` on a

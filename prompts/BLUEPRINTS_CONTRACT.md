@@ -147,39 +147,111 @@ Every authored Specification file ends with these sections, using `- None.` when
 `### {check-id}` heading, a short intent sentence, and one fenced `python` block that can run from
 the build directory after the story implementing the file completes.
 
-Every external tool used directly or indirectly by a check is declared immediately after its
-heading with one or more machine-readable lines:
+### The oracle rule
+
+> **Act on the system. Read the state back. Compare to expected.**
+
+Arrange–Act–Assert, where the assertion reads *state*, never text a process printed.
+
+| Oracle | Verdict |
+|---|---|
+| Return value, parsed JSON, status code, DB row, file contents read back, exit status | **Correct** |
+| Substring of captured stdout/stderr, test-runner tally text, log lines | **Forbidden** |
+
+A state oracle cannot pass against a stub and cannot fail because a runner printed the word
+"warning". Almost every acceptance defect observed in practice has the same shape: the oracle was
+a string in captured output.
+
+### Authoring patterns
+
+**1 — Round trip (the default form).** For anything that stores, mutates, or removes state:
+
+```
+create  → read back → assert present, with expected field values
+update  → read back → assert changed, and only the intended fields changed
+delete  → read back → assert absent
+```
+
+The read-back is a *separate call through the public interface*, not an inspection of the object
+returned by the write. A write that returns a plausible object while persisting nothing must fail.
+
+**2 — Exercise every callable workflow.** One test per public entry point, per verb. Coverage is
+enumerated from the interface, not sampled: every HTTP route × every method it declares including
+declared error paths; every CLI subcommand and every flag that changes behavior; every exported
+library function.
+
+**3 — Idempotence.** Where a verb claims idempotence (PUT, DELETE), apply it twice and assert the
+second is a no-op — same resulting state, and the declared status for a repeat. Where a verb is not
+idempotent (POST), apply twice and assert the declared behavior: two resources, or the declared
+conflict. Prefer idempotent verbs where the semantics allow; the assertion is stronger.
+
+**4 — Negative paths assert the contract, not the message.** Invalid input asserts the declared
+failure signal — status code, exception type, exit status — never the wording of an error message.
+Message text is prose and belongs to no contract.
+
+**5 — Boundaries.** Empty collection, exactly one, many. Absent optional fields. Declared maxima.
+This is where a plausible-looking implementation actually breaks.
+
+**6 — RED before GREEN.** The assertion must fail against the pre-implementation tree and pass
+after. A check that passes against a stub is not a check.
+
+**7 — Isolation and determinism.** Each test arranges its own data and does not depend on another
+test's residue or on ordering. No wall-clock dependence, no third-party network, no unseeded
+randomness, no sleep-based timing. Fresh store per test, or explicit teardown.
+
+**8 — One behavior per test, named for the behavior.** A failure should be diagnosable from the
+test's name alone.
+
+**9 — Subprocess discipline.** Where a check must shell out, **exit status is the verdict**. A
+substring check beside an exit-status assertion is redundant at best and a false-positive generator
+at worst. Never assert that a literal is absent from captured output.
+
+**10 — In-language tooling.** A check is written in the project's own language and uses that
+language's libraries — Python check, Python libraries; Go check, Go libraries. An in-language HTTP
+client yields a status code and a parsed body, which is state. `curl` yields stdout, which is text
+to scrape. Pattern 10 and the oracle rule are the same rule seen twice.
+
+### Declaring external tooling
+
+Reaching for an external executable is the exception, not the norm, and `curl` in particular will
+not work in every environment. When a check genuinely needs one, the tool belongs in the project's
+Rigging or `TECHNOLOGY_STACK.md`, declared once by the Commander and true for every check in the
+project. A per-check declaration is also accepted and is recorded as a report:
 
 ```markdown
 Requires: python-package=httpx; scope=test
 Requires: executable=node; scope=test
 ```
 
-V1 kinds are `python-package` and `executable`; scopes are `runtime` and `test`. Framework test
-clients include their transport dependencies. `Requires:` metadata is not acceptance intent.
+Kinds are `python-package` and `executable`; scopes are `runtime` and `test`. Framework test
+clients include their transport dependencies. `Requires:` metadata is not acceptance intent, and
+a missing declaration never fails planning — a tool that is present and undeclared works fine.
+A declared tool that is *absent* when the check runs reports UNVERIFIED, not FAIL: the check never
+reached the code under test, so it says nothing about the build.
+
+### Satisfiability
 
 Every assertion must be satisfiable by a correct implementation. An expectation no implementation
 can meet is a defect, not a red baseline. String literals are the usual source of one: inside a raw
 literal, `\n` and `\r` are a backslash followed by a letter, not a control character, so
 `r"text\n"` asserts against six characters ending in a literal backslash. Write control characters
-in a normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a literal
-backslash is genuinely intended. Drydock rejects this defect at `drydock validate` and blocks the
-build before the step runs.
+in a normal string (`"text\n"`), concatenate (`r"\*text\*" + "\n"`), or write `"\\n"` when a
+literal backslash is genuinely intended. Drydock warns about this at `drydock validate` and at plan
+time; the warning does not remove the criterion or stop the build, so the authoring is yours to get
+right.
 
 **Every check is standalone.** Drydock writes each fenced block to its own script and runs it in
 its own process from the build directory. Checks in the same file share no imports, no variables,
 and no execution order. A snippet that reads a name another snippet bound raises `NameError` on
-every run and can never pass. Each snippet imports what it uses and binds every name it reads.
-Drydock rejects an unparseable snippet, and a snippet reading an unbound name, at
-`drydock validate` and blocks the build before the step runs.
+every run — it reports UNVERIFIED rather than failing the build, which means it verifies nothing
+and buys nothing. Each snippet imports what it uses and binds every name it reads.
 
 **A check that shells out prints what it captured before it asserts.** `capture_output=True`
 routes the runner's tally and its failing cases into a variable; asserting on the exit code alone
 then discards them, and the failure reports the assertion with no evidence of what went wrong.
 Print the captured `stdout` and `stderr` first, so the console, the evidence file, and the repair
-pass all carry the runner's own account of the failure. A count in that output that exceeds the
-expected total — `365` cases run where the specification defines `362` — is itself a defect a
-reader can only catch when the output is visible.
+pass all carry the runner's own account of the failure. Printing is for diagnosis; it is never the
+oracle.
 
 ````markdown
 ## Programmatic Acceptance
@@ -237,19 +309,17 @@ requires a full pass over the story's scope, never a hand-picked subset. A featu
 the sections it owns and declares `Suite: scoped`; a terminal verification story gates on the whole
 suite and declares `Suite: full`. The marker sits on its own line in the check's heading block and
 tells the runner the check gates on the whole test suite rather than a story-scoped sample.
-The assertion requires runner success. It may additionally verify the failure count, matched with
-a whitespace-tolerant regular expression (`re.search(r"\b0\s+failed\b", result.stdout)`). Never
-assert a runner's tally as a literal substring of its output: the case count belongs to the
-installed suite, not to the specification, and runners column-align their summaries
+**The runner's exit status is the verdict, and it is the whole verdict.** A conformance runner
+already decides pass or fail and reports it the one way a caller can rely on. Asserting on its
+printed summary as well adds no information and adds a failure mode: the case count belongs to the
+installed suite rather than to the specification, and runners column-align their summaries
 (`valid tests: 205 passed,  0 failed` carries two spaces), so a literal such as
 `assert "valid tests: 210 passed, 0 failed" in result.stdout` is false on correct code and no
-implementation can move it. Drydock removes such a criterion from the specification at plan time.
-The failure count is the only tally an assertion may require. Never require a count of errors,
-skips or warnings in captured output: only passes and failures are reliably tallied, and a runner
-with none of the others commonly prints no such line at all, so `re.search(r"\b0\s+errors?\b",
-result.stdout)` is false on a clean run and no implementation can move it. This holds for both
-`Suite: scoped` and `Suite: full` — a scoped run additionally expects tests outside its slice to
-be skipped. Drydock removes such a criterion from the specification at plan time.
+implementation can move it. The same holds for tallies of errors, skips, and warnings: a runner
+with none of them commonly prints no such line at all, so requiring one is false on a clean run.
+
+Print the captured output for diagnosis, assert `result.returncode == 0`, and stop there. This
+holds for both `Suite: scoped` and `Suite: full`.
 
 Place a whole-project deterministic suite on the story that **completes the runnable capability**
 — never on a foundation step that cannot yet run it, where it would fail vacuously — and mirror it
