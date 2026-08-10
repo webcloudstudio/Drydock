@@ -871,8 +871,7 @@ def test_token_summary_sums_cache_reads_for_claude():
         llm="claude",
     )
     assert line == (
-        "in=182,341 · fresh 21,904 · cached 160,437 (88% hit) · write 12,010 · "
-        "out=4,812 · cost=$0.6100"
+        "cached=160,437 (88% hit) · uncached=21,904 · write 12,010 · out=4,812 · cost=$0.6100"
     )
 
 
@@ -883,7 +882,7 @@ def test_token_summary_treats_codex_input_as_cache_inclusive():
         LlmStats(input_tokens=1_000, cached_input_tokens=900, output_tokens=50),
         llm="codex",
     )
-    assert line == "in=1,000 · fresh 100 · cached 900 (90% hit) · out=50"
+    assert line == "cached=900 (90% hit) · uncached=100 · out=50"
 
 
 def test_token_summary_omits_absent_segments():
@@ -910,7 +909,7 @@ def test_done_line_reports_normalized_tokens_and_cache_hit_rate():
             output_tokens=50,
         ),
     )
-    assert "in=1,000 · fresh 100 · cached 900 (90% hit) · out=50" in line
+    assert "cached=900 (90% hit) · uncached=100 · out=50" in line
     assert "tps=25.0" in line
 
 

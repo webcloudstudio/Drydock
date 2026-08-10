@@ -423,9 +423,10 @@ def format_token_summary(stats: LlmStats | None, *, llm: str | None) -> str | No
     """Render one call's token accounting, or ``None`` when the provider reported none.
 
     Provider token conventions differ (codex counts cache reads inside ``input_tokens``,
-    claude does not); normalization is delegated to :func:`llm_usage.normalize_tokens` so
-    every surface reports the same contract: ``in`` is everything sent to the model,
-    ``cached`` is the cache-read share of it, and ``fresh`` is the remainder.
+    claude does not); normalization is delegated to :func:`llm_usage.normalize_tokens`. Every
+    surface reports the billed split rather than the raw one: ``cached`` is the cache-read
+    share of the input, ``uncached`` is the remainder charged at full rate, and ``out`` is the
+    generated tokens. The two input figures sum to everything sent to the model.
     """
     if stats is None:
         return None
@@ -443,10 +444,9 @@ def format_token_summary(stats: LlmStats | None, *, llm: str | None) -> str | No
     total_input, cached, output = normalize_tokens(llm or "", fields)
     parts: list[str] = []
     if total_input:
-        parts.append(f"in={total_input:,}")
-        parts.append(f"fresh {max(total_input - cached, 0):,}")
-    if cached:
-        parts.append(f"cached {cached:,} ({cached / total_input:.0%} hit)" if total_input else "")
+        hit = f" ({cached / total_input:.0%} hit)" if cached else ""
+        parts.append(f"cached={cached:,}{hit}")
+        parts.append(f"uncached={max(total_input - cached, 0):,}")
     if stats.cache_creation_input_tokens:
         parts.append(f"write {stats.cache_creation_input_tokens:,}")
     if output:

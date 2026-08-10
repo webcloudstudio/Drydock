@@ -3195,12 +3195,8 @@ class TestBuildScoreRendering:
             self.passed_checks, self.total_checks = passed, total
             self.passed_cases, self.total_cases = cases, cases
             self.stop_reason = stop
-            self.total_input, self.cached_input, self.output, self.elapsed_ms = (
-                1000,
-                900,
-                50,
-                61000,
-            )
+            self.total_input, self.cached_input, self.fresh_input = 1000, 900, 100
+            self.output, self.elapsed_ms = 50, 61000
 
         @property
         def label(self):
@@ -3216,12 +3212,8 @@ class TestBuildScoreRendering:
             self.passed_checks, self.total_checks = passed, total
             self.attempts = tuple(attempts)
             self.failed_check_ids = failing
-            self.total_input, self.cached_input, self.output, self.elapsed_ms = (
-                1000,
-                900,
-                50,
-                61000,
-            )
+            self.total_input, self.cached_input, self.fresh_input = 1000, 900, 100
+            self.output, self.elapsed_ms = 50, 61000
 
         @property
         def verified(self):

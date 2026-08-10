@@ -2094,7 +2094,8 @@ def _render_build_score(report) -> list[str]:
         lines.append("  No build evidence found. Run: drydock build " + report.target)
         return lines
 
-    headers = ("Block", "AC", "Calls", "Input", "Cached", "Hit", "Output", "Time")
+    # Cached and uncached rather than total input: that is how the providers bill it.
+    headers = ("Block", "AC", "Calls", "Cached", "Uncached", "Hit", "Output", "Time")
     rows: list[tuple[str, ...]] = []
     for block in report.blocks:
         mark = "✓" if block.verified else "✗"
@@ -2102,8 +2103,8 @@ def _render_build_score(report) -> list[str]:
             f"{mark} {block.name}",
             f"{block.passed_checks}/{block.total_checks}",
             str(block.calls),
-            f"{block.total_input:,}",
             f"{block.cached_input:,}",
+            f"{block.fresh_input:,}",
             _rate(block.cache_hit_rate),
             f"{block.output:,}",
             _compact_clock(block.elapsed_ms),
@@ -2112,8 +2113,8 @@ def _render_build_score(report) -> list[str]:
         "TOTAL",
         f"{report.passed_checks}/{report.total_checks}",
         str(report.calls),
-        f"{report.total_input:,}",
         f"{report.cached_input:,}",
+        f"{report.fresh_input:,}",
         _rate(report.cache_hit_rate),
         f"{report.output:,}",
         _compact_clock(report.elapsed_ms),
@@ -2144,9 +2145,8 @@ def _render_build_score(report) -> list[str]:
     lines.append(summary)
     if report.models:
         lines.append(f"  Model:  {', '.join(report.models)}")
-    fresh = report.fresh_input
     lines.append(
-        f"  Tokens: {report.total_input:,} in ({fresh:,} fresh, {report.cached_input:,} cached) · "
+        f"  Tokens: {report.cached_input:,} cached · {report.fresh_input:,} uncached · "
         f"{report.output:,} out"
     )
 

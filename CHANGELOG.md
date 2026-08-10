@@ -10,6 +10,28 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-09: Every surface that reports token usage — the per-call console line, the
+  `drydock build` report table and its totals, the UAT run summary, and the UAT receipt —
+  states `cached` and `uncached` instead of a total input with a cached subset. That is the
+  split providers bill, so the two numbers a reader cares about no longer have to be derived
+  by subtraction. Cache-hit rate and the Claude cache-write figure are unchanged.
+
+- 2026-08-09: A UAT run identifier is now `20260809.204459` (UTC, to the second) rather than
+  `20260809T204459.901240Z`. Two runs of one kit cannot start within the same second, so the
+  microseconds bought nothing and cost legibility. Run ordering compares identifier digits, so
+  directories written under the retired format still sort chronologically beside new ones and
+  `--run` continues to accept them.
+
+- 2026-08-09: The UAT receipt files the run's evidence as four directory trees — Build,
+  Evidence, Sources, Workspace — one per directory a run writes, with paths stated relative to
+  the kit (`runs/<run-id>/…`) and unprocessed output (`evidence/provider_raw/`,
+  `evidence/prompt_outputs/`, `workspace/logs/`, `*.raw.jsonl`) marked `raw`. The workspace is
+  now inventoried whole rather than only the Target subtree, so `SHA256SUMS` covers what the
+  run actually left behind. Digests moved out of the page and stay in `SHA256SUMS`. A command
+  or LLM result renders as an `OK` or `FAIL <code>` stamp instead of a printed exit code, the
+  header names the directory the build delivered into, and the kit register carries the model
+  each run used.
+
 - 2026-08-09: The Toml UAT kit ships its scoring entry point instead of asking the build agent to
   transcribe it. `sources/full_test.sh` is a declared kit source, staged and hash-verified like the
   conformance harness it invokes, and `uat.json` scores with `sh sources/full_test.sh`. Staged

@@ -719,7 +719,7 @@ def test_build_emits_token_accounting_when_the_provider_reports_it(tmp_path):
     )
 
     assert log.index("returned: ok · exec-1") + 1 == log.index(
-        "  tokens: in=1,000 · fresh 100 · cached 900 (90% hit) · write 40 · out=50 · cost=$0.2500"
+        "  tokens: cached=900 (90% hit) · uncached=100 · write 40 · out=50 · cost=$0.2500"
     )
 
 

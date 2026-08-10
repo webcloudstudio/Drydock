@@ -173,51 +173,40 @@ def _tail(path: Path, limit: int = _MAX_EXCERPT_BYTES) -> str:
 
 
 def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
-    """Inventory a completed case in the order a reviewer reads it."""
-    workspace = case_root / "workspace"
-    blueprint_root = workspace / "targets" / target
-    evidence = case_root / "evidence"
+    """Inventory a completed case as the four directories a run writes, plus its record.
+
+    ``target`` is unused: every directory is inventoried whole, so a Target rename cannot
+    silently drop files from the receipt.
+    """
+    del target
     groups = [
         ArtifactGroup(
-            "Delivered code",
+            "Build",
             "Working tree produced by drydock build, exactly as the build left it.",
             tuple(_iter_files(case_root / "build", case_root)),
         ),
         ArtifactGroup(
-            "Imported sources",
+            "Evidence",
+            "Captured command streams, assembled prompts, model output, and provider transcripts.",
+            tuple(_iter_files(case_root / "evidence", case_root)),
+        ),
+        ArtifactGroup(
+            "Sources",
             "Input bundle staged for drydock import before the lifecycle started.",
             tuple(_iter_files(case_root / "sources", case_root)),
         ),
         ArtifactGroup(
-            "Blueprint and Target state",
-            "Typed Specifications, Manifest, and Target artifacts the lifecycle produced.",
-            tuple(_iter_files(blueprint_root, case_root, skip=[blueprint_root / "logs"])),
-        ),
-        ArtifactGroup(
-            "Command logs",
-            "Captured stdout and stderr for every lifecycle command.",
-            tuple(_iter_files(evidence / "commands", case_root)),
-        ),
-        ArtifactGroup(
-            "LLM evidence",
-            "Assembled prompts, model output, provider transcripts, and execution records.",
-            tuple(
-                record
-                for subdirectory in ("prompts", "prompt_outputs", "provider_raw")
-                for record in _iter_files(evidence / subdirectory, case_root)
-            )
-            + tuple(
-                _hash_file(evidence / "llm.jsonl", case_root)
-                for _ in range(int((evidence / "llm.jsonl").is_file()))
-            ),
+            "Workspace",
+            "Drydock workspace the run drove: Blueprint, Manifest, Target artifacts, and logs.",
+            tuple(_iter_files(case_root / "workspace", case_root)),
         ),
         ArtifactGroup(
             "Run record",
             "Machine-readable outcome for this project.",
             tuple(
-                _hash_file(case_root / name, case_root)
-                for name in ("result.json",)
-                if (case_root / name).is_file()
+                _hash_file(path, case_root)
+                for path in sorted(case_root.glob("*"))
+                if path.is_file() and not path.is_symlink() and path.name not in _KIT_OUTPUTS
             ),
         ),
     ]
@@ -347,9 +336,14 @@ tbody tr:last-child td { border-bottom: none; }
 td.num { text-align: right; white-space: nowrap; }
 td.hash { font-size: .7rem; color: var(--muted); word-break: break-all; }
 td.dash { color: var(--muted); }
-.tag { display: inline-block; padding: 0 .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; border: 1px solid currentColor; }
+td.nowrap { white-space: nowrap; }
+table.tree td.name { padding-left: calc(.6rem + var(--d) * 1.3rem); white-space: nowrap; }
+table.tree th:nth-child(2) { text-align: right; }
+table.tree td.name strong { font-weight: 700; }
+.tag { display: inline-block; padding: 0 .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; border: 1px solid currentColor; box-shadow: 0 0 0 1px var(--paper) inset; }
 .tag.pass { color: var(--pass); }
 .tag.fail { color: var(--fail); }
+.tag.raw { color: var(--muted); font-weight: 400; }
 footer { margin-top: 2.5rem; padding-top: .75rem; border-top: 3px double var(--hard); color: var(--muted); font-size: .78rem; }
 
 @media print {
@@ -492,10 +486,14 @@ def _cell(text: object, *, css: str = "") -> str:
 
 
 def _status_cell(returncode: object) -> str:
+    """Stamp a recorded exit code as the verdict it is, keeping the code on a failure."""
     ok = returncode == 0
-    label = "exit 0" if ok else f"exit {returncode}"
+    label = "OK" if ok else f"FAIL {returncode}"
     state = "pass" if ok else "fail"
-    return f'<td><span class="tag {state}">{html.escape(label)}</span></td>'
+    return (
+        f'<td><span class="tag {state}" title="exit {html.escape(str(returncode))}">'
+        f"{html.escape(label)}</span></td>"
+    )
 
 
 def _command_text(argv: Sequence[object]) -> str:
@@ -514,46 +512,133 @@ def _meta(pairs: Sequence[tuple[str, str]]) -> str:
 
 
 def _tokens(usage: dict) -> str:
+    """Render usage the way it is billed: cache reads, full-rate input, generated output."""
     if not usage:
         return ""
+    cached = int(usage.get("cached_input_tokens", 0) or 0)
+    uncached = int(usage.get("fresh_input_tokens", 0) or 0) or max(
+        int(usage.get("input_tokens", 0) or 0) - cached, 0
+    )
     return (
-        f"{usage.get('calls', 0)} calls · input {usage.get('input_tokens', 0):,} "
-        f"(cached {usage.get('cached_input_tokens', 0):,}) · "
-        f"output {usage.get('output_tokens', 0):,}"
+        f"{usage.get('calls', 0)} calls · cached {cached:,} · "
+        f"uncached {uncached:,} · output {int(usage.get('output_tokens', 0) or 0):,}"
     )
 
 
-# Inventory groups that earn their own tab, as ``group name -> (slug, short tab label)``.
-# Command logs, LLM evidence, and the run record are omitted: the Steps, LLM, and footer
-# sections already link those files, and listing them again is the same evidence twice.
+# The four directories a run writes, each rendered as its own tree. The run record is not a
+# tab: the footer already links it, and one file is not a tree.
 _INVENTORY_TABS = {
-    "Delivered code": ("code", "Code"),
-    "Imported sources": ("sources", "Sources"),
-    "Blueprint and Target state": ("blueprint", "Blueprint"),
+    "Build": ("build", "Build"),
+    "Evidence": ("evidence", "Evidence"),
+    "Sources": ("sources", "Sources"),
+    "Workspace": ("workspace", "Workspace"),
 }
 
+# Directories holding unprocessed provider or runtime output. Their contents are kept for
+# reproducibility but are not the reviewable record, so the tree marks them rather than
+# leaving a reader to open a 30 MB transcript to find that out.
+_RAW_PREFIXES = (
+    "evidence/provider_raw/",
+    "evidence/prompt_outputs/",
+    "workspace/logs/",
+)
 
-def _inventory_panels(groups: Sequence[ArtifactGroup]) -> list[tuple[str, str, str]]:
-    """Render the file inventory as one tab per artifact class."""
+
+def _is_raw(path: str) -> bool:
+    return path.startswith(_RAW_PREFIXES) or path.endswith(".raw.jsonl")
+
+
+def _tree_rows(
+    files: Sequence[FileRecord], prefix: str = ""
+) -> list[tuple[int, str, FileRecord | None, int]]:
+    """Flatten an inventory into ``(depth, name, record, bytes)`` rows, directories first.
+
+    A directory row carries no record and reports the total size of everything beneath it.
+    """
+    rows: list[tuple[int, str, FileRecord | None, int]] = []
+
+    def walk(prefix: str, records: Sequence[FileRecord], depth: int) -> None:
+        directories: dict[str, list[FileRecord]] = {}
+        leaves: list[FileRecord] = []
+        for record in records:
+            remainder = record.path[len(prefix) :]
+            head, separator, _ = remainder.partition("/")
+            if separator:
+                directories.setdefault(head, []).append(record)
+            else:
+                leaves.append(record)
+        for name, children in sorted(directories.items()):
+            rows.append((depth, f"{name}/", None, sum(item.bytes for item in children)))
+            walk(f"{prefix}{name}/", children, depth + 1)
+        for record in sorted(leaves, key=lambda item: item.path):
+            rows.append((depth, record.path.rpartition("/")[2], record, record.bytes))
+
+    walk(prefix, files, 0)
+    return rows
+
+
+def _tree(files: Sequence[FileRecord], root: str, display_root: str) -> str:
+    """Render one directory tree: indented names, sizes, and a marker on raw output."""
+    if not files:
+        return '<p class="note">None recorded.</p>'
+    rows = []
+    rows.append(
+        f'<tr><td class="name" style="--d:0"><strong>{html.escape(display_root)}</strong></td>'
+        f'<td class="num">{sum(record.bytes for record in files):,}</td><td></td></tr>'
+    )
+    # The tree is rooted at the group's own directory, so its name is the caption row and is
+    # not repeated as the first branch.
+    for depth, name, record, size in _tree_rows(files, f"{root}/"):
+        cell = (
+            _anchor(record.path, name)
+            if record is not None
+            else f"<strong>{html.escape(name)}</strong>"
+        )
+        raw = (
+            '<span class="tag raw">raw</span>'
+            if _is_raw(record.path if record is not None else f"{root}/{name}")
+            else ""
+        )
+        rows.append(
+            f'<tr><td class="name" style="--d:{depth + 1}">{cell}</td>'
+            f'<td class="num">{size:,}</td><td>{raw}</td></tr>'
+        )
+    return (
+        '<div class="scroll"><table class="tree"><thead><tr><th>Path</th><th>Bytes</th>'
+        f"<th></th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+
+def _delivered_root(groups: Sequence[ArtifactGroup], run_prefix: str) -> str:
+    """Name the directory the build delivered its code into, stated relative to the kit."""
+    files = next((group.files for group in groups if group.name == "Build"), ())
+    if not files:
+        return ""
+    common = files[0].path.rpartition("/")[0]
+    for record in files[1:]:
+        directory = record.path.rpartition("/")[0]
+        while common and not (directory == common or directory.startswith(f"{common}/")):
+            common = common.rpartition("/")[0]
+    return f"{run_prefix}{common or 'build'}/"
+
+
+def _inventory_panels(
+    groups: Sequence[ArtifactGroup], run_prefix: str
+) -> list[tuple[str, str, str]]:
+    """Render the file inventory as one directory tree per tab."""
     panels: list[tuple[str, str, str]] = []
     for group in groups:
         tab = _INVENTORY_TABS.get(group.name)
         if tab is None:
             continue
         slug, label = tab
-        rows = [
-            [
-                _link(record.path),
-                _cell(f"{record.bytes:,}", css="num"),
-                _cell(record.sha256, css="hash"),
-            ]
-            for record in group.files
-        ]
+        # The kit, not the run, is the unit an operator publishes and reads, so every path is
+        # stated relative to it even though the links resolve from this run directory.
         body = (
             f"<h2>{html.escape(group.name)}</h2>"
             f'<p class="note">{html.escape(group.description)} '
             f"{len(group.files)} files, {group.total_bytes:,} bytes.</p>"
-            + _table(("File", "Bytes", "SHA-256"), rows)
+            + _tree(group.files, slug, f"{run_prefix}{slug}/")
         )
         panels.append((slug, label, body))
     return panels
@@ -584,9 +669,9 @@ def _render_case_markdown(result: dict) -> str:
         f"- Elapsed: {int(result.get('elapsed_ms') or 0) / 1000:.1f}s",
         f"- Build passes: {result.get('build_passes', 0)}",
         f"- LLM calls: {usage.get('calls', 0)}",
-        f"- Tokens: input {usage.get('input_tokens', 0):,}; "
-        f"cached {usage.get('cached_input_tokens', 0):,}; "
-        f"fresh {usage.get('fresh_input_tokens', 0):,}; output {usage.get('output_tokens', 0):,}",
+        f"- Tokens: cached {usage.get('cached_input_tokens', 0):,}; "
+        f"uncached {usage.get('fresh_input_tokens', 0):,}; "
+        f"output {usage.get('output_tokens', 0):,}",
         f"- LLM elapsed: {int(usage.get('llm_elapsed_ms') or 0) / 1000:.1f}s",
         "- Advisory scores: "
         + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
@@ -685,7 +770,7 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
                 + "".join(sections)
             )
 
-    inventory = _inventory_panels(groups)
+    inventory = _inventory_panels(groups, f"runs/{result.get('run_id') or case_root.name}/")
 
     calls = _llm_calls(case_root / "evidence" / "llm.jsonl", case_root)
     call_rows = [
@@ -694,8 +779,11 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
             _cell(f"{call['provider']}/{call['model']}"),
             _status_cell(call["returncode"]),
             _cell(f"{int(call['elapsed_ms'] or 0) / 1000:.1f}s", css="num"),
-            _cell(f"{int(call['input_tokens']):,}", css="num"),
             _cell(f"{int(call['cached_input_tokens']):,}", css="num"),
+            _cell(
+                f"{max(int(call['input_tokens']) - int(call['cached_input_tokens']), 0):,}",
+                css="num",
+            ),
             _cell(f"{int(call['output_tokens']):,}", css="num"),
             _link(str(call["prompt"]), "prompt"),
             _link(str(call["output"]), "output"),
@@ -704,7 +792,7 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
         for call in calls
     ]
     calls_table = _table(
-        ("Command", "Model", "Result", "Elapsed", "Input", "Cached", "Output", "", "", ""),
+        ("Command", "Model", "Result", "Elapsed", "Cached", "Uncached", "Output", "", "", ""),
         call_rows,
     )
 
@@ -715,9 +803,11 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
     for key, field in (("provider", "provider"), ("model", "model")):
         if not environment.get(key) and calls:
             environment[key] = str(calls[0][field] or "")
+    run_prefix = f"runs/{result.get('run_id') or case_root.name}/"
     meta = _meta([
         ("Target", f"<code>{html.escape(target)}</code>"),
         ("Run", f"<code>{html.escape(str(result.get('run_id') or ''))}</code>"),
+        ("Code", f"<code>{html.escape(_delivered_root(groups, run_prefix))}</code>"),
         ("Elapsed", f"{int(result.get('elapsed_ms') or 0) / 1000:.1f}s"),
         ("Build passes", str(result.get("build_passes", ""))),
         ("Provider", html.escape(str(environment.get("provider") or "not recorded"))),
@@ -815,10 +905,12 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
         case_status = str(item.get("status") or "")
         usage = item.get("usage") if isinstance(item.get("usage"), dict) else {}
         commands = [entry for entry in item.get("commands") or [] if isinstance(entry, dict)]
+        environment = item.get("environment") if isinstance(item.get("environment"), dict) else {}
         state = "pass" if case_status == "passed" else "fail"
         rows.append([
             f"<td>{_anchor(f'runs/{run_id}/index.html', run_id)}</td>",
             f'<td><span class="tag {state}">{html.escape(case_status.upper())}</span></td>',
+            _cell(str(environment.get("model") or "not recorded"), css="nowrap"),
             _cell(len(commands), css="num"),
             _cell(item.get("build_passes", ""), css="num"),
             _cell(f"{int(item.get('elapsed_ms') or 0) / 1000:.1f}s", css="num"),
@@ -840,7 +932,7 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
             '<p class="note">Every unattended build of this project, each a complete, '
             "self-verifying record of the commands Drydock executed.</p>",
             _table(
-                ("Run", "Status", "Commands", "Build passes", "Elapsed", "LLM usage"),
+                ("Run", "Status", "Model", "Commands", "Build passes", "Elapsed", "LLM usage"),
                 rows,
             ),
             "<h2>Kit inputs</h2>",
@@ -891,11 +983,15 @@ def build_case_kit(case_root: Path) -> Path:
 
 def build_kit_index(kit_root: Path) -> Path:
     """Rebuild every run receipt under one kit and write the kit landing page."""
+    from drydock.uat import run_sort_key
+
     runs_root = kit_root / "runs"
     results: list[tuple[str, dict]] = []
     if runs_root.is_dir():
         for case_root in sorted(
-            (path for path in runs_root.iterdir() if path.is_dir()), reverse=True
+            (path for path in runs_root.iterdir() if path.is_dir()),
+            key=lambda path: run_sort_key(path.name),
+            reverse=True,
         ):
             if not (case_root / "result.json").is_file():
                 continue

@@ -123,7 +123,7 @@ def test_case_kit_writes_verifiable_checksums_for_delivered_code(tmp_path: Path)
     assert "index.html" not in indexed
     assert "SHA256SUMS" not in indexed
     manifest = json.loads((case / "evidence" / "manifest.json").read_text(encoding="utf-8"))
-    assert "Delivered code" in manifest["artifacts"]
+    assert "Build" in manifest["artifacts"]
     assert manifest["environment"]["provider"] == "codex"
 
 
@@ -136,7 +136,7 @@ def test_case_kit_reports_failure_and_quotes_the_recorded_output(tmp_path: Path)
     assert "commonmark: FAILED" in page
     assert "commonmark: build exited 1" in page
     assert "boom: acceptance failed" in page
-    assert "exit 1" in page
+    assert "FAIL 1" in page
 
 
 def test_case_kit_states_success_only_when_every_command_exited_zero(tmp_path: Path) -> None:
@@ -169,14 +169,16 @@ def test_case_kit_marks_a_resumed_run_instead_of_claiming_a_clean_lifecycle(
 
 
 def test_case_kit_links_a_stream_only_when_it_captured_output(tmp_path: Path) -> None:
-    # An empty stderr is the normal case for a command that printed nothing to it, so it must
-    # not be offered as a link and must not read as evidence of a problem.
+    # An empty stderr is the normal case for a command that printed nothing to it, so the step
+    # offers no link to it and it does not read as evidence of a problem. The Evidence tree
+    # still lists the file, because the tree is the directory, not a verdict.
     case = _case(tmp_path / "run")
 
     page = build_case_kit(case).read_text(encoding="utf-8")
 
-    assert "evidence/commands/01-init.stderr.log" not in page
-    assert "evidence/commands/02-build.stderr.log" in page
+    steps = page.split('id="panel-evidence"')[0]
+    assert "evidence/commands/01-init.stderr.log" not in steps
+    assert "evidence/commands/02-build.stderr.log" in steps
 
 
 def test_case_kit_opens_every_evidence_link_in_its_own_tab(tmp_path: Path) -> None:
@@ -189,7 +191,7 @@ def test_case_kit_opens_every_evidence_link_in_its_own_tab(tmp_path: Path) -> No
     assert all('target="_blank"' in anchor for anchor in anchors)
 
 
-def test_case_kit_files_the_evidence_into_tabs_without_repeating_the_logs(
+def test_case_kit_files_the_evidence_into_one_tree_per_directory(
     tmp_path: Path,
 ) -> None:
     case = _case(tmp_path / "run", status="failed", failing=True)
@@ -211,10 +213,11 @@ def test_case_kit_files_the_evidence_into_tabs_without_repeating_the_logs(
     page = build_case_kit(case).read_text(encoding="utf-8")
 
     tabs = re.findall(r'<button type="button" data-panel="[^"]+">?[^>]*>([^<]+)</button>', page)
-    assert tabs == ["Steps", "Error", "LLM", "Code", "Sources", "Blueprint"]
-    # The command logs are reached from the step that produced them; no inventory table
-    # lists them again as their own rows.
-    assert '">evidence/commands/' not in page
+    assert tabs == ["Steps", "Error", "LLM", "Build", "Evidence", "Sources", "Workspace"]
+    # Each tree is stated relative to the kit, not to the run directory it is rendered in.
+    assert "runs/20260101T000000.000000Z/workspace/" in page
+    # Digests belong in SHA256SUMS; a wall of hashes is not what a reviewer reads.
+    assert re.search(r"[0-9a-f]{64}", page) is None
 
 
 def test_case_kit_drops_the_error_tab_when_nothing_failed(tmp_path: Path) -> None:
@@ -236,6 +239,62 @@ def test_case_kit_stamps_the_verdict_and_carries_the_drydock_mark(tmp_path: Path
     assert '<div class="stamp fail"><span class="mark">Rejected</span>' in failing
     # The mark is inlined, so a kit copied off this machine keeps its letterhead.
     assert 'src="data:image/png;base64,' in passing
+
+
+def test_case_kit_stamps_each_command_result_rather_than_printing_an_exit_code(
+    tmp_path: Path,
+) -> None:
+    page = build_case_kit(_case(tmp_path / "run", status="failed", failing=True)).read_text(
+        encoding="utf-8"
+    )
+
+    assert '<span class="tag pass" title="exit 0">OK</span>' in page
+    assert '<span class="tag fail" title="exit 1">FAIL 1</span>' in page
+
+
+def test_case_kit_reports_usage_as_cached_and_uncached(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    (case / "evidence" / "llm.jsonl").write_text(
+        json.dumps({
+            "execution_id": "exec-1",
+            "status": "completed",
+            "job": {"command_name": "build", "llm": "codex", "model": "test-model"},
+            "result": {
+                "returncode": 0,
+                "stats": {"elapsed_ms": 10, "input_tokens": 100, "cached_input_tokens": 60},
+            },
+            "artifacts": {},
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    # Codex counts cache reads inside input_tokens, so 100 sent with 60 read from cache is
+    # 40 charged at full rate. That is the split the provider bills.
+    assert "<th>Cached</th><th>Uncached</th><th>Output</th>" in page
+    assert '<td class="num">60</td><td class="num">40</td>' in page
+    assert "cached 4 · uncached 6 · output 3" in page
+
+
+def test_case_kit_names_the_directory_the_build_delivered_into(tmp_path: Path) -> None:
+    page = build_case_kit(_case(tmp_path / "run")).read_text(encoding="utf-8")
+
+    assert "runs/20260101T000000.000000Z/build/commonmark/" in page
+
+
+def test_case_kit_marks_unprocessed_provider_output_as_raw(tmp_path: Path) -> None:
+    case = _case(tmp_path / "run")
+    raw = case / "evidence" / "provider_raw"
+    raw.mkdir()
+    (raw / "call.raw.jsonl").write_text('{"type":"event"}\n', encoding="utf-8")
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+
+    marked = re.findall(r'>([^<]+)</a></td><td class="num">\d+</td><td><span class="tag raw"', page)
+    # The provider transcript and the workspace runtime log; neither is the reviewable record.
+    assert marked == ["call.raw.jsonl", "noise.log"]
 
 
 def test_case_kit_prunes_regenerable_caches(tmp_path: Path) -> None:

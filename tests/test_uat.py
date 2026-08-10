@@ -15,6 +15,7 @@ from drydock.uat import (
     discover_fixtures,
     make_streaming_runner,
     render_summary,
+    run_sort_key,
     run_uat,
     subprocess_runner,
 )
@@ -763,3 +764,16 @@ def test_shipped_kits_declare_every_asset_their_score_command_runs() -> None:
         for argument in config["test_command"]:
             if argument.startswith("sources/"):
                 assert argument in declared, f"{config_path}: {argument} is not a declared source"
+
+
+def test_run_ids_are_readable_and_stay_chronological_across_the_format_change() -> None:
+    # A run id is read by a person before it is parsed by anything, and one kit cannot start
+    # two runs in the same second. Ordering must still hold against ids written by the
+    # retired format, which punctuates the same instant differently.
+    assert datetime(2026, 8, 9, 20, 44, 59, tzinfo=UTC).strftime("%Y%m%d.%H%M%S") == (
+        "20260809.204459"
+    )
+    ordered = sorted(
+        ["20260809T204459.901240Z", "20260809.204500", "20260808.235959"], key=run_sort_key
+    )
+    assert ordered == ["20260808.235959", "20260809T204459.901240Z", "20260809.204500"]

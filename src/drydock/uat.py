@@ -556,11 +556,18 @@ def _prior_run(case_root: Path) -> tuple[tuple[CommandResult, ...], int]:
     return tuple(commands), passes
 
 
-def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
-    """Return the run directory a resume re-enters: ``run`` when named, else the newest.
+def run_sort_key(run_id: str) -> str:
+    """Order run identifiers chronologically across identifier formats.
 
-    Run identifiers are UTC timestamps, so lexical order is chronological order.
+    Run identifiers are UTC timestamps, so lexical order is chronological order — except
+    that the retired ``20260809T204459.901240Z`` form and the current ``20260809.204459``
+    form punctuate differently. Comparing the digits alone is chronological for both.
     """
+    return "".join(character for character in run_id if character.isdigit())
+
+
+def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
+    """Return the run directory a resume re-enters: ``run`` when named, else the newest."""
     runs = fixture.root / "runs"
     if run:
         candidate = runs / run
@@ -568,7 +575,10 @@ def resolve_run_dir(fixture: UATFixture, run: str | None = None) -> Path:
             raise SpecificationError(f"No such run for kit {fixture.name}: {candidate}")
         return candidate
     existing = (
-        sorted(path for path in runs.iterdir() if (path / "result.json").is_file())
+        sorted(
+            (path for path in runs.iterdir() if (path / "result.json").is_file()),
+            key=lambda path: run_sort_key(path.name),
+        )
         if runs.is_dir()
         else []
     )
@@ -810,8 +820,8 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
             "/index.html`",
             f"- Evidence: `{_relativize(result.evidence_dir, base) if base else result.evidence_dir}`",
             f"- LLM calls: {usage['calls']}",
-            f"- Tokens: input {usage['input_tokens']:,}; cached {usage['cached_input_tokens']:,}; "
-            f"fresh {usage['fresh_input_tokens']:,}; output {usage['output_tokens']:,}",
+            f"- Tokens: cached {usage['cached_input_tokens']:,}; "
+            f"uncached {usage['fresh_input_tokens']:,}; output {usage['output_tokens']:,}",
             f"- LLM elapsed: {usage['llm_elapsed_ms'] / 1000:.1f}s",
             "- Advisory scores: "
             + ", ".join(f"{name}=exit {code}" for name, code in result.score_exit_codes.items()),
@@ -851,7 +861,9 @@ def run_uat(
     if run is not None and not resuming:
         raise SpecificationError("A UAT run can only be selected together with a resume stage.")
     timestamp = now or datetime.now(UTC)
-    run_id = timestamp.strftime("%Y%m%dT%H%M%S.%fZ")
+    # UTC to the second: readable at a glance, and two runs of one kit cannot start within
+    # the same second.
+    run_id = timestamp.strftime("%Y%m%d.%H%M%S")
     fixtures = discover_fixtures(uat_root, selected)
     results: list[UATResult] = []
     for fixture in fixtures:
