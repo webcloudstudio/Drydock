@@ -240,6 +240,10 @@ Rules:
 - Record the mapping in the Manifest: each story's `covers:` field names the `ANALYSIS.md` Story IDs
   it delivers. Every Story ID in the analysis is covered by **exactly one** story. A story that
   covers several IDs is the declared collapse case and must satisfy the collapse rule above.
+- When one analysis story expands into several stories, exactly one of them carries its ID in
+  `covers:` — the story that delivers the analyzed behavior, whatever its `type:`. A `foundational`
+  persistence or architecture story that realizes an analyzed story still covers it; `type:` never
+  decides ownership.
 - A plan-introduced story with no analyzed counterpart — an architecture boundary, a scaffold, a
   test-harness story — omits `covers:` entirely. Never duplicate an ID that another story owns, and
   never fill the field to make it look complete: two stories claiming one analyzed story destroys

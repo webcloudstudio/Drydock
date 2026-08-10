@@ -3026,8 +3026,23 @@ def _topology_repair_assembly(*, declaration: str, defect: str, pass_number: int
     return PromptAssembly(parts=(repair,))
 
 
+#: Plan integrity defects a topology re-emission alone can repair: each is stated entirely in a
+#: field the declaration owns, so the authored Blueprint artifacts stay valid and untouched.
+_TOPOLOGY_FIELD_DEFECTS = ("analyzed stories are not delivered by any Manifest story:",)
+
+
 def _is_repairable_topology_defect(exc: Exception) -> bool:
-    return str(exc).startswith("Plan generation failed: the declared work graph is inconsistent.")
+    text = str(exc)
+    if text.startswith("Plan generation failed: the declared work graph is inconsistent."):
+        return True
+    if not text.startswith("Plan integrity check failed:"):
+        return False
+    # Repair only when every reported defect is a declaration-field defect; a mixed report
+    # needs artifact repair, which the caller reaches when this returns False.
+    defects = [line.strip() for line in text.splitlines()[1:] if line.strip()]
+    return bool(defects) and all(
+        any(defect.startswith(marker) for marker in _TOPOLOGY_FIELD_DEFECTS) for defect in defects
+    )
 
 
 def _repairable_artifact_names(blocks: Mapping[str, str], defect: str) -> tuple[str, ...]:

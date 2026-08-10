@@ -1943,6 +1943,41 @@ def test_uncovered_analyzed_story_is_fatal(tmp_path):
     )
 
 
+def test_uncovered_analyzed_story_is_a_repairable_topology_defect():
+    # Coverage is declared in `covers:`, a field the topology owns, so a topology
+    # re-emission repairs it without touching the authored Blueprint artifacts.
+    from drydock.planning_session import _is_repairable_topology_defect
+
+    assert _is_repairable_topology_defect(
+        SpecificationError(
+            "Plan integrity check failed:\n  analyzed stories are not delivered by any "
+            "Manifest story: ARCH-001 — name each analyzed Story ID in the covers: field "
+            "of the story that delivers it"
+        )
+    )
+
+
+def test_mixed_integrity_defects_are_not_topology_repairable():
+    # A defect stated in Blueprint prose needs artifact repair; mixing one in disqualifies
+    # the whole report from the topology path.
+    from drydock.planning_session import _is_repairable_topology_defect
+
+    assert not _is_repairable_topology_defect(
+        SpecificationError(
+            "Plan integrity check failed:\n  analyzed stories are not delivered by any "
+            "Manifest story: ARCH-001\n  FEATURE-Status.md: missing acceptance assertions"
+        )
+    )
+
+
+def test_unrelated_integrity_defect_is_not_topology_repairable():
+    from drydock.planning_session import _is_repairable_topology_defect
+
+    assert not _is_repairable_topology_defect(
+        SpecificationError("Plan integrity check failed:\n  duplicate implementation ownership")
+    )
+
+
 def test_covered_analyzed_stories_pass_without_warning(tmp_path):
     _make_target(tmp_path, analysis=_ANALYSIS_WITH_IDS)
     manifest = _manifest().replace(
