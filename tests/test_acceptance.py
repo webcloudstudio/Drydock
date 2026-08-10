@@ -547,3 +547,114 @@ def test_spec_without_acceptance_is_untouched():
 
     text = "# FEATURE: X\n\n## Guardrails\n\n- None.\n"
     assert drop_unsatisfiable_acceptance(text, source="FEATURE-X.md") == (text, ())
+
+
+# --- The staged-harness environment contract ---------------------------------
+#
+# Every criterion below is the shape a real plan emitted against the TOML conformance
+# harness. Each cost a full build pass — and in three cases a whole UAT run — before it was
+# caught here.
+
+_STAGED_HARNESS = """#!/bin/sh
+set -u
+
+if [ -z "${DECODER:-}" ]; then
+    echo "error: DECODER is not set; give the command that runs your decoder." >&2
+    exit 2
+fi
+
+exec toml-test -decoder "${DECODER}" "$@"
+"""
+
+_STAGED_CALL_SPEC = """# FEATURE: Keys
+
+## Programmatic Acceptance
+
+### key-conformance
+The implementation passes the key conformance slice.
+
+```python
+import subprocess
+
+result = subprocess.run(
+    ["sh", "sources/run_conformance.sh", "-run", "valid/key*"],
+    capture_output=True,
+    text=True,
+)
+print(result.stdout)
+assert result.returncode == 0
+```
+
+## User Acceptance
+
+- None.
+"""
+
+
+def _staged_sources(tmp_path):
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "run_conformance.sh").write_text(_STAGED_HARNESS, encoding="utf-8")
+    return sources
+
+
+def test_a_staged_call_missing_its_required_variable_is_dropped(tmp_path):
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    cleaned, dropped = drop_unsatisfiable_acceptance(
+        _STAGED_CALL_SPEC, source="FEATURE-Keys.md", sources_dir=_staged_sources(tmp_path)
+    )
+
+    assert [d.check_id for d in dropped] == ["key-conformance"]
+    assert "DECODER" in dropped[0].reason
+    assert "key-conformance" not in cleaned
+
+
+def test_the_same_call_is_kept_when_the_variable_is_supplied(tmp_path):
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    supplied = _STAGED_CALL_SPEC.replace(
+        "    capture_output=True,",
+        '    env={**os.environ, "DECODER": "./toml-decoder"},\n    capture_output=True,',
+    ).replace("import subprocess", "import os\nimport subprocess")
+
+    cleaned, dropped = drop_unsatisfiable_acceptance(
+        supplied, source="FEATURE-Keys.md", sources_dir=_staged_sources(tmp_path)
+    )
+
+    assert dropped == ()
+    assert cleaned == supplied
+
+
+def test_without_a_sources_directory_the_staged_contract_is_not_applied(tmp_path):
+    from drydock.acceptance import drop_unsatisfiable_acceptance
+
+    assert drop_unsatisfiable_acceptance(_STAGED_CALL_SPEC, source="FEATURE-Keys.md") == (
+        _STAGED_CALL_SPEC,
+        (),
+    )
+
+
+# --- Quarantine at grading time ----------------------------------------------
+
+
+def test_partition_separates_gradeable_criteria_from_unsatisfiable_ones(tmp_path):
+    from drydock.acceptance import parse_programmatic_acceptance_text, partition_unsatisfiable
+
+    checks = parse_programmatic_acceptance_text(_TWO_CRITERIA_SPEC, source="FEATURE-X.md")
+    kept, quarantined = partition_unsatisfiable(checks)
+
+    assert [check.check_id for check in kept] == ["scoped-pattern"]
+    assert [entry.check_id for entry in quarantined] == ["scoped-number"]
+    assert quarantined[0].source == "FEATURE-X.md"
+    assert quarantined[0].rendered.startswith("FEATURE-X.md [scoped-number]: ")
+
+
+def test_partition_reads_the_staged_contract_when_given_the_sources_directory(tmp_path):
+    from drydock.acceptance import parse_programmatic_acceptance_text, partition_unsatisfiable
+
+    checks = parse_programmatic_acceptance_text(_STAGED_CALL_SPEC, source="FEATURE-Keys.md")
+
+    assert partition_unsatisfiable(checks)[1] == ()
+    _, quarantined = partition_unsatisfiable(checks, sources_dir=_staged_sources(tmp_path))
+    assert [entry.check_id for entry in quarantined] == ["key-conformance"]

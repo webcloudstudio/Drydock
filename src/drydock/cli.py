@@ -3723,8 +3723,9 @@ def _failure_stop_lines(step) -> list[str]:
 def _failure_progress_lines(step) -> list[str]:
     """Show measured acceptance movement, including suite-level tallies when available."""
     checks = step.owned_acceptance or step.acceptance
+    quarantined = getattr(step, "quarantined_acceptance", ())
     if not checks:
-        return []
+        return _quarantine_lines(quarantined)
     baseline = {
         check.check_id: check for check in (step.owned_pre_acceptance or step.pre_acceptance)
     }
@@ -3753,6 +3754,19 @@ def _failure_progress_lines(step) -> list[str]:
             else:
                 detail += " · unchanged from baseline"
         lines.append(detail)
+    return lines + _quarantine_lines(quarantined)
+
+
+def _quarantine_lines(quarantined) -> list[str]:
+    """Name criteria excluded from grading so the tally above is not read as the whole story."""
+    if not quarantined:
+        return []
+    lines = [
+        f"    quarantined: {len(quarantined)} criteri"
+        f"{'on' if len(quarantined) == 1 else 'a'} unsatisfiable by construction · not graded"
+    ]
+    lines.extend(f"      {entry.rendered}" for entry in quarantined)
+    lines.append("      repair the assertion in the Blueprint specification to grade it")
     return lines
 
 

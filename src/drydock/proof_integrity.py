@@ -17,6 +17,7 @@ import ast
 import builtins
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 # Call targets that raise on failure and therefore constitute a real check even without a bare
 # ``assert``/``raise``. Matched against the final attribute or bare name of a call.
@@ -428,12 +429,20 @@ _ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 class InvocationDefect:
     """A subprocess invocation whose arguments cannot launch the command as written."""
 
-    kind: str  # shell-with-argv | env-assignment-argv | unsplit-command
+    kind: str  # shell-with-argv | env-assignment-argv | unsplit-command | env-replaces-environ
     call: str
     detail: str
 
     @property
     def message(self) -> str:
+        if self.kind == "env-replaces-environ":
+            return (
+                f"{self.call} passes env={self.detail} without **os.environ, which replaces the "
+                "whole environment rather than adding to it. The child then runs with no PATH, "
+                "so every command it names — including the interpreter it shells out to — fails "
+                "to resolve, whatever the implementation does. Write "
+                "env={**os.environ, ...}."
+            )
         if self.kind == "shell-with-argv":
             return (
                 f"{self.call} passes an argument list with shell=True, so POSIX executes only "
@@ -471,9 +480,51 @@ def _invocation_label(node: ast.Call) -> str:
     return _call_name(node)
 
 
+def _env_dict(node: ast.Call) -> ast.Dict | None:
+    """Return the call's ``env=`` argument when it is a dict literal, else ``None``.
+
+    Anything that is not a literal — ``os.environ.copy()``, a name bound earlier, a ``dict(...)``
+    call, a ``|`` merge — is left alone. Those forms usually do carry the inherited environment,
+    and deciding otherwise would need value tracking this analysis deliberately does not do.
+    """
+    for keyword in node.keywords:
+        if keyword.arg == "env":
+            return keyword.value if isinstance(keyword.value, ast.Dict) else None
+    return None
+
+
+def _env_replacement_defect(node: ast.Call) -> InvocationDefect | None:
+    """Report an ``env=`` dict literal that replaces the environment instead of extending it.
+
+    ``env={"DECODER": "./decoder"}`` is the single most common way an otherwise correct proof
+    becomes unsatisfiable: the child loses ``PATH``, so the harness it invokes cannot be found
+    and the exit status reports a missing tool rather than the behavior under test. A literal
+    carrying no ``**`` unpacking supplies the entire environment by definition, so the judgement
+    needs no value tracking.
+    """
+    env = _env_dict(node)
+    if env is None:
+        return None
+    # ``None`` in ``keys`` is how ``**expr`` appears in a dict literal. Any unpacking at all is
+    # taken as the inherited environment: ``{**os.environ}``, ``{**base}``, ``{**e.copy()}``.
+    if any(key is None for key in env.keys):
+        return None
+    shown = ", ".join(
+        (repr(key.value) if isinstance(key, ast.Constant) else "…") + ": …" for key in env.keys
+    )
+    return InvocationDefect(
+        kind="env-replaces-environ",
+        call=_invocation_label(node),
+        detail="{" + shown + "}",
+    )
+
+
 def _invocation_defect(node: ast.Call) -> InvocationDefect | None:
     if _call_name(node) not in _INVOKING_CALLS or not node.args:
         return None
+    replaced = _env_replacement_defect(node)
+    if replaced is not None:
+        return replaced
     shell = _shell_keyword(node)
     if shell is None:
         # A non-literal ``shell=`` value leaves the argument shape undecidable. Stay silent,
@@ -517,6 +568,66 @@ def analyze_invocation(code: str) -> tuple[InvocationDefect, ...]:
             continue
         seen.add(key)
         defects.append(defect)
+    return tuple(defects)
+
+
+# --- Shell escape handling -------------------------------------------------------------
+#
+# A proof that feeds input to the program under test through ``sh -c`` has to get the shell's
+# own quoting right before the program sees anything. ``printf '%s' 'a\nb'`` does not emit a
+# newline: ``%s`` copies its argument verbatim, so the program receives a literal backslash
+# followed by ``n``. Where the program is a parser, it correctly rejects that as malformed and
+# the proof reads the rejection as a defect in the implementation. No implementation can pass,
+# because the input it is graded on is not the input the author wrote.
+
+_PRINTF_RE = re.compile(r"""printf\s+(?P<q>['"])(?P<fmt>.*?)(?P=q)(?P<args>[^;|&]*)""")
+_SHELL_ESCAPE_RE = re.compile(r"\\[nrt]")
+
+
+@dataclass(frozen=True)
+class ShellEscapeDefect:
+    """A shell command whose escape sequences are never interpreted."""
+
+    command: str
+    fmt: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"the shell command uses printf {self.fmt!r} with arguments containing backslash "
+            "escapes, and that format copies its argument verbatim — the escapes reach the "
+            "program as a literal backslash and letter, not as control characters. The program "
+            "is then graded on input the author never wrote, so no implementation can pass. "
+            "Use printf '%b', embed a real newline, or pass the input through "
+            "subprocess input= instead of a shell."
+        )
+
+
+def analyze_shell_escapes(code: str) -> tuple[ShellEscapeDefect, ...]:
+    """Report shell commands whose backslash escapes are copied verbatim rather than expanded."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+
+    defects: list[ShellEscapeDefect] = []
+    seen: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        for match in _PRINTF_RE.finditer(node.value):
+            fmt = match.group("fmt")
+            # ``%b`` is the format that expands escapes in its argument, and an escape written
+            # into the format itself is expanded there. Neither is a defect.
+            if "%b" in fmt:
+                continue
+            if not _SHELL_ESCAPE_RE.search(match.group("args")):
+                continue
+            key = (node.value, fmt)
+            if key in seen:
+                continue
+            seen.add(key)
+            defects.append(ShellEscapeDefect(command=node.value, fmt=fmt))
     return tuple(defects)
 
 
@@ -816,4 +927,133 @@ def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
             continue
         seen.add((kind, literal))
         defects.append(OutputAssertionDefect(kind=kind, literal=literal, fatal=fatal))
+    return tuple(defects)
+
+
+# --- Staged harness environment contract -----------------------------------------------
+#
+# A staged asset is imported read-only and restored before grading, so a proof that invokes one
+# has to satisfy the asset's own interface. Where the asset opens with a guard — ``[ -z
+# "${DECODER:-}" ] && exit`` — that variable is not advice, it is a precondition the script
+# enforces before it does any work. A proof that omits it grades the guard, not the program:
+# the exit status reports a missing variable on every run, at every level of implementation
+# quality. The requirement is read from the staged script itself rather than configured here,
+# so the rule holds for any harness the Analysis stages, not one project's.
+
+_STAGED_SCRIPT_RE = re.compile(r"sources/(?P<name>[\w.@-]+\.(?:sh|bash|py))\b")
+_SHELL_GUARD_RE = re.compile(
+    r"""\[\s*-z\s+"?\$\{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}"?\s*\]"""
+    r"""|\[\s*-z\s+"?\$(?P<bare>[A-Za-z_][A-Za-z0-9_]*)"?\s*\]"""
+)
+_SHELL_ASSIGNMENT_RE = re.compile(r"(?:^|[\s;&|])(?P<name>[A-Za-z_][A-Za-z0-9_]*)=")
+#: Lines a guard may span before its ``exit`` for the guard to still count as fatal.
+_GUARD_WINDOW = 6
+
+
+@dataclass(frozen=True)
+class StagedInvocationDefect:
+    """A proof that invokes a staged asset without the environment that asset requires."""
+
+    script: str
+    variable: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"invokes the staged asset sources/{self.script} without setting {self.variable}, "
+            f"which that script requires and exits on when unset. The proof then grades the "
+            f"script's own precondition rather than the program under test, and fails "
+            f"identically whatever the implementation does. Supply it with "
+            f"env={{**os.environ, {self.variable!r}: ...}}."
+        )
+
+
+def staged_script_requirements(script: Path) -> tuple[str, ...]:
+    """Return the environment variables ``script`` refuses to run without.
+
+    A variable counts only when its unset-guard is followed closely by an ``exit``: a guard that
+    merely selects a default is a documented fallback, not a precondition.
+    """
+    try:
+        text = script.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ()
+    lines = text.splitlines()
+    required: list[str] = []
+    for index, line in enumerate(lines):
+        match = _SHELL_GUARD_RE.search(line)
+        if match is None:
+            continue
+        name = match.group("braced") or match.group("bare")
+        if name in required:
+            continue
+        window = "\n".join(lines[index : index + _GUARD_WINDOW])
+        if re.search(r"\bexit\b", window):
+            required.append(name)
+    return tuple(required)
+
+
+def _supplied_variables(node: ast.Call) -> frozenset[str] | None:
+    """Names the call adds to the child environment, or ``None`` when that cannot be decided."""
+    supplied: set[str] = set()
+    for keyword in node.keywords:
+        if keyword.arg != "env":
+            continue
+        if not isinstance(keyword.value, ast.Dict):
+            return None  # a computed environment; the analysis declines to guess
+        for key in keyword.value.keys:
+            if key is None:
+                continue  # ``**expr`` may carry anything, but never the guarded variable alone
+            if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+                return None
+            supplied.add(key.value)
+    # ``sh -c "DECODER=./x sources/run.sh"`` supplies it inside the command string instead.
+    for arg in ast.walk(node):
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            supplied.update(
+                match.group("name") for match in _SHELL_ASSIGNMENT_RE.finditer(arg.value)
+            )
+    return frozenset(supplied)
+
+
+def _invoked_staged_scripts(node: ast.Call) -> tuple[str, ...]:
+    names: list[str] = []
+    for arg in ast.walk(node):
+        if not isinstance(arg, ast.Constant) or not isinstance(arg.value, str):
+            continue
+        for match in _STAGED_SCRIPT_RE.finditer(arg.value):
+            name = match.group("name")
+            if name not in names:
+                names.append(name)
+    return tuple(names)
+
+
+def analyze_staged_invocation(
+    code: str, *, sources_dir: Path | None
+) -> tuple[StagedInvocationDefect, ...]:
+    """Report proofs that invoke a staged asset without the environment it requires."""
+    if sources_dir is None:
+        return ()
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+
+    defects: list[StagedInvocationDefect] = []
+    seen: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) not in _INVOKING_CALLS:
+            continue
+        scripts = _invoked_staged_scripts(node)
+        if not scripts:
+            continue
+        supplied = _supplied_variables(node)
+        if supplied is None:
+            continue
+        for script in scripts:
+            for variable in staged_script_requirements(sources_dir / script):
+                if variable in supplied or (script, variable) in seen:
+                    continue
+                seen.add((script, variable))
+                defects.append(StagedInvocationDefect(script=script, variable=variable))
     return tuple(defects)

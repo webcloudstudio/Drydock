@@ -389,28 +389,43 @@ class DroppedAcceptance:
     reason: str
 
 
-def unsatisfiable_defects(code: str) -> tuple[str, ...]:
-    """Return every reason ``code`` can never pass, whatever the implementation does."""
+def unsatisfiable_defects(code: str, *, sources_dir: Path | None = None) -> tuple[str, ...]:
+    """Return every reason ``code`` can never pass, whatever the implementation does.
+
+    ``sources_dir`` is the staged-asset directory the proof runs against. When given, the
+    analysis also reads the assets the proof invokes and checks their declared preconditions;
+    without it that class of defect is simply not reported.
+    """
     from drydock.proof_integrity import (
         analyze_invocation,
         analyze_literals,
         analyze_output_assertions,
+        analyze_shell_escapes,
+        analyze_staged_invocation,
         analyze_structure,
     )
 
     messages = [
         defect.message
-        for analyze in (analyze_literals, analyze_structure, analyze_invocation)
+        for analyze in (
+            analyze_literals,
+            analyze_structure,
+            analyze_invocation,
+            analyze_shell_escapes,
+        )
         for defect in analyze(code)
     ]
     # Only the fatal output assertions belong here. A merely redundant substring check still
     # passes when the code is correct, so it is a warning, not grounds for dropping the check.
     messages.extend(defect.message for defect in analyze_output_assertions(code) if defect.fatal)
+    messages.extend(
+        defect.message for defect in analyze_staged_invocation(code, sources_dir=sources_dir)
+    )
     return tuple(messages)
 
 
 def drop_unsatisfiable_acceptance(
-    text: str, *, source: str
+    text: str, *, source: str, sources_dir: Path | None = None
 ) -> tuple[str, tuple[DroppedAcceptance, ...]]:
     """Remove acceptance criteria that no implementation can satisfy, and report them.
 
@@ -457,7 +472,11 @@ def drop_unsatisfiable_acceptance(
     dropped: list[DroppedAcceptance] = []
     for title, unit in units:
         fence = PYTHON_FENCE_RE.search(unit)
-        defects = unsatisfiable_defects(fence.group("code").strip()) if fence else ()
+        defects = (
+            unsatisfiable_defects(fence.group("code").strip(), sources_dir=sources_dir)
+            if fence
+            else ()
+        )
         if not defects:
             kept.append(unit)
             continue
@@ -474,6 +493,43 @@ def drop_unsatisfiable_acceptance(
         body = body.rstrip("\n") + "\n\n"
     del source  # named by the caller, which owns the message
     return text[:start] + body + text[end:], tuple(dropped)
+
+
+@dataclass(frozen=True)
+class QuarantinedAcceptance:
+    """One acceptance criterion excluded from grading because it cannot pass by construction."""
+
+    check_id: str
+    source: str
+    reason: str
+
+    @property
+    def rendered(self) -> str:
+        return f"{self.source} [{self.check_id}]: {self.reason}"
+
+
+def partition_unsatisfiable(
+    checks: tuple[ProgrammaticAcceptance, ...], *, sources_dir: Path | None = None
+) -> tuple[tuple[ProgrammaticAcceptance, ...], tuple[QuarantinedAcceptance, ...]]:
+    """Split criteria into those worth grading and those that cannot pass by construction.
+
+    ``plan`` already strips these, but a Blueprint reaches the build by other routes — ``refit``,
+    an import adapter, a hand edit — so the same judgement has to hold at the point of grading.
+    A quarantined criterion is excluded rather than fatal: it never proved anything, so failing
+    the block on it would report a defect in the implementation for a defect in the Blueprint,
+    and would do so on every rerun since a repair pass may not rewrite a staged asset.
+    """
+    kept: list[ProgrammaticAcceptance] = []
+    quarantined: list[QuarantinedAcceptance] = []
+    for check in checks:
+        defects = unsatisfiable_defects(check.code, sources_dir=sources_dir)
+        if not defects:
+            kept.append(check)
+            continue
+        quarantined.append(
+            QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=defects[0])
+        )
+    return tuple(kept), tuple(quarantined)
 
 
 def programmatic_acceptance_for_step(

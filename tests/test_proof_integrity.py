@@ -7,8 +7,11 @@ from drydock.proof_integrity import (
     analyze_literals,
     analyze_output_assertions,
     analyze_proof,
+    analyze_shell_escapes,
+    analyze_staged_invocation,
     analyze_structure,
     analyze_swallowed_output,
+    staged_script_requirements,
 )
 
 
@@ -559,3 +562,157 @@ def test_a_stdout_binding_stays_fatal():
         'out = result.stdout\nassert result.returncode == 0\nassert "failed" not in out'
     )
     assert defect.fatal
+
+
+# --- Environment replacement -------------------------------------------------
+#
+# Every snippet below is the shape a real plan emitted against the TOML conformance
+# harness. Each failed a full build pass before it was caught statically.
+
+
+def test_env_dict_without_environ_is_a_defect():
+    (defect,) = analyze_invocation(
+        'subprocess.run(["sh", "sources/run.sh"], env={"DECODER": "./decoder"})'
+    )
+    assert defect.kind == "env-replaces-environ"
+    assert "**os.environ" in defect.message
+    assert "PATH" in defect.message
+
+
+def test_env_dict_extending_environ_is_accepted():
+    assert (
+        analyze_invocation(
+            'subprocess.run(["sh", "sources/run.sh"], env={**os.environ, "DECODER": "./d"})'
+        )
+        == ()
+    )
+
+
+def test_env_naming_path_explicitly_is_still_a_replacement():
+    # Supplying PATH does not make the replacement safe: HOME, TMPDIR, and the toolchain's
+    # own cache variables are gone too, and no plan-time author can enumerate them.
+    (defect,) = analyze_invocation(
+        'subprocess.run(["go", "build"], env={"DECODER": "./d", "PATH": "/usr/bin"})'
+    )
+    assert defect.kind == "env-replaces-environ"
+
+
+def test_computed_environment_is_left_alone():
+    # ``os.environ.copy()`` is not a dict literal. Deciding it would need value tracking this
+    # analysis deliberately does not do, and the runtime gate still covers it.
+    assert analyze_invocation('subprocess.run(["sh", "x.sh"], env=os.environ.copy())') == ()
+    assert analyze_invocation('subprocess.run(["sh", "x.sh"], env=environment)') == ()
+
+
+def test_no_env_keyword_is_not_a_replacement():
+    assert analyze_invocation('subprocess.run(["sh", "sources/run.sh"])') == ()
+
+
+# --- Shell escape handling ---------------------------------------------------
+
+
+def test_printf_percent_s_with_escapes_is_a_defect():
+    (defect,) = analyze_shell_escapes(
+        r"""subprocess.run(["sh", "-c", "printf '%s' '[a.b]\\nvalue = 1\\n' | ./decoder"])"""
+    )
+    assert defect.fmt == "%s"
+    assert "verbatim" in defect.message
+
+
+def test_printf_percent_b_expands_and_is_accepted():
+    assert (
+        analyze_shell_escapes(
+            r"""subprocess.run(["sh", "-c", "printf '%b' '[a.b]\\nvalue = 1\\n' | ./decoder"])"""
+        )
+        == ()
+    )
+
+
+def test_printf_escape_inside_the_format_is_accepted():
+    # printf always expands escapes written into the format itself.
+    assert analyze_shell_escapes(r"""subprocess.run(["sh", "-c", "printf 'a\\nb'"])""") == ()
+
+
+def test_printf_without_escapes_is_accepted():
+    assert (
+        analyze_shell_escapes("""subprocess.run(["sh", "-c", "printf '%s' 'plain' | ./d"])""") == ()
+    )
+
+
+# --- Staged harness environment contract -------------------------------------
+
+_HARNESS = """#!/bin/sh
+set -u
+
+if [ -z "${DECODER:-}" ]; then
+    echo "error: DECODER is not set; give the command that runs your decoder." >&2
+    exit 2
+fi
+
+if [ -n "${TOML_TEST:-}" ] && [ -x "${TOML_TEST}" ]; then
+    HARNESS="${TOML_TEST}"
+fi
+"""
+
+
+def _staged(tmp_path):
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "run_conformance.sh").write_text(_HARNESS, encoding="utf-8")
+    return sources
+
+
+def test_required_variable_is_read_from_the_staged_script(tmp_path):
+    # Only the guarded-and-exiting variable is required. ``TOML_TEST`` selects a default and
+    # is documented as optional, so it must not be demanded.
+    assert staged_script_requirements(_staged(tmp_path) / "run_conformance.sh") == ("DECODER",)
+
+
+def test_staged_call_missing_the_required_variable_is_a_defect(tmp_path):
+    (defect,) = analyze_staged_invocation(
+        'subprocess.run(["sh", "sources/run_conformance.sh", "-run", "valid/key*"])',
+        sources_dir=_staged(tmp_path),
+    )
+    assert defect.script == "run_conformance.sh"
+    assert defect.variable == "DECODER"
+    assert "grades the script's own precondition" in defect.message
+
+
+def test_staged_call_supplying_the_variable_is_accepted(tmp_path):
+    assert (
+        analyze_staged_invocation(
+            'subprocess.run(["sh", "sources/run_conformance.sh"],'
+            ' env={**os.environ, "DECODER": "./d"})',
+            sources_dir=_staged(tmp_path),
+        )
+        == ()
+    )
+
+
+def test_a_shell_assignment_supplies_the_variable(tmp_path):
+    assert (
+        analyze_staged_invocation(
+            'subprocess.run(["sh", "-c", "DECODER=./d sh sources/run_conformance.sh"])',
+            sources_dir=_staged(tmp_path),
+        )
+        == ()
+    )
+
+
+def test_an_unreadable_staged_script_reports_nothing(tmp_path):
+    # The asset may not be staged yet at the moment of analysis. Silence beats a false defect.
+    assert (
+        analyze_staged_invocation(
+            'subprocess.run(["sh", "sources/absent.sh"])', sources_dir=tmp_path / "sources"
+        )
+        == ()
+    )
+
+
+def test_no_sources_directory_disables_the_check():
+    assert (
+        analyze_staged_invocation(
+            'subprocess.run(["sh", "sources/run_conformance.sh"])', sources_dir=None
+        )
+        == ()
+    )

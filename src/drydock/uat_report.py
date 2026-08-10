@@ -254,7 +254,7 @@ def _write_sums(base: Path, groups: Sequence[ArtifactGroup]) -> None:
 _STYLE = """
 :root {
   --paper: #ffffff; --ink: #14171a; --muted: #5b616a; --rule: #c9c9c3; --hard: #14171a;
-  --pass: #16663a; --fail: #a3170f; --tint: #f7f7f4;
+  --pass: #16663a; --fail: #a3170f; --warn: #8a5a00; --tint: #f7f7f4;
 }
 * { box-sizing: border-box; }
 body {
@@ -343,6 +343,7 @@ table.tree td.name strong { font-weight: 700; }
 .tag { display: inline-block; padding: 0 .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; border: 1px solid currentColor; box-shadow: 0 0 0 1px var(--paper) inset; }
 .tag.pass { color: var(--pass); }
 .tag.fail { color: var(--fail); }
+.tag.degraded { color: var(--warn); }
 .tag.raw { color: var(--muted); font-weight: 400; }
 footer { margin-top: 2.5rem; padding-top: .75rem; border-top: 3px double var(--hard); color: var(--muted); font-size: .78rem; }
 
@@ -676,7 +677,11 @@ def _render_case_markdown(result: dict) -> str:
         "- Advisory scores: "
         + (", ".join(f"{name}=exit {code}" for name, code in scores.items()) or "none recorded"),
     ]
-    if result.get("error"):
+    if result.get("degraded"):
+        # A degraded run completed its lifecycle with a named shortfall. Labelling it a failure
+        # would misreport a measurement that was taken.
+        lines.append("- Degraded: " + "; ".join(str(item) for item in result["degraded"] or ()))
+    elif result.get("error"):
         lines.append(f"- Failure: {result['error']}")
     lines += [
         "",
@@ -706,6 +711,11 @@ def _render_case_markdown(result: dict) -> str:
     return "\n".join(lines)
 
 
+#: Report tag class per run status. A degraded run completed its lifecycle with a named
+#: shortfall, so it is neither a pass nor an abort and must not be rendered as either.
+_STATUS_TAGS = {"passed": "pass", "degraded": "degraded"}
+
+
 def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup]) -> str:
     target = str(result.get("target") or case_root.name)
     fixture = str(result.get("fixture") or case_root.name)
@@ -716,7 +726,15 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
 
     resumed = str(result.get("resumed_from") or "")
     detail = ""
-    if result.get("error"):
+    if status == "degraded":
+        # Not a failure: the lifecycle ran end to end and the scores below describe the
+        # application the build actually produced. Name what fell short and leave it at that.
+        detail = (
+            "Degraded: <code>"
+            + html.escape("; ".join(str(item) for item in result.get("degraded") or ()))
+            + "</code>. Every later stage ran against the work the build produced."
+        )
+    elif result.get("error"):
         detail = f"Failure: <code>{html.escape(str(result['error']))}</code>"
     elif passed and resumed:
         # A resumed run reuses state an earlier attempt produced, and its command table still
@@ -906,7 +924,7 @@ def _render_kit(kit_root: Path, results: Sequence[tuple[str, dict]]) -> str:
         usage = item.get("usage") if isinstance(item.get("usage"), dict) else {}
         commands = [entry for entry in item.get("commands") or [] if isinstance(entry, dict)]
         environment = item.get("environment") if isinstance(item.get("environment"), dict) else {}
-        state = "pass" if case_status == "passed" else "fail"
+        state = _STATUS_TAGS.get(case_status, "fail")
         rows.append([
             f"<td>{_anchor(f'runs/{run_id}/index.html', run_id)}</td>",
             f'<td><span class="tag {state}">{html.escape(case_status.upper())}</span></td>',

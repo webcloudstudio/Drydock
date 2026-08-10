@@ -10,6 +10,37 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: Three further classes of unsatisfiable acceptance criterion are caught
+  statically, closing the defect family that failed the Toml UAT build on five consecutive
+  runs. `proof_integrity.analyze_invocation` reports an `env=` dict literal carrying no
+  `**os.environ` unpacking: it replaces the child environment rather than extending it, so the
+  check runs with no `PATH` and grades a missing tool. A new `analyze_staged_invocation` reads
+  the staged asset a criterion invokes, extracts the environment variables the asset's own
+  unset-guard exits on, and reports a call that omits one — the requirement comes from the
+  script, not from configuration, so the rule holds for any harness the Analysis stages. A new
+  `analyze_shell_escapes` reports `printf '%s'` handed arguments containing `\n`: the format
+  copies its argument verbatim, so the program under test is graded on input the author never
+  wrote. `plan` strips all three, and `plan_create.md` now states the staged-asset invocation
+  contract so fewer are authored in the first place.
+
+- 2026-08-10: An unsatisfiable acceptance criterion is quarantined at build time rather than
+  refusing the build. `build` previously raised `SpecificationError` and exited 1 on the first
+  such criterion, which is unrecoverable in an unattended run: a repair pass may not rewrite a
+  staged acceptance asset, so every rerun failed identically. The criterion is now excluded
+  from the graded set, named on the console and in the failure report under `quarantined:`,
+  and carried on the step result as `quarantined_acceptance`. A criterion that proved nothing
+  no longer fails the block that owns it, and a Blueprint defect is no longer reported as an
+  implementation defect.
+
+- 2026-08-10: `drydock uat` continues past a failed build and reports the run as `degraded`
+  instead of aborting it. A build that exhausts its repair budget has reached a terminal
+  state, and the partial application, the scores over it, and the test command's verdict are
+  the only record of how far Drydock got — discarding them lost the measurement the run
+  exists to take. `UATResult` gains a `degraded` tuple naming each stage that fell short;
+  `result.json`, the run receipt, and the kit index render `DEGRADED` as its own verdict,
+  neither a pass nor a failure. A clean build whose test command fails is still a failed run,
+  and its scores now run before the verdict is recorded.
+
 - 2026-08-10: `proof_integrity.analyze_output_assertions` now reads the regular-expression form
   of an output assertion, not only `in` / `not in` comparisons. Its own remediation advice
   recommends rewriting a pinned tally as `re.search(r"\b0\s+failed\b", result.stdout)`, which

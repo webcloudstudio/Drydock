@@ -35,6 +35,7 @@ from drydock.acceptance import (
     AcceptanceRequirement,
     AcceptanceRunResult,
     ProgrammaticAcceptance,
+    QuarantinedAcceptance,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     run_programmatic_acceptance,
@@ -95,12 +96,6 @@ from drydock.override import (
 from drydock.paths import get_repo_root, get_rigging_root, get_stack_dir
 from drydock.prompt_assembly import PromptAssembly, part, section_heading_part
 from drydock.prompts import load_prompt
-from drydock.proof_integrity import (
-    analyze_invocation,
-    analyze_literals,
-    analyze_output_assertions,
-    analyze_structure,
-)
 from drydock.source_roles import (
     SourceRole,
     StagedAsset,
@@ -263,6 +258,10 @@ class BuildStepResult:
     stop_reason: str = ""
     calls_used: int = 0
     calls_budget: int = 0
+    # Criteria this story owns that were excluded from grading as unsatisfiable by
+    # construction. They are not failures and not passes: they proved nothing, and the
+    # report has to say so rather than let the story read as fully verified.
+    quarantined_acceptance: tuple[QuarantinedAcceptance, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -888,40 +887,32 @@ def _ensure_applied_specs_current(plan_path: Path, blueprint_dir: Path) -> tuple
     return tuple(lines)
 
 
-def _reject_unsatisfiable_acceptance(checks: tuple[ProgrammaticAcceptance, ...]) -> None:
-    """Block the build when a Blueprint assertion cannot pass by construction.
+def _quarantine_unsatisfiable_acceptance(
+    checks: tuple[ProgrammaticAcceptance, ...], *, sources_dir: Path | None
+) -> tuple[tuple[ProgrammaticAcceptance, ...], tuple[QuarantinedAcceptance, ...]]:
+    """Exclude Blueprint assertions that cannot pass by construction, and report them.
 
     A mis-authored expectation is not a red baseline the build can drive green: no correct
-    implementation satisfies it, so the step would spend a full LLM cycle and fail. Fail here
-    instead, naming the Blueprint file to repair.
+    implementation satisfies it. Grading against it fails the block for a Blueprint defect and
+    keeps failing, because a repair pass may not rewrite a staged acceptance asset. Removing it
+    from the graded set costs nothing real — it proved nothing while it was there — and leaves
+    the build free to measure the criteria that do mean something.
 
-    Three families qualify. A mis-authored *expectation* (a raw literal carrying what the author
-    meant as a control character) asserts against something no conforming implementation
-    produces. A mis-authored *snippet* (unparseable, or reading a name it never binds) dies in
-    its own frame before the code under test runs at all. A mis-authored *invocation* launches
-    something other than the command under test, so its assertions answer to nothing the build
-    can change.
+    Four families qualify. A mis-authored *expectation* (a raw literal carrying what the author
+    meant as a control character, or an assertion on a tally the runner owns) asserts against
+    something no conforming implementation produces. A mis-authored *snippet* (unparseable, or
+    reading a name it never binds) dies in its own frame before the code under test runs at all.
+    A mis-authored *invocation* launches something other than the command under test, or hands
+    it an environment with no ``PATH``. A mis-authored *staged-asset call* omits a precondition
+    the staged script itself enforces, so it grades that guard rather than the program.
+
+    The exclusion is loud, not silent: the caller surfaces every quarantined criterion, records
+    it against the Target, and a story left with nothing to grade shows as an unproved story in
+    the acceptance score.
     """
-    lines: list[str] = []
-    for check in checks:
-        for defect in analyze_literals(check.code):
-            lines.append(f"  - {check.source} [{check.check_id}]: {defect.message}")
-        for structural in analyze_structure(check.code):
-            lines.append(f"  - {check.source} [{check.check_id}]: {structural.message}")
-        for invocation in analyze_invocation(check.code):
-            lines.append(f"  - {check.source} [{check.check_id}]: {invocation.message}")
-        # An assertion forbidding a word the command prints on success is false on correct
-        # code. Only the fatal class blocks: a merely redundant substring check still passes.
-        for output_defect in analyze_output_assertions(check.code):
-            if output_defect.fatal:
-                lines.append(f"  - {check.source} [{check.check_id}]: {output_defect.message}")
-    if not lines:
-        return
-    raise SpecificationError(
-        "Build blocked: unsatisfiable Programmatic Acceptance assertion.\n"
-        + "\n".join(lines)
-        + "\nRepair the assertion in the Blueprint specification, then rerun the build."
-    )
+    from drydock.acceptance import partition_unsatisfiable
+
+    return partition_unsatisfiable(checks, sources_dir=sources_dir)
 
 
 _RESULT_RE = re.compile(r"RESULT:\s*(SUCCESS|FAILURE|FAIL|ERROR)", re.IGNORECASE)
@@ -2327,8 +2318,17 @@ def build_target(
                 gathered_checks.append(check)
                 story_by_check[check.check_id] = block
                 story_by_source_check[(check.source, check.check_id)] = block
-        checks = tuple(gathered_checks)
-        _reject_unsatisfiable_acceptance(checks)
+        checks, quarantined = _quarantine_unsatisfiable_acceptance(
+            tuple(gathered_checks), sources_dir=resolved_build_dir / "sources"
+        )
+        if quarantined:
+            _emit(
+                on_text,
+                f"acceptance: quarantined {len(quarantined)} unsatisfiable "
+                f"criteri{'on' if len(quarantined) == 1 else 'a'} — not graded",
+            )
+            for entry in quarantined:
+                _emit(on_text, f"  - {entry.rendered}")
         unauthorized = []
         authorized_missing = []
         requirement_evidence: list[str] = []
@@ -3329,6 +3329,12 @@ def build_target(
             owned_acceptance = tuple(
                 check for check in acceptance if check.check_id in owned_check_ids
             )
+            owned_quarantined = tuple(
+                entry
+                for entry in quarantined
+                if (owner := story_by_source_check.get((entry.source, entry.check_id))) is not None
+                and owner.block_id == block.block_id
+            )
             step_result = BuildStepResult(
                 block_id=block.block_id,
                 name=block.name,
@@ -3352,6 +3358,7 @@ def build_target(
                 stop_reason=step_stop_reason,
                 calls_used=len(attempt_records),
                 calls_budget=max_attempt + 1,
+                quarantined_acceptance=owned_quarantined,
             )
             steps.append(step_result)
             if on_step is not None:

@@ -2675,20 +2675,37 @@ def test_a_resource_kill_still_loops_the_repair_pass():
     assert _is_repairable("programmatic acceptance failed (resource exhaustion): x") is True
 
 
-def test_unsatisfiable_acceptance_blocks_the_build_before_the_agent_runs(tmp_path):
-    """A mis-authored expectation is not a red baseline the agent can drive green. Blocking
-    here spends no LLM cycle and names the Blueprint file to repair."""
+def _quarantine_log(tmp_path, spec: str) -> tuple[list[str], object]:
+    """Build a Target whose only criterion is unsatisfiable; return the console log and runner.
+
+    The criterion is excluded from grading rather than failing the build: it proved nothing,
+    and a repair pass may not rewrite it, so grading against it would fail identically forever.
+    """
     target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNSATISFIABLE_SPEC, encoding="utf-8")
+    (target_dir / "blueprint" / "DATABASE.md").write_text(spec, encoding="utf-8")
     runner = make_runner()
+    log: list[str] = []
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
+    return log, runner
 
-    with pytest.raises(SpecificationError) as exc:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
 
-    message = str(exc.value)
-    assert "unsatisfiable Programmatic Acceptance" in message
-    assert "DATABASE.md [escapes]" in message
-    assert runner.calls == []
+def test_unsatisfiable_acceptance_is_quarantined_rather_than_graded(tmp_path):
+    """A mis-authored expectation is not a red baseline the agent can drive green. Excluding
+    it from the graded set names the Blueprint file to repair and lets the build proceed."""
+    log, _ = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
+
+    text = "\n".join(log)
+    assert "quarantined 1 unsatisfiable criterion — not graded" in text
+    assert "DATABASE.md [escapes]" in text
+
+
+def test_a_quarantined_criterion_does_not_fail_the_build(tmp_path):
+    # The whole point: a Blueprint defect must not be reported as an implementation failure,
+    # and must not consume the repair budget on a criterion no implementation can satisfy.
+    log, runner = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
+
+    assert runner.calls, "the build must proceed rather than refuse on a Blueprint defect"
+    assert "result: FAILED" not in "\n".join(log)
 
 
 def test_a_hardcoded_conformance_tally_blocks_the_build(tmp_path):
@@ -2710,14 +2727,13 @@ def test_a_hardcoded_conformance_tally_blocks_the_build(tmp_path):
         encoding="utf-8",
     )
     runner = make_runner()
+    log: list[str] = []
 
-    with pytest.raises(SpecificationError) as exc:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
 
-    message = str(exc.value)
-    assert "unsatisfiable Programmatic Acceptance" in message
-    assert "DATABASE.md [complete-conformance-suite]" in message
-    assert runner.calls == []
+    text = "\n".join(log)
+    assert "quarantined 1 unsatisfiable criterion — not graded" in text
+    assert "DATABASE.md [complete-conformance-suite]" in text
 
 
 # Every check runs as its own script in its own process. A snippet that reads a name a sibling
@@ -2748,21 +2764,15 @@ assert result.returncode == 0
 """
 
 
-def test_a_check_reading_a_sibling_checks_name_blocks_the_build(tmp_path):
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_CARRIED_NAME_SPEC, encoding="utf-8")
-    runner = make_runner()
+def test_a_check_reading_a_sibling_checks_name_is_quarantined(tmp_path):
+    log, _ = _quarantine_log(tmp_path, _CARRIED_NAME_SPEC)
 
-    with pytest.raises(SpecificationError) as exc:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
-
-    message = str(exc.value)
-    assert "DATABASE.md [block-priority]" in message
-    assert "'result' is read but never defined" in message
-    assert "its own process" in message
-    # The sibling check that *does* define its own names is not implicated.
-    assert "[block-conformance]" not in message
-    assert runner.calls == []
+    text = "\n".join(log)
+    assert "DATABASE.md [block-priority]" in text
+    assert "'result' is read but never defined" in text
+    assert "its own process" in text
+    # The sibling check that *does* define its own names keeps grading.
+    assert "quarantined 1 unsatisfiable criterion" in text
 
 
 _UNPARSEABLE_SPEC = """# FEATURE: Blocks
@@ -2778,16 +2788,10 @@ assert convert("a") ==
 """
 
 
-def test_an_unparseable_check_blocks_the_build(tmp_path):
-    target_dir, build_dir = _setup(tmp_path)
-    (target_dir / "blueprint" / "DATABASE.md").write_text(_UNPARSEABLE_SPEC, encoding="utf-8")
-    runner = make_runner()
+def test_an_unparseable_check_is_quarantined(tmp_path):
+    log, _ = _quarantine_log(tmp_path, _UNPARSEABLE_SPEC)
 
-    with pytest.raises(SpecificationError) as exc:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
-
-    assert "not valid Python" in str(exc.value)
-    assert runner.calls == []
+    assert "not valid Python" in "\n".join(log)
 
 
 # ── continue-repair (resume in place) ──────────────────────────────────────────
@@ -3336,15 +3340,13 @@ def test_malformed_invocation_blocks_the_build_before_the_agent_runs(tmp_path):
         _MALFORMED_INVOCATION_SPEC, encoding="utf-8"
     )
     runner = make_runner()
+    log: list[str] = []
 
-    with pytest.raises(SpecificationError) as exc:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
 
-    message = str(exc.value)
-    assert "unsatisfiable Programmatic Acceptance" in message
-    assert "DATABASE.md [scoped-number]" in message
-    assert "the intended command never runs" in message
-    assert runner.calls == []
+    text = "\n".join(log)
+    assert "DATABASE.md [scoped-number]" in text
+    assert "the intended command never runs" in text
 
 
 _TALLY_ASSERTION_SPEC = """# FEATURE: Conformance
@@ -3371,15 +3373,13 @@ def test_tally_word_assertion_blocks_the_build_before_the_agent_runs(tmp_path):
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_TALLY_ASSERTION_SPEC, encoding="utf-8")
     runner = make_runner()
+    log: list[str] = []
 
-    with pytest.raises(SpecificationError) as exc:
-        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+    build_target("Demo", target_dir, build_dir=build_dir, runner=runner, on_text=log.append)
 
-    message = str(exc.value)
-    assert "unsatisfiable Programmatic Acceptance" in message
-    assert "DATABASE.md [suite-conformance]" in message
-    assert "Gate on the exit status instead" in message
-    assert runner.calls == []
+    text = "\n".join(log)
+    assert "DATABASE.md [suite-conformance]" in text
+    assert "Gate on the exit status instead" in text
 
 
 def test_undeclared_runtime_prerequisite_blocks_without_repair_and_preserves_work(tmp_path):

@@ -471,6 +471,15 @@ Additional body guidance:
   Include framework test-client dependencies such as `httpx`. Never install or silently assume an
   undeclared tool. Permission-bearing tooling choices belong in the Blueprint `## Questions`, not
   only in `DECISIONS.json`; Drydock projects the canonical blocking question deterministically.
+- An assertion that invokes a staged asset obeys that asset's own documented interface. Read the
+  asset before writing the call. Every environment variable it declares required is supplied, and
+  it is supplied by extending the inherited environment — `env={**os.environ, "NAME": value}`.
+  Never write `env={"NAME": value}`: that replaces the environment, leaving the child with no
+  `PATH`, so nothing it invokes resolves and the assertion fails at every level of implementation
+  quality. Never repair a staged asset's interface by editing the asset.
+- An assertion that feeds input to a program passes it through `subprocess` `input=` rather than a
+  shell. When a shell is unavoidable, `printf '%s'` copies its argument verbatim: `\n` reaches the
+  program as a backslash and a letter, not a newline. Use `printf '%b'` or a real line break.
 - `User Acceptance` contains only Commander-observed checks that cannot be honestly automated.
 ---
 

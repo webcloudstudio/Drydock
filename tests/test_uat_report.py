@@ -15,6 +15,7 @@ def _case(
     run_id: str = "20260101T000000.000000Z",
     status: str = "passed",
     failing: bool = False,
+    degraded: tuple[str, ...] = (),
 ) -> Path:
     """Write a minimal but complete UAT run directory shaped like a real kit run."""
     case = kit_root / "runs" / run_id
@@ -51,6 +52,7 @@ def _case(
             "output_dir": str(case),
             "evidence_dir": str(case / "evidence"),
             "error": "commonmark: build exited 1" if failing else "",
+            "degraded": list(degraded),
             "score_exit_codes": {"acceptance": 0},
             "usage": {"calls": 2, "input_tokens": 10, "cached_input_tokens": 4, "output_tokens": 3},
             "environment": {"provider": "codex", "model": "test-model"},
@@ -347,3 +349,38 @@ def test_case_kit_requires_a_run_record(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="no readable result.json"):
         build_case_kit(case)
+
+
+# --- Degraded runs -----------------------------------------------------------
+
+
+def test_a_degraded_run_is_reported_as_neither_a_pass_nor_a_failure(tmp_path: Path) -> None:
+    kit = tmp_path / "Toml"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    case = _case(
+        kit,
+        status="degraded",
+        failing=True,
+        degraded=("initial-build-1 exited 1", "test exited 1"),
+    )
+
+    page = build_case_kit(case).read_text(encoding="utf-8")
+    readme = (case / "README.md").read_text(encoding="utf-8")
+
+    assert "Degraded: <code>initial-build-1 exited 1; test exited 1</code>" in page
+    assert "Every later stage ran against the work the build produced." in page
+    assert "Failure:" not in page
+    assert "- Degraded: initial-build-1 exited 1; test exited 1" in readme
+
+
+def test_the_kit_index_tags_a_degraded_run_distinctly(tmp_path: Path) -> None:
+    kit = tmp_path / "Toml"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    (kit / "README.md").write_text("# Toml\n", encoding="utf-8")
+    _case(kit, status="degraded", degraded=("initial-build-1 exited 1",))
+
+    page = build_kit_index(kit).read_text(encoding="utf-8")
+
+    assert '<span class="tag degraded">DEGRADED</span>' in page

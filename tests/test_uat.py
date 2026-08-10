@@ -777,3 +777,120 @@ def test_run_ids_are_readable_and_stay_chronological_across_the_format_change() 
         ["20260809T204459.901240Z", "20260809.204500", "20260808.235959"], key=run_sort_key
     )
     assert ordered == ["20260808.235959", "20260809T204459.901240Z", "20260809.204500"]
+
+
+# --- Degraded runs -----------------------------------------------------------
+#
+# A build that exhausts its repair budget is a terminal state, not an aborted one. Stopping
+# the run there discards the measurement the UAT exists to take: the partial application, the
+# scores over it, and the test command's verdict are the only record of how far Drydock got.
+
+
+def _staged_runner(tmp_path: Path, *, failing: tuple[str, ...], ready_passes: int = 1):
+    """A runner that reports the target ready ``ready_passes`` times, then fails ``failing``."""
+    seen: list[str] = []
+
+    def runner(argv, cwd, env, output_dir, label):
+        del env
+        parts = tuple(argv[3:])
+        seen.append(label)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = output_dir / f"{label}.stdout.log"
+        stderr = output_dir / f"{label}.stderr.log"
+        stdout.write_text("", encoding="utf-8")
+        stderr.write_text("", encoding="utf-8")
+        returncode = 0
+        if parts[:1] == ("status",) and "--ready" in parts:
+            returncode = 0 if sum(1 for item in seen if "ready" in item) <= ready_passes else 1
+        elif any(token in label for token in failing):
+            returncode = 1
+        return CommandResult(tuple(argv), returncode, 1, str(stdout), str(stderr), label, str(cwd))
+
+    return runner, seen
+
+
+def test_a_failed_build_degrades_the_run_and_the_lifecycle_continues(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, seen = _staged_runner(tmp_path, failing=("initial-build",))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    result = results[0]
+    assert result.status == "degraded"
+    assert result.degraded == ("initial-build-1 exited 1",)
+    # The measurement the run exists to take still happened.
+    assert any("score-acceptance" in label for label in seen)
+    assert any("score-release" in label for label in seen)
+    assert set(result.score_exit_codes) == {"acceptance", "build-report", "release"}
+
+
+def test_a_degraded_run_records_its_test_verdict_without_becoming_a_failure(
+    tmp_path: Path,
+) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, _ = _staged_runner(tmp_path, failing=("initial-build", "test"))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    # A degraded build is expected to fail the scoring command; that is the measurement, not a
+    # second, separate failure.
+    assert results[0].status == "degraded"
+    assert "test exited 1" in results[0].degraded
+
+
+def test_a_clean_build_that_fails_its_test_command_still_fails_the_run(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, seen = _staged_runner(tmp_path, failing=("test",))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status == "failed"
+    assert "test exited 1" in results[0].error
+    # The scores still ran: they describe the same application the test command just measured.
+    assert any("score-release" in label for label in seen)
+
+
+def test_a_run_with_no_failures_still_passes(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, _ = _staged_runner(tmp_path, failing=())
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status == "passed"
+    assert results[0].degraded == ()

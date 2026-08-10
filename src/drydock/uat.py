@@ -100,6 +100,11 @@ class UATResult:
     error: str = ""
     evidence_dir: str = ""
     environment: dict[str, str] = field(default_factory=dict)
+    #: Stages that failed but did not stop the run. A build that exhausts its repair budget is a
+    #: terminal state, not an aborted one: the work it produced is exactly what the remaining
+    #: stages measure, so the run continues and reports ``degraded`` rather than discarding the
+    #: measurement it was launched to take.
+    degraded: tuple[str, ...] = ()
     #: Stage this run was re-entered at, empty for a run executed from the beginning. A resumed
     #: run reuses prior state, so its receipt must not present itself as a clean lifecycle.
     resumed_from: str = ""
@@ -703,8 +708,15 @@ def run_fixture(
             f"{sequence:02d}-test",
         )
         commands.append(result)
-        if result.returncode != 0:
-            raise DrydockError(f"{fixture.name}: test exited {result.returncode}")
+        if result.returncode == 0:
+            return
+        # The scoring command is the run's headline measurement, and the scores that follow it
+        # describe the same application. Record the verdict and let them run: a degraded build
+        # is expected to fail here, and a clean build that fails here still fails the run.
+        if degraded:
+            degraded.append(f"test exited {result.returncode}")
+        else:
+            test_failures.append(f"{fixture.name}: test exited {result.returncode}")
 
     def capture_status(stage: str) -> None:
         """Preserve all supported status views without turning a snapshot into a gate."""
@@ -713,8 +725,17 @@ def run_fixture(
         execute(("status",), f"{stage}-workspace-status", required=False)
 
     def build_to_completion(stage: str) -> None:
+        """Build until nothing is ready, recording — not raising on — a terminal build failure.
+
+        A build that exhausts its repair budget has reached its terminal state. Stopping the run
+        there discards the measurement the UAT exists to take: the partial application, the
+        scores over it, and the test command's verdict are all still meaningful, and are the only
+        record of how far Drydock actually got. So the stage is marked degraded and the lifecycle
+        continues to scoring.
+        """
         nonlocal build_passes
         stage_passes = 0
+        stage_degraded = False
         while True:
             ready = execute(("status", fixture.target, "--ready"), f"{stage}-ready", required=False)
             if ready.returncode != 0:
@@ -722,14 +743,32 @@ def run_fixture(
             stage_passes += 1
             build_passes += 1
             if stage_passes > max_build_passes:
-                raise DrydockError(
-                    f"{fixture.name}: exceeded {max_build_passes} build passes during {stage}"
+                degraded.append(
+                    f"{stage}: exceeded {max_build_passes} build passes without completing"
                 )
-            execute(("build", fixture.target, "--override"), f"{stage}-build-{stage_passes}")
-        execute(("status", fixture.target, "--check"), f"{stage}-complete")
+                stage_degraded = True
+                break
+            built = execute(
+                ("build", fixture.target, "--override"),
+                f"{stage}-build-{stage_passes}",
+                required=False,
+            )
+            if built.returncode != 0:
+                degraded.append(f"{stage}-build-{stage_passes} exited {built.returncode}")
+                stage_degraded = True
+                break
+        # ``--check`` is the completion gate. Once the stage is known incomplete it is a status
+        # snapshot, not a verdict, and failing the run on it would restate the degradation.
+        execute(
+            ("status", fixture.target, "--check"),
+            f"{stage}-complete",
+            required=not stage_degraded,
+        )
 
     error = ""
     status = "passed"
+    degraded: list[str] = []
+    test_failures: list[str] = []
     try:
         if start <= stage_index("init"):
             execute(("init", fixture.target), "init")
@@ -771,6 +810,15 @@ def run_fixture(
         status = "failed"
         error = str(exc)
 
+    if status != "failed" and test_failures:
+        status = "failed"
+        error = test_failures[0]
+    elif status != "failed" and degraded:
+        # Every stage ran; one of them ended below completion. The run is a measurement with a
+        # named shortfall, not an aborted run and not a clean pass.
+        status = "degraded"
+        error = "; ".join(degraded)
+
     _collect_evidence(case_root, workspace, evidence_dir, commands)
     elapsed_ms = round((time.monotonic() - started) * 1000)
     environment = _environment(model, provider, effort)
@@ -791,6 +839,7 @@ def run_fixture(
         evidence_dir=str(evidence_dir),
         environment=environment,
         resumed_from=start_stage if start else "",
+        degraded=tuple(degraded),
     )
     (case_root / "result.json").write_text(
         json.dumps(result.to_dict(case_root), indent=2, sort_keys=True) + "\n", encoding="utf-8"

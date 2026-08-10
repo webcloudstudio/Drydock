@@ -2217,13 +2217,18 @@ def _parse_plan_text(text: str) -> BuildPlan:
 ACCEPTANCE_REMOVED_MARKER = "removed unsatisfiable acceptance criterion"
 
 
-def _strip_unsatisfiable_acceptance(blocks: dict[str, str]) -> tuple[str, ...]:
+def _strip_unsatisfiable_acceptance(
+    blocks: dict[str, str], *, sources_dir: Path | None = None
+) -> tuple[str, ...]:
     """Remove unsatisfiable acceptance criteria from the emitted specs, in place.
 
     The Manifest is the build graph. A criterion that cannot pass by construction makes the
     block that owns it unbuildable, and the build cannot repair it — staged acceptance assets
     are restored before grading. Catching it at plan time is the difference between a warning
     now and a failed build later.
+
+    ``sources_dir`` points at the staged assets the emitted criteria will run against, so a
+    criterion that invokes one can be checked against that asset's own declared preconditions.
     """
     from drydock.acceptance import drop_unsatisfiable_acceptance
 
@@ -2231,7 +2236,9 @@ def _strip_unsatisfiable_acceptance(blocks: dict[str, str]) -> tuple[str, ...]:
     for name in sorted(blocks):
         if name in _RESERVED_BLOCKS:
             continue
-        cleaned, dropped = drop_unsatisfiable_acceptance(blocks[name], source=name)
+        cleaned, dropped = drop_unsatisfiable_acceptance(
+            blocks[name], source=name, sources_dir=sources_dir
+        )
         if not dropped:
             continue
         blocks[name] = cleaned
@@ -2597,7 +2604,9 @@ def _validate_plan_output(
     # graph guarantees will fail. Strip it here, before the Manifest is validated or written,
     # so the emitted plan is one that can actually be built. Removals are reported, and the
     # assertion gate below still measures what each story has left.
-    dropped_acceptance = _strip_unsatisfiable_acceptance(blocks)
+    dropped_acceptance = _strip_unsatisfiable_acceptance(
+        blocks, sources_dir=blueprint_dir / "sources"
+    )
     forbidden_artifacts = sorted(name for name in emitted_specs if name in _NON_BLUEPRINT_ARTIFACTS)
     if forbidden_artifacts:
         names = ", ".join(forbidden_artifacts)

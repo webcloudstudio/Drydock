@@ -3997,3 +3997,78 @@ def test_a_clean_plan_records_no_waivers(tmp_path):
 
     assert result.waivers == ()
     assert "override:" not in (target_dir / "METADATA.md").read_text(encoding="utf-8")
+
+
+# The staged-asset contract at plan time. A criterion that calls a staged harness without the
+# environment that harness enforces is unbuildable, and the build may not repair it — the asset
+# is restored before grading. Catching it here is the difference between a warning now and a
+# failed build forty minutes later.
+
+_STAGED_HARNESS_SCRIPT = """#!/bin/sh
+set -u
+
+if [ -z "${DECODER:-}" ]; then
+    echo "error: DECODER is not set; give the command that runs your decoder." >&2
+    exit 2
+fi
+
+exec toml-test -decoder "${DECODER}" "$@"
+"""
+
+_STAGED_CRITERION = """### key-conformance
+The implementation passes the key conformance slice.
+
+```python
+import subprocess
+
+result = subprocess.run(
+    ["sh", "sources/run_conformance.sh", "-run", "valid/key*"],
+    capture_output=True,
+    text=True,
+)
+print(result.stdout)
+assert result.returncode == 0
+```"""
+
+
+def test_plan_strips_a_staged_call_missing_the_environment_the_asset_requires(tmp_path):
+    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
+
+    sources = tmp_path / "sources"
+    sources.mkdir(parents=True, exist_ok=True)
+    (sources / "run_conformance.sh").write_text(_STAGED_HARNESS_SCRIPT, encoding="utf-8")
+    manifest = _manifest()
+    spec = _spec_with(
+        _pa("Status reports state.", "Status exits clean.") + "\n\n" + _STAGED_CRITERION
+    )
+    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
+
+    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert "key-conformance" not in blocks["FEATURE-Status.md"]
+    assert "### check-1" in blocks["FEATURE-Status.md"]
+    removal = next(w for w in warnings if ACCEPTANCE_REMOVED_MARKER in w)
+    assert "FEATURE-Status.md [key-conformance]" in removal
+    assert "DECODER" in removal
+
+
+def test_plan_keeps_the_same_call_when_it_extends_the_inherited_environment(tmp_path):
+    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
+
+    sources = tmp_path / "sources"
+    sources.mkdir(parents=True, exist_ok=True)
+    (sources / "run_conformance.sh").write_text(_STAGED_HARNESS_SCRIPT, encoding="utf-8")
+    manifest = _manifest()
+    correct = _STAGED_CRITERION.replace(
+        "import subprocess", "import os\nimport subprocess"
+    ).replace(
+        "    capture_output=True,",
+        '    env={**os.environ, "DECODER": "./toml-decoder"},\n    capture_output=True,',
+    )
+    spec = _spec_with(_pa("Status reports state.", "Status exits clean.") + "\n\n" + correct)
+    blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
+
+    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+
+    assert "key-conformance" in blocks["FEATURE-Status.md"]
+    assert not any(ACCEPTANCE_REMOVED_MARKER in w for w in warnings)
