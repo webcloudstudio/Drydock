@@ -52,6 +52,25 @@ def test_parse_skips_malformed_rows_rather_than_raising():
     ]
 
 
+def test_parse_reads_backticked_cells_as_plain_names():
+    """A code-span filename names the same Rigging file as the bare form.
+
+    The specification prints filenames as code spans, so hand-edited and LLM-proposed
+    stacks arrive backticked; parsing them as distinct names silently loses the guidance.
+    """
+    text = (
+        "# Technology Stack\n\n"
+        "| Technology | Rigging | Notes |\n|---|---|---|\n"
+        "| Python | `python.md` | conventional |\n| Flask | `flask.md` | |\n"
+    )
+    entries = technology_stack.parse(text)
+    assert [(e.technology, e.rigging) for e in entries] == [
+        ("Python", "python.md"),
+        ("Flask", "flask.md"),
+    ]
+    assert technology_stack.stack_files_from(entries) == ["python.md", "flask.md"]
+
+
 def test_parse_returns_empty_when_no_table_is_present():
     assert technology_stack.parse("# Technology Stack\n\nNo table yet.\n") == []
 

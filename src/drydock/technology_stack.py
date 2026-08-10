@@ -146,8 +146,25 @@ def _escape_cell(value: str) -> str:
     return value.replace("|", r"\|").replace("\n", " ")
 
 
+def _strip_code_span(value: str) -> str:
+    """Drop inline-code backticks around a cell value.
+
+    The file is hand-edited and the specification prints filenames as code spans, so
+    ``` `python.md` ``` and ``python.md`` name the same Rigging file. Without this the
+    backticked form parses as a distinct, unresolvable name and degrades silently into
+    a missing build-time context file.
+    """
+    stripped = value.strip()
+    if len(stripped) > 1 and stripped.startswith("`") and stripped.endswith("`"):
+        return stripped.strip("`").strip()
+    return stripped
+
+
 def _split_row(line: str) -> list[str]:
-    return [cell.strip().replace(r"\|", "|") for cell in re.split(r"(?<!\\)\|", line.strip("|"))]
+    return [
+        _strip_code_span(cell).replace(r"\|", "|")
+        for cell in re.split(r"(?<!\\)\|", line.strip("|"))
+    ]
 
 
 def render(entries: list[StackEntry], approved: str | None = None) -> str:
