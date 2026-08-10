@@ -588,6 +588,10 @@ _TALLY_VOCABULARY = frozenset({
     "warnings",
 })
 _STREAM_ATTRS = frozenset({"stdout", "stderr", "output"})
+# A runner prints its summary to stdout. The same word on stderr carries no such guarantee —
+# a command that succeeds usually writes nothing there — so a stderr assertion is satisfiable
+# and must not be treated as a defect.
+_TALLY_STREAMS = frozenset({"stdout", "output"})
 
 
 @dataclass(frozen=True)
@@ -616,28 +620,39 @@ class OutputAssertionDefect:
         )
 
 
-def _reads_captured_stream(node: ast.AST, captured_names: frozenset[str]) -> bool:
-    """True when ``node`` reads a subprocess result stream, directly or through a binding."""
+def _streams_read(node: ast.AST, bindings: dict[str, frozenset[str]]) -> frozenset[str]:
+    """Which subprocess result streams ``node`` reads, directly or through a binding."""
+    found: set[str] = set()
     for child in ast.walk(node):
         if isinstance(child, ast.Attribute) and child.attr in _STREAM_ATTRS:
-            return True
-        if isinstance(child, ast.Name) and child.id in captured_names:
-            return True
-    return False
+            found.add(child.attr)
+        elif isinstance(child, ast.Name) and child.id in bindings:
+            found |= bindings[child.id]
+    return frozenset(found)
 
 
-def _stream_bindings(tree: ast.AST) -> frozenset[str]:
-    """Names bound to a captured stream, so ``out = result.stdout`` is tracked through ``out``."""
-    names: set[str] = set()
+def _reads_captured_stream(node: ast.AST, bindings: dict[str, frozenset[str]]) -> bool:
+    """True when ``node`` reads a subprocess result stream, directly or through a binding."""
+    return bool(_streams_read(node, bindings))
+
+
+def _stream_bindings(tree: ast.AST) -> dict[str, frozenset[str]]:
+    """Names bound to captured streams, so ``out = result.stdout`` is tracked through ``out``.
+
+    The mapped value keeps *which* streams the name carries: a stderr binding must not inherit
+    the stdout tally reasoning.
+    """
+    bindings: dict[str, frozenset[str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
-        if not _reads_captured_stream(node.value, frozenset(names)):
+        streams = _streams_read(node.value, bindings)
+        if not streams:
             continue
         for target in node.targets:
             if isinstance(target, ast.Name):
-                names.add(target.id)
-    return frozenset(names)
+                bindings[target.id] = bindings.get(target.id, frozenset()) | streams
+    return bindings
 
 
 def _asserts_exit_status(tree: ast.AST) -> bool:
@@ -670,10 +685,13 @@ def analyze_output_assertions(code: str) -> tuple[OutputAssertionDefect, ...]:
             continue
         if not isinstance(compare.left, ast.Constant) or not isinstance(compare.left.value, str):
             continue
-        if not _reads_captured_stream(compare.comparators[0], captured_names):
+        streams = _streams_read(compare.comparators[0], captured_names)
+        if not streams:
             continue
         literal = compare.left.value
-        fatal = literal.strip().lower() in _TALLY_VOCABULARY
+        # Fatal only where a runner actually prints its tally. The same word forbidden on
+        # stderr is an ordinary, satisfiable check on a command that succeeds silently.
+        fatal = bool(streams & _TALLY_STREAMS) and literal.strip().lower() in _TALLY_VOCABULARY
         if not fatal and not has_exit_assert:
             # No exit-status gate: the substring check is the only verdict the proof has.
             # Removing it would leave nothing, so it is not redundant and not reported.

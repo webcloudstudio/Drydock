@@ -412,3 +412,27 @@ def test_duplicate_literals_report_once():
         'assert "failed" not in result.stdout.lower()\nassert "failed" not in result.stderr.lower()'
     )
     assert len(defects) == 1
+
+
+def test_tally_word_on_stderr_is_not_fatal():
+    # A command that succeeds writes nothing to stderr, so forbidding a word there is an
+    # ordinary satisfiable check — the tally reasoning applies only to a runner's stdout.
+    (defect,) = analyze_output_assertions(
+        'assert result.returncode == 0\nassert "error" not in result.stderr.lower()'
+    )
+    assert not defect.fatal
+    assert defect.kind == "redundant-substring"
+
+
+def test_a_stderr_binding_does_not_inherit_stdout_reasoning():
+    (defect,) = analyze_output_assertions(
+        'err = result.stderr\nassert result.returncode == 0\nassert "failed" not in err'
+    )
+    assert not defect.fatal
+
+
+def test_a_stdout_binding_stays_fatal():
+    (defect,) = analyze_output_assertions(
+        'out = result.stdout\nassert result.returncode == 0\nassert "failed" not in out'
+    )
+    assert defect.fatal
