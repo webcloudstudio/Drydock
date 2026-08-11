@@ -12,12 +12,13 @@ from pathlib import Path
 
 import pytest
 
+from drydock import planning_session as ps
 from drydock import technology_stack
 from drydock.acceptance import parse_programmatic_acceptance, parse_programmatic_acceptance_text
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.plan_graph import PlannedStory
-from drydock.plan_score import score_plan
+from drydock.plan_score import artifact_defect, score_plan
 from drydock.planning_session import (
     PLAN_TOPOLOGY_CONTRACT,
     PlanDeferredResult,
@@ -4200,6 +4201,14 @@ def test_the_authoring_contract_example_parses_as_one_artifact():
     assert sorted(blocks) == ["FEATURE-Example.md"], (
         "a nested === AC === proof block was read as an artifact boundary"
     )
+    # Parsing is only the first gate. The continuation loop then drops any artifact whose body
+    # looks like it absorbed another one, and ``_HEADER_ANYWHERE_RE`` matched the nested proof
+    # delimiters — so a Blueprint parsed cleanly and was discarded as damaged anyway, which is
+    # how the first fix for this looked correct while `drydock plan` still failed.
+    assert ps._unpaired_artifact_names(text, blocks) == frozenset(), (
+        "a nested === AC === proof block was counted as an absorbed artifact"
+    )
+    assert artifact_defect("FEATURE-Example.md", blocks["FEATURE-Example.md"]) is None
     checks = parse_programmatic_acceptance_text(
         blocks["FEATURE-Example.md"], source="FEATURE-Example.md"
     )

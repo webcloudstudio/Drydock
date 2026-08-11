@@ -639,7 +639,10 @@ def _has_substantive_outside_text(text: str, *, after_artifacts: bool) -> bool:
 #: response is cut mid-artifact and resumes by restarting that artifact, ``_BLOCK_RE``
 #: spans from the first header to the first ``=== END ===``, swallowing the truncated
 #: attempt and the restart into one block that still pairs 1:1.
-_HEADER_ANYWHERE_RE = re.compile(r"=== (?:END )?(?P<name>[^=\n]+?) ===")
+#: The ``AC`` guard sits after the optional ``END`` so it rejects both ``=== AC <id> ===`` and
+#: ``=== END AC <id> ===``. Without it every Blueprint body carrying a criterion looks like an
+#: absorbed artifact and is dropped as damaged.
+_HEADER_ANYWHERE_RE = re.compile(rf"=== {RESERVED_BLOCK_NAMESPACE}(?:END )?(?P<name>[^=\n]+?) ===")
 
 
 def _artifact_delimiter_defects(text: str, blocks: dict[str, str]) -> tuple[str, ...]:

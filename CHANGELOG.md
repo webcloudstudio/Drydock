@@ -23,7 +23,13 @@ command surface and Typed Specification contract are unstable and may change bet
   `artifact_blocks`, `planning_session`, and `refit`; an artifact is a file, and no file is named
   `AC something`. A test parses the worked example out of the packaged `BLUEPRINTS_CONTRACT.md`
   and asserts it round-trips as one artifact holding two criteria, so the format the prompt
-  mandates and the format the parser accepts can no longer drift apart.
+  mandates and the format the parser accepts can no longer drift apart. The guard covers every
+  envelope pattern, not only the two that parse the response: `_HEADER_ANYWHERE_RE` decides
+  whether a parsed body absorbed another artifact, and `plan_shape` measures response shape, so
+  a Blueprint could parse cleanly and still be discarded as damaged. The reserved-namespace
+  pattern absorbs an optional `END` itself, because a pattern spelling the end marker as
+  `(?:END )?` backtracks that group to empty and otherwise matches `=== END AC <id> ===` under
+  the name `END AC <id>`.
 
 ### Changed
 

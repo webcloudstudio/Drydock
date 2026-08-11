@@ -15,8 +15,13 @@ from drydock.errors import DrydockError
 #: parser that reads a proof delimiter as an artifact boundary collapses or orphans every
 #: Blueprint carrying a criterion, so the envelope grammar reserves the ``AC`` namespace: an
 #: artifact is a file, and no file is named ``AC something``. Every envelope pattern in the
-#: codebase must carry this guard — see ``planning_session`` and ``refit``.
-RESERVED_BLOCK_NAMESPACE = r"(?!AC\s)"
+#: codebase must carry this guard — see ``planning_session``, ``plan_shape``, and ``refit``.
+#:
+#: The guard absorbs an optional ``END`` itself so it is position-independent. A pattern that
+#: writes the end marker as ``(?:END )?`` would otherwise backtrack that group to empty and match
+#: ``=== END AC <id> ===`` with the name ``END AC <id>``, defeating a guard placed after it.
+#: Placed *before* an optional ``END``, or after a literal one, this rejects both spellings.
+RESERVED_BLOCK_NAMESPACE = r"(?!(?:END\s+)?AC\s)"
 
 _OPEN_BLOCK_RE = re.compile(
     rf"^===\s*(?!END\s){RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$"

@@ -20,8 +20,16 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-_OPEN_RE = re.compile(r"^===\s+(?P<name>(?!END\b)[^\n=]+?)\s+===\s*$", re.MULTILINE)
-_END_RE = re.compile(r"^===\s+END\s+(?P<name>[^\n=]+?)\s+===\s*$", re.MULTILINE)
+from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
+
+# The envelope grammar reserves the ``AC`` namespace so the nested ``=== AC <id> ===`` proof
+# blocks inside a Blueprint body are not counted as artifact boundaries; see ``artifact_blocks``.
+_OPEN_RE = re.compile(
+    rf"^===\s+(?P<name>(?!END\b){RESERVED_BLOCK_NAMESPACE}[^\n=]+?)\s+===\s*$", re.MULTILINE
+)
+_END_RE = re.compile(
+    rf"^===\s+END\s+{RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s+===\s*$", re.MULTILINE
+)
 _TYPED_HEADING_RE = re.compile(r"^#\s+[A-Za-z][A-Za-z0-9_-]*\s*:\s*.+?\s*$", re.MULTILINE)
 
 
