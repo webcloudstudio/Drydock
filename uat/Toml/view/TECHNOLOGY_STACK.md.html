@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TECHNOLOGY_STACK.md</title>
+<link rel="stylesheet" href="../assets/kit.css">
+</head>
+<body>
+<main>
+<header class="fileheader"><div class="kind">Project document</div><h1>TECHNOLOGY_STACK.md</h1><div class="filenav"><a href="../index.html">&larr; Report</a><a href="../TECHNOLOGY_STACK.md">Raw file</a></div></header>
+<article class="doc"><h1>Technology Stack</h1>
+<p><strong>Approved:</strong> 2026-08-09</p>
+<p>Technology decisions of record for this Target. One row per technology, naming the Rigging best-practice file that governs building it.</p>
+<p>A <code>—</code> in the Rigging column means no Rigging guidance exists for that technology; the builder applies general best practice instead. Adding a row never requires a matching Rigging file.</p>
+<p>This file is owned by the UAT kit. It is seeded into the Target before <code>analyze</code>, which never overwrites it, and <code>drydock plan</code> reads it to assign per-story <code>stack:</code> guidance.</p>
+<div class="scroll"><table><thead><tr><th>Technology</th><th>Rigging</th><th>Notes</th></tr></thead><tbody><tr><td>Go</td><td>go.md</td><td>Go 1.22 or newer; toolchain minimum pinned in go.mod.</td></tr><tr><td>Shell</td><td>common.md</td><td>POSIX sh for the supplied scoring entry point and the conformance harness.</td></tr></tbody></table></div></article>
+</main>
+</body>
+</html>

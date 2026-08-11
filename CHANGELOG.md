@@ -10,6 +10,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: Every artifact a UAT report links is reached through a styled viewer instead of raw
+  text. A report previously handed the reader off to the browser's own rendering the moment they
+  opened a log, a transcript, or a Markdown document. `build_case_kit` and `write_kit_index` now
+  generate a viewer page per linked text artifact under `view/`, mirroring the artifact's path,
+  sharing one generated `assets/kit.css`: Markdown is rendered, anything else is shown as source,
+  and each viewer links its raw file and the report it came from. Rendering is done by a new
+  dependency-free `drydock.markdown_render`, which supports headings, fenced code, GitHub tables,
+  nested lists, block quotes, rules, and inline markup, and keeps consecutive `Field: value` lines
+  on their own lines so Drydock's typed artifacts survive rendering. `view/` and `assets/` are
+  generated output: excluded from `SHA256SUMS` and the evidence manifest, and replaced on every
+  rebuild. A published kit grows by roughly the size of its text artifacts.
+
 - 2026-08-10: A UAT kit's `index.html` is a project page, and every completed run refreshes it.
   The kit landing page previously listed only the runs and hardcoded links to `README.md` and
   `uat.json`. It now inventories the governed documents actually present at the kit root
@@ -263,6 +275,12 @@ command surface and Typed Specification contract are unstable and may change bet
   records onto Manifest story states — is unaffected.
 
 ### Fixed
+
+- 2026-08-10: `sha256sum -c SHA256SUMS` verifies a UAT run receipt cleanly. `build_case_kit`
+  rewrote `evidence/manifest.json` after taking its checksum, so verification reported that one
+  file `FAILED` on every kit Drydock has published. The manifest is now written before the
+  inventory is sealed and re-hashed afterwards, and it no longer lists its own digest among its
+  artifacts — a file cannot index itself.
 
 - 2026-08-09: A build step whose observed file delta is empty no longer skips acceptance grading
   when the block declares Programmatic Acceptance. `_written_files` compares content hashes, so a

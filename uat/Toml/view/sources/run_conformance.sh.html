@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sources/run_conformance.sh</title>
+<link rel="stylesheet" href="../../assets/kit.css">
+</head>
+<body>
+<main>
+<header class="fileheader"><div class="kind">Project document</div><h1>sources/run_conformance.sh</h1><div class="filenav"><a href="../../index.html">&larr; Report</a><a href="../../sources/run_conformance.sh">Raw file</a></div></header>
+<article class="doc"><pre>#!/bin/sh
+# Run the upstream toml-test conformance suite against the built decoder.
+#
+# Imported sources land in sources/ inside the application directory, so this is
+# normally invoked as `sh sources/run_conformance.sh` from that directory.
+#
+# Usage:
+#   DECODER=./toml-decoder sh sources/run_conformance.sh                        # full suite
+#   DECODER=./toml-decoder sh sources/run_conformance.sh -run &#x27;valid/string/*&#x27;  # one group
+#   DECODER=./toml-decoder sh sources/run_conformance.sh -json                  # machine-readable
+#
+# Environment:
+#   DECODER    decoder command. Required — this harness is language-neutral and
+#              deliberately has no default implementation language.
+#   TOML_TEST  absolute path to the toml-test binary (default: found on PATH)
+#
+# Exit code is the harness exit code: 0 only when every test passes.
+
+set -u
+
+if [ -z &quot;${DECODER:-}&quot; ]; then
+    echo &quot;error: DECODER is not set; give the command that runs your decoder.&quot; &gt;&amp;2
+    exit 2
+fi
+
+if [ -n &quot;${TOML_TEST:-}&quot; ] &amp;&amp; [ -x &quot;${TOML_TEST}&quot; ]; then
+    HARNESS=&quot;${TOML_TEST}&quot;
+elif command -v toml-test &gt;/dev/null 2&gt;&amp;1; then
+    HARNESS=&quot;$(command -v toml-test)&quot;
+else
+    cat &gt;&amp;2 &lt;&lt;&#x27;EOF&#x27;
+error: toml-test not found.
+
+Install the harness once:
+
+    sh sources/setup_harness.sh
+
+or set TOML_TEST to an existing binary:
+
+    TOML_TEST=/path/to/toml-test sh sources/run_conformance.sh
+EOF
+    exit 127
+fi
+
+NO_COLOR=1 exec &quot;${HARNESS}&quot; test -toml 1.0 -decoder &quot;${DECODER}&quot; &quot;$@&quot;
+</pre></article>
+</main>
+</body>
+</html>

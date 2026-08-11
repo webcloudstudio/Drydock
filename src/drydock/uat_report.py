@@ -21,9 +21,12 @@ import html
 import json
 import shutil
 from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+from drydock.markdown_render import render_markdown
 
 __all__ = [
     "ArtifactGroup",
@@ -40,6 +43,7 @@ PRUNED_DIRECTORIES = frozenset({"__pycache__", ".pytest_cache", ".ruff_cache", "
 
 _INDEX_NAME = "index.html"
 _SUMS_NAME = "SHA256SUMS"
+_MANIFEST_PATH = "evidence/manifest.json"
 # Generated at the top of a kit and rewritten on every rebuild, so they are never inventoried:
 # a checksum of a file that the next rebuild replaces is a checksum that fails verification.
 _KIT_OUTPUTS = frozenset({_INDEX_NAME, _SUMS_NAME, "README.md"})
@@ -214,6 +218,24 @@ def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
     return tuple(group for group in groups if group.files)
 
 
+def _rehash(
+    base: Path, groups: Sequence[ArtifactGroup], relative: str
+) -> tuple[ArtifactGroup, ...]:
+    """Re-inventory one file that was rewritten after the inventory was taken."""
+    path = base / relative
+    if not path.is_file():
+        return tuple(groups)
+    fresh = _hash_file(path, base)
+    return tuple(
+        ArtifactGroup(
+            group.name,
+            group.description,
+            tuple(fresh if record.path == relative else record for record in group.files),
+        )
+        for group in groups
+    )
+
+
 def _llm_calls(records_path: Path, base: Path) -> tuple[dict[str, object], ...]:
     """Summarize each recorded LLM execution for the receipt's call table."""
     from drydock.llm_usage import normalize_tokens, read_records
@@ -348,6 +370,25 @@ table.tree td.name strong { font-weight: 700; }
 .tag.raw { color: var(--muted); font-weight: 400; }
 footer { margin-top: 2.5rem; padding-top: .75rem; border-top: 3px double var(--hard); color: var(--muted); font-size: .78rem; }
 
+/* ── artifact viewer ────────────────────────────────────────── */
+.fileheader { border-bottom: 3px double var(--hard); padding-bottom: .7rem; margin-bottom: 1.25rem; }
+.fileheader h1 { font-size: 1.05rem; text-transform: none; letter-spacing: 0; word-break: break-all; }
+.filenav { display: flex; gap: 1.2rem; font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; }
+.doc > :first-child { margin-top: 0; }
+.doc h1, .doc h2, .doc h3, .doc h4, .doc h5, .doc h6 {
+  font-size: .95rem; margin: 1.6rem 0 .5rem; text-transform: uppercase; letter-spacing: .1em;
+}
+.doc h1 { font-size: 1.1rem; }
+.doc h3, .doc h4, .doc h5, .doc h6 { text-transform: none; letter-spacing: .04em; color: var(--muted); }
+.doc p { margin: 0 0 .9rem; }
+.doc ul, .doc ol { margin: 0 0 .9rem; padding-left: 1.6rem; }
+.doc li { margin: .15rem 0; }
+.doc blockquote { margin: 0 0 .9rem; padding: .1rem 0 .1rem .9rem; border-left: 3px solid var(--rule); color: var(--muted); }
+.doc hr { border: none; border-top: 1px solid var(--rule); margin: 1.4rem 0; }
+.doc table { margin-bottom: 0; }
+.doc .scroll { margin-bottom: .9rem; }
+.doc del { color: var(--muted); }
+
 @media print {
   body { padding: 0; }
   nav.tabs { display: none; }
@@ -396,6 +437,133 @@ def _page(title: str, body: str) -> str:
         f"</head>\n<body>\n<main>\n{body}\n</main>\n<script>{_SCRIPT}</script>\n"
         "</body>\n</html>\n"
     )
+
+
+# ── artifact viewers ─────────────────────────────────────────────────────────────────
+#
+# A report links hundreds of artifacts. Opened directly they are raw text, styled by nothing
+# and rendered by the browser's own defaults, so leaving a report means leaving its typography.
+# Every linked text artifact therefore gets a generated viewer page carrying the report's own
+# styling: Markdown is rendered, everything else is shown as source. The raw file stays one
+# click away and stays the thing SHA256SUMS covers.
+
+_VIEW_DIR = "view"
+_ASSETS_DIR = "assets"
+_CSS_NAME = "kit.css"
+#: Generated subtrees, rewritten on every rebuild and never inventoried or checksummed.
+_GENERATED_DIRS = frozenset({_VIEW_DIR, _ASSETS_DIR})
+_MARKDOWN_SUFFIXES = frozenset({".md", ".markdown"})
+_TEXT_SUFFIXES = frozenset({
+    ".cfg",
+    ".conf",
+    ".css",
+    ".csv",
+    ".diff",
+    ".html",
+    ".ini",
+    ".jinja",
+    ".js",
+    ".json",
+    ".jsonl",
+    ".log",
+    ".patch",
+    ".ps1",
+    ".py",
+    ".sh",
+    ".sql",
+    ".toml",
+    ".ts",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml",
+})
+#: Extensionless files Drydock and its Targets are known to write as text.
+_TEXT_STEMS = frozenset({"LICENSE", "NOTICE", "SHA256SUMS", "Makefile", "Dockerfile"})
+#: A viewer inlines the artifact, so an artifact larger than this stays raw-only.
+_MAX_VIEW_BYTES = 4_000_000
+
+#: Populated for the duration of one render so ``_anchor`` can route a linked artifact to its
+#: viewer. Rendering is single-threaded and deterministic; the map is cleared when it finishes.
+_VIEWERS: dict[str, str] = {}
+
+
+@contextmanager
+def _viewers(mapping: dict[str, str]) -> Iterator[None]:
+    """Route links to generated viewers while a page renders."""
+    _VIEWERS.clear()
+    _VIEWERS.update(mapping)
+    try:
+        yield
+    finally:
+        _VIEWERS.clear()
+
+
+def _is_viewable(path: Path) -> bool:
+    if path.suffix.lower() in _MARKDOWN_SUFFIXES or path.suffix.lower() in _TEXT_SUFFIXES:
+        return True
+    return not path.suffix and path.name in _TEXT_STEMS
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        if path.stat().st_size > _MAX_VIEW_BYTES:
+            return None
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _viewer_page(base: Path, relative: str, kind: str, home: str) -> str:
+    """Render one artifact inside the report's styling, or return "" if it cannot be shown."""
+    text = _read_text(base / relative)
+    if text is None:
+        return ""
+    depth = relative.count("/") + 1  # the viewer itself lives one level down, under view/
+    up = "../" * depth
+    markdown = Path(relative).suffix.lower() in _MARKDOWN_SUFFIXES
+    body = render_markdown(text) if markdown else f"<pre>{html.escape(text)}</pre>"
+    if not text.strip():
+        body = '<p class="note">This file is empty.</p>'
+    return (
+        '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{html.escape(relative)}</title>\n"
+        f'<link rel="stylesheet" href="{up}{_ASSETS_DIR}/{_CSS_NAME}">\n'
+        "</head>\n<body>\n<main>\n"
+        f'<header class="fileheader"><div class="kind">{html.escape(kind)}</div>'
+        f"<h1>{html.escape(relative)}</h1>"
+        f'<div class="filenav"><a href="{up}{html.escape(home)}">&larr; Report</a>'
+        f'<a href="{up}{html.escape(relative)}">Raw file</a></div></header>\n'
+        f'<article class="doc">{body}</article>\n'
+        "</main>\n</body>\n</html>\n"
+    )
+
+
+def _write_viewers(base: Path, relatives: Iterable[str], kind: str, home: str) -> dict[str, str]:
+    """Write a viewer for every artifact that can be shown; map artifact path to viewer path.
+
+    The generated subtrees are removed first, so a viewer for an artifact that no longer
+    exists cannot survive a rebuild.
+    """
+    for name in _GENERATED_DIRS:
+        shutil.rmtree(base / name, ignore_errors=True)
+    (base / _ASSETS_DIR).mkdir(parents=True, exist_ok=True)
+    (base / _ASSETS_DIR / _CSS_NAME).write_text(_STYLE, encoding="utf-8")
+    mapping: dict[str, str] = {}
+    for relative in sorted(set(relatives)):
+        source = base / relative
+        if not source.is_file() or not _is_viewable(source):
+            continue
+        page = _viewer_page(base, relative, kind, home)
+        if not page:
+            continue
+        target = base / _VIEW_DIR / f"{relative}.html"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(page, encoding="utf-8")
+        mapping[relative] = f"{_VIEW_DIR}/{relative}.html"
+    return mapping
 
 
 def _letterhead(kind: str, heading: str, docline: str, passed: bool, mark: str) -> str:
@@ -452,9 +620,14 @@ def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
 
 
 def _anchor(target: str, label: str = "") -> str:
-    """Link a kit file. Kits are read from ``file://``, so every link opens its own tab."""
+    """Link a kit file. Kits are read from ``file://``, so every link opens its own tab.
+
+    An artifact with a generated viewer is linked through it, so the reader stays inside the
+    report's styling instead of landing on raw text the browser renders however it likes.
+    """
+    href = _VIEWERS.get(target, target)
     return (
-        f'<a class="mono" href="{html.escape(target)}" target="_blank" '
+        f'<a class="mono" href="{html.escape(href)}" target="_blank" '
         f'rel="noopener">{html.escape(label or target)}</a>'
     )
 
@@ -988,6 +1161,22 @@ def _kit_documents(kit_root: Path) -> list[list[str]]:
     return rows
 
 
+def _kit_artifacts(kit_root: Path) -> list[str]:
+    """Every kit-level file the landing page can link: root documents and both bundles."""
+    paths = [
+        path.name
+        for path in sorted(kit_root.iterdir())
+        if path.is_file() and not path.name.startswith(".") and path.name not in _KIT_OUTPUTS
+    ]
+    for name, _ in _KIT_BUNDLES:
+        directory = kit_root / name
+        if directory.is_dir():
+            paths.extend(
+                f"{name}/{path.name}" for path in sorted(directory.iterdir()) if path.is_file()
+            )
+    return paths
+
+
 def _kit_bundle_panels(kit_root: Path) -> str:
     """List each input bundle's files, so the page shows what the runs were built from."""
     sections: list[str] = []
@@ -1086,22 +1275,38 @@ def build_case_kit(case_root: Path) -> Path:
 
     manifest_path = case_root / "evidence" / "manifest.json"
     groups = _case_groups(case_root, target)
-    _write_sums(case_root, groups)
 
+    # The manifest is rewritten here, so it is inventoried afterwards: a checksum taken before
+    # the rewrite describes a file that no longer exists, and `sha256sum -c` reports it FAILED.
+    # It cannot index its own digest either, so it lists every artifact except itself.
     manifest = _read_json(manifest_path)
     if isinstance(manifest, dict):
         manifest = _portable(manifest, case_root)
         manifest["environment"] = result.get("environment") or {}
         manifest["artifacts"] = {
-            group.name: [record.to_dict() for record in group.files] for group in groups
+            group.name: [
+                record.to_dict() for record in group.files if record.path != _MANIFEST_PATH
+            ]
+            for group in groups
         }
         manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
+        groups = _rehash(case_root, groups, _MANIFEST_PATH)
+    _write_sums(case_root, groups)
 
     (case_root / "README.md").write_text(_render_case_markdown(result), encoding="utf-8")
+    # Viewers are written before the receipt so every link it emits can point at one. They are
+    # generated output: excluded from the inventory above, and replaced on every rebuild.
+    viewers = _write_viewers(
+        case_root,
+        [record.path for group in groups for record in group.files],
+        "Run artifact",
+        _INDEX_NAME,
+    )
     index = case_root / _INDEX_NAME
-    index.write_text(_render_case(case_root, result, groups), encoding="utf-8")
+    with _viewers(viewers):
+        index.write_text(_render_case(case_root, result, groups), encoding="utf-8")
     return index
 
 
@@ -1134,7 +1339,9 @@ def write_kit_index(kit_root: Path) -> Path:
         if isinstance(result, dict):
             results.append((case_root.name, result))
     index = kit_root / _INDEX_NAME
-    index.write_text(_render_kit(kit_root, results), encoding="utf-8")
+    viewers = _write_viewers(kit_root, _kit_artifacts(kit_root), "Project document", _INDEX_NAME)
+    with _viewers(viewers):
+        index.write_text(_render_kit(kit_root, results), encoding="utf-8")
     return index
 
 

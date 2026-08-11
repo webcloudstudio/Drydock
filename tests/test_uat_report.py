@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -102,8 +103,9 @@ def test_case_kit_links_resolve_and_paths_are_relative(tmp_path: Path) -> None:
     assert links
     assert all(not link.startswith(("/", "http")) for link in links)
     assert all((case / link).exists() for link in links)
-    assert "evidence/commands/01-init.stdout.log" in links
-    assert "build/commonmark/parser.py" in links
+    # Every text artifact is reached through its styled viewer, never as raw text.
+    assert "view/evidence/commands/01-init.stdout.log.html" in links
+    assert "view/build/commonmark/parser.py.html" in links
 
 
 def test_case_kit_rewrites_absolute_paths_in_the_run_record(tmp_path: Path) -> None:
@@ -134,6 +136,22 @@ def test_case_kit_writes_verifiable_checksums_for_delivered_code(tmp_path: Path)
     manifest = json.loads((case / "evidence" / "manifest.json").read_text(encoding="utf-8"))
     assert "Build" in manifest["artifacts"]
     assert manifest["environment"]["provider"] == "codex"
+
+
+def test_the_written_checksums_verify_against_the_kit_they_describe(tmp_path: Path) -> None:
+    # The receipt's headline claim is `sha256sum -c SHA256SUMS`, so every recorded digest must
+    # match the file as the rebuild left it — including artifacts the rebuild itself rewrites.
+    case = _case(tmp_path / "run")
+
+    build_case_kit(case)
+
+    for line in (case / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+        digest, relative = line.split("  ", 1)
+        assert hashlib.sha256((case / relative).read_bytes()).hexdigest() == digest, relative
+
+    manifest = json.loads((case / "evidence" / "manifest.json").read_text(encoding="utf-8"))
+    listed = {record["path"] for records in manifest["artifacts"].values() for record in records}
+    assert "evidence/manifest.json" not in listed
 
 
 def test_case_kit_reports_failure_and_quotes_the_recorded_output(tmp_path: Path) -> None:
@@ -373,18 +391,86 @@ def test_kit_index_is_a_project_page_over_the_documents_and_bundles_on_disk(
     assert "Latest run:" in page
     for link in (
         "runs/20260103T000000.000000Z/index.html",
-        "SEA_TRIALS.md",
-        "TECHNOLOGY_STACK.md",
-        "NOTES.txt",
-        "sources/spec.md",
-        "updates/spec.md",
+        "view/SEA_TRIALS.md.html",
+        "view/TECHNOLOGY_STACK.md.html",
+        "view/NOTES.txt.html",
+        "view/sources/spec.md.html",
+        "view/updates/spec.md.html",
     ):
         assert f'href="{link}"' in page
     # A kit page never links a document the kit does not ship, and publishing markers are
     # not project documents.
-    assert 'href="USER_NOTES.md"' not in page
-    assert 'href=".nojekyll"' not in page
+    assert "USER_NOTES.md" not in page
+    assert ".nojekyll" not in page
     assert all((kit / link).exists() for link in _links(index))
+
+
+def test_a_viewer_renders_markdown_inside_the_report_styling(tmp_path: Path) -> None:
+    kit = tmp_path / "CommonMark"
+    kit.mkdir()
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    (kit / "SEA_TRIALS.md").write_text(
+        "# Sea Trials\n\n| ID | Verdict |\n|---|---|\n| st-001 | PASS |\n", encoding="utf-8"
+    )
+
+    build_kit_index(kit)
+
+    viewer = (kit / "view" / "SEA_TRIALS.md.html").read_text(encoding="utf-8")
+    assert "<h1>Sea Trials</h1>" in viewer
+    assert "<td>st-001</td>" in viewer
+    # The viewer carries the report's stylesheet and keeps the raw artifact one click away.
+    assert 'href="../assets/kit.css"' in viewer
+    assert 'href="../SEA_TRIALS.md"' in viewer
+    assert (kit / "assets" / "kit.css").is_file()
+
+
+def test_a_viewer_shows_a_log_as_source_and_nests_its_links_by_depth(tmp_path: Path) -> None:
+    kit = tmp_path / "CommonMark"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    case = _case(kit, run_id="20260105T000000.000000Z")
+
+    build_kit_index(kit)
+
+    viewer = (case / "view" / "evidence" / "commands" / "01-init.stdout.log.html").read_text(
+        encoding="utf-8"
+    )
+    assert "<pre>initialized" in viewer
+    assert 'href="../../../assets/kit.css"' in viewer
+    assert 'href="../../../evidence/commands/01-init.stdout.log"' in viewer
+    assert 'href="../../../index.html"' in viewer
+
+
+def test_generated_viewers_are_never_checksummed_and_never_outlive_their_artifact(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path / "run")
+
+    build_case_kit(case)
+
+    indexed = {
+        line.split("  ", 1)[1]
+        for line in (case / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+    }
+    assert not any(path.startswith(("view/", "assets/")) for path in indexed)
+
+    stale = case / "view" / "evidence" / "commands" / "01-init.stdout.log.html"
+    assert stale.is_file()
+    (case / "evidence" / "commands" / "01-init.stdout.log").unlink()
+    build_case_kit(case)
+    assert not stale.exists()
+
+
+def test_a_binary_artifact_keeps_its_raw_link_instead_of_a_viewer(tmp_path: Path) -> None:
+    kit = tmp_path / "CommonMark"
+    kit.mkdir()
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    (kit / "diagram.png").write_bytes(b"\x89PNG\r\n\x1a\n binary")
+
+    page = build_kit_index(kit).read_text(encoding="utf-8")
+
+    assert 'href="diagram.png"' in page
+    assert not (kit / "view" / "diagram.png.html").exists()
 
 
 def test_kit_index_omits_a_bundle_directory_the_kit_does_not_ship(tmp_path: Path) -> None:

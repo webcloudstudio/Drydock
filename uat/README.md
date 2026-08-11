@@ -8,6 +8,11 @@ row per recorded run linking that run's own `index.html`, the governed documents
 and the `sources/` and `updates/` bundles the runs were built from. It is written at the end of
 every run and rebuilt in full by `drydock uat --report`.
 
+Every linked text artifact — Markdown, logs, transcripts, delivered source — is reached through a
+generated viewer under `view/`, which carries the report's own styling: Markdown is rendered, and
+anything else is shown as source. Each viewer links the raw file, and `SHA256SUMS` covers the raw
+files, never the viewers. `view/` and `assets/` are generated output, rewritten on every rebuild.
+
 ## Layout
 
 ```text
@@ -17,6 +22,8 @@ uat/
     README.md            what the kit builds and how to run it
     uat.json             source bundle, updates, and test command
     index.html           project page: documents, input bundles, and every run
+    view/                generated viewer per linked artifact; mirrors the kit's paths
+    assets/kit.css       generated stylesheet shared by every viewer
     sources/             the input bundle, flat — no subdirectories
     updates/             replacement sources that drive incremental rebuilds
     runs/<run-id>/       one complete unattended run

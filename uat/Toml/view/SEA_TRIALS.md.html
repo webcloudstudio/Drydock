@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEA_TRIALS.md</title>
+<link rel="stylesheet" href="../assets/kit.css">
+</head>
+<body>
+<main>
+<header class="fileheader"><div class="kind">Project document</div><h1>SEA_TRIALS.md</h1><div class="filenav"><a href="../index.html">&larr; Report</a><a href="../SEA_TRIALS.md">Raw file</a></div></header>
+<article class="doc"><h1>Sea Trials: Toml</h1>
+<h2>Policy</h2>
+<div class="scroll"><table><thead><tr><th>Consequence</th><th>On FAIL</th><th>On INCONCLUSIVE</th></tr></thead><tbody><tr><td>blocks</td><td>fail</td><td>attest</td></tr><tr><td>scores</td><td>score</td><td>score</td></tr><tr><td>attests</td><td>report</td><td>report</td></tr></tbody></table></div>
+<h2>st-001: The supplied conformance suite passes</h2>
+<p>Type: technical<br>Required: yes<br>Criterion: The complete supplied toml-test suite shall pass with no case failed, errored, or skipped.<br>Testability: deterministic<br>Consequence: blocks<br>Verification: proof<br>Pattern: ubiquitous</p>
+<h2>st-002: Invalid documents are rejected</h2>
+<p>Type: behavioral<br>Required: yes<br>Criterion: If a document violates TOML v1.0.0, then the parser shall reject it with a non-zero exit status.<br>Testability: deterministic<br>Consequence: blocks<br>Verification: proof<br>Pattern: unwanted</p>
+<h2>st-003: Valid documents decode to the declared value model</h2>
+<p>Type: behavioral<br>Required: yes<br>Criterion: When given a valid TOML document, the parser shall emit the toml-test JSON encoding of its value model.<br>Testability: deterministic<br>Consequence: blocks<br>Verification: proof<br>Pattern: event</p>
+<h2>st-004: The parser terminates on every supplied case</h2>
+<p>Type: technical<br>Required: yes<br>Criterion: The parser shall terminate for every case the installed suite supplies.<br>Testability: deterministic<br>Consequence: blocks<br>Verification: proof<br>Pattern: ubiquitous</p>
+<h2>st-005: The implementation follows the stack decision</h2>
+<p>Type: technical<br>Required: no<br>Criterion: The parser shall be implemented in the language named by TECHNOLOGY_STACK.md.<br>Testability: deterministic<br>Consequence: scores<br>Verification: proof<br>Pattern: ubiquitous</p>
+<h2>st-006: The supplied harness is not modified</h2>
+<p>Type: guardrail<br>Required: yes<br>Criterion: The build shall never edit, filter, or reinterpret full_test.sh, run_conformance.sh, or the installed conformance suite.<br>Testability: judgeable<br>Consequence: blocks<br>Verification: evidence<br>Pattern: ubiquitous</p>
+<h2>st-007: No case count is asserted</h2>
+<p>Type: guardrail<br>Required: yes<br>Criterion: No acceptance criterion shall assert a fixed number of conformance cases, because the suite&#x27;s size is a property of the installed version.<br>Testability: judgeable<br>Consequence: blocks<br>Verification: evidence<br>Pattern: ubiquitous</p></article>
+</main>
+</body>
+</html>

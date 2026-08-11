@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sources/INSTRUCTIONS.md</title>
+<link rel="stylesheet" href="../../assets/kit.css">
+</head>
+<body>
+<main>
+<header class="fileheader"><div class="kind">Project document</div><h1>sources/INSTRUCTIONS.md</h1><div class="filenav"><a href="../../index.html">&larr; Report</a><a href="../../sources/INSTRUCTIONS.md">Raw file</a></div></header>
+<article class="doc"><h1>Build Instructions: CommonMark Parser</h1>
+<h2>Objective</h2>
+<p>Build a CommonMark parser that conforms to the specification in <code>spec.txt</code> (CommonMark 0.31.2). Correctness is measured by the conformance test suite in <code>test/</code>. The goal is to maximize the number of passing spec examples.</p>
+<h2>Interface Contract</h2>
+<p>The program is a filter: read Markdown from <strong>stdin</strong>, write HTML to <strong>stdout</strong>. No arguments, no config, no side effects.</p>
+<p>Minimal shape (<code>mycommonmark.py</code>):</p>
+<pre><code>#!/usr/bin/env python3
+import sys
+
+def convert(md: str) -&gt; str:
+    ...  # your implementation
+
+if __name__ == &quot;__main__&quot;:
+    md = sys.stdin.read()
+    sys.stdout.write(convert(md))</code></pre>
+<p>Language is not fixed — any executable that satisfies the stdin→stdout contract works, since the harness invokes it as a subprocess. Python 3 is the default.</p>
+<h2>Test / Verification Process</h2>
+<p>Imported UAT assets are flattened into the completed application&#x27;s <code>sources/</code> directory. Run the conformance suite from the completed application root:</p>
+<pre><code>env PYTHONPATH=sources python3 sources/spec_tests.py \
+  --spec sources/spec.txt \
+  --program &quot;python3 mycommonmark.py&quot;</code></pre>
+<p>Mechanics: <code>spec_tests.py</code> extracts every fenced <code>example</code> block from <code>spec.txt</code> (Markdown input + expected HTML), pipes each input through your program via stdin, normalizes both actual and expected HTML (<code>sources/normalize.py</code> parses and canonicalizes the DOM so insignificant whitespace/attribute differences are ignored), and compares.</p>
+<p>Output is per-example diffs plus a summary line:</p>
+<pre><code>NNN passed, NNN failed, N errored, N skipped</code></pre>
+<p>The passed count is the correctness score. Exit code = failed + errored.</p>
+<h3>Useful flags</h3>
+<ul><li><code>-P &quot;ATX headings&quot;</code> / <code>--pattern &quot;...&quot;</code> — run only sections matching the regex.</li></ul>
+<p>Use this to develop one construct at a time.</p>
+<ul><li><code>-n N</code> / <code>--number N</code> — run only example number N.</li><li><code>--track results.json</code> — persist pass/fail state; report only regressions and</li></ul>
+<p><code>fixed!</code> transitions between runs. Best signal while iterating.</p>
+<ul><li><code>-d</code> / <code>--dump-tests</code> — emit all examples as JSON to drive your own harness.</li><li><code>--no-normalize</code> — strict byte-for-byte comparison (stricter than scoring).</li></ul>
+<h2>Suggested Implementation Order</h2>
+<p>CommonMark parsing is two phases: <strong>block structure</strong> first, then <strong>inline parsing</strong> on the block contents. Implement in roughly this order and watch the section pattern scores climb:</p>
+<ol><li>Blocks: paragraphs, thematic breaks, ATX headings, setext headings,</li></ol>
+<p>indented code, fenced code, HTML blocks, block quotes, lists (the hardest block construct — lazy continuation, list-item nesting).</p>
+<ol><li>Inlines: backslash escapes, entity/numeric references, code spans, emphasis</li></ol>
+<p>and strong emphasis (the delimiter-run algorithm — nontrivial), links and images (including reference link definitions), autolinks, raw HTML, hard line breaks.</p>
+<p>The spec text is normative and contains the algorithms (see the &quot;Appendix: A parsing strategy&quot; section). Follow it directly rather than reinventing rules.</p>
+<h2>Files the LLM Needs</h2>
+<ul><li><code>sources/spec.txt</code> — the specification AND the test corpus. Primary input. Required.</li><li><code>sources/spec_tests.py</code>, <code>sources/cmark.py</code>, <code>sources/normalize.py</code> — the flattened harness.</li></ul>
+<h2>Definition of Done</h2>
+<ul><li>A POSIX-compatible <code>full_test.sh</code> exists at the completed application root.</li><li><code>sh full_test.sh</code> runs the complete, unfiltered conformance command above.</li><li>The script prints the suite output and exits zero only when the passed count is nonzero and the</li></ul>
+<p>failed, errored, and skipped counts are all zero.</p>
+<ul><li>Program satisfies the stdin→stdout contract.</li><li>Passing count is 100%</li><li>The llm is to write the library for this work - not reuse a public markdown library.  The exercise is to write the code as those libraries will not meet 100% acceptance criteria.  </li></ul>
+<p>The final build story depends on every implementation story, adds no new parser behavior, runs <code>sh full_test.sh</code>, and preserves the command, exit code, suite summary, standard output, and standard error as evidence.</p>
+<h2>Fixture Provenance</h2>
+<p>The CommonMark conformance assets are copied from:</p>
+<ul><li>https://github.com/commonmark/commonmark-spec</li><li>https://spec.commonmark.org/0.31.2/</li></ul>
+<p>The copied assets retain the upstream <code>LICENSE</code>.</p></article>
+</main>
+</body>
+</html>

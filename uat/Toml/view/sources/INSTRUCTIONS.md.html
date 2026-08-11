@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sources/INSTRUCTIONS.md</title>
+<link rel="stylesheet" href="../../assets/kit.css">
+</head>
+<body>
+<main>
+<header class="fileheader"><div class="kind">Project document</div><h1>sources/INSTRUCTIONS.md</h1><div class="filenav"><a href="../../index.html">&larr; Report</a><a href="../../sources/INSTRUCTIONS.md">Raw file</a></div></header>
+<article class="doc"><h1>Build Instructions: TOML 1.0.0 Parser</h1>
+<h2>Objective</h2>
+<p>Build a TOML v1.0.0 parser that conforms to the specification in <code>sources/toml-v1.0.0.md</code>. Correctness is measured by the upstream <code>toml-test</code> conformance suite. The goal is to pass every valid and every invalid case the installed suite supplies, with no case failed, errored, or skipped. The suite&#x27;s size is a property of the version <code>setup_harness.sh</code> installs; never assert a case count.</p>
+<p>Rejecting invalid input is scored as heavily as accepting valid input. A parser that is merely permissive fails roughly 70 percent of the suite.</p>
+<p>The implementation language is Go, fixed by this Target&#x27;s <code>TECHNOLOGY_STACK.md</code> and governed by <code>stack/go.md</code>. The conformance harness itself is written in Go but is a scoring instrument, not part of the deliverable.</p>
+<h2>Run Harness</h2>
+<p><code>sources/full_test.sh</code> is the single scoring entry point. It is supplied, not authored: it is staged verbatim into the build directory alongside the other imported assets, and <code>drydock uat</code> runs <code>sh sources/full_test.sh</code> from the completed application root and takes its exit code and output as the score. It reads:</p>
+<pre><code>#!/bin/sh
+# full_test.sh — scoring entry point. Do not filter, skip, or reinterpret.
+set -eu
+go build -o toml-decoder ./cmd/toml-decoder
+DECODER=&quot;$PWD/toml-decoder&quot; exec sh sources/run_conformance.sh</code></pre>
+<p>The build step is deliberately separate from the scoring step so that a compilation failure and a conformance failure are distinguishable in the evidence. <code>DECODER</code> is the harness&#x27;s only knowledge of the implementation language; the harness itself is language-neutral.</p>
+<p><strong>The scoring assets are read-only.</strong> <code>sources/full_test.sh</code>, <code>sources/run_conformance.sh</code>, and <code>sources/setup_harness.sh</code> are hash-verified against the import and restored before grading, so a modification is reported as tampering rather than honored. Do not write to them. Build <code>cmd/toml-decoder</code> so that the supplied entry point succeeds; changing the entry point is not a repair.</p>
+<h2>Interface Contract</h2>
+<p>The program is a filter: read TOML from <strong>stdin</strong>, write tagged JSON to <strong>stdout</strong>, exit <code>0</code>. On invalid TOML, write a diagnostic to <strong>stderr</strong> and exit non-zero. No arguments, no config, no side effects.</p>
+<p>Minimal shape (<code>cmd/toml-decoder/main.go</code>):</p>
+<pre><code>package main
+
+import (
+	&quot;encoding/json&quot;
+	&quot;fmt&quot;
+	&quot;io&quot;
+	&quot;os&quot;
+
+	&quot;github.com/owner/toml-decoder/internal/toml&quot;
+)
+
+func main() {
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	tagged, err := toml.Decode(string(input))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(tagged); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}</code></pre>
+<p>The parser lives in <code>internal/toml</code>; <code>main</code> reads, delegates, and encodes. See <code>stack/go.md</code> for the module layout and the toolchain floor.</p>
+<h3>Tagged JSON encoding</h3>
+<ul><li>TOML tables become JSON objects. Empty tables become <code>{}</code>.</li><li>TOML arrays become JSON arrays. Empty arrays become <code>[]</code>.</li><li>Every TOML <strong>value</strong> becomes <code>{&quot;type&quot;: &quot;&lt;TOML_TYPE&gt;&quot;, &quot;value&quot;: &quot;&lt;TOML_VALUE&gt;&quot;}</code>.</li><li><code>TOML_VALUE</code> is always a JSON string, including for integers, floats, and booleans.</li><li><code>TOML_TYPE</code> is one of: <code>string</code>, <code>integer</code>, <code>float</code>, <code>bool</code>, <code>datetime</code>,</li></ul>
+<p><code>datetime-local</code>, <code>date-local</code>, <code>time-local</code>.</p>
+<ul><li>Offset datetimes are encoded as RFC 3339. Local datetimes are RFC 3339 without</li></ul>
+<p>the offset. Local dates are the date part; local times are the time part.</p>
+<div class="scroll"><table><thead><tr><th>TOML</th><th>JSON</th></tr></thead><tbody><tr><td><code>a = 42</code></td><td><code>{&quot;a&quot;: {&quot;type&quot;: &quot;integer&quot;, &quot;value&quot;: &quot;42&quot;}}</code></td></tr><tr><td><code>a = true</code></td><td><code>{&quot;a&quot;: {&quot;type&quot;: &quot;bool&quot;, &quot;value&quot;: &quot;true&quot;}}</code></td></tr><tr><td><code>a = [&quot;a&quot;, 2]</code></td><td><code>{&quot;a&quot;: [{&quot;type&quot;:&quot;string&quot;,&quot;value&quot;:&quot;a&quot;}, {&quot;type&quot;:&quot;integer&quot;,&quot;value&quot;:&quot;2&quot;}]}</code></td></tr><tr><td><code>[tbl]</code>&lt;br&gt;<code>a = 42</code></td><td><code>{&quot;tbl&quot;: {&quot;a&quot;: {&quot;type&quot;: &quot;integer&quot;, &quot;value&quot;: &quot;42&quot;}}}</code></td></tr></tbody></table></div>
+<h2>Test / Verification Process</h2>
+<p>The imported source files are placed in a <code>sources/</code> subdirectory of the application directory. Install the harness once (network required, one time only):</p>
+<pre><code>sh sources/setup_harness.sh</code></pre>
+<p>Then run the suite from the application directory. <code>DECODER</code> is required — the harness has no default implementation language:</p>
+<pre><code>go build -o toml-decoder ./cmd/toml-decoder
+DECODER=&quot;$PWD/toml-decoder&quot; sh sources/run_conformance.sh</code></pre>
+<p>During development, <code>sh sources/full_test.sh</code> does both steps and is the same command the score is taken from.</p>
+<p>Mechanics: <code>toml-test</code> holds the corpus internally. For each valid case it pipes TOML into the decoder on stdin and compares the emitted tagged JSON against the expected description. For each invalid case it requires a non-zero exit. The summary is:</p>
+<pre><code>  valid tests: NNN passed,  N failed
+invalid tests: NNN passed,  N failed</code></pre>
+<p>The passed counts are the correctness score. Exit code is non-zero while any test fails.</p>
+<h3>Useful flags</h3>
+<p>Flags pass straight through <code>sources/run_conformance.sh</code> to <code>toml-test test</code>.</p>
+<ul><li><code>-run &#x27;valid/string/*&#x27;</code> — run one feature group. Use this to develop one</li></ul>
+<p>construct at a time.</p>
+<ul><li><code>-run=valid/string-empty,valid/string-nl</code> — run named cases.</li><li><code>-skip &#x27;invalid/datetime/*&#x27;</code> — exclude a group.</li><li><code>-json</code> — machine-readable report instead of text.</li><li><code>-v</code> — list passing tests as well as failures.</li><li><code>-script</code> — emit a shell script of <code>-skip</code> flags for the current failures,</li></ul>
+<p>which is the fastest way to snapshot known failures between passes.</p>
+<p>Feature groups available to <code>-run</code>:</p>
+<ul><li>valid: <code>array bool comment datetime float inline-table integer key spec-1.0.0 string table</code></li><li>invalid: the above plus <code>control encoding local-date local-datetime local-time</code></li></ul>
+<h2>Suggested Implementation Order</h2>
+<p>TOML parsing is lexically simple and structurally fussy. The difficulty is in key/table semantics and in rejecting malformed input, not in the grammar.</p>
+<ol><li><strong>Scaffolding</strong> — line handling, comments, whitespace, the stdin/stdout/exit</li></ol>
+<p>contract, tagged JSON emission.</p>
+<ol><li><strong>Scalars</strong> — booleans, integers (including <code>0x</code>, <code>0o</code>, <code>0b</code>, underscores),</li></ol>
+<p>floats (including <code>inf</code>, <code>nan</code>, exponents), basic and literal strings, then multi-line strings with their line-ending backslash and trimming rules.</p>
+<ol><li><strong>Keys</strong> — bare, quoted, and dotted keys; the redefinition rules.</li><li><strong>Tables</strong> — <code>[table]</code>, <code>[a.b.c]</code> implicit creation, <code>[[array of tables]]</code>,</li></ol>
+<p>and the rules governing which of these may follow which.</p>
+<ol><li><strong>Inline tables and arrays</strong> — including nesting and the TOML 1.0 restriction</li></ol>
+<p>that inline tables are closed to later extension.</p>
+<ol><li><strong>Datetimes</strong> — offset, local datetime, local date, local time.</li><li><strong>Invalid-input hardening</strong> — control characters, bad UTF-8, duplicate keys,</li></ol>
+<p>redefinition after an inline table, unterminated constructs. This is where most of the remaining score lives.</p>
+<p>The specification is normative and short. Follow it directly.</p>
+<h2>Files the LLM Needs</h2>
+<ul><li><code>sources/toml-v1.0.0.md</code> — the specification. Primary input. Required.</li><li><code>sources/full_test.sh</code> — the supplied scoring entry point.</li><li><code>sources/run_conformance.sh</code> — the conformance harness it invokes.</li><li><code>sources/setup_harness.sh</code> — one-time harness installation.</li></ul>
+<h2>Definition of Done</h2>
+<ul><li><code>sh sources/full_test.sh</code> runs cleanly with zero errors and exits zero.</li><li>The program satisfies the stdin → tagged-JSON → exit-code contract.</li><li>Every supplied valid and invalid case passes: the failed, errored, and skipped</li></ul>
+<p>counts are all zero. Assert the failure count with a whitespace-tolerant pattern such as <code>re.search(r&quot;\b0\s+failed\b&quot;, output)</code>; the harness aligns its summary columns and the case totals belong to the installed suite, so a literal tally is not a valid acceptance criterion.</p>
+<ul><li>The parser is written from the specification. **Every third-party TOML module is</li></ul>
+<p>forbidden** — <code>github.com/BurntSushi/toml</code>, <code>github.com/pelletier/go-toml</code>, <code>github.com/naoina/toml</code>, and any other. <code>BurntSushi/toml</code> scores near-perfectly on this suite, so importing it makes the exercise meaningless.</p>
+<ul><li><code>go.mod</code> declares no <code>require</code> dependencies. The standard library is sufficient:</li></ul>
+<p><code>encoding/json</code>, <code>strconv</code>, <code>strings</code>, <code>unicode</code>, <code>unicode/utf8</code>, <code>time</code>, <code>math</code>, <code>fmt</code>, <code>io</code>, <code>os</code>, <code>errors</code>.</p>
+<ul><li>No network access at test time after <code>setup_harness.sh</code> has run once.</li></ul></article>
+</main>
+</body>
+</html>
