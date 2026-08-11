@@ -7,7 +7,7 @@ import re
 import signal
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -21,6 +21,15 @@ SECTION_RE = re.compile(r"^## (?P<name>[^\n]+)\n", re.MULTILINE)
 PYTHON_FENCE_RE = re.compile(r"```python\s*\n(?P<code>.*?)\n```", re.DOTALL)
 HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", re.MULTILINE)
 REQUIRES_RE = re.compile(r"^Requires:\s*(?P<value>.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+#: The authored acceptance-criterion container. Every boundary is explicit: the id lives in the
+#: delimiter rather than being slugified from a nearby heading, and the body runs verbatim to a
+#: matching end marker. Nothing the criterion contains — a Markdown fence, a ``##`` line, a
+#: ``Requires:`` line inside a string — can move a boundary, because no boundary is inferred.
+#: Markup-processing targets make fence-bearing criteria ordinary rather than exotic.
+AC_OPEN_RE = re.compile(r"^===[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
+AC_END_RE = re.compile(r"^===[ \t]+END[ \t]+AC[ \t]+(?P<id>[^\n=]+?)[ \t]*===[ \t]*$", re.MULTILINE)
+#: Leading ``Key: value`` metadata lines inside an AC block, terminated by the first blank line.
+AC_META_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 _-]*):[ \t]*(?P<value>.*?)[ \t]*$")
 TIMEOUT_SECONDS = 60
 # A suite-bound check runs a complete conformance suite; a story timeout would kill it.
 SUITE_TIMEOUT_SECONDS = 900
@@ -465,16 +474,30 @@ def _sea_trials(prefix: str) -> tuple[str, ...]:
 
 
 def _requirements(prefix: str, *, source: str, check_id: str) -> tuple[AcceptanceRequirement, ...]:
+    return _requirements_from_values(
+        [match.group("value") for match in REQUIRES_RE.finditer(prefix)],
+        source=source,
+        check_id=check_id,
+    )
+
+
+def _requirements_from_values(
+    values: Sequence[str], *, source: str, check_id: str
+) -> tuple[AcceptanceRequirement, ...]:
+    """Validate ``Requires:`` declarations however they were delimited.
+
+    Both container formats converge here so the declaration rules have exactly one definition.
+    """
     requirements: list[AcceptanceRequirement] = []
-    for match in REQUIRES_RE.finditer(prefix):
+    for declaration in values:
         fields: dict[str, str] = {}
-        for raw in match.group("value").split(";"):
+        for raw in declaration.split(";"):
             if "=" not in raw:
                 raise ValueError(
-                    f"{source} [{check_id}] malformed Requires declaration {match.group('value')!r}"
+                    f"{source} [{check_id}] malformed Requires declaration {declaration!r}"
                 )
-            key, value = raw.split("=", 1)
-            fields[key.strip().lower()] = value.strip()
+            key, field_value = raw.split("=", 1)
+            fields[key.strip().lower()] = field_value.strip()
         kinds = [kind for kind in ("python-package", "executable") if kind in fields]
         if len(kinds) != 1 or set(fields) != {kinds[0], "scope"}:
             raise ValueError(
@@ -489,6 +512,110 @@ def _requirements(prefix: str, *, source: str, check_id: str) -> tuple[Acceptanc
             )
         requirements.append(AcceptanceRequirement(kinds[0], name, scope))
     return tuple(requirements)
+
+
+#: Metadata keys recognized inside an AC block. The set is closed on purpose: an unrecognized
+#: ``Key: value`` line ends the metadata run and begins the code, so an annotated assignment such
+#: as ``result: int = 5`` on the first code line cannot be mistaken for a declaration.
+_AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials"})
+
+
+def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcceptance:
+    """Split one AC block into its declarations and its verbatim proof body."""
+    lines = body.splitlines()
+    # The slice begins at the end of the opening marker's text, so the first element is that
+    # line's terminator rather than content. Dropping it keeps the metadata run at the top.
+    if lines and not lines[0].strip():
+        lines = lines[1:]
+    meta: dict[str, list[str]] = {}
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            index += 1
+            break
+        match = AC_META_RE.match(line)
+        if match is None or match.group("key").strip().lower() not in _AC_META_KEYS:
+            break
+        meta.setdefault(match.group("key").strip().lower(), []).append(match.group("value"))
+        index += 1
+    # The proof body is whatever follows, character for character. Only the trailing blank lines
+    # the author left before the end marker are dropped.
+    code = "\n".join(lines[index:]).strip("\n")
+    intent = " ".join(value.strip() for value in meta.get("intent", ()) if value.strip())
+    suite = " ".join(meta.get("suite", ())).strip().lower()
+    sea_trials = tuple(
+        value.lower()
+        for raw in ",".join(meta.get("sea trials", ())).split(",")
+        if (value := raw.strip())
+    )
+    return ProgrammaticAcceptance(
+        check_id=check_id,
+        source=source,
+        intent=intent or check_id,
+        code=code,
+        sea_trials=sea_trials,
+        full_suite=suite in {"full", "scoped"},
+        requirements=_requirements_from_values(
+            meta.get("requires", ()), source=source, check_id=check_id
+        ),
+    )
+
+
+def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticAcceptance, ...]:
+    """Return every ``=== AC <id> ===`` criterion in ``text``, or ``()`` when the file uses none.
+
+    Markers are read as one flat sequence in document order and must alternate strictly. An
+    unterminated block, an end marker naming a different id, a stray end marker, and a duplicate
+    id are all hard errors. The previous format degraded silently in exactly these cases: a
+    truncated criterion produced an unparseable fragment that graded UNVERIFIED and cost the
+    story nothing, so the gate disappeared without anyone being told.
+
+    Blocks are found document-wide rather than inside a ``## Programmatic Acceptance`` section,
+    because a ``##`` line inside a proof body would otherwise close that section early.
+    """
+    markers = sorted(
+        [(match.start(), "open", match) for match in AC_OPEN_RE.finditer(text)]
+        + [(match.start(), "end", match) for match in AC_END_RE.finditer(text)],
+        key=lambda item: item[0],
+    )
+    if not markers:
+        return ()
+    checks: list[ProgrammaticAcceptance] = []
+    seen: set[str] = set()
+    pending: tuple[str, int] | None = None
+    for _, kind, match in markers:
+        ident = match.group("id").strip()
+        if kind == "open":
+            if pending is not None:
+                raise ValueError(
+                    f"{source} [{pending[0]}] acceptance block is never closed: found "
+                    f"'=== AC {ident} ===' before '=== END AC {pending[0]} ==='"
+                )
+            if ident in seen:
+                raise ValueError(f"{source} [{ident}] duplicate acceptance criterion id")
+            seen.add(ident)
+            pending = (ident, match.end())
+            continue
+        if pending is None:
+            raise ValueError(
+                f"{source} [{ident}] '=== END AC {ident} ===' has no matching opening block"
+            )
+        if ident != pending[0]:
+            raise ValueError(
+                f"{source} [{pending[0]}] acceptance block closes with a different id: "
+                f"expected '=== END AC {pending[0]} ===', found '=== END AC {ident} ==='"
+            )
+        checks.append(
+            _parse_ac_block(text[pending[1] : match.start()], check_id=ident, source=source)
+        )
+        pending = None
+    if pending is not None:
+        raise ValueError(
+            f"{source} [{pending[0]}] acceptance block is never closed: "
+            f"'=== END AC {pending[0]} ===' is missing"
+        )
+    return tuple(checks)
 
 
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:
@@ -510,7 +637,16 @@ def _parse_programmatic_acceptance_file(
 def parse_programmatic_acceptance_text(
     text: str, *, source: str
 ) -> tuple[ProgrammaticAcceptance, ...]:
-    """Return Python acceptance snippets from in-memory Blueprint text."""
+    """Return Python acceptance snippets from in-memory Blueprint text.
+
+    The delimited ``=== AC <id> ===`` container is the authored form and is tried first. The
+    Markdown-fence form is retained for Blueprints not yet migrated; it infers every boundary and
+    so cannot survive a proof body that contains a fence, a ``##`` line, or a ``###`` line.
+    """
+    delimited = parse_delimited_acceptance(text, source=source)
+    if delimited:
+        return delimited
+
     section = _sections(text).get("programmatic acceptance", "")
     if not section or section.strip() == "- None.":
         return ()
@@ -597,42 +733,36 @@ def flag_unsatisfiable_acceptance(
     not charged against the build, and it does so from what actually happened rather than from a
     prediction about what would.
     """
-    del source  # named by the caller, which owns the message
-    section_match = next(
-        (
-            match
-            for match in SECTION_RE.finditer(text)
-            if match.group("name").strip().lower() == "programmatic acceptance"
-        ),
-        None,
+    checks = parse_programmatic_acceptance_text(text, source=source)
+    return tuple(
+        DroppedAcceptance(check_id=check.check_id, reason=defects[0])
+        for check in checks
+        if (defects := unsatisfiable_defects(check.code, sources_dir=sources_dir))
     )
-    if section_match is None:
-        return ()
-    following = [m for m in SECTION_RE.finditer(text) if m.start() > section_match.start()]
-    start = section_match.end()
-    end = following[0].start() if following else len(text)
-    section = text[start:end]
-    if not section.strip() or section.strip() == "- None.":
-        return ()
 
-    headings = list(HEADING_RE.finditer(section))
-    if not headings:
-        return ()
-    flagged: list[DroppedAcceptance] = []
-    for index, heading in enumerate(headings):
-        unit_end = headings[index + 1].start() if index + 1 < len(headings) else len(section)
-        unit = section[heading.start() : unit_end]
-        fence = PYTHON_FENCE_RE.search(unit)
-        if fence is None:
-            continue
-        defects = unsatisfiable_defects(fence.group("code").strip(), sources_dir=sources_dir)
-        if defects:
-            flagged.append(
-                DroppedAcceptance(
-                    check_id=_slugify(heading.group("title").strip()), reason=defects[0]
-                )
-            )
-    return tuple(flagged)
+
+def syntax_defect(code: str) -> str | None:
+    """Return why ``code`` is not Python at all, or ``None`` when it compiles.
+
+    This is deliberately not one of the ``unsatisfiable_defects`` heuristics, and it is gated
+    where those are only reported. Those analyzers *predict* that a well-formed assertion cannot
+    pass, which is a judgment with a false-positive rate — two were retracted for exactly that.
+    Compiling is not a prediction. A criterion that does not parse cannot execute under any
+    implementation, so it verifies nothing, and no correct build can change that.
+
+    Left ungated it is worse than useless: the fragment raises ``SyntaxError`` in its own frame,
+    which the runtime classifier reads as a malformed check, which settles UNVERIFIED and costs
+    the story nothing. The criterion stops gating and the story closes green.
+    """
+    try:
+        compile(code, "<acceptance>", "exec")
+    except SyntaxError as exc:
+        where = f" (line {exc.lineno})" if exc.lineno else ""
+        return f"criterion is not valid Python: {exc.msg}{where}"
+    except ValueError as exc:
+        # Source containing a null byte raises ValueError rather than SyntaxError.
+        return f"criterion is not valid Python: {exc}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -662,6 +792,17 @@ def flag_unsatisfiable(
         QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=defects[0])
         for check in checks
         if (defects := unsatisfiable_defects(check.code, sources_dir=sources_dir))
+    )
+
+
+def malformed_criteria(
+    checks: tuple[ProgrammaticAcceptance, ...],
+) -> tuple[QuarantinedAcceptance, ...]:
+    """Return every criterion that does not compile. A hard authoring defect, not a warning."""
+    return tuple(
+        QuarantinedAcceptance(check_id=check.check_id, source=check.source, reason=reason)
+        for check in checks
+        if (reason := syntax_defect(check.code)) is not None
     )
 
 

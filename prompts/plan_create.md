@@ -562,8 +562,8 @@ Derive the Manifest from the authored specs, not directly from the imported sour
   exercise every route, interface, read, and write it provides.
 - Do not copy Sea Trial commands into ordinary story acceptance or execute them while planning.
 - When the Analysis states a terminal verification story, that one story gates on the complete
-  suite: its `Programmatic Acceptance` assertion declares `Suite: full` on its own line in the
-  heading block, above the fenced code, and it `depends` on every implementation story. Without
+  suite: its `Programmatic Acceptance` assertion declares `Suite: full` as one of the block's
+  declaration lines, and it `depends` on every implementation story. Without
   that declaration a full-suite run is rejected. **Only the terminal story runs the whole suite.**
 - A harness staging or integration story — one that runs the imported runner only to prove it is
   staged and executes, not to gate correctness — must bound its invocation with the runner's

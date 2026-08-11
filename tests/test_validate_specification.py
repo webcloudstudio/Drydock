@@ -299,10 +299,17 @@ Blocks resolve before inlines.
         assert any("FEATURE-BLOCKS.md [block-priority]" in m for m in messages), messages
         assert any("never defined" in m for m in messages), messages
 
-    def test_unparseable_snippet_warns(self, tmp_target_root):
+    def test_unparseable_snippet_fails_rather_than_warning(self, tmp_target_root):
+        """Whether a snippet compiles is a fact about the file, so it gates like a parse error.
+
+        As a warning it was absorbed at run time: ``SyntaxError`` raised in the snippet's own
+        frame reads as a malformed check, settles UNVERIFIED, and costs the story nothing — so
+        the criterion silently stopped gating and its story closed green.
+        """
         target_dir = _init(tmp_target_root)
         result = self._validate(target_dir, "assert convert(")
-        assert any("not valid Python" in f.message for f in result.warnings())
+        assert any("not valid Python" in f.message for f in result.failures())
+        assert "Acceptance snippets" in [f.section for f in result.failures()]
 
     def test_self_contained_snippet_passes(self, tmp_target_root):
         target_dir = _init(tmp_target_root)

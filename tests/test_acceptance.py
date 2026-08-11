@@ -718,3 +718,138 @@ def test_grading_time_flags_read_the_staged_contract_when_given_the_sources_dire
     assert flag_unsatisfiable(checks) == ()
     flagged = flag_unsatisfiable(checks, sources_dir=_staged_sources(tmp_path))
     assert [entry.check_id for entry in flagged] == ["key-conformance"]
+
+
+# --- Delimited acceptance blocks -------------------------------------------------------
+#
+# The delimited container exists because every boundary in the Markdown form was inferred, and an
+# inferred boundary collides with ordinary proof content. A markup-processing target embeds
+# fences, ``##`` lines, and ``Requires:``-shaped strings in its proofs as a matter of course.
+
+_FENCE_BEARING_AC = '''\
+# Feature
+
+## Programmatic Acceptance
+
+=== AC fenced-code-roundtrip ===
+Intent: The parser renders a fenced code block.
+Suite: scoped
+Requires: executable=python3; scope=test
+Sea Trials: st-001
+
+import subprocess
+
+sample = """
+```
+print("hi")
+```
+"""
+## not a heading
+### also not a heading
+result = subprocess.run(["./parser"], input=sample, capture_output=True, text=True)
+assert result.returncode == 0
+=== END AC fenced-code-roundtrip ===
+
+=== AC second-check ===
+Intent: A second criterion that must survive the first.
+
+result: int = 5
+assert result == 5
+=== END AC second-check ===
+'''
+
+
+def test_a_proof_body_containing_a_markdown_fence_parses_whole():
+    """The defect this format replaces: a nested fence truncated the proof and ate its successor."""
+    checks = acceptance.parse_programmatic_acceptance_text(_FENCE_BEARING_AC, source="FEATURE-X.md")
+
+    assert [check.check_id for check in checks] == ["fenced-code-roundtrip", "second-check"]
+    first = checks[0]
+    assert "```" in first.code
+    assert first.code.splitlines()[-1] == "assert result.returncode == 0"
+    # Both bodies are real Python, which the truncated form never was.
+    for check in checks:
+        compile(check.code, "<ac>", "exec")
+
+
+def test_markdown_structure_inside_a_proof_body_is_inert():
+    checks = acceptance.parse_programmatic_acceptance_text(_FENCE_BEARING_AC, source="FEATURE-X.md")
+
+    assert "## not a heading" in checks[0].code
+    assert "### also not a heading" in checks[0].code
+
+
+def test_block_declarations_are_read_and_do_not_leak_into_the_proof():
+    checks = acceptance.parse_programmatic_acceptance_text(_FENCE_BEARING_AC, source="FEATURE-X.md")
+    first, second = checks
+
+    assert first.intent == "The parser renders a fenced code block."
+    assert first.full_suite is True
+    assert first.sea_trials == ("st-001",)
+    assert first.requirements == (AcceptanceRequirement("executable", "python3", "test"),)
+    assert not first.code.startswith("Intent:")
+    # An annotated assignment on the first code line is code, not a declaration.
+    assert second.code.startswith("result: int = 5")
+    assert second.requirements == ()
+
+
+@pytest.mark.parametrize(
+    ("label", "text"),
+    [
+        ("unterminated", "=== AC a ===\nassert 1\n"),
+        ("mismatched end id", "=== AC a ===\nassert 1\n=== END AC b ===\n"),
+        (
+            "duplicate id",
+            "=== AC a ===\nassert 1\n=== END AC a ===\n=== AC a ===\nassert 2\n=== END AC a ===\n",
+        ),
+        ("stray end", "=== END AC a ===\n"),
+        ("nested open", "=== AC a ===\nassert 1\n=== AC b ===\nassert 2\n=== END AC b ===\n"),
+    ],
+)
+def test_a_malformed_block_is_a_hard_error_never_a_silent_truncation(label, text):
+    with pytest.raises(ValueError):
+        acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-X.md")
+
+
+def test_legacy_markdown_blueprints_still_parse():
+    """Blueprints authored before the delimited format keep working."""
+    checks = acceptance.parse_programmatic_acceptance_text(
+        _TWO_CRITERIA_SPEC, source="FEATURE-X.md"
+    )
+
+    assert [check.check_id for check in checks] == ["scoped-pattern", "scoped-number"]
+
+
+# --- The compile gate ------------------------------------------------------------------
+
+
+def test_a_criterion_that_does_not_compile_is_reported_as_malformed():
+    """Left ungated this is absorbed: SyntaxError in the snippet's own frame settles UNVERIFIED
+    and costs the story nothing, so the criterion stops gating and the story closes green."""
+    checks = acceptance.parse_programmatic_acceptance_text(
+        "## Programmatic Acceptance\n\n"
+        "=== AC truncated ===\n"
+        "Intent: Truncated.\n\n"
+        'sample = """\n'
+        "=== END AC truncated ===\n",
+        source="FEATURE-X.md",
+    )
+    flagged = acceptance.malformed_criteria(checks)
+
+    assert [entry.check_id for entry in flagged] == ["truncated"]
+    assert "not valid Python" in flagged[0].reason
+
+
+def test_a_criterion_that_compiles_is_not_flagged():
+    """The gate asks only whether the text is Python — never whether the assertion can pass."""
+    checks = acceptance.parse_programmatic_acceptance_text(
+        "## Programmatic Acceptance\n\n"
+        "=== AC ok ===\n"
+        "Intent: Fine.\n\n"
+        "assert 1 == 2\n"
+        "=== END AC ok ===\n",
+        source="FEATURE-X.md",
+    )
+
+    assert acceptance.malformed_criteria(checks) == ()
+    assert acceptance.syntax_defect("assert 1 == 2") is None

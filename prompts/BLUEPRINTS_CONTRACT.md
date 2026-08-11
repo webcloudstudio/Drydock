@@ -143,9 +143,34 @@ Every authored Specification file ends with these sections, using `- None.` when
 
 ```
 
-`Programmatic Acceptance` contains executable Python assertion snippets. Each check uses a stable
-`### {check-id}` heading, a short intent sentence, and one fenced `python` block that can run from
-the build directory after the story implementing the file completes.
+`Programmatic Acceptance` contains executable Python assertion snippets. Each check is one
+explicitly delimited block that can run from the build directory after the story implementing the
+file completes:
+
+```
+=== AC {check-id} ===
+Intent: One sentence stating what the check proves.
+Suite: scoped
+Requires: executable=python3; scope=test
+Sea Trials: st-001
+
+<Python source, verbatim, to the end marker>
+=== END AC {check-id} ===
+```
+
+The delimiters are the whole format. The id lives in the opening marker, so it is never inferred
+from a nearby heading. Declarations are the `Key: value` lines at the top of the block, ending at
+the first blank line; `Intent:` is required and the rest are optional. Everything after that blank
+line is the proof body, taken character for character to the matching end marker.
+
+Nothing inside the body can move a boundary. A Markdown fence, a `##` line, a `###` line, or a
+`Requires:` line inside a string is ordinary content — which matters, because a target that
+processes markup will legitimately embed all of them in its proof. Write the body as plain Python;
+do not wrap it in a fence.
+
+An unterminated block, an end marker naming a different id, a stray end marker, and a duplicate id
+are all hard errors that stop planning. None of them degrade into a criterion that silently stops
+gating.
 
 ### The oracle rule
 
@@ -253,30 +278,25 @@ Print the captured `stdout` and `stderr` first, so the console, the evidence fil
 pass all carry the runner's own account of the failure. Printing is for diagnosis; it is never the
 oracle.
 
-````markdown
+```markdown
 ## Programmatic Acceptance
 
-### health-check
-The health endpoint returns an OK response.
-
+=== AC health-check ===
+Intent: The health endpoint returns an OK response.
 Sea Trials: st-001
 
-```python
 from app import create_app
 
 client = create_app().test_client()
 response = client.get("/health")
 assert response.status_code == 200
 assert response.get_json()["status"] == "ok"
-```
+=== END AC health-check ===
 
-### suite-conformance
-The implementation passes the conformance sections this story owns.
-
+=== AC suite-conformance ===
+Intent: The implementation passes the conformance sections this story owns.
 Suite: scoped
 
-```python
-import re
 import subprocess
 import sys
 
@@ -287,17 +307,15 @@ result = subprocess.run(
 print(result.stdout)
 print(result.stderr, file=sys.stderr)
 assert result.returncode == 0
-assert re.search(r"\b0\s+failed\b", result.stdout)
+=== END AC suite-conformance ===
 ```
-````
 
 `User Acceptance` contains only Commander-observed checks that cannot be honestly automated,
 such as look-and-feel or subjective workflow acceptance. Do not place deterministic behavior in
 `User Acceptance`.
 
-`Sea Trials:` optionally lists the stable project-acceptance IDs proved by an assertion. It
-appears between the intent sentence and Python fence. Every listed ID exists in
-`SEA_TRIALS.md`.
+`Sea Trials:` optionally lists the stable project-acceptance IDs proved by an assertion. It is one
+of the block's declaration lines. Every listed ID exists in `SEA_TRIALS.md`.
 
 **Programmatic acceptance is the story's definition of done, and a deterministic definition of
 done is never sampled.** Drydock builds each block in a single pass with no iterate loop, so the
@@ -307,8 +325,13 @@ builds to the sample. When an authoritative, externally-authored test suite alre
 specification's example suite plus a `*_tests.py` runner) — the acceptance runs that suite and
 requires a full pass over the story's scope, never a hand-picked subset. A feature story binds to
 the sections it owns and declares `Suite: scoped`; a terminal verification story gates on the whole
-suite and declares `Suite: full`. The marker sits on its own line in the check's heading block and
-tells the runner the check gates on the whole test suite rather than a story-scoped sample.
+suite and declares `Suite: full`. The marker is one of the block's declaration lines and tells the
+runner the check gates on the whole test suite rather than a story-scoped sample.
+
+**A scoped selector must select something.** A check that runs a suite with a section filter
+matching no cases exits zero and reports a pass while proving nothing. Select on a heading that
+actually owns cases, never on a chapter title that merely contains such headings. Drydock fails a
+criterion that is already green before the story's code exists.
 **The runner's exit status is the verdict, and it is the whole verdict.** A conformance runner
 already decides pass or fail and reports it the one way a caller can rely on. Asserting on its
 printed summary as well adds no information and adds a failure mode: the case count belongs to the

@@ -63,6 +63,22 @@ def is_generated_or_minified(text: str) -> bool:
     return longest >= _MINIFIED_LINE_CHARS and longest >= _MINIFIED_LINE_SHARE * len(text)
 
 
+def split_prompt_chunks(text: str) -> tuple[str, ...]:
+    """Split ``text`` into ``_CHUNK_CHARS``-bounded chunks on existing line boundaries."""
+    chunks: list[str] = []
+    current: list[str] = []
+    size = 0
+    for line in text.splitlines(keepends=True):
+        if current and size + len(line) > _CHUNK_CHARS:
+            chunks.append("".join(current))
+            current, size = [], 0
+        current.append(line)
+        size += len(line)
+    if current:
+        chunks.append("".join(current))
+    return tuple(chunks)
+
+
 @dataclass(frozen=True)
 class SourceMaterialFile:
     path: Path
@@ -75,12 +91,20 @@ class SourceMaterialFile:
 
     @property
     def prompt_chunks(self) -> tuple[str, ...]:
+        """Split the file into bounded chunks that never cut a line in half.
+
+        A chunk boundary is a formatting decision imposed on someone else's file, so it has to
+        fall where the file already has one. Slicing on a raw character offset lands mid-line
+        roughly every time, and each severed line reaches the model as two unrelated lines in two
+        separately fenced blocks — a specification whose indentation, fence lengths, and trailing
+        spaces are normative arrives describing a different language than the one on disk.
+
+        A single line longer than the budget is emitted whole rather than broken; exceeding the
+        chunk size costs tokens, whereas splitting the line costs correctness.
+        """
         if self.text is None:
             return ()
-        return tuple(
-            self.text[index : index + _CHUNK_CHARS]
-            for index in range(0, len(self.text), _CHUNK_CHARS)
-        )
+        return split_prompt_chunks(self.text)
 
 
 def discover_source_material(
@@ -135,7 +159,7 @@ def discover_source_material(
                     relative,
                     kind,
                     "chunked",
-                    f"split into {len(text) // _CHUNK_CHARS + 1} bounded chunks",
+                    f"split into {len(split_prompt_chunks(text))} bounded chunks",
                     text,
                     fence,
                 )

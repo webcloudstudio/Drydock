@@ -357,7 +357,7 @@ def validate_specification(
     # is still a hard failure: that is a fact about the file, not a judgement about the
     # assertion.
     section = "Acceptance snippets"
-    from drydock.acceptance import parse_programmatic_acceptance
+    from drydock.acceptance import parse_programmatic_acceptance, syntax_defect
     from drydock.proof_integrity import (
         analyze_invocation,
         analyze_literals,
@@ -378,6 +378,14 @@ def validate_specification(
             snippet_defects += 1
             continue
         for check in checks:
+            # Whether the snippet compiles is a fact about the file, in the same class as the
+            # container parsing, so it fails rather than warns. Left as a warning it would be
+            # silently absorbed at run time: SyntaxError in the snippet's own frame reads as a
+            # malformed check, settles UNVERIFIED, and costs the story nothing.
+            if (reason := syntax_defect(check.code)) is not None:
+                f(section, f"{md_file.name} [{check.check_id}]: {reason}")
+                snippet_defects += 1
+                continue
             for analyze in (
                 analyze_literals,
                 analyze_structure,

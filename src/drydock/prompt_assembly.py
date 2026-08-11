@@ -2,15 +2,39 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from drydock.prompt_headers import prompt_header_for_file, prompt_header_for_path
 
+_BACKTICK_RUN_RE = re.compile(r"`+")
+
 
 def estimate_tokens(byte_count: int) -> int:
     """Return Drydock's coarse token estimate: ``ceil(bytes / 4)``."""
     return (byte_count + 3) // 4
+
+
+def fenced_body(body: str, language: str = "") -> str:
+    """Fence ``body`` without altering a single character of it.
+
+    Two rules make an injected source file survive the trip into a prompt intact.
+
+    The delimiter must be longer than the longest backtick run the body contains. A fixed three
+    backticks is not safe for source material that is itself about Markdown: the CommonMark
+    specification opens its examples with thirty-two backticks at column zero, and every one of
+    them closes a ``` fence early, so the model receives the file's structure inverted.
+
+    Trailing whitespace is content, not formatting. Stripping it silently rewrites the very
+    constructs a whitespace-sensitive specification exists to define — two trailing spaces are a
+    CommonMark hard line break, and a blank line ends a paragraph. Exactly one trailing newline is
+    removed, because the closing fence supplies that line terminator itself; every other trailing
+    character survives.
+    """
+    longest = max((len(match.group(0)) for match in _BACKTICK_RUN_RE.finditer(body)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{language}\n{body.removesuffix(chr(10))}\n{fence}"
 
 
 @dataclass(frozen=True)
@@ -114,7 +138,11 @@ def fenced_markdown_part(
 ) -> PromptPart:
     role_attr = f' role="{role}"' if role else ""
     path_attr = f' path="{path}"' if path else ""
-    text = f'<pblock filename="{label}"{role_attr}{path_attr}>\n```markdown\n{body.rstrip()}\n```\n</pblock>\n\n'
+    text = (
+        f'<pblock filename="{label}"{role_attr}{path_attr}>\n'
+        f"{fenced_body(body, 'markdown')}\n"
+        f"</pblock>\n\n"
+    )
     return PromptPart(label=label, text=text, kind=kind, role=role, path=path)
 
 
@@ -129,7 +157,11 @@ def fenced_block_part(
 ) -> PromptPart:
     role_attr = f' role="{role}"' if role else ""
     path_attr = f' path="{path}"' if path else ""
-    text = f'<pblock filename="{label}"{role_attr}{path_attr}>\n```{fence}\n{body.rstrip()}\n```\n</pblock>\n\n'
+    text = (
+        f'<pblock filename="{label}"{role_attr}{path_attr}>\n'
+        f"{fenced_body(body, fence)}\n"
+        f"</pblock>\n\n"
+    )
     return PromptPart(label=label, text=text, kind=kind, role=role, path=path)
 
 
@@ -143,7 +175,11 @@ def fenced_text_part(
 ) -> PromptPart:
     role_attr = f' role="{role}"' if role else ""
     path_attr = f' path="{path}"' if path else ""
-    text = f'<pblock label="{label}"{role_attr}{path_attr}>\n```text\n{body.rstrip()}\n```\n</pblock>\n\n'
+    text = (
+        f'<pblock label="{label}"{role_attr}{path_attr}>\n'
+        f"{fenced_body(body, 'text')}\n"
+        f"</pblock>\n\n"
+    )
     return PromptPart(label=label, text=text, kind=kind, role=role, path=path)
 
 
@@ -166,7 +202,7 @@ def contextual_markdown_parts(
         guidance_attr = f' guidance="{metadata.prompt_text.strip()}"'
     text = (
         f'<pblock filename="{label}"{role_attr}{path_attr}{guidance_attr}>\n'
-        f"```markdown\n{body.rstrip()}\n```\n"
+        f"{fenced_body(body, 'markdown')}\n"
         f"</pblock>\n\n"
     )
     return (PromptPart(label=label, text=text, kind="file", role=effective_role, path=path),)
@@ -221,7 +257,7 @@ def contextual_fenced_parts(
         guidance_attr = f' guidance="{metadata.prompt_text.strip()}"'
     text = (
         f'<pblock filename="{label}"{role_attr}{path_attr}{guidance_attr}>\n'
-        f"```{fence}\n{body.rstrip()}\n```\n"
+        f"{fenced_body(body, fence)}\n"
         f"</pblock>\n\n"
     )
     return (PromptPart(label=label, text=text, kind="file", role=effective_role, path=path),)

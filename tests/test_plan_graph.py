@@ -246,6 +246,48 @@ def test_optimizer_prefers_shared_context_and_unlocks_dependents_inside_block():
     assert blocks[0].size_tokens == 330
 
 
+# The CommonMark regression: two cheap, context-sharing stories merged into one block that
+# owed 8 acceptance criteria against a flat repair budget of 3. It reached 6 and stopped, third
+# of five, starving every block behind it. Token cost never saw it coming — the merge was cheap.
+
+
+def test_two_heavily_specified_stories_do_not_share_a_block():
+    ordered = (
+        story("leaf-blocks", acceptance_count=4),
+        story("containers-lists", acceptance_count=4),
+    )
+
+    _, blocks = group_blocks(ordered)
+
+    assert [b.story_ids for b in blocks] == [("leaf-blocks",), ("containers-lists",)]
+
+
+def test_blocks_within_the_acceptance_ceiling_pack_exactly_as_before():
+    """The 08-10 shape, where no block exceeded five criteria, must be untouched."""
+    ordered = tuple(story(f"s{i}", acceptance_count=1) for i in range(5))
+
+    _, blocks = group_blocks(ordered)
+
+    assert [b.story_ids for b in blocks] == [("s0", "s1", "s2", "s3", "s4")]
+
+
+def test_a_story_over_the_ceiling_alone_still_builds_as_its_own_block():
+    """Irreducible, exactly as an over-``limit_tokens`` seed is. A marker, never a refusal."""
+    ordered = (story("huge", acceptance_count=9), story("small", acceptance_count=1))
+
+    _, blocks = group_blocks(ordered)
+
+    assert [b.story_ids for b in blocks] == [("huge",), ("small",)]
+
+
+def test_the_acceptance_ceiling_can_be_disabled():
+    ordered = (story("a", acceptance_count=8), story("b", acceptance_count=8))
+
+    _, blocks = group_blocks(ordered, acceptance_limit=0)
+
+    assert [b.story_ids for b in blocks] == [("a", "b")]
+
+
 def test_optimizer_never_mixes_screen_and_non_screen_work():
     ordered = (story("api"), story("screen", implements="SCREEN-HOME.md"))
     _, blocks = group_blocks(ordered)

@@ -2189,6 +2189,29 @@ def _parse_plan_text(text: str) -> BuildPlan:
 ACCEPTANCE_REMOVED_MARKER = "unsatisfiable acceptance criterion"
 
 
+def _malformed_acceptance_defects(blocks: dict[str, str]) -> tuple[str, ...]:
+    """Return every acceptance criterion in the emitted specs that is not Python, or not parseable.
+
+    Distinct from the analyzers below, which stay advisory. This asks only whether the criterion
+    compiles — a fact, not a prediction — and whether its block is properly delimited. Either
+    defect means the criterion can never execute, so it gates nothing; caught here, the plan is
+    rejected before a build spends an LLM pass discovering it as an acceptance "failure".
+    """
+    from drydock.acceptance import malformed_criteria, parse_programmatic_acceptance_text
+
+    defects: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        try:
+            checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        except ValueError as exc:
+            defects.append(str(exc))
+            continue
+        defects.extend(flagged.rendered for flagged in malformed_criteria(checks))
+    return tuple(defects)
+
+
 def _strip_unsatisfiable_acceptance(
     blocks: dict[str, str], *, sources_dir: Path | None = None
 ) -> tuple[str, ...]:
@@ -2362,11 +2385,30 @@ def _compute_schedule(
         )
         return total
 
+    def acceptance_count_fn(story: PlannedStory) -> int:
+        """Count the criteria the story's Blueprint owes, from the text about to be written."""
+        from drydock.acceptance import parse_programmatic_acceptance_text
+
+        name = story.implements
+        text = emitted_files.get(name)
+        if text is None:
+            path = blueprint_dir / name
+            if not path.is_file():
+                return 0
+            text = path.read_text(encoding="utf-8")
+        try:
+            return len(parse_programmatic_acceptance_text(text, source=name))
+        except ValueError:
+            # A malformed criterion block is reported by the acceptance gate with a precise
+            # message. Sizing must not raise a second, less useful error on the way there.
+            return 0
+
     return compute_plan(
         declared,
         target_tokens=block_target_tokens(),
         limit_tokens=get_prompt_error_tokens(),
         size_fn=lambda story: block_size_fn((story,)),
+        acceptance_count_fn=acceptance_count_fn,
         block_size_fn=block_size_fn,
     )
 
@@ -2574,6 +2616,18 @@ def _validate_plan_output(
     # graph guarantees will fail. Strip it here, before the Manifest is validated or written,
     # so the emitted plan is one that can actually be built. Removals are reported, and the
     # assertion gate below still measures what each story has left.
+    malformed_acceptance = _malformed_acceptance_defects(blocks)
+    if malformed_acceptance:
+        listed = "\n".join(f"  {defect}" for defect in malformed_acceptance)
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: acceptance criteria that cannot execute.\n"
+                f"{listed}\n"
+                "  A criterion that does not compile verifies nothing under any implementation.\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
     dropped_acceptance = _strip_unsatisfiable_acceptance(
         blocks, sources_dir=blueprint_dir / "sources"
     )
