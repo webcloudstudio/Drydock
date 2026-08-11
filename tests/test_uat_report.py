@@ -374,11 +374,12 @@ def test_kit_index_is_a_project_page_over_the_documents_and_bundles_on_disk(
 ) -> None:
     kit = tmp_path / "CommonMark"
     (kit / "sources").mkdir(parents=True)
+    (kit / "inputs").mkdir()
     (kit / "updates").mkdir()
     (kit / "uat.json").write_text("{}\n", encoding="utf-8")
     (kit / "README.md").write_text("# CommonMark\n", encoding="utf-8")
-    (kit / "SEA_TRIALS.md").write_text("# Sea Trials\n", encoding="utf-8")
-    (kit / "TECHNOLOGY_STACK.md").write_text("# Stack\n", encoding="utf-8")
+    (kit / "inputs" / "SEA_TRIALS.md").write_text("# Sea Trials\n", encoding="utf-8")
+    (kit / "inputs" / "TECHNOLOGY_STACK.md").write_text("# Stack\n", encoding="utf-8")
     (kit / "NOTES.txt").write_text("loose file\n", encoding="utf-8")
     (kit / ".nojekyll").write_text("", encoding="utf-8")
     (kit / "sources" / "spec.md").write_text("# spec\n", encoding="utf-8")
@@ -391,8 +392,8 @@ def test_kit_index_is_a_project_page_over_the_documents_and_bundles_on_disk(
     assert "Latest run:" in page
     for link in (
         "runs/20260103T000000.000000Z/index.html",
-        "view/SEA_TRIALS.md.html",
-        "view/TECHNOLOGY_STACK.md.html",
+        "view/inputs/SEA_TRIALS.md.html",
+        "view/inputs/TECHNOLOGY_STACK.md.html",
         "view/NOTES.txt.html",
         "view/sources/spec.md.html",
         "view/updates/spec.md.html",
@@ -407,20 +408,20 @@ def test_kit_index_is_a_project_page_over_the_documents_and_bundles_on_disk(
 
 def test_a_viewer_renders_markdown_inside_the_report_styling(tmp_path: Path) -> None:
     kit = tmp_path / "CommonMark"
-    kit.mkdir()
+    (kit / "inputs").mkdir(parents=True)
     (kit / "uat.json").write_text("{}\n", encoding="utf-8")
-    (kit / "SEA_TRIALS.md").write_text(
+    (kit / "inputs" / "SEA_TRIALS.md").write_text(
         "# Sea Trials\n\n| ID | Verdict |\n|---|---|\n| st-001 | PASS |\n", encoding="utf-8"
     )
 
     build_kit_index(kit)
 
-    viewer = (kit / "view" / "SEA_TRIALS.md.html").read_text(encoding="utf-8")
+    viewer = (kit / "view" / "inputs" / "SEA_TRIALS.md.html").read_text(encoding="utf-8")
     assert "<h1>Sea Trials</h1>" in viewer
     assert "<td>st-001</td>" in viewer
     # The viewer carries the report's stylesheet and keeps the raw artifact one click away.
-    assert 'href="../assets/kit.css"' in viewer
-    assert 'href="../SEA_TRIALS.md"' in viewer
+    assert 'href="../../assets/kit.css"' in viewer
+    assert 'href="../../inputs/SEA_TRIALS.md"' in viewer
     assert (kit / "assets" / "kit.css").is_file()
 
 

@@ -196,6 +196,11 @@ def _case_groups(case_root: Path, target: str) -> tuple[ArtifactGroup, ...]:
             tuple(_iter_files(case_root / "evidence", case_root)),
         ),
         ArtifactGroup(
+            "Inputs",
+            "Optional lifecycle decisions seeded into the Target before analysis.",
+            tuple(_iter_files(case_root / "inputs", case_root)),
+        ),
+        ArtifactGroup(
             "Sources",
             "Input bundle staged for drydock import before the lifecycle started.",
             tuple(_iter_files(case_root / "sources", case_root)),
@@ -1125,17 +1130,16 @@ def _render_case(case_root: Path, result: dict, groups: Sequence[ArtifactGroup])
 
 
 # A kit is published as its own repository, so its landing page is the project page: the
-# governed documents at the kit root, the input bundle, and every recorded run. Purposes are
+# governed documents at the kit root, the input bundles, and every recorded run. Purposes are
 # stated here so the page explains the layout to a reader who has never seen a kit before.
 _KIT_DOCUMENTS: tuple[tuple[str, str], ...] = (
     ("README.md", "What this project builds, how to run it, and how to read its evidence"),
     ("uat.json", "Kit definition: source bundle, updates, and test command"),
-    ("SEA_TRIALS.md", "Sea Trials and the policy block that decides the release gate"),
-    ("TECHNOLOGY_STACK.md", "Implementation stack fixed before analysis proposes one"),
     ("USER_NOTES.md", "Operator notes carried into the build"),
     ("LICENSE", "Licence for the published kit"),
 )
 _KIT_BUNDLES: tuple[tuple[str, str], ...] = (
+    ("inputs", "Optional lifecycle decisions seeded after init and before analysis"),
     ("sources", "Specification and artifact bundle imported before the initial lifecycle"),
     ("updates", "Replacement sources that drive each incremental rebuild"),
 )

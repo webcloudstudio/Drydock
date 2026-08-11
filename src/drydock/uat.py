@@ -169,15 +169,14 @@ def _environment(model: str, provider: str, effort: str | None) -> dict[str, str
     }
 
 
-def _fixture_sea_trials(directory: Path) -> Path | None:
+def _fixture_sea_trials(path: Path | None) -> Path | None:
     """Return the fixture's frozen ``SEA_TRIALS.md``, validated, or ``None``.
 
     Validation is strict for the same reason the stack's is: a contract that will not parse
     degrades into a missing gate long after the run stopped being cheap, and the run would then
     measure nothing while reporting a verdict.
     """
-    path = directory / sea_trials.FILENAME
-    if not path.is_file():
+    if path is None:
         return None
     try:
         sea_trials.parse_sea_trials_text(path.read_text(encoding="utf-8"))
@@ -188,7 +187,7 @@ def _fixture_sea_trials(directory: Path) -> Path | None:
     return path
 
 
-def _fixture_stack(directory: Path) -> Path | None:
+def _fixture_stack(path: Path | None) -> Path | None:
     """Return the fixture's declared ``TECHNOLOGY_STACK.md``, validated, or ``None``.
 
     The technology stack is configuration, not a command-line decision: a fixture that
@@ -199,8 +198,7 @@ def _fixture_stack(directory: Path) -> Path | None:
     Validation is strict here because a typo would otherwise degrade silently into a
     missing context file at build time, long after the run stopped being cheap.
     """
-    path = directory / technology_stack.FILENAME
-    if not path.is_file():
+    if path is None:
         return None
     try:
         entries = technology_stack.parse(path.read_text(encoding="utf-8"))
@@ -249,6 +247,8 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         raw_sources = config.get("sources")
         raw_updates = config.get("updates", [])
         raw_test_command = config.get("test_command")
+        raw_sea_trials = config.get("sea_trials")
+        raw_stack = config.get("technology_stack")
         if (
             not isinstance(raw_sources, list)
             or not raw_sources
@@ -279,8 +279,17 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 resolved.append(source)
             return tuple(resolved)
 
+        def resolve_optional_path(value: object, field: str) -> Path | None:
+            if value is None:
+                return None
+            if not isinstance(value, str) or not value.strip():
+                raise SpecificationError(f"UAT fixture {field} must be a path: {config_path}")
+            return resolve_paths([value], field)[0]
+
         sources = resolve_paths(raw_sources, "source")
         updates = resolve_paths(raw_updates, "update")
+        declared_sea_trials = resolve_optional_path(raw_sea_trials, "sea_trials")
+        declared_stack = resolve_optional_path(raw_stack, "technology_stack")
         source_names = [source.name for source in sources]
         if len(source_names) != len(set(source_names)):
             raise SpecificationError(
@@ -302,8 +311,8 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 sources,
                 updates,
                 tuple(raw_test_command),
-                _fixture_stack(directory),
-                _fixture_sea_trials(directory),
+                _fixture_stack(declared_stack),
+                _fixture_sea_trials(declared_sea_trials),
             )
         )
     if not fixtures:
@@ -746,15 +755,20 @@ def run_fixture(
     workspace = case_root / "workspace"
     build_root = case_root / "build"
     source_root = case_root / "sources"
+    input_root = case_root / "inputs"
     evidence_dir = case_root / "evidence"
     command_logs = evidence_dir / "commands"
-    for path in (workspace, build_root, source_root, evidence_dir, command_logs):
+    for path in (workspace, build_root, source_root, input_root, evidence_dir, command_logs):
         path.mkdir(parents=True, exist_ok=True)
     # Resuming past `import` must not restore the base sources: an update already applied to the
     # bundle is part of the state the resumed stage is expected to see.
     if start <= stage_index("import"):
         for source in fixture.sources:
             shutil.copyfile(source, source_root / source.name)
+    if start <= stage_index("init"):
+        for lifecycle_input in (fixture.sea_trials, fixture.stack):
+            if lifecycle_input is not None:
+                shutil.copyfile(lifecycle_input, input_root / lifecycle_input.name)
 
     env = os.environ.copy()
     env["DRYDOCK_WORKSPACE"] = str(workspace)

@@ -16,7 +16,8 @@ uat/
     README.md            what the kit builds and how to run it
     uat.json             source bundle, updates, and test command
     index.html           landing page linking every run
-    sources/             the input bundle, flat — no subdirectories
+    inputs/              optional lifecycle decisions seeded before analysis
+    sources/             Blueprint inputs and supplied build assets
     updates/             replacement sources that drive incremental rebuilds
     runs/<run-id>/       one complete unattended run
 ```
@@ -52,12 +53,14 @@ eighteen LLM calls.
   build, so basenames must be unique.
 - `updates` — files that replace an imported basename to drive
   `import --update` → `refit --sources` → incremental build, once each, in order.
+- `sea_trials` — optional kit-local Sea Trials path, seeded after `init` and before `analyze`.
+- `technology_stack` — optional kit-local technology-stack path, seeded at the same point. Named
+  Rigging files are validated against the catalog during discovery.
 - `test_command` — argv run from the completed application root after the build. A nonzero exit
   fails the kit.
 
-A kit may also ship `TECHNOLOGY_STACK.md`, seeded into the Target between `init` and `analyze` to
-fix the implementation stack instead of letting `analyze` propose one. Its named Rigging files are
-validated against the catalog at discovery.
+Both lifecycle inputs are explicit. Root-level magic filenames are ignored. When either key is
+omitted, `analyze` creates that artifact inside the run Target.
 
 Every non-Markdown source is an artifact for the build to use — a test harness, a fixture corpus,
 a tool — and is staged verbatim into the build directory's `sources/`. Markdown is specification
@@ -71,6 +74,7 @@ runs/<run-id>/
   index.html            linked proof kit
   result.json           every child command, argv, exit code, elapsed time
   SHA256SUMS            integrity manifest
+  inputs/               exact declared lifecycle inputs for this run
   sources/              the exact bundle imported for this run
   workspace/            the isolated Drydock workspace, including targets/<target>/
   build/<target>/       the delivered application

@@ -8,6 +8,8 @@
     "sources/setup_harness.sh"
   ],
   "updates": [],
+  "sea_trials": "inputs/SEA_TRIALS.md",
+  "technology_stack": "inputs/TECHNOLOGY_STACK.md",
   "test_command": [
     "sh",
     "sources/full_test.sh"

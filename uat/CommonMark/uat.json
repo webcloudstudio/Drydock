@@ -8,6 +8,8 @@
     "sources/normalize.py"
   ],
   "updates": [],
+  "sea_trials": "inputs/SEA_TRIALS.md",
+  "technology_stack": "inputs/TECHNOLOGY_STACK.md",
   "test_command": [
     "sh",
     "full_test.sh"

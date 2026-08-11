@@ -10,7 +10,7 @@ re-plans against a changed specification instead of rebuilding from scratch.
 
 ## Prerequisites
 
-None beyond Drydock itself. The stack is not fixed, so `analyze` proposes one.
+None beyond Drydock itself. The declared lifecycle inputs fix the stack and acceptance policy.
 
 ## Running
 
@@ -26,8 +26,15 @@ linked evidence.
 | Path | Role |
 |---|---|
 | `uat.json` | Source bundle, updates, and the scoring command |
+| `inputs/SEA_TRIALS.md` | Acceptance criteria and release policy seeded before analysis |
+| `inputs/TECHNOLOGY_STACK.md` | Implementation stack seeded before analysis |
 | `sources/reading-list.md` | The initial brief — the primary input |
 | `updates/reading-list.md` | The revised brief that drives the incremental rebuild |
+
+Files under `inputs/` are optional lifecycle decisions. Files under `sources/` become Blueprint
+analysis material or supplied build assets. If a lifecycle input is not declared, `analyze`
+generates its Target artifact inside the individual run. `index.html`, `view/`, and `assets/` are
+generated report content.
 
 ## What the build must produce
 

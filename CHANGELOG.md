@@ -10,6 +10,15 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: UAT lifecycle inputs are explicit and reproducible. Kits may declare `sea_trials`
+  and `technology_stack` paths in `uat.json`; discovery applies the same containment and existence
+  checks as source/update paths, validates both artifacts before a run, seeds them after `init`,
+  and preserves them under each run's `inputs/` proof bundle. Undeclared root filenames are no
+  longer discovered implicitly, so omission delegates artifact generation to `analyze`. The three
+  shipped kits now keep both declarations under `inputs/`, and generated reports inventory and
+  link that bundle. CommonMark now has one blocking, deterministic project criterion: the complete
+  supplied conformance suite, run by `sh full_test.sh`, must exit successfully.
+
 - 2026-08-10: Every artifact a UAT report links is reached through a styled viewer instead of raw
   text. A report previously handed the reader off to the browser's own rendering the moment they
   opened a log, a transcript, or a Markdown document. `build_case_kit` and `write_kit_index` now

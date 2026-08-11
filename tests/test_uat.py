@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from drydock import technology_stack
+from drydock import sea_trials, technology_stack
 from drydock.errors import SpecificationError
 from drydock.uat import (
     CommandResult,
@@ -44,6 +44,13 @@ def _fixture(root: Path, name: str = "ReadingList", *, updated: bool = True) -> 
     return fixture
 
 
+def _declare(fixture: Path, **fields: str) -> None:
+    path = fixture / "uat.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    config.update(fields)
+    path.write_text(json.dumps(config), encoding="utf-8")
+
+
 def test_discover_fixture_uses_explicit_sources_and_updates(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
 
@@ -56,14 +63,17 @@ def test_discover_fixture_uses_explicit_sources_and_updates(tmp_path: Path) -> N
 
 def test_discover_fixture_reads_declared_technology_stack(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    (fixture / "TECHNOLOGY_STACK.md").write_text(
+    stack = fixture / "inputs" / "TECHNOLOGY_STACK.md"
+    stack.parent.mkdir()
+    stack.write_text(
         technology_stack.render([technology_stack.StackEntry("Go", "go.md")], "2026-08-09"),
         encoding="utf-8",
     )
+    _declare(fixture, technology_stack="inputs/TECHNOLOGY_STACK.md")
 
     found = discover_fixtures(tmp_path)[0]
 
-    assert found.stack == fixture / "TECHNOLOGY_STACK.md"
+    assert found.stack == stack.resolve()
 
 
 def test_discover_fixture_without_technology_stack_leaves_the_choice_to_analyze(
@@ -74,14 +84,43 @@ def test_discover_fixture_without_technology_stack_leaves_the_choice_to_analyze(
     assert discover_fixtures(tmp_path)[0].stack is None
 
 
+def test_discover_fixture_reads_declared_sea_trials(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    contract = fixture / "inputs" / "SEA_TRIALS.md"
+    contract.parent.mkdir()
+    contract.write_text(
+        "# Sea Trials: Demo\n\n## st-001: Example\n"
+        "Type: technical\nRequired: yes\nCriterion: The system shall work.\n"
+        "Verification: proof\n",
+        encoding="utf-8",
+    )
+    _declare(fixture, sea_trials="inputs/SEA_TRIALS.md")
+
+    assert discover_fixtures(tmp_path)[0].sea_trials == contract.resolve()
+
+
+def test_discover_fixture_rejects_declared_malformed_sea_trials(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    contract = fixture / "inputs" / "SEA_TRIALS.md"
+    contract.parent.mkdir()
+    contract.write_text("# Sea Trials: Demo\n", encoding="utf-8")
+    _declare(fixture, sea_trials="inputs/SEA_TRIALS.md")
+
+    with pytest.raises(SpecificationError, match="Invalid UAT fixture Sea Trials"):
+        discover_fixtures(tmp_path)
+
+
 def test_discover_fixture_rejects_technology_stack_naming_unknown_rigging_file(
     tmp_path: Path,
 ) -> None:
     fixture = _fixture(tmp_path)
-    (fixture / "TECHNOLOGY_STACK.md").write_text(
+    stack = fixture / "inputs" / "TECHNOLOGY_STACK.md"
+    stack.parent.mkdir()
+    stack.write_text(
         technology_stack.render([technology_stack.StackEntry("Go", "nosuchstack.md")]),
         encoding="utf-8",
     )
+    _declare(fixture, technology_stack="inputs/TECHNOLOGY_STACK.md")
 
     with pytest.raises(SpecificationError, match="nosuchstack.md"):
         discover_fixtures(tmp_path)
@@ -89,7 +128,10 @@ def test_discover_fixture_rejects_technology_stack_naming_unknown_rigging_file(
 
 def test_discover_fixture_rejects_empty_technology_stack(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    (fixture / "TECHNOLOGY_STACK.md").write_text("# Technology Stack\n", encoding="utf-8")
+    stack = fixture / "inputs" / "TECHNOLOGY_STACK.md"
+    stack.parent.mkdir()
+    stack.write_text("# Technology Stack\n", encoding="utf-8")
+    _declare(fixture, technology_stack="inputs/TECHNOLOGY_STACK.md")
 
     with pytest.raises(SpecificationError, match="declares no technologies"):
         discover_fixtures(tmp_path)
@@ -99,7 +141,10 @@ def test_run_uat_seeds_declared_stack_into_target_before_analyze(tmp_path: Path)
     fixtures_root = tmp_path / "fixtures"
     fixture = _fixture(fixtures_root, updated=False)
     declared = technology_stack.render([technology_stack.StackEntry("Go", "go.md")], "2026-08-09")
-    (fixture / "TECHNOLOGY_STACK.md").write_text(declared, encoding="utf-8")
+    stack = fixture / "inputs" / "TECHNOLOGY_STACK.md"
+    stack.parent.mkdir()
+    stack.write_text(declared, encoding="utf-8")
+    _declare(fixture, technology_stack="inputs/TECHNOLOGY_STACK.md")
     seen_at_analyze: list[str] = []
 
     def fake_runner(argv, cwd, env, output_dir, label):
@@ -131,6 +176,15 @@ def test_run_uat_seeds_declared_stack_into_target_before_analyze(tmp_path: Path)
     )
 
     assert seen_at_analyze == [declared]
+    proof_input = (
+        fixtures_root
+        / "ReadingList"
+        / "runs"
+        / "20260809.000000"
+        / "inputs"
+        / technology_stack.FILENAME
+    )
+    assert proof_input.read_text(encoding="utf-8") == declared
 
 
 def test_discover_selected_fixture_rejects_unknown_project(tmp_path: Path) -> None:
@@ -138,6 +192,30 @@ def test_discover_selected_fixture_rejects_unknown_project(tmp_path: Path) -> No
 
     with pytest.raises(SpecificationError, match="Unknown UAT kit"):
         discover_fixtures(tmp_path, "Missing")
+
+
+def test_undeclared_root_lifecycle_inputs_are_ignored(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    (fixture / sea_trials.FILENAME).write_text("not a contract\n", encoding="utf-8")
+    (fixture / technology_stack.FILENAME).write_text("not a stack\n", encoding="utf-8")
+
+    found = discover_fixtures(tmp_path)[0]
+
+    assert found.sea_trials is None
+    assert found.stack is None
+
+
+@pytest.mark.parametrize("field", ["sea_trials", "technology_stack"])
+@pytest.mark.parametrize("value", ["", "../outside.md", "inputs/missing.md"])
+def test_declared_lifecycle_input_path_must_be_valid(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    fixture = _fixture(tmp_path)
+    (tmp_path / "outside.md").write_text("outside\n", encoding="utf-8")
+    _declare(fixture, **{field: value})
+
+    with pytest.raises(SpecificationError, match=field):
+        discover_fixtures(tmp_path)
 
 
 def test_discover_fixture_loads_nested_local_source(tmp_path: Path) -> None:
@@ -1061,6 +1139,35 @@ def test_every_shipped_fixture_ships_a_parseable_frozen_contract():
         assert document.policy_declared is True
 
 
+def test_shipped_fixtures_declare_lifecycle_inputs_under_inputs():
+    root = Path(__file__).resolve().parents[1] / "uat"
+
+    for name in ("CommonMark", "ReadingList", "Toml"):
+        config = json.loads((root / name / "uat.json").read_text(encoding="utf-8"))
+        assert config["sea_trials"] == "inputs/SEA_TRIALS.md"
+        assert config["technology_stack"] == "inputs/TECHNOLOGY_STACK.md"
+        assert (root / name / config["sea_trials"]).is_file()
+        assert (root / name / config["technology_stack"]).is_file()
+
+
+def test_commonmark_has_one_deterministic_blocking_proof_criterion():
+    document = sea_trials.parse_sea_trials_text(
+        (Path(__file__).resolve().parents[1] / "uat/CommonMark/inputs/SEA_TRIALS.md").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert document.policy_declared is True
+    assert len(document.trials) == 1
+    trial = document.trials[0]
+    assert trial.criterion_id == "st-001"
+    assert trial.required is True
+    assert trial.testability == "deterministic"
+    assert trial.consequence == "blocks"
+    assert trial.verification == "proof"
+    assert trial.criterion == ("The completed parser shall pass every test run by sh full_test.sh.")
+
+
 def test_a_fixture_contract_is_seeded_into_the_target(tmp_path):
     from drydock.uat import UATFixture, seed_sea_trials
 
@@ -1097,4 +1204,4 @@ def test_an_unparseable_fixture_contract_is_refused_at_discovery(tmp_path):
     )
 
     with pytest.raises(SpecificationError, match="Invalid UAT fixture Sea Trials"):
-        _fixture_sea_trials(tmp_path)
+        _fixture_sea_trials(tmp_path / "SEA_TRIALS.md")
