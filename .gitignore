@@ -66,6 +66,12 @@ Drydock_Video.mp4
 *.aac
 .pre-commit-cache-codex
 
+# Marketing and video production work. Kept on disk, never in the repository:
+# masters, renders, stills, decks, scripts, teleprompters, and audio sources.
+docs/presentation/
+docs/presentation2/
+docs/release-video/
+
 commonmark.sh
 dry.sh
 mar.sh
