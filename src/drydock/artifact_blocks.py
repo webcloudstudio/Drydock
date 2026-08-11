@@ -9,8 +9,19 @@ from re import Pattern
 
 from drydock.errors import DrydockError
 
-_OPEN_BLOCK_RE = re.compile(r"^===\s*(?!END\s)(?P<name>[^\n=]+?)\s*===\s*$")
-_END_BLOCK_RE = re.compile(r"^===\s*END\s+(?P<name>[^\n=]+?)\s*===\s*$")
+#: Two protocols share the ``=== NAME ===`` line grammar, at different nesting levels. This module
+#: owns the *envelope*: one artifact file per block, never nested. ``acceptance.py`` owns the
+#: *proof* protocol, whose ``=== AC <id> ===`` blocks live inside an artifact body. An envelope
+#: parser that reads a proof delimiter as an artifact boundary collapses or orphans every
+#: Blueprint carrying a criterion, so the envelope grammar reserves the ``AC`` namespace: an
+#: artifact is a file, and no file is named ``AC something``. Every envelope pattern in the
+#: codebase must carry this guard — see ``planning_session`` and ``refit``.
+RESERVED_BLOCK_NAMESPACE = r"(?!AC\s)"
+
+_OPEN_BLOCK_RE = re.compile(
+    rf"^===\s*(?!END\s){RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$"
+)
+_END_BLOCK_RE = re.compile(rf"^===\s*END\s+{RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$")
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
     r"<parameter name=\"(?:path|file_path)\">(?P<path>.*?)</parameter>\s*"

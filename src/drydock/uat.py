@@ -27,6 +27,11 @@ from drydock.uat_console import StepSink
 from drydock.uat_report import build_case_kit, write_kit_index
 
 DEFAULT_MAX_BUILD_PASSES = 25
+#: Repairs one build block may spend under UAT, above the interactive default of 3. Progress is
+#: what earns each pass — two consecutive flat passes end the block well before this — so the
+#: bound only decides how much genuine convergence Drydock is willing to pay for. It is a block
+#: bound, not a step bound: the repair loop runs once per ``BuildUnit``, and a unit is one block.
+DEFAULT_UAT_REPAIR_ATTEMPTS = 6
 #: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
 _STREAM_CHUNK_BYTES = 4096
 
@@ -736,6 +741,7 @@ def run_fixture(
     provider: str,
     effort: str | None = None,
     max_build_passes: int = DEFAULT_MAX_BUILD_PASSES,
+    repair_attempts: int = DEFAULT_UAT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
 ) -> UATResult:
@@ -859,7 +865,13 @@ def run_fixture(
                 stage_degraded = True
                 break
             built = execute(
-                ("build", fixture.target, "--override"),
+                (
+                    "build",
+                    fixture.target,
+                    "--override",
+                    "--repair-attempts",
+                    str(repair_attempts),
+                ),
                 f"{stage}-build-{stage_passes}",
                 required=False,
             )
@@ -1029,6 +1041,7 @@ def run_uat(
     provider: str,
     effort: str | None = None,
     max_build_passes: int = DEFAULT_MAX_BUILD_PASSES,
+    repair_attempts: int = DEFAULT_UAT_REPAIR_ATTEMPTS,
     runner: Runner = subprocess_runner,
     on_event: Callable[[str], None] | None = None,
     now: datetime | None = None,
@@ -1071,6 +1084,7 @@ def run_uat(
                 provider=provider,
                 effort=effort,
                 max_build_passes=max_build_passes,
+                repair_attempts=repair_attempts,
                 runner=runner,
                 on_event=on_event,
             )

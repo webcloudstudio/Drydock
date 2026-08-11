@@ -31,6 +31,7 @@ from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
 )
+from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
 from drydock.build_plan import (
     AppliedSpecRecord,
     BuildPlan,
@@ -91,9 +92,17 @@ from drydock.standard_artifacts import ensure_standard_artifacts, render_console
 
 PROMPT_NAME = "plan_create"
 
-_BLOCK_RE = re.compile(r"=== (?!END )(.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
-_OPEN_BLOCK_LINE_RE = re.compile(r"^=== (?!END )(?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
-_END_BLOCK_LINE_RE = re.compile(r"^=== END (?P<name>[^\n=]+?) ===\s*$", re.MULTILINE)
+# ``RESERVED_BLOCK_NAMESPACE`` keeps the nested ``=== AC <id> ===`` proof protocol out of the
+# envelope grammar; see ``artifact_blocks`` for why both live on the same delimiter syntax.
+_BLOCK_RE = re.compile(
+    rf"=== (?!END ){RESERVED_BLOCK_NAMESPACE}(.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL
+)
+_OPEN_BLOCK_LINE_RE = re.compile(
+    rf"^=== (?!END ){RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?) ===\s*$", re.MULTILINE
+)
+_END_BLOCK_LINE_RE = re.compile(
+    rf"^=== END {RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?) ===\s*$", re.MULTILINE
+)
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
     r'<parameter name="file_path">(?P<path>.*?)</parameter>\s*'

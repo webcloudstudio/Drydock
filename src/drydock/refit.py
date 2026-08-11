@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 from typing import Protocol
 
+from drydock.artifact_blocks import RESERVED_BLOCK_NAMESPACE
 from drydock.build_plan import (
     cascade_reset_ids,
     compact_source,
@@ -44,7 +45,11 @@ from drydock.prompts import load_prompt
 
 PROMPT_NAME = "refit"
 
-_BLOCK_RE = re.compile(r"=== (.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL)
+# Reserves the nested ``=== AC <id> ===`` proof namespace out of the envelope grammar; see
+# ``artifact_blocks``.
+_BLOCK_RE = re.compile(
+    rf"=== {RESERVED_BLOCK_NAMESPACE}(.+?) ===\n(.*?)\n=== END \1 ===", re.DOTALL
+)
 _BLOCK_START_RE = re.compile(r"^## \w[^:]*:\s+.+", re.MULTILINE)
 _BLOCK_ID_RE = re.compile(r"^id:\s+(\S+)", re.MULTILINE)
 _AMENDS_TABLE_RE = re.compile(r"\|\s*Amends\s*\|\s*([^|]+)\|")

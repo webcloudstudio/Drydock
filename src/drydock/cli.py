@@ -424,6 +424,8 @@ def cmd_uat(args: argparse.Namespace) -> int:
         return _uat_report(uat_root, args.report)
     if args.max_build_passes < 1:
         raise UsageError("--max-build-passes must be at least 1")
+    if args.repair_attempts < 0:
+        raise UsageError("--repair-attempts must be zero or greater")
     if args.run is not None and args.stage is None:
         raise UsageError("--run requires --stage")
     step_console = StepConsole(sys.stdout, quiet=args.quiet)
@@ -435,6 +437,7 @@ def cmd_uat(args: argparse.Namespace) -> int:
         provider=get_llm_provider(getattr(args, "llm_provider", None)),
         effort=get_effort(getattr(args, "effort", None)),
         max_build_passes=args.max_build_passes,
+        repair_attempts=args.repair_attempts,
         runner=make_streaming_runner(step_console),
         on_event=step_console.event,
         start_stage=args.stage or "init",
@@ -2589,6 +2592,10 @@ def _build_help_details() -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    # Deferred like the other ``uat`` imports: the module pulls in the report and console stack,
+    # and every command pays for it at startup if it is imported at module scope.
+    from drydock.uat import DEFAULT_UAT_REPAIR_ATTEMPTS
+
     parser = DrydockArgumentParser(
         prog="drydock",
         description=(f"Drydock — governed Blueprint-driven software delivery.\n{__copyright__}"),
@@ -2736,6 +2743,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=25,
         metavar="<n>",
         help="Maximum build passes per initial or refit stage (default: 25).",
+    )
+    p_uat.add_argument(
+        "--repair-attempts",
+        dest="repair_attempts",
+        type=int,
+        default=DEFAULT_UAT_REPAIR_ATTEMPTS,
+        metavar="<n>",
+        help=(
+            "Repairs one build block may spend "
+            f"(default: {DEFAULT_UAT_REPAIR_ATTEMPTS}). Two consecutive passes without "
+            "acceptance progress end a block before this bound."
+        ),
     )
     p_uat.add_argument(
         "--quiet",

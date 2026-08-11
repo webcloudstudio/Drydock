@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from drydock import technology_stack
-from drydock.acceptance import parse_programmatic_acceptance
+from drydock.acceptance import parse_programmatic_acceptance, parse_programmatic_acceptance_text
 from drydock.build_plan import AppliedSpecRecord, parse_build_plan
 from drydock.errors import RecordedError, SpecificationError
 from drydock.plan_graph import PlannedStory
@@ -4166,3 +4166,43 @@ def test_plan_keeps_the_same_call_when_it_extends_the_inherited_environment(tmp_
 
     assert "key-conformance" in blocks["FEATURE-Status.md"]
     assert not any(ACCEPTANCE_REMOVED_MARKER in w for w in warnings)
+
+
+def _authoring_contract_blueprint_example() -> str:
+    """Return the worked Blueprint example from the packaged authoring contract.
+
+    Read from ``paths.get_prompts_root()`` rather than the repository so the assertion covers the
+    packaged copy the wheel actually ships, not just the source tree.
+    """
+    from drydock.paths import get_prompts_root
+
+    contract = (get_prompts_root() / "BLUEPRINTS_CONTRACT.md").read_text(encoding="utf-8")
+    fences = re.findall(r"^```(?:markdown)?\n(.*?)^```", contract, re.MULTILINE | re.DOTALL)
+    examples = [fence for fence in fences if "=== AC " in fence]
+    assert examples, "the authoring contract no longer carries a worked === AC === example"
+    return max(examples, key=len)
+
+
+def test_the_authoring_contract_example_parses_as_one_artifact():
+    """The format the prompt mandates must be the format the envelope parser accepts.
+
+    Two protocols share the ``=== NAME ===`` grammar: the envelope (one artifact per block) and
+    the nested proof block (``=== AC <id> ===`` inside an artifact body). When the envelope parser
+    read a proof delimiter as an artifact boundary, every Blueprint carrying a criterion orphaned
+    its END markers and ``drydock plan`` rejected the whole batch as malformed — for every project,
+    deterministically. Nothing caught it because no test compared the two contracts.
+    """
+    example = _authoring_contract_blueprint_example()
+    text = f"=== FEATURE-Example.md ===\n{example}\n=== END FEATURE-Example.md ===\n"
+
+    blocks = _parse_strict_blocks(text, FakeRun(text=text))
+
+    assert sorted(blocks) == ["FEATURE-Example.md"], (
+        "a nested === AC === proof block was read as an artifact boundary"
+    )
+    checks = parse_programmatic_acceptance_text(
+        blocks["FEATURE-Example.md"], source="FEATURE-Example.md"
+    )
+    assert [check.check_id for check in checks] == ["health-check", "suite-conformance"]
+    for check in checks:
+        compile(check.code, check.check_id, "exec")

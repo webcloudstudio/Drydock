@@ -53,6 +53,30 @@ UNVERIFIED_FAILURE_PREFIX = "unverified acceptance"
 # A check that died inside its own snippet rather than inside the code under test. No
 # implementation can turn it green, so a repair pass on it is wasted.
 MALFORMED_FAILURE_PREFIX = "malformed check"
+
+#: Every failure prefix that names a fault in the check rather than in the code under test. A
+#: repair pass rewrites the implementation, never the criterion or the machine it runs on, so no
+#: number of further passes can move any of these: each is a stop condition, and the repair loop
+#: must not spend budget on it.
+#:
+#: The complement is deliberately small. A failure carrying *no* prefix is the only repairable
+#: class: the check reached the code under test and the oracle was violated, which is exactly what
+#: another informed pass can fix. Classification lives here, beside the prefixes it names, so a new
+#: category cannot be added without deciding what the loop does with it.
+TERMINAL_FAILURE_PREFIXES = (
+    MEMORY_FAILURE_PREFIX,
+    TIMEOUT_FAILURE_PREFIX,
+    SKIPPED_FAILURE_PREFIX,
+    UNVERIFIED_FAILURE_PREFIX,
+    MALFORMED_FAILURE_PREFIX,
+)
+
+
+def is_terminal_check_failure(error: str | None) -> bool:
+    """True when a failed check names a kit fault that no repair pass can turn green."""
+    return bool(error) and error.startswith(TERMINAL_FAILURE_PREFIXES)
+
+
 _MEMORY_SIGNATURES = ("MemoryError", "Cannot allocate memory", "std::bad_alloc", "Killed")
 # Exceptions that, when raised by the snippet's own frame, mean the snippet is defective:
 # it reads a name it never bound or does not parse. Neither is a statement about the code

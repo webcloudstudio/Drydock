@@ -331,15 +331,20 @@ def is_uat_run() -> bool:
     return os.environ.get("DRYDOCK_UAT", "").strip().lower() in _TRUE_VALUES
 
 
-def repair_through_stall() -> bool:
-    """True when a repair loop runs its full budget even after a pass makes no AC progress.
+def max_consecutive_stalls() -> int:
+    """Flat repair passes tolerated before a block is called.
 
-    Interactively, one flat pass ends the block — the operator should not pay for a model that
-    is spinning. A UAT run measures what Drydock delivers at the full ``--repair-attempts``
-    budget, so a fixture that would converge on a later call must not be scored as a failure of
-    the methodology.
+    Progress, not a call count, is what earns another pass: a block whose deterministic acceptance
+    score keeps climbing is converging and gets to continue up to its budget. Absence of progress
+    is what ends it.
+
+    Interactively one flat pass ends the block — the operator should not pay for a model that is
+    spinning. Under ``drydock uat`` a single flat pass is often noise between two productive ones,
+    so the block continues; two in a row is a stall, not noise. This count is the *only* way a UAT
+    run differs from an interactive one inside the repair loop; no error class is suppressed for
+    UAT that would gate interactively.
     """
-    return is_uat_run()
+    return 2 if is_uat_run() else 1
 
 
 def get_sandbox_mem_limit_mb() -> int:

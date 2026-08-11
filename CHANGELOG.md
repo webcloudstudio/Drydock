@@ -8,8 +8,52 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Fixed
+
+- 2026-08-11: `drydock plan` no longer rejects every Blueprint batch that carries an acceptance
+  criterion. The `=== AC <id> ===` proof block introduced with the delimited-criterion container
+  reuses the `=== NAME ===` line grammar the artifact envelope already used for whole files, and
+  the envelope parsers are flat — so a nested proof delimiter was read as an artifact boundary,
+  orphaning its `=== END AC <id> ===` marker and failing the batch as `Rejected: malformed
+  artifact response`. Because `BLUEPRINTS_CONTRACT.md` instructs the model to place criteria
+  inside the Blueprint, every batch for every project failed deterministically and no retry
+  budget could recover: a CommonMark run accepted `TOPOLOGY.md`, then rejected all three Stage 2
+  passes with 0 of 19 Blueprints written. The envelope grammar now reserves the `AC` namespace
+  via `artifact_blocks.RESERVED_BLOCK_NAMESPACE`, applied to every envelope pattern in
+  `artifact_blocks`, `planning_session`, and `refit`; an artifact is a file, and no file is named
+  `AC something`. A test parses the worked example out of the packaged `BLUEPRINTS_CONTRACT.md`
+  and asserts it round-trips as one artifact holding two criteria, so the format the prompt
+  mandates and the format the parser accepts can no longer drift apart.
+
 ### Changed
 
+- 2026-08-11: A build block's repair loop is bounded by progress rather than by a fixed call
+  count. A pass that raises the deterministic acceptance score — a newly green criterion, or a
+  non-regressing case tally that improves — earns another pass; consecutive passes that move
+  nothing end the block. `config.max_consecutive_stalls()` is 1 interactively, so the first flat
+  pass still ends a block, and 2 under `drydock uat`, where a single flat pass is often noise
+  between two productive ones. This replaces `repair_through_stall()`, under which a UAT ignored
+  stalls entirely and always spent its whole budget. The stall count is now the only behavior
+  `DRYDOCK_UAT` changes inside the repair loop; no error class is suppressed for UAT that would
+  gate interactively, and a test enforces that `is_uat_run()` has no other consumer.
+- 2026-08-11: `drydock uat` allows a block 6 repairs, up from the interactive default of 3, and
+  accepts `--repair-attempts` to change it. The bound is per build block, not per story: the
+  repair loop runs once per `BuildUnit`. The previous fixed budget cut off converging work — in
+  the CommonMark UAT, block 3 went 3/8 → 4/8 → 4/8 → 6/8 criteria and 83 → 101 → 109 → 126
+  conformance cases across four calls without one stalled pass, exhausted its budget while still
+  climbing, and left blocks 4 and 5 unbuilt because the build frontier is strict Manifest order.
+  `full_test.sh` was therefore never written and the run's own test command failed to open it,
+  so the conformance measurement the UAT exists to produce was never taken.
+- 2026-08-11: A repair loop stops when every failing criterion is a kit fault — malformed check,
+  absent declared tool, unavailable acceptance environment, exhausted memory or time — and names
+  the ids. A repair pass rewrites the implementation, never the criterion or the machine it runs
+  on, so these can never be driven green and the budget spent on them was always wasted.
+  `acceptance.TERMINAL_FAILURE_PREFIXES` and `is_terminal_check_failure()` hold the
+  classification beside the prefixes they name.
+- 2026-08-11: A block that passes its acceptance only after more than four calls reports a
+  `sizing:` advisory naming the block and its call count. Repeated repair to reach green is a
+  decomposition signal about the Manifest rather than a build failure, so it is reported and
+  never gated.
 - 2026-08-11: Programmatic Acceptance criteria are authored in explicitly delimited
   `=== AC <id> === … === END AC <id> ===` blocks, replacing the inferred Markdown boundaries.
   The previous container extracted criteria with a non-greedy ` ```python ` regex, so a proof

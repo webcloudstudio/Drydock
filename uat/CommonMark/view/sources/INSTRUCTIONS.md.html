@@ -13,7 +13,16 @@
 <p>Build a CommonMark 0.31.2 parser from the supplied specification. Read Markdown from standard input and write HTML to standard output. Do not use a public Markdown implementation.</p>
 <p>The sole definition of product success is <code>sh full_test.sh</code> returning exit code <code>0</code>. <code>full_test.sh</code> runs the complete, unfiltered supplied CommonMark suite. Treat the suite runner&#x27;s exit status as the verdict; do not parse or hardcode its printed tally.</p>
 <p><code>sources/INSTRUCTIONS.md</code> is imported specification prose. It is not staged into the completed application. The runtime conformance assets are only <code>spec.txt</code>, <code>spec_tests.py</code>, <code>cmark.py</code>, and <code>normalize.py</code>.</p>
+<h2>Implementation Guidance</h2>
+<p>CommonMark parsing is two phases: resolve <strong>block structure</strong> first, then run <strong>inline parsing</strong> over the block contents. Implement in that order.</p>
+<ol><li>Blocks: paragraphs, thematic breaks, ATX headings, setext headings, indented code, fenced</li></ol>
+<p>code, HTML blocks, link reference definitions, block quotes, then lists — lists are the hardest block construct, with lazy continuation, nesting, and tightness.</p>
+<ol><li>Inlines: backslash escapes, entity and numeric references, code spans, emphasis and strong</li></ol>
+<p>emphasis (the delimiter-run algorithm), links and images, autolinks, raw HTML, hard breaks.</p>
+<p>The specification text is normative and contains the algorithms. The &quot;Appendix: A parsing strategy&quot; section describes the reference implementation&#x27;s approach; follow it directly rather than reinventing the rules.</p>
+<h2>Acceptance</h2>
 <p>Do not create acceptance checks asserting that imported or staged files merely exist. Do not create a scoped check by invoking <code>full_test.sh</code>; it is intentionally full-suite only. Parser implementation stories may run the supplied harness with explicit section selectors that cover the whole story scope.</p>
+<p>A section selector must select examples. <code>spec.txt</code> nests example-bearing headings such as <code>ATX headings</code> and <code>List items</code> under chapter titles such as <code>Leaf blocks</code>, <code>Container blocks</code>, and <code>Characters and lines</code>; the chapter titles own no examples of their own, so a selector naming one matches nothing, exits zero, and proves nothing. Select on the headings that own examples, and cover a chapter by naming all of them.</p>
 <p>The final verification story depends on all parser stories, creates <code>full_test.sh</code>, and has exactly one terminal <code>Suite: full</code> acceptance check. The check prints captured standard output and standard error and asserts only <code>result.returncode == 0</code>. It carries <code>Sea Trials: st-001</code>.</p>
 <p>Do not add separate verification stories for script presence, focused verification, staged assets, or complete verification.</p>
 <p>Deliver a concise project <code>README.md</code> documenting the standard-input/standard-output interface and the <code>sh full_test.sh</code> command.</p></article>

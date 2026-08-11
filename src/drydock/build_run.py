@@ -37,6 +37,7 @@ from drydock.acceptance import (
     ProgrammaticAcceptance,
     QuarantinedAcceptance,
     flag_unsatisfiable,
+    is_terminal_check_failure,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
     record_prepassed_acceptance,
@@ -76,7 +77,7 @@ from drydock.config import (
     blueprint_dir_for,
     build_dir_for,
     get_sandbox_mem_limit_mb,
-    repair_through_stall,
+    max_consecutive_stalls,
 )
 from drydock.decisions import load_decisions, render_commander_guidance
 from drydock.dependency_gate import (
@@ -1293,6 +1294,11 @@ class AttemptRecord:
     stop_reason: str | None = None
 
 
+#: Calls a block may spend and still be considered correctly sized: the initial build plus three
+#: repairs. Beyond this the block went green, but only after the model rediscovered the work
+#: several times, which is a Manifest problem rather than a build problem.
+_SIZING_ADVISORY_CALLS = 4
+
 _REPAIR_FEEDBACK_CAP = 4000
 _CASE_TALLY_RE = re.compile(
     r"(?m)(?P<passed>\d+)\s+passed,\s+"
@@ -2491,12 +2497,15 @@ def build_target(
         base_model = model or prompt.model
         max_attempt = max(0, repair_attempts)
         attempt_records: list[AttemptRecord] = []
+        # Consecutive flat passes. Reset by any pass that moves the deterministic acceptance
+        # score, so progress/flat/progress/flat never accumulates into a stop.
+        consecutive_stalls = 0
         # Loop invariant: each attempt runs one full LLM pass and grades it. A failed pass
         # whose classification is repairable, whose deterministic acceptance score improved,
         # and whose budget remains feeds its diagnostics back and re-runs against the persisted
-        # partial work. Any other outcome (green, stalled, or a terminal failure) ends the loop.
-        # Under ``drydock uat`` a stalled pass is reported but does not end it; only a green
-        # pass, a terminal failure, or an exhausted budget does.
+        # partial work. Any other outcome (green, a terminal failure, or ``max_consecutive_stalls``
+        # flat passes in a row) ends the loop. Progress is what buys another pass; the budget is
+        # only the outer bound on how much progress is worth paying for.
         state = status = error = failure_detail = ""
         acceptance: tuple[AcceptanceRunResult, ...] = ()
         agent_report: tuple[str, str] | None = None
@@ -3006,11 +3015,13 @@ def build_target(
                 and not ac_progress
                 and not quantitative_progress
             )
-            # A flat pass is a signal, not always a verdict. Interactively it ends the block so
-            # the operator stops paying for a model that is spinning. Under ``drydock uat`` the
-            # measurement is what Drydock delivers at the full budget, so the pass is reported
-            # and the loop continues.
-            stop_on_stall = stalled and not repair_through_stall()
+            # A flat pass is a signal, not always a verdict: one can be noise between two
+            # productive passes. A run of them is the verdict, because a model that has stopped
+            # moving the score will not start. ``max_consecutive_stalls`` is 1 interactively — the
+            # first flat pass ends the block — and 2 under ``drydock uat``.
+            consecutive_stalls = consecutive_stalls + 1 if stalled else 0
+            stall_budget = max_consecutive_stalls()
+            stop_on_stall = stalled and consecutive_stalls >= stall_budget
             # A criterion the agent reports as broken is terminal, not repairable: staged
             # acceptance assets are restored before grading, so no further pass can move it.
             # Stop on the first such report rather than spending the rest of the budget.
@@ -3030,8 +3041,31 @@ def build_target(
                     _, blockers = _parse_build_report(summary)
                     prose = (agent_report or ("", ""))[:2] + (blockers,)
                     defective_ids = _defective_acceptance_claim(prose, unmet)
+            # A repair pass rewrites the implementation, never the criterion or the machine it
+            # runs on. When every remaining failure is a kit fault — malformed snippet, absent
+            # tool, exhausted memory or time — no further pass can move any of them, and the ids
+            # name exactly what a human has to fix instead.
+            unmet_checks = tuple(check for check in acceptance if not check.passed)
+            terminal_ids = (
+                tuple(
+                    check.check_id
+                    for check in unmet_checks
+                    if is_terminal_check_failure(check.error)
+                )
+                if unmet_checks
+                else ()
+            )
+            all_terminal = bool(unmet_checks) and len(terminal_ids) == len(unmet_checks)
+            stop_on_kit_fault = status == "failed" and all_terminal
             stop_reason = None
-            if defective_ids:
+            if stop_on_kit_fault:
+                stop_reason = "every failing criterion is a kit fault, not a product defect"
+                _emit(
+                    on_text,
+                    "repair: stopped — no repair pass can move these criteria: "
+                    + ", ".join(terminal_ids),
+                )
+            elif defective_ids:
                 stop_reason = "acceptance criterion reported defective"
                 sources = sorted({
                     check.source
@@ -3053,14 +3087,19 @@ def build_target(
                     "the assertion will fail identically."
                 )
             elif stop_on_stall:
+                # A single-pass stop keeps the original wording: naming a count of 1 would read
+                # as though a run of passes was measured when only one was.
                 stop_reason = "deterministic acceptance score did not improve"
-                _emit(on_text, "repair: stopped — deterministic acceptance score did not improve")
+                if consecutive_stalls > 1:
+                    stop_reason += f" on {consecutive_stalls} consecutive calls"
+                _emit(on_text, f"repair: stopped — {stop_reason}")
             elif stalled and attempt < max_attempt:
                 # No ``stop_reason``: the attempt record must not name a stop that never
                 # happened, or the build report reads as though the budget was cut short.
                 _emit(
                     on_text,
-                    f"repair: no acceptance progress on call {attempt + 1} — continuing (uat)",
+                    f"repair: no acceptance progress on call {attempt + 1} "
+                    f"({consecutive_stalls} of {stall_budget}) — continuing",
                 )
             attempt_records.append(
                 AttemptRecord(
@@ -3082,6 +3121,7 @@ def build_target(
                 status == "failed"
                 and _is_repairable(error)
                 and not stop_on_stall
+                and not stop_on_kit_fault
                 and not defective_ids
                 and attempt < max_attempt
             ):
@@ -3144,6 +3184,15 @@ def build_target(
             dependency_overrides=dependency_overrides,
             requirement_evidence=tuple(requirement_evidence),
         )
+        # A block that needed repeated repair to go green is a decomposition signal, not a build
+        # failure: the work inside it was too large or too entangled for one informed pass. Say so
+        # where the Manifest author will see it. Advisory only — it never changes the verdict.
+        if status != "failed" and len(attempt_records) > _SIZING_ADVISORY_CALLS:
+            _emit(
+                on_text,
+                f"sizing: {unit.block_id} needed {len(attempt_records)} calls to pass its "
+                f"acceptance — consider decomposing this block",
+            )
         finding = _failure_finding(status, error, result, acceptance)
         if status == "failed":
             failure_state = (

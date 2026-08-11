@@ -2403,9 +2403,10 @@ def test_repair_loop_exhausts_budget_and_fails(tmp_path):
     assert "stopped: deterministic acceptance score did not improve" in evidence
 
 
-def test_a_uat_run_spends_the_whole_repair_budget_through_a_stall(tmp_path, monkeypatch):
-    # A UAT measures what Drydock delivers at the full budget. Stopping on the first flat pass
-    # scores the methodology on the model's second call rather than its last.
+def test_a_uat_run_stops_on_the_second_consecutive_flat_pass(tmp_path, monkeypatch):
+    # Progress is what buys another pass. A UAT tolerates one flat pass as noise between two
+    # productive ones; a second in a row means the model has stopped moving the score, and the
+    # loop must not spend the rest of the budget discovering that again.
     monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -2418,28 +2419,33 @@ def test_a_uat_run_spends_the_whole_repair_budget_through_a_stall(tmp_path, monk
         build_dir=build_dir,
         runner=runner,
         step_id="foundation",
-        repair_attempts=2,
+        repair_attempts=6,
         on_text=lines.append,
     )
 
+    # Attempt 0 has no predecessor to compare against; 1 is the first flat pass, 2 the second.
     assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
     step = result.steps[0]
     assert step.status == "failed"
-    # The budget ran out; nothing cut it short, so no stop reason may be recorded.
-    assert not step.stop_reason
+    assert step.stop_reason == (
+        "deterministic acceptance score did not improve on 2 consecutive calls"
+    )
+    # The stall ended it well inside the bound; the budget is not what cut it short.
     assert step.calls_used == 3
-    assert step.calls_budget == 3
-    # The flat pass still has to be visible; only its authority to end the block is removed.
-    assert "repair: no acceptance progress on call 2 — continuing (uat)" in lines
-    assert not any("repair: stopped" in line for line in lines)
+    assert step.calls_budget == 7
+    assert "repair: no acceptance progress on call 2 (1 of 2) — continuing" in lines
+    assert any("repair: stopped" in line for line in lines)
 
 
-def test_a_uat_run_can_recover_on_a_call_the_stall_rule_would_have_cut_off(tmp_path, monkeypatch):
-    # The behavior the change exists to enable: two flat passes, then a green one.
+def test_a_uat_run_recovers_on_the_call_a_single_flat_pass_would_have_cut_off(
+    tmp_path, monkeypatch
+):
+    # The behavior the tolerance exists to protect: one flat pass, then a green one. Interactively
+    # this block would have been called after the flat pass.
     monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
-    runner = make_attempt_runner(fix_at=3)
+    runner = make_attempt_runner(fix_at=2)
 
     result = build_target(
         "Demo",
@@ -2447,12 +2453,109 @@ def test_a_uat_run_can_recover_on_a_call_the_stall_rule_would_have_cut_off(tmp_p
         build_dir=build_dir,
         runner=runner,
         step_id="foundation",
-        repair_attempts=3,
+        repair_attempts=6,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0, 1, 2, 3]
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
     assert result.steps[0].status == "built"
     assert _state(target_dir, "foundation") == "closed/verified"
+
+
+def test_a_flat_pass_between_two_productive_ones_never_accumulates_to_a_stop(tmp_path, monkeypatch):
+    # The count is consecutive, not cumulative. A block that keeps climbing between occasional
+    # flat passes is converging, and converging work is exactly what the budget is for.
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+=== AC conformance ===
+Intent: Every conformance example passes.
+
+from pathlib import Path
+score = int(Path("score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {6 - score} failed, 0 errored")
+assert score == 6
+=== END AC conformance ===
+""",
+        encoding="utf-8",
+    )
+    # Case tally by attempt: 1, 1 (flat), 2, 2 (flat), 6 (green). Never two flat in a row.
+    tallies = {0: 1, 1: 1, 2: 2, 3: 2, 4: 6}
+    calls: list[int] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "score.txt").write_text(str(tallies[attempt]), encoding="utf-8")
+        calls.append(attempt)
+        return FakeResult(text=_success_report(changed=("score.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=6,
+    )
+
+    assert calls == [0, 1, 2, 3, 4]
+    assert result.steps[0].status == "built"
+    assert not result.steps[0].stop_reason
+
+
+def test_a_block_that_progresses_every_pass_runs_to_its_full_bound(tmp_path, monkeypatch):
+    """The CommonMark regression: a converging block cut off by a fixed call count.
+
+    Block 3 of the CommonMark UAT went 3/8 -> 4/8 -> 4/8 -> 6/8 checks and 83 -> 101 -> 109 -> 126
+    cases, never stalling, and was stopped at four calls with two criteria still red. Progress must
+    buy every pass the bound allows.
+    """
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+=== AC conformance ===
+Intent: Every conformance example passes.
+
+from pathlib import Path
+score = int(Path("score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {9 - score} failed, 0 errored")
+assert score == 9
+=== END AC conformance ===
+""",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        # One case gained per pass: real progress, never enough to finish inside the bound.
+        (work / "score.txt").write_text(str(attempt + 1), encoding="utf-8")
+        calls.append(attempt)
+        return FakeResult(text=_success_report(changed=("score.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=6,
+    )
+
+    assert calls == [0, 1, 2, 3, 4, 5, 6]
+    step = result.steps[0]
+    assert step.status == "failed"
+    # The budget ran out while the block was still climbing; nothing cut it short, so no stop
+    # reason may be recorded.
+    assert not step.stop_reason
+    assert step.calls_used == 7
 
 
 def test_a_uat_run_still_stops_on_a_reported_defective_criterion(tmp_path, monkeypatch):
@@ -3719,3 +3822,117 @@ def test_a_scoped_build_is_never_reported_as_stalled(tmp_path):
     assert _state(target_dir, "service") == "pending"
     assert result.stalled_blocks == ()
     assert result.exit_code() == 0
+
+
+def test_a_block_that_needed_repeated_repair_reports_a_sizing_advisory(tmp_path, monkeypatch):
+    # Going green after five calls is a decomposition signal, not a build failure. The verdict
+    # stays ``built``; the advisory tells the Manifest author the block was too big.
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+=== AC conformance ===
+Intent: Every conformance example passes.
+
+from pathlib import Path
+score = int(Path("score.txt").read_text(encoding="utf-8"))
+print(f"{score} passed, {5 - score} failed, 0 errored")
+assert score == 5
+=== END AC conformance ===
+""",
+        encoding="utf-8",
+    )
+    lines: list[str] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        attempt = kwargs["parameters"]["attempt"]
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "score.txt").write_text(str(attempt + 1), encoding="utf-8")
+        return FakeResult(text=_success_report(changed=("score.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=6,
+        on_text=lines.append,
+    )
+
+    assert result.steps[0].status == "built"
+    assert result.steps[0].calls_used == 5
+    assert any("sizing: foundation needed 5 calls" in line for line in lines)
+
+
+def test_a_correctly_sized_block_reports_no_sizing_advisory(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
+    runner = make_attempt_runner(fix_at=1)
+    lines: list[str] = []
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=3,
+        on_text=lines.append,
+    )
+
+    assert result.steps[0].status == "built"
+    assert not any("sizing:" in line for line in lines)
+
+
+def test_a_kit_fault_never_buys_a_repair_pass_and_is_reported_by_id(tmp_path, monkeypatch):
+    """A malformed criterion dies in its own frame, so no implementation can turn it green.
+
+    It settles UNVERIFIED rather than failing the build — the runtime verdict is evidence about
+    the kit, not the product, and ``fba5b90`` put the compile gate at plan and validate time where
+    it can be fixed. What the build owes is that the loop spends nothing on it and that the id is
+    named, so the criterion cannot stop gating in silence.
+    """
+    monkeypatch.setenv("DRYDOCK_UAT", "1")
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        """## Programmatic Acceptance
+
+=== AC broken-criterion ===
+Intent: This criterion reads a name it never bound.
+
+assert never_bound_anywhere == 1
+=== END AC broken-criterion ===
+""",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+    lines: list[str] = []
+
+    def runner(prompt, working_directory, **kwargs):
+        calls.append(kwargs["parameters"]["attempt"])
+        work = Path(working_directory)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "foundation.txt").write_text("ok\n", encoding="utf-8")
+        return FakeResult(text=_success_report(changed=("foundation.txt",)))
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=runner,
+        step_id="foundation",
+        repair_attempts=6,
+        on_text=lines.append,
+    )
+
+    assert calls == [0], "a kit fault must not buy a repair pass"
+    step = result.steps[0]
+    # UNVERIFIED is not charged to the build, but it is never silent.
+    assert any(
+        "skipped: broken-criterion" in line for line in lines if line.startswith("acceptance:")
+    )
+    assert any(check.skipped for check in step.acceptance)
+    assert [check.check_id for check in step.acceptance if check.skipped] == ["broken-criterion"]
