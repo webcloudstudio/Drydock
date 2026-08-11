@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from drydock.uat_report import build_case_kit, build_kit_index, prune_generated
+from drydock.uat_report import (
+    build_case_kit,
+    build_kit_index,
+    prune_generated,
+    write_kit_index,
+)
 
 
 def _case(
@@ -343,6 +348,71 @@ def test_kit_index_is_written_for_a_kit_with_no_runs(tmp_path: Path) -> None:
     page = build_kit_index(kit).read_text(encoding="utf-8")
 
     assert "latest run UNKNOWN" in page
+    assert "No runs have been recorded" in page
+
+
+def test_kit_index_is_a_project_page_over_the_documents_and_bundles_on_disk(
+    tmp_path: Path,
+) -> None:
+    kit = tmp_path / "CommonMark"
+    (kit / "sources").mkdir(parents=True)
+    (kit / "updates").mkdir()
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    (kit / "README.md").write_text("# CommonMark\n", encoding="utf-8")
+    (kit / "SEA_TRIALS.md").write_text("# Sea Trials\n", encoding="utf-8")
+    (kit / "TECHNOLOGY_STACK.md").write_text("# Stack\n", encoding="utf-8")
+    (kit / "NOTES.txt").write_text("loose file\n", encoding="utf-8")
+    (kit / ".nojekyll").write_text("", encoding="utf-8")
+    (kit / "sources" / "spec.md").write_text("# spec\n", encoding="utf-8")
+    (kit / "updates" / "spec.md").write_text("# revised spec\n", encoding="utf-8")
+    _case(kit, run_id="20260103T000000.000000Z")
+
+    index = build_kit_index(kit)
+    page = index.read_text(encoding="utf-8")
+
+    assert "Latest run:" in page
+    for link in (
+        "runs/20260103T000000.000000Z/index.html",
+        "SEA_TRIALS.md",
+        "TECHNOLOGY_STACK.md",
+        "NOTES.txt",
+        "sources/spec.md",
+        "updates/spec.md",
+    ):
+        assert f'href="{link}"' in page
+    # A kit page never links a document the kit does not ship, and publishing markers are
+    # not project documents.
+    assert 'href="USER_NOTES.md"' not in page
+    assert 'href=".nojekyll"' not in page
+    assert all((kit / link).exists() for link in _links(index))
+
+
+def test_kit_index_omits_a_bundle_directory_the_kit_does_not_ship(tmp_path: Path) -> None:
+    kit = tmp_path / "Toml"
+    (kit / "sources").mkdir(parents=True)
+    (kit / "sources" / "spec.md").write_text("# spec\n", encoding="utf-8")
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+
+    page = build_kit_index(kit).read_text(encoding="utf-8")
+
+    assert "<h3>sources/</h3>" in page
+    assert "<h3>updates/</h3>" not in page
+
+
+def test_write_kit_index_refreshes_the_landing_page_without_rebuilding_runs(
+    tmp_path: Path,
+) -> None:
+    kit = tmp_path / "CommonMark"
+    (kit / "uat.json").parent.mkdir(parents=True, exist_ok=True)
+    (kit / "uat.json").write_text("{}\n", encoding="utf-8")
+    case = _case(kit, run_id="20260104T000000.000000Z")
+    (case / "index.html").write_text("stale receipt\n", encoding="utf-8")
+
+    page = write_kit_index(kit).read_text(encoding="utf-8")
+
+    assert "runs/20260104T000000.000000Z/index.html" in page
+    # The run receipt is left exactly as found; only `--report` rebuilds it.
+    assert (case / "index.html").read_text(encoding="utf-8") == "stale receipt\n"
 
 
 def test_case_kit_requires_a_run_record(tmp_path: Path) -> None:

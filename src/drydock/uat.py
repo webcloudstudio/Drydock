@@ -24,7 +24,7 @@ from drydock.build_report import build_score_report
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.uat_console import StepSink
-from drydock.uat_report import build_case_kit
+from drydock.uat_report import build_case_kit, write_kit_index
 
 DEFAULT_MAX_BUILD_PASSES = 25
 #: Read size for the child output pump. Small enough that a chunk reaches the console promptly.
@@ -956,6 +956,9 @@ def run_fixture(
     # build_case_kit writes README.md and index.html from result.json, so `drydock uat --report`
     # reproduces byte-identical reports for a run it did not execute.
     build_case_kit(case_root)
+    # The kit landing page indexes the runs, so a completed run must appear on it without
+    # requiring a separate `drydock uat --report`.
+    write_kit_index(case_root.parent.parent)
     return result
 
 

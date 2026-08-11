@@ -10,6 +10,16 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-10: A UAT kit's `index.html` is a project page, and every completed run refreshes it.
+  The kit landing page previously listed only the runs and hardcoded links to `README.md` and
+  `uat.json`. It now inventories the governed documents actually present at the kit root
+  (`SEA_TRIALS.md`, `TECHNOLOGY_STACK.md`, `USER_NOTES.md`, `LICENSE`, and any other kit file,
+  excluding dotfiles), lists the `sources/` and `updates/` bundles with sizes, and links the newest
+  run above the run table. A kit only ever links what it ships, so the page stays valid when
+  published as its own repository. `drydock uat` now calls the new
+  `uat_report.write_kit_index(<kit>)` after each run, so a run appears on its project page without
+  a separate `drydock uat --report`; `--report` still rebuilds every run receipt and the page.
+
 - 2026-08-10: An unproven project guardrail qualifies a release instead of failing it.
   `drydock score release` and `drydock build score` previously blocked completion on a guardrail
   whose verdict was `UNPROVEN`, conflating "evidence showed the prohibition violated" with

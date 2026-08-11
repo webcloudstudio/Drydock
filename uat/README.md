@@ -3,7 +3,10 @@
 drydock uat <projects> does not write in the normal manner to the output directory and logs.  It runs
 encapsulated and stores all its artifacts under uat/<Target>
 
-Each Uat kit has an index.html page for naviation . 
+Each UAT kit has an `index.html` project page for navigation. It carries the latest verdict, one
+row per recorded run linking that run's own `index.html`, the governed documents at the kit root,
+and the `sources/` and `updates/` bundles the runs were built from. It is written at the end of
+every run and rebuilt in full by `drydock uat --report`.
 
 ## Layout
 
@@ -13,7 +16,7 @@ uat/
   <Kit>/                 one kit, publishable as its own repository
     README.md            what the kit builds and how to run it
     uat.json             source bundle, updates, and test command
-    index.html           landing page linking every run
+    index.html           project page: documents, input bundles, and every run
     sources/             the input bundle, flat — no subdirectories
     updates/             replacement sources that drive incremental rebuilds
     runs/<run-id>/       one complete unattended run
