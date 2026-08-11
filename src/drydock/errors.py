@@ -74,11 +74,31 @@ def _safe(text: str, limit: int | None = 800) -> str:
 
 
 def _safe_detail(text: str, limit: int | None = 800) -> str:
-    """Bound a diagnostic without destroying its Markdown line structure."""
+    """Bound a diagnostic without destroying its Markdown line structure.
+
+    A diagnostic that enumerates findings — one line per failing story, per criterion, per spec —
+    is read by counting them. Cutting at an arbitrary character stopped mid-word in the middle of
+    a finding, so the reader could not tell whether three problems were reported or thirty, nor
+    which ones. The cut therefore lands on a line boundary and states how many findings it hid.
+    """
     text = text.strip()
     if limit is None or len(text) <= limit:
         return text
-    return text[: limit - 1].rstrip() + "…"
+    lines = text.splitlines()
+    kept: list[str] = []
+    used = 0
+    for line in lines:
+        if kept and used + len(line) + 1 > limit:
+            break
+        kept.append(line)
+        used += len(line) + 1
+    dropped = len(lines) - len(kept)
+    if not dropped:
+        return "\n".join(kept)
+    if not kept:
+        return text[: limit - 1].rstrip() + "…"
+    noun = "line" if dropped == 1 else "lines"
+    return "\n".join(kept) + f"\n… ({dropped} more {noun} truncated)"
 
 
 def write_error_record(

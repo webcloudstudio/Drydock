@@ -20,9 +20,10 @@ import hashlib
 import html
 import json
 import shutil
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -824,6 +825,31 @@ def _inventory_panels(
     return panels
 
 
+def local_run_window(environment: Mapping[str, object]) -> str:
+    """Render a run's start and finish in the reader's local time.
+
+    A run id is UTC, so it reads hours away from the wall clock the operator watched the run on
+    and cannot be matched to a session by eye. The report states the local window explicitly
+    rather than making the reader convert a timezone in their head to answer "is this the run I
+    just did?". The zone abbreviation is included because the answer depends on it.
+    """
+    started = _local_time(environment.get("started_at"))
+    finished = _local_time(environment.get("finished_at"))
+    if started and finished:
+        return f"{started} — {finished}"
+    return started or finished or "unrecorded"
+
+
+def _local_time(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        return ""
+    try:
+        moment = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=UTC)
+    except ValueError:
+        return ""
+    return moment.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
 def _render_case_markdown(result: dict) -> str:
     """Render the run report a forge shows when a reader opens the run directory.
 
@@ -844,6 +870,7 @@ def _render_case_markdown(result: dict) -> str:
         "",
         f"- Target: `{result.get('target') or ''}`",
         f"- Run: `{result.get('run_id') or ''}`",
+        f"- Ran: {local_run_window(environment)}",
         f"- Provider and model: `{environment.get('provider', '')}` / "
         f"`{environment.get('model', '')}`",
         f"- Elapsed: {int(result.get('elapsed_ms') or 0) / 1000:.1f}s",

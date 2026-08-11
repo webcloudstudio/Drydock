@@ -10,6 +10,25 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-11: `drydock plan` integrity validation reads acceptance criteria in the format the
+  planning prompt mandates. `planning_session._acceptance_status` counted Markdown ` ```python `
+  fences, which the delimited `=== AC <id> ===` container replaced, so every story scored zero or
+  one criterion however many it actually carried and `plan` failed its own `Plan integrity check`
+  with `N Programmatic Acceptance assertion(s)` on output that satisfied its own template — a
+  CommonMark run wrote 10 of 10 Blueprints carrying 2 to 5 criteria each and was rejected at the
+  gate. Every plan-time inspection of acceptance content now goes through
+  `acceptance.parse_programmatic_acceptance_text`, the same authority the build engine executes,
+  via a single `_acceptance_checks` helper: the criterion count, the imported-suite exemption
+  (`_drives_external_suite`), and the unbounded-suite gate (`_invokes_unbounded_test_suite`).
+  The unbounded-suite gate now judges one parsed criterion at a time against its own `Suite:`
+  declaration instead of guessing scope from a line window, which had misread any proof body
+  containing a fence or a heading. A test asserts the shipped `BLUEPRINTS_CONTRACT.md` example
+  clears the validator's own `_MIN_ASSERTIONS_PER_STORY` minimum.
+- 2026-08-11: A truncated diagnostic states what it hid. `errors._safe_detail` cut at a character
+  offset, so an integrity failure enumerating one finding per story ended mid-word and gave no
+  indication that further findings existed. The cut now lands on a line boundary and appends
+  `… (N more lines truncated)`. The criterion-count message also names the specification files it
+  measured rather than referring to "its implemented spec(s)".
 - 2026-08-11: `drydock plan` no longer rejects every Blueprint batch that carries an acceptance
   criterion. The `=== AC <id> ===` proof block introduced with the delimited-criterion container
   reuses the `=== NAME ===` line grammar the artifact envelope already used for whole files, and
@@ -33,6 +52,11 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-11: A UAT report states when the run happened in local time. The per-kit `README.md` and
+  the aggregate summary carry a `Ran:` window rendered from `environment.started_at` /
+  `finished_at` in the reader's timezone, alongside the UTC run id. A run id alone reads hours
+  away from the wall clock the operator watched the run on, which made a report impossible to
+  match to a session by eye.
 - 2026-08-11: A build block's repair loop is bounded by progress rather than by a fixed call
   count. A pass that raises the deterministic acceptance score — a newly green criterion, or a
   non-regressing case tally that improves — earns another pass; consecutive passes that move

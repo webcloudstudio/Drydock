@@ -950,7 +950,7 @@ def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
         excinfo,
         target_dir,
         classification="plan output validation failed",
-        detail="Programmatic Acceptance assertion",
+        detail="Programmatic Acceptance criteria",
     )
 
     # Original imported content is left intact when conform fails to author acceptance.
@@ -975,7 +975,7 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
         excinfo,
         target_dir,
         classification="plan output validation failed",
-        detail="Programmatic Acceptance assertion",
+        detail="Programmatic Acceptance criteria",
     )
 
     assert seen == []  # conform pass suppressed
@@ -2344,7 +2344,7 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
         excinfo,
         target_dir,
         classification="plan output validation failed",
-        detail="Programmatic Acceptance assertion",
+        detail="Programmatic Acceptance criteria",
     )
 
 
@@ -2366,7 +2366,7 @@ def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
 
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
-    assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+    assert not any("Programmatic Acceptance criteria" in w for w in result.warnings)
 
 
 def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
@@ -2400,7 +2400,7 @@ def test_single_suite_driving_check_satisfies_surface_gate(tmp_path):
     result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
 
     assert "story-status" in result.plan.by_id()
-    assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+    assert not any("Programmatic Acceptance criteria" in w for w in result.warnings)
 
 
 def test_fenced_python_acceptance_counts_toward_surface_gate(tmp_path):
@@ -2409,13 +2409,37 @@ def test_fenced_python_acceptance_counts_toward_surface_gate(tmp_path):
     # emits — not legacy ``- assert`` bullets. Two fenced checks clear the gate.
     target_dir = _make_target(tmp_path)
     result = create_plan("Example", "Example", tmp_path, runner=_fake(_llm_output()))
-    assert not any("Programmatic Acceptance assertion" in w for w in result.warnings)
+    assert not any("Programmatic Acceptance criteria" in w for w in result.warnings)
     arch_text = (target_dir / "blueprint" / "ARCHITECTURE.md").read_text(encoding="utf-8")
     assert "```python" in arch_text
 
 
-def test_acceptance_status_counts_fenced_blocks_not_bullets():
+def test_acceptance_status_counts_criteria_in_both_grammars_but_never_bullets():
     from drydock.planning_session import _acceptance_status
+
+    delimited = (
+        "## Programmatic Acceptance\n\n"
+        "=== AC first ===\n"
+        "Intent: First check.\n\n"
+        "assert True\n"
+        "=== END AC first ===\n"
+        "=== AC second ===\n"
+        "Intent: Second check.\n\n"
+        "assert True\n"
+        "=== END AC second ===\n\n"
+        "## User Acceptance\n\n- None.\n"
+    )
+    assert _acceptance_status(delimited) == (2, False)
+    # A proof body may legitimately contain a Markdown fence — markup targets make that ordinary.
+    # Counting fences rather than criteria mistakes the payload for the container.
+    fenced_body = (
+        "## Programmatic Acceptance\n\n"
+        "=== AC renders-fence ===\n"
+        "Intent: A fenced block round-trips.\n\n"
+        'assert render("```python\\nx\\n```") == "<pre><code>x</code></pre>"\n'
+        "=== END AC renders-fence ===\n"
+    )
+    assert _acceptance_status(fenced_body) == (1, False)
 
     fenced = (
         "## Programmatic Acceptance\n\n"
@@ -4215,3 +4239,37 @@ def test_the_authoring_contract_example_parses_as_one_artifact():
     assert [check.check_id for check in checks] == ["health-check", "suite-conformance"]
     for check in checks:
         compile(check.code, check.check_id, "exec")
+
+
+def test_the_plan_validator_counts_the_authoring_contract_criteria():
+    """The plan gate must measure the format the prompt mandates, not a superseded one.
+
+    Parsing the response is not the last gate: ``validate_plan`` then requires each story to
+    carry at least ``_MIN_ASSERTIONS_PER_STORY`` criteria. That counter read Markdown ``python``
+    fences, so once the authored form became ``=== AC <id> ===`` every Blueprint scored zero
+    however many criteria it carried, and ``drydock plan`` failed its own integrity check on
+    output that satisfied its own template. The counter and the build engine must read the same
+    grammar, so the counter is asserted against the shipped contract example directly.
+    """
+    from drydock.planning_session import (
+        _MIN_ASSERTIONS_PER_STORY,
+        _acceptance_checks,
+        _acceptance_status,
+        _drives_external_suite,
+        _invokes_unbounded_test_suite,
+    )
+
+    example = _authoring_contract_blueprint_example()
+    count, justified = _acceptance_status(example)
+
+    assert count >= _MIN_ASSERTIONS_PER_STORY, (
+        f"the plan gate counts {count} criteria in the authoring contract's own example, which "
+        "would fail its own integrity check"
+    )
+    assert not justified
+    checks = _acceptance_checks(example, source="FEATURE-Example.md")
+    assert count == len(checks), "the counter and the acceptance parser disagree"
+    # The example drives the imported suite under an explicit ``Suite:`` declaration, so it is
+    # neither an unbounded full-suite run nor subject to the several-criteria minimum.
+    assert _drives_external_suite(checks)
+    assert not _invokes_unbounded_test_suite(checks)

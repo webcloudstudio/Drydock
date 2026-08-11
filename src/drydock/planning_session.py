@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from drydock import technology_stack
-from drydock.acceptance import PYTHON_FENCE_RE, parse_programmatic_acceptance_text
+from drydock.acceptance import ProgrammaticAcceptance, parse_programmatic_acceptance_text
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
@@ -1729,18 +1729,37 @@ def _uncovered_routes(text: str) -> tuple[str, ...]:
     return tuple(missing)
 
 
+def _acceptance_checks(text: str, *, source: str = "spec") -> tuple[ProgrammaticAcceptance, ...]:
+    """Every acceptance criterion a spec carries, read exactly as the build engine reads it.
+
+    Plan-time validation and build-time execution must agree on what a criterion *is*, or the
+    gate measures a format nobody is asked to write. ``parse_programmatic_acceptance_text`` is
+    the single authority: it reads the authored ``=== AC <id> ===`` container first and falls
+    back to the legacy ``### {check-id}`` + fenced ``python`` form for unmigrated Blueprints.
+    Any plan-time inspection of acceptance content goes through this function rather than
+    re-deriving the grammar, because a second reader of the same content drifts from the first.
+
+    A malformed criterion block raises. The acceptance gate reports that case with a precise
+    message naming the file and the block, so here a spec that cannot be parsed simply carries
+    no criteria and the caller's own defect is reported instead of a duplicate.
+    """
+    try:
+        return parse_programmatic_acceptance_text(text, source=source)
+    except ValueError:
+        return ()
+
+
 def _acceptance_status(text: str) -> tuple[int, bool]:
     """Inspect a spec's Programmatic Acceptance section.
 
-    Returns (assertion_count, justified_none): the number of concrete acceptance
-    checks — the canonical ``### {check-id}`` + fenced ``python`` blocks the build
-    engine actually executes — and whether an empty section carries an inline
-    justification (``- None. <reason>``) rather than a bare ``- None.``.
+    Returns (assertion_count, justified_none): the number of concrete acceptance checks the
+    build engine will execute, and whether an empty section carries an inline justification
+    (``- None. <reason>``) rather than a bare ``- None.``.
     """
     section = _extract_terminal_section(text, "Programmatic Acceptance")
     if section is None:
         return 0, False
-    count = len(PYTHON_FENCE_RE.findall(section))
+    count = len(_acceptance_checks(text))
     justified_none = False
     for line in section.splitlines():
         stripped = line.strip()
@@ -1769,31 +1788,27 @@ _SCOPED_SUITE_RE = re.compile(r"^Suite:\s*scoped\s*$", re.MULTILINE | re.IGNOREC
 _ZERO_SKIPPED_RE = re.compile(r"(?:assert[^\n]*|\bexpect[^\n]*)[\"']0 skipped[\"']", re.IGNORECASE)
 
 
-def _invokes_unbounded_test_suite(acceptance: str) -> bool:
-    """Report whether the acceptance section runs the whole test suite it never declared.
+def _invokes_unbounded_test_suite(checks: Sequence[ProgrammaticAcceptance]) -> bool:
+    """Report whether any criterion runs the whole test suite it never declared.
 
     Story acceptance is bounded by default so an ordinary check cannot accidentally invoke the
     whole test suite: it may stage the suite, or select a slice with ``--pattern`` / ``--number``.
-    The terminal verification story gates on the real suite by declaring ``Suite: full`` in
-    the assertion's heading block, which makes the full run deliberate and reviewable.
+    The terminal verification story gates on the real suite by declaring ``Suite: full``, which
+    makes the full run deliberate and reviewable.
+
+    The criterion is the unit of judgement. Reading the section as text forced a line-window
+    heuristic to guess which declaration governed which call, and guessed wrong whenever a proof
+    body contained a fence or a heading. A parsed criterion carries its own body and its own
+    ``Suite:`` declaration, so the question is answered per criterion with nothing inferred.
     """
-    if "--pattern" in acceptance or "--number" in acceptance:
-        return False
-    lines = acceptance.splitlines()
-    for index, line in enumerate(lines):
-        if "spec_tests.py" not in line:
+    for check in checks:
+        if "spec_tests.py" not in check.code:
             continue
-        # A call may span lines, so inspect a small window around the reference. A fence
-        # delimiter carries a language tag ("```python") that is not an invocation.
-        window = "\n".join(
-            line
-            for line in lines[max(0, index - 3) : index + 4]
-            if not line.lstrip().startswith("```")
-        )
-        if not _TEST_SUITE_INVOCATION_RE.search(window):
+        if "--pattern" in check.code or "--number" in check.code:
             continue
-        # The declaration sits in the heading block above the fenced code.
-        if _SUITE_MARKER_RE.search("\n".join(lines[: index + 1])):
+        if not _TEST_SUITE_INVOCATION_RE.search(check.code):
+            continue
+        if check.full_suite:
             continue
         return True
     return False
@@ -1809,19 +1824,19 @@ def _scoped_suite_claims_zero_skipped(acceptance: str) -> bool:
 _MIN_ASSERTIONS_PER_STORY = 2
 
 
-def _drives_external_suite(acceptance: str) -> bool:
-    """True when a fenced acceptance check executes an imported program or test suite.
+def _drives_external_suite(checks: Sequence[ProgrammaticAcceptance]) -> bool:
+    """True when an acceptance criterion executes an imported program or test suite.
 
     A single check that shells out to the staged conformance harness — running
     ``spec_tests.py`` (or any suite) through subprocess/pytest — performs comprehensive,
     non-trivial verification in one block: it is the strongest test-driven acceptance a
-    story can carry, not the weakest. Such a story is exempt from the several-fenced-checks
-    minimum, which exists to stop a lone trivial in-process assert from standing in for real
-    coverage. In-process assertions (a test client, direct function calls) do not match and
-    stay subject to the minimum. Only fenced ``python`` code is inspected, so the word
-    "python" in prose never trips the exemption.
+    story can carry, not the weakest. Such a story is exempt from the several-criteria minimum,
+    which exists to stop a lone trivial in-process assert from standing in for real coverage.
+    In-process assertions (a test client, direct function calls) do not match and stay subject
+    to the minimum. Only parsed proof bodies are inspected, so the word "python" in surrounding
+    prose never trips the exemption.
     """
-    code = "\n".join(match.group("code") for match in PYTHON_FENCE_RE.finditer(acceptance))
+    code = "\n".join(check.code for check in checks)
     return bool(_TEST_SUITE_INVOCATION_RE.search(code))
 
 
@@ -2049,8 +2064,7 @@ def _integrity_check(
             count, none_reason = _acceptance_status(text)
             assertions += count
             justified = justified or none_reason
-            section = _extract_terminal_section(text, "Programmatic Acceptance") or ""
-            if _drives_external_suite(section):
+            if _drives_external_suite(_acceptance_checks(text, source=str(name))):
                 drives_suite = True
             # Test-driven route coverage. A SCREEN's assertions must literally
             # call every route it provides or consumes — hard gate. A FEATURE
@@ -2078,10 +2092,11 @@ def _integrity_check(
             and assertions < _MIN_ASSERTIONS_PER_STORY
         ):
             fatal.append(
-                f"{block.block_id}: {assertions} Programmatic Acceptance assertion(s) across "
-                "its implemented spec(s), which declare a programmatic surface; author several "
-                "concrete Python assertions (test-driven acceptance), drive the imported test "
-                "suite, or justify `- None.` inline"
+                f"{block.block_id}: {assertions} Programmatic Acceptance criteria in "
+                f"{', '.join(str(name) for name in targets)}, which declare a programmatic "
+                f"surface; a story needs at least {_MIN_ASSERTIONS_PER_STORY}. Author concrete "
+                "`=== AC <id> ===` criteria, drive the imported test suite, or justify "
+                "`- None. <reason>` inline"
             )
         for name in targets:
             text = spec_text(name) if name else None
@@ -2090,7 +2105,8 @@ def _integrity_check(
             acceptance = (
                 _extract_terminal_section(text, "Programmatic Acceptance") if text else None
             )
-            if acceptance and _invokes_unbounded_test_suite(acceptance):
+            checks = _acceptance_checks(text, source=str(name)) if text else ()
+            if acceptance and _invokes_unbounded_test_suite(checks):
                 fatal.append(
                     f"{block.block_id}: Programmatic Acceptance runs the whole test suite "
                     "without declaring Suite: full; a non-terminal story must bound its run "

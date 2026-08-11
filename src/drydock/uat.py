@@ -24,7 +24,7 @@ from drydock.build_report import build_score_report
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm_usage import normalize_tokens, read_records
 from drydock.uat_console import StepSink
-from drydock.uat_report import build_case_kit, write_kit_index
+from drydock.uat_report import build_case_kit, local_run_window, write_kit_index
 
 DEFAULT_MAX_BUILD_PASSES = 25
 #: Repairs one build block may spend under UAT, above the interactive default of 3. Progress is
@@ -1001,6 +1001,8 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
             f"## {result.fixture}: {result.status.upper()}",
             "",
             f"- Target: `{result.target}`",
+            f"- Run: `{result.run_id}`",
+            f"- Ran: {local_run_window(result.environment)}",
             f"- Elapsed: {result.elapsed_ms / 1000:.1f}s",
             f"- Build passes: {result.build_passes}",
             f"- Receipt: `{_relativize(result.output_dir, base) if base else result.output_dir}"
