@@ -39,6 +39,7 @@ from drydock.acceptance import (
     flag_unsatisfiable,
     observe_programmatic_acceptance,
     programmatic_acceptance_for_step,
+    record_prepassed_acceptance,
     run_programmatic_acceptance,
 )
 from drydock.acceptance_requirements import (
@@ -2457,6 +2458,13 @@ def build_target(
             )
             for check in malformed:
                 _emit(on_text, f"  - {check.source} [{check.check_id}]: {check.error}")
+        # Persist the baseline-green set for ``drydock score ac``, which grades a built tree and
+        # so cannot observe it. Recording only — a criterion green here is either exercising
+        # nothing or measuring a deliverable that legitimately already existed, and the baseline
+        # cannot tell those apart, so failing on it would break correct builds.
+        record_prepassed_acceptance(
+            evidence_dir, (check.check_id for check in pre_acceptance if check.passed)
+        )
         if pre_acceptance:
             baseline_red = sum(1 for check in pre_acceptance if not check.passed)
             weak_checks = [check.check_id for check in pre_acceptance if check.passed]

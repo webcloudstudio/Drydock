@@ -24,6 +24,16 @@ command surface and Typed Specification contract are unstable and may change bet
   mismatched end id, a stray end marker, and a duplicate id are hard errors. The Markdown form
   still parses, so Blueprints authored before this change keep working. `BLUEPRINTS_CONTRACT.md`
   states the new form.
+- 2026-08-11: `drydock score ac` reports a fourth verdict, `~ PREPASSED`, for a criterion that
+  runs green but was also green at its block's baseline — before that block's code existed. Such
+  a criterion has not shown that the story's work is what satisfies it; in the CommonMark UAT
+  four of them (`leaf-blocks`, `containers`, `character-line-endings`, `character-insecure`)
+  selected no conformance examples, exited zero, and printed `✓ PASS`, making the reported score
+  12/28 where the proven score was 8/28. The build records its per-block baseline to
+  `evidence/prepassed-acceptance.json` because only the build takes a baseline. It is reported
+  and never gated: a criterion that exercises nothing and one measuring a deliverable that
+  legitimately already existed are indistinguishable from the baseline alone, so failing on it
+  would break correct builds. `PREPASSED` does not affect the exit code.
 - 2026-08-11: A Programmatic Acceptance criterion that does not compile now fails
   `drydock validate` and `drydock plan` instead of warning. Whether a criterion is Python is a
   fact about the file, in the same class as a container parse error, and it is deliberately

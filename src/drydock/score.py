@@ -28,6 +28,7 @@ from drydock.acceptance import (
     observe_programmatic_acceptance,
     parse_programmatic_acceptance,
     programmatic_acceptance_for_step,
+    read_prepassed_acceptance,
     run_programmatic_acceptance,
     tally_outcomes,
 )
@@ -62,6 +63,7 @@ from drydock.source_roles import tampered_build_assets
 from drydock.standard_artifacts import (
     VERIFIED_FAIL,
     VERIFIED_PASS,
+    VERIFIED_PREPASSED,
     VERIFIED_UNVERIFIED,
     Sounding,
     render_soundings,
@@ -71,15 +73,26 @@ from drydock.target_environment import provision_uv_environment
 PASS = "PASS"
 FAIL = "FAIL"
 UNVERIFIED = "UNVERIFIED"
+#: A criterion that ran green here but was *also* green at its block's baseline, before that
+#: block's code existed. Reported as its own verdict rather than folded into PASS, because the two
+#: are not the same claim: this one has not shown that the story's work is what satisfies it. It
+#: is not a failure and does not affect the exit code — a criterion measuring a deliverable that
+#: legitimately already existed looks identical, and only the author can tell which this is.
+PREPASSED = "PREPASSED"
 
-_VERIFIED_LABEL = {PASS: VERIFIED_PASS, FAIL: VERIFIED_FAIL, UNVERIFIED: VERIFIED_UNVERIFIED}
+_VERIFIED_LABEL = {
+    PASS: VERIFIED_PASS,
+    FAIL: VERIFIED_FAIL,
+    UNVERIFIED: VERIFIED_UNVERIFIED,
+    PREPASSED: VERIFIED_PREPASSED,
+}
 
 
 @dataclass(frozen=True)
 class AcVerdict:
     criterion_id: str
     summary: str
-    status: str  # PASS | FAIL | UNVERIFIED
+    status: str  # PASS | FAIL | UNVERIFIED | PREPASSED
     evidence: str
     source: str = ""
     # Owning plan blocks, resolved from the story that implements ``source``. Empty when the
@@ -240,10 +253,20 @@ def verify_acs(target: str, target_dir: Path, *, step_id: str | None = None) -> 
     )
 
     owners = _blueprint_owners(plan)
+    # Grading runs against a built tree, where a criterion satisfied by the product and one
+    # satisfied by its absence look identical. Only the build's baseline separates them, so this
+    # reports what the build recorded instead of re-deriving it from output.
+    prepassed = read_prepassed_acceptance(target_dir / "evidence")
     verdicts: list[AcVerdict] = []
     rows: list[Sounding] = []
     for obs in observations:
         status, evidence = _observation_verdict(obs)
+        if status == PASS and obs.check_id in prepassed:
+            status = PREPASSED
+            evidence = (
+                "green at this block's baseline too, before its code existed — confirm the "
+                "criterion exercises the story's work"
+            )
         stamp = verified_at if status != UNVERIFIED else ""
         story, feature = owners.get(obs.source, ("", ""))
         verdicts.append(

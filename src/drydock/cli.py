@@ -2010,7 +2010,12 @@ def cmd_build_score(args: argparse.Namespace) -> int:
     return result.exit_code()
 
 
-_AC_GLYPH = {"PASS": ("✓", "32"), "FAIL": ("✗", "31"), "UNVERIFIED": ("—", "33")}
+_AC_GLYPH = {
+    "PASS": ("✓", "32"),
+    "FAIL": ("✗", "31"),
+    "UNVERIFIED": ("—", "33"),
+    "PREPASSED": ("~", "33"),
+}
 
 
 def _ac_mark(status: str) -> str:
@@ -2026,20 +2031,31 @@ def _ac_mark(status: str) -> str:
 
 def cmd_score_ac(target: str, step: str | None = None) -> int:
     from drydock.config import require_target_dir
-    from drydock.score import UNVERIFIED, verify_acs
+    from drydock.score import PREPASSED, UNVERIFIED, verify_acs
 
     target_dir = require_target_dir(target)
     report = verify_acs(target, target_dir, step_id=step)
     passed = sum(1 for v in report.verdicts if v.status == "PASS")
     failed = sum(1 for v in report.verdicts if v.status == "FAIL")
     unverified = sum(1 for v in report.verdicts if v.status == UNVERIFIED)
+    prepassed = sum(1 for v in report.verdicts if v.status == PREPASSED)
     print()
     print(f"Acceptance verification: {target}  ({report.verified_at})")
     if report.scope:
         print(f"  Scope: {report.scope_name}  [{report.scope}]")
-    print(
-        f"  PASS {passed}   FAIL {failed}   UNVERIFIED {unverified}   ({len(report.verdicts)} AC)"
-    )
+    counts = f"  PASS {passed}   FAIL {failed}   UNVERIFIED {unverified}"
+    if prepassed:
+        counts += f"   PREPASSED {prepassed}"
+    print(f"{counts}   ({len(report.verdicts)} AC)")
+    if prepassed:
+        print(
+            f"  {prepassed} criterion(s) were green before their block built. Either they do not "
+            "exercise the story's work,"
+        )
+        print(
+            "  or the deliverable already existed. Not counted as proven; the build is not "
+            "blocked on them."
+        )
     if not report.verdicts:
         print("  No programmatic acceptance assertions in scope.")
     else:

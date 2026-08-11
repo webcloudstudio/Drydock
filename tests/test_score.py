@@ -509,3 +509,36 @@ def test_release_score_accepts_an_intact_staged_kit(tmp_path):
 
     assert not any("Staged build asset" in b for b in result.blockers)
     assert result.complete
+
+
+def test_a_prepassed_criterion_is_reported_separately_and_does_not_fail_the_run():
+    """Green now and green before its block built. A weaker claim than PASS, but not a defect:
+    a criterion measuring a deliverable that already existed reads identically, and only the
+    author can tell which it is. So it is named, not gated."""
+    from drydock.acceptance import AcceptanceObservation
+    from drydock.score import FAIL, PASS, PREPASSED, AcReport, AcVerdict, _observation_verdict
+
+    observation = AcceptanceObservation("leaf-blocks", "FEATURE-Leaf.md", "intent", True, 0, "", "")
+    status, _ = _observation_verdict(observation)
+    assert status == PASS
+
+    report = AcReport(
+        target="commonmark",
+        verdicts=(
+            AcVerdict("leaf-blocks", "intent", PREPASSED, "green at baseline too"),
+            AcVerdict("leaf-references", "intent", PASS, ""),
+        ),
+        soundings_path=Path("SOUNDINGS.md"),
+        verified_at="now",
+    )
+
+    assert report.exit_code() == 0
+    assert (
+        AcReport(
+            target="t",
+            verdicts=(AcVerdict("x", "i", FAIL, "boom"),),
+            soundings_path=Path("SOUNDINGS.md"),
+            verified_at="now",
+        ).exit_code()
+        == 1
+    )

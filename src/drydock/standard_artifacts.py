@@ -16,6 +16,11 @@ SOUNDINGS_HEADER = ("Status", "Blueprint", "AC Id", "Text", "Evidence", "Verifie
 VERIFIED_PASS = "✓ PASS"
 VERIFIED_FAIL = "✗ FAIL"
 VERIFIED_UNVERIFIED = "— UNVERIFIED"
+# Green now, but green at its block's baseline too — so the story's work has not been shown to be
+# what satisfies it. Distinct from PASS because it is a weaker claim, and distinct from FAIL
+# because it is not a defect: a criterion measuring a deliverable that already existed reads the
+# same way. The Commander decides which one it is.
+VERIFIED_PREPASSED = "~ PREPASSED"
 
 
 @dataclass(frozen=True)

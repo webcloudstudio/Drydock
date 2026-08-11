@@ -853,3 +853,32 @@ def test_a_criterion_that_compiles_is_not_flagged():
 
     assert acceptance.malformed_criteria(checks) == ()
     assert acceptance.syntax_defect("assert 1 == 2") is None
+
+
+# --- Prepassed criteria: recorded for reporting, never gated ----------------------------
+
+
+def test_prepassed_ids_accumulate_across_blocks(tmp_path):
+    """Each block records its own baseline; score ac reads the union after the whole build."""
+    evidence = tmp_path / "evidence"
+
+    acceptance.record_prepassed_acceptance(evidence, ["character-insecure"])
+    acceptance.record_prepassed_acceptance(evidence, ["leaf-blocks", "containers"])
+
+    assert acceptance.read_prepassed_acceptance(evidence) == frozenset({
+        "character-insecure",
+        "leaf-blocks",
+        "containers",
+    })
+
+
+def test_reading_prepassed_ids_without_a_build_is_empty_not_an_error(tmp_path):
+    assert acceptance.read_prepassed_acceptance(tmp_path / "nothing-here") == frozenset()
+
+
+def test_recording_no_prepassed_ids_writes_nothing(tmp_path):
+    evidence = tmp_path / "evidence"
+
+    acceptance.record_prepassed_acceptance(evidence, [])
+
+    assert not (evidence / acceptance.PREPASSED_ACCEPTANCE_EVIDENCE).exists()
