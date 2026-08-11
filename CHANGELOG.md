@@ -10,6 +10,45 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Changed
 
+- 2026-08-11: Programmatic Acceptance criteria are authored in explicitly delimited
+  `=== AC <id> === … === END AC <id> ===` blocks, replacing the inferred Markdown boundaries.
+  The previous container extracted criteria with a non-greedy ` ```python ` regex, so a proof
+  body containing a Markdown fence truncated at the inner fence and discarded the criterion
+  after it; the fragment then raised `SyntaxError` in its own frame, which classifies as a
+  malformed check, settles UNVERIFIED, and costs the story nothing — the criterion stopped
+  gating and its story still closed verified. The criterion id now lives in the delimiter rather
+  than being slugified from a nearby heading, declarations are the leading `Key: value` lines,
+  and the body runs verbatim to the end marker, so a fence, a `##` line, a `###` line, or a
+  `Requires:` line inside a string is inert. Blocks are scanned document-wide, so a `##` line in
+  a proof can no longer close the `## Programmatic Acceptance` section. An unterminated block, a
+  mismatched end id, a stray end marker, and a duplicate id are hard errors. The Markdown form
+  still parses, so Blueprints authored before this change keep working. `BLUEPRINTS_CONTRACT.md`
+  states the new form.
+- 2026-08-11: A Programmatic Acceptance criterion that does not compile now fails
+  `drydock validate` and `drydock plan` instead of warning. Whether a criterion is Python is a
+  fact about the file, in the same class as a container parse error, and it is deliberately
+  separate from the unsatisfiability analyzers, which stay advisory because they predict that a
+  well-formed assertion cannot pass and that prediction carries a false-positive rate.
+- 2026-08-11: `group_blocks` bounds a build block by the number of acceptance criteria it owes
+  as well as by assembled token cost, capped at `DEFAULT_BLOCK_ACCEPTANCE_LIMIT` (5). Cost alone
+  is a poor proxy for how much a block has to prove: the cheapest merge on offer is often two
+  stories that each carry a full conformance section. In the CommonMark UAT that merged leaf
+  blocks (4 criteria) with containers-and-lists (4) into one block owing 8 against a flat repair
+  budget of 3; it reached 6, stopped third of five, and starved every block behind it, so the
+  run produced no `full_test.sh` and every downstream verification step failed as a consequence.
+  A story whose own criteria exceed the ceiling still builds as its own block — a marker, never
+  a refusal — matching the existing `limit_tokens` behavior. Previously observed block shapes
+  are unchanged.
+- 2026-08-11: Imported source material reaches a prompt byte-for-byte. `prompt_chunks` sliced
+  files at raw character offsets, cutting 15 of 17 chunk boundaries in `spec.txt` mid-line and
+  delivering each severed line as two unrelated lines in two separately fenced blocks; the
+  fenced-part builders in `prompt_assembly` called `.rstrip()`, destroying trailing spaces that
+  are a CommonMark hard line break; and they emitted a fixed three-backtick fence against a file
+  carrying 1427 lines that open with three or more backticks, including 655 thirty-two-backtick
+  example openers that closed the wrapper early. Chunking now splits on existing line
+  boundaries, and a fence is always longer than the longest backtick run in the body. Content
+  without a three-backtick run still gets exactly three, so existing prompts — and their cache
+  prefixes — are unchanged.
 - 2026-08-10: UAT lifecycle inputs are explicit and reproducible. Kits may declare `sea_trials`
   and `technology_stack` paths in `uat.json`; discovery applies the same containment and existence
   checks as source/update paths, validates both artifacts before a run, seeds them after `init`,
