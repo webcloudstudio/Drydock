@@ -1,11 +1,9 @@
-# Drydock UAT Kits
+# Drydock Build Evidence
 
-A **kit** is one known project that Drydock rebuilds unattended, end to end, against a real model:
-`init` → `import` → `analyze` → `plan` → `build`, then scored and sealed into a self-verifying
-proof kit. Kits are Drydock's full-suite acceptance capability and its public worked examples.
+drydock uat <projects> does not write in the normal manner to the output directory and logs.  It runs
+encapsulated and stores all its artifacts under uat/<Target>
 
-Each kit directory is self-contained and self-runnable. `uat/Toml/` is published on its own as
-`drydock-example-toml`; nothing outside it is needed to reproduce a run.
+Each Uat kit has an index.html page for naviation . 
 
 ## Layout
 
@@ -21,7 +19,7 @@ uat/
     runs/<run-id>/       one complete unattended run
 ```
 
-`runs/` is generated. It is ignored by Git in this repository and published deliberately in an
+This repo should be ignored by the master Git repository and is published deliberately in an
 example repository.
 
 ## Running
