@@ -527,3 +527,23 @@ Target: 1
 
     assert result.status == "INCONCLUSIVE"
     assert result.return_code == 3
+
+
+def test_unclosed_manifest_work_is_reported_but_does_not_block_the_gate(tmp_path):
+    # Both score surfaces render the same completion gate, so they answer "is this done?" the
+    # same way: from Sea Trials. Manifest state is the plan, not the contract.
+    target_dir, _ = _target(tmp_path)
+    manifest = target_dir / "MANIFEST.md"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "state: closed/verified", "state: closed/failed"
+        ),
+        encoding="utf-8",
+    )
+
+    result = score_target("Demo", target_dir, runner=_runner())
+
+    assert result.complete is True
+    assert result.exit_code() == 0
+    assert not any("closed/verified" in blocker for blocker in result.blockers)
+    assert any("Manifest work is not closed/verified" in note for note in result.warnings)

@@ -477,7 +477,9 @@ def score_target(
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     incomplete = [block.block_id for block in executable if block.state != "closed/verified"]
     if incomplete:
-        blockers.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
+        # Reported, not gating; see the matching note in ``score``. Both surfaces render the
+        # same completion gate, so they answer "is this done?" the same way: from Sea Trials.
+        warnings.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
     stale = stale_applied_specs(plan, blueprint_dir)
     if stale:
         blockers.append(
@@ -578,10 +580,10 @@ def score_target(
         "story_acceptance": {
             **outcomes.to_dict(),
             "note": (
-                "Reported, not gating. Story acceptance gates the release by construction "
-                "through Manifest closure; the release gate's only input is Sea Trials. "
-                "UNVERIFIED assertions never reached the code under test and say nothing "
-                "about the build."
+                "Reported, not gating, by any path. The release gate's only input is Sea "
+                "Trials; Manifest state is the plan for meeting the contract, not the "
+                "contract. UNVERIFIED assertions never reached the code under test and say "
+                "nothing about the build."
             ),
         },
         "traceability": {
@@ -757,10 +759,10 @@ def score_target(
         "story_acceptance": {
             **outcomes.to_dict(),
             "note": (
-                "Reported, not gating. Story acceptance gates the release by construction "
-                "through Manifest closure; the release gate's only input is Sea Trials. "
-                "UNVERIFIED assertions never reached the code under test and say nothing "
-                "about the build."
+                "Reported, not gating, by any path. The release gate's only input is Sea "
+                "Trials; Manifest state is the plan for meeting the contract, not the "
+                "contract. UNVERIFIED assertions never reached the code under test and say "
+                "nothing about the build."
             ),
         },
         "execution_id": result.execution_id,

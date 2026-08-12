@@ -542,3 +542,59 @@ def test_a_prepassed_criterion_is_reported_separately_and_does_not_fail_the_run(
         ).exit_code()
         == 1
     )
+
+
+# The Manifest is the plan for meeting the contract; Sea Trials are the contract. Blocking the
+# release on Manifest state made story acceptance a release input through the back door: a
+# criterion the model wrote and got wrong closed a story ``closed/failed`` and failed a release
+# whose every Sea Trial passed.
+
+
+def _fail_the_story(target_dir: Path) -> None:
+    manifest = target_dir / "MANIFEST.md"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "id: work\nstate: closed/verified",
+            "id: work\nstate: closed/failed",
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_unclosed_manifest_work_is_reported_but_does_not_block_the_release(tmp_path):
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    _fail_the_story(target_dir)
+
+    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+
+    assert result.complete
+    assert result.exit_code() == 0
+    assert not any("closed/verified" in blocker for blocker in result.blockers)
+    assert any("Manifest work is not closed/verified: work" in note for note in result.warnings)
+
+
+def test_a_failing_sea_trial_still_blocks_a_release_whose_manifest_is_closed(tmp_path):
+    # The gate did not get looser about the contract, only about the plan.
+    target_dir, _ = _target(tmp_path, proof=_FAILING_PROOF)
+
+    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+
+    assert not result.complete
+    assert result.exit_code() == 1
+
+
+def test_a_required_sea_trial_without_coverage_still_blocks(tmp_path):
+    # The backstop Manifest closure was standing in for: a contract satisfied by work nobody
+    # did. This tests the contract's coverage directly rather than the plan's state.
+    target_dir, _ = _target(tmp_path, proof=_REAL_PROOF)
+    _fail_the_story(target_dir)
+    features = target_dir / "blueprint" / "FEATURES.md"
+    features.write_text(
+        features.read_text(encoding="utf-8").replace("Sea Trials: st-proof\n", ""),
+        encoding="utf-8",
+    )
+
+    result = score_release("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
+
+    assert not result.complete
+    assert any("lack implementation/proof coverage" in blocker for blocker in result.blockers)

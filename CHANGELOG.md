@@ -38,6 +38,23 @@ command surface and Typed Specification contract are unstable and may change bet
   `TypeError` a correct implementation would have avoided also stops gating, visibly rather than
   silently.
 
+### Changed
+
+- 2026-08-12: Sea Trials are the sole input to the completion gate. `score` and `score release`
+  report unclosed Manifest work as a warning instead of a blocker, so a release whose every
+  required Sea Trial passes completes even when a story sits at `closed/failed` or `pending`.
+  Both modules already documented this contract — "story acceptance is reported, never an input
+  to the release decision" — while `blockers.append("Manifest work is not closed/verified: ...")`
+  contradicted it, making a per-story acceptance criterion a release gate transitively: a failed
+  criterion closes its story `closed/failed`, which failed the release. A TOML run passed all four
+  required Sea Trials and the full external toml-test suite (205 valid, 474 invalid, 0 failed) and
+  still scored `INCOMPLETE`, because one generated criterion asserted the wrong JSON shape and took
+  four stories down with it. The backstop that Manifest closure stood in for — a contract satisfied
+  by work nobody did — remains a blocker and tests the contract directly: a required Sea Trial with
+  no implementation or proof coverage fails the gate. `drydock status --check` is unchanged and
+  still reports the terminal pipeline state from Manifest closure, so the build loop continues to
+  stop on unclosed work.
+
 ### Fixed
 
 - 2026-08-12: A missing project-local executable in a pre-build acceptance observation no longer

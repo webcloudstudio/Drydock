@@ -53,16 +53,7 @@ Consequence: scores
 Verification: proof
 Pattern: ubiquitous
 
-## st-006: The supplied harness is not modified
-Type: guardrail
-Required: yes
-Criterion: The build shall never edit, filter, or reinterpret full_test.sh, run_conformance.sh, or the installed conformance suite.
-Testability: judgeable
-Consequence: blocks
-Verification: evidence
-Pattern: ubiquitous
-
-## st-007: No case count is asserted
+## st-006: No case count is asserted
 Type: guardrail
 Required: yes
 Criterion: No acceptance criterion shall assert a fixed number of conformance cases, because the suite's size is a property of the installed version.

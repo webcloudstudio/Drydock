@@ -331,7 +331,14 @@ def score_release(
     executable = [block for block in plan.blocks if block.block_type in {"story", "spike"}]
     incomplete = [block.block_id for block in executable if block.state != "closed/verified"]
     if incomplete:
-        blockers.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
+        # Reported, not gating. The Manifest is the plan for meeting the contract, not the
+        # contract: a story is a means. Blocking on its state made story acceptance a release
+        # input through the back door — a criterion the model wrote and got wrong closed a
+        # story ``closed/failed`` and failed a release whose every Sea Trial passed. What the
+        # Manifest was standing in for — a contract satisfied by work nobody did — is covered
+        # directly below, where a required Sea Trial without implementation or proof coverage
+        # blocks. That tests the contract; this tested the plan.
+        warnings.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
     stale = stale_applied_specs(plan, blueprint_dir)
     if stale:
         blockers.append(
@@ -439,10 +446,10 @@ def score_release(
         "story_acceptance": {
             **outcomes.to_dict(),
             "note": (
-                "Reported, not gating. Story acceptance gates the release by construction "
-                "through Manifest closure; the release gate's only input is Sea Trials. "
-                "UNVERIFIED assertions never reached the code under test and say nothing "
-                "about the build."
+                "Reported, not gating, by any path. The release gate's only input is Sea "
+                "Trials; Manifest state is the plan for meeting the contract, not the "
+                "contract. UNVERIFIED assertions never reached the code under test and say "
+                "nothing about the build."
             ),
         },
         "traceability": {
@@ -612,10 +619,10 @@ def score_release(
         "story_acceptance": {
             **outcomes.to_dict(),
             "note": (
-                "Reported, not gating. Story acceptance gates the release by construction "
-                "through Manifest closure; the release gate's only input is Sea Trials. "
-                "UNVERIFIED assertions never reached the code under test and say nothing "
-                "about the build."
+                "Reported, not gating, by any path. The release gate's only input is Sea "
+                "Trials; Manifest state is the plan for meeting the contract, not the "
+                "contract. UNVERIFIED assertions never reached the code under test and say "
+                "nothing about the build."
             ),
         },
         "execution_id": result.execution_id,
