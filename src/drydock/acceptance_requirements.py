@@ -19,7 +19,10 @@ from drydock.target_environment import resolve_target_environment
 _MISSING_MODULE_RE = re.compile(
     r"(?:ModuleNotFoundError|ImportError): No module named ['\"]([^'\"]+)"
 )
-_MISSING_EXECUTABLE_RE = re.compile(r"FileNotFoundError: .*?['\"]([^/'\"]+)['\"]")
+# The capture stays on the failing line. Without the newline exclusion a project-local
+# executable — which contains a path separator and so cannot match — makes the engine
+# backtrack past its own quotes and swallow the following traceback as a tool name.
+_MISSING_EXECUTABLE_RE = re.compile(r"FileNotFoundError: .*?['\"]([^/'\"\n]+)['\"]")
 _KNOWN_EXTERNAL_IMPORTS = frozenset({
     "fastapi",
     "httpx",
@@ -355,5 +358,10 @@ def discover_missing_requirement(result_stderr: str) -> AcceptanceRequirement | 
     if match := _MISSING_MODULE_RE.search(result_stderr):
         return AcceptanceRequirement("python-package", match.group(1).split(".", 1)[0], "test")
     if match := _MISSING_EXECUTABLE_RE.search(result_stderr):
-        return AcceptanceRequirement("executable", match.group(1), "test")
+        candidate = match.group(1)
+        # Same rule ``visible_external_usage`` applies to declared commands: a path is the
+        # artifact under construction, not external tooling somebody must authorize. A
+        # pre-build acceptance observation is expected to miss ``./program``.
+        if candidate.split() == [candidate] and not candidate.startswith((".", "/")):
+            return AcceptanceRequirement("executable", candidate, "test")
     return None

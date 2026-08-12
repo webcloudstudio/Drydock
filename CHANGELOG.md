@@ -40,6 +40,23 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-12: A missing project-local executable in a pre-build acceptance observation no longer
+  parks a finished story on an unanswerable authorization. `_MISSING_EXECUTABLE_RE` in
+  `acceptance_requirements` excluded `/` from its capture but not the newline, so stderr naming a
+  relative path — the artifact under construction, absent by definition before the build — forced
+  the engine to backtrack past its own quotes and capture the following traceback as the tool
+  name. `discover_missing_requirement` returned `AcceptanceRequirement("executable", <traceback
+  text>, "test")`, which `record_requirement_decision` persisted as a blocking `DECISIONS.json`
+  record; `synchronize_manifest_question_gates` then re-asserted that gate on every later pass and
+  dragged the story back to `blocked/questions` from `closed/verified`, after the repair pass had
+  driven both its checks green. A CommonMark run finished 655 of 655 conformance examples and its
+  sole project acceptance criterion, then scored `INCOMPLETE` on `Manifest work is not
+  closed/verified: block-quotes`. The capture is now confined to the failing line and
+  `discover_missing_requirement` returns a requirement only for a bare command token, applying the
+  rule `visible_external_usage` already used for declared commands: an executable starting with
+  `.` or `/` is project-local, not external tooling a Commander must authorize. A genuine missing
+  tool is still discovered and still blocks.
+
 - 2026-08-11: `drydock plan` integrity validation reads acceptance criteria in the format the
   planning prompt mandates. `planning_session._acceptance_status` counted Markdown ` ```python `
   fences, which the delimited `=== AC <id> ===` container replaced, so every story scored zero or

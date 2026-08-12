@@ -9,6 +9,7 @@ from drydock.acceptance import (
 )
 from drydock.acceptance_requirements import (
     authorization_for,
+    discover_missing_requirement,
     project_plan_requirement_decisions,
     recommend_external_declarations,
     undeclared_external_usage,
@@ -296,3 +297,54 @@ def test_narrow_commander_answer_authorizes_only_named_tool_and_scope(tmp_path):
     assert httpx.authorized
     assert not playwright.authorized
     assert not runtime.authorized
+
+
+# A pre-build acceptance observation runs before the code exists, so a missing project-local
+# executable is the expected RED result — never an external tool the Commander must authorize.
+
+_PROJECT_LOCAL_STDERR = """Traceback (most recent call last):
+  File "spec_tests.py", line 44, in do_test
+    p1 = Popen(prog.split(), stdout=PIPE, stdin=PIPE, stderr=PIPE)
+FileNotFoundError: [Errno 2] No such file or directory: './program'
+
+Traceback (most recent call last):
+  File "block-quotes-basic.py", line 10, in <module>
+    assert result.returncode == 0
+AssertionError
+"""
+
+
+def test_a_project_local_executable_is_never_an_authorization_requirement():
+    assert discover_missing_requirement(_PROJECT_LOCAL_STDERR) is None
+
+
+def test_an_absolute_path_executable_is_never_an_authorization_requirement():
+    stderr = "FileNotFoundError: [Errno 2] No such file or directory: '/opt/build/program'\n"
+
+    assert discover_missing_requirement(stderr) is None
+
+
+def test_a_genuinely_missing_external_tool_is_still_discovered():
+    stderr = "FileNotFoundError: [Errno 2] No such file or directory: 'psql'\n"
+
+    assert discover_missing_requirement(stderr) == AcceptanceRequirement(
+        "executable", "psql", "test"
+    )
+
+
+def test_executable_discovery_never_captures_a_following_traceback():
+    requirement = discover_missing_requirement(
+        "FileNotFoundError: [Errno 2] No such file or directory: './program'\n"
+        "\n"
+        'Traceback (most recent call last):\n  File "check.py", line 1, in <module>\n'
+    )
+
+    assert requirement is None
+
+
+def test_a_missing_module_is_still_discovered_as_a_package():
+    stderr = "ModuleNotFoundError: No module named 'httpx.compat'\n"
+
+    assert discover_missing_requirement(stderr) == AcceptanceRequirement(
+        "python-package", "httpx", "test"
+    )
