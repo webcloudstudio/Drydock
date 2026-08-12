@@ -2348,6 +2348,47 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
     )
 
 
+def test_a_criterion_no_implementation_can_execute_is_fatal_at_plan_time(tmp_path):
+    """The CommonMark defect, caught before a build spends a repair budget on it.
+
+    The criterion passed a ``str`` to a binary-mode ``subprocess`` call and asserted on characters
+    the specification never mentioned. It raised ``TypeError`` before the program under test ran,
+    so it closed its block failed and no implementation could have reopened it. Both faults are
+    visible in the text of the criterion, so both are decided here rather than seven LLM calls
+    later.
+    """
+    target_dir = _make_target(tmp_path)
+    defective = _SPEC_HEADER.replace(
+        _SPEC_HEADER_PA_BODY,
+        "=== AC runtime-utf8 ===\n"
+        "Intent: The executable accepts Markdown and writes HTML on standard output.\n\n"
+        "import subprocess\n\n"
+        'result = subprocess.run(["./program"], input="café\\n", capture_output=True)\n'
+        "assert result.returncode == 0\n"
+        "=== END AC runtime-utf8 ===\n"
+        "=== AC runtime-exit ===\n"
+        "Intent: The executable exits clean.\n\n"
+        "assert True\n"
+        "=== END AC runtime-exit ===",
+    )
+    arch = defective.format(ftype="ARCHITECTURE", name="Example", ac="None.")
+    feature = defective.format(ftype="FEATURE", name="Status", ac="Status exits successfully.")
+    out = (
+        f"=== ARCHITECTURE.md ===\n{arch}\n=== END ARCHITECTURE.md ===\n"
+        f"=== FEATURE-Status.md ===\n{feature}\n=== END FEATURE-Status.md ===\n"
+        f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
+    )
+
+    with pytest.raises(RecordedError) as excinfo:
+        create_plan("Example", "Example", tmp_path, runner=_fake(out))
+    _assert_recorded_error(
+        excinfo,
+        target_dir,
+        classification="plan output validation failed",
+        detail="runtime-utf8",
+    )
+
+
 def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
     _make_target(tmp_path)
     justified = _SPEC_HEADER.replace(

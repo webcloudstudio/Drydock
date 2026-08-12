@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -81,12 +82,22 @@ _MEMORY_SIGNATURES = ("MemoryError", "Cannot allocate memory", "std::bad_alloc",
 # Exceptions that, when raised by the snippet's own frame, mean the snippet is defective:
 # it reads a name it never bound or does not parse. Neither is a statement about the code
 # under test.
+#
+# ``TypeError`` belongs here for the same reason, and it is the common case in practice: a criterion
+# that passes a ``str`` to a binary-mode ``subprocess`` call, or calls an interface with the wrong
+# argument shape, dies before the code under test does any work. A build is a search for pass/fail
+# verdicts, not for exceptions in the harness, so a criterion that cannot execute never fails the
+# build. The trade is deliberate and known: a ``TypeError`` that a correct implementation would have
+# avoided — an interface returning ``None`` where the criterion expected a value — stops gating too.
+# That case is visible as a reported defective criterion rather than silent, and the alternative
+# spends the whole repair budget on a check no implementation can turn green.
 _MALFORMED_EXCEPTIONS = frozenset({
     "NameError",
     "UnboundLocalError",
     "SyntaxError",
     "IndentationError",
     "TabError",
+    "TypeError",
 })
 # Exceptions that, raised in the snippet's own frame, mean the check never reached the code
 # under test: the filesystem or the environment refused it. ``ConnectionError`` and friends are
@@ -317,6 +328,11 @@ class ProgrammaticAcceptance:
     sea_trials: tuple[str, ...] = ()
     full_suite: bool = False
     requirements: tuple[AcceptanceRequirement, ...] = ()
+    #: The character encoding this criterion deliberately exercises, from its ``Encoding:``
+    #: declaration. Empty is the norm and means the criterion is ASCII, which is what the
+    #: authoring gate enforces. A target whose specification genuinely states an encoding
+    #: requirement declares it here and may then use non-ASCII test data.
+    encoding: str = ""
 
     @property
     def timeout_seconds(self) -> int:
@@ -542,7 +558,7 @@ def _requirements_from_values(
 #: Metadata keys recognized inside an AC block. The set is closed on purpose: an unrecognized
 #: ``Key: value`` line ends the metadata run and begins the code, so an annotated assignment such
 #: as ``result: int = 5`` on the first code line cannot be mistaken for a declaration.
-_AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials"})
+_AC_META_KEYS = frozenset({"intent", "suite", "requires", "sea trials", "encoding"})
 
 
 def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcceptance:
@@ -584,6 +600,7 @@ def _parse_ac_block(body: str, *, check_id: str, source: str) -> ProgrammaticAcc
         requirements=_requirements_from_values(
             meta.get("requires", ()), source=source, check_id=check_id
         ),
+        encoding=" ".join(meta.get("encoding", ())).strip().lower(),
     )
 
 
@@ -641,6 +658,86 @@ def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticA
             f"'=== END AC {pending[0]} ===' is missing"
         )
     return tuple(checks)
+
+
+#: ``subprocess`` entry points whose text/binary mode decides whether a ``str`` argument is legal.
+#: ``getoutput``/``getstatusoutput`` are deliberately absent: they are text-only by definition.
+_SUBPROCESS_CALLS = frozenset({"run", "Popen", "check_output", "check_call", "call"})
+#: Any one of these keywords puts a ``subprocess`` call in text mode, where ``str`` in and ``str``
+#: out is the contract. ``errors=`` is included because it implies a codec is in use.
+_TEXT_MODE_KEYWORDS = frozenset({"text", "encoding", "universal_newlines", "errors"})
+#: Keywords that make a call exchange data with the process. Only these calls care about the
+#: mode: a ``subprocess.run([...], check=True)`` that reads and writes nothing is correct in
+#: either mode, and flagging it would reject sound criteria for a fault they cannot have.
+_SUBPROCESS_IO_KEYWORDS = frozenset({"input", "capture_output", "stdout", "stderr", "stdin"})
+
+
+def acceptance_authoring_defects(check: ProgrammaticAcceptance) -> tuple[str, ...]:
+    """Report defects in how a criterion is written, independent of any implementation.
+
+    These are faults a correct implementation cannot fix, so they are caught where they are
+    authored rather than discovered as a wasted repair budget six LLM calls into a build.
+
+    Two rules, both deterministic:
+
+    * **Text mode.** A ``subprocess`` call that exchanges data with the process runs a program
+      that reads and writes text. Left in binary mode it takes ``bytes``, so passing it a ``str``
+      raises ``TypeError`` before the program starts, and comparing its ``bytes`` output to a
+      ``str`` literal is false whatever the program printed. A call that exchanges nothing is
+      correct in either mode and is not reported.
+    * **ASCII test data.** Acceptance data is ASCII unless the criterion declares ``Encoding:``.
+      A criterion invented at plan time that asserts on characters outside the specification's
+      stated scope tests a requirement nobody wrote down, and it fails the build for a property
+      the product was never asked to have. Declaring the encoding makes the intent reviewable.
+
+    Returns one sentence per defect, empty when the criterion is well formed.
+    """
+    defects: list[str] = []
+    if not check.encoding:
+        offending = sorted({character for character in check.code if ord(character) > 127})
+        if offending:
+            sample = " ".join(
+                f"{character!r} (U+{ord(character):04X})" for character in offending[:4]
+            )
+            defects.append(
+                f"uses non-ASCII test data ({sample}) without declaring `Encoding:`. Acceptance "
+                "data is ASCII unless the specification states an encoding requirement; add "
+                "`Encoding: utf-8` to the criterion when it does, or use ASCII test data"
+            )
+    for call in _binary_mode_subprocess_calls(check.code):
+        defects.append(
+            f"calls `subprocess.{call}` in binary mode. A criterion drives a text program: pass "
+            '`text=True` (with `encoding="utf-8"` when the criterion declares an encoding), or '
+            "the call takes `bytes` and a `str` argument raises TypeError before the program runs"
+        )
+    return tuple(defects)
+
+
+def _binary_mode_subprocess_calls(code: str) -> tuple[str, ...]:
+    """Names of ``subprocess`` entry points invoked without a text-mode keyword.
+
+    Parsed rather than pattern-matched: a call spanning several lines, or one whose keywords are
+    reordered, is ordinary authoring, and a regex over the source would miss both. Unparseable
+    code yields nothing — the compile gate reports that, and one defect reported once is enough.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return ()
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        owner = node.func.value
+        if not isinstance(owner, ast.Name) or owner.id != "subprocess":
+            continue
+        if node.func.attr not in _SUBPROCESS_CALLS:
+            continue
+        keywords = {keyword.arg for keyword in node.keywords}
+        if keywords & _TEXT_MODE_KEYWORDS or not keywords & _SUBPROCESS_IO_KEYWORDS:
+            continue
+        found.append(node.func.attr)
+    return tuple(found)
 
 
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:

@@ -26,7 +26,11 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from drydock import technology_stack
-from drydock.acceptance import ProgrammaticAcceptance, parse_programmatic_acceptance_text
+from drydock.acceptance import (
+    ProgrammaticAcceptance,
+    acceptance_authoring_defects,
+    parse_programmatic_acceptance_text,
+)
 from drydock.acceptance_requirements import (
     project_plan_requirement_decisions,
     recommend_external_declarations,
@@ -2113,6 +2117,12 @@ def _integrity_check(
                     "with the runner's --pattern/--number selector, or gate the full run on "
                     "the terminal Suite: full story and SEA_TRIALS.md final measurement"
                 )
+            # A criterion no implementation can execute is caught where it is authored. Left to
+            # the build it costs a whole repair budget before the loop concludes what is knowable
+            # here for nothing: the criterion, not the code, is what is wrong.
+            for check in checks:
+                for defect in acceptance_authoring_defects(check):
+                    fatal.append(f"{name} [{check.check_id}]: {defect}")
             if acceptance and _scoped_suite_claims_zero_skipped(acceptance):
                 fatal.append(
                     f"{block.block_id}: Programmatic Acceptance declares Suite: scoped but "

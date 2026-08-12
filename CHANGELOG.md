@@ -8,6 +8,36 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ## [Unreleased]
 
+### Added
+
+- 2026-08-11: `drydock plan` rejects an acceptance criterion no implementation can execute, at the
+  point it is authored. `acceptance.acceptance_authoring_defects` enforces two deterministic rules
+  over each parsed criterion and reports each violation as a plan integrity fatal naming the
+  specification file and the criterion id. **Text mode**: a `subprocess` call that exchanges data
+  with the process — `input=`, `capture_output=`, a `stdout`/`stderr`/`stdin` pipe — must declare
+  `text=True`, `encoding=`, or `universal_newlines=`; left in binary mode it takes `bytes`, so a
+  `str` argument raises `TypeError` before the program under test starts. A call that exchanges
+  nothing is correct in either mode and is not reported. Calls are found by parsing the proof body
+  rather than by pattern, so a multi-line or reordered call is read correctly. **ASCII test data**:
+  a criterion may not use non-ASCII literals unless it declares the new `Encoding:` metadata key,
+  which makes an encoding requirement stated by the imported specification explicit and reviewable
+  instead of invented at plan time. A CommonMark run lost a block to a criterion that broke both
+  rules — it fed `"café χρῆν\n"` to a binary-mode `subprocess.run` — and spent two build calls
+  before the loop concluded the criterion, not the code, was wrong. `BLUEPRINTS_CONTRACT.md`
+  documents both rules under `### Runnability`.
+
+### Changed
+
+- 2026-08-11: A criterion that raises `TypeError` in its own frame reports UNVERIFIED and is not
+  charged to the build. `TypeError` joins `NameError`, `SyntaxError`, and their neighbors in
+  `acceptance._MALFORMED_EXCEPTIONS`: a criterion that dies on argument passing never reached the
+  code under test, so grading it FAIL closed a block that no implementation could reopen. A build
+  measures pass and fail verdicts; an exception in the harness is charged to the harness, stated
+  by id in the block evidence and the build summary. Attribution remains by traceback frame — the
+  same `TypeError` raised inside the built code is still a genuine red. The known trade: a
+  `TypeError` a correct implementation would have avoided also stops gating, visibly rather than
+  silently.
+
 ### Fixed
 
 - 2026-08-11: `drydock plan` integrity validation reads acceptance criteria in the format the

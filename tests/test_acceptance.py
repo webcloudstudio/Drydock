@@ -392,6 +392,35 @@ def test_a_name_from_a_sibling_check_is_named_as_a_malformed_check(tmp_path):
     assert "its own process" in result.error
 
 
+def test_a_type_error_in_the_checks_own_frame_never_fails_the_build(tmp_path):
+    """A criterion that cannot execute is not a verdict on the implementation.
+
+    The observed case: a criterion passed a ``str`` to a binary-mode ``subprocess`` call, which
+    raises before the program under test starts. Graded as a FAIL it closed its block failed and
+    no implementation could ever have reopened it. A build searches for pass/fail verdicts, so an
+    exception in the harness is charged to the harness — reported, and not to the build.
+    """
+    result = _run_one("import subprocess\nmemoryview('text')", tmp_path)
+    assert not result.passed
+    assert result.skipped, "a criterion that cannot execute must not be charged to the build"
+    assert result.outcome == acceptance.OUTCOME_UNVERIFIED
+    assert result.error is not None
+    assert result.error.startswith(acceptance.MALFORMED_FAILURE_PREFIX)
+    assert "TypeError" in result.error
+
+
+def test_a_type_error_inside_the_code_under_test_stays_a_genuine_red(tmp_path):
+    """Attribution is still by frame: the build owns what the build raised."""
+    (tmp_path / "built_module.py").write_text(
+        "def render(text):\n    return len(None)\n", encoding="utf-8"
+    )
+    result = _run_one("from built_module import render\nassert render('x') == 1", tmp_path)
+    assert not result.passed
+    assert not result.skipped
+    assert "TypeError" in result.stderr
+    assert result.error is None
+
+
 def test_a_name_error_inside_the_code_under_test_stays_a_genuine_red(tmp_path):
     (tmp_path / "built_module.py").write_text(
         "def render():\n    return missing_helper()\n", encoding="utf-8"
@@ -882,3 +911,73 @@ def test_recording_no_prepassed_ids_writes_nothing(tmp_path):
     acceptance.record_prepassed_acceptance(evidence, [])
 
     assert not (evidence / acceptance.PREPASSED_ACCEPTANCE_EVIDENCE).exists()
+
+
+# --- Authoring defects: rejected where they are written ---------------------------------
+#
+# A criterion that no implementation can execute is a defect in the criterion. Caught at plan
+# time it costs one validation pass; left to the build it costs a whole repair budget before the
+# loop concludes what was knowable before any code existed.
+
+
+def _criterion(code: str, *, encoding: str = "") -> acceptance.ProgrammaticAcceptance:
+    declaration = f"Encoding: {encoding}\n" if encoding else ""
+    text = f"=== AC example ===\nIntent: Example.\n{declaration}\n{code}\n=== END AC example ===\n"
+    return acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")[0]
+
+
+def test_a_binary_mode_subprocess_that_exchanges_data_is_an_authoring_defect():
+    """The defect observed in the CommonMark run, caught before a build pays for it."""
+    check = _criterion(
+        "import subprocess\n"
+        'result = subprocess.run(["./program"], input="text\\n", capture_output=True)\n'
+        "assert result.returncode == 0\n"
+    )
+
+    defects = acceptance.acceptance_authoring_defects(check)
+
+    assert len(defects) == 1
+    assert "binary mode" in defects[0]
+    assert "text=True" in defects[0]
+
+
+def test_a_subprocess_that_exchanges_nothing_is_correct_in_either_mode():
+    """Mode is only a defect where data crosses the boundary; flagging the rest rejects sound work."""
+    check = _criterion(
+        'import subprocess, sys\nsubprocess.run([sys.executable, "spec_tests.py"], check=True)\n'
+    )
+
+    assert acceptance.acceptance_authoring_defects(check) == ()
+
+
+def test_text_mode_declared_by_any_of_its_spellings_is_accepted():
+    for keyword in ("text=True", 'encoding="utf-8"', "universal_newlines=True"):
+        check = _criterion(
+            "import subprocess\n"
+            f'subprocess.run(["./program"], input="text\\n", capture_output=True, {keyword})\n'
+        )
+        assert acceptance.acceptance_authoring_defects(check) == (), keyword
+
+
+def test_non_ascii_test_data_without_a_declaration_is_an_authoring_defect():
+    """An encoding requirement the specification never stated is not the product's to satisfy."""
+    check = _criterion('assert render("café") == "<p>café</p>"')
+
+    defects = acceptance.acceptance_authoring_defects(check)
+
+    assert len(defects) == 1
+    assert "non-ASCII" in defects[0]
+    assert "U+00E9" in defects[0]
+
+
+def test_a_declared_encoding_makes_non_ascii_test_data_deliberate():
+    check = _criterion('assert render("café") == "<p>café</p>"', encoding="utf-8")
+
+    assert acceptance.acceptance_authoring_defects(check) == ()
+
+
+def test_a_criterion_that_does_not_parse_reports_no_authoring_defect():
+    """The compile gate owns unparseable code; two reports of one fault help nobody."""
+    check = _criterion("assert render( ==")
+
+    assert acceptance.acceptance_authoring_defects(check) == ()

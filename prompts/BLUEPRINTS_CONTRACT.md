@@ -265,6 +265,40 @@ literal backslash is genuinely intended. Drydock warns about this at `drydock va
 time; the warning does not remove the criterion or stop the build, so the authoring is yours to get
 right.
 
+### Runnability
+
+Two authoring rules are enforced at plan time. A criterion that breaks either is rejected before
+any build spends a call on it, because no implementation can turn it green.
+
+**Text mode.** Every `subprocess` call declares `text=True`. A criterion drives a program that
+reads and writes text; left in binary mode the call takes `bytes`, and passing it a `str` raises
+`TypeError` before the program under test starts. Write:
+
+```
+result = subprocess.run(["./program"], input="one line\n", capture_output=True, text=True)
+assert result.returncode == 0
+assert result.stdout == "<p>one line</p>\n"
+```
+
+**ASCII test data.** Acceptance data is ASCII. Do not invent an encoding requirement: characters
+outside ASCII test a property the specification never stated, and a criterion that fails on them
+fails the build for something nobody asked the product to do. When the imported specification does
+state an encoding requirement, the criterion says so and may then use that encoding:
+
+```
+=== AC runtime-utf8 ===
+Intent: The executable round-trips UTF-8 source, per INSTRUCTIONS.md.
+Encoding: utf-8
+
+result = subprocess.run(
+    ["./program"], input="café\n", capture_output=True, text=True, encoding="utf-8"
+)
+assert result.stdout == "<p>café</p>\n"
+=== END AC runtime-utf8 ===
+```
+
+`Encoding:` is a declaration of deliberate intent, reviewable as such. Absent it, ASCII.
+
 **Every check is standalone.** Drydock writes each fenced block to its own script and runs it in
 its own process from the build directory. Checks in the same file share no imports, no variables,
 and no execution order. A snippet that reads a name another snippet bound raises `NameError` on
