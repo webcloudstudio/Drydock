@@ -10,6 +10,44 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-13: Artifact blocks carry an invariant closing boundary.
+  `=== BEGIN ARTIFACT <name> ===` … `=== END ARTIFACT ===` is now the emitted form in
+  `analyze`, `plan`, `document generate`, `survey import`, and `import compass`. The artifact name
+  is typed once, at the open; the close is a constant token with nothing to recall and nothing to
+  collide with, which is MIME multipart discipline. Both parsers accept the named form
+  (`=== NAME ===` … `=== END NAME ===`) unchanged, so no recorded response stops parsing, and the
+  `=== AC <id> ===` proof containers are deliberately excluded — there the id in both markers is a
+  real checksum binding a criterion to its identity.
+
+  The failure this prevents: a Toml `analyze` run died because the model closed `COMPASS.md` with
+  `=== END COMPASS ===`. The only artifact that closed wrongly was the only one whose first
+  heading restated its filename stem, twenty-five lines above the close. Any artifact whose
+  content restates its filename is exposed to the same collision, and the close delimiter was the
+  one place the protocol asked the model to reproduce a variable from memory.
+
+### Fixed
+
+- 2026-08-13: A malformed artifact block no longer discards the artifacts beside it. Both the
+  `analyze`-path parser (`artifact_blocks`) and the `plan`-path parser (`planning_session`) now
+  reject per artifact: a block whose name is not allowed, or whose boundaries could not be
+  resolved, is dropped by name with its reason, and the command proceeds on what it did accept.
+  Callers state which artifacts they require — `analyze` requires `ANALYSIS.md`, `document
+  generate` requires its four standard sections — so a missing required artifact is still fatal,
+  but it now fails naming the artifact rather than naming a block the model never opened. Only a
+  response from which nothing survived is rejected whole. Four of twenty recorded UAT runs died
+  this way, one of them discarding nineteen Blueprints and eight LLM calls over a single
+  malformed block.
+
+- 2026-08-13: A closing delimiter that names the wrong artifact is read as a close, not as a new
+  block. Both parsers recognise the close by position — a name-mismatched close whose successor is
+  another delimiter, or the end of the response, terminates the open block — and report the name
+  disagreement naming both markers. A mismatched close whose successor is real content is still
+  read as the boundary the model transposed. The names are never fuzzy-matched: the close's name
+  is a checksum on the open, and matching them loosely would discard the property that makes an
+  unclosed container detectable at all. Previously the parser invented a block named after the
+  marker, then failed the allow-list on a name the model never opened, producing a diagnostic that
+  pointed at the wrong artifact.
+
 - 2026-08-13: A UAT fixture declares the verdict it expects. `uat.json` accepts
   `"expect": {"verdict": "PASSED|PENDING|FAILED|ERROR"}`, defaulting to `PASSED`, and every
   shipped kit declares one. `result.json` gains `expected_verdict` and `observed_verdict`, and a

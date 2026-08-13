@@ -241,9 +241,30 @@ class TestImport:
         def runner(prompt, working_directory, **kwargs):
             return FakeRun(text="=== NOTES.md ===\n# Notes\n=== END NOTES.md ===\n")
 
-        with pytest.raises(SpecificationError, match="unexpected artifact"):
+        with pytest.raises(SpecificationError, match="no SURVEY artifact survived"):
             import_specs(target, target_dir, source, runner=runner)
 
+        assert not (target_dir / "survey" / "ac" / "NOTES.md").exists()
+
+    def test_import_keeps_good_artifacts_alongside_a_rejected_one(self, tmp_path):
+        # P-3: a disallowed block costs itself. It does not cost the artifact beside it.
+        target, target_dir = _make_target(tmp_path)
+        source = tmp_path / "blueprint"
+        source.mkdir()
+        (source / "FEATURE-Login.md").write_text("# FEATURE: Login\n", encoding="utf-8")
+
+        def runner(prompt, working_directory, **kwargs):
+            return FakeRun(
+                text=(
+                    "=== NOTES.md ===\n# Notes\n=== END NOTES.md ===\n"
+                    "=== SURVEY-login.md ===\n# SURVEY-SPEC: drydock login\n"
+                    "=== END SURVEY-login.md ===\n"
+                )
+            )
+
+        written = import_specs(target, target_dir, source, runner=runner)
+
+        assert [path.name for path in written] == ["SURVEY-login.md"]
         assert not (target_dir / "survey" / "ac" / "NOTES.md").exists()
 
     def test_import_recovers_write_transcript(self, tmp_path):

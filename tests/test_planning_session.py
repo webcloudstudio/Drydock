@@ -79,7 +79,8 @@ def test_plan_prompt_declares_strict_artifact_contract():
 
     assert "Emit exactly one response mode" in prompt
     assert "### Success Mode" in prompt
-    assert "=== PLAN_CREATE_ERROR.txt ===" in prompt
+    assert "=== BEGIN ARTIFACT PLAN_CREATE_ERROR.txt ===" in prompt
+    assert "=== END ARTIFACT ===" in prompt
     assert "Never emit `TOPOLOGY.md` in Error Mode or Blocked Mode" in prompt
     assert "Never emit `MANIFEST.md`; Drydock serializes it from `TOPOLOGY.md`." in prompt
     assert "Every `implements:` filename in `TOPOLOGY.md` must name exactly one" in prompt
@@ -455,11 +456,15 @@ _PAIRED_OUTPUT = (
 
 
 def test_strict_blocks_reject_open_only_delimiters():
+    # Open-only delimiters collapse every file into the first still-open block, so the block the
+    # parser judged is ARCHITECTURE.md and nothing survives it. The report names the artifact that
+    # absorbed the stray delimiter and the delimiter itself, which is what an operator can act on.
     with pytest.raises(SpecificationError) as excinfo:
         _parse_strict_blocks(_OPEN_ONLY_OUTPUT, FakeRun(text=_OPEN_ONLY_OUTPUT))
     message = str(excinfo.value)
     assert "Delimiter pairing mismatch" in message
-    assert "=== END MANIFEST.md ===" in message
+    assert "ARCHITECTURE.md" in message
+    assert "=== FEATURE-Filter-Contract.md ===" in message
 
 
 def test_strict_blocks_parse_paired_delimiters():
@@ -565,6 +570,62 @@ def test_strict_blocks_reject_ambiguous_mismatched_end_delimiter():
 
     with pytest.raises(SpecificationError, match="Delimiter pairing mismatch"):
         _parse_strict_blocks(output, FakeRun(text=output))
+
+
+def test_strict_blocks_close_a_misnamed_close_by_position():
+    # §30.2 — `=== END COMPASS ===` closing `=== COMPASS.md ===`. The close is recognised by
+    # position; no block named after the marker is invented.
+    output = (
+        "=== ARCHITECTURE.md ===\n# ARCHITECTURE\n=== END ARCHITECTURE ===\n"
+        "=== MANIFEST.md ===\n# MANIFEST\n=== END MANIFEST.md ===\n"
+    )
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert blocks == {"ARCHITECTURE.md": "# ARCHITECTURE", "MANIFEST.md": "# MANIFEST"}
+
+
+def test_strict_blocks_keep_the_artifacts_a_defect_did_not_touch():
+    # §30.3 / P-3 — one unresolvable block costs itself, not the batch. The original parser
+    # discarded all three, which is D-008.
+    output = (
+        "=== FEATURE-Alpha.md ===\n# FEATURE: Alpha\n=== END FEATURE-Alpha.md ===\n"
+        "=== FEATURE-Beta.md ===\n# FEATURE: Beta\n"
+        "=== FEATURE-Gamma.md ===\n# FEATURE: Gamma\n=== END FEATURE-Beta.md ===\n"
+        "=== MANIFEST.md ===\n# MANIFEST\n=== END MANIFEST.md ===\n"
+    )
+    defects: list[str] = []
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output), on_defect=defects.append)
+
+    assert set(blocks) == {"FEATURE-Alpha.md", "MANIFEST.md"}
+    assert [defect.split(":")[0] for defect in defects] == ["FEATURE-Beta.md"]
+
+
+def test_strict_blocks_parse_the_invariant_boundary_form():
+    # §30.4 — the name is typed once, at the open; the close is a constant token.
+    output = (
+        "=== BEGIN ARTIFACT ARCHITECTURE.md ===\n# ARCHITECTURE\n=== END ARTIFACT ===\n"
+        "=== BEGIN ARTIFACT MANIFEST.md ===\n# MANIFEST\n=== END ARTIFACT ===\n"
+    )
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert blocks == {"ARCHITECTURE.md": "# ARCHITECTURE", "MANIFEST.md": "# MANIFEST"}
+
+
+def test_strict_blocks_keep_ac_containers_inside_their_blueprint():
+    output = (
+        "=== BEGIN ARTIFACT STORY-Login.md ===\n"
+        "# STORY: Login\n"
+        "=== AC login-1 ===\nassert True\n=== END AC login-1 ===\n"
+        "=== END ARTIFACT ===\n"
+    )
+
+    blocks = _parse_strict_blocks(output, FakeRun(text=output))
+
+    assert set(blocks) == {"STORY-Login.md"}
+    assert "=== AC login-1 ===" in blocks["STORY-Login.md"]
 
 
 def _make_target(tmp_path: Path, *, analysis: str | None = _ANALYSIS) -> Path:

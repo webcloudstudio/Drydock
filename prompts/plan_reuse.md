@@ -100,29 +100,29 @@ Emit exactly one response mode and nothing else.
 Emit one or more delimited artifact blocks:
 
 ```text
-=== MANIFEST.md ===
+=== BEGIN ARTIFACT MANIFEST.md ===
 ...manifest markdown...
-=== END MANIFEST.md ===
+=== END ARTIFACT ===
 ```
 
 Optionally include additional blocks for missing required Blueprint files:
 
 ```text
-=== ARCHITECTURE.md ===
+=== BEGIN ARTIFACT ARCHITECTURE.md ===
 ...markdown...
-=== END ARCHITECTURE.md ===
+=== END ARTIFACT ===
 ```
 
 ```text
-=== DATABASE.md ===
+=== BEGIN ARTIFACT DATABASE.md ===
 ...markdown...
-=== END DATABASE.md ===
+=== END ARTIFACT ===
 ```
 
 ```text
-=== UI-GENERAL.md ===
+=== BEGIN ARTIFACT UI-GENERAL.md ===
 ...markdown...
-=== END UI-GENERAL.md ===
+=== END ARTIFACT ===
 ```
 
 Rules:
@@ -139,12 +139,12 @@ If planning cannot proceed because the existing Blueprint is too incomplete or c
 form a valid Manifest, emit only:
 
 ```text
-=== PLAN_CREATE_BLOCKED.txt ===
+=== BEGIN ARTIFACT PLAN_CREATE_BLOCKED.txt ===
 Reason:
 - ...
 Required action:
 - ...
-=== END PLAN_CREATE_BLOCKED.txt ===
+=== END ARTIFACT ===
 ```
 
 ### Error Mode
@@ -153,13 +153,13 @@ If mutually exclusive authoritative requirements prevent a valid Manifest and in
 cannot resolve them, emit only:
 
 ```text
-=== PLAN_CREATE_ERROR.txt ===
+=== BEGIN ARTIFACT PLAN_CREATE_ERROR.txt ===
 Error type: ...
 Reason:
 - {exact conflicting files, clauses, and scopes; why precedence cannot resolve them}
 Required action:
 - {specific product decision or source correction required}
-=== END PLAN_CREATE_ERROR.txt ===
+=== END ARTIFACT ===
 ```
 
 Never emit `MANIFEST.md` in Blocked Mode or Error Mode.

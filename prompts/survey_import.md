@@ -38,13 +38,13 @@ Target 3–7 AC per command across both tables. Favor assertions over judgments.
 
 ## Output format
 
-Emit each file delimited exactly so, and **nothing else** — no preamble, no explanation, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail. Start your response with the first `=== SURVEY-... ===` block.
+Emit each file delimited exactly so, and **nothing else** — no preamble, no explanation, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail. Start your response with the first `=== BEGIN ARTIFACT SURVEY-... ===` block. The name is typed once, at the open; every block is closed by the constant token `=== END ARTIFACT ===`.
 
 ```
-=== SURVEY-<command>.md ===
+=== BEGIN ARTIFACT SURVEY-<command>.md ===
 # SURVEY-SPEC: <command>
 ...full file body...
-=== END SURVEY-<command>.md ===
+=== END ARTIFACT ===
 ```
 
 Use a lowercase, hyphenated `<command>` slug in the filename (e.g. `SURVEY-plan-create.md`).

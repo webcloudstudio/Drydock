@@ -27,7 +27,8 @@ Emit **exactly** the artifacts in the ledger's **Current batch**, in the stated 
 - Do not restate your plan, summarize progress, apologize, or explain the interruption.
 - Do not emit `MANIFEST.md`; Drydock serializes it from the declaration.
 - Use exactly the same delimited block format as before, including the mandatory
-  `=== END NAME ===` line for every file.
+  `=== END ARTIFACT ===` line for every file. The name is typed once, at the open; the
+  closing delimiter is that constant token and never carries the name.
 - An artifact listed as defective must be emitted again in full, corrected. A partial or patched
   version is not accepted.
 - Emit each missing artifact under the exact filename the ledger names. A filename that does not
@@ -47,10 +48,10 @@ response. Drydock retries every unproduced artifact from the same batch.
 The only legal sequence is:
 
 ```text
-=== FIRST-NAME ===
+=== BEGIN ARTIFACT FIRST-NAME ===
 {complete first file}
-=== END FIRST-NAME ===
-=== SECOND-NAME ===
+=== END ARTIFACT ===
+=== BEGIN ARTIFACT SECOND-NAME ===
 {complete second file}
-=== END SECOND-NAME ===
+=== END ARTIFACT ===
 ```

@@ -80,12 +80,21 @@ def test_parse_generated_docs_requires_required_blocks():
         )
 
 
-def test_parse_generated_docs_rejects_unexpected_file():
-    with pytest.raises(DrydockError, match="unexpected"):
-        parse_generated_docs(
-            LLM_OUTPUT + "\n=== DOC-DATABASE.md ===\n# Database\n=== END DOC-DATABASE.md ===\n",
-            sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
-        )
+def test_parse_generated_docs_drops_unexpected_file_and_keeps_the_rest():
+    # P-3: the parser judged DOC-DATABASE.md and rejected it. It did not judge the four required
+    # documents, so it may not discard them.
+    docs = parse_generated_docs(
+        LLM_OUTPUT + "\n=== DOC-DATABASE.md ===\n# Database\n=== END DOC-DATABASE.md ===\n",
+        sections=("OVERVIEW", "FEATURES", "SCREENS", "ARCHITECTURE"),
+    )
+
+    assert "DOC-DATABASE.md" not in docs
+    assert set(docs) == {
+        "DOC-OVERVIEW.md",
+        "DOC-FEATURES.md",
+        "DOC-SCREENS.md",
+        "DOC-ARCHITECTURE.md",
+    }
 
 
 def test_parse_generated_docs_rejects_text_outside_blocks():

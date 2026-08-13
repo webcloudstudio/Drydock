@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from pathlib import PurePath
 from re import Pattern
 
@@ -23,6 +24,20 @@ from drydock.errors import DrydockError
 #: Placed *before* an optional ``END``, or after a literal one, this rejects both spellings.
 RESERVED_BLOCK_NAMESPACE = r"(?!(?:END\s+)?AC\s)"
 
+#: The invariant-boundary form. The artifact name appears exactly once, at the open, where it is
+#: being typed deliberately; the close is a constant token with nothing to recall and nothing to
+#: collide with. This is MIME multipart discipline, and it exists because a close delimiter that
+#: repeats the name competes with the artifact's own content for the model's attention: the one
+#: artifact ever observed to close wrongly was the one whose first heading restated its filename
+#: stem. The named form below stays valid and stays checked, so nothing already recorded stops
+#: parsing.
+ARTIFACT_OPEN_TEMPLATE = "=== BEGIN ARTIFACT {name} ==="
+ARTIFACT_CLOSE_TOKEN = "=== END ARTIFACT ==="
+
+_INVARIANT_OPEN_RE = re.compile(
+    rf"^===\s*BEGIN\s+ARTIFACT\s+{RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$"
+)
+_INVARIANT_END_RE = re.compile(r"^===\s*END\s+ARTIFACT\s*===\s*$")
 _OPEN_BLOCK_RE = re.compile(
     rf"^===\s*(?!END\s){RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$"
 )
@@ -40,6 +55,40 @@ _IGNORABLE_OUTSIDE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC\s")
+
+_OPEN = "open"
+_CLOSE = "close"
+
+
+@dataclass(frozen=True)
+class ArtifactDefect:
+    """One artifact-scoped parse defect, named so the operator can act on it."""
+
+    name: str
+    reason: str
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return f"{self.name}: {self.reason}"
+
+
+@dataclass(frozen=True)
+class ArtifactParseResult:
+    """Accepted artifacts plus the per-artifact defects observed alongside them.
+
+    ``rejected`` names artifacts the parser judged and refused. ``repaired`` names artifacts that
+    were accepted despite a defect in their delimiters. Neither costs an artifact the parser did
+    not judge — that is P-3: no gate may discard work it did not judge.
+    """
+
+    blocks: dict[str, str] = field(default_factory=dict)
+    rejected: tuple[ArtifactDefect, ...] = ()
+    repaired: tuple[ArtifactDefect, ...] = ()
+
+    @property
+    def defects(self) -> tuple[ArtifactDefect, ...]:
+        return self.repaired + self.rejected
+
 
 def parse_artifact_blocks(
     text: str,
@@ -49,18 +98,51 @@ def parse_artifact_blocks(
     allowed_prefixes: Iterable[str] = (),
     allowed_suffixes: Iterable[str] = (),
     allowed_patterns: Iterable[str | Pattern[str]] = (),
+    on_defect: Callable[[ArtifactDefect], None] | None = None,
 ) -> dict[str, str]:
     """Return artifact-name -> body and reject malformed/noisy model output.
 
-    The accepted format is:
+    The accepted format is either the invariant-boundary form::
 
-    ``=== NAME ===``
-    ``...content...``
-    ``=== END NAME ===``
+        === BEGIN ARTIFACT NAME ===
+        ...content...
+        === END ARTIFACT ===
 
-    No text may appear outside artifact blocks. Duplicate names are rejected. Optional allow-lists
-    let callers fail before any generated artifact is written.
+    or the named-close form::
+
+        === NAME ===
+        ...content...
+        === END NAME ===
+
+    No text may appear outside artifact blocks. A block whose name is not allowed, or whose name
+    is claimed twice with differing content, is rejected **individually**: the caller receives
+    every artifact the parser did accept, and states for itself which artifacts it required.
+    Defects are reported through ``on_defect``.
     """
+    result = parse_artifact_report(
+        text,
+        label=label,
+        allowed_names=allowed_names,
+        allowed_prefixes=allowed_prefixes,
+        allowed_suffixes=allowed_suffixes,
+        allowed_patterns=allowed_patterns,
+    )
+    if on_defect is not None:
+        for defect in result.defects:
+            on_defect(defect)
+    return result.blocks
+
+
+def parse_artifact_report(
+    text: str,
+    *,
+    label: str,
+    allowed_names: Iterable[str] | None = None,
+    allowed_prefixes: Iterable[str] = (),
+    allowed_suffixes: Iterable[str] = (),
+    allowed_patterns: Iterable[str | Pattern[str]] = (),
+) -> ArtifactParseResult:
+    """Parse artifact blocks and return the accepted set alongside its per-artifact defects."""
     allowed_set = set(allowed_names or ())
     prefixes = tuple(allowed_prefixes)
     suffixes = tuple(allowed_suffixes)
@@ -78,9 +160,9 @@ def parse_artifact_blocks(
         strict=False,
     )
     if transcript_blocks:
-        return transcript_blocks
-    blocks = _parse_delimited_blocks(text, label=label)
-    if not blocks:
+        return ArtifactParseResult(blocks=transcript_blocks)
+    parsed = _parse_delimited_blocks(text, label=label)
+    if not parsed.blocks:
         transcript_blocks = _parse_write_call_blocks(
             text,
             label=label,
@@ -91,70 +173,149 @@ def parse_artifact_blocks(
             strict=True,
         )
         if transcript_blocks:
-            return transcript_blocks
+            return ArtifactParseResult(blocks=transcript_blocks)
+        if parsed.rejected:
+            return parsed
         if text.strip():
             raise _outside_text_error(label)
         raise DrydockError(
             f"{label} failed: LLM output did not contain any delimited artifact blocks.\n"
             "  No generated artifacts were written."
         )
-    for name in blocks:
-        if not _is_allowed(name, allowed_set, prefixes, suffixes, patterns):
-            raise DrydockError(
-                f"{label} failed: LLM output contained an unexpected artifact block: {name}\n"
-                "  No generated artifacts were written."
-            )
-    return blocks
+    accepted: dict[str, str] = {}
+    rejected = list(parsed.rejected)
+    for name, body in parsed.blocks.items():
+        if _is_allowed(name, allowed_set, prefixes, suffixes, patterns):
+            accepted[name] = body
+            continue
+        rejected.append(
+            ArtifactDefect(name=name, reason="not an artifact this command emits; block discarded")
+        )
+    return ArtifactParseResult(blocks=accepted, rejected=tuple(rejected), repaired=parsed.repaired)
+
+
+def _classify(line: str) -> tuple[str, str | None] | None:
+    """Return ``(kind, name)`` for a delimiter line, or ``None`` for content.
+
+    The invariant forms are tested first: ``=== END ARTIFACT ===`` also matches the named-close
+    grammar with the name ``ARTIFACT``, and ``=== BEGIN ARTIFACT X ===`` also matches the open
+    grammar with the name ``BEGIN ARTIFACT X``.
+
+    ``RESERVED_BLOCK_NAMESPACE`` is re-checked against the extracted name because the patterns
+    lead with ``\\s*``, which backtracks to empty and lets the guard read the leading space
+    instead of the name. The reserved namespace is what keeps the nested ``=== AC <id> ===``
+    proof protocol out of the envelope grammar, so it is enforced where it cannot be evaded.
+    """
+    stripped = line.strip()
+    if _INVARIANT_END_RE.match(stripped):
+        return (_CLOSE, None)
+    invariant_open = _INVARIANT_OPEN_RE.match(stripped)
+    if invariant_open:
+        return _guarded(_OPEN, invariant_open.group("name"))
+    end_match = _END_BLOCK_RE.match(stripped)
+    if end_match:
+        return _guarded(_CLOSE, end_match.group("name"))
+    open_match = _OPEN_BLOCK_RE.match(stripped)
+    if open_match:
+        return _guarded(_OPEN, open_match.group("name"))
+    return None
+
+
+def _guarded(kind: str, raw_name: str) -> tuple[str, str | None] | None:
+    name = raw_name.strip()
+    if _RESERVED_NAME_RE.match(name):
+        return None
+    return (kind, name)
 
 
 def _has_later_opening_delimiter(lines: list[str], *, index: int, name: str) -> bool:
     for later_line in lines[index + 1 :]:
-        open_match = _OPEN_BLOCK_RE.match(later_line.strip())
-        if open_match and open_match.group("name").strip() == name:
+        classified = _classify(later_line)
+        if classified and classified[0] == _OPEN and classified[1] == name:
             return True
     return False
 
 
-def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
+def _closes_the_open_block(lines: list[str], *, index: int) -> bool:
+    """Whether a name-mismatched close terminates the open block rather than starting a new one.
+
+    The same line spells two different accidents. ``=== END next ===`` written in place of
+    ``=== END current ===`` plus ``=== next ===`` is a *transposed boundary*: real content follows
+    it and belongs to ``next``. ``=== END COMPASS ===`` written in place of
+    ``=== END COMPASS.md ===`` is a *misnamed close*: nothing follows it but the next artifact's
+    opener, or the end of the response.
+
+    Position separates them, which is the only thing that can: the close's name is a checksum on
+    the open, and fuzzy-matching the two would throw away the property that makes an unclosed
+    container detectable at all.
+    """
+    for later_line in lines[index + 1 :]:
+        if not later_line.strip():
+            continue
+        if _classify(later_line) is not None:
+            return True
+        return False
+    return True
+
+
+def _parse_delimited_blocks(text: str, *, label: str) -> ArtifactParseResult:
     blocks: dict[str, str] = {}
+    conflicting: set[str] = set()
+    rejected: list[ArtifactDefect] = []
+    repaired: list[ArtifactDefect] = []
     current_name: str | None = None
     current_body: list[str] = []
     outside: list[str] = []
     saw_delimiter = False
 
+    def record(name: str) -> None:
+        """Store a parsed body; a conflicting repeat costs that name and nothing else."""
+        content = "".join(current_body).strip()
+        if name in blocks and blocks[name] != content:
+            conflicting.add(name)
+            return
+        blocks[name] = content
+
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
-        open_match = _OPEN_BLOCK_RE.match(line.strip())
-        end_match = _END_BLOCK_RE.match(line.strip())
+        classified = _classify(line)
+        kind = classified[0] if classified else None
+        marker_name = classified[1] if classified else None
 
         if current_name is None:
-            if end_match and not blocks and _outside_has_text(outside):
+            if kind == _CLOSE and marker_name is None:
+                # An invariant close with nothing open names no artifact and can open nothing.
+                continue
+            if (
+                kind == _CLOSE
+                and marker_name is not None
+                and not blocks
+                and _outside_has_text(outside)
+            ):
                 if any("===" in chunk for chunk in outside):
                     raise _outside_text_error(label)
-                current_name = end_match.group("name").strip()
+                current_name = marker_name
                 current_body = outside
                 outside = []
-                blocks[current_name] = "".join(current_body).rstrip().strip()
+                record(current_name)
                 current_name = None
                 current_body = []
                 saw_delimiter = True
                 continue
             orphan_opener = (
-                end_match is not None
+                kind == _CLOSE
+                and marker_name is not None
                 and saw_delimiter
                 and not _outside_has_text(outside, after_artifacts=True)
-                and not _has_later_opening_delimiter(
-                    lines, index=index, name=end_match.group("name").strip()
-                )
+                and not _has_later_opening_delimiter(lines, index=index, name=marker_name)
             )
-            if open_match or orphan_opener:
+            if kind == _OPEN or orphan_opener:
                 if _outside_has_text(outside, after_artifacts=saw_delimiter):
                     raise _outside_text_error(label)
                 # An END delimiter with no block open cannot close anything: the model dropped
                 # the opener, and the block runs to the delimiter that closes it.
-                opening_match = open_match or end_match
-                assert opening_match is not None
-                current_name = opening_match.group("name").strip()
+                assert marker_name is not None
+                current_name = marker_name
                 current_body = []
                 outside = []
                 saw_delimiter = True
@@ -162,55 +323,70 @@ def _parse_delimited_blocks(text: str, *, label: str) -> dict[str, str]:
             outside.append(line)
             continue
 
-        if end_match and end_match.group("name").strip() == current_name:
-            if current_name in blocks:
-                raise DrydockError(
-                    f"{label} failed: LLM output did not satisfy the artifact contract.\n"
-                    f"  Duplicate artifact block: {current_name}\n"
-                    "  No generated artifacts were written."
-                )
-            blocks[current_name] = "".join(current_body).strip()
+        if kind == _CLOSE and (marker_name is None or marker_name == current_name):
+            record(current_name)
             current_name = None
             current_body = []
             saw_delimiter = True
             continue
-        transposed_end = end_match is not None and not _has_later_opening_delimiter(
-            lines, index=index, name=end_match.group("name").strip()
-        )
-        if open_match or transposed_end:
-            if current_name in blocks:
-                raise DrydockError(
-                    f"{label} failed: LLM output did not satisfy the artifact contract.\n"
-                    f"  Duplicate artifact block: {current_name}\n"
-                    "  No generated artifacts were written."
+
+        if kind == _CLOSE and _closes_the_open_block(lines, index=index):
+            # §30.2 — recognise the close by position and report the name disagreement, rather
+            # than inventing a block named after the marker. The old parser read this line as an
+            # opener, then failed the allow-list on a block the model never opened, which named
+            # the wrong artifact and said nothing about the one that was actually wrong.
+            repaired.append(
+                ArtifactDefect(
+                    name=current_name,
+                    reason=(
+                        f"closed by `{line.strip()}` rather than "
+                        f"`=== END {current_name} ===`; accepted by position"
+                    ),
                 )
-            # Recover when the model omits an END delimiter between otherwise
-            # well-formed artifact blocks, or transposes it onto the next artifact
-            # (`=== END next ===` in place of `=== END current ===` plus the opener).
-            # A delimiter cannot be content under the artifact protocol, so it closes
-            # the current block and starts the next one.
-            next_match = open_match or end_match
-            assert next_match is not None
-            blocks[current_name] = "".join(current_body).strip()
-            current_name = next_match.group("name").strip()
+            )
+            record(current_name)
+            current_name = None
+            current_body = []
+            saw_delimiter = True
+            continue
+
+        transposed = (
+            kind == _CLOSE
+            and marker_name is not None
+            and not _has_later_opening_delimiter(lines, index=index, name=marker_name)
+        )
+        if kind == _OPEN or transposed:
+            # Recover when the model omits an END delimiter between otherwise well-formed
+            # artifact blocks, or transposes it onto the next artifact (`=== END next ===` in
+            # place of `=== END current ===` plus the opener). A delimiter cannot be content
+            # under the artifact protocol, so it closes the current block and starts the next.
+            # A later opener for the same name means the model restarted the artifact instead:
+            # that stays ambiguous and remains body text.
+            assert marker_name is not None
+            record(current_name)
+            current_name = marker_name
             current_body = []
             saw_delimiter = True
             continue
         current_body.append(line)
 
     if current_name is not None:
-        if current_name in blocks:
-            raise DrydockError(
-                f"{label} failed: LLM output did not satisfy the artifact contract.\n"
-                f"  Duplicate artifact block: {current_name}\n"
-                "  No generated artifacts were written."
-            )
-        blocks[current_name] = "".join(current_body).strip()
+        record(current_name)
         saw_delimiter = True
 
     if _outside_has_text(outside, after_artifacts=saw_delimiter):
         raise _outside_text_error(label)
-    return blocks if saw_delimiter else {}
+    for name in sorted(conflicting):
+        blocks.pop(name, None)
+        rejected.append(
+            ArtifactDefect(
+                name=name,
+                reason="claimed twice with differing content; both copies discarded",
+            )
+        )
+    if not saw_delimiter:
+        blocks = {}
+    return ArtifactParseResult(blocks=blocks, rejected=tuple(rejected), repaired=tuple(repaired))
 
 
 def _repair_missing_leading_delimiter(text: str) -> str:
@@ -219,13 +395,16 @@ def _repair_missing_leading_delimiter(text: str) -> str:
     lines = text.splitlines(keepends=True)
     outside: list[str] = []
     for index, line in enumerate(lines):
-        end_match = _END_BLOCK_RE.match(line.strip())
-        if end_match:
+        classified = _classify(line)
+        if classified is not None and classified[0] == _CLOSE:
+            name = classified[1]
+            if name is None:
+                # The invariant close carries no name, so the dropped opener cannot be recovered.
+                return text
             if not _outside_has_text(outside):
                 return text
             if any("===" in chunk for chunk in outside):
                 return text
-            name = end_match.group("name").strip()
             leading_body = "".join(outside).rstrip("\n")
             remainder = "".join(lines[index + 1 :])
             if f"=== {name} ===" in remainder:
@@ -234,8 +413,7 @@ def _repair_missing_leading_delimiter(text: str) -> str:
             return repaired + (
                 "\n" + remainder if remainder and not remainder.startswith("\n") else remainder
             )
-        open_match = _OPEN_BLOCK_RE.match(line.strip())
-        if open_match:
+        if classified is not None:
             return text
         outside.append(line)
     return text

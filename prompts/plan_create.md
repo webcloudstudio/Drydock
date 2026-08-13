@@ -620,7 +620,7 @@ Emit every decision as `DECISIONS.json`, using the standard file delimiters. Emi
 are no decisions — never a silent decision with nothing recorded.
 
 ```text
-=== DECISIONS.json ===
+=== BEGIN ARTIFACT DECISIONS.json ===
 [
   {
     "id":            "string, e.g. Q-001",
@@ -634,7 +634,7 @@ are no decisions — never a silent decision with nothing recorded.
     "system_choice": "string"
   }
 ]
-=== END DECISIONS.json ===
+=== END ARTIFACT ===
 ```
 
 `type: "text"` decisions set `options` to `[]` and put the resolution in `system_choice`. Do not
@@ -652,7 +652,7 @@ permission-bearing acceptance tooling uses the governed Blueprint question surfa
 Emit exactly one response mode. **Nothing outside the blocks** — no preamble, no explanation, no
 commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited
 block is a protocol violation and will cause the run to fail. Start your response with the first
-`=== ... ===` block.
+`=== BEGIN ARTIFACT ... ===` block.
 
 The response is processed by a deterministic parser. The parser rejects the entire response if it
 finds any non-whitespace character before the first artifact block, between artifact blocks, or
@@ -660,8 +660,8 @@ after the final artifact block. A rejected response writes no Blueprint files an
 `MANIFEST.md`.
 
 Do not emit transition or completion text such as `Now the Manifest.`, `Next file:`,
-`Here is the completed Blueprint.`, or `Done.` After `=== END <name> ===`, emit only whitespace
-followed immediately by the next `=== <name> ===` delimiter, or end the response.
+`Here is the completed Blueprint.`, or `Done.` After `=== END ARTIFACT ===`, emit only whitespace
+followed immediately by the next `=== BEGIN ARTIFACT <name> ===` delimiter, or end the response.
 
 ### Success Mode
 
@@ -682,28 +682,27 @@ will author, or an authored Blueprint spec file that already exists in the input
 Wrap both Stage 1 files in matching open/END delimiter pairs:
 
 ```text
-=== relative/path/from/blueprint/or/target ===
+=== BEGIN ARTIFACT relative/path/from/blueprint/or/target ===
 {full file contents}
-=== END relative/path/from/blueprint/or/target ===
+=== END ARTIFACT ===
 ```
 
-The `=== END NAME ===` line is mandatory for every file, not only for `TOPOLOGY.md`. The open name
-and the END name must be identical. Never separate files with a bare opening delimiter.
-
-Every file needs both delimiters, in this order: the opening delimiter carries no `END` keyword,
-and the closing delimiter carries it. Never open a file with `=== END NAME ===`, never close one
-with `=== NAME ===`, and never emit two consecutive `=== END ... ===` lines. Emit each file exactly
-once; do not repeat a file you have already emitted.
+The `=== END ARTIFACT ===` line is mandatory for every file, not only for `TOPOLOGY.md`.
+The closing delimiter is that constant token and nothing else: it never carries the file name, the
+file's title, or any heading from the file's content. The name is typed once, at the open. Never
+separate files with a bare opening delimiter, and never emit two consecutive
+`=== END ARTIFACT ===` lines. Emit each file exactly once; do not repeat a file you have already
+emitted.
 
 The complete Stage 1 response is:
 
 ```text
-=== TOPOLOGY.md ===
+=== BEGIN ARTIFACT TOPOLOGY.md ===
 {the story declarations}
-=== END TOPOLOGY.md ===
-=== DECISIONS.json ===
+=== END ARTIFACT ===
+=== BEGIN ARTIFACT DECISIONS.json ===
 []
-=== END DECISIONS.json ===
+=== END ARTIFACT ===
 ```
 
 `DECISIONS.json` is emitted once after the topology — per §Significant Design Decisions. Emit `[]`
@@ -717,13 +716,13 @@ Never emit a `MANIFEST.md` block. Drydock serializes the Manifest from your decl
 Use Blocked Mode only when `ANALYSIS_QUALITY` is `Blocked`. Emit only:
 
 ```text
-=== PLAN_CREATE_BLOCKED.txt ===
+=== BEGIN ARTIFACT PLAN_CREATE_BLOCKED.txt ===
 Planning cannot proceed because ANALYSIS.md is Blocked.
 Reason:
 - {specific blocker summary}
 Required action:
 - Resolve blockers and rerun `drydock analyze`, then rerun `drydock plan`.
-=== END PLAN_CREATE_BLOCKED.txt ===
+=== END ARTIFACT ===
 ```
 
 ### Error Mode
@@ -745,14 +744,14 @@ choice, and record the variance as a `Note:` line in the Manifest preamble.
 Emit only:
 
 ```text
-=== PLAN_CREATE_ERROR.txt ===
+=== BEGIN ARTIFACT PLAN_CREATE_ERROR.txt ===
 Planning output was not produced.
 Error type: {format|missing-input|conflict|insufficient-specification|other}
 Reason:
 - {exact conflicting files, clauses, and scopes; why precedence cannot resolve them}
 Required action:
 - {specific product decision or source correction required}
-=== END PLAN_CREATE_ERROR.txt ===
+=== END ARTIFACT ===
 ```
 
 ---

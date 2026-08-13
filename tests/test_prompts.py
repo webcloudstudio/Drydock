@@ -77,8 +77,8 @@ class TestInputTokens:
 
     def test_analyze_prompt_keeps_questions_out_of_analysis_markdown(self):
         prompt = load_prompt("analyze")
-        analysis_contract = prompt.body.split("=== ANALYSIS.md ===", 1)[1].split(
-            "=== END ANALYSIS.md ===", 1
+        analysis_contract = prompt.body.split("=== BEGIN ARTIFACT ANALYSIS.md ===", 1)[1].split(
+            "=== END ARTIFACT ===", 1
         )[0]
 
         assert "## Questions" not in analysis_contract

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.artifact_blocks import parse_artifact_report
 from drydock.errors import DrydockError, SpecificationError
 from drydock.llm import run_prompt
 from drydock.prompt_assembly import (
@@ -554,15 +554,25 @@ def import_specs(
         raise SpecificationError("survey import LLM execution failed or returned no output")
 
     try:
-        blocks = parse_artifact_blocks(
+        parsed = parse_artifact_report(
             result_text,
             label="Survey import",
             allowed_patterns=(r"SURVEY-[\w-]+\.md",),
         )
     except DrydockError as exc:
         raise SpecificationError(str(exc)) from exc
+    # P-3: a rejected block costs itself, not the pass. An import that accepted nothing has
+    # nothing to write, and fails naming what it rejected.
+    if not parsed.blocks:
+        detail = "".join(f"\n  {defect}" for defect in parsed.defects)
+        raise SpecificationError(
+            "Survey import failed: no SURVEY artifact survived parsing." + detail
+        )
+    if on_text is not None:
+        for defect in parsed.defects:
+            on_text(f"[survey] artifact defect — {defect}\n")
     written: list[Path] = []
-    for name, content in sorted(blocks.items()):
+    for name, content in sorted(parsed.blocks.items()):
         body = content.strip() + "\n"
         out = ac_dir / name
         out.write_text(body, encoding="utf-8", newline="\n")

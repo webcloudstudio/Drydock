@@ -100,7 +100,7 @@ Emit exactly one delimited artifact block and nothing else — no preface, no tr
 The block name is the exact source filename injected in the job (for example `FEATURE-CATALOG-READ.md`):
 
 ```text
-=== FEATURE-CATALOG-READ.md ===
+=== BEGIN ARTIFACT FEATURE-CATALOG-READ.md ===
 # Feature: Catalog Read
 
 | Field       | Value |
@@ -130,7 +130,7 @@ The block name is the exact source filename injected in the job (for example `FE
 
 - None.
 
-=== END FEATURE-CATALOG-READ.md ===
+=== END ARTIFACT ===
 ```
 
 Use the injected `SPEC_FILE` value as the block name verbatim. Emit no other blocks.

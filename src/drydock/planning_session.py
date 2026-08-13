@@ -109,6 +109,17 @@ _OPEN_BLOCK_LINE_RE = re.compile(
 _END_BLOCK_LINE_RE = re.compile(
     rf"^=== END {RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?) ===\s*$", re.MULTILINE
 )
+# The invariant-boundary form (§30.4). The artifact name is typed once, at the open; the close is
+# a constant token, so there is nothing in it for the artifact's own content to collide with. Both
+# forms parse, so nothing already recorded stops parsing.
+_INVARIANT_OPEN_LINE_RE = re.compile(
+    rf"^===\s*BEGIN\s+ARTIFACT\s+{RESERVED_BLOCK_NAMESPACE}(?P<name>[^\n=]+?)\s*===\s*$"
+)
+_INVARIANT_END_LINE_RE = re.compile(r"^===\s*END\s+ARTIFACT\s*===\s*$")
+_RESERVED_NAME_RE = re.compile(r"^(?:END\s+)?AC\s")
+
+_DELIMITER_OPEN = "open"
+_DELIMITER_CLOSE = "close"
 _WRITE_CALL_RE = re.compile(
     r'<invoke name="Write">\s*'
     r'<parameter name="file_path">(?P<path>.*?)</parameter>\s*'
@@ -370,68 +381,69 @@ def _raise_llm_failure(command_name: str, detail: str, execution_id: str) -> Non
     raise SpecificationError(msg)
 
 
-def _parse_strict_blocks(text: str, result: CompletedRun) -> dict[str, str]:
-    """Parse the required artifact block protocol and reject malformed output."""
+def _parse_strict_blocks(
+    text: str,
+    result: CompletedRun,
+    on_defect: Callable[[str], None] | None = None,
+) -> dict[str, str]:
+    """Parse the required artifact block protocol, rejecting malformed artifacts individually.
+
+    P-3 — *no gate may discard work that it did not judge*. A block whose boundaries could not be
+    resolved is dropped by name, with its reason; the artifacts parsed either side of it are
+    untouched. The original behaviour discarded the whole response, which cost 19 Blueprints and
+    eight LLM calls on CommonMark ``20260811.215210`` (D-008). Only a response from which nothing
+    survived is rejected whole, and it names the artifacts it dropped.
+    """
     repaired = _repair_missing_leading_delimiter(text)
     if repaired is not None:
         text = repaired
     blocks, spans = _parse_strict_blocks_by_line(text, result)
-    _reject_unpaired_end_delimiters(text, blocks, result)
-    _reject_embedded_delimiters(blocks, result)
+    damaged = _damaged_block_names(blocks)
+    for name, reason in damaged.items():
+        blocks.pop(name, None)
+        if on_defect is not None:
+            on_defect(f"{name}: {reason}")
+    if damaged and not blocks:
+        detail = "\n".join(
+            f"  Delimiter pairing mismatch: {name} — {reason}" for name, reason in damaged.items()
+        )
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
+                f"{detail}\n"
+                "  Every file must be wrapped in a paired open/END delimiter.\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
     if spans:
         raise OutsideArtifactTextError(blocks=blocks, spans=spans, result=result)
     return blocks
 
 
-def _reject_unpaired_end_delimiters(
-    text: str, blocks: dict[str, str], result: CompletedRun
-) -> None:
-    """Fail loudly when an ``=== END X ===`` line has no matching parsed ``=== X ===`` block.
-
-    When the model emits only opening delimiters between files (closing just the final block), the
-    line parser silently absorbs every later delimiter into the first still-open block, collapsing
-    the whole response into one artifact. The orphan END lines are the unambiguous signal: an END
-    delimiter whose name never became a block means the files were not paired. A stray
-    ``=== END X ===`` inside a body is already a contract violation, so this cannot false-positive
-    on well-formed output.
-    """
-    for match in _END_BLOCK_LINE_RE.finditer(text):
-        name = match.group("name").strip()
-        if name not in blocks:
-            raise SpecificationError(
-                _with_execution_evidence(
-                    "Plan generation failed: LLM output did not satisfy the artifact contract.\n"
-                    f"  Delimiter pairing mismatch: found `=== END {name} ===` with no matching "
-                    f"`=== {name} ===` block.\n"
-                    "  Every file must be wrapped in a paired open/END delimiter.\n"
-                    "  No Blueprint or Manifest artifacts were written.",
-                    result,
-                )
-            )
+def _defect_reporter(on_text: Callable[[str], None] | None) -> Callable[[str], None] | None:
+    """Surface a dropped artifact without stopping the pass."""
+    if on_text is None:
+        return None
+    return lambda detail: on_text(f"[plan] artifact rejected — {detail}\n")
 
 
-def _reject_embedded_delimiters(blocks: dict[str, str], result: CompletedRun) -> None:
-    """Fail loudly when a parsed body contains an artifact delimiter line.
+def _damaged_block_names(blocks: dict[str, str]) -> dict[str, str]:
+    """Name every parsed block whose body still holds an artifact delimiter, and why.
 
     Under the protocol a delimiter never appears inside a file. One that survives into a body means
-    the recovery rules could not resolve the boundary — the model restarted an artifact or nested
-    one inside another — and the block that absorbed it is not the file it claims to be.
+    the recovery rules could not resolve the boundary — the model restarted an artifact, nested
+    one inside another, or dropped an END between two files — and the block that absorbed it is
+    not the file it claims to be. That block is the one the parser judged, so it is the only one
+    that pays.
     """
+    damaged: dict[str, str] = {}
     for name, body in blocks.items():
         for line in body.splitlines():
-            stripped = line.strip()
-            if _OPEN_BLOCK_LINE_RE.match(stripped) or _END_BLOCK_LINE_RE.match(stripped):
-                raise SpecificationError(
-                    _with_execution_evidence(
-                        "Plan generation failed: LLM output did not satisfy the artifact "
-                        "contract.\n"
-                        f"  Delimiter pairing mismatch: `{stripped}` appears inside the body of "
-                        f"`{name}`.\n"
-                        "  Every file must be wrapped in a paired open/END delimiter.\n"
-                        "  No Blueprint or Manifest artifacts were written.",
-                        result,
-                    )
-                )
+            if _classify_delimiter(line) is not None:
+                damaged[name] = f"`{line.strip()}` appears inside its body"
+                break
+    return damaged
 
 
 def _parse_strict_blocks_by_line(
@@ -447,23 +459,23 @@ def _parse_strict_blocks_by_line(
 
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
-        open_match = _OPEN_BLOCK_LINE_RE.match(line.strip())
-        end_match = _END_BLOCK_LINE_RE.match(line.strip())
+        classified = _classify_delimiter(line)
+        kind = classified[0] if classified else None
+        marker_name = classified[1] if classified else None
         if current_name is None:
             opening_name: str | None = None
-            if open_match:
-                opening_name = open_match.group("name").strip()
+            if kind == _DELIMITER_OPEN:
+                opening_name = marker_name
             elif (
-                end_match
-                and end_match.group("name").strip() != previous_name
+                kind == _DELIMITER_CLOSE
+                and marker_name is not None
+                and marker_name != previous_name
                 and not _contains_delimiter_line(outside)
-                and _is_orphan_artifact_opener(
-                    lines, index=index, name=end_match.group("name").strip()
-                )
+                and _is_orphan_artifact_opener(lines, index=index, name=marker_name)
             ):
                 # `=== END X ===` with no open block and no later `=== X ===` can only be the
                 # opening delimiter the model transposed; its later END closes the block.
-                opening_name = end_match.group("name").strip()
+                opening_name = marker_name
             if opening_name is not None:
                 outside_text = "".join(outside)
                 if outside_text.strip():
@@ -481,7 +493,7 @@ def _parse_strict_blocks_by_line(
                 continue
             outside.append(line)
             continue
-        if end_match and end_match.group("name").strip() == current_name:
+        if kind == _DELIMITER_CLOSE and marker_name in (None, current_name):
             _record_block(blocks, current_name, current_body, result)
             previous_name = current_name
             current_name = None
@@ -489,18 +501,33 @@ def _parse_strict_blocks_by_line(
             saw_delimiter = True
             continue
         if (
-            end_match
+            kind == _DELIMITER_CLOSE
+            and not _contains_delimiter_line(current_body)
+            and _closes_the_open_block(lines, index=index)
+        ):
+            # §30.2 — a close that names the wrong artifact is still a close. Recognise it by
+            # position and let the pairing report name both markers, rather than reading it as a
+            # new block the model never opened and failing on a name it never wrote.
+            _record_block(blocks, current_name, current_body, result)
+            previous_name = current_name
+            current_name = None
+            current_body = []
+            saw_delimiter = True
+            continue
+        if (
+            kind == _DELIMITER_CLOSE
+            and marker_name is not None
             and not _contains_delimiter_line(current_body)
             and _is_transposed_artifact_boundary(
                 lines,
                 index=index,
                 current_name=current_name,
-                next_name=end_match.group("name").strip(),
+                next_name=marker_name,
             )
         ):
             _record_block(blocks, current_name, current_body, result)
             previous_name = current_name
-            current_name = end_match.group("name").strip()
+            current_name = marker_name
             current_body = []
             saw_delimiter = True
             continue
@@ -550,13 +577,64 @@ def _record_block(
     blocks[name] = content
 
 
+def _classify_delimiter(line: str) -> tuple[str, str | None] | None:
+    """Return ``(kind, name)`` for an artifact delimiter line, or ``None`` for content.
+
+    The invariant forms are tested first: ``=== END ARTIFACT ===`` also matches the named-close
+    grammar with the name ``ARTIFACT``, and ``=== BEGIN ARTIFACT X ===`` also matches the open
+    grammar with the name ``BEGIN ARTIFACT X``. An invariant close carries no name, which is the
+    whole point of it (§30.4).
+
+    ``RESERVED_BLOCK_NAMESPACE`` is re-checked against the extracted name: the invariant patterns
+    lead with ``\\s*``, which backtracks to empty and lets the guard read the leading space rather
+    than the name. Keeping the nested ``=== AC <id> ===`` proof protocol out of the envelope
+    grammar is what stops a criterion collapsing the Blueprint that carries it.
+    """
+    stripped = line.strip()
+    if _INVARIANT_END_LINE_RE.match(stripped):
+        return (_DELIMITER_CLOSE, None)
+    invariant_open = _INVARIANT_OPEN_LINE_RE.match(stripped)
+    if invariant_open:
+        return _guarded_delimiter(_DELIMITER_OPEN, invariant_open.group("name"))
+    end_match = _END_BLOCK_LINE_RE.match(stripped)
+    if end_match:
+        return _guarded_delimiter(_DELIMITER_CLOSE, end_match.group("name"))
+    open_match = _OPEN_BLOCK_LINE_RE.match(stripped)
+    if open_match:
+        return _guarded_delimiter(_DELIMITER_OPEN, open_match.group("name"))
+    return None
+
+
+def _guarded_delimiter(kind: str, raw_name: str) -> tuple[str, str | None] | None:
+    name = raw_name.strip()
+    if _RESERVED_NAME_RE.match(name):
+        return None
+    return (kind, name)
+
+
+def _closes_the_open_block(lines: list[str], *, index: int) -> bool:
+    """Whether a name-mismatched close terminates the open block rather than starting a new one.
+
+    The same line spells two different accidents. ``=== END next ===`` written in place of
+    ``=== END current ===`` plus ``=== next ===`` is a transposed boundary: real content follows
+    it and belongs to ``next``. ``=== END COMPASS ===`` written in place of
+    ``=== END COMPASS.md ===`` is a misnamed close: nothing follows it but the next artifact's
+    opener, or the end of the response.
+
+    Position is the only thing that can separate them. The close's name is a checksum on the open,
+    and fuzzy-matching the two would throw away the property that makes an unclosed container
+    detectable at all (§30.2).
+    """
+    for later_line in lines[index + 1 :]:
+        if not later_line.strip():
+            continue
+        return _classify_delimiter(later_line) is not None
+    return True
+
+
 def _contains_delimiter_line(chunk: list[str]) -> bool:
     """Whether accumulated lines already hold a delimiter, which makes any recovery ambiguous."""
-    for line in chunk:
-        stripped = line.strip()
-        if _OPEN_BLOCK_LINE_RE.match(stripped) or _END_BLOCK_LINE_RE.match(stripped):
-            return True
-    return False
+    return any(_classify_delimiter(line) is not None for line in chunk)
 
 
 def _is_orphan_artifact_opener(lines: list[str], *, index: int, name: str) -> bool:
@@ -591,8 +669,8 @@ def _is_transposed_artifact_boundary(
 
 def _has_later_opening_delimiter(lines: list[str], *, index: int, name: str) -> bool:
     for later_line in lines[index + 1 :]:
-        open_match = _OPEN_BLOCK_LINE_RE.match(later_line.strip())
-        if open_match and open_match.group("name").strip() == name:
+        classified = _classify_delimiter(later_line)
+        if classified is not None and classified == (_DELIMITER_OPEN, name):
             return True
     return False
 
@@ -3362,7 +3440,9 @@ def _continue_short_plan(
             break
 
         try:
-            pass_blocks = _parse_strict_blocks(result.text, result)
+            pass_blocks = _parse_strict_blocks(
+                result.text, result, on_defect=_defect_reporter(on_text)
+            )
         except OutsideArtifactTextError as exc:
             pass_blocks = exc.blocks
         except SpecificationError:
@@ -4033,7 +4113,7 @@ def create_plan(
     # right text. Write-call recovery produces blocks with no delimiters, and clears this.
     blocks_text: str | None = result.text
     try:
-        blocks = _parse_strict_blocks(result.text, result)
+        blocks = _parse_strict_blocks(result.text, result, on_defect=_defect_reporter(on_text))
     except OutsideArtifactTextError as exc:
         try:
             recovered = _parse_write_call_blocks(result.text, target_dir, blueprint_dir)

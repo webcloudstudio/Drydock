@@ -16,21 +16,21 @@ then emit curated Markdown documentation files.
 The Drydock caller writes files. You only emit delimited Markdown blocks in this exact format:
 
 ```text
-=== DOC-OVERVIEW.md ===
+=== BEGIN ARTIFACT DOC-OVERVIEW.md ===
 # Overview
 
 ...
-=== END DOC-OVERVIEW.md ===
+=== END ARTIFACT ===
 
-=== DOC-FEATURES.md ===
+=== BEGIN ARTIFACT DOC-FEATURES.md ===
 # Features
 
 ...
-=== END DOC-FEATURES.md ===
+=== END ARTIFACT ===
 ```
 
 Do not use tool calls. Do not describe what you did. Do not wrap the full answer in a code fence.
-Every block must have a matching `=== END DOC-*.md ===` delimiter. Any output outside delimited
+Every block must be closed by the constant token `=== END ARTIFACT ===`. The name is typed once, at the open; never repeat it in the closing delimiter. Any output outside delimited
 blocks is a protocol violation and will cause the run to fail without writing documentation files.
 
 ## Files

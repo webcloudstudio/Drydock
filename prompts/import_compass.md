@@ -33,10 +33,11 @@ product strategist and you have no opinion about the product.
 
 ## Output contract
 
-Emit exactly one artifact block and nothing else — no commentary before or after:
+Emit exactly one artifact block and nothing else — no commentary before or after. The name is
+typed once, at the open; the block is closed by the constant token `=== END ARTIFACT ===`:
 
 ```
-=== COMPASS.md ===
+=== BEGIN ARTIFACT COMPASS.md ===
 # COMPASS: {TargetName}
 
 ## Compass
@@ -48,5 +49,5 @@ words.}
 
 ## Guardrails
 {Bullets: behavioral rules the building agent must never violate, as stated in the document.}
-=== END COMPASS.md ===
+=== END ARTIFACT ===
 ```

@@ -226,9 +226,9 @@ Emit one block for every authored Blueprint spec file, then one `CONVERSION_REPO
 one final `MANIFEST.md` block:
 
 ```text
-=== relative/path/from/blueprint ===
+=== BEGIN ARTIFACT relative/path/from/blueprint ===
 {full file contents}
-=== END relative/path/from/blueprint ===
+=== END ARTIFACT ===
 ```
 
 Every `implements:` filename in `MANIFEST.md` must exactly match one emitted Blueprint file block
@@ -237,9 +237,9 @@ or an existing Blueprint spec file from the input context.
 The final block in Success Mode must be:
 
 ```text
-=== MANIFEST.md ===
+=== BEGIN ARTIFACT MANIFEST.md ===
 {full manifest contents}
-=== END MANIFEST.md ===
+=== END ARTIFACT ===
 ```
 
 ### Blocked Mode
@@ -247,13 +247,13 @@ The final block in Success Mode must be:
 Use Blocked Mode only when `ANALYSIS_QUALITY` is `Blocked`. Emit only:
 
 ```text
-=== PLAN_CREATE_BLOCKED.txt ===
+=== BEGIN ARTIFACT PLAN_CREATE_BLOCKED.txt ===
 Planning cannot proceed because ANALYSIS.md is Blocked.
 Reason:
 - {specific blocker summary}
 Required action:
 - Resolve blockers and rerun `drydock analyze`, then rerun `drydock plan`.
-=== END PLAN_CREATE_BLOCKED.txt ===
+=== END ARTIFACT ===
 ```
 
 ### Error Mode
@@ -262,14 +262,14 @@ Use Error Mode only when mutually exclusive authoritative requirements prevent a
 internally consistent Success Mode response and input precedence cannot resolve them. Emit only:
 
 ```text
-=== PLAN_CREATE_ERROR.txt ===
+=== BEGIN ARTIFACT PLAN_CREATE_ERROR.txt ===
 Planning output was not produced.
 Error type: {format|missing-input|conflict|insufficient-specification|other}
 Reason:
 - {exact conflicting files, clauses, and scopes; why precedence cannot resolve them}
 Required action:
 - {specific product decision or source correction required}
-=== END PLAN_CREATE_ERROR.txt ===
+=== END ARTIFACT ===
 ```
 
 ---

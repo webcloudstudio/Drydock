@@ -122,7 +122,7 @@ optional`. These are stakeholder satisfaction conditions, not implementation tas
 - **COMPASS_EXISTS** — `true`: COMPASS.md exists at the target root. `false`: write it.
 - **COMPASS_PENDING_FORMAT** — `true`: COMPASS.md was imported as raw Commander intent and is
   injected as an input block. Rewrite it into the canonical COMPASS.md format and emit the
-  `=== COMPASS.md ===` block. `false`: if `COMPASS_EXISTS: true`, omit the block.
+  `=== BEGIN ARTIFACT COMPASS.md ===` block. `false`: if `COMPASS_EXISTS: true`, omit the block.
 - **DISPLAY_NAME** — current `display_name` value from METADATA.md, or `(blank)` when not yet set.
 - **SHORT_DESCRIPTION** — current `short_description` value from METADATA.md, or `(blank)` when not yet set.
 - **Rigging manifest** — `Rigging/MANIFEST.md`, injected below. It names the real selectable
@@ -327,10 +327,10 @@ Emit blocks only in this order. Conditional blocks are omitted when their condit
 `ANALYSIS.md`, `SEA_TRIALS.md`, `TECHNOLOGY_STACK.md`, `BLOCKERS.md`, `COMPASS.md`,
 `discovery-identity.json`, then `discovery-gaps*.json` and other `discovery-<slug>.json` blocks in
 lexical filename order.
-**Nothing outside the blocks.** No preamble, no explanation, no commentary, no tool calls, no `<invoke>` XML. Start your response with `=== ANALYSIS.md ===`.
+**Nothing outside the blocks.** No preamble, no explanation, no commentary, no tool calls, no `<invoke>` XML. Start your response with `=== BEGIN ARTIFACT ANALYSIS.md ===`.
 
 ```
-=== ANALYSIS.md ===
+=== BEGIN ARTIFACT ANALYSIS.md ===
 # Blueprint Analysis: {ProjectName}
 
 ## Commander Expectations
@@ -456,9 +456,9 @@ Quality: {Ready | Questions | Blocked}
 {Non-conformant headers, ambiguous signals, observations. "None." if clean.
 Do not add an ## Overview section or any other sections not listed here. Drydock deterministically
 adds Source Inventory and Resolved Blockers after this output; do not emit either section.}
-=== END ANALYSIS.md ===
+=== END ARTIFACT ===
 
-=== SEA_TRIALS.md ===
+=== BEGIN ARTIFACT SEA_TRIALS.md ===
 # Sea Trials: {ProjectName}
 
 Project-level acceptance derived from COMPASS and sources. Emit 3–7 criteria normally, plus any
@@ -518,7 +518,7 @@ question for a missing threshold when the source already requires all supplied t
 {Human-owned missing measurement fact.}
 
 #### Answer
-=== END SEA_TRIALS.md ===
+=== END ARTIFACT ===
 
 ```
 
@@ -527,7 +527,7 @@ blockers, do not emit this block — its absence is what lets the pipeline proce
 block with placeholder text (e.g. "none", "(omitted)") in place of real blockers; omit it entirely.
 
 ```
-=== BLOCKERS.md ===
+=== BEGIN ARTIFACT BLOCKERS.md ===
 # Blockers: {ProjectName}
 
 Each blocker is a question the human must answer before `plan create` runs. The Commander records
@@ -540,7 +540,7 @@ not remove the blocker heading or write an answer outside that subsection.
 ### Commander Resolution
 
 <!-- Enter the decision that resolves this blocker, then re-run Analyze. -->
-=== END BLOCKERS.md ===
+=== END ARTIFACT ===
 ```
 
 **COMPASS.md block (conditional):** Emit when `COMPASS_EXISTS: false` or
@@ -559,7 +559,7 @@ product is and who it serves (one paragraph); hard technical/regulatory/operatin
 behavioral guardrails the build agent must never violate (bullets).
 
 ```
-=== COMPASS.md ===
+=== BEGIN ARTIFACT COMPASS.md ===
 # COMPASS: {ProjectName}
 
 ## Compass
@@ -577,7 +577,7 @@ Do NOT list the technology stack here; technologies belong only in TECHNOLOGY_ST
 {Bullet list: behavioral rules the building agent must never violate — security, compliance, scale,
 performance, irreversible trade-offs, or explicit prohibitions from the Commander.
 "- None stated." if the sources are silent.}
-=== END COMPASS.md ===
+=== END ARTIFACT ===
 ```
 
 **Discovery questionnaires (`discovery-*.json`) — emit one per open question, none for decided matters.**
@@ -603,7 +603,7 @@ becomes a `discovery-gaps.json` question.
 Each questionnaire uses this shape:
 
 ```
-=== discovery-{slug}.json ===
+=== BEGIN ARTIFACT discovery-{slug}.json ===
 {
   "id": "discovery-{slug}",
   "title": "Discovery: {Short Title}",
@@ -620,7 +620,7 @@ Each questionnaire uses this shape:
     }
   ]
 }
-=== END discovery-{slug}.json ===
+=== END ARTIFACT ===
 ```
 
 **Identity questionnaire rule.** When `DISPLAY_NAME` is `(blank)` or `SHORT_DESCRIPTION` is `(blank)` in
@@ -633,7 +633,7 @@ emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` 
 (i.e., neither is `(blank)`).
 
 ```
-=== discovery-identity.json ===
+=== BEGIN ARTIFACT discovery-identity.json ===
 {
   "id": "discovery-identity",
   "title": "Discovery: Project Identity",
@@ -657,7 +657,7 @@ emit `discovery-identity.json` when both `DISPLAY_NAME` and `SHORT_DESCRIPTION` 
     }
   ]
 }
-=== END discovery-identity.json ===
+=== END ARTIFACT ===
 ```
 
 **Technology Stack rule.** Always emit `TECHNOLOGY_STACK.md`: one row per technology the sources
@@ -675,20 +675,20 @@ plainly needs, propose the conventional choice and say so in `Notes`. Do not emi
 and do not raise a stack questionnaire; the Commander edits this file directly.
 
 ```
-=== TECHNOLOGY_STACK.md ===
+=== BEGIN ARTIFACT TECHNOLOGY_STACK.md ===
 # Technology Stack
 
 | Technology | Rigging | Notes |
 |---|---|---|
 | {Technology name as the product uses it} | {catalog filename or —} | {Short note, or empty} |
-=== END TECHNOLOGY_STACK.md ===
+=== END ARTIFACT ===
 ```
 
 ---
 
 ## Hard Rules
 
-- Emit **only** the `=== ... ===` / `=== END ... ===` blocks. No text outside them — no preamble, no summary, no prose, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail.
+- Emit **only** `=== BEGIN ARTIFACT <name> ===` / `=== END ARTIFACT ===` blocks. The name is typed once, at the open. The closing delimiter is the constant token `=== END ARTIFACT ===` — never repeat the name in it, and never substitute the artifact's title or heading for it. No text outside them — no preamble, no summary, no prose, no commentary, no tool calls, no `<invoke>` or `<function_calls>` XML. Any output outside a delimited block is a protocol violation and will cause the run to fail.
 - Emit the `BLOCKERS.md` block only when one or more blockers exist; its existence halts the pipeline.
 - Emit the `COMPASS.md` block only when `COMPASS_EXISTS: false` or
   `COMPASS_PENDING_FORMAT: true`.

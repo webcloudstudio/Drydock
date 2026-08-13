@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import Protocol
 
 from drydock import technology_stack
-from drydock.artifact_blocks import parse_artifact_blocks
+from drydock.artifact_blocks import (
+    ArtifactDefect,
+    ArtifactParseResult,
+    parse_artifact_blocks,
+    parse_artifact_report,
+)
 from drydock.compass_sources import (
     clear_compass_import_pending,
     compass_import_pending,
@@ -821,8 +826,28 @@ def _ensure_sea_trials_blocker(blockers: str | None, reason: str) -> str:
     )
 
 
+def _report_artifact_defect(
+    on_text: TextCallback | None,
+) -> Callable[[ArtifactDefect], None] | None:
+    """Surface a per-artifact parse defect without stopping the pass."""
+    if on_text is None:
+        return None
+
+    def report(defect: ArtifactDefect) -> None:
+        on_text(f"[analyze] artifact defect — {defect}\n")
+
+    return report
+
+
+def _artifact_defect_detail(parsed: ArtifactParseResult) -> str:
+    if not parsed.defects:
+        return ""
+    return "\n  " + "\n  ".join(str(defect) for defect in parsed.defects)
+
+
 def _parse_output(
     text: str,
+    on_defect: Callable[[ArtifactDefect], None] | None = None,
 ) -> tuple[
     str, str | None, str | None, str | None, dict[str, dict], str, dict[str, str], str | None
 ]:
@@ -834,7 +859,7 @@ def _parse_output(
     emitted dynamically, so none of them are required.
     Raises ValueError on missing required blocks or invalid JSON.
     """
-    blocks = parse_artifact_blocks(
+    parsed = parse_artifact_report(
         text,
         label="Analyze",
         allowed_names={
@@ -846,10 +871,18 @@ def _parse_output(
         },
         allowed_prefixes=("discovery-",),
     )
+    blocks = parsed.blocks
+    if on_defect is not None:
+        for defect in parsed.defects:
+            on_defect(defect)
 
+    # P-3: a parse defect costs the artifact it judged, not the pass. A required artifact that did
+    # not survive is still fatal, but it fails naming the artifact rather than naming a block the
+    # model never opened.
     for required in ("ANALYSIS.md",):
         if required not in blocks:
-            raise ValueError(f"LLM output missing === {required} === block")
+            detail = _artifact_defect_detail(parsed)
+            raise ValueError(f"LLM output missing === {required} === block{detail}")
 
     discoveries: dict[str, dict] = {}
     for name, content in blocks.items():
@@ -1025,7 +1058,7 @@ def analyze(
             quality,
             summary,
             technology_stack_text,
-        ) = _parse_output(result.text)
+        ) = _parse_output(result.text, on_defect=_report_artifact_defect(on_text))
     except (DrydockError, ValueError) as exc:
         return _fail(str(exc))
 
