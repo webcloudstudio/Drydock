@@ -306,14 +306,26 @@ def test_release_score_accepts_a_plain_english_criterion(tmp_path):
     assert [trial["notation"] for trial in facts["sea_trials"]] == ["other"]
 
 
-def test_release_score_blocks_on_dirty_worktree(tmp_path):
+def test_release_score_reports_a_dirty_worktree_and_does_not_block(tmp_path):
+    """Git state is reported, never gating.
+
+    The case: a run passed every Sea Trial and every assertion, then failed the release because
+    Drydock had run the project's own test suite and the suite wrote a database file into the
+    tree. Drydock ran the tests, the tests wrote a file, and Drydock refused the release because
+    a file was there. A gate may only block on a fault domain it can distinguish, and a dirty
+    worktree cannot distinguish a defective product from tidy bookkeeping.
+    """
     target_dir, build_dir = _target(tmp_path, proof=_REAL_PROOF)
-    (build_dir / "marker.txt").write_text("changed\n", encoding="utf-8")
+    # Exactly the observed shape: running the project's tests left a database behind.
+    (build_dir / "instance").mkdir()
+    (build_dir / "instance" / "app.sqlite3").write_bytes(b"\x00" * 16)
 
     result = score_release("Demo", target_dir, runner=_runner())
 
-    assert not result.complete
-    assert any("uncommitted changes" in blocker for blocker in result.blockers)
+    assert result.complete
+    assert result.exit_code() == 0
+    assert not any("uncommitted changes" in blocker for blocker in result.blockers)
+    assert any("uncommitted changes" in warning for warning in result.warnings)
 
 
 def _add_proof_guardrail(target_dir: Path, *, linked: bool, breached: bool = False) -> None:

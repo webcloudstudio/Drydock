@@ -1,5 +1,8 @@
 {
   "target": "toml",
+  "expect": {
+    "verdict": "PASSED"
+  },
   "sources": [
     "sources/INSTRUCTIONS.md",
     "sources/toml-v1.0.0.md",

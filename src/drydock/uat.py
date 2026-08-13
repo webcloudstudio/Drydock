@@ -83,6 +83,11 @@ class UATFixture:
     #: regression is finally detectable.
     sea_trials: Path | None = None
     acceptance: AcceptanceContract = field(default_factory=AcceptanceContract)
+    #: The verdict this fixture is expected to produce. UAT does not ask "did the fixture project
+    #: pass" — it asks "did Drydock reach the correct conclusion about it". A fixture with a known
+    #: product defect that Drydock correctly reports as FAILED is a UAT *pass*: the harness worked.
+    #: Declared as ``"expect": {"verdict": "..."}`` in ``uat.json``; defaults to PASSED.
+    expected_verdict: str = "PASSED"
 
 
 Runner = Callable[[Sequence[str], Path, dict[str, str], Path, str], CommandResult]
@@ -126,6 +131,11 @@ class UATResult:
     execution_status: str = "PASS"
     #: Whether the product passed governed acceptance: PASS, FAIL, or NOT_RUN.
     acceptance_status: str = "NOT_RUN"
+    #: The verdict the fixture declared it should produce, and the one it did. ``status`` is a
+    #: comparison of these two, not a copy of the observed one: a fixture with a known defect is
+    #: expected to report FAILED, and reporting it is Drydock working.
+    expected_verdict: str = "PASSED"
+    observed_verdict: str = "PASSED"
     #: Project guardrails the release gate could not settle either way. The run passed — nothing
     #: demonstrated a violation — but each names a prohibition a human must confirm by hand
     #: before the build is released. Reported, never a failure.
@@ -178,6 +188,42 @@ def _environment(model: str, provider: str, effort: str | None) -> dict[str, str
         "python_version": platform.python_version(),
         "platform": platform.platform(),
     }
+
+
+#: The terminal verdicts a run can reach. ``PENDING`` is declared here so a fixture can name it,
+#: but nothing produces it yet: the release gate still settles every criterion PASS or FAIL.
+VALID_EXPECTED_VERDICTS = ("PASSED", "PENDING", "FAILED", "ERROR")
+
+
+def _expected_verdict(raw: object, *, where: str) -> str:
+    """Read the fixture's declared expected verdict, defaulting to ``PASSED``."""
+    if raw is None:
+        return "PASSED"
+    if not isinstance(raw, dict):
+        raise SpecificationError(f"UAT fixture expect must be an object: {where}")
+    value = raw.get("verdict", "PASSED")
+    if not isinstance(value, str) or value.strip().upper() not in VALID_EXPECTED_VERDICTS:
+        raise SpecificationError(
+            f"UAT fixture expect.verdict must be one of "
+            f"{', '.join(VALID_EXPECTED_VERDICTS)}: {where}"
+        )
+    return value.strip().upper()
+
+
+def _observed_verdict(execution_status: str, acceptance_status: str) -> str:
+    """Fold the run's two status views into the single verdict a fixture is judged against.
+
+    An infrastructure fault outranks everything: if Drydock could not run the lifecycle it has
+    said nothing about the product, which is ERROR and not FAILED. A release gate that never ran
+    is the same case — no verdict was produced, so none can be compared.
+    """
+    if execution_status != "PASS":
+        return "ERROR"
+    if acceptance_status == "PASS":
+        return "PASSED"
+    if acceptance_status == "FAIL":
+        return "FAILED"
+    return "ERROR"
 
 
 def _fixture_sea_trials(path: Path | None) -> Path | None:
@@ -261,6 +307,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
         raw_acceptance = config.get("acceptance")
         raw_sea_trials = config.get("sea_trials")
         raw_stack = config.get("technology_stack")
+        expected_verdict = _expected_verdict(config.get("expect"), where=str(config_path))
         if (
             not isinstance(raw_sources, list)
             or not raw_sources
@@ -326,6 +373,7 @@ def discover_fixtures(root: Path, selected: str | None = None) -> tuple[UATFixtu
                 _fixture_stack(declared_stack),
                 _fixture_sea_trials(declared_sea_trials),
                 contract_from_config(raw_acceptance, where=str(config_path)),
+                expected_verdict,
             )
         )
     if not fixtures:
@@ -987,6 +1035,19 @@ def run_fixture(
         status = "failed" if acceptance_status == "FAIL" else "degraded"
         error = error or f"execution {execution_status}, acceptance {acceptance_status}"
 
+    # The fixture's own question, asked last: did Drydock reach the conclusion this fixture was
+    # built to elicit? A fixture carrying a known product defect expects FAILED, and Drydock
+    # naming that defect is the harness working — so the run passes. Reported failures stay in
+    # ``error`` and ``acceptance_status``, because a passing UAT run that contains a demonstrated
+    # product failure must still say what the failure was.
+    observed_verdict = _observed_verdict(execution_status, acceptance_status)
+    expected_verdict = fixture.expected_verdict
+    if observed_verdict == expected_verdict and execution_status == "PASS":
+        status = "passed"
+    elif status == "passed":
+        status = "failed"
+        error = error or f"expected verdict {expected_verdict}, observed {observed_verdict}"
+
     attestations = _release_attestations(workspace / "targets" / fixture.target)
     assertions = _assertion_outcomes(
         workspace / "targets" / fixture.target,
@@ -1016,6 +1077,8 @@ def run_fixture(
         degraded=tuple(degraded),
         execution_status=execution_status,
         acceptance_status=acceptance_status,
+        expected_verdict=expected_verdict,
+        observed_verdict=observed_verdict,
         attestations=attestations,
         assertions=assertions,
     )
@@ -1044,6 +1107,7 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
             f"## {result.fixture}: {result.status.upper()}",
             "",
             f"- Execution: {result.execution_status} · Acceptance: {result.acceptance_status}",
+            f"- Verdict: expected {result.expected_verdict}, observed {result.observed_verdict}",
             f"- Target: `{result.target}`",
             f"- Run: `{result.run_id}`",
             f"- Ran: {local_run_window(result.environment)}",
@@ -1060,7 +1124,10 @@ def render_summary(results: Sequence[UATResult], base: Path | None = None) -> st
             + ", ".join(f"{name}=exit {code}" for name, code in result.score_exit_codes.items()),
         ])
         if result.error:
-            lines.append(f"- Failure: {result.error}")
+            # A kit that expects FAILED passes by reporting a product failure, so the detail is
+            # labelled for what it is rather than as a failure of the run.
+            label = "Reported" if result.status == "passed" else "Failure"
+            lines.append(f"- {label}: {result.error}")
         if result.attestations:
             # The kit passed. These are prohibitions the release gate could not settle from
             # evidence, and the operator reading this summary is the one who must settle them,

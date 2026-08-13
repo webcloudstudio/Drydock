@@ -1709,15 +1709,8 @@ def _has_cycle(edges: dict[str, set[str]]) -> bool:
     return any(color[node] == WHITE and visit(node) for node in edges)
 
 
-_PROVIDES_RE = re.compile(r"^\|\s*Provides\s*\|(.*)\|\s*$", re.MULTILINE)
 _ROUTE_ROW_RE = re.compile(r"^\|\s*(?:Provides|Consumes)\s*\|(.*)\|\s*$", re.MULTILINE)
 _ROUTE_RE = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)\s+(/[^\s,|`]*)")
-
-
-def _spec_provides(text: str) -> str:
-    """Return the trimmed `| Provides |` header value, or '' when absent/empty."""
-    match = _PROVIDES_RE.search(text)
-    return match.group(1).strip() if match else ""
 
 
 def _uncovered_routes(text: str) -> tuple[str, ...]:
@@ -1781,40 +1774,16 @@ def _acceptance_status(text: str) -> tuple[int, bool]:
     return count, justified_none
 
 
-# Markers that indicate an acceptance check executes a script rather than merely
-# referring to it. Naming the test-suite file — asserting it is staged, or importing a
-# helper beside it — is not execution.
-_TEST_SUITE_INVOCATION_RE = re.compile(
-    r"subprocess|sys\.executable|os\.system|check_output|check_call|Popen|runpy"
-    r"|\bpython[\d.]*\b|\bpytest\b",
-    re.IGNORECASE,
-)
-
-# Explicit opt-in that makes a full-suite story gate deliberate rather than accidental.
-# Mirrors ``acceptance._full_suite``: ``Suite:`` declares a deliberate suite-bound run, and
-# both ``full`` and ``scoped`` are accepted.
-_SUITE_MARKER_RE = re.compile(r"^Suite:\s*(?:full|scoped)\s*$", re.MULTILINE | re.IGNORECASE)
-
-
-# A programmatic story should carry at least this many assertions before it stops
-# drawing a test-driven-acceptance warning.
-_MIN_ASSERTIONS_PER_STORY = 2
-
-
-def _drives_external_suite(checks: Sequence[ProgrammaticAcceptance]) -> bool:
-    """True when an acceptance criterion executes an imported program or test suite.
-
-    A single check that shells out to the staged conformance harness — running
-    ``spec_tests.py`` (or any suite) through subprocess/pytest — performs comprehensive,
-    non-trivial verification in one block: it is the strongest test-driven acceptance a
-    story can carry, not the weakest. Such a story is exempt from the several-criteria minimum,
-    which exists to stop a lone trivial in-process assert from standing in for real coverage.
-    In-process assertions (a test client, direct function calls) do not match and stay subject
-    to the minimum. Only parsed proof bodies are inspected, so the word "python" in surrounding
-    prose never trips the exemption.
-    """
-    code = "\n".join(check.code for check in checks)
-    return bool(_TEST_SUITE_INVOCATION_RE.search(code))
+# Story acceptance carried a minimum-assertion gate: a story declaring a programmatic surface
+# had to author at least two ``=== AC ===`` criteria or be exempted for driving an imported
+# suite. It is deleted, and nothing replaces it. Quantity is not a gate — counting criteria
+# measures the wrong artifact and is upstream-causal to the defect it was meant to prevent,
+# because a story forced to reach a count authors criteria it has no oracle for, and every
+# invented criterion is a fresh chance to predict an expected value wrongly. The Toml evidence
+# is exact: fifteen suite-bound criteria all passed, and ten hand-authored ones covering nothing
+# the conformance suite did not already cover supplied every failure. Coverage is measured by an
+# authoritative suite or by the project's own test suite, graded at the Sea Trials level; it is
+# never measured by counting gates.
 
 
 def _spec_is_conformant(text: str) -> bool:
@@ -2028,21 +1997,10 @@ def _integrity_check(
         # specs declare a programmatic surface
         # must carry several concrete Python assertions unless an inline-justified
         # `- None.` explains the absence.
-        surface = False
-        justified = False
-        drives_suite = False
-        assertions = 0
         for name in targets:
             text = spec_text(name) if name else None
             if text is None:
                 continue
-            if _spec_provides(text):
-                surface = True
-            count, none_reason = _acceptance_status(text)
-            assertions += count
-            justified = justified or none_reason
-            if _drives_external_suite(_acceptance_checks(text, source=str(name))):
-                drives_suite = True
             # Test-driven route coverage. A SCREEN's assertions must literally
             # call every route it provides or consumes — hard gate. A FEATURE
             # may exercise its routes through typed helpers, so an unnamed
@@ -2062,20 +2020,6 @@ def _integrity_check(
                         f"route(s) {detail}; exercise each provided route, naming its "
                         "literal path"
                     )
-        if (
-            surface
-            and not justified
-            and not drives_suite
-            and assertions < _MIN_ASSERTIONS_PER_STORY
-        ):
-            fatal.append(
-                f"{block.block_id}: {assertions} Programmatic Acceptance criteria in "
-                f"{', '.join(str(name) for name in targets)}, which declare a programmatic "
-                f"surface; a story needs at least {_MIN_ASSERTIONS_PER_STORY}. Author concrete "
-                "`=== AC <id> ===` criteria, drive the imported test suite, or justify "
-                "`- None. <reason>` inline"
-            )
-
     for name, owners in sorted(spec_owners.items()):
         if len(owners) > 1:
             fatal.append(

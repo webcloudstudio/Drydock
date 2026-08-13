@@ -1,5 +1,8 @@
 {
   "target": "ReadingList",
+  "expect": {
+    "verdict": "PASSED"
+  },
   "sources": [
     "sources/reading-list.md"
   ],

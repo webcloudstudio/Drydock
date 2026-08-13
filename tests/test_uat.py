@@ -1058,6 +1058,129 @@ def test_a_clean_build_that_fails_its_test_command_still_fails_the_run(tmp_path:
     assert any("score-release" in label for label in seen)
 
 
+# ── the fixture's expected verdict ────────────────────────────────────────────
+# UAT does not ask "did the fixture project pass". It asks "did Drydock reach the correct
+# conclusion about it". A fixture carrying a known product defect expects FAILED, and Drydock
+# naming that defect is the harness working — the run passes. Read the other way, eight runs of
+# a fixture with a real defect produced no signal about Drydock at all, because every one of them
+# read as Drydock failing.
+
+
+def test_a_fixture_expects_passed_unless_it_says_otherwise(tmp_path: Path) -> None:
+    _fixture(tmp_path)
+
+    assert discover_fixtures(tmp_path)[0].expected_verdict == "PASSED"
+
+
+def test_a_fixture_declares_the_verdict_it_expects(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _declare(fixture, expect={"verdict": "failed"})
+
+    assert discover_fixtures(tmp_path)[0].expected_verdict == "FAILED"
+
+
+def test_an_unknown_expected_verdict_is_refused_at_discovery(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    _declare(fixture, expect={"verdict": "DEGRADED"})
+
+    with pytest.raises(SpecificationError) as excinfo:
+        discover_fixtures(tmp_path)
+    assert "expect.verdict" in str(excinfo.value)
+
+
+def test_a_fixture_that_expects_failure_passes_by_reporting_one(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    fixture = _fixture(fixtures_root, updated=False)
+    _declare(fixture, expect={"verdict": "FAILED"})
+    runner, _ = _staged_runner(tmp_path, failing=("test",))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status == "passed"
+    assert results[0].observed_verdict == "FAILED"
+    assert results[0].acceptance_status == "FAIL"
+    # The run passed and the product failure is still named. A harness that swallowed it here
+    # would be reporting that nothing happened.
+    assert "test exited 1" in results[0].error
+
+
+def test_a_fixture_that_expects_failure_and_passes_instead_fails_the_run(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    fixture = _fixture(fixtures_root, updated=False)
+    _declare(fixture, expect={"verdict": "FAILED"})
+    runner, _ = _staged_runner(tmp_path, failing=())
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status == "failed"
+    assert results[0].observed_verdict == "PASSED"
+    assert "expected verdict FAILED, observed PASSED" in results[0].error
+
+
+def test_an_infrastructure_fault_never_satisfies_an_expected_failure(tmp_path: Path) -> None:
+    """ERROR is not FAILED. A run that could not execute has said nothing about the product."""
+    fixtures_root = tmp_path / "fixtures"
+    fixture = _fixture(fixtures_root, updated=False)
+    _declare(fixture, expect={"verdict": "FAILED"})
+    runner, _ = _staged_runner(tmp_path, failing=("build",))
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert results[0].status != "passed"
+    assert results[0].execution_status == "ERROR"
+    assert results[0].observed_verdict == "ERROR"
+
+
+def test_the_summary_states_the_expected_and_observed_verdicts(tmp_path: Path) -> None:
+    fixtures_root = tmp_path / "fixtures"
+    _fixture(fixtures_root, updated=False)
+    runner, _ = _staged_runner(tmp_path, failing=())
+
+    _, results = run_uat(
+        tmp_path,
+        selected="ReadingList",
+        uat_root=fixtures_root,
+        model="test-model",
+        provider="codex",
+        runner=runner,
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+
+    assert "Verdict: expected PASSED, observed PASSED" in render_summary(results)
+
+
+def test_every_shipped_kit_declares_the_verdict_it_expects() -> None:
+    """The kits are Drydock's own acceptance record, so each must state what it is testing for."""
+    root = Path(__file__).resolve().parents[1] / "uat"
+    for kit in sorted(path for path in root.iterdir() if (path / "uat.json").is_file()):
+        config = json.loads((kit / "uat.json").read_text(encoding="utf-8"))
+        assert config.get("expect", {}).get("verdict"), f"{kit.name} declares no expected verdict"
+
+
 def test_a_run_with_no_failures_still_passes(tmp_path: Path) -> None:
     fixtures_root = tmp_path / "fixtures"
     _fixture(fixtures_root, updated=False)

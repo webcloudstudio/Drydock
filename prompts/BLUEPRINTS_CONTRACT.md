@@ -1,7 +1,7 @@
 ---
 name: Blueprints Contract
 description: Contract governing the layout, file types, header format, and dependency conventions for Drydock Blueprint files.
-version: 20260731 V11
+version: 20260813 V12
 ---
 
 ## Overview
@@ -237,7 +237,61 @@ authoritative suite that defines correctness for that transform. Where no such s
 the case in the project's own test suite, where the implementer writes it against real output,
 rather than predicting it here.
 
+### Two test destinations
+
+A project carries tests in two places, and they are not the same artifact with different names.
+
+| | **Story AC** — `=== AC <id> ===` | **The project's own test suite** |
+|---|---|---|
+| Job | gate the block | know the code works |
+| Count | few | unbounded |
+| Authored | here, by planning, **before the code exists** | by the build agent, **alongside the code** |
+| Oracle discipline | the rules above, without exception | full latitude — expectations are observed, not predicted |
+| Effect | binding: it decides whether the block closes | diagnostic: it guides repair, and its command is what a project criterion runs |
+| Runs | at its block | continuously, cumulatively |
+
+The split is not a matter of taste. Every expected value written here is a *prediction* about
+bytes that do not exist yet, and a wrong prediction fails a correct implementation — which is why
+the oracle rule and the no-re-typed-literal rule are absolute in this file. A test written beside
+the finished code compares against output its author has actually seen, so the same assertion that
+is hazardous here is safe there.
+
+So this is *more* testing, not less. Exhaustive coverage belongs to the project's suite, which has
+no ceiling. An AC block is permanently constrained by having to survive as a gate, so author few
+and author them bulletproof. Coverage is never demonstrated by the number of AC blocks a story
+carries; it is demonstrated by the suite, and it is graded at the project level through the Sea
+Trial that runs that suite.
+
+**Where an authoritative suite exists, it is the coverage.** A conformance corpus staged into
+`sources/` defines correctness for the surface it covers. Bind one criterion to it and do not
+restate its cases in either destination — a restated case adds no coverage and adds one more
+expectation that can be wrong.
+
+### What a criterion is worth
+
+Every criterion you write lands in one of four tiers. The tier is decided by how the criterion is
+written, not by how it is labelled, and it decides what the criterion can do:
+
+| Tier | What it is | What it does |
+|---|---|---|
+| **BLOCKING** | a Commander-governed gate, or a criterion bound to a staged authoritative suite | fails the block |
+| **CONSULTATIVE** | a criterion whose expected value could not have been invented — a status code, an exit status, a value the criterion itself supplied as input | drives repair; unattended, it marks the block implemented-but-unverified rather than stalling the run |
+| **ADVISORY** | a criterion that re-types an expected literal | runs, is reported `DISPUTED`, **gates nothing** |
+| **VOID** | malformed: does not compile, or an unclosed container | not a criterion; recorded as a decision and gates nothing |
+
+Aim deliberately. A hand-typed expectation does not merely risk being wrong — it demotes the
+criterion to ADVISORY, so the story it was written to protect ends up with no gate at all. Binding
+the value to a name is what buys the criterion its authority back.
+
+None of these tiers reaches the release verdict. Story AC decides whether an increment was built;
+project acceptance is decided by Sea Trials alone.
+
 ### Authoring patterns
+
+Patterns **1, 4, 6, 9, and 10** are the discipline of a gate and govern what you write here.
+Patterns **2, 3, 5, 7, and 8** are the discipline of a test suite: state them as expectations on
+the project's own suite, which the build agent grows beside the code, rather than enumerating them
+into AC blocks.
 
 **1 — Round trip (the default form).** For anything that stores, mutates, or removes state:
 
@@ -250,12 +304,14 @@ delete  → read back → assert absent
 The read-back is a *separate call through the public interface*, not an inspection of the object
 returned by the write. A write that returns a plausible object while persisting nothing must fail.
 
-**2 — Exercise every callable workflow.** One test per public entry point, per verb. Coverage is
-enumerated from the interface, not sampled: every HTTP route × every method it declares including
-declared error paths; every CLI subcommand and every flag that changes behavior; every exported
-library function.
+**2 — Exercise every callable workflow.** *Suite pattern.* One test per public entry point, per
+verb. Coverage is enumerated from the interface, not sampled: every HTTP route × every method it
+declares including declared error paths; every CLI subcommand and every flag that changes
+behavior; every exported library function. This belongs to the project's suite. Here, name the
+routes a SCREEN provides — that gate is real — and leave the enumeration to the suite. Where a
+staged authoritative suite already covers the surface, it is the coverage.
 
-**3 — Idempotence.** Where a verb claims idempotence (PUT, DELETE), apply it twice and assert the
+**3 — Idempotence.** *Suite pattern.* Where a verb claims idempotence (PUT, DELETE), apply it twice and assert the
 second is a no-op — same resulting state, and the declared status for a repeat. Where a verb is not
 idempotent (POST), apply twice and assert the declared behavior: two resources, or the declared
 conflict. Prefer idempotent verbs where the semantics allow; the assertion is stronger.
@@ -264,18 +320,20 @@ conflict. Prefer idempotent verbs where the semantics allow; the assertion is st
 failure signal — status code, exception type, exit status — never the wording of an error message.
 Message text is prose and belongs to no contract.
 
-**5 — Boundaries.** Empty collection, exactly one, many. Absent optional fields. Declared maxima.
-This is where a plausible-looking implementation actually breaks.
+**5 — Boundaries.** *Suite pattern.* Empty collection, exactly one, many. Absent optional fields.
+Declared maxima. This is where a plausible-looking implementation actually breaks — and where a
+predicted expectation is most likely to be wrong, which is why the cases belong beside the code
+rather than here. Where a staged authoritative suite covers the surface, it is the coverage.
 
 **6 — RED before GREEN.** The assertion must fail against the pre-implementation tree and pass
 after. A check that passes against a stub is not a check.
 
-**7 — Isolation and determinism.** Each test arranges its own data and does not depend on another
+**7 — Isolation and determinism.** *Suite pattern, and it applies here too.* Each test arranges its own data and does not depend on another
 test's residue or on ordering. No wall-clock dependence, no third-party network, no unseeded
 randomness, no sleep-based timing. Fresh store per test, or explicit teardown.
 
-**8 — One behavior per test, named for the behavior.** A failure should be diagnosable from the
-test's name alone.
+**8 — One behavior per test, named for the behavior.** *Suite pattern.* A failure should be
+diagnosable from the test's name alone.
 
 **9 — Subprocess discipline.** Where a check must shell out, **exit status is the verdict**. A
 substring check beside an exit-status assertion is redundant at best and a false-positive generator

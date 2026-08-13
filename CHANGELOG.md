@@ -10,6 +10,18 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
+- 2026-08-13: A UAT fixture declares the verdict it expects. `uat.json` accepts
+  `"expect": {"verdict": "PASSED|PENDING|FAILED|ERROR"}`, defaulting to `PASSED`, and every
+  shipped kit declares one. `result.json` gains `expected_verdict` and `observed_verdict`, and a
+  kit's `status` is now a comparison of the two rather than a copy of the observed one: a fixture
+  carrying a known product defect that Drydock correctly reports as `FAILED` is a UAT pass. The
+  observed verdict folds the run's two existing status views — an infrastructure fault is `ERROR`
+  and never satisfies an expected `FAILED`, because a run that could not execute has said nothing
+  about the product. This changes what `drydock uat` measures: it asks whether Drydock reached the
+  correct conclusion about the fixture, not whether the fixture project passed. Eight recorded runs
+  of a fixture with a real defect produced no signal about Drydock at all, because each read as
+  Drydock failing.
+
 - 2026-08-13: A story acceptance criterion binds only to an oracle it could not have invented.
   `acceptance.retyped_expectations` reads each criterion's AST and reports every expected string
   literal the author typed a second time rather than deriving; `ProgrammaticAcceptance.binding` is
@@ -33,6 +45,47 @@ command surface and Typed Specification contract are unstable and may change bet
   covers.
 
 ### Changed
+
+- 2026-08-13: Drydock's own bookkeeping no longer blocks a release. `score` and `score release`
+  report a dirty build directory, a missing Git code identity, and stale applied Blueprint
+  specifications as warnings rather than blockers. The case that settled it: a run passed all 8
+  Sea Trials and all 26 programmatic assertions, then failed the release with
+  `BLOCKER: Build directory has uncommitted changes` — the uncommitted change being an SQLite
+  file the project's own test suite created when Drydock ran it. Drydock ran the tests, the tests
+  wrote a file, and Drydock refused the release because a file was present. The governing rule: a
+  gate may only block on a fault domain it can distinguish, and a dirty worktree cannot
+  distinguish a defective product from tidy housekeeping. Operators who relied on `score release`
+  failing on an uncommitted build tree now read that condition from the warnings.
+
+- 2026-08-13: The minimum-assertion gate is deleted. A story declaring a programmatic surface no
+  longer has to carry at least two `=== AC ===` criteria, and `_MIN_ASSERTIONS_PER_STORY`, its
+  imported-suite exemption, and the bare-`- None.` emission failure go with it. Quantity is not a
+  gate: forcing a story to reach a count makes the model author criteria it has no oracle for, and
+  every invented criterion is a fresh chance to predict an expected value wrongly. The Toml
+  evidence is exact — 15 suite-bound criteria all passed, and 10 hand-authored criteria covering
+  nothing the conformance suite did not already cover supplied 100% of the failures. Coverage is
+  measured by an authoritative suite or by the project's own test suite, graded at the Sea Trials
+  level. `drydock plan` no longer fails on a Blueprint whose acceptance section is empty.
+
+- 2026-08-13: The release grader may reason toward `PASS` and may not reason toward `FAIL`.
+  `prompts/score_release.md` (V5) states the asymmetric evidence rule: absence of evidence is
+  `INCONCLUSIVE`, never `FAIL`, and a `FAIL` must cite a specific artifact that exhibits the
+  failure. The guardrail special case is removed — a prohibition is judged by the same rules as
+  any other criterion — along with the instruction never to infer that a guardrail held and the
+  stale claim that `UNPROVEN` "fails the gate exactly as a breach does", which stopped being true
+  when unproven guardrails became manual-verification attestations. That instruction was
+  observably biasing the grader: a recorded run's rationale was a verbatim restatement of it.
+
+- 2026-08-13: The authoring contract addresses tests to two destinations.
+  `prompts/BLUEPRINTS_CONTRACT.md` (V12) separates story AC — few, gating, authored before the
+  code exists, so every expectation in one is a prediction — from the project's own test suite,
+  authored beside the finished code, where expectations are observed and coverage is unbounded.
+  Patterns 1, 4, 6, 9, and 10 govern AC blocks; patterns 2, 3, 5, 7, and 8 are stated as suite
+  discipline. The contract now also states what each criterion is worth — blocking, consultative,
+  advisory, or void — so an author can aim: a hand-typed expectation does not merely risk being
+  wrong, it demotes the criterion to advisory and leaves the story with no gate at all.
+  `prompts/build.md` (V6) gains the matching obligation to grow the project's suite as it writes
+  the code, including test isolation, so a test run leaves no residue in the build directory.
 
 - 2026-08-11: A criterion that raises `TypeError` in its own frame reports UNVERIFIED and is not
   charged to the build. `TypeError` joins `NameError`, `SyntaxError`, and their neighbors in

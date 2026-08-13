@@ -937,20 +937,16 @@ def test_conform_still_nonconformant_response_warns_and_preserves(tmp_path):
     )
     block = f"=== FEATURE-Status.md ===\n{still_empty}\n=== END FEATURE-Status.md ===\n"
 
-    # Acceptance is mandatory: a surface-declaring spec still lacking assertions after
-    # a failed conform pass aborts the plan instead of writing with a warning.
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan(
-            "Example",
-            "Example",
-            tmp_path,
-            runner=_conform_runner(block),
-        )
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="Programmatic Acceptance criteria",
+    # A spec that carries no criteria after a failed conform pass no longer stops the plan.
+    # Counting criteria measured the wrong artifact: a story pushed to reach a count authors
+    # criteria it has no oracle for, and each one is a fresh chance to predict an expected value
+    # wrongly. Coverage is graded through the project's suite, not counted here.
+    del target_dir
+    create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        runner=_conform_runner(block),
     )
 
     # Original imported content is left intact when conform fails to author acceptance.
@@ -961,21 +957,15 @@ def test_no_conform_flag_skips_conform_pass(tmp_path):
     target_dir, feature = _seed_conform_target(tmp_path, feature_text=_FEATURE_EMPTY_ACCEPTANCE)
     seen: list[str] = []
 
-    # Conform is suppressed, so the surface-declaring spec keeps its bare `- None.`
-    # acceptance and the mandatory-acceptance gate aborts the plan.
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan(
-            "Example",
-            "Example",
-            tmp_path,
-            conform=False,
-            runner=_conform_runner("unused", seen=seen),
-        )
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="Programmatic Acceptance criteria",
+    # Conform is suppressed, so the surface-declaring spec keeps its bare `- None.` acceptance.
+    # The plan still completes: no gate counts criteria.
+    del target_dir
+    create_plan(
+        "Example",
+        "Example",
+        tmp_path,
+        conform=False,
+        runner=_conform_runner("unused", seen=seen),
     )
 
     assert seen == []  # conform pass suppressed
@@ -2255,10 +2245,17 @@ def test_story_without_manifest_acceptance_uses_blueprint_acceptance(tmp_path):
     assert not [block for block in result.plan.blocks if block.block_type == "ac"]
 
 
-def test_missing_programmatic_acceptance_is_fatal(tmp_path):
-    target_dir = _make_target(tmp_path)
-    # A programmatic-surface spec (Provides: drydock status) shipped with bare `- None.`
-    # acceptance is a hard emission gate — the plan must not write.
+def test_missing_programmatic_acceptance_is_not_fatal(tmp_path):
+    """A programmatic-surface spec with bare `- None.` acceptance writes the plan anyway.
+
+    This was a hard emission gate: a story declaring a surface had to carry at least two
+    criteria. It is deleted because quantity is not a gate. Forcing a story to reach a count
+    makes the model author criteria it has no oracle for, and each invented criterion is a fresh
+    chance to predict an expected value wrongly — which is where the observed acceptance
+    failures came from, not from stories that carried too few. Coverage is graded through the
+    project's own test suite at the Sea Trials level.
+    """
+    _make_target(tmp_path)
     bare = _SPEC_HEADER.replace(_SPEC_HEADER_PA_BODY, "- None.")
     arch = bare.format(ftype="ARCHITECTURE", name="Example", ac="None.")
     feature = bare.format(ftype="FEATURE", name="Status", ac="Status command exits successfully.")
@@ -2268,14 +2265,10 @@ def test_missing_programmatic_acceptance_is_fatal(tmp_path):
         f"=== MANIFEST.md ===\n{_manifest()}\n=== END MANIFEST.md ===\n"
     )
 
-    with pytest.raises(RecordedError) as excinfo:
-        create_plan("Example", "Example", tmp_path, runner=_fake(out))
-    _assert_recorded_error(
-        excinfo,
-        target_dir,
-        classification="plan output validation failed",
-        detail="Programmatic Acceptance criteria",
-    )
+    result = create_plan("Example", "Example", tmp_path, runner=_fake(out))
+
+    assert (tmp_path / "Example" / "blueprint" / "FEATURE-Status.md").is_file()
+    assert not any("Programmatic Acceptance criteria" in issue for issue in result.warnings)
 
 
 def test_inline_justified_none_acceptance_does_not_warn(tmp_path):
@@ -4045,36 +4038,24 @@ def test_the_authoring_contract_example_parses_as_one_artifact():
         compile(check.code, check.check_id, "exec")
 
 
-def test_the_plan_validator_counts_the_authoring_contract_criteria():
-    """The plan gate must measure the format the prompt mandates, not a superseded one.
+def test_the_plan_reader_and_the_build_engine_read_one_grammar():
+    """Plan-time inspection must read the format the prompt mandates, not a superseded one.
 
-    Parsing the response is not the last gate: ``validate_plan`` then requires each story to
-    carry at least ``_MIN_ASSERTIONS_PER_STORY`` criteria. That counter read Markdown ``python``
-    fences, so once the authored form became ``=== AC <id> ===`` every Blueprint scored zero
-    however many criteria it carried, and ``drydock plan`` failed its own integrity check on
-    output that satisfied its own template. The counter and the build engine must read the same
-    grammar, so the counter is asserted against the shipped contract example directly.
+    ``_acceptance_status`` once read Markdown ``python`` fences, so when the authored form became
+    ``=== AC <id> ===`` every Blueprint scored zero however many criteria it carried. The gate
+    that consumed that count is gone — quantity is never a gate — but the count still decides
+    whether a conformed spec is accepted, so plan-time reading and build-time execution must
+    still agree on what a criterion *is*. Asserted against the shipped contract example directly.
     """
-    from drydock.planning_session import (
-        _MIN_ASSERTIONS_PER_STORY,
-        _acceptance_checks,
-        _acceptance_status,
-        _drives_external_suite,
-    )
+    from drydock.planning_session import _acceptance_checks, _acceptance_status
 
     example = _authoring_contract_blueprint_example()
     count, justified = _acceptance_status(example)
 
-    assert count >= _MIN_ASSERTIONS_PER_STORY, (
-        f"the plan gate counts {count} criteria in the authoring contract's own example, which "
-        "would fail its own integrity check"
-    )
+    assert count > 0, "the plan reader finds no criteria in the authoring contract's own example"
     assert not justified
     checks = _acceptance_checks(example, source="FEATURE-Example.md")
     assert count == len(checks), "the counter and the acceptance parser disagree"
-    # The example drives the imported suite, so it is not subject to the several-criteria
-    # minimum.
-    assert _drives_external_suite(checks)
 
 
 # ── a malformed criterion must never stop the pipeline ────────────────────────

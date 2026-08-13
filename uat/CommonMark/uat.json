@@ -1,5 +1,8 @@
 {
   "target": "commonmark",
+  "expect": {
+    "verdict": "PASSED"
+  },
   "sources": [
     "sources/INSTRUCTIONS.md",
     "sources/spec.txt",

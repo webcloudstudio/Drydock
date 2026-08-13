@@ -428,16 +428,18 @@ def score_target(
         # Reported, not gating; see the matching note in ``score``. Both surfaces render the
         # same completion gate, so they answer "is this done?" the same way: from Sea Trials.
         warnings.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
+    # Reported, not gating; see the matching note in ``score_release``. Both surfaces answer
+    # "is this done?" from Sea Trials, so both must treat Drydock's own bookkeeping the same way.
     stale = stale_applied_specs(plan, blueprint_dir)
     if stale:
-        blockers.append(
+        warnings.append(
             "Applied Blueprint specifications are stale: " + ", ".join(s.rel_path for s in stale)
         )
     code_identity, dirty = _code_identity(build_dir)
     if not code_identity:
-        blockers.append("Build directory has no usable Git code identity")
+        warnings.append("Build directory has no usable Git code identity")
     if dirty:
-        blockers.append("Build directory has uncommitted changes")
+        warnings.append("Build directory has uncommitted changes")
     if document.questions:
         blockers.append("Sea Trials has unresolved QUESTIONS")
 

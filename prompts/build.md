@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement one MANIFEST.md build step into the build working directory.
-version: 20260731 V5
+version: 20260813 V6
 intent: Execute a single executable build step (story or spike) using only the stacked context, writing working application files into the build directory and reporting concise evidence.
 command: drydock build
 model: opus
@@ -61,25 +61,40 @@ Operating contract:
    use its section or example filters to diagnose coherent root-cause clusters, but
    rerun the full declared scope before reporting the result. Treat failing examples as
    a work queue for fixing general behavior; never add example-specific exceptions.
-6. Treat `User Acceptance` entries as review evidence requirements. Implement
+6. Grow the project's own test suite as you write the code, and treat it as the project's
+   real coverage. The acceptance assertions in `implements` are gates: few, fixed, and
+   written before any code existed, so every expectation in them is a prediction. The tests
+   you write are written *beside* the finished code, so their expected values are observed
+   rather than predicted — which is why exhaustive coverage belongs here and not there.
+   Extend the suite in the project's established location and runner, keep it runnable by the
+   project's declared test command, and leave it green when you return.
+   Cover, at minimum: every public entry point and every verb it declares, including declared
+   error paths; the boundaries — empty, exactly one, many, absent optional fields, declared
+   maxima; declared idempotence, applied twice; one behavior per test, named for the behavior;
+   and isolation — each test arranges its own data, with a fresh store or explicit teardown, so
+   a run leaves no residue behind in the build directory.
+   Where a staged authoritative suite already covers a surface, that suite is the coverage:
+   run it, and do not restate its cases. Report the suite's pass/fail counts in your `SUMMARY`
+   so a reader can see coverage moving across steps.
+7. Treat `User Acceptance` entries as review evidence requirements. Implement
    the supporting behavior, but do not claim to have performed human judgment.
-7. The `implements` section is authoritative and intentionally stacked late in
+8. The `implements` section is authoritative and intentionally stacked late in
    the prompt as the recency anchor. Build that WHAT exactly; do not substitute
    generic framework defaults.
-8. Before adding or installing Python dependencies, verify each package name
+9. Before adding or installing Python dependencies, verify each package name
    against the declared registry. Do not invent package names. If a needed
    package cannot be verified or appears newly published, fail explicitly
    instead of installing it.
-9. Use the stack's required package manager workflow for dependency changes.
+10. Use the stack's required package manager workflow for dependency changes.
    When the stack requires `uv`, update manifests through `uv` conventions
    rather than bare `pip install`.
-10. Do not claim success unless you actually created or modified project files in
+11. Do not claim success unless you actually created or modified project files in
    the build working directory. If you cannot write files or cannot complete the
    step, report failure explicitly.
-11. Do not run `git add`, `git commit`, create branches, create tags, rewrite
+12. Do not run `git add`, `git commit`, create branches, create tags, rewrite
    history, or otherwise mutate Git history. Drydock owns the final build
    directory commit after you return.
-12. End your response with this exact closing structure:
+13. End your response with this exact closing structure:
 
 ```text
 RESULT: SUCCESS | FAILED
@@ -106,9 +121,9 @@ BLOCKERS:
    Name only a specification implemented by this build block. Use `Low` or `Material`; Build never
    emits a Blocking decision. Omit the payload when no implementation decision was necessary.
 
-13. `FILES CHANGED` must list only files actually written in the build working
+14. `FILES CHANGED` must list only files actually written in the build working
    directory. If no files were written, use `RESULT: FAILED`.
-14. On `RESULT: FAILED`, append two additional lines so the failure is actionable
+15. On `RESULT: FAILED`, append two additional lines so the failure is actionable
    without opening logs. `FAILURE_SUMMARY` is one line naming the cause;
    `FAILURE_DETAIL` states what happened, why, and what to change before a rerun.
    Name concrete conditions when they apply: token or context limit exceeded,
@@ -120,7 +135,7 @@ FAILURE_SUMMARY: <one line naming the cause>
 FAILURE_DETAIL: <what happened, why, and what to change before rerunning>
 ```
 
-15. When a declared acceptance criterion cannot pass no matter how the code is written,
+16. When a declared acceptance criterion cannot pass no matter how the code is written,
    say so with this exact token. You may not edit the criterion — it is staged and
    restored before grading:
 

@@ -354,16 +354,23 @@ def score_release(
         # directly below, where a required Sea Trial without implementation or proof coverage
         # blocks. That tests the contract; this tested the plan.
         warnings.append("Manifest work is not closed/verified: " + ", ".join(incomplete))
+    # Hygiene is reported, never gating. A gate may only block on a fault domain it can
+    # distinguish, and none of these three can distinguish a defective product from tidy
+    # bookkeeping. The case that settled it: a ReadingList run passed every Sea Trial and every
+    # assertion, then failed the release because running the project's own test suite created
+    # `instance/reading_list.sqlite3` and left the tree dirty. Drydock ran the tests, the tests
+    # wrote a file, and Drydock refused the release because a file was there. Git state is
+    # evidence about the workspace; it is not project acceptance.
     stale = stale_applied_specs(plan, blueprint_dir)
     if stale:
-        blockers.append(
+        warnings.append(
             "Applied Blueprint specifications are stale: " + ", ".join(s.rel_path for s in stale)
         )
     code_identity, dirty = _code_identity(build_dir)
     if not code_identity:
-        blockers.append("Build directory has no usable Git code identity")
+        warnings.append("Build directory has no usable Git code identity")
     if dirty:
-        blockers.append("Build directory has uncommitted changes")
+        warnings.append("Build directory has uncommitted changes")
     if document.questions:
         blockers.append("Sea Trials has unresolved QUESTIONS")
 
