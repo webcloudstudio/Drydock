@@ -2,15 +2,16 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V3 |
+| Version | 2026-08-13 V4 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 9 approved items |
-| Pending impl | 9 unimplemented sections |
+| Pending spec | 11 approved items |
+| Pending impl | 11 unimplemented sections |
 
-**§1–§11 are analysis. §12–§22 are the proposed model**, approved in discussion 2026-08-13.
-Part I is the gate inventory, Part II the verdict model, Part III provenance and exit semantics.
+**§1–§11 are analysis. §12–§24 are the proposed model**, approved in discussion 2026-08-13.
+Part I is the gate inventory, Part II the verdict model, Part III provenance and exit semantics,
+Part IV the two-destination test model. **§23 corrects D-011 and UC-008 in Part I.**
 Nothing here authorizes an edit to `docs/Drydock_Specification.md`.
 
 Companion file: `notes/notes_uat.md` holds the 2026-08-10 diagnosis and the Sea Trials redesign.
@@ -265,7 +266,7 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-008 | One malformed artifact discards a batch of 19 blueprints | G-PLAN-02 | CommonMark `20260811.184523`, `.215210` | **open** |
 | D-009 | Assertion-count minimum forces the model to author AC it has no oracle for | G-PLAN-12 | CommonMark `20260811.215210` — killed 8 LLM calls in | **open** |
 | D-010 | A story that will not close stalls every dependent block | G-BUILD-08 | Toml, all 8 runs | **open by design — see §6.4** |
-| D-011 | Toml parser accepts U+3000 as whitespace (`strings.TrimSpace`) | G-BUILD-04 | Toml `20260813.084830`, 126 valid-case failures | **open — genuine product defect** |
+| D-011 | ~~Toml parser accepts U+3000 as whitespace~~ **RETRACTED — see §23.1.** The 126 valid-case failures are unbuilt work, not a parser bug | G-BUILD-08 | Toml `20260813.084830` | folded into D-010 |
 | D-012 | Sea Trial `st-001` carries no `Command:`; release resolves through model proof tags | G-SCORE-09 | Toml fixture | **open** |
 | D-013 | `ACCEPTANCE.json` stage keys are model-chosen slugs; a rename silently unbinds the gate | G-BUILD-04 | not yet observed | **open — latent** |
 | D-014 | **`test` creates `instance/reading_list.sqlite3`; `score release` then blocks the build as dirty** | G-TEST-01 → G-SCORE-05 | ReadingList `20260813.160121` | **open — see below** |
@@ -312,8 +313,10 @@ A gate design is only testable against the cases it must **not** reject.
 | UC-010 | A harness absent from the machine at run time | G-BUILD-04 — must be ERROR, not FAIL |
 
 UC-008 is the one that constrains everything else. A gate model tuned only to stop false
-rejections becomes a rubber stamp, and Toml's U+3000 defect (D-011) is the case that must keep
-failing.
+rejections becomes a rubber stamp. ~~Toml's U+3000 defect (D-011) is the case that must keep
+failing.~~ **Corrected in §23.1** — that defect does not exist, and the run record contains **no
+example of a completed product that is genuinely defective.** UC-008 is currently unevidenced,
+which is itself a finding.
 
 ---
 
@@ -1059,3 +1062,166 @@ verdict — recorded here because the pattern is worth keeping for its own sake,
   record it, proceed, report it.
 - **Does provenance citation survive `refit`?** A trial cites `reading-list.md:5-6`; the update
   rewrites the file. Line spans are fragile. Cite the directive text rather than the span.
+
+---
+---
+
+# PART IV — CORRECTIONS AND THE TWO-DESTINATION TEST MODEL
+
+`2026-08-13` · approved in discussion
+
+## 23. Corrections to Parts I–III
+
+### 23.1 D-011 is retracted
+
+**Claimed:** the Toml parser accepts U+3000 as whitespace via Go's `strings.TrimSpace`, which
+accepts Unicode whitespace where TOML permits only ASCII space and tab — a genuine product defect
+producing 126 valid-case failures.
+
+**Actual,** from `uat/Toml/runs/20260813.084830`:
+
+```
+toml-test v2.2.0
+  valid tests:   79 passed, 126 failed
+invalid tests:  471 passed,   3 failed
+
+FAIL valid/array/bool
+     input:  a = [true, false]
+     stderr: line 1: unsupported or invalid scalar
+```
+
+Every `valid/array/*` case fails, and the manifest says why:
+
+| Block | Story | State |
+|---|---|---|
+| 1–2 | architecture, parser-lexical-scalars | `closed/verified` |
+| **3** | **parser-strings** | **`closed/failed`** |
+| 4–8 | parser-keys, parser-arrays-inline, parser-datetimes, parser-tables, decoder-interface | **`pending`** |
+
+**Six stories never built.** Arrays, datetimes, and tables are absent from the parser, not
+mis-implemented. The 126 failures are unbuilt work.
+
+Consequences, and they matter:
+
+1. **D-011 is not an independent defect.** It is D-010 — the dependency stall — with a large
+   number attached. `parser-keys` depends on `parser-strings`, and everything follows from there.
+2. **The Toml product was never demonstrated defective.** It was never finished. No claim about
+   its correctness is supported by the record.
+3. **§22's recommendation is reversed.** Toml's expected verdict (X-4) is **`PASSED`**, not
+   `FAILED`. The block-3 failure was `strings-escape-boundaries`, the re-typed-literal criterion —
+   **T-3 ADVISORY** under §14, which cannot block. Under the tier model blocks 4–8 build.
+4. **UC-008 is unevidenced.** Across 18 runs there is *no* example of a completed product that is
+   genuinely defective. Every failure was a stall, a gate, a criterion, or Drydock itself. The gate
+   model's most important case has never been observed, so nothing in the record constrains the
+   model against becoming a rubber stamp. **This is the strongest argument for §16.1's policy-replay
+   harness**, which can construct the case synthetically.
+
+Method note: the claim came from over-generalizing one observed case in an earlier session and was
+then restated twice as established. It survived because nothing required a citation. The §7.1 rule
+— *one row, one gate id, one sentence, per non-passing run* — exists to stop exactly this.
+
+### 23.2 D-018/D-019/D-020 close
+
+All three fixture `SEA_TRIALS.md` files are V-8 clean as of `185b55a`:
+
+| Fixture | Trials | Provenance |
+|---|---|---|
+| ReadingList | 7 | all seven trace to `sources/reading-list.md` + `updates/reading-list.md`; mark-as-read now covered as st-007; st-006 enumerates the required tests; the invented privacy guardrail is gone |
+| Toml | 1 | `sh sources/full_test.sh` exits zero — the source's stated definition of success, verbatim |
+| CommonMark | 1 | `sh full_test.sh` exits zero — likewise |
+
+**D-012 dissolves with them.** A Sea Trial with no `Command:` was only a problem because
+`Verification: proof` routed it through AC proof-tag binding; under V-5 that override is gone and
+the governed `full` gate in `ACCEPTANCE.json` carries the verdict.
+
+Toml and CommonMark reducing to a single criterion is the model working as intended: the user
+stated one definition of success, so there is one Sea Trial, and its oracle is a supplied command.
+
+---
+
+## 24. The Two-Destination Test Model — `TD-*`
+
+### TD-1 — Best practice is not reduced; it is addressed to the right artifact
+
+§21.3's claim that TDD patterns 2 and 5 "fight P-4" is **wrong as phrased**. It reads as *write
+fewer tests*, which is not the finding and would be a defect.
+
+The correct statement: **the ten patterns are addressed to the wrong artifact.**
+`BLUEPRINTS_CONTRACT.md` applies all ten to `=== AC ===` blocks, which is the only test destination
+the contract knows about. There should be two, and exhaustive coverage belongs to the second.
+
+| | **Story AC** — `=== AC <id> ===` | **Native test suite** — `go test ./...`, `bin/test.sh` |
+|---|---|---|
+| Job | **gate the block** | **know the code works** |
+| Count | few | unbounded |
+| Authored | by `plan`, before code exists | by the build agent, alongside the code |
+| Oracle discipline | R1-legal only; no re-typed literal; must survive as a gate | full latitude — the code exists, so expectations are observed, not predicted |
+| Patterns | 1, 4, 6, 9, 10 | **all ten**, especially 2 (every route × verb), 5 (boundaries), 3 (idempotence), 7 (isolation), 8 (naming) |
+| Effect | binding — T-1 / T-2 | **diagnostic** — repair guidance, never blocks |
+| Runs | at its block | after every block, cumulatively |
+| Graded by | nothing — it is a gate, not a criterion | **Sea Trials**, via the project's test criterion |
+
+This is *more* TDD, not less. The native suite has no ceiling; an AC block is permanently
+constrained by having to survive as a gate. And it matches how the work is actually done: the suite
+is exhaustive, the CI gate is one command.
+
+### TD-2 — Why the split is not arbitrary
+
+An AC block is authored **before the code exists**, so every expected value in it is a
+*prediction*. That is the entire root cause from §1. A native test is authored **alongside the
+code**, so its expected values are *observed*. The same assertion is safe in one destination and
+hazardous in the other, and the destination — not the assertion — is what determines which.
+
+This also explains why the R1 whitelist feels restrictive: it is the correct discipline for a
+predictive artifact and the wrong discipline for an observational one. Applying it to the native
+suite would be a mistake.
+
+### TD-3 — Coverage is graded, not gated
+
+P-4 ("quantity is never a gate") and exhaustive TDD are fully compatible once the destinations are
+separate:
+
+- **Exhaustive coverage** lives in the native suite and is **graded at the Sea Trials level**.
+  ReadingList st-006 does this already — *"shall carry automated tests for adding, listing,
+  removing, rejecting, marking read, and displaying read state"* — a user directive, enumerated,
+  observable, and enforced by st-001 (`bin/test.sh` exits zero). One command, one oracle, nothing
+  re-typed.
+- **Gates** live in AC blocks and are few and bulletproof.
+
+`_MIN_ASSERTIONS_PER_STORY` (G-PLAN-12, D-009) is still deleted: it counted the wrong artifact.
+Coverage is measured by the suite the user asked for, or by an imported authoritative suite, and
+never by counting AC blocks.
+
+### TD-4 — Where an authoritative suite exists, it is the coverage
+
+Unchanged and load-bearing. Toml's 15 suite-bound criteria all passed; its 10 hand-authored ones
+restated cases `toml-test` already covers and supplied every failure. Do not restate an
+authoritative suite's cases in either destination.
+
+### TD-5 — Changes implied
+
+| # | Change | Touches |
+|---|---|---|
+| a | Split the ten patterns by destination; state which apply where and why (TD-2) | `prompts/BLUEPRINTS_CONTRACT.md:240-288` |
+| b | Give the build agent an explicit contract to grow the native suite as it writes code | `prompts/build.md` |
+| c | State each AC tier's consequence in the authoring contract, so the author can aim (§21.2) | `prompts/BLUEPRINTS_CONTRACT.md` |
+| d | Resolve the native suite command per Target and run it after every block, diagnostic only | `build_run.py` |
+| e | Observe pattern 6: run each criterion once against the pre-implementation tree (§21.4) | `build_run.py` |
+
+Items (a)–(c) are prompt-only. Item (d) is the regression-suite work from the original plan that
+was never built.
+
+---
+
+## 25. Revised Open Questions
+
+- **UC-008 has no evidence.** No completed-but-defective product exists in 18 runs. Construct one
+  synthetically in the policy-replay harness (§16.1) before trusting any gate model, including this
+  one.
+- **Toml's expected verdict is `PASSED`** (§23.1). Confirm by running it under the tier model: if
+  blocks 4–8 build and `full_test.sh` still fails, *then* there is a product defect worth naming —
+  and UC-008 finally has an example.
+- **Does the native suite need its own quarantine?** Red generated tests accumulate across blocks
+  by design. Without a visible running count a build ends quietly with fifty unresolved
+  regressions.
+- **What settles a PENDING?** Unchanged from §18. `DECISIONS.json` is the likely home.
