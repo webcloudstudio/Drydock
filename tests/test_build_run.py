@@ -1037,7 +1037,7 @@ def test_blueprint_programmatic_acceptance_passes_after_step(tmp_path):
         "Foundation writes its output marker.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'built foundation\\n'\n"
+        "assert 'built foundation' in Path('foundation.txt').read_text(encoding='utf-8')\n"
         "```\n",
         encoding="utf-8",
     )
@@ -1109,7 +1109,7 @@ def test_blueprint_programmatic_prepass_is_informational(tmp_path):
         "Foundation writes its output marker.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'built foundation\\n'\n"
+        "assert 'built foundation' in Path('foundation.txt').read_text(encoding='utf-8')\n"
         "```\n",
         encoding="utf-8",
     )
@@ -1169,7 +1169,7 @@ def test_blueprint_programmatic_acceptance_failure_stops_dependents(tmp_path):
         "Foundation writes the expected marker.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'wrong\\n'\n"
+        "assert 'wrong' in Path('foundation.txt').read_text(encoding='utf-8')\n"
         "```\n",
         encoding="utf-8",
     )
@@ -1491,7 +1491,7 @@ def _write_foundation_check(target_dir, expected: str) -> None:
         "Foundation writes the expected marker.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        f"assert Path('foundation.txt').read_text(encoding='utf-8') == {expected!r}\n"
+        f"assert {expected!r} in Path('foundation.txt').read_text(encoding='utf-8')\n"
         "```\n",
         encoding="utf-8",
     )
@@ -2180,7 +2180,7 @@ def _marker_spec(expected: str) -> str:
         "Foundation writes its output marker.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        f"assert Path('foundation.txt').read_text(encoding='utf-8') == {expected!r}\n"
+        f"assert {expected!r} in Path('foundation.txt').read_text(encoding='utf-8')\n"
         "```\n"
     )
 
@@ -2238,7 +2238,7 @@ The first marker is correct.
 
 ```python
 from pathlib import Path
-assert Path('first.txt').read_text(encoding='utf-8') == 'ok\\n'
+assert 'ok' in Path('first.txt').read_text(encoding='utf-8')
 ```
 
 ### second-marker
@@ -2246,7 +2246,7 @@ The second marker is correct.
 
 ```python
 from pathlib import Path
-assert Path('second.txt').read_text(encoding='utf-8') == 'ok\\n'
+assert 'ok' in Path('second.txt').read_text(encoding='utf-8')
 ```
 """,
         encoding="utf-8",
@@ -2558,9 +2558,9 @@ assert score == 9
     assert step.calls_used == 7
 
 
-def test_a_uat_run_still_stops_on_a_reported_defective_criterion(tmp_path, monkeypatch):
-    # Staged acceptance assets are restored before grading, so no later pass can move that
-    # check. That stop is a fact about the run, not a budget heuristic UAT may waive.
+def test_a_uat_run_spends_its_budget_on_a_reported_defective_criterion(tmp_path, monkeypatch):
+    # UAT gets the same treatment as an interactive run: the claim is recorded, and the stop is
+    # the ordinary stall rule rather than a verdict the agent handed itself.
     monkeypatch.setenv("DRYDOCK_UAT", "1")
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -2575,8 +2575,10 @@ def test_a_uat_run_still_stops_on_a_reported_defective_criterion(tmp_path, monke
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0]
-    assert result.steps[0].stop_reason == "acceptance criterion reported defective"
+    assert [c["attempt"] for c in runner.calls] == [0, 1, 2]
+    assert result.steps[0].stop_reason == (
+        "deterministic acceptance score did not improve on 2 consecutive calls"
+    )
 
 
 # A console that carries only check ids tells an operator that something failed, not what the
@@ -2822,12 +2824,12 @@ def test_a_doubtful_criterion_is_named_and_graded(tmp_path):
     assert "DATABASE.md [escapes]" in text
 
 
-def test_a_doubtful_criterion_does_not_consume_the_repair_budget(tmp_path):
-    # A doubtful criterion must not refuse the build before any story is attempted, and must
-    # not drive a repair loop against a criterion no implementation can satisfy.
+def test_a_doubtful_criterion_does_not_refuse_the_build(tmp_path):
+    # A doubtful criterion must not refuse the build before any story is attempted. It is graded
+    # like any other; the flag is authoring advice, never a verdict.
     _, runner = _quarantine_log(tmp_path, _UNSATISFIABLE_SPEC)
 
-    assert len(runner.calls) == 1
+    assert runner.calls
 
 
 def test_a_doubtful_criterion_carries_an_advisory_finding_not_a_verdict(tmp_path):
@@ -2984,7 +2986,7 @@ _FOUNDATION_AC = (
     "Foundation writes its output marker.\n\n"
     "```python\n"
     "from pathlib import Path\n"
-    "assert Path('foundation.txt').read_text(encoding='utf-8') == 'built foundation\\n'\n"
+    "assert 'built foundation' in Path('foundation.txt').read_text(encoding='utf-8')\n"
     "```\n"
 )
 
@@ -3028,7 +3030,7 @@ def test_ungate_releases_acceptance_failure_and_unblocks_next_step(tmp_path):
         "Service writes its output marker.\n\n"
         "```python\n"
         "from pathlib import Path\n"
-        "assert Path('service.txt').read_text(encoding='utf-8') == 'built service\\n'\n"
+        "assert 'built service' in Path('service.txt').read_text(encoding='utf-8')\n"
         "```\n",
         encoding="utf-8",
     )
@@ -3169,7 +3171,7 @@ The active parser behavior works.
 
 ```python
 from pathlib import Path
-assert Path("active.txt").read_text(encoding="utf-8") == "ok\\n"
+assert "ok" in Path("active.txt").read_text(encoding="utf-8")
 ```
 """,
         encoding="utf-8",
@@ -3182,7 +3184,7 @@ The verified renderer behavior remains stable.
 
 ```python
 from pathlib import Path
-assert Path("shared.txt").read_text(encoding="utf-8") == "preserved\\n"
+assert "preserved" in Path("shared.txt").read_text(encoding="utf-8")
 ```
 """,
         encoding="utf-8",
@@ -3242,7 +3244,12 @@ def _defective_claim_runner(report: str):
     return runner
 
 
-def test_reported_defective_criterion_stops_the_repair_loop_at_the_first_call(tmp_path):
+def test_a_defect_claim_is_recorded_and_does_not_stop_the_loop(tmp_path):
+    # The claim used to be terminal, which handed the party under test the power to end its own
+    # examination. A criterion only binds when its expected value is one it could not have
+    # invented, so the agent's claim is now the less likely explanation: it is reported, and the
+    # repair budget is spent as it would be for any other missed expectation.
+    messages: list[str] = []
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     runner = _defective_claim_runner(_DEFECTIVE_AC_REPORT)
@@ -3254,17 +3261,14 @@ def test_reported_defective_criterion_stops_the_repair_loop_at_the_first_call(tm
         runner=runner,
         step_id="foundation",
         repair_attempts=3,
+        on_text=messages.append,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0]
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
     step = result.steps[0]
     assert step.status == "failed"
-    assert step.stop_reason == "acceptance criterion reported defective"
-    assert step.calls_used == 1
-    assert step.calls_budget == 4
-    assert "DATABASE.md" in step.failure_detail
-    evidence = (target_dir / "evidence" / "foundation.md").read_text(encoding="utf-8")
-    assert "acceptance criterion reported defective" in evidence
+    assert step.stop_reason == "deterministic acceptance score did not improve"
+    assert any("recorded, not accepted" in message for message in messages)
 
 
 def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):
@@ -3292,10 +3296,10 @@ def test_an_unnamed_defect_claim_still_spends_the_repair_budget(tmp_path):
     assert result.steps[0].stop_reason == "deterministic acceptance score did not improve"
 
 
-def test_ac_broken_token_stops_the_loop_even_when_the_agent_reports_success(tmp_path):
-    # The motivating case: the code is correct and the criterion is wrong, so the agent has no
-    # failure of its own to report. Prose inference cannot be relied on to notice — the token is
-    # the contract, and it must stop the loop on its own.
+def test_ac_broken_token_is_recorded_when_the_agent_reports_success(tmp_path):
+    # The agent has no failure of its own to report, so the token is the only signal that it
+    # believes the criterion is at fault. It is worth recording and worth showing; it is not
+    # worth ending the examination over.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     runner = _defective_claim_runner(
@@ -3314,15 +3318,13 @@ def test_ac_broken_token_stops_the_loop_even_when_the_agent_reports_success(tmp_
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0]
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
     step = result.steps[0]
     assert step.status == "failed"
-    assert step.stop_reason == "acceptance criterion reported defective"
-    assert step.calls_used == 1
-    assert "DATABASE.md" in step.failure_detail
+    assert step.stop_reason == "deterministic acceptance score did not improve"
 
 
-def test_a_defect_named_only_in_blockers_stops_the_loop(tmp_path):
+def test_a_defect_named_only_in_blockers_is_recorded(tmp_path):
     # The agent's clearest statement often lands in BLOCKERS rather than FAILURE_DETAIL.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
@@ -3344,15 +3346,15 @@ def test_a_defect_named_only_in_blockers_stops_the_loop(tmp_path):
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0]
-    assert result.steps[0].stop_reason == "acceptance criterion reported defective"
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
+    assert result.steps[0].stop_reason == "deterministic acceptance score did not improve"
 
 
-def test_idempotent_rewrite_does_not_suppress_the_defective_criterion_report(tmp_path):
+def test_idempotent_rewrite_still_grades_acceptance(tmp_path):
     # The motivating regression. The deliverable is already on disk from an earlier pass, so the
     # step rewrites it with identical bytes and the content-hash delta is empty. Classifying that
     # as "no build files written" used to skip acceptance entirely, which discarded the agent's
-    # AC_BROKEN report and let the loop spend its whole budget on a criterion nothing can satisfy.
+    # AC_BROKEN report and skipped the grading this test exists to prove still happens.
     target_dir, build_dir = _setup(tmp_path)
     (target_dir / "blueprint" / "DATABASE.md").write_text(_marker_spec("ok\n"), encoding="utf-8")
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -3373,12 +3375,10 @@ def test_idempotent_rewrite_does_not_suppress_the_defective_criterion_report(tmp
         repair_attempts=3,
     )
 
-    assert [c["attempt"] for c in runner.calls] == [0]
+    assert [c["attempt"] for c in runner.calls] == [0, 1]
     step = result.steps[0]
     assert step.status == "failed"
     assert step.error == "programmatic acceptance failed: foundation-file"
-    assert step.stop_reason == "acceptance criterion reported defective"
-    assert "DATABASE.md" in step.failure_detail
 
 
 def test_no_file_delta_is_advisory_when_acceptance_passes(tmp_path):
@@ -3981,3 +3981,47 @@ assert never_bound_anywhere == 1
     )
     assert any(check.skipped for check in step.acceptance)
     assert [check.check_id for check in step.acceptance if check.skipped] == ["broken-criterion"]
+
+
+def test_a_retyped_expectation_is_disputed_and_the_block_still_closes(tmp_path):
+    """The Toml 20260813.084830 regression, reduced.
+
+    The criterion supplied one spelling of a value and asserted another. The product is right,
+    the criterion is wrong, and no static analyzer can tell which from the text alone. It runs,
+    it misses, it is reported in full — and the block closes on the evidence of the criteria
+    whose expectations could not have been invented.
+    """
+    messages: list[str] = []
+    target_dir, build_dir = _setup(tmp_path)
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        "DB SPEC CONTENT\n\n"
+        "## Programmatic Acceptance\n\n"
+        "### foundation-present\n"
+        "The foundation marker exists.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "assert Path('foundation.txt').is_file()\n"
+        "```\n\n"
+        "### foundation-retyped\n"
+        "The marker matches a hand-typed expectation.\n\n"
+        "```python\n"
+        "from pathlib import Path\n"
+        "assert Path('foundation.txt').read_text(encoding='utf-8') == 'not what was written\\n'\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    result = build_target(
+        "Demo",
+        target_dir,
+        build_dir=build_dir,
+        runner=make_runner(),
+        step_id="foundation",
+        on_text=messages.append,
+    )
+
+    step = result.steps[0]
+    assert step.status == "built"
+    text = "\n".join(messages)
+    assert "disputed: 1 criterion" in text
+    assert "foundation-retyped" in text

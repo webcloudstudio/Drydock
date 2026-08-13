@@ -43,7 +43,11 @@ SUITE_TIMEOUT_SECONDS = 900
 OUTCOME_PASS = "PASS"
 OUTCOME_FAIL = "FAIL"
 OUTCOME_UNVERIFIED = "UNVERIFIED"
-OUTCOMES = (OUTCOME_PASS, OUTCOME_FAIL, OUTCOME_UNVERIFIED)
+# A criterion that ran, reached the code under test, and missed its expectation — but whose
+# expectation is one the author re-typed by hand rather than derived, so the miss is as likely to
+# be the criterion's fault as the product's. Reported in full and never charged against the build.
+OUTCOME_DISPUTED = "DISPUTED"
+OUTCOMES = (OUTCOME_PASS, OUTCOME_FAIL, OUTCOME_UNVERIFIED, OUTCOME_DISPUTED)
 
 # Category prefixes for a check that failed by exhausting a resource rather than by missing
 # an expectation. Consumers use these to gate a repair pass on the resource fact.
@@ -375,10 +379,13 @@ class AcceptanceRunResult:
     skipped: bool = False
     interpreter: str = ""
     provisioning_result: str = "not requested"
+    #: Whether a miss here is evidence about the product. False when the criterion re-typed its
+    #: expected value rather than deriving it; see :attr:`ProgrammaticAcceptance.binding`.
+    binding: bool = True
 
     @property
     def outcome(self) -> str:
-        """PASS, FAIL, or UNVERIFIED — the three-valued verdict for this assertion.
+        """PASS, FAIL, UNVERIFIED, or DISPUTED — the verdict for this assertion.
 
         ``skipped`` is the storage for UNVERIFIED so that every consumer written against the
         older two-valued model keeps excluding these results from the build's tally, which is
@@ -386,7 +393,9 @@ class AcceptanceRunResult:
         """
         if self.skipped:
             return OUTCOME_UNVERIFIED
-        return OUTCOME_PASS if self.passed else OUTCOME_FAIL
+        if self.passed:
+            return OUTCOME_PASS
+        return OUTCOME_FAIL if self.binding else OUTCOME_DISPUTED
 
     @property
     def unverified(self) -> bool:
@@ -1218,6 +1227,7 @@ def run_programmatic_acceptance(
                 ),
                 skipped=True,
                 provisioning_result=environment.provisioning_result,
+                binding=check.binding,
             )
             for check in checks
         )
@@ -1282,6 +1292,7 @@ def run_programmatic_acceptance(
                         ),
                         interpreter=str(environment.interpreter),
                         provisioning_result=environment.provisioning_result,
+                        binding=check.binding,
                     )
                 )
                 continue
@@ -1316,6 +1327,7 @@ def run_programmatic_acceptance(
                 skipped=skipped,
                 interpreter=str(environment.interpreter),
                 provisioning_result=environment.provisioning_result,
+                binding=check.binding,
             )
         )
     return tuple(results)

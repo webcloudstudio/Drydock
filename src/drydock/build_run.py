@@ -1501,10 +1501,14 @@ def _attempt_acceptance_summary(
     """Render one concise, operator-facing acceptance summary for an LLM attempt."""
     passed = sum(1 for result in acceptance if result.passed)
     skipped = tuple(result for result in acceptance if result.skipped)
-    failed = tuple(result for result in acceptance if not result.passed and not result.skipped)
+    missed = tuple(result for result in acceptance if not result.passed and not result.skipped)
+    failed = tuple(result for result in missed if result.binding)
+    disputed = tuple(result for result in missed if not result.binding)
     line = f"acceptance: call {attempt + 1} · {passed}/{len(acceptance)} AC passed"
     if skipped:
         line += " · skipped: " + ", ".join(result.check_id for result in skipped)
+    if disputed:
+        line += " · disputed: " + ", ".join(result.check_id for result in disputed)
     if not failed:
         return line
     return line + " · failed: " + _acceptance_failure_details(failed)
@@ -2874,9 +2878,16 @@ def build_target(
                                 ),
                                 target_dir=target_dir,
                             )
-                        failed_checks = tuple(
+                        # A criterion that missed its expectation splits two ways. If its
+                        # expected value is one it could not have invented, the miss is evidence
+                        # about the product and fails the block. If the author re-typed the
+                        # expected bytes by hand, the miss is as likely to be the criterion's
+                        # fault, so it settles DISPUTED: reported in full, charged to nothing.
+                        missed = tuple(
                             check for check in acceptance if not check.passed and not check.skipped
                         )
+                        failed_checks = tuple(check for check in missed if check.binding)
+                        disputed_checks = tuple(check for check in missed if not check.binding)
                         if failed_checks:
                             undeclared = next(
                                 (
@@ -2972,6 +2983,21 @@ def build_target(
                                 on_text,
                                 _attempt_acceptance_summary(attempt, acceptance),
                             )
+                            if disputed_checks:
+                                # Loud, because silence here would read as coverage the run does
+                                # not have. The criterion ran and missed; what is withheld is the
+                                # conclusion that the product is what missed.
+                                _emit(
+                                    on_text,
+                                    f"disputed: {len(disputed_checks)} criteri"
+                                    f"{'on' if len(disputed_checks) == 1 else 'a'} missed an "
+                                    "expectation the author re-typed rather than derived — "
+                                    "reported, not charged against the build",
+                                )
+                                for check in disputed_checks:
+                                    _emit(on_text, f"  {check.check_id}: {check.intent}")
+                                    for line in _console_failure_lines(check):
+                                        _emit(on_text, f"    {line}")
                             if failed_checks:
                                 # Show what each check was doing when it failed. Without this
                                 # the console carries only check ids, and the tally or failing
@@ -3034,9 +3060,11 @@ def build_target(
             consecutive_stalls = consecutive_stalls + 1 if stalled else 0
             stall_budget = max_consecutive_stalls()
             stop_on_stall = stalled and consecutive_stalls >= stall_budget
-            # A criterion the agent reports as broken is terminal, not repairable: staged
-            # acceptance assets are restored before grading, so no further pass can move it.
-            # Stop on the first such report rather than spending the rest of the budget.
+            # An agent's claim that a criterion is broken is evidence, not a verdict. It used to
+            # be terminal, which handed the party under test the power to end its own
+            # examination — and a criterion still reaches this point only when its expected value
+            # is one it could not have invented, so the claim is now the less likely explanation.
+            # It is recorded and shown; the loop keeps its budget.
             defective_ids: tuple[str, ...] = ()
             if status == "failed" and _is_repairable(error) and acceptance:
                 unmet = tuple(check for check in acceptance if not check.passed)
@@ -3057,6 +3085,18 @@ def build_target(
             # runs on. When every remaining failure is a kit fault — malformed snippet, absent
             # tool, exhausted memory or time — no further pass can move any of them, and the ids
             # name exactly what a human has to fix instead.
+            if defective_ids:
+                sources = sorted({
+                    check.source
+                    for check in checks
+                    if check.check_id in defective_ids and check.source
+                })
+                _emit(
+                    on_text,
+                    "agent reports defective (recorded, not accepted): "
+                    + ", ".join(defective_ids)
+                    + (f" — in {', '.join(sources)}" if sources else ""),
+                )
             unmet_checks = tuple(check for check in acceptance if not check.passed)
             terminal_ids = (
                 tuple(
@@ -3076,27 +3116,6 @@ def build_target(
                     on_text,
                     "repair: stopped — no repair pass can move these criteria: "
                     + ", ".join(terminal_ids),
-                )
-            elif defective_ids:
-                stop_reason = "acceptance criterion reported defective"
-                sources = sorted({
-                    check.source
-                    for check in checks
-                    if check.check_id in defective_ids and check.source
-                })
-                _emit(
-                    on_text,
-                    "repair: stopped — acceptance criterion reported defective: "
-                    + ", ".join(defective_ids),
-                )
-                failure_detail = (
-                    (failure_detail + "\n\n" if failure_detail else "")
-                    + "The build agent reports the failing acceptance criterion as defective, "
-                    "and a repair pass cannot rewrite it: staged acceptance assets are restored "
-                    "before grading. Review the assertion in "
-                    + (", ".join(sources) if sources else "the Blueprint specification")
-                    + " and repair it there, then rerun the build. Rerunning without repairing "
-                    "the assertion will fail identically."
                 )
             elif stop_on_stall:
                 # A single-pass stop keeps the original wording: naming a count of 1 would read
@@ -3134,7 +3153,6 @@ def build_target(
                 and _is_repairable(error)
                 and not stop_on_stall
                 and not stop_on_kit_fault
-                and not defective_ids
                 and attempt < max_attempt
             ):
                 attempt += 1
