@@ -270,14 +270,21 @@ right.
 Two authoring rules are enforced at plan time. A criterion that breaks either is rejected before
 any build spends a call on it, because no implementation can turn it green.
 
-**Text mode.** Every `subprocess` call declares `text=True`. A criterion drives a program that
-reads and writes text; left in binary mode the call takes `bytes`, and passing it a `str` raises
-`TypeError` before the program under test starts. Write:
+**Subprocess mode.** Match the mode to `input=`. Text input declares `text=True` or `encoding=...`;
+binary input uses a bytes-like value and does not declare `text`, `encoding`, `errors`, or
+`universal_newlines`. A mismatch raises before the program under test starts. Write:
 
 ```
 result = subprocess.run(["./program"], input="one line\n", capture_output=True, text=True)
 assert result.returncode == 0
 assert result.stdout == "<p>one line</p>\n"
+```
+
+For a binary or invalid-encoding criterion, write:
+
+```
+result = subprocess.run(["./program"], input=b"\xff", capture_output=True)
+assert result.returncode != 0
 ```
 
 **ASCII test data.** Acceptance data is ASCII. Do not invent an encoding requirement: characters

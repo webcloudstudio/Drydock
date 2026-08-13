@@ -926,7 +926,7 @@ def _criterion(code: str, *, encoding: str = "") -> acceptance.ProgrammaticAccep
     return acceptance.parse_programmatic_acceptance_text(text, source="FEATURE-Example.md")[0]
 
 
-def test_a_binary_mode_subprocess_that_exchanges_data_is_an_authoring_defect():
+def test_str_input_in_binary_mode_is_an_authoring_defect():
     """The defect observed in the CommonMark run, caught before a build pays for it."""
     check = _criterion(
         "import subprocess\n"
@@ -941,10 +941,53 @@ def test_a_binary_mode_subprocess_that_exchanges_data_is_an_authoring_defect():
     assert "text=True" in defects[0]
 
 
-def test_a_subprocess_that_exchanges_nothing_is_correct_in_either_mode():
-    """Mode is only a defect where data crosses the boundary; flagging the rest rejects sound work."""
+@pytest.mark.parametrize("input_expr", ['b"\\xff"', "bytearray([255])", 'memoryview(b"x")'])
+def test_bytes_like_input_in_binary_mode_is_accepted(input_expr):
     check = _criterion(
-        'import subprocess, sys\nsubprocess.run([sys.executable, "spec_tests.py"], check=True)\n'
+        "import subprocess\n"
+        f'result = subprocess.run(["./program"], input={input_expr}, capture_output=True)\n'
+    )
+
+    assert acceptance.acceptance_authoring_defects(check) == ()
+
+
+@pytest.mark.parametrize("mode", ["text=True", 'encoding="utf-8"', "universal_newlines=True"])
+def test_bytes_input_in_text_mode_is_an_authoring_defect(mode):
+    check = _criterion(
+        f'import subprocess\nresult = subprocess.run(["./program"], input=b"\\xff", {mode})\n'
+    )
+
+    defects = acceptance.acceptance_authoring_defects(check)
+
+    assert len(defects) == 1
+    assert "bytes-like input in text mode" in defects[0]
+
+
+@pytest.mark.parametrize("mode", ["text=False", "universal_newlines=False"])
+def test_explicit_false_mode_remains_binary(mode):
+    text_check = _criterion(
+        f'import subprocess\nresult = subprocess.run(["./program"], input="text", {mode})\n'
+    )
+    bytes_check = _criterion(
+        f'import subprocess\nresult = subprocess.run(["./program"], input=b"bytes", {mode})\n'
+    )
+
+    assert acceptance.acceptance_authoring_defects(text_check)
+    assert acceptance.acceptance_authoring_defects(bytes_check) == ()
+
+
+def test_unknown_subprocess_input_or_mode_is_not_rejected_statically():
+    check = _criterion(
+        'import subprocess\nresult = subprocess.run(["./program"], input=payload, text=text_mode)\n'
+    )
+
+    assert acceptance.acceptance_authoring_defects(check) == ()
+
+
+def test_a_subprocess_without_input_is_correct_in_either_mode():
+    check = _criterion(
+        "import subprocess, sys\n"
+        "subprocess.run([sys.executable, 'spec_tests.py'], capture_output=True, check=True)\n"
     )
 
     assert acceptance.acceptance_authoring_defects(check) == ()

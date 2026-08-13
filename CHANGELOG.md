@@ -13,12 +13,13 @@ command surface and Typed Specification contract are unstable and may change bet
 - 2026-08-11: `drydock plan` rejects an acceptance criterion no implementation can execute, at the
   point it is authored. `acceptance.acceptance_authoring_defects` enforces two deterministic rules
   over each parsed criterion and reports each violation as a plan integrity fatal naming the
-  specification file and the criterion id. **Text mode**: a `subprocess` call that exchanges data
-  with the process — `input=`, `capture_output=`, a `stdout`/`stderr`/`stdin` pipe — must declare
-  `text=True`, `encoding=`, or `universal_newlines=`; left in binary mode it takes `bytes`, so a
-  `str` argument raises `TypeError` before the program under test starts. A call that exchanges
-  nothing is correct in either mode and is not reported. Calls are found by parsing the proof body
-  rather than by pattern, so a multi-line or reordered call is read correctly. **ASCII test data**:
+  specification file and the criterion id. **Subprocess mode**: literal `str` input must use text
+  mode, while literal `bytes`, `bytearray`, and `memoryview` input must use binary mode. This keeps
+  invalid-encoding and other binary acceptance criteria legal while rejecting combinations that
+  raise before the program starts, including bytes with `text=True` or `encoding=...`; dynamic
+  input or mode expressions remain runtime concerns rather than static guesses. Calls are found by
+  parsing the proof body rather than by pattern, so a multi-line or reordered call is read
+  correctly. **ASCII test data**:
   a criterion may not use non-ASCII literals unless it declares the new `Encoding:` metadata key,
   which makes an encoding requirement stated by the imported specification explicit and reviewable
   instead of invented at plan time. A CommonMark run lost a block to a criterion that broke both

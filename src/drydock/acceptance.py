@@ -663,13 +663,6 @@ def parse_delimited_acceptance(text: str, *, source: str) -> tuple[ProgrammaticA
 #: ``subprocess`` entry points whose text/binary mode decides whether a ``str`` argument is legal.
 #: ``getoutput``/``getstatusoutput`` are deliberately absent: they are text-only by definition.
 _SUBPROCESS_CALLS = frozenset({"run", "Popen", "check_output", "check_call", "call"})
-#: Any one of these keywords puts a ``subprocess`` call in text mode, where ``str`` in and ``str``
-#: out is the contract. ``errors=`` is included because it implies a codec is in use.
-_TEXT_MODE_KEYWORDS = frozenset({"text", "encoding", "universal_newlines", "errors"})
-#: Keywords that make a call exchange data with the process. Only these calls care about the
-#: mode: a ``subprocess.run([...], check=True)`` that reads and writes nothing is correct in
-#: either mode, and flagging it would reject sound criteria for a fault they cannot have.
-_SUBPROCESS_IO_KEYWORDS = frozenset({"input", "capture_output", "stdout", "stderr", "stdin"})
 
 
 def acceptance_authoring_defects(check: ProgrammaticAcceptance) -> tuple[str, ...]:
@@ -680,11 +673,9 @@ def acceptance_authoring_defects(check: ProgrammaticAcceptance) -> tuple[str, ..
 
     Two rules, both deterministic:
 
-    * **Text mode.** A ``subprocess`` call that exchanges data with the process runs a program
-      that reads and writes text. Left in binary mode it takes ``bytes``, so passing it a ``str``
-      raises ``TypeError`` before the program starts, and comparing its ``bytes`` output to a
-      ``str`` literal is false whatever the program printed. A call that exchanges nothing is
-      correct in either mode and is not reported.
+    * **Subprocess mode.** Literal ``str`` input requires text mode; literal bytes-like input
+      requires binary mode. Unknown expressions are left to runtime rather than guessed at plan
+      time. A mismatch raises before the program under test starts.
     * **ASCII test data.** Acceptance data is ASCII unless the criterion declares ``Encoding:``.
       A criterion invented at plan time that asserts on characters outside the specification's
       stated scope tests a requirement nobody wrote down, and it fails the build for a property
@@ -704,27 +695,21 @@ def acceptance_authoring_defects(check: ProgrammaticAcceptance) -> tuple[str, ..
                 "data is ASCII unless the specification states an encoding requirement; add "
                 "`Encoding: utf-8` to the criterion when it does, or use ASCII test data"
             )
-    for call in _binary_mode_subprocess_calls(check.code):
-        defects.append(
-            f"calls `subprocess.{call}` in binary mode. A criterion drives a text program: pass "
-            '`text=True` (with `encoding="utf-8"` when the criterion declares an encoding), or '
-            "the call takes `bytes` and a `str` argument raises TypeError before the program runs"
-        )
+    defects.extend(_subprocess_mode_defects(check.code))
     return tuple(defects)
 
 
-def _binary_mode_subprocess_calls(code: str) -> tuple[str, ...]:
-    """Names of ``subprocess`` entry points invoked without a text-mode keyword.
+def _subprocess_mode_defects(code: str) -> tuple[str, ...]:
+    """Report literal ``input=`` values incompatible with their subprocess mode.
 
-    Parsed rather than pattern-matched: a call spanning several lines, or one whose keywords are
-    reordered, is ordinary authoring, and a regex over the source would miss both. Unparseable
-    code yields nothing — the compile gate reports that, and one defect reported once is enough.
+    The check is deliberately narrow. When either the input type or mode is dynamic, runtime owns
+    the verdict; rejecting an expression on a static guess would exclude legitimate binary tests.
     """
     try:
         tree = ast.parse(code)
     except SyntaxError:
         return ()
-    found: list[str] = []
+    defects: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
@@ -733,11 +718,64 @@ def _binary_mode_subprocess_calls(code: str) -> tuple[str, ...]:
             continue
         if node.func.attr not in _SUBPROCESS_CALLS:
             continue
-        keywords = {keyword.arg for keyword in node.keywords}
-        if keywords & _TEXT_MODE_KEYWORDS or not keywords & _SUBPROCESS_IO_KEYWORDS:
+        keywords = {keyword.arg: keyword.value for keyword in node.keywords if keyword.arg}
+        input_node = keywords.get("input")
+        input_kind = _subprocess_input_kind(input_node)
+        mode = _subprocess_mode(keywords)
+        if input_kind is None or mode is None or input_kind == mode:
             continue
-        found.append(node.func.attr)
-    return tuple(found)
+        if input_kind == "text":
+            defects.append(
+                f"calls `subprocess.{node.func.attr}` with `str` input in binary mode; pass "
+                "`text=True` or `encoding=...`, otherwise Python raises TypeError before the "
+                "program starts"
+            )
+        else:
+            defects.append(
+                f"calls `subprocess.{node.func.attr}` with bytes-like input in text mode; remove "
+                "`text`, `encoding`, `errors`, and `universal_newlines`, otherwise Python tries "
+                "to encode bytes before the program starts"
+            )
+    return tuple(defects)
+
+
+def _subprocess_input_kind(node: ast.expr | None) -> str | None:
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, str):
+            return "text"
+        if isinstance(node.value, bytes):
+            return "binary"
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"bytearray", "memoryview"}
+    ):
+        return "binary"
+    return None
+
+
+def _subprocess_mode(keywords: dict[str, ast.expr]) -> str | None:
+    """Return the statically declared subprocess mode, or ``None`` when dynamic."""
+    dynamic = False
+    for name in ("encoding", "errors"):
+        if name not in keywords:
+            continue
+        value = keywords[name]
+        if isinstance(value, ast.Constant):
+            if value.value is not None:
+                return "text"
+        else:
+            dynamic = True
+    for name in ("text", "universal_newlines"):
+        if name not in keywords:
+            continue
+        value = keywords[name]
+        if isinstance(value, ast.Constant):
+            if value.value is True:
+                return "text"
+        else:
+            dynamic = True
+    return None if dynamic else "binary"
 
 
 def parse_programmatic_acceptance(path: Path) -> tuple[ProgrammaticAcceptance, ...]:
