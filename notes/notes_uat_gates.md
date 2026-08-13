@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V6 |
+| Version | 2026-08-13 V7 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 14 approved items |
-| Pending impl | 14 unimplemented sections |
+| Pending spec | 15 approved items |
+| Pending impl | 16 unimplemented sections |
 
 ---
 
@@ -43,10 +43,13 @@ to build). That is ~150 lines and sufficient to begin. The rest is evidence for 
 **Settled, do not relitigate:** Q1 and Q2 in §27.3; the eight resolutions in §27.1; the three calls
 in §27.2. All three fixture `SEA_TRIALS.md` files are already correct (`185b55a`).
 
-**Build next — §26 Phase 0, then Phase 1.** Phase 0 is a test harness over `uat/`; Phase 1 is four
-prompt edits. Neither needs an LLM call or a UAT run, and Phase 1 alone would have flipped the most
-recent recorded run from `FAILED` to `PASSED`. **Phases 2–5 wait for the measurement Phase 0
-produces.**
+**Build next — §30.2, then §30.3.** Part VI is the current refit and supersedes this paragraph's
+earlier advice. Phase 0 and Phase 1 are **done and committed**; §31 records what landed. The two
+runs since then died on the artifact parser, not on anything the verdict model addresses, and
+§30.3 is D-008 — the most frequent cause of a dead run across twenty. **Read Part VI first.**
+
+**Phases 2–5 of §26 still wait for the measurement Phase 0 produces**, except the narrow half of
+2.4, which landed as §29.
 
 **All evidence is in `uat/`.** 18 runs across three fixtures, with prompts, provider output, and
 evidence trees. There is no other source, and every claim in this file is checkable there. Runs
@@ -323,6 +326,7 @@ Every distinct failure mode in the 18 runs. `status` is as of 2026-08-13.
 | D-015 | Build does not converge inside the pass budget; recorded as `degraded` with no attribution | G-BUILD-08 | 6 runs | **open** |
 | D-021 | A governed gate exiting 2 — a usage error, meaning it could not run — is classified `FAIL` and charged to the product | G-BUILD-04 → G-SCORE-01 | Toml `20260813.195530` | fixed — exit 2 is now ERROR (§29) |
 | D-022 | The Toml fixture's `run_conformance.sh` probed the harness with `toml-test -version`, which that harness does not accept; the version guard then refused every run | G-BUILD-04 | Toml `20260813.195530` | fixed — uses the `version` subcommand |
+| D-023 | A mismatched closing delimiter is read as a new opening block, not as a malformed close, so the run dies naming a block the model never opened | G-ANA-01 | Toml `20260813.211658` — `=== END COMPASS ===` closing `=== COMPASS.md ===` | **open — §30.2** |
 
 ### D-014 in full, because it is the cleanest example of the whole disease
 
@@ -1460,3 +1464,163 @@ Left as is. If a real Target ever ships a gate that means "failed" by exit 2, th
 per-gate declaration in `ACCEPTANCE.json`, not a change to the default.
 
 D-021 and D-022 in §4 are the run that produced this.
+
+---
+---
+
+# PART VI — REFIT, 2026-08-13
+
+Written for `/apply-refit uat-gates` after a `/clear`. Every item below carries a flag line; the
+skill surfaces `impl:unimplemented` as code items. Sections marked `impl:implemented` are the
+record of work already done, kept so the next session does not redo them.
+
+Evidence for all of it: Toml `20260813.195530` and Toml `20260813.211658`, the first two runs of
+the day carrying the Phase 1 work.
+
+## 30. Run 20260813.211658 — analyze discarded four good artifacts
+
+### 30.1 What happened
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+The run died at `analyze`, 76 seconds and one LLM call in, at commit `f2e63da` — so it carries
+both of the day's fixes and reached a *new* failure, earlier in the lifecycle than any Toml run
+before it.
+
+```
+Error: Analyze failed: LLM output contained an unexpected artifact block: END COMPASS
+  No generated artifacts were written.
+```
+
+The model emitted five artifacts. Four are well-formed and every one of them is an allowed name:
+
+| Block | Open | Close | State |
+|---|---|---|---|
+| `ANALYSIS.md` | `=== ANALYSIS.md ===` | `=== END ANALYSIS.md ===` | well-formed |
+| `SEA_TRIALS.md` | `=== SEA_TRIALS.md ===` | `=== END SEA_TRIALS.md ===` | well-formed |
+| `TECHNOLOGY_STACK.md` | `=== TECHNOLOGY_STACK.md ===` | `=== END TECHNOLOGY_STACK.md ===` | well-formed |
+| **`COMPASS.md`** | `=== COMPASS.md ===` | **`=== END COMPASS ===`** | **dropped the `.md`** |
+| `discovery-identity.json` | `=== discovery-identity.json ===` | `=== END discovery-identity.json ===` | well-formed |
+
+One artifact's closing marker lost four characters. Nothing was written. The frozen
+`SEA_TRIALS.md` — the exam, already correct on disk — was not even reached.
+
+**This is D-008 at a new stage.** It was catalogued at `plan` (one malformed artifact discards a
+batch of 19) and left *Not scheduled* in §26 on the grounds that it is a transport problem
+independent of the verdict model. Four of the twenty recorded runs have now died this way, it is
+the single most frequent cause in the record, and it is now demonstrated at `analyze` as well as
+`plan`. **The recommendation is to schedule it.**
+
+Two independent defects compound here, and they want separate fixes.
+
+### 30.2 A mismatched close is read as an open (D-023)
+
+`2026-08-13` · `spec:na` · `impl:unimplemented`
+
+`_parse_delimited_blocks` in `artifact_blocks.py` has no concept of *a close that does not match
+its open*. Seeing `=== END COMPASS ===` while inside `COMPASS.md`, it does not recognise a
+malformed close — it recognises a **new block named `END COMPASS`**, which then fails the
+allow-list at `artifact_blocks.py:100-105` and raises.
+
+The diagnostic is therefore actively misleading. It names a block the model never opened, and
+says nothing about the one that is actually wrong. Anyone reading that error looks for `COMPASS`
+in the prompt contract and finds nothing.
+
+The fix: when a line matches the close form and the run is inside an open block, treat it as that
+block's close. Report a mismatch as a mismatch, naming both markers, rather than inventing a
+block. §21.1 credits the `=== AC <id> === … === END AC <id> ===` containers with making an
+unclosed container *detectable rather than silently absorbing the next criterion* — that lesson
+was applied to AC containers and never to the artifact parser the whole lifecycle runs through.
+
+**Do not fix this by making the close fuzzy-match the open.** The close's name is a checksum on
+the open; matching them loosely throws away the property that makes the container detectable at
+all. Recognise the close by position, and report the name disagreement.
+
+### 30.3 A parse defect discards artifacts it did not judge (D-008)
+
+`2026-08-13` · `spec:approved` · `impl:unimplemented`
+
+Even with 30.2 fixed, the surviving behaviour is wrong: one bad block aborts every block.
+`artifact_blocks.py:100-105` loops over the parsed names and raises on the first that is not
+allowed, before a single artifact is written.
+
+This is P-3 verbatim — **no gate may discard work that it did not judge.** The parser judged
+`COMPASS.md`. It did not judge `ANALYSIS.md`, and it destroyed it anyway.
+
+The shape of the fix, per P-3 and P-1:
+
+- Parse every block independently. A block that opens, closes, and carries an allowed name is
+  accepted.
+- A malformed or disallowed block is **rejected individually**, with its name and reason.
+- The command proceeds on the accepted set and reports the rejected ones.
+- Whether a missing artifact is fatal is then a question about *that artifact*, decided by the
+  caller. `analyze` needs `ANALYSIS.md` and `SEA_TRIALS.md`; a missing `COMPASS.md` is a
+  reportable gap, not a dead run.
+
+That last point is the one that makes this safe: rejecting individually is not the same as
+tolerating loss. The caller states which artifacts it requires, and a required artifact that did
+not survive is still fatal — but it fails naming the artifact, which is a fault the operator can
+act on.
+
+Applies identically at `plan` (`planning_session.py:3421-3436`), which is the original D-008 and
+the more expensive one: there the discarded batch cost 19 blueprints and eight LLM calls.
+
+### 30.4 Re-running may simply work, and that is the problem
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+The failure is a model formatting slip, so the next run has good odds of not hitting it. That
+makes it tempting to re-run and move on, and it is exactly why this has survived four runs
+without a fix: each individual occurrence looks like bad luck. It is not bad luck at a 20% rate.
+It costs a whole run, it is independent of everything else being worked on, and the run it costs
+is 28 minutes and 4M tokens.
+
+## 31. Work completed 2026-08-13, recorded
+
+### 31.1 The Toml conformance harness version probe (D-022)
+
+`2026-08-13` · `spec:na` · `impl:implemented`
+
+`uat/Toml/sources/run_conformance.sh` probed the suite with `toml-test -version`, which that
+harness does not accept as a flag: it printed general help, exited 0, and the version guard
+compared the help text against the expected `v2.2.0` and refused to run. Every governed gate in
+the fixture routes through that script, so no conformance case executed in run
+`20260813.195530` — surfacing as three failed layout criteria, `test` exiting 2, and a release
+blocked on `full: FAIL (exit 2)`, none of which concerned the decoder. Now uses the `version`
+subcommand, as `setup_harness.sh` always did. The guard is otherwise unchanged. Commit `78b161c`.
+
+### 31.2 Exit 2 is a kit fault (D-021)
+
+`2026-08-13` · `spec:na` · `impl:implemented`
+
+See §29 for the decision and its recorded caveat. `run_gate` classifies exit 2 as `OUTCOME_ERROR`;
+it does not block and is never charged to the build. Narrow half of §26 item 2.4. Commit `f2e63da`.
+
+### 31.3 The replay corpus carries the run
+
+`2026-08-13` · `spec:na` · `impl:implemented`
+
+`20260813.195530` is in `tests/fixtures/uat_corpus.json` scored **ERROR** — the verdict it should
+have produced, against the FAILED it did produce. 19 runs, 11 scored.
+`test_exactly_one_recorded_run_was_unjudgeable` names it, so the corpus asserts the gap between
+what Drydock concluded and what it should have concluded, in a test, until 2.4's verdict half
+lands.
+
+`20260813.211658` is **not** in the corpus and should not be: it never reached the gate, so it
+offers no facts. It joins the eight unscored runs. Regenerate with `python tests/uat_corpus.py`
+and the freeze-integrity test will require the count updates in
+`tests/test_gate_policy_replay.py`.
+
+### 31.4 Order for the next session
+
+`2026-08-13` · `spec:na` · `impl:na`
+
+1. **§30.2** — the misleading diagnostic. Small, self-contained, and it makes the next occurrence
+   readable rather than a puzzle.
+2. **§30.3** — per-artifact rejection at `analyze`, then the same at `plan`. This is D-008 and it
+   is the most frequent cause of a dead run in the record.
+3. Then re-run Toml. With both landed, a formatting slip costs one artifact and a report line
+   instead of a run.
+
+§26 item 3.1a (P-3a, the per-branch stall) remains the highest-value item after those, and is
+unchanged by any of this.
