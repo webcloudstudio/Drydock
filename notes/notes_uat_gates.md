@@ -6,7 +6,7 @@
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 13 approved items |
+| Pending spec | 14 approved items |
 | Pending impl | 13 unimplemented sections |
 
 **§1–§11 are analysis. §12–§25 are the proposed model. §26–§28 are the handoff**, approved in discussion 2026-08-13.
@@ -1326,12 +1326,39 @@ Supersedes §10, §18, §22, and §25, which accumulated across four passes and 
 | Provenance citation across `refit` | Cite the **directive text**, not a line span. Spans break when the source is rewritten |
 | Uncovered directive in autonomous mode | Same shape as T-2: record the DECISION, proceed, report it. There is nobody to ask |
 
-### 27.3 Genuinely open — need the author
+### 27.3 Settled by the author, 2026-08-13
 
-| # | Question | Consequence |
-|---|---|---|
-| **Q1** | **A T-1 governed gate still red after the repair budget: stop that branch and finish the run, or stop the run?** | Determines whether a UAT run yields one defect or all of them. P-3/P-5 argue for continuing; the counter-argument is that later blocks build on a known-broken foundation and their results are meaningless |
-| **Q2** | **Does implementation start now, and from where?** | Phase 0 and Phase 1 are independent and cheap. Phases 2–5 are a substantial change to `score release` |
+**Q1 — A T-1 governed gate still red after the repair budget: stop the branch, finish the run.**
+`spec:approved` · `impl:unimplemented`
+
+The block closes `closed/failed`, its dependents are marked **blocked** and are not built, and
+every independent branch continues. The run completes and reports every gate verdict.
+
+This is P-3 and P-5 in operational form, and it becomes **P-3a**:
+
+> A failing block stops what depends on it. It does not stop what does not.
+
+Applied to Toml `20260813.084830`, which is the case that motivated it:
+
+```
+block 3  parser-strings      closed/failed   ← gate red
+block 4  parser-keys         blocked (depends on 3)
+block 5  parser-arrays       BUILT  ✓
+block 6  parser-datetimes    BUILT  ✓
+block 7  parser-tables       blocked (depends on 4)
+```
+
+One run yields every independent defect instead of the first one. Eight Toml runs each reported a
+single block-3 failure and nothing about blocks 4–8; under P-3a one run would have reported the
+state of all eight. Dependents are skipped rather than built, so no block is ever judged against a
+known-broken foundation — the objection this could have raised does not arise.
+
+Implementation: `build_run.py:3561`, `if status == "failed" or step_id is not None or story_id is
+not None: break` becomes a per-branch skip driven by the dependency graph. Scheduled as **3.1a**,
+alongside T-2.
+
+**Q2 — Implementation starts at Phase 0 + Phase 1.** Phases 2–5 wait for the measurement Phase 0
+produces.
 
 ---
 
