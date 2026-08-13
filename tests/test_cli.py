@@ -2614,6 +2614,27 @@ class TestStatus:
         assert "0 errors" in out
         assert "Next step" in out
 
+    def test_status_uses_compact_grammar_for_analysis_and_review(
+        self, tmp_target_root, isolated_config, monkeypatch
+    ):
+        self._setup(tmp_target_root, monkeypatch)
+        target_dir = tmp_target_root / "TestTarget"
+        (target_dir / "ANALYSIS.md").write_text(
+            "Quality: Questions\n  Stories: 11\n  Questions: 1\n  Blockers: 0\n",
+            encoding="utf-8",
+        )
+        questionnaire_dir = target_dir / "QuarterDeck" / "questionnaires"
+        questionnaire_dir.mkdir(parents=True)
+        (questionnaire_dir / "discovery-one.json").write_text("{}\n", encoding="utf-8")
+
+        rc, out, err = run_cli("status", "TestTarget")
+
+        assert rc == 0, err
+        assert "Questions · 11 stories · 1 question · 0 blockers" in out
+        assert "No blockers · 1 questionnaire" in out
+        assert "1 questions" not in out
+        assert "1 questionnaires" not in out
+
     def test_status_target_without_manifest_reports_preplan_state(
         self, tmp_target_root, isolated_config, monkeypatch
     ):

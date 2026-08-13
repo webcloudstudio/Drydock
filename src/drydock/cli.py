@@ -1438,6 +1438,13 @@ def cmd_run_quarterdeck(args: argparse.Namespace) -> int:
 
 def _render_status(result) -> None:
     """Print compact one-screen status output."""
+    import shutil
+    import textwrap
+
+    def counted(value: int, singular: str, plural: str | None = None) -> str:
+        noun = singular if value == 1 else (plural or f"{singular}s")
+        return f"{value} {noun}"
+
     header = f"Drydock status — {result.blueprint}"
     if result.target:
         header += f" / {result.target}"
@@ -1467,18 +1474,18 @@ def _render_status(result) -> None:
             analysis = info.analysis
             quality = analysis.quality or "unknown"
             analysis_detail = (
-                f"{analysis.story_count} stories"
-                f" · {analysis.question_count} questions"
-                f" · {analysis.blocker_count} blockers"
+                f"{counted(analysis.story_count, 'story', 'stories')}"
+                f" · {counted(analysis.question_count, 'question')}"
+                f" · {counted(analysis.blocker_count, 'blocker')}"
             )
             if analysis.screen_count:
-                analysis_detail += f" · {analysis.screen_count} screens"
-            print(f"  {'Analysis':<{col}}  {quality:<22}  {analysis_detail}")
+                analysis_detail += f" · {counted(analysis.screen_count, 'screen')}"
+            print(f"  {'Analysis':<{col}}  {quality} · {analysis_detail}")
         if info.questionnaire_count or info.blockers_present:
-            blockers = "present" if info.blockers_present else "none"
+            blockers = "Blockers present" if info.blockers_present else "No blockers"
             print(
-                f"  {'Review':<{col}}  BLOCKERS.md {blockers}"
-                f" · {info.questionnaire_count} questionnaires"
+                f"  {'Review':<{col}}  {blockers}"
+                f" · {counted(info.questionnaire_count, 'questionnaire')}"
             )
 
     if result.last_command:
@@ -1494,10 +1501,20 @@ def _render_status(result) -> None:
         detail = f"{n_fail} errors · {n_warn} warnings"
         print(f"  {'Blueprint':<{col}}  {state_icon}  {detail}")
         if n_fail or n_warn:
+            finding_indent = " " * 7
+            finding_width = max(40, shutil.get_terminal_size(fallback=(120, 24)).columns - 7)
             for finding in v.findings:
                 if finding.severity != Severity.PASS:
                     icon = _SEVERITY_ICON.get(finding.severity.value, "?")
-                    print(f"    {icon}  {finding.section}: {finding.message}")
+                    finding_text = f"{finding.section}: {finding.message}"
+                    wrapped = textwrap.wrap(
+                        finding_text,
+                        width=finding_width,
+                        subsequent_indent=finding_indent,
+                    ) or [finding_text]
+                    print(f"    {icon}  {wrapped[0]}")
+                    for line in wrapped[1:]:
+                        print(line)
                     if getattr(finding, "remediation", ""):
                         print(f"       → {finding.remediation}")
 
