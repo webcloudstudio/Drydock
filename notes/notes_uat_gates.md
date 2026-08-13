@@ -2,14 +2,15 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V2 |
+| Version | 2026-08-13 V3 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
-| Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict model that replaces them. |
-| Pending spec | 6 approved items |
-| Pending impl | 6 unimplemented sections |
+| Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
+| Pending spec | 9 approved items |
+| Pending impl | 9 unimplemented sections |
 
-**§1–§11 are analysis. §12–§17 are the proposed model**, approved in discussion 2026-08-13.
+**§1–§11 are analysis. §12–§22 are the proposed model**, approved in discussion 2026-08-13.
+Part I is the gate inventory, Part II the verdict model, Part III provenance and exit semantics.
 Nothing here authorizes an edit to `docs/Drydock_Specification.md`.
 
 Companion file: `notes/notes_uat.md` holds the 2026-08-10 diagnosis and the Sea Trials redesign.
@@ -816,3 +817,245 @@ rather than against a fresh UAT run.
   but that is an argument, not a measurement. §16.1's replay harness can measure it.
 - **What settles a PENDING?** A human answer needs somewhere to live. `DECISIONS.json` is the
   existing mechanism and probably the right one.
+
+---
+---
+
+# PART III — PROVENANCE, EXIT SEMANTICS, AND THE TDD CONTRACT
+
+`2026-08-13` · approved in discussion
+
+## 19. V-8 — Sea Trial Provenance *(prior to V-2)*
+
+> **Every Sea Trial must trace to user-authored intent. An untraceable criterion is a
+> specification defect: it is removed, or presented for user approval. It cannot produce MET,
+> PENDING, or NOT MET.**
+>
+> **Symmetrically, every user-authored intent must be covered by a Sea Trial. An uncovered intent
+> is a specification defect of the same kind.**
+
+Provenance is checked **before** grading. V-2 governs how a *valid* criterion is settled;
+V-8 governs whether it is a criterion at all. **Inference may settle a criterion. It may not
+invent one.**
+
+### 19.1 The ReadingList evidence
+
+`uat/ReadingList/sources/reading-list.md` — the complete user directive — asks for: add a book with
+title and author; view in the order added; remove a book; reject empty title or author with a clear
+error; automated tests for each behavior; a POSIX `bin/test.sh` exiting zero.
+`uat/ReadingList/updates/reading-list.md` adds: mark a book as read, and view read state.
+
+Against the frozen `uat/ReadingList/inputs/SEA_TRIALS.md`:
+
+| Trial | Traces to | Verdict on the criterion |
+|---|---|---|
+| st-001 … st-006 | the six directives above | valid |
+| **st-007** "usable without instructions" | *nothing* | **invented** |
+| **st-008** "never transmit to a third-party service" | *nothing* | **invented** |
+| *(missing)* mark-as-read | the update directive | **uncovered** |
+
+The exam invented two questions and omitted one that was asked. st-008 was not a criterion that
+was hard to prove — **it was never requested.** Every hour spent making the grader reason about
+prohibitions was spent on a defect that V-8 removes at the source.
+
+Corrected contract: **seven criteria, including mark-as-read, no privacy guardrail.** Expected
+result:
+
+```
+ReadingList: PASSED
+
+  Automated acceptance passed.  7 of 7 project criteria met.
+```
+
+### 19.2 Where the check lives
+
+Provenance is a property of the criterion, so it is settled at authoring time, not at scoring time:
+
+| Stage | Gate | Consequence |
+|---|---|---|
+| `analyze` | **G-ANA-04** every emitted trial cites the source span it traces to | untraceable trial is not emitted |
+| `analyze` | **G-ANA-05** every directive in the imported sources is covered by a trial | uncovered directive raises a DECISION |
+| `refit` | **G-REFIT-02** a source update re-runs both, so a new directive gains a trial | uncovered new directive raises a DECISION |
+| `score release` | **G-SCORE-14** a trial with no provenance is reported and **excluded from the fold** | never produces a verdict |
+
+G-SCORE-14 is the backstop for frozen Commander files authored before the rule existed — exactly
+the state the three fixtures are in today.
+
+The citation is the mechanism. A trial carries `Source: reading-list.md:5-6`, and a trial that
+cannot name one does not exist. This is the same shape as P-2 — **authority cannot be inferred
+from an artifact the model authored** — applied one layer up. Sea Trials had no provenance rule
+because they *were* the authority; V-8 says the user is.
+
+### 19.3 Consequences
+
+- The guardrail problem largely evaporates. Most unfalsifiable prohibitions in the record are
+  model-invented safety boilerplate. A user-authored prohibition is rarer, and when it exists the
+  user can be asked what would satisfy them.
+- `analyze`'s job narrows from *"author project acceptance criteria"* to *"transcribe the user's
+  directives into typed, observable criteria, and state what you could not transcribe."* That is a
+  far more constrained task and a far more checkable one.
+- D-006 is only half-fixed. Freezing `SEA_TRIALS.md` stopped the exam changing every run; it did
+  not stop the exam being wrong. **A frozen wrong exam is a stable wrong exam.**
+
+### 19.4 New defects
+
+| Id | Defect | Gate | Evidence |
+|---|---|---|---|
+| **D-018** | `analyze` emits Sea Trials with no basis in the user sources | G-ANA-04 | ReadingList st-007, st-008 |
+| **D-019** | A user directive present in the sources has no Sea Trial | G-ANA-05 | ReadingList mark-as-read, `updates/reading-list.md` |
+| **D-020** | The three frozen fixture `SEA_TRIALS.md` files were authored before V-8 and carry both defects | G-SCORE-14 | all three fixtures |
+
+---
+
+## 20. Exit Semantics — `X-*`
+
+The exit code has been carrying a verdict, and it cannot. `score release` exiting 1 has meant both
+*"the project is not acceptable"* and *"I could not tell"*, and `uat` exiting non-zero has meant
+both *"the fixture project failed"* and *"Drydock is broken"* — the distinction the whole run
+record needs and does not have.
+
+### X-1 — The exit code answers *"did this command do its job?"*, never *"is the project good?"*
+
+| Code | Meaning |
+|---|---|
+| `0` | The command ran and produced its output. **A verdict exists.** |
+| `1` | The command could not do its job. No verdict is available. |
+| `2` | Usage error. |
+
+This is already the `AGENTS.md` contract; it has simply not been applied honestly. **A project
+failing is not an operational failure of the scoring command** — the command worked perfectly and
+reported a failure. That is success for `score release`.
+
+### X-2 — `score release`
+
+| Verdict | Exit | Because |
+|---|---|---|
+| PASSED | 0 | judged |
+| PENDING MANUAL VERIFICATION | 0 | judged |
+| FAILED | 0 | **judged** |
+| ERROR | 1 | not judged |
+
+The verdict is **data** — `status` and `verdict_line` in `result.json`, the statement in
+`SCORECARD.md`. For scripted gating, `--require PASSED` (or `--require PASSED,PENDING`) exits 1
+when the verdict is outside the named set. Explicit, opt-in, and the default stays informational.
+
+### X-3 — `build`
+
+Already effectively advisory: UAT polls `status --ready` (`uat.py:880`) and records build's exit as
+degraded rather than fatal. Formalize it. Exit 0 = a build pass executed. **Whether blocks closed
+is `build status`, not an exit code.** Block state is `closed/verified` · `closed/failed` ·
+`closed/implemented`, which is three values and does not fit in a boolean.
+
+### X-4 — `uat` asks a different question entirely, and this is the important one
+
+UAT's question is **not** "did the fixture project pass." It is **"did Drydock reach the correct
+conclusion?"**
+
+So **a fixture declares its expected verdict**, in `uat.json`:
+
+```json
+"expect": {"verdict": "PASSED"}
+```
+
+`uat` exits 0 when the observed verdict equals the expected one and no stage ERRORed.
+
+This reframes Toml completely. Toml has a genuine product defect — D-011, U+3000 accepted as
+whitespace via `strings.TrimSpace`, 126 red valid-cases. If Drydock reports `FAILED: st-00N` and
+names that defect, **Drydock worked correctly** and the UAT run is a pass. Today the same event
+reads as Drydock failing, which is why eight Toml runs produced no usable signal about Drydock at
+all.
+
+It also answers "what does exit 0 mean": from `uat`, it means **Drydock reached the right
+conclusion about the fixture** — which is the only thing a self-test can honestly assert.
+
+| Fixture | Expected | Rationale |
+|---|---|---|
+| ReadingList | `PASSED` | 7 traceable criteria, all satisfiable, product builds |
+| CommonMark | `PASSED` | authoritative suite, achievable |
+| Toml | `FAILED` **or** `PASSED` | open — see §22 |
+
+---
+
+## 21. The TDD Contract, Re-examined
+
+`prompts/BLUEPRINTS_CONTRACT.md:240-288` carries ten authoring patterns. Reviewed against the tier
+model, three findings.
+
+### 21.1 What is cleanly solved
+
+The two things that started this — **malformed containers and mangled encodings** — are solved
+structurally, not by guidance:
+
+- **Containers.** `=== AC <id> === … === END AC <id> ===` with the id in both markers. The id is
+  never inferred from position, and an unclosed container is detectable rather than silently
+  absorbing the next criterion. This is the XML-delimiter lesson applied.
+- **Encodings.** The R1 rule — *never type an expected value twice; bind it to a name and use the
+  name on both sides* — makes escaping disagreement **impossible by construction** rather than
+  policed after the fact. `raw = "C:\\Users\\nodejs"`; `source = f"raw = '{raw}'\n"`;
+  `assert decoded["raw"]["value"] == raw`. There is no second literal to get wrong.
+
+Neither depends on the model being careful. That is the property that was missing.
+
+### 21.2 Gap — the patterns do not name the tier they produce
+
+An author following pattern 2 with an R1-legal oracle writes a **T-2 CONSULTATIVE** criterion. The
+same author re-typing an expected literal writes **T-3 ADVISORY**, which gates nothing. The
+contract never says so, so the author cannot aim.
+
+The contract should state the consequence directly: *this is how you write a criterion that
+counts; this is what happens to one that does not.* A model that knows a re-typed literal
+demotes its criterion to advisory has a reason to bind the name instead. Today it has a rule with
+no stated consequence, which is the weakest form of instruction.
+
+### 21.3 Gap — patterns 2 and 5 fight P-4
+
+Pattern 2 ("exercise every callable workflow… coverage is enumerated from the interface, not
+sampled") and pattern 5 ("boundaries: empty, one, many, absent optionals, declared maxima") are
+**coverage-maximizing**. They push toward more criteria, and every additional model-authored
+criterion is a fresh opportunity to be wrong about an expected value.
+
+This is the same defect as G-PLAN-12 (`_MIN_ASSERTIONS_PER_STORY`) wearing prose instead of a
+gate — and it is the mechanism behind the Toml numbers: 15 suite-bound criteria all passed, and 10
+hand-authored ones covering nothing the conformance suite did not already cover supplied 100% of
+the failures.
+
+Both patterns need the same condition attached: **where an authoritative suite covers this surface,
+it is the coverage; do not restate its cases.** Coverage is measured by the authoritative suite or
+it is not measured.
+
+### 21.4 Gap — pattern 6 is unobserved
+
+"RED before GREEN — the assertion must fail against the pre-implementation tree and pass after."
+Authored at plan time before code exists, every criterion is red by construction, and nobody ever
+observes it. `analyze_proof` (vacuity) is the only surviving check and it asks a weaker question:
+does the assertion have an effective failure path at all.
+
+The honest options are to observe it — run the criterion once against the tree before the block's
+first implementation pass, which is cheap and turns pattern 6 into evidence — or to stop claiming
+it. Running it also yields something valuable free: **a criterion that passes before the code is
+written is a defect regardless of the tier it claims.**
+
+### 21.5 Aside — pattern 7 caused D-014
+
+"Fresh store per test, or explicit teardown." The ReadingList suite left
+`instance/reading_list.sqlite3` behind, which dirtied the tree, which failed the release. The
+pattern existed and was not followed and no gate checked it. Under V-6 it stops mattering for the
+verdict — recorded here because the pattern is worth keeping for its own sake, not as a gate.
+
+---
+
+## 22. Revised Open Questions
+
+- **What is Toml's expected verdict?** If `FAILED` (D-011 is real and Drydock should say so), Toml
+  becomes a passing UAT fixture immediately and stops blocking release. If `PASSED`, the U+3000
+  defect must be fixed first and Toml stays red until it is. These are different projects: one
+  tests Drydock, the other tests the Toml build. **Recommendation: `FAILED`, with a second fixture
+  or a follow-up run tracking the product fix separately.**
+- **Do the three frozen `SEA_TRIALS.md` files get rewritten under V-8?** They are the exams, they
+  are demonstrably wrong (D-020), and every run is graded against them. Rewriting them is a
+  fixture change, not a code change, and it is the single cheapest correction available.
+- **Who resolves an uncovered directive (G-ANA-05)?** A DECISION is the mechanism, but in
+  autonomous UAT there is nobody to answer. Same shape as T-2, and probably the same answer:
+  record it, proceed, report it.
+- **Does provenance citation survive `refit`?** A trial cites `reading-list.md:5-6`; the update
+  rewrites the file. Line spans are fragile. Cite the directive text rather than the span.
