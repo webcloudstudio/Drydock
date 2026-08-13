@@ -189,10 +189,11 @@ The specification is normative and short. Follow it directly.
 - `sh sources/full_test.sh` runs cleanly with zero errors and exits zero.
 - The program satisfies the stdin → tagged-JSON → exit-code contract.
 - Every supplied valid and invalid case passes: the failed, errored, and skipped
-  counts are all zero. Assert the failure count with a whitespace-tolerant
-  pattern such as `re.search(r"\b0\s+failed\b", output)`; the harness aligns its
-  summary columns and the case totals belong to the installed suite, so a
-  literal tally is not a valid acceptance criterion.
+  counts are all zero. The harness exit status is the verdict and the whole
+  verdict — assert `returncode == 0` and stop there. Do not assert on the text
+  of the summary line at all: the case totals belong to the installed suite, and
+  a check that reads a runner's printed output is measuring the runner rather
+  than the parser.
 - The parser is written from the specification. **Every third-party TOML module is
   forbidden** — `github.com/BurntSushi/toml`, `github.com/pelletier/go-toml`,
   `github.com/naoina/toml`, and any other. `BurntSushi/toml` scores near-perfectly

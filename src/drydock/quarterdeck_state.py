@@ -410,11 +410,9 @@ def _scorecard_html(target_dir: Path) -> str:
         return ""
     text = path.read_text(encoding="utf-8")
     parts: list[str] = []
-    score = _scorecard_field(text, "Technical score")
     gate = _scorecard_field(text, "Completion gate")
-    summary = " · ".join(bit for bit in (f"Score {score}" if score else "", gate) if bit)
-    if summary:
-        parts.append(f'<div class="question-status">{escape(summary)}</div>')
+    if gate:
+        parts.append(f'<div class="question-status">{escape(gate)}</div>')
     rows = _scorecard_acceptance_rows(text)
     if rows:
         parts.append('<div class="story-list">')

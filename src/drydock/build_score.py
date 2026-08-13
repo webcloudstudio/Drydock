@@ -26,52 +26,14 @@ from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import (
-    DETERMINISTIC_VERIFICATION,
     SeaTrial,
     load_sea_trials,
 )
 
-DIMENSIONS = (
-    "specification_completeness",
-    "implementation_coverage",
-    "test_coverage",
-    "documentation_coverage",
-    "blueprint_drift",
-    "build_quality",
-    "acceptance_criteria_coverage",
-)
 VALID_VERDICTS = frozenset({"PASS", "FAIL", "INCONCLUSIVE"})
 # A release measurement runs the full test suite, not a unit test. A 655-example CommonMark
 # conformance run against a trivial converter measures ~45s, so this leaves real headroom.
 MEASUREMENT_TIMEOUT = 900
-
-
-def _coverage_penalty(
-    value: int, trials: tuple[SeaTrial, ...], deterministic_ids: frozenset[str]
-) -> int:
-    """Discount acceptance coverage by the share of required assertions judged only by the model.
-
-    Every criterion is graded on the testability its author declared, and on nothing else. A
-    criterion declared ``deterministic`` claims a machine can settle it, so a contract resting on
-    model opinion cannot score as one resting on proof or measurement. A criterion declared
-    ``judgeable`` or ``neither`` claims otherwise — "reads professionally" admits no test, and
-    "shall never log personal data" admits no automated proof — and grading those would charge a
-    project for writing an honest criterion down, so they are exempt.
-
-    This generalizes what used to be a per-type special case for guardrails. The rule was always
-    "grade the author's own claim"; the testability column simply lets the author state that
-    claim directly instead of leaving it to be inferred from the verification method.
-
-    ``deterministic_ids`` names the criteria that carry genuine deterministic backing — a
-    passing measurement contract or a proof that survives integrity analysis. A criterion whose
-    only proof is vacuous is not in the set, so it is scored as if judged by the model. A
-    proof-verified criterion no ``Sea Trials:`` reference reaches is not in the set either.
-    """
-    graded = [trial for trial in trials if trial.required and trial.testability == "deterministic"]
-    if not graded:
-        return value
-    deterministic = sum(1 for trial in graded if trial.criterion_id in deterministic_ids)
-    return round(value * (0.5 + 0.5 * deterministic / len(graded)))
 
 
 class CompletedRun(Protocol):
@@ -106,8 +68,6 @@ class CriterionResult:
 @dataclass(frozen=True)
 class BuildScoreResult:
     target: str
-    score: int
-    dimensions: dict[str, int]
     criteria: tuple[CriterionResult, ...]
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
@@ -390,8 +350,6 @@ def _render_scorecard(
     *,
     target: str,
     complete: bool,
-    score: int,
-    dimensions: dict[str, int],
     criteria: tuple[CriterionResult, ...],
     trials: dict[str, SeaTrial],
     blockers: tuple[str, ...],
@@ -404,18 +362,8 @@ def _render_scorecard(
         f"# Build Scorecard: {target}",
         "",
         f"- Completion gate: {gate_label(complete, attestations)}",
-        f"- Technical score: {score}/100",
         f"- Code identity: {code_identity or '-'}",
-        "",
-        "## Technical quality",
-        "",
-        "| Dimension | Score | Gate |",
-        "|---|---:|---|",
     ]
-    lines.extend(
-        f"| {name.replace('_', ' ').title()} | {value} | {'PASS' if value >= 60 else 'FAIL'} |"
-        for name, value in dimensions.items()
-    )
     lines.extend([
         "",
         "## Project acceptance",
@@ -522,17 +470,6 @@ def score_target(
     ]
     if vacuous_proofs:
         warnings.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
-    # A criterion carries deterministic backing when a measurement contract or an executable
-    # proof stands behind it. Vacuous proofs are warned on, but they no longer demote coverage
-    # or block completion by themselves.
-    proof_backed = {criterion for check in checks for criterion in check.sea_trials}
-    deterministic_ids = frozenset(
-        trial.criterion_id
-        for trial in document.trials
-        if trial.verification in DETERMINISTIC_VERIFICATION
-        and (trial.verification != "proof" or trial.criterion_id in proof_backed)
-    )
-
     known_trial_ids = {trial.criterion_id for trial in document.trials}
     manifest_refs = {
         value
@@ -623,18 +560,6 @@ def score_target(
     if not result.ok or not result.text.strip():
         raise SpecificationError("build score LLM execution failed or returned no output")
     payload = _parse_json(result.text)
-    raw_dimensions = payload.get("dimensions")
-    if not isinstance(raw_dimensions, dict) or set(raw_dimensions) != set(DIMENSIONS):
-        raise SpecificationError("build score output must score exactly the seven dimensions")
-    dimensions: dict[str, int] = {}
-    for name in DIMENSIONS:
-        value = raw_dimensions[name]
-        if not isinstance(value, int) or not 0 <= value <= 100:
-            raise SpecificationError(f"build score dimension {name} must be an integer 0..100")
-        dimensions[name] = value
-    dimensions["acceptance_criteria_coverage"] = _coverage_penalty(
-        dimensions["acceptance_criteria_coverage"], document.trials, deterministic_ids
-    )
 
     trial_by_id = {trial.criterion_id: trial for trial in document.trials}
     model_criteria: dict[str, dict] = {}
@@ -692,12 +617,6 @@ def score_target(
             evidence = (str(evidence_by_id[criterion_id]["error"]),)
         criteria.append(CriterionResult(criterion_id, verdict, rationale, evidence))
 
-    score = round(sum(dimensions.values()) / len(DIMENSIONS))
-    if score < 80:
-        blockers.append(f"Technical score {score} is below 80")
-    low_dimensions = [name for name, value in dimensions.items() if value < 60]
-    if low_dimensions:
-        blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
     # The gate verdict is the policy applied to the rows, not a rubric compiled into this file.
     # Where the two disagree the file wins, so changing a gate's severity means editing
     # SEA_TRIALS.md — which is the whole point of writing the policy down.
@@ -735,13 +654,11 @@ def score_target(
     evidence_path = target_dir / "evidence" / "build-score.json"
     scorecard_path = target_dir / "SCORECARD.md"
     record = {
-        "schema_version": 3,
+        "schema_version": 4,
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "target": target,
         "complete": complete,
         "qualified": complete and bool(attestations),
-        "technical_score": score,
-        "dimensions": dimensions,
         "criteria": [asdict(item) for item in criteria],
         "blockers": blockers,
         "attestations": attestations,
@@ -773,8 +690,6 @@ def score_target(
         _render_scorecard(
             target=target,
             complete=complete,
-            score=score,
-            dimensions=dimensions,
             criteria=tuple(criteria),
             trials=trial_by_id,
             blockers=tuple(blockers),
@@ -788,8 +703,6 @@ def score_target(
     )
     return BuildScoreResult(
         target,
-        score,
-        dimensions,
         tuple(criteria),
         tuple(blockers),
         tuple(warnings),

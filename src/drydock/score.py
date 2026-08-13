@@ -6,9 +6,9 @@
   sole writer of ``SOUNDINGS.md``: the trust-but-verify board the Commander scans instead of
   granting approvals.
 - ``drydock score release`` judges the project-level criteria in ``SEA_TRIALS.md`` against the
-  completed build. Deterministic proofs, measurements, and guardrails are settled mechanically and
-  fed to the model, which judges the remaining ``evidence`` and ``llm`` criteria and scores the
-  quality dimensions. It writes ``SCORECARD.md`` and ``evidence/score-release.json``.
+  completed build. Deterministic proofs, measurements, and guardrails are settled mechanically;
+  the model judges only the remaining ``evidence`` and ``llm`` criteria. The verdict is those
+  criteria and nothing else. It writes ``SCORECARD.md`` and ``evidence/score-release.json``.
 
 Both reuse the build_score primitives so the deterministic verdicts agree across paths.
 """
@@ -35,14 +35,12 @@ from drydock.acceptance import (
 from drydock.acceptance_requirements import authorization_for, requirement_available
 from drydock.build_plan import BuildPlan, parse_build_plan, stale_applied_specs
 from drydock.build_score import (
-    DIMENSIONS,
     VALID_VERDICTS,
     BuildScoreResult,
     CriterionResult,
     RunnerFn,
     TextCallback,
     _code_identity,
-    _coverage_penalty,
     _evidence_fact,
     _measure,
     _parse_json,
@@ -56,7 +54,6 @@ from drydock.prompt_assembly import PromptAssembly
 from drydock.prompts import load_prompt
 from drydock.proof_integrity import analyze_proof
 from drydock.sea_trials import (
-    DETERMINISTIC_VERIFICATION,
     load_sea_trials,
 )
 from drydock.source_roles import tampered_build_assets
@@ -312,10 +309,14 @@ def score_release(
     """LLM-assisted release gate: judge project Sea Trials against the built code.
 
     Reads ``SEA_TRIALS.md`` and judges every project-level criterion. Proofs, measurements, and
-    guardrails are settled deterministically and fed to the model, which judges the remaining
-    ``evidence`` and ``llm`` criteria and scores the seven quality dimensions. Writes
-    ``SCORECARD.md`` and ``evidence/score-release.json``. The release verdict is COMPLETE only when
-    no completion blocker remains.
+    guardrails are settled deterministically; the model judges only the remaining ``evidence`` and
+    ``llm`` criteria. Writes ``SCORECARD.md`` and ``evidence/score-release.json``.
+
+    The gate is the criteria and nothing else: COMPLETE when every required Sea Trial passes and
+    no guardrail is breached. It used to also average seven model-emitted 0..100 dimensions and
+    block under 80, or under 60 on any one of them, which meant a project that satisfied every
+    criterion its Commander wrote could still be refused by an opinion — and a different opinion
+    on the next run. A release gate has to be reproducible, so the number is gone.
     """
     sea_path = target_dir / "SEA_TRIALS.md"
     manifest_path = target_dir / "MANIFEST.md"
@@ -391,14 +392,6 @@ def score_release(
     ]
     if vacuous_proofs:
         warnings.append("Programmatic acceptance is vacuous: " + ", ".join(vacuous_proofs))
-    proof_backed = {criterion for check in checks for criterion in check.sea_trials}
-    deterministic_ids = frozenset(
-        trial.criterion_id
-        for trial in document.trials
-        if trial.verification in DETERMINISTIC_VERIFICATION
-        and (trial.verification != "proof" or trial.criterion_id in proof_backed)
-    )
-
     known_trial_ids = {trial.criterion_id for trial in document.trials}
     manifest_refs = {
         value
@@ -485,18 +478,6 @@ def score_release(
     if not result.ok or not result.text.strip():
         raise SpecificationError("score release LLM execution failed or returned no output")
     payload = _parse_json(result.text)
-    raw_dimensions = payload.get("dimensions")
-    if not isinstance(raw_dimensions, dict) or set(raw_dimensions) != set(DIMENSIONS):
-        raise SpecificationError("score release output must score exactly the seven dimensions")
-    dimensions: dict[str, int] = {}
-    for name in DIMENSIONS:
-        value = raw_dimensions[name]
-        if not isinstance(value, int) or not 0 <= value <= 100:
-            raise SpecificationError(f"score release dimension {name} must be an integer 0..100")
-        dimensions[name] = value
-    dimensions["acceptance_criteria_coverage"] = _coverage_penalty(
-        dimensions["acceptance_criteria_coverage"], document.trials, deterministic_ids
-    )
 
     trial_by_id = {trial.criterion_id: trial for trial in document.trials}
     model_criteria: dict[str, dict] = {}
@@ -556,12 +537,6 @@ def score_release(
             evidence = (str(evidence_by_id[criterion_id]["error"]),)
         criteria.append(CriterionResult(criterion_id, verdict, rationale, evidence))
 
-    score = round(sum(dimensions.values()) / len(DIMENSIONS))
-    if score < 80:
-        blockers.append(f"Technical score {score} is below 80")
-    low_dimensions = [name for name, value in dimensions.items() if value < 60]
-    if low_dimensions:
-        blockers.append("Technical dimensions below 60: " + ", ".join(low_dimensions))
     attestations: list[str] = []
     for item in criteria:
         trial = trial_by_id[item.criterion_id]
@@ -595,13 +570,11 @@ def score_release(
     evidence_path = target_dir / "evidence" / "score-release.json"
     scorecard_path = target_dir / "SCORECARD.md"
     record = {
-        "schema_version": 3,
+        "schema_version": 4,
         "recorded_at": _now(),
         "target": target,
         "complete": complete,
         "qualified": complete and bool(attestations),
-        "technical_score": score,
-        "dimensions": dimensions,
         "criteria": [asdict(item) for item in criteria],
         "blockers": blockers,
         "attestations": attestations,
@@ -633,8 +606,6 @@ def score_release(
         _render_scorecard(
             target=target,
             complete=complete,
-            score=score,
-            dimensions=dimensions,
             criteria=tuple(criteria),
             trials=trial_by_id,
             blockers=tuple(blockers),
@@ -648,8 +619,6 @@ def score_release(
     )
     return BuildScoreResult(
         target,
-        score,
-        dimensions,
         tuple(criteria),
         tuple(blockers),
         tuple(warnings),

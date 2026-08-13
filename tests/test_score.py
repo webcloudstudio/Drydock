@@ -7,7 +7,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from drydock.build_score import DIMENSIONS
 from drydock.score import score_release, verify_acs
 from drydock.standard_artifacts import load_soundings
 
@@ -21,7 +20,6 @@ class FakeRun:
 
 def _runner(*, proof_verdict: str = "PASS"):
     payload = {
-        "dimensions": {name: 90 for name in DIMENSIONS},
         "criteria": [
             {"id": "st-proof", "verdict": proof_verdict, "rationale": "model guess", "evidence": []}
         ],
@@ -362,7 +360,6 @@ from pathlib import Path
 
 def _guardrail_runner(*, guardrail_verdict: str = "PASS"):
     payload = {
-        "dimensions": {name: 90 for name in DIMENSIONS},
         "criteria": [
             {"id": "st-proof", "verdict": "PASS", "rationale": "model guess", "evidence": []},
             {
@@ -398,45 +395,6 @@ def test_unlinked_proof_guardrail_qualifies_the_release_rather_than_failing_it(t
     assert result.complete is True
     assert result.qualified is True
     assert result.exit_code() == 0
-
-
-def test_an_unbound_provable_guardrail_costs_coverage_but_not_the_gate(tmp_path):
-    """Declaring a prohibition provable and then not proving it is a defect, and it scores as one.
-
-    ``Verification: proof`` is the author's claim that the criterion can be settled
-    deterministically. Leaving it unbound scores as model opinion, exactly like any other
-    required assertion no proof reaches. The cost is marks, never the gate.
-    """
-    plain, _ = _target(tmp_path / "plain", proof=_REAL_PROOF)
-    guarded, _ = _target(tmp_path / "guarded", proof=_REAL_PROOF)
-    _add_proof_guardrail(guarded, linked=False)
-
-    baseline = score_release("Demo", plain, runner=_runner())
-    result = score_release("Demo", guarded, runner=_guardrail_runner())
-
-    assert (
-        result.dimensions["acceptance_criteria_coverage"]
-        < baseline.dimensions["acceptance_criteria_coverage"]
-    )
-    assert result.complete is True
-    assert result.qualified is True
-    assert "Guardrail st-never is UNPROVEN" in "\n".join(result.attestations)
-
-
-def test_binding_a_proof_to_a_provable_guardrail_restores_the_coverage_score(tmp_path):
-    """The penalty is about binding the proof, not about declaring the prohibition."""
-    plain, _ = _target(tmp_path / "plain", proof=_REAL_PROOF)
-    guarded, _ = _target(tmp_path / "guarded", proof=_REAL_PROOF)
-    _add_proof_guardrail(guarded, linked=True)
-
-    baseline = score_release("Demo", plain, runner=_runner())
-    result = score_release("Demo", guarded, runner=_guardrail_runner())
-
-    assert (
-        result.dimensions["acceptance_criteria_coverage"]
-        == baseline.dimensions["acceptance_criteria_coverage"]
-    )
-    assert result.attestations == ()
 
 
 def test_breached_guardrail_still_fails_the_release(tmp_path):

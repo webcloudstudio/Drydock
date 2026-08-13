@@ -157,15 +157,6 @@ def _runner(
             "evidence": ["evidence/privacy-scan.md"],
         })
     payload = {
-        "dimensions": {
-            "specification_completeness": 90,
-            "implementation_coverage": 90,
-            "test_coverage": 90,
-            "documentation_coverage": 90,
-            "blueprint_drift": 90,
-            "build_quality": 90,
-            "acceptance_criteria_coverage": 90,
-        },
         "criteria": criteria,
         "improvements": ["Add a second workload."],
     }
@@ -178,7 +169,6 @@ def test_code_bound_proof_overrides_model_and_gate_completes(tmp_path):
     result = score_target("Demo", target_dir, runner=_runner())
 
     assert result.complete is True
-    assert result.score == 90
     assert result.criteria[0].verdict == "PASS"
     assert result.exit_code() == 0
     assert result.evidence_path.is_file()
@@ -314,60 +304,6 @@ def test_a_fully_proven_gate_records_no_manual_verification(tmp_path):
     scorecard = (target_dir / "SCORECARD.md").read_text(encoding="utf-8")
     assert "- Completion gate: COMPLETE\n" in scorecard
     assert "## Manual verification required\n\n- None." in scorecard
-
-
-def test_a_guardrail_the_author_called_unprovable_does_not_move_the_coverage_score(tmp_path):
-    """Writing down a prohibition that admits no test must not cost a project points.
-
-    This fixture's guardrail declares ``Verification: evidence`` — the author's claim that it
-    cannot be settled deterministically — so it is excluded from the share of required
-    assertions that discounts acceptance coverage.
-    """
-    without, _ = _target(tmp_path / "plain")
-    with_guardrail, _ = _target(tmp_path / "guarded", guardrail=True, guardrail_evidence=False)
-
-    plain = score_target("Demo", without, runner=_runner())
-    guarded = score_target("Demo", with_guardrail, runner=_runner(guardrail_verdict="PASS"))
-
-    assert (
-        guarded.dimensions["acceptance_criteria_coverage"]
-        == plain.dimensions["acceptance_criteria_coverage"]
-    )
-
-
-def test_a_criterion_declared_deterministic_but_judged_by_the_model_loses_coverage_score(tmp_path):
-    """Grading follows the testability the author declared, not the method they supplied.
-
-    Declaring ``deterministic`` claims a machine can settle it. Supplying only model opinion
-    against that claim is the gap the coverage score measures.
-    """
-    target_dir, _ = _target(tmp_path)
-    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
-    (target_dir / "SEA_TRIALS.md").write_text(
-        sea.replace("Verification: proof", "Testability: deterministic\nVerification: llm"),
-        encoding="utf-8",
-    )
-
-    result = score_target("Demo", target_dir, runner=_runner())
-
-    # The only required assertion rests on llm judgment: 90 -> 45, tripping the <60 gate.
-    assert result.dimensions["acceptance_criteria_coverage"] == 45
-    assert result.complete is False
-    assert "Technical dimensions below 60: acceptance_criteria_coverage" in result.blockers
-
-
-def test_a_criterion_the_author_declared_unprovable_costs_no_coverage_score(tmp_path):
-    """The other half of the same rule: an honest ``judgeable`` claim is not marked down."""
-    target_dir, _ = _target(tmp_path)
-    sea = (target_dir / "SEA_TRIALS.md").read_text(encoding="utf-8")
-    (target_dir / "SEA_TRIALS.md").write_text(
-        sea.replace("Verification: proof", "Testability: judgeable\nVerification: llm"),
-        encoding="utf-8",
-    )
-
-    result = score_target("Demo", target_dir, runner=_runner(proof_verdict="PASS"))
-
-    assert result.dimensions["acceptance_criteria_coverage"] == 90
 
 
 def test_the_gate_verdict_follows_the_policy_declared_in_the_file(tmp_path):

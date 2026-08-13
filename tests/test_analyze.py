@@ -986,14 +986,7 @@ _SCORECARD_CONTENT = """\
 # Build Scorecard: Demo
 
 - Completion gate: INCOMPLETE
-- Technical score: 82/100
 - Code identity: abc123
-
-## Technical quality
-
-| Dimension | Score | Gate |
-|---|---:|---|
-| Build Quality | 90 | PASS |
 
 ## Project acceptance
 
@@ -1014,7 +1007,6 @@ class TestScorecardHtml:
 
         html = _scorecard_html(tmp_path)
 
-        assert "Score 82/100" in html
         assert "INCOMPLETE" in html
         assert "badge-verified" in html  # PASS row
         assert "✓ PASS" in html

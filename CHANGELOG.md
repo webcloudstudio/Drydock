@@ -10,22 +10,27 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Added
 
-- 2026-08-11: `drydock plan` rejects an acceptance criterion no implementation can execute, at the
-  point it is authored. `acceptance.acceptance_authoring_defects` enforces two deterministic rules
-  over each parsed criterion and reports each violation as a plan integrity fatal naming the
-  specification file and the criterion id. **Subprocess mode**: literal `str` input must use text
-  mode, while literal `bytes`, `bytearray`, and `memoryview` input must use binary mode. This keeps
-  invalid-encoding and other binary acceptance criteria legal while rejecting combinations that
-  raise before the program starts, including bytes with `text=True` or `encoding=...`; dynamic
-  input or mode expressions remain runtime concerns rather than static guesses. Calls are found by
-  parsing the proof body rather than by pattern, so a multi-line or reordered call is read
-  correctly. **ASCII test data**:
-  a criterion may not use non-ASCII literals unless it declares the new `Encoding:` metadata key,
-  which makes an encoding requirement stated by the imported specification explicit and reviewable
-  instead of invented at plan time. A CommonMark run lost a block to a criterion that broke both
-  rules — it fed `"café χρῆν\n"` to a binary-mode `subprocess.run` — and spent two build calls
-  before the loop concluded the criterion, not the code, was wrong. `BLUEPRINTS_CONTRACT.md`
-  documents both rules under `### Runnability`.
+- 2026-08-13: A story acceptance criterion binds only to an oracle it could not have invented.
+  `acceptance.retyped_expectations` reads each criterion's AST and reports every expected string
+  literal the author typed a second time rather than deriving; `ProgrammaticAcceptance.binding` is
+  false when any exists. A binding criterion that misses its expectation fails its block as
+  before. A non-binding one settles `DISPUTED` — run, graded, reported on the console, in the
+  attempt summary, and in `score ac` — and is charged to nothing. Legal expected values are a
+  staged suite's exit status, a status code, a value the criterion supplied as input, and an
+  identifier-shaped contract token such as `"integer"` or `"application/json"`; illegal ones carry
+  something that must be escaped correctly twice, once building the input and once stating the
+  expectation.
+
+  The failure this addresses is the dominant one in UAT. A criterion supplied the TOML literal
+  string `'C:\\Users\\nodejs'`, whose backslashes a literal string preserves verbatim, then
+  asserted the decoded value equalled `r"C:\Users\nodejs"`. The decoder was correct; the
+  criterion was wrong; nothing downstream could tell which. That run cost 2.1M tokens and ended
+  `degraded`. The adjacent basic-string assertion in the same criterion was re-typed too and
+  happened to be right, which is the shape of the problem: a coin flip per assertion. Measured
+  against the stored fixtures the rule admits 24 of 25 Toml criteria and 29 of 33 CommonMark
+  criteria; the five it holds back are the one that failed wrongly and four renderer transforms
+  whose output cannot be derived from their input and which a staged conformance suite already
+  covers.
 
 ### Changed
 
@@ -38,8 +43,6 @@ command surface and Typed Specification contract are unstable and may change bet
   same `TypeError` raised inside the built code is still a genuine red. The known trade: a
   `TypeError` a correct implementation would have avoided also stops gating, visibly rather than
   silently.
-
-### Changed
 
 - 2026-08-12: Sea Trials are the sole input to the completion gate. `score` and `score release`
   report unclosed Manifest work as a warning instead of a blocker, so a release whose every
@@ -56,18 +59,41 @@ command surface and Typed Specification contract are unstable and may change bet
   still reports the terminal pipeline state from Manifest closure, so the build loop continues to
   stop on unclosed work.
 
-### Fixed
+### Removed
 
-- 2026-08-13: Acceptance criteria that invoke an immutable staged harness without satisfying its
-  fatal environment preconditions are now rejected as deterministic setup defects during
-  `drydock plan`. The existing analyzer already read guards such as a required `DECODER` variable
-  from the staged script, but its finding was demoted with probabilistic proof heuristics and the
-  broken criterion was graded against product code; repeated TOML UAT runs consequently spent
-  implementation and repair calls on a harness invocation that could never reach the decoder.
-  Plan artifact recovery can now regenerate the cited Blueprint before installation, while
-  `drydock build` provides a second fail-fast boundary for any invalid plan that reaches it: no
-  implementation or repair agent runs, and the owning story remains pending rather than being
-  recorded as a product failure. Semantic proof-integrity predictions remain advisory.
+- 2026-08-13: The acceptance prediction layer is deleted — 2664 lines. Six analyzers in
+  `proof_integrity.py` predicted from a criterion's text that it would fail: mis-authored
+  literals, unbound names, shell escapes, swallowed output, runner-tally vocabulary, and
+  staged-script invocation. Each was added in response to one observed failure, the space of bad
+  assertions is not enumerable, and every entry carried its own false-positive rate against
+  legitimate snippets. Two had already been retracted after they began failing fixtures that had
+  passed for weeks; accumulating the rest is how the fixtures degraded. Removed with them: the
+  plan-time authoring and staged-setup fatals, the unbounded-suite and zero-skipped fatals, the
+  build-time quarantine and its advisory Manifest finding, and the `validate specification`
+  advisories, which now report the one surviving authoring signal instead. Vacuity analysis
+  (`analyze_proof`) and the compile gate survive: the first only withholds credit rather than
+  assigning blame, and the second asks whether a criterion parses, which is a fact about the file
+  rather than a judgement about the assertion.
+
+- 2026-08-13: `drydock score release` and `drydock build score` no longer compute a technical
+  score. The seven model-emitted 0..100 dimensions, their average, the `< 80` and `< 60`
+  completion blockers, and the `_coverage_penalty` discount are gone, along with the `score` and
+  `dimensions` fields on `BuildScoreResult`, the `technical_score` key in the evidence record
+  (`schema_version` 4), and the "Technical quality" table in `SCORECARD.md`. The gate is now every
+  required Sea Trial's verdict and nothing else, so a project satisfying every criterion its
+  Commander wrote can no longer be refused by an opinion — or by a different opinion on the next
+  run. A release gate has to be reproducible. The model still judges `evidence` and `llm`
+  criteria, which are the criteria that genuinely need judgement; `proof` and `measurement`
+  criteria remain deterministic. This also removes the divergence in which `score release` applied
+  a hardcoded rubric while `build score` resolved the `SEA_TRIALS.md` policy block.
+
+- 2026-08-13: An agent's `AC_BROKEN` claim no longer terminates the repair loop. A criterion
+  reaches the point of failing only when its oracle is derivable, so the agent's claim that the
+  criterion is at fault is the less likely explanation, and a build in which the party under test
+  can end its own examination is not a gate. The claim is still detected and reported as
+  "recorded, not accepted"; the loop keeps its budget and stops on the ordinary stall rule.
+
+### Fixed
 
 - 2026-08-12: A missing project-local executable in a pre-build acceptance observation no longer
   parks a finished story on an unanswerable authorization. `_MISSING_EXECUTABLE_RE` in
