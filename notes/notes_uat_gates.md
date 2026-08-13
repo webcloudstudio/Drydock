@@ -2,16 +2,17 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V4 |
+| Version | 2026-08-13 V5 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
-| Pending spec | 11 approved items |
-| Pending impl | 11 unimplemented sections |
+| Pending spec | 13 approved items |
+| Pending impl | 13 unimplemented sections |
 
-**§1–§11 are analysis. §12–§24 are the proposed model**, approved in discussion 2026-08-13.
+**§1–§11 are analysis. §12–§25 are the proposed model. §26–§28 are the handoff**, approved in discussion 2026-08-13.
 Part I is the gate inventory, Part II the verdict model, Part III provenance and exit semantics,
-Part IV the two-destination test model. **§23 corrects D-011 and UC-008 in Part I.**
+Part IV the two-destination test model, Part V the consolidated order.
+**§23 corrects D-011 and UC-008 in Part I. §26 supersedes §17. §27 supersedes §10, §18, §22, §25.**
 Nothing here authorizes an edit to `docs/Drydock_Specification.md`.
 
 Companion file: `notes/notes_uat.md` holds the 2026-08-10 diagnosis and the Sea Trials redesign.
@@ -1225,3 +1226,127 @@ was never built.
   by design. Without a visible running count a build ends quietly with fifty unresolved
   regressions.
 - **What settles a PENDING?** Unchanged from §18. `DECISIONS.json` is the likely home.
+
+---
+---
+
+# PART V — HANDOFF
+
+`2026-08-13` · approved in discussion
+
+## 26. Consolidated Implementation Order
+
+§17 covered Part II only. This supersedes it and carries every change implied by Parts II–IV.
+Ordered so that each phase is validated by the one before it.
+
+### Phase 0 — Foundation *(no LLM, no UAT run, testable today)*
+
+| # | Change | Touches | Why first |
+|---|---|---|---|
+| 0.1 | Policy-replay harness: extract evidence facts from the 18 recorded runs, run the fold over them, assert the verdict each should produce (§16.1) | `tests/` | Everything after is corpus-validated instead of run-validated |
+| 0.2 | Synthesize the missing UC-008 case — a completed-but-defective product — and assert it reports FAILED (§23.1) | `tests/` | The gate model's most important case has never been observed; without it the model is unconstrained against becoming a rubber stamp |
+
+### Phase 1 — Prompt only *(each would have changed today's ReadingList verdict alone)*
+
+| # | Change | Touches |
+|---|---|---|
+| 1.1 | V-4 — delete the guardrail inference ban and the stale "fails the gate exactly as a breach does" claim (D-017) | `prompts/score_release.md:35-37` |
+| 1.2 | TD-5a — split the ten TDD patterns by destination; state which apply to AC and which to the native suite, and why (TD-2) | `prompts/BLUEPRINTS_CONTRACT.md:240-288` |
+| 1.3 | TD-5c — state each AC tier's consequence, so the author can aim (§21.2) | `prompts/BLUEPRINTS_CONTRACT.md` |
+| 1.4 | TD-5b — build agent's contract to grow the native suite alongside the code | `prompts/build.md` |
+
+### Phase 2 — The verdict model
+
+| # | Change | Touches | Closes |
+|---|---|---|---|
+| 2.1 | V-6 — hygiene leaves the verdict; git state reported, not gating | `score.py:362-366`, `build_score.py:433-440` | **D-014** |
+| 2.2 | V-1 + V-3 — four terminal verdicts, three trial verdicts, the statement | `score.py`, `sea_trials.py` | |
+| 2.3 | V-5 — `Verification:` becomes a hint; delete the proof-tag override | `score.py:520-535` | **D-016** |
+| 2.4 | V-7 — ERROR computed first and separately | `score.py`, `uat.py` | |
+| 2.5 | Converge `score.py` and `build_score.py` on one policy engine | both | |
+
+### Phase 3 — The tier model
+
+| # | Change | Touches | Closes |
+|---|---|---|---|
+| 3.1 | T-2 — consultative tier; autonomous degrades, interactive asks | `build_run.py`, `decisions.py` | **D-010, D-015** |
+| 3.2 | P-4 — delete `_MIN_ASSERTIONS_PER_STORY` | `planning_session.py:2065` | **D-009** |
+| 3.3 | TD-5d — resolve the native suite per Target; run after every block, diagnostic only | `build_run.py` | |
+| 3.4 | TD-5e — observe pattern 6: run each criterion once against the pre-implementation tree | `build_run.py` | |
+
+### Phase 4 — Provenance
+
+| # | Change | Touches | Closes |
+|---|---|---|---|
+| 4.1 | G-ANA-04 — every emitted trial cites the directive it transcribes | `prompts/analyze.md`, `sea_trials.py` | **D-018** |
+| 4.2 | G-ANA-05 — every source directive is covered by a trial; uncovered raises a DECISION | `analyze` | **D-019** |
+| 4.3 | G-SCORE-14 — a trial with no provenance is reported and excluded from the fold | `score.py` | backstop |
+| 4.4 | G-REFIT-02 — a source update re-runs both checks | `refit` | |
+
+*Fixtures are already V-8 clean as of `185b55a` (§23.2); Phase 4 is for real Targets.*
+
+### Phase 5 — Harness semantics
+
+| # | Change | Touches |
+|---|---|---|
+| 5.1 | X-1/X-2/X-3 — exit code reports whether the command did its job, never the verdict; `--require` for scripted gating | `cli.py`, `score.py` |
+| 5.2 | X-4 — per-fixture expected verdict in `uat.json`; `uat` exits 0 when observed matches expected | `uat.py`, `uat/*/uat.json` |
+| 5.3 | `gate_verdicts` in `result.json`, so §4 is generated rather than written (§7.2) | `uat.py` |
+
+### Not scheduled
+
+| Defect | Why |
+|---|---|
+| **D-008** — one malformed artifact discards a batch of 19 | P-3 addresses it in principle; no design yet. Cost is real (3 of 18 runs) but it is a transport problem, independent of everything above |
+
+---
+
+## 27. Open Questions — Reconciled
+
+Supersedes §10, §18, §22, and §25, which accumulated across four passes and are partly stale.
+
+### 27.1 Resolved during the session
+
+| Question | Resolution |
+|---|---|
+| May the hygiene layer block anything? (§10) | No. G-SCORE-07 becomes **ERROR** — the thing judged is not the thing built, so no verdict exists (V-6) |
+| Does `PENDING` exit 0? (§18) | Yes — and so does FAILED. The exit code reports whether the command judged, not what it judged (X-1) |
+| ERROR and FAILED both exit 1? (§18) | No. ERROR = 1, FAILED = 0 (X-2) |
+| Can the grader be trusted to infer? (§18) | Only generously. V-2's asymmetry means inference can raise PENDING→MET but never reach NOT MET. Measured by 0.1/0.2 |
+| D-012 — `st-001` carries no `Command:` (§22) | Dissolved. `Verification:` no longer selects a mechanism (V-5) |
+| Toml's expected verdict (§22) | **`PASSED`** — the U+3000 defect does not exist (§23.1) |
+| Rewrite the frozen `SEA_TRIALS.md`? (§22) | Done by the author, `185b55a`. All three fixtures V-8 clean |
+| Does a red native suite reach the verdict? (§25) | Yes, and legitimately — through Sea Trials. A red suite fails `bin/test.sh`, which fails ReadingList st-001. It never reaches the verdict as *story AC*, which is the separation §12 requires |
+
+### 27.2 Decided by recommendation, reversible
+
+| Question | Call |
+|---|---|
+| What settles a PENDING? | `DECISIONS.json`. It is the existing mechanism for "a human owes an answer" and needs no new artifact |
+| Provenance citation across `refit` | Cite the **directive text**, not a line span. Spans break when the source is rewritten |
+| Uncovered directive in autonomous mode | Same shape as T-2: record the DECISION, proceed, report it. There is nobody to ask |
+
+### 27.3 Genuinely open — need the author
+
+| # | Question | Consequence |
+|---|---|---|
+| **Q1** | **A T-1 governed gate still red after the repair budget: stop that branch and finish the run, or stop the run?** | Determines whether a UAT run yields one defect or all of them. P-3/P-5 argue for continuing; the counter-argument is that later blocks build on a known-broken foundation and their results are meaningless |
+| **Q2** | **Does implementation start now, and from where?** | Phase 0 and Phase 1 are independent and cheap. Phases 2–5 are a substantial change to `score release` |
+
+---
+
+## 28. Divergence from the Specification
+
+Stated as fact, per standing instruction. No edit is proposed.
+
+Implementing Parts II–V would diverge from `docs/Drydock_Specification.md` in three places:
+
+1. **`:952`** — `SCORECARD.md` described as "seven-dimension quality + drift scores". Already false
+   as of 2026-08-13; the rubric was deleted this week.
+2. **`score release` verdicts** — the specification documents a pass/fail release gate. V-1
+   introduces four terminal verdicts, of which `PENDING MANUAL VERIFICATION` has no counterpart.
+3. **Exit codes** — X-1 makes `score release` exit 0 on FAILED. Any documented statement that a
+   failing release gate exits non-zero becomes false.
+
+The specification is the author's. These are surfaced so the divergence is a decision rather than
+an accident.
