@@ -2,22 +2,71 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 2026-08-13 V5 |
+| Version | 2026-08-13 V6 |
 | Route | uat |
 | Status | Working notes — not canonical specification |
 | Description | Theoretical pass over the whole UAT lifecycle: every gate that can stop a run, given a stable reference id, evidenced against all 18 recorded runs; then the proposed verdict, provenance, and exit model that replaces them. |
 | Pending spec | 14 approved items |
-| Pending impl | 13 unimplemented sections |
+| Pending impl | 14 unimplemented sections |
 
-**§1–§11 are analysis. §12–§25 are the proposed model. §26–§28 are the handoff**, approved in discussion 2026-08-13.
+---
+
+## Goal
+
+**Make `drydock uat` converge, so Drydock can be released.**
+
+A UAT run must end in a verdict that is *about the product* — and must reach that verdict whether
+the product is good, bad, or partly unverifiable. Today it usually ends in a verdict about
+Drydock: a gate fired, a criterion was malformed, a batch was discarded, a directory was dirty.
+Two of eighteen recorded runs produced a usable answer.
+
+Three properties define done:
+
+1. **A run finishes.** Every independent branch builds; a failure stops what depends on it and
+   nothing else. One run reports every defect it can observe, not the first one.
+2. **The verdict is the user's, not the model's.** Project acceptance comes from Sea Trials, which
+   trace to user-authored intent. Story acceptance criteria guide the build and never reach the
+   release verdict.
+3. **Drydock can only fail a project by exhibiting a failure.** Absence of evidence yields
+   *pending manual verification*, never *failed*. Drydock's own bookkeeping never fails anything.
+
+The measurable target: the 18 recorded runs, replayed through the new fold, produce the verdict
+each *should* have produced — and ReadingList `20260813.160121` reports `PASSED: 7 of 7`.
+
+---
+
+## Start Here (after a `/clear`)
+
+**Read:** §1.3 (the problem), §12 (the two paths), §13 (V-2, the one engineering idea), §26 (what
+to build). That is ~150 lines and sufficient to begin. The rest is evidence for those four.
+
+**Settled, do not relitigate:** Q1 and Q2 in §27.3; the eight resolutions in §27.1; the three calls
+in §27.2. All three fixture `SEA_TRIALS.md` files are already correct (`185b55a`).
+
+**Build next — §26 Phase 0, then Phase 1.** Phase 0 is a test harness over `uat/`; Phase 1 is four
+prompt edits. Neither needs an LLM call or a UAT run, and Phase 1 alone would have flipped the most
+recent recorded run from `FAILED` to `PASSED`. **Phases 2–5 wait for the measurement Phase 0
+produces.**
+
+**All evidence is in `uat/`.** 18 runs across three fixtures, with prompts, provider output, and
+evidence trees. There is no other source, and every claim in this file is checkable there. Runs
+were produced by materially different software, so their *evidence* replays but their *lifecycle*
+does not (§16.1).
+
+---
+
+**§1–§11 are analysis. §12–§25 are the proposed model. §26–§28 are the handoff**, approved in
+discussion 2026-08-13.
 Part I is the gate inventory, Part II the verdict model, Part III provenance and exit semantics,
 Part IV the two-destination test model, Part V the consolidated order.
 **§23 corrects D-011 and UC-008 in Part I. §26 supersedes §17. §27 supersedes §10, §18, §22, §25.**
-Nothing here authorizes an edit to `docs/Drydock_Specification.md`.
+Nothing here authorizes an edit to `docs/Drydock_Specification.md`; §28 records where the model
+would diverge from it.
 
 Companion file: `notes/notes_uat.md` holds the 2026-08-10 diagnosis and the Sea Trials redesign.
-This file supersedes its gate inventory (§"Gate inventory after simplification"), which listed four
-gates. The real count is **31**.
+**Its gate inventory is superseded** (§"Gate inventory after simplification" listed four gates; the
+real count is 31), and its "TDD patterns for story unit tests" section is superseded by §24. Its
+diagnosis and Sea Trials redesign stand.
 
 ---
 
