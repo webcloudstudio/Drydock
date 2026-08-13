@@ -901,6 +901,28 @@ def flag_unsatisfiable_acceptance(
     )
 
 
+def deterministic_setup_defects(
+    checks: Iterable[ProgrammaticAcceptance], *, sources_dir: Path | None
+) -> tuple[DroppedAcceptance, ...]:
+    """Return acceptance setup defects proved from immutable staged-asset contracts.
+
+    Unlike the broader proof-integrity analyzers, this check does not predict whether an
+    assertion is semantically satisfiable. It reads a staged script's fatal environment guards
+    and compares them with the invocation that the acceptance author supplied. A missing guarded
+    variable prevents the harness from reaching the product under test under every possible
+    implementation, so planning and building may reject it without risking a false product
+    failure.
+    """
+    from drydock.proof_integrity import analyze_staged_invocation
+
+    defects: list[DroppedAcceptance] = []
+    for check in checks:
+        staged = analyze_staged_invocation(check.code, sources_dir=sources_dir)
+        if staged:
+            defects.append(DroppedAcceptance(check_id=check.check_id, reason=staged[0].message))
+    return tuple(defects)
+
+
 def syntax_defect(code: str) -> str | None:
     """Return why ``code`` is not Python at all, or ``None`` when it compiles.
 

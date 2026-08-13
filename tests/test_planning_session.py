@@ -4191,8 +4191,9 @@ assert result.returncode == 0
 ```"""
 
 
-def test_plan_flags_a_staged_call_missing_the_environment_the_asset_requires(tmp_path):
-    from drydock.planning_session import ACCEPTANCE_REMOVED_MARKER, _validate_plan_output
+def test_plan_rejects_a_staged_call_missing_the_environment_the_asset_requires(tmp_path):
+    from drydock.errors import SpecificationError
+    from drydock.planning_session import _validate_plan_output
 
     sources = tmp_path / "sources"
     sources.mkdir(parents=True, exist_ok=True)
@@ -4203,13 +4204,14 @@ def test_plan_flags_a_staged_call_missing_the_environment_the_asset_requires(tmp
     )
     blocks = {"MANIFEST.md": manifest, "FEATURE-Status.md": spec}
 
-    _plan, warnings = _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
+    with pytest.raises(SpecificationError) as caught:
+        _validate_plan_output(blocks, tmp_path, FakeRun(text=_llm_output(manifest)))
 
-    assert "key-conformance" in blocks["FEATURE-Status.md"]
-    assert "### check-1" in blocks["FEATURE-Status.md"]
-    flag = next(w for w in warnings if ACCEPTANCE_REMOVED_MARKER in w)
-    assert "FEATURE-Status.md [key-conformance]" in flag
-    assert "DECODER" in flag
+    message = str(caught.value)
+    assert "acceptance setup cannot reach the product under test" in message
+    assert "FEATURE-Status.md [key-conformance]" in message
+    assert "DECODER" in message
+    assert "No Blueprint or Manifest artifacts were written" in message
 
 
 def test_plan_keeps_the_same_call_when_it_extends_the_inherited_environment(tmp_path):

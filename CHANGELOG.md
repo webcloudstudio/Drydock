@@ -58,6 +58,17 @@ command surface and Typed Specification contract are unstable and may change bet
 
 ### Fixed
 
+- 2026-08-13: Acceptance criteria that invoke an immutable staged harness without satisfying its
+  fatal environment preconditions are now rejected as deterministic setup defects during
+  `drydock plan`. The existing analyzer already read guards such as a required `DECODER` variable
+  from the staged script, but its finding was demoted with probabilistic proof heuristics and the
+  broken criterion was graded against product code; repeated TOML UAT runs consequently spent
+  implementation and repair calls on a harness invocation that could never reach the decoder.
+  Plan artifact recovery can now regenerate the cited Blueprint before installation, while
+  `drydock build` provides a second fail-fast boundary for any invalid plan that reaches it: no
+  implementation or repair agent runs, and the owning story remains pending rather than being
+  recorded as a product failure. Semantic proof-integrity predictions remain advisory.
+
 - 2026-08-12: A missing project-local executable in a pre-build acceptance observation no longer
   parks a finished story on an unanswerable authorization. `_MISSING_EXECUTABLE_RE` in
   `acceptance_requirements` excluded `/` from its capture but not the newline, so stderr naming a

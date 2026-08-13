@@ -2280,6 +2280,27 @@ def _strip_unsatisfiable_acceptance(
     return tuple(findings)
 
 
+def _deterministic_acceptance_setup_defects(
+    blocks: dict[str, str], *, sources_dir: Path
+) -> tuple[str, ...]:
+    """Return staged-harness contract violations that cannot reach the product under test."""
+    from drydock.acceptance import (
+        deterministic_setup_defects,
+        parse_programmatic_acceptance_text,
+    )
+
+    defects: list[str] = []
+    for name in sorted(blocks):
+        if name in _RESERVED_BLOCKS:
+            continue
+        checks = parse_programmatic_acceptance_text(blocks[name], source=name)
+        defects.extend(
+            f"{name} [{defect.check_id}]: {defect.reason}"
+            for defect in deterministic_setup_defects(checks, sources_dir=sources_dir)
+        )
+    return tuple(defects)
+
+
 #: The plan-create output contract, measured deterministically by :mod:`drydock.plan_shape`.
 #: Shape conformance is a checker, not an instruction: the prompt no longer asks the model to
 #: verify its own delimiters and block completeness, because that verification is free and
@@ -2662,6 +2683,20 @@ def _validate_plan_output(
                 "Plan generation failed: acceptance criteria that cannot execute.\n"
                 f"{listed}\n"
                 "  A criterion that does not compile verifies nothing under any implementation.\n"
+                "  No Blueprint or Manifest artifacts were written.",
+                result,
+            )
+        )
+    invalid_setup = _deterministic_acceptance_setup_defects(
+        blocks, sources_dir=blueprint_dir / "sources"
+    )
+    if invalid_setup:
+        listed = "\n".join(f"  {defect}" for defect in invalid_setup)
+        raise SpecificationError(
+            _with_execution_evidence(
+                "Plan generation failed: acceptance setup cannot reach the product under test.\n"
+                f"{listed}\n"
+                "  Satisfy the staged asset's declared invocation contract.\n"
                 "  No Blueprint or Manifest artifacts were written.",
                 result,
             )

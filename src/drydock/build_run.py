@@ -36,6 +36,7 @@ from drydock.acceptance import (
     AcceptanceRunResult,
     ProgrammaticAcceptance,
     QuarantinedAcceptance,
+    deterministic_setup_defects,
     flag_unsatisfiable,
     is_terminal_check_failure,
     observe_programmatic_acceptance,
@@ -2333,6 +2334,17 @@ def build_target(
                 gathered_checks.append(check)
                 story_by_check[check.check_id] = block
                 story_by_source_check[(check.source, check.check_id)] = block
+        invalid_setup = deterministic_setup_defects(
+            gathered_checks, sources_dir=resolved_build_dir / "sources"
+        )
+        if invalid_setup:
+            listed = "\n".join(f"  - {entry.check_id}: {entry.reason}" for entry in invalid_setup)
+            raise SpecificationError(
+                "Build blocked: acceptance setup cannot reach the product under test.\n"
+                f"{listed}\n"
+                "  Fix and regenerate the Blueprint before running the build.\n"
+                "  No implementation or repair agent was called."
+            )
         checks, quarantined = _quarantine_unsatisfiable_acceptance(
             tuple(gathered_checks), sources_dir=resolved_build_dir / "sources"
         )

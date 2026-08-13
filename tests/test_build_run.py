@@ -3510,6 +3510,51 @@ def test_malformed_invocation_blocks_the_build_before_the_agent_runs(tmp_path):
     assert "the intended command never runs" in text
 
 
+_STAGED_REQUIREMENT_SPEC = """# FEATURE: Scoped Verification
+
+## Programmatic Acceptance
+
+### scoped-conformance
+The supplied harness runs the parser.
+
+```python
+import subprocess
+
+result = subprocess.run(
+    ["sh", "sources/run_conformance.sh", "-run", "valid/key/*"],
+    capture_output=True,
+    text=True,
+)
+assert result.returncode == 0
+```
+"""
+
+
+def test_missing_staged_requirement_blocks_before_the_agent_runs(tmp_path):
+    target_dir, build_dir = _setup(tmp_path)
+    sources = build_dir / "sources"
+    sources.mkdir(parents=True)
+    (sources / "run_conformance.sh").write_text(
+        '#!/bin/sh\nif [ -z "${DECODER:-}" ]; then\n  exit 2\nfi\n',
+        encoding="utf-8",
+    )
+    (target_dir / "blueprint" / "DATABASE.md").write_text(
+        _STAGED_REQUIREMENT_SPEC, encoding="utf-8"
+    )
+    runner = make_runner()
+
+    with pytest.raises(SpecificationError) as caught:
+        build_target("Demo", target_dir, build_dir=build_dir, runner=runner)
+
+    message = str(caught.value)
+    assert "acceptance setup cannot reach the product under test" in message
+    assert "scoped-conformance" in message
+    assert "DECODER" in message
+    assert "No implementation or repair agent was called" in message
+    assert runner.calls == []
+    assert _state(target_dir, "foundation") == "pending"
+
+
 _TALLY_ASSERTION_SPEC = """# FEATURE: Conformance
 
 ## Programmatic Acceptance
